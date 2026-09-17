@@ -2,6 +2,12 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import { fileURLToPath } from "node:url";
 import { dirname, extname, join } from "node:path";
 import { readFileSync } from "node:fs";
+// Static import so the SSR bundler doesn't see a mixed static/dynamic
+// import of this module (it's imported statically elsewhere, e.g. in
+// api/room/join/POST.ts). closeConnection is optional at runtime, so the
+// call site below still guards with a typeof check instead of relying on
+// import() rejecting when the export is missing.
+import * as dbClientModule from "./db/client.js";
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -781,27 +787,14 @@ if (import.meta.env.PROD) {
 
 	const shutdown = async (signal: string) => {
 		console.log(`Got ${signal}, shutting down gracefully...`);
-		// Scope the ERR_MODULE_NOT_FOUND suppression to the import() only.
-		// A closeConnection() failure that happens to carry the same code
-		// (unlikely but possible for wrapped errors) must not be silently
-		// swallowed - it indicates a real db-close failure worth logging.
-		let mod: { closeConnection?: () => Promise<void> | void } | null = null;
-		try {
-			const dbClient = "./db/client" + ".js";
-			// Source-literal optional module path; no request, environment, or user input reaches import().
-			// eslint-disable-next-line no-unsanitized/method
-			mod = await import(/* @vite-ignore */ dbClient);
-		} catch (error: unknown) {
-			const code = (error as { code?: string } | null)?.code;
-			if (code !== "ERR_MODULE_NOT_FOUND") {
-				console.error("ssr.shutdown.db-import-failed", {
-					error: error instanceof Error ? error.message : String(error),
-				});
-			}
-		}
-		if (mod && typeof mod.closeConnection === "function") {
+		// db/client.js is imported statically at the top of this file now
+		// (see the import * as dbClientModule line) instead of via a
+		// runtime import(), so closeConnection() may simply be absent from
+		// the module rather than the import itself failing — guard with a
+		// typeof check the same way the old code guarded after import().
+		if (typeof dbClientModule.closeConnection === "function") {
 			try {
-				await mod.closeConnection();
+				await dbClientModule.closeConnection();
 				console.log("Database connections closed");
 			} catch (error: unknown) {
 				console.error("ssr.shutdown.db-close-failed", {
