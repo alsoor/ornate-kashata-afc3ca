@@ -204,7 +204,9 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
   ssr: {
     noExternal: isSsrBuild ? true : undefined,
     // agora-rtc-sdk-ng uses browser APIs — must never be loaded in Node/SSR
-    external: ['agora-rtc-sdk-ng']
+    // db/schema.ts and db/client.ts are excluded from the SSR bundle to
+    // resolve a dynamic/static import conflict that was crashing the build
+    external: ['agora-rtc-sdk-ng', './src/server/db/schema.ts', './src/server/db/client.ts']
   },
 
   server: {
@@ -255,10 +257,6 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
     ssr: "src/server/entry.ts",
     target: "node18",
     rollupOptions: {
-      external: [
-        "/src/server/db/schema.ts",
-        "/src/server/db/client.ts"
-      ],
       output: {
         format: "es",
         entryFileNames: "server.bundle.mjs",
