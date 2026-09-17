@@ -255,6 +255,10 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
     ssr: "src/server/entry.ts",
     target: "node18",
     rollupOptions: {
+      external: [
+        "/src/server/db/schema.ts",
+        "/src/server/db/client.ts"
+      ],
       output: {
         format: "es",
         entryFileNames: "server.bundle.mjs",
