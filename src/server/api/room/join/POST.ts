@@ -1,4 +1,6 @@
 /** POST /api/room/join — join a voice room */
+import { db } from '../../../../db/client';
+import { schema } from '../../../../db/schema';
 import type { Request, Response } from 'express';
 import { getAuth } from '../../../../lib/auth/auth.js';
 import { roomJoin } from '../../../lib/voiceRoom.js';
