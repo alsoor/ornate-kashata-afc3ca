@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0a1a1a"/>
+      <stop offset="100%" stop-color="#060e0e"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#00BCD4" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#00BCD4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Glow -->
+  <ellipse cx="600" cy="315" rx="420" ry="420" fill="url(#glow)"/>
+
+  <!-- Outer ring -->
+  <circle cx="600" cy="240" r="90" fill="none" stroke="#00BCD4" stroke-width="2.5" stroke-opacity="0.55"/>
+
+  <!-- Inner circle -->
+  <circle cx="600" cy="240" r="62" fill="#00BCD4" fill-opacity="0.08"/>
+
+  <!-- Wave bars (microphone icon) -->
+  <rect x="563" y="222" width="8" height="20" rx="4" fill="#00BCD4"/>
+  <rect x="577" y="210" width="8" height="32" rx="4" fill="#00BCD4"/>
+  <rect x="591" y="216" width="8" height="26" rx="4" fill="#00BCD4"/>
+  <rect x="605" y="204" width="8" height="38" rx="4" fill="#00BCD4"/>
+  <rect x="619" y="218" width="8" height="22" rx="4" fill="#00BCD4"/>
+
+  <!-- App name -->
+  <text x="600" y="390" text-anchor="middle" font-family="'Segoe UI', system-ui, sans-serif" font-size="88" font-weight="800" letter-spacing="-2" fill="white">Stoo</text>
+  <text x="600" y="390" text-anchor="middle" font-family="'Segoe UI', system-ui, sans-serif" font-size="88" font-weight="800" letter-spacing="-2" fill="white">
+    <tspan fill="white">Stoo</tspan><tspan fill="#00BCD4">orna</tspan>
+  </text>
+
+  <!-- Tagline -->
+  <text x="600" y="450" text-anchor="middle" font-family="'Segoe UI', system-ui, sans-serif" font-size="26" letter-spacing="5" fill="rgba(255,255,255,0.5)" text-transform="uppercase">VOICE · WHISPER · CONNECT</text>
+
+  <!-- Subtle border -->
+  <rect x="1" y="1" width="1198" height="628" fill="none" stroke="#00BCD4" stroke-width="1" stroke-opacity="0.12" rx="0"/>
+</svg>

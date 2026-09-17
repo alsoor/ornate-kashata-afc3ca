@@ -1,0 +1,686 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Core Colors */
+    --background: 180 44% 7%;
+    --foreground: 0 0% 96%;
+    --card: 180 40% 12%;
+    --card-foreground: 0 0% 96%;
+    --popover: 180 40% 12%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 187 100% 42%;
+    /* Owner badge color — permanent blue for the app owner */
+    --owner: 217 91% 50%;
+    --gold: 45 100% 50%;
+    --gold-foreground: 0 0% 0%;
+
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 100% 42%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 186 59% 7%;
+    --muted-foreground: 180 44% 52%;
+    --accent: 7 100% 42%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --border: 180 35% 27%;
+    --input: 180 35% 27%;
+    --ring: 187 100% 42%;
+
+    /* Extended Colors */
+    --chart-1: 187 100% 72%;
+    --chart-2: 187 100% 56%;
+    --chart-3: 187 100% 42%;
+    --chart-4: 187 100% 27%;
+    --chart-5: 187 100% 12%;
+
+    /* Sidebar Colors */
+    --sidebar: 186 59% 7%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-primary: 187 100% 42%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 7 100% 42%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 180 35% 27%;
+    --sidebar-ring: 187 100% 42%;
+
+    /* Call UI Colors */
+    --call-green: 142 71% 45%;
+    --call-green-faint: rgba(34,197,94,0.10);
+    --call-green-border: rgba(34,197,94,0.32);
+    --call-green-glow: rgba(34,197,94,0.65);
+    --call-red-faint: rgba(239,68,68,0.12);
+    --call-red-border: rgba(239,68,68,0.35);
+    --call-cyan-faint: rgba(0,188,212,0.08);
+    --call-cyan-border: rgba(0,188,212,0.25);
+    --call-text: rgba(200,240,245,0.92);
+    --call-text-dim: rgba(180,220,225,0.45);
+    --call-popup-bg: rgba(10,20,24,0.98);
+    --call-popup-shadow: 0 8px 48px rgba(0,0,0,0.7);
+
+    /* Typography */
+    --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-heading: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-serif: ui-serif, Georgia, "Times New Roman", serif;
+    --font-mono: ui-monospace, "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+
+    /* Border Radius */
+    --radius: 0.5rem;
+    /* Button radius: the kit's radiusButton is written here at install time;
+       the default matches shadcn `rounded-md` (calc(var(--radius) - 2px)) so a
+       kit without a button radius renders unchanged. Consumed by the Button
+       `cva` via `rounded-[var(--radius-button)]` (AIROBUILD-3249). */
+    --radius-button: calc(var(--radius) - 2px);
+
+    /* Shadows */
+    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
+    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-family: var(--font-sans);
+
+    /* ── Native-app feel ─────────────────────────────────────────── */
+    /* Prevent horizontal scroll / overflow on all screens */
+    overflow-x: hidden;
+    /* Disable text selection highlight (like native apps) */
+    -webkit-user-select: none;
+    user-select: none;
+    /* Disable tap highlight flash on Android/iOS */
+    -webkit-tap-highlight-color: transparent;
+    /* Smooth momentum scrolling on iOS */
+    -webkit-overflow-scrolling: touch;
+    /* Prevent pull-to-refresh & overscroll bounce on iOS/Android */
+    overscroll-behavior: none;
+    /* Prevent font size inflation on orientation change (iOS) */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* Allow text selection inside inputs and textareas */
+  input, textarea, [contenteditable] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading) !important;
+  }
+}
+
+/* Custom utility classes */
+@layer utilities {
+  .animate-in {
+    animation-duration: 0.2s;
+    animation-fill-mode: both;
+  }
+
+  .fade-in {
+    animation-name: fadeIn;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+/* ── App shell: full viewport, no scroll, native-app sizing ─────────────── */
+html {
+  scroll-behavior: smooth;
+  /* Fill the entire screen including notch/home-bar areas on iPhone */
+  height: 100%;
+  /* Prevent horizontal overflow at root level */
+  overflow-x: hidden;
+}
+
+/* Make #app fill the full screen height so pages don't need min-h-screen */
+#app {
+  min-height: 100dvh; /* dvh = dynamic viewport height — correct on iOS Safari */
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Safe-area padding helpers (iPhone notch / Dynamic Island / home bar) ── */
+/* Use these classes on fixed bottom bars, headers, etc. */
+.safe-top    { padding-top:    env(safe-area-inset-top,    0px); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.safe-left   { padding-left:   env(safe-area-inset-left,   0px); }
+.safe-right  { padding-right:  env(safe-area-inset-right,  0px); }
+
+/* Prevent any element from causing horizontal scroll */
+* { box-sizing: border-box; max-width: 100%; }
+
+/* ── Speaker volume slider thumb ── */
+input[type="range"].vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #00BCD4;
+  border: 2px solid rgba(0,0,0,0.4);
+  box-shadow: 0 0 6px rgba(0,188,212,0.5);
+  cursor: pointer;
+}
+input[type="range"].vol-slider::-moz-range-thumb {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #00BCD4;
+  border: 2px solid rgba(0,0,0,0.4);
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #00BCD4;
+  border: 2px solid rgba(0,0,0,0.3);
+  box-shadow: 0 0 5px rgba(0,188,212,0.4);
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #00BCD4;
+  border: 2px solid rgba(0,0,0,0.3);
+  cursor: pointer;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.75); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Post ring glow on friend avatars */
+@keyframes stooorna-post-ring {
+  0%, 100% { box-shadow: 0 0 6px hsl(var(--primary) / 0.6); }
+  50%       { box-shadow: 0 0 14px hsl(var(--primary) / 1); }
+}
+
+/* Gold shimmer on new-post bar */
+@keyframes stooorna-gold-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.stooorna-new-post-bar {
+  background: linear-gradient(90deg, hsl(var(--gold)/0.0) 0%, hsl(var(--gold)/0.9) 40%, hsl(var(--gold)/0.9) 60%, hsl(var(--gold)/0.0) 100%);
+  background-size: 200% auto;
+  animation: stooorna-gold-shimmer 1.4s linear infinite;
+}
+
+/* Post media viewer progress bar */
+.post-progress-track {
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: rgba(255,255,255,0.18); z-index: 3; pointer-events: none;
+}
+.post-progress-fill {
+  height: 100%;
+  background: hsl(var(--gold));
+  transition: width 0.05s linear;
+}
+
+/* Post expired label */
+.post-expired-label {
+  position: absolute; bottom: 40px; left: 0; right: 0;
+  display: flex; justify-content: center; pointer-events: none;
+}
+.post-expired-label span {
+  background: hsl(var(--background) / 0.85);
+  color: hsl(var(--gold));
+  font-size: 0.75rem; font-weight: 700;
+  padding: 4px 14px; border-radius: 20px;
+}
+
+/* Gold ring on friend avatar with new post */
+.stooorna-gold-ring {
+  animation: stooorna-gold-ring-pulse 1.4s ease-in-out infinite;
+}
+@keyframes stooorna-gold-ring-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px hsl(var(--gold)/0.7); }
+  50%       { box-shadow: 0 0 0 3px hsl(var(--gold)/1), 0 0 10px hsl(var(--gold)/0.5); }
+}
+
+/* Streak flash glow */
+@keyframes streak-flash-blue {
+  0%, 100% { box-shadow: 0 0 6px 2px hsl(210 100% 56% / 0.5); }
+  50%       { box-shadow: 0 0 16px 6px hsl(210 100% 56% / 0.9); }
+}
+@keyframes streak-flash-yellow {
+  0%, 100% { box-shadow: 0 0 6px 2px hsl(45 100% 50% / 0.5); }
+  50%       { box-shadow: 0 0 16px 6px hsl(45 100% 50% / 0.9); }
+}
+@keyframes streak-flash-purple {
+  0%, 100% { box-shadow: 0 0 6px 2px hsl(270 80% 60% / 0.5); }
+  50%       { box-shadow: 0 0 16px 6px hsl(270 80% 60% / 0.9); }
+}
+/* Streak bubble shimmer sweep */
+@keyframes streak-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+/* Friend list streak flash — yellow (photo) */
+.streak-flash-yellow {
+  animation: streak-name-yellow 1.2s ease-in-out infinite;
+}
+@keyframes streak-name-yellow {
+  0%, 100% { text-shadow: 0 0 0px transparent; color: inherit; }
+  50%       { text-shadow: 0 0 8px #facc15; color: #facc15; }
+}
+/* Friend list streak flash — purple (video) */
+.streak-flash-purple {
+  animation: streak-name-purple 1.2s ease-in-out infinite;
+}
+@keyframes streak-name-purple {
+  0%, 100% { text-shadow: 0 0 0px transparent; color: inherit; }
+  50%       { text-shadow: 0 0 8px #a855f7; color: #a855f7; }
+}
+/* Friend list streak flash — mixed */
+.streak-flash-mixed {
+  animation: streak-name-mixed 2s ease-in-out infinite;
+}
+@keyframes streak-name-mixed {
+  0%, 49% { text-shadow: 0 0 8px #facc15; color: #facc15; }
+  50%, 100% { text-shadow: 0 0 8px #a855f7; color: #a855f7; }
+}
+
+/* ── Streak Camera UI ── */
+.cam-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: #000;
+  display: flex; flex-direction: column;
+}
+.cam-gradient-top {
+  position: absolute; top: 0; left: 0; right: 0; height: 140px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.55), transparent);
+  pointer-events: none;
+}
+.cam-gradient-bottom {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 200px;
+  background: linear-gradient(to top, rgba(0,0,0,0.65), transparent);
+  pointer-events: none;
+}
+.cam-close-btn {
+  position: absolute; left: 16px; top: 36px;
+  width: 38px; height: 38px; border-radius: 50%;
+  background: rgba(0,0,0,0.3); border: none; color: #fff;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.cam-flip-btn {
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.35);
+  color: #fff;
+}
+/* زر مكتبة الصور — نفس شكل cam-flip-btn */
+.cam-gallery-btn {
+  width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.35);
+  color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+/* شاشة تحرير القصة (overlay text + music) */
+.story-edit-overlay {
+  position: fixed; inset: 0; z-index: 12600;
+  background: #000;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.story-edit-text-input {
+  background: transparent;
+  border: none; outline: none;
+  font-size: 1.5rem; font-weight: 700;
+  text-align: center;
+  width: 100%; padding: 0 16px;
+  caret-color: #fff;
+}
+.story-edit-color-dot {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 2.5px solid transparent;
+  cursor: pointer; flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.story-edit-color-dot.active {
+  border-color: #fff;
+  transform: scale(1.18);
+}
+.story-music-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 12px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.14);
+  cursor: pointer;
+}
+.story-music-row.selected {
+  background: rgba(0,188,212,0.18);
+  border-color: rgba(0,188,212,0.5);
+}
+/* شريط أزرار شاشة التحرير */
+.story-edit-section {
+  background: rgba(0,0,0,0.5);
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 10px 14px;
+}
+.story-edit-section-label {
+  color: rgba(255,255,255,0.5);
+  font-size: 0.72rem; margin: 0 0 6px; font-weight: 600;
+}
+.story-edit-btn-done {
+  background: hsl(var(--primary));
+  border: none; color: hsl(var(--primary-foreground));
+  cursor: pointer; border-radius: 20px; padding: 6px 16px;
+  font-weight: 700; font-size: 0.82rem;
+}
+.story-edit-btn-back {
+  background: none; border: none; color: #fff;
+  cursor: pointer; display: flex; align-items: center; gap: 6px;
+  font-size: 0.85rem; font-weight: 600;
+}
+.story-edit-publish-btn {
+  width: 100%; min-height: 48px; padding: 12px 0; border-radius: 14px; border: none;
+  background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
+  font-weight: 800; font-size: 0.92rem; cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,188,212,0.35);
+}
+.story-edit-publish-btn:disabled { opacity: 0.7; cursor: default; }
+.story-edit-btn {
+  width: 100%; min-height: 44px; padding: 10px 0; border-radius: 12px;
+  border: 1px solid hsl(var(--primary) / 0.45);
+  background: hsl(var(--primary) / 0.1); color: hsl(var(--primary));
+  font-weight: 700; font-size: 0.85rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.story-edit-retake-btn {
+  flex: 1; min-height: 44px; padding: 10px 0; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.12); color: #fff;
+  font-weight: 700; font-size: 0.82rem; cursor: pointer;
+}
+.story-overlay-text {
+  color: inherit;
+  font-size: 1.6rem; font-weight: 800;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.7);
+  text-align: center; padding: 0 20px;
+  word-break: break-word;
+}
+.story-music-badge {
+  /* الشكل القديم — لا يُستخدم بعد الآن، محفوظ للتوافق */
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.65);
+  border-radius: 20px; padding: 5px 14px;
+  display: flex; align-items: center; gap: 6px;
+  pointer-events: none;
+}
+
+/* ── دائرة الموسيقى الجديدة ── */
+.story-music-orb {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 38%, #ff4444 0%, #c0000a 60%, #7a0005 100%);
+  box-shadow: 0 0 0 3px rgba(255,60,60,0.35), 0 0 14px rgba(255,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; gap: 2.5px;
+  cursor: grab; touch-action: none; user-select: none;
+  position: relative; overflow: hidden;
+  transition: box-shadow 0.15s;
+}
+.story-music-orb:active { cursor: grabbing; box-shadow: 0 0 0 4px rgba(255,60,60,0.55), 0 0 20px rgba(255,0,0,0.7); }
+
+/* ── أعمدة الذبذبات ── */
+.story-music-orb .orb-bar {
+  width: 3px; border-radius: 2px;
+  background: rgba(255,255,255,0.92);
+  animation: orb-wave 0.9s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+.story-music-orb .orb-bar:nth-child(1) { height: 10px; animation-delay: 0s;    animation-duration: 0.75s; }
+.story-music-orb .orb-bar:nth-child(2) { height: 18px; animation-delay: 0.15s; animation-duration: 0.9s;  }
+.story-music-orb .orb-bar:nth-child(3) { height: 22px; animation-delay: 0.05s; animation-duration: 0.65s; }
+.story-music-orb .orb-bar:nth-child(4) { height: 14px; animation-delay: 0.25s; animation-duration: 0.8s;  }
+.story-music-orb .orb-bar:nth-child(5) { height: 9px;  animation-delay: 0.1s;  animation-duration: 0.7s;  }
+
+@keyframes orb-wave {
+  0%, 100% { transform: scaleY(0.35); opacity: 0.7; }
+  50%       { transform: scaleY(1);    opacity: 1;   }
+}
+
+/* حلقة نبض خارجية */
+.story-music-orb::after {
+  content: '';
+  position: absolute; inset: -4px; border-radius: 50%;
+  border: 2px solid rgba(255,80,80,0.4);
+  animation: orb-pulse 1.6s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes orb-pulse {
+  0%   { transform: scale(1);    opacity: 0.7; }
+  70%  { transform: scale(1.35); opacity: 0;   }
+  100% { transform: scale(1.35); opacity: 0;   }
+}
+.story-music-upload-label {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px; padding: 10px 14px; border-radius: 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px dashed rgba(255,255,255,0.2);
+  cursor: pointer;
+}
+.story-music-upload-label span { color: rgba(255,255,255,0.6); font-size: 0.8rem; }
+.story-close-btn {
+  position: absolute; top: max(env(safe-area-inset-top,0px),10px); right: 12px;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(0,0,0,0.55); border: none;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 6; color: #fff;
+}
+.story-preview-bar {
+  flex-shrink: 0;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 16px;
+  padding-bottom: max(env(safe-area-inset-bottom,0px), 16px);
+  background: rgba(6,14,14,0.97);
+  border-top: 1px solid rgba(0,188,212,0.2);
+  z-index: 8;
+}
+.story-music-remove-btn {
+  background: none; border: none; color: #ef4444;
+  font-size: 0.72rem; cursor: pointer; font-weight: 600;
+}
+/* بحث الموسيقى */
+.story-music-search-input {
+  width: 100%; background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 10px;
+  padding: 9px 12px 9px 36px; color: #fff; font-size: 0.82rem;
+  outline: none; box-sizing: border-box;
+}
+.story-music-search-input::placeholder { color: rgba(255,255,255,0.38); }
+.story-music-search-input:focus { border-color: hsl(var(--primary) / 0.7); }
+.story-music-search-wrap {
+  position: relative; margin-bottom: 8px;
+}
+.story-music-search-icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: rgba(255,255,255,0.4); pointer-events: none;
+}
+.story-music-result-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  cursor: pointer; transition: background 0.15s;
+}
+.story-music-result-row:hover { background: rgba(255,255,255,0.1); }
+.story-music-result-row.selected {
+  background: rgba(0,188,212,0.18);
+  border-color: rgba(0,188,212,0.5);
+}
+.story-music-result-art {
+  width: 40px; height: 40px; border-radius: 8px;
+  object-fit: cover; flex-shrink: 0;
+  background: rgba(255,255,255,0.1);
+}
+.story-music-result-title {
+  color: #fff; font-size: 0.8rem; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.story-music-result-artist {
+  color: rgba(255,255,255,0.5); font-size: 0.72rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.story-music-result-actions {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+}
+.story-music-dl-btn {
+  background: hsl(var(--primary) / 0.2);
+  border: 1px solid hsl(var(--primary) / 0.5);
+  color: hsl(var(--primary)); border-radius: 8px;
+  padding: 5px 10px; font-size: 0.72rem; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; gap: 4px;
+  white-space: nowrap;
+}
+.story-music-dl-btn:disabled { opacity: 0.5; cursor: default; }
+.story-music-dl-btn.done {
+  background: rgba(0,188,212,0.25);
+  border-color: hsl(var(--primary));
+}
+.story-music-search-empty {
+  color: rgba(255,255,255,0.35); font-size: 0.78rem;
+  text-align: center; padding: 16px 0;
+}
+.story-music-selected-banner {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 10px;
+  background: rgba(0,188,212,0.15);
+  border: 1px solid rgba(0,188,212,0.4);
+  margin-bottom: 10px;
+}
+.story-music-selected-banner span {
+  color: hsl(var(--primary)); font-size: 0.78rem; font-weight: 600; flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.story-music-section-title {
+  color: rgba(255,255,255,0.4); font-size: 0.7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin: 10px 0 6px;
+}
+.story-music-preview-btn {
+  background: none; border: none; cursor: pointer; padding: 4px;
+}
+.story-music-preview-btn.active { color: hsl(var(--primary)); }
+.story-music-preview-btn.idle   { color: rgba(255,255,255,0.5); }
+.story-music-name { color: #fff; font-size: 0.82rem; font-weight: 600; flex: 1; }
+.story-edit-error { color: #ef4444; font-size: 0.78rem; text-align: center; margin: 0; padding: 8px 16px; background: rgba(0,0,0,0.85); flex-shrink: 0; }
+/* نص overlay قابل للسحب */
+.story-overlay-draggable {
+  cursor: grab;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.18);
+  backdrop-filter: blur(2px);
+  transition: box-shadow 0.15s;
+}
+.story-overlay-draggable:active { cursor: grabbing; box-shadow: 0 0 0 2px rgba(255,255,255,0.5); }
+/* تلميح السحب */
+.story-drag-hint {
+  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.55); color: rgba(255,255,255,0.7);
+  font-size: 0.68rem; padding: 4px 10px; border-radius: 20px;
+  pointer-events: none; white-space: nowrap;
+}
+/* شارة الموسيقى القابلة للسحب والتكبير */
+.story-music-badge--draggable {
+  will-change: transform;
+  transition: box-shadow 0.15s;
+}
+.story-music-badge--draggable:active { cursor: grabbing; box-shadow: 0 0 0 2px rgba(0,188,212,0.5); }
+.cam-text-white { color: #fff; }
+.cam-text-dim   { color: rgba(255,255,255,0.65); }
+.cam-side-btn {
+  background: none; border: none; color: #fff;
+  cursor: pointer; padding: 6px; display: flex;
+}
+.cam-side-btn-flash { color: #facc15; }
+.cam-record-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #a855f7;
+}
+.cam-shutter {
+  width: 82px; height: 82px; border-radius: 50%;
+  background: transparent;
+  border: 4.5px solid #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.cam-shutter-recording {
+  background: rgba(168,85,247,0.25);
+  border-color: #a855f7;
+}
+.cam-retake-btn {
+  width: 54px; height: 54px; border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.5);
+  display: flex; align-items: center; justify-content: center;
+}
+.cam-send-btn-photo {
+  width: 70px; height: 70px; border-radius: 50%;
+  background: rgba(234,179,8,0.9);
+  border: 3px solid #eab308;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 20px rgba(234,179,8,0.5);
+}
+.cam-send-btn-video {
+  width: 70px; height: 70px; border-radius: 50%;
+  background: rgba(120,40,220,0.9);
+  border: 3px solid #a855f7;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 20px rgba(168,85,247,0.5);
+}
+.cam-badge-photo {
+  position: absolute; top: 52px; left: 50%; transform: translateX(-50%);
+  background: rgba(234,179,8,0.85);
+  border-radius: 20px; padding: 4px 14px;
+  display: flex; align-items: center; gap: 6px;
+}
+.cam-badge-video {
+  position: absolute; top: 52px; left: 50%; transform: translateX(-50%);
+  background: rgba(120,40,220,0.85);
+  border-radius: 20px; padding: 4px 14px;
+  display: flex; align-items: center; gap: 6px;
+}
+.cam-spinner {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2.5px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+}
+
+/* Streak bubble shimmer sweep */
+.streak-rect-shimmer {
+  position: absolute; inset: 0; border-radius: 12px;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.28) 50%, transparent 100%);
+  animation: streak-shimmer 1.8s linear infinite;
+  pointer-events: none;
+}
+/* طبقة تعتيم خلفية شاشة تحرير القصة */
+.story-edit-dim { position: absolute; inset: 0; background: rgba(0,0,0,0.45); }

@@ -1,0 +1,100 @@
+{
+  "uploads/hero-s2wfbhj40p-1785440540096-file-akavqucgbj": {
+    "mediaType": "image",
+    "currentUrl": "/airo-assets/uploads/uploads-hero-s2wfbhj40p-1785440540096-file-akavqucgbj-b0486ffd.jpg",
+    "searchQuery": "",
+    "alternatives": [],
+    "userModified": true,
+    "createdAt": "2026-07-30T19:43:25.956Z",
+    "lastUpdated": "2026-07-30T19:43:25.956Z",
+    "uploadSources": {
+      "/airo-assets/uploads/uploads-hero-s2wfbhj40p-1785440540096-file-akavqucgbj-b0486ffd.jpg": "s2wfbhj40p_1785440540096_file_Akavqucgbj.jpeg"
+    },
+    "uploadContentHash": "73d06573aae7579f2e5f3739bd3d288fd20e37c5df17dc427e33436d10cab662"
+  },
+  "profiles/text-post-cover": {
+    "mediaType": "image",
+    "currentUrl": "/airo-assets/uploads/profiles-text-post-cover-98b921f7.jpg",
+    "searchQuery": "chat conversation with multiple voice messages",
+    "alternatives": [],
+    "userModified": true,
+    "createdAt": "2026-08-26T11:20:37.303Z",
+    "lastUpdated": "2026-08-26T11:20:37.303Z",
+    "uploadSources": {
+      "/airo-assets/uploads/profiles-text-post-cover-98b921f7.jpg": "s2wfbhj40p_1787700005476_file_6gilaVfcFX.jpg"
+    },
+    "uploadContentHash": "67ac3772685a20afb82b1916f60b7c23d935c57762e59cd159333019b1c7cfba",
+    "caption": "chat conversation with multiple voice messages"
+  },
+  "logo/horizontal": {
+    "mediaType": "image",
+    "currentUrl": "/airo-assets/uploads/logo-horizontal-560ccb5d.jpg",
+    "searchQuery": "cyan circular abstract geometric logo",
+    "alternatives": [
+      "/airo-assets/uploads/logo-horizontal-4436b277.jpg"
+    ],
+    "userModified": true,
+    "createdAt": "2026-09-01T12:20:00.191Z",
+    "lastUpdated": "2026-09-01T12:37:09.651Z",
+    "uploadSources": {
+      "/airo-assets/uploads/logo-horizontal-4436b277.jpg": "s2wfbhj40p_1788265189739_file_vF1IaFagJZ.jpeg",
+      "/airo-assets/uploads/logo-horizontal-560ccb5d.jpg": "s2wfbhj40p_1788266218939_file_ZCXsHtF-5T.jpeg"
+    },
+    "uploadContentHash": "a8008aceef2cab8cad407d28f176a65e3fb0254190714eafef5c5622ba38386b",
+    "naturalOrientation": "square",
+    "caption": "cyan circular abstract geometric logo"
+  },
+  "logo/primary": {
+    "mediaType": "logo",
+    "currentUrl": "/airo-assets/uploads/logo-horizontal-560ccb5d.jpg",
+    "searchQuery": "",
+    "alternatives": [],
+    "userModified": true,
+    "createdAt": "2026-09-01T12:37:09.651Z",
+    "lastUpdated": "2026-09-01T12:37:09.651Z",
+    "naturalOrientation": "square",
+    "uploadSources": {
+      "/airo-assets/uploads/logo-horizontal-560ccb5d.jpg": "s2wfbhj40p_1788266218939_file_ZCXsHtF-5T.jpeg"
+    }
+  },
+  "navigation/story-home-icon": {
+    "requestedSize": {
+      "width": 160,
+      "height": 160,
+      "fit": "contain"
+    },
+    "orientations": "square",
+    "graphicalStyles": "vector",
+    "sortOrder": "best_match",
+    "minimumSize": "medium",
+    "mediaType": "image",
+    "currentUrl": "https://img1.wsimg.com/isteam/getty/1326022123",
+    "searchQuery": "neon cyan glowing house home icon dark background minimal UI",
+    "alternatives": [
+      "https://img1.wsimg.com/isteam/getty/1474847016",
+      "https://img1.wsimg.com/isteam/getty/1398582964"
+    ],
+    "userModified": true,
+    "createdAt": "2026-09-02T03:56:56.353Z",
+    "lastUpdated": "2026-09-02T04:02:38.157Z",
+    "gettyId": "1326022123",
+    "alternativeGettyIds": [
+      "1474847016",
+      "1398582964"
+    ]
+  },
+  "navigation/text-post-entry-icon": {
+    "mediaType": "image",
+    "currentUrl": "/airo-assets/uploads/navigation-text-post-entry-icon-60c3f5c9.jpg",
+    "searchQuery": "blue paperclip icon on dark background",
+    "alternatives": [],
+    "userModified": true,
+    "createdAt": "2026-09-02T04:40:47.377Z",
+    "lastUpdated": "2026-09-02T04:40:47.377Z",
+    "uploadSources": {
+      "/airo-assets/uploads/navigation-text-post-entry-icon-60c3f5c9.jpg": "s2wfbhj40p_1788323910083_file_jW4DNvImgj.jpg"
+    },
+    "uploadContentHash": "dc7d51d7fe7769901840dcd14fb3a1c74c49afd00fc71ea0071113d71f3e3bf1",
+    "caption": "blue paperclip icon on dark background"
+  }
+}

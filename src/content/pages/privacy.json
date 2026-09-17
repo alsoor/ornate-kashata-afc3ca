@@ -1,0 +1,19 @@
+{
+  "VISIBILITY_OPTIONS": [
+    {
+      "value": "everyone",
+      "label": "Everyone",
+      "id": "JS_MqMqsnaCEC6hMP9RBc"
+    },
+    {
+      "value": "friends",
+      "label": "Friends only",
+      "id": "w8zA-SzdPv5rRzU7a_Z7A"
+    },
+    {
+      "value": "nobody",
+      "label": "Nobody",
+      "id": "9cS6Xf1tgQllkzBqNAT1j"
+    }
+  ]
+}
