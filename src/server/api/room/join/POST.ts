@@ -1,9 +1,10 @@
 /** POST /api/room/join — join a voice room */
-import { db } from '../../../../db/client';
-import { schema } from '../../../../db/schema';
 import type { Request, Response } from 'express';
 import { getAuth } from '../../../../lib/auth/auth.js';
 import { roomJoin } from '../../../lib/voiceRoom.js';
+import { db } from '../../../db/client.js';
+import { user as userTable } from '../../../db/schema.js';
+import { eq } from 'drizzle-orm';
 
 export default async function handler(req: Request, res: Response) {
   try {
@@ -23,9 +24,6 @@ export default async function handler(req: Request, res: Response) {
     let avatarUrl: string | null = null;
     if (u) {
       try {
-        const { db } = await import('../../../db/client.js');
-        const { user: userTable } = await import('../../../db/schema.js');
-        const { eq } = await import('drizzle-orm');
         const rows = await db.select({ avatarUrl: userTable.avatarUrl, image: userTable.image })
           .from(userTable).where(eq(userTable.id, uid));
         avatarUrl = rows[0]?.avatarUrl ?? rows[0]?.image ?? u.image ?? null;
