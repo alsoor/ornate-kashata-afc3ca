@@ -1,3 +1,2 @@
 [build]
-  command = "cd client && npm install && npm run build"
-  publish = "dist/client"
+  publish = "client"
