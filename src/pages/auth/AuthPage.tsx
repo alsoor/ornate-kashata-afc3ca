@@ -146,7 +146,6 @@ export default function AuthPage({
         name: name || ''
       });
 
-      // طباعة الـ result بالكامل لفحص سبب المشكلة في الـ Console
       console.log("Auth Result Response:", result);
 
       if (result.error) {
