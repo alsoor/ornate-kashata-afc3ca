@@ -1,3 +1,9 @@
 [build]
   command = "npm install && npm run build"
   publish = "dist/client"
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://stoooorna.onrender.com/api/:splat"
+  status = 200
+  force = true
