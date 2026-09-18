@@ -1,2 +1,4 @@
-[build.environment]
-NODE_ENV = "development"
+[build]
+  command = "npm run build"
+  NODE_ENV = "development"
+  publish = "client/dist"
