@@ -11,7 +11,7 @@
  *
  * Preview/iframe note:
  *   In the Airo builder the app runs inside a cross-origin preview iframe. OAuth
- *   providers (Google, GitHub, …) send `X-Frame-Options: DENY`, so their consent
+ *   providers (Google, GitHub, …) send X-Frame-Options: DENY, so their consent
  *   screens CANNOT render in the frame — a redirect there just shows a 403. When
  *   we detect we're framed, social sign-in opens the app in a new top-level tab
  *   where the provider works normally. Published (standalone) apps aren't framed
@@ -25,7 +25,7 @@ import { toSafeInternalPath } from '@/lib/auth/safe-redirect';
 
 /**
  * True when this window is embedded in another (the builder preview iframe).
- * A cross-origin parent makes `window.top` access throw — that also means framed.
+ * A cross-origin parent makes window.top access throw — that also means framed.
  */
 function isInIframe(): boolean {
   try {
@@ -98,16 +98,6 @@ export default function AuthPage({
   } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
-  // Restore the page the user tried to visit before being redirected to login.
-  // In-frame this comes from router history state; when social sign-in reopens the
-  // app in a new tab (see handleSocialSignIn) that state doesn't survive the fresh
-  // navigation, so we also honor a `?from=` query param carried across to the tab.
-  //
-  // SECURITY: `?from=` is attacker-controllable and flows into
-  // `callbackURL: window.location.origin + from`, so it's validated to a same-site
-  // absolute path (see toSafeInternalPath — blocks open-redirect vectors like
-  // `.evil.com`, `@evil.com`, `//evil.com`). Router-state `from` is always a real
-  // pathname and isn't subject to the check.
   const searchFrom: string | null = toSafeInternalPath(new URLSearchParams(location.search).get('from'));
   const from: string = (location.state as {
     from?: Location;
@@ -118,13 +108,11 @@ export default function AuthPage({
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<string | null>(null);
-  // Shown when social sign-in is diverted to a new tab (preview iframe only).
   const [oauthNotice, setOauthNotice] = useState('');
   const showEmail = !!mode;
   const showOAuth = providers && providers.length > 0;
   const isLogin = mode === 'login';
 
-  // Password validation for signup
   function validatePassword(pwd: string): string | null {
     if (pwd.length < 8) return 'Password must be at least 8 characters';
     if (!/[A-Z]/.test(pwd)) return 'Password must contain at least one uppercase letter';
@@ -135,11 +123,11 @@ export default function AuthPage({
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
   }
+  
   async function handleEmailSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
 
-    // Validate password on signup
     if (!isLogin) {
       const pwdError = validatePassword(password);
       if (pwdError) {
@@ -157,25 +145,29 @@ export default function AuthPage({
         password,
         name: name || ''
       });
+
+      // طباعة الـ result بالكامل لفحص سبب المشكلة في الـ Console
+      console.log("Auth Result Response:", result);
+
       if (result.error) {
-        setError(result.error.message || 'Authentication failed');
+        setError(result.error.message || JSON.stringify(result.error) || 'Authentication failed');
         return;
       }
       navigate(from, {
         replace: true
       });
-    } catch {
-      setError('An error occurred.');
+    } catch (err: any) {
+      console.error("Auth Catch Error:", err);
+      setError(err?.message || 'An error occurred during authentication.');
     } finally {
       setLoading(false);
     }
   }
+
   async function handleSocialSignIn(provider: string) {
     setError('');
     setOauthNotice('');
 
-    // Standalone (published site): not framed, so the provider consent screen can
-    // render — use BetterAuth's normal same-window redirect.
     if (!isInIframe()) {
       setSocialLoading(provider);
       try {
@@ -184,33 +176,21 @@ export default function AuthPage({
           callbackURL: window.location.origin + from
         });
       } catch {
-        setError(`Failed to sign in with ${PROVIDER_CONFIG[provider]?.name || provider}`);
+        setError(Failed to sign in with ${PROVIDER_CONFIG[provider]?.name || provider});
         setSocialLoading(null);
       }
       return;
     }
 
-    // Inside the builder preview iframe: OAuth providers set X-Frame-Options: DENY,
-    // so their consent screen can't load here. Reopen the CURRENT auth page in a new
-    // top-level tab where sign-in works normally. Using window.location (not a
-    // hardcoded /login) keeps this correct if the app mounts auth at another route,
-    // and we carry `from` so the tab lands on the intended destination after login.
-    // Briefly disable the button so a double-click doesn't spawn multiple tabs.
     setSocialLoading(provider);
     const tabUrl: URL = new URL(window.location.href);
     tabUrl.searchParams.set('from', from);
-    // `noopener` makes the return value unreliable (some browsers return null even
-    // on success), so we can't detect a blocked popup — word the notice defensively.
     window.open(tabUrl.toString(), '_blank', 'noopener,noreferrer');
     const providerName: string = PROVIDER_CONFIG[provider]?.name || provider;
-    // Set expectations explicitly: (1) if no tab appeared, popups are blocked;
-    // (2) the embedded preview can't share the new tab's session (partitioned
-    // cookies), so it stays signed-out — the logged-in experience lives in the tab.
-    setOauthNotice(`${providerName} sign-in opens in a new tab — finish there. If no tab opened, allow pop-ups for this site and try again. This embedded preview stays signed-out; use the new tab to see the logged-in app.`);
-    // Re-enable shortly after so a legitimate retry (blocked popup, closed tab)
-    // doesn't require a full page refresh. There's no in-window async to await here.
+    setOauthNotice(${providerName} sign-in opens in a new tab — finish there. If no tab opened, allow pop-ups for this site and try again. This embedded preview stays signed-out; use the new tab to see the logged-in app.);
     window.setTimeout(() => setSocialLoading(null), 4000);
   }
+
   if (isPending) {
     return <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
@@ -231,21 +211,19 @@ export default function AuthPage({
             {oauthNotice}
           </div>}
 
-        {/* OAuth Buttons */}
         {showOAuth && <div className="space-y-3 mb-6">
             {providers.map(provider => {
           const config = PROVIDER_CONFIG[provider];
           const displayName = config?.name || provider.charAt(0).toUpperCase() + provider.slice(1);
           const bgClass = config?.bg || 'bg-gray-600 text-white';
           const hoverClass = config?.hover || 'hover:bg-gray-700';
-          return <button key={provider} onClick={() => handleSocialSignIn(provider)} disabled={loading || socialLoading !== null} className={`w-full flex items-center justify-center gap-3 py-3 px-4 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${bgClass} ${hoverClass}`}>
+          return <button key={provider} onClick={() => handleSocialSignIn(provider)} disabled={loading || socialLoading !== null} className={w-full flex items-center justify-center gap-3 py-3 px-4 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${bgClass} ${hoverClass}}>
                   {socialLoading === provider ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current" /> : config?.icon || null}
                   <span>Continue with {displayName}</span>
                 </button>;
         })}
           </div>}
 
-        {/* Divider */}
         {showEmail && showOAuth && <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-gray-300" />
@@ -255,7 +233,6 @@ export default function AuthPage({
             </div>
           </div>}
 
-        {/* Email/Password Form */}
         {showEmail && <>
             <form onSubmit={handleEmailSubmit} className="space-y-4">
               {!isLogin && <div>
