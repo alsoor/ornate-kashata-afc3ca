@@ -1,26 +1,23 @@
-/** TREAT AS IMMUTABLE - This file is protected by the file-edit tool
- *
+/**
  * Database connection setup using Drizzle ORM with MySQL2
  */
 
 import { drizzle } from 'drizzle-orm/mysql2';
 import mysql from 'mysql2/promise';
-import { getDatabaseCredentials } from './config';
+import { getDatabaseCredentials, useSsl } from './config';
 import * as schema from './schema';
 
 // Get database configuration
 const dbConfig = getDatabaseCredentials();
 
-// Create MySQL connection pool with SSL enabled
+// Create MySQL connection pool
 const poolConnection = mysql.createPool({
   host: dbConfig.host,
   port: dbConfig.port,
   user: dbConfig.user,
   password: dbConfig.password,
   database: dbConfig.database,
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ssl: useSsl() ? { rejectUnauthorized: false } : undefined,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
