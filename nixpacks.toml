@@ -1,11 +1,5 @@
 [phases.build]
-cmds = ["npm run build"]
-
-[phases.setup]
-nixPkgs = ["nodejs_22"]
-
-[start]
-cmd = "node server.js"
+cmds = ["npm install && npm run build"]
 
 [variables]
 PUBLISH_DIR = "dist/client"
