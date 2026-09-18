@@ -1,4 +1,21 @@
-/**
+[11:41 AM, 9/18/2026] Busy: /**
+ * Unified Authentication Page
+ *
+ * Supports Email/Password, OAuth, or both.
+ *
+ * Usage:
+ *   <AuthPage mode="login" />                           // Email only (login)
+ *   <AuthPage mode="signup" />                          // Email only (signup)
+ *   <AuthPage providers={['google', 'github']} />       // OAuth only
+ *   <AuthPage mode="login" providers={['google']} />    // Both email + OAuth
+ *
+ * Preview/iframe note:
+ *   In the Airo builder the app runs inside a cross-origin preview iframe. OAuth
+ *   providers (Google, GitHub, …) send X-Frame-Options: DENY, so their consent
+ *   screens CANNOT render in the frame — a redirect there just shows a 403. When
+ *   we detect we're framed, social sign-in opens the app in a new top-level tab
+ *   where t…
+[11:44 AM, 9/18/2026] Busy: /**
  * Unified Authentication Page
  *
  * Supports Email/Password, OAuth, or both.
@@ -175,7 +192,7 @@ export default function AuthPage({
           callbackURL: window.location.origin + from
         });
       } catch {
-        setError(Failed to sign in with ${PROVIDER_CONFIG[provider]?.name || provider});
+        setError('Failed to sign in with ' + (PROVIDER_CONFIG[provider]?.name || provider));
         setSocialLoading(null);
       }
       return;
@@ -186,7 +203,7 @@ export default function AuthPage({
     tabUrl.searchParams.set('from', from);
     window.open(tabUrl.toString(), '_blank', 'noopener,noreferrer');
     const providerName: string = PROVIDER_CONFIG[provider]?.name || provider;
-    setOauthNotice(${providerName} sign-in opens in a new tab — finish there. If no tab opened, allow pop-ups for this site and try again. This embedded preview stays signed-out; use the new tab to see the logged-in app.);
+    setOauthNotice(providerName + ' sign-in opens in a new tab — finish there. If no tab opened, allow pop-ups for this site and try again. This embedded preview stays signed-out; use the new tab to see the logged-in app.');
     window.setTimeout(() => setSocialLoading(null), 4000);
   }
 
