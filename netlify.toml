@@ -1,4 +1,2 @@
-[build]
-  command = "npm run build"
-  NODE_ENV = "development"
-  publish = "client/dist"
+[build.environment]
+  NPM_FLAGS = "--include=dev"
