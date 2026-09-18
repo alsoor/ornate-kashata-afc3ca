@@ -1,38 +1,7 @@
-[11:41 AM, 9/18/2026] Busy: /**
+/**
  * Unified Authentication Page
  *
  * Supports Email/Password, OAuth, or both.
- *
- * Usage:
- *   <AuthPage mode="login" />                           // Email only (login)
- *   <AuthPage mode="signup" />                          // Email only (signup)
- *   <AuthPage providers={['google', 'github']} />       // OAuth only
- *   <AuthPage mode="login" providers={['google']} />    // Both email + OAuth
- *
- * Preview/iframe note:
- *   In the Airo builder the app runs inside a cross-origin preview iframe. OAuth
- *   providers (Google, GitHub, …) send X-Frame-Options: DENY, so their consent
- *   screens CANNOT render in the frame — a redirect there just shows a 403. When
- *   we detect we're framed, social sign-in opens the app in a new top-level tab
- *   where t…
-[11:44 AM, 9/18/2026] Busy: /**
- * Unified Authentication Page
- *
- * Supports Email/Password, OAuth, or both.
- *
- * Usage:
- *   <AuthPage mode="login" />                           // Email only (login)
- *   <AuthPage mode="signup" />                          // Email only (signup)
- *   <AuthPage providers={['google', 'github']} />       // OAuth only
- *   <AuthPage mode="login" providers={['google']} />    // Both email + OAuth
- *
- * Preview/iframe note:
- *   In the Airo builder the app runs inside a cross-origin preview iframe. OAuth
- *   providers (Google, GitHub, …) send X-Frame-Options: DENY, so their consent
- *   screens CANNOT render in the frame — a redirect there just shows a 403. When
- *   we detect we're framed, social sign-in opens the app in a new top-level tab
- *   where the provider works normally. Published (standalone) apps aren't framed
- *   and sign in in place.
  */
 
 import { useState, FormEvent, ReactElement } from 'react';
@@ -40,10 +9,6 @@ import { Navigate, useNavigate, useLocation } from "react-router";
 import { signIn, signUp, useSession } from '@/lib/auth/auth-client';
 import { toSafeInternalPath } from '@/lib/auth/safe-redirect';
 
-/**
- * True when this window is embedded in another (the builder preview iframe).
- * A cross-origin parent makes window.top access throw — that also means framed.
- */
 function isInIframe(): boolean {
   try {
     return window.self !== window.top;
@@ -51,6 +16,7 @@ function isInIframe(): boolean {
     return true;
   }
 }
+
 const PROVIDER_CONFIG: Record<string, {
   name: string;
   icon: ReactElement;
@@ -101,10 +67,12 @@ const PROVIDER_CONFIG: Record<string, {
       </svg>
   }
 };
+
 interface AuthPageProps {
   mode?: 'login' | 'signup';
   providers?: string[];
 }
+
 export default function AuthPage({
   mode,
   providers
@@ -137,6 +105,7 @@ export default function AuthPage({
     if (!/[!@#$%^&*(),.?":{}|<>_\-+=[\]\\/`~]/.test(pwd)) return 'Password must contain at least one special character';
     return null;
   }
+
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
   }
@@ -212,6 +181,7 @@ export default function AuthPage({
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>;
   }
+
   return <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
       <div className="w-full max-w-md p-8 bg-white rounded-lg shadow-md">
         <h2 className="text-2xl font-bold text-center mb-2">
