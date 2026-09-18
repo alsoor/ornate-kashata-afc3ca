@@ -321,12 +321,12 @@ export const pushSubscriptions = mysqlTable('push_subscriptions', {
 
 // FCM Tokens for native Android/iOS
 export const fcmTokens = mysqlTable('fcm_tokens', {
-  id:        int('id').autoincrement().primaryKey(),
-  userId:    varchar('user_id', { length: 255 }).notNull(),
-  token:     text('token').notNull().unique(),
+  id:         int('id').autoincrement().primaryKey(),
+  userId:     varchar('user_id', { length: 255 }).notNull(),
+  token:      varchar('token', { length: 512 }).notNull().unique(),
   deviceType: mysqlEnum('device_type', ['android', 'ios']).notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
+  createdAt:  timestamp('created_at').defaultNow(),
+  updatedAt:  timestamp('updated_at').defaultNow().onUpdateNow(),
 });
 
 // In-app notifications
