@@ -270,6 +270,25 @@ normalizeCommerceApiBaseUrlEnv();
 
 const app = express();
 
+const cors = require('cors');
+
+const allowedOrigins = [
+    'https://stooorna.com',
+    'https://www.stooorna.com',
+    'https://stoooorna.onrender.com'
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true
+}));
+
 // Honour x-forwarded-* from the load balancer so req.protocol/req.hostname
 // reflect the public-facing values. Express-maintained parsing respects the
 // existing trust-proxy config; direct header reads would let a client spoof
