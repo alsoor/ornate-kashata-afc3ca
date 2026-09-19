@@ -2215,7 +2215,11 @@ function GlobalBottomNavigation() {
                   <span style={{
                     width: 18, height: 18, borderRadius: 4, border: '2px solid #00BCD4',
                     background: on ? '#00BCD4' : 'transparent',
-                  }} />
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0, boxSizing: 'border-box',
+                    color: on ? '#041018' : 'transparent',
+                    fontSize: 13, fontWeight: 900, lineHeight: 1,
+                  }}>{on ? '✓' : ''}</span>
                 </button>
               );
             })}
