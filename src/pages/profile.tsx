@@ -1,15 +1,17 @@
 /**
  * /profile — My profile: bio, share via username/QR code
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Edit2, Check, X, Share2, Copy, QrCode, PlusCircle } from 'lucide-react';
+import { ArrowLeft, Edit2, Check, X, Share2, Copy, QrCode, PlusCircle, Camera } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import { useHeartbeat } from '@/hooks/usePresence';
 import UserAvatar from '@/components/UserAvatar';
 import StatusUploader from '@/components/StatusUploader';
+
+const AVATAR_CACHE_KEY = (uid: string) => `stooorna_avatar_${uid}`;
 const T = {
   bg: 'radial-gradient(ellipse 70% 60% at 50% 30%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)',
   primary: '#00BCD4',
@@ -55,6 +57,9 @@ export default function ProfilePage() {
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [showStatusUploader, setShowStatusUploader] = useState(false);
   const [statusUploaded, setStatusUploaded] = useState(false);
   const username = (user as {
@@ -62,18 +67,123 @@ export default function ProfilePage() {
   })?.username ?? '';
   const profileUrl = username ? `https://stooorna.com/u/${username}` : '';
 
-  // Load bio + avatar
+  // Load bio + avatar (session + API + local cache so it does not disappear)
   useEffect(() => {
     if (!user) return;
     fetch('/api/users/me/bio').then(r => r.ok ? r.json() : null).then(d => {
       if (d) setBio(d.bio ?? '');
-    });
-    const u = user as {
-      avatarUrl?: string | null;
-      image?: string | null;
-    };
-    setAvatarUrl(u.avatarUrl ?? u.image ?? null);
+    }).catch(() => {});
+
+    const u = user as { avatarUrl?: string | null; image?: string | null; id?: string };
+    let cached: string | null = null;
+    try {
+      cached = localStorage.getItem(AVATAR_CACHE_KEY(String(u.id || user.id))) || null;
+    } catch { /* ignore */ }
+
+    const fromSession = u.avatarUrl || u.image || null;
+    if (fromSession) {
+      setAvatarUrl(fromSession);
+      try { localStorage.setItem(AVATAR_CACHE_KEY(String(user.id)), fromSession); } catch { /* ignore */ }
+    } else if (cached) {
+      setAvatarUrl(cached);
+    }
+
+    // Prefer server profile if available
+    void (async () => {
+      try {
+        const r = await fetch('/api/users/me', { credentials: 'include' });
+        if (!r.ok) return;
+        const d = await r.json() as { avatarUrl?: string | null; image?: string | null; user?: { avatarUrl?: string | null; image?: string | null } };
+        const serverUrl = d?.avatarUrl || d?.image || d?.user?.avatarUrl || d?.user?.image || null;
+        if (serverUrl) {
+          setAvatarUrl(serverUrl);
+          try { localStorage.setItem(AVATAR_CACHE_KEY(String(user.id)), serverUrl); } catch { /* ignore */ }
+        }
+      } catch { /* keep session/cache */ }
+    })();
   }, [user]);
+
+  async function uploadAvatarFile(file: File) {
+    if (!user?.id) return;
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('Choose an image file');
+      return;
+    }
+    setAvatarUploading(true);
+    setAvatarError('');
+
+    // Optimistic preview — keep until server URL is ready
+    const preview = URL.createObjectURL(file);
+    setAvatarUrl(preview);
+
+    try {
+      const ext = (file.name.split('.').pop() || 'jpg').replace(/^\./, '');
+      let contentType = (file.type || '').split(';')[0].toLowerCase();
+      if (!contentType.startsWith('image/')) contentType = 'image/jpeg';
+
+      // Same media upload API (raw body) used by the rest of the app
+      const uploadRes = await fetch('/api/posts/media', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': contentType,
+          'X-File-Ext': `.${ext}`,
+        },
+        body: file,
+      });
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text().catch(() => '');
+        throw new Error(errText || `Upload failed (${uploadRes.status})`);
+      }
+      const uploadData = await uploadRes.json() as { url?: string };
+      const url = uploadData?.url ? String(uploadData.url) : '';
+      if (!url) throw new Error('Upload returned no URL');
+
+      // Persist on user profile
+      let saved = false;
+      try {
+        const patch = await fetch('/api/users/me', {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ avatarUrl: url, image: url }),
+        });
+        saved = patch.ok;
+      } catch { /* try alternate */ }
+      if (!saved) {
+        try {
+          const patch2 = await fetch('/api/users/me/avatar', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ avatarUrl: url }),
+          });
+          saved = patch2.ok;
+        } catch { /* local still keeps url */ }
+      }
+
+      setAvatarUrl(url);
+      try { localStorage.setItem(AVATAR_CACHE_KEY(String(user.id)), url); } catch { /* ignore */ }
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:avatar-updated', { detail: { userId: user.id, avatarUrl: url } }));
+      } catch { /* ignore */ }
+    } catch (e) {
+      setAvatarError(e instanceof Error ? e.message : 'Failed to update photo');
+      // Fall back to last cached/server URL if upload failed
+      try {
+        const cached = localStorage.getItem(AVATAR_CACHE_KEY(String(user.id)));
+        const u = user as { avatarUrl?: string | null; image?: string | null };
+        setAvatarUrl(cached || u.avatarUrl || u.image || null);
+      } catch {
+        const u = user as { avatarUrl?: string | null; image?: string | null };
+        setAvatarUrl(u.avatarUrl || u.image || null);
+      }
+    } finally {
+      try { URL.revokeObjectURL(preview); } catch { /* ignore */ }
+      setAvatarUploading(false);
+    }
+  }
+
   async function saveBio() {
     setBioLoading(true);
     setBioMsg('');
@@ -200,8 +310,51 @@ export default function ProfilePage() {
           gap: 12,
           paddingBottom: 8
         }}>
-            {/* Avatar with always-online dot (you are always online on your own profile) */}
-            <UserAvatar name={displayName} avatarUrl={avatarUrl} size={80} online={true} isSelf />
+            {/* Avatar + change photo (stays after upload) */}
+            <div style={{ position: 'relative', width: 88, height: 88 }}>
+              <UserAvatar name={displayName} avatarUrl={avatarUrl} size={80} online={true} isSelf />
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif,image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) void uploadAvatarFile(file);
+                }}
+              />
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.9 }}
+                disabled={avatarUploading}
+                onClick={() => avatarInputRef.current?.click()}
+                aria-label="Change profile photo"
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  bottom: 4,
+                  width: 30,
+                  height: 30,
+                  borderRadius: '50%',
+                  border: `2px solid ${T.bg}`,
+                  background: T.primary,
+                  color: '#041018',
+                  cursor: avatarUploading ? 'wait' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+                  opacity: avatarUploading ? 0.7 : 1,
+                }}
+              >
+                <Camera size={14} strokeWidth={2.4} />
+              </motion.button>
+            </div>
+            {avatarError ? (
+              <p style={{ color: '#ef4444', fontSize: '0.72rem', margin: 0, textAlign: 'center' }}>{avatarError}</p>
+            ) : null}
             <div style={{
             textAlign: 'center'
           }}>
