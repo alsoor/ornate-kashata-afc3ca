@@ -1,5 +1,11 @@
-[phases.build]
-cmds = ["npm install && npm run build"]
+[phases.setup]
+nixPkgs = ["nodejs_18"]
 
-[variables]
-PUBLISH_DIR = "dist/client"
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run start"

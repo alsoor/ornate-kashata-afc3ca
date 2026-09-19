@@ -110,8 +110,7 @@ function worktreePreviewPlugin(): Plugin {
           const bundleMtime: number = statSync(bundlePath).mtimeMs;
           let cached = serverBundleCache.get(worktreeRoot);
           if (!cached || cached.mtimeMs < bundleMtime) {
-            const cacheBuster: string = ?t=${bundleMtime};
-            const mod = await import(/* @vite-ignore */${bundlePath}${cacheBuster});
+            const mod = await import(/* @vite-ignore */ bundlePath);
             cached = { app: mod.default, mtimeMs: bundleMtime };
             serverBundleCache.set(worktreeRoot, cached);
           }
