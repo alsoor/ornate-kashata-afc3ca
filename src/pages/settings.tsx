@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, XCircle, Sparkles, AlertTriangle } from 'lucide-react';
 import { useSession, signOut, signIn, signUp } from '@/lib/auth/auth-client';
 import { usePresenceQuery } from '@/hooks/usePresence';
 type Tab = 'account' | 'live';
@@ -2839,6 +2839,108 @@ export default function SettingsPage() {
   const ownerUserIds = useMemo(() => allUsers.map(u => u.id), [allUsers]);
   const ownerPresence = usePresenceQuery(isOwner ? ownerUserIds : []);
 
+  // ── User Control tabs: Users / Company / Ban ──
+  type UserControlTab = 'users' | 'company' | 'ban';
+  const [ucTab, setUcTab] = useState<UserControlTab>('users');
+
+  // Company registration record reviewed inside User Control
+  type CompanyCertificateCheck = {
+    status: 'unchecked' | 'checking' | 'match' | 'mismatch' | 'error';
+    message?: string;
+  };
+  type SupportCtrlCompany = {
+    id: string;
+    name: string;
+    email: string | null;
+    ownerUserId?: string | null;
+    commercialRegistrationNumber?: string | null;
+    commercialLicenseNumber?: string | null;
+    commercialRegistrationFileUrl?: string | null;
+    commercialLicenseFileUrl?: string | null;
+    status: 'pending' | 'active' | 'rejected' | 'inactive';
+    createdAt?: string | null;
+    lastIp?: string | null;
+  };
+  const [allCompanies, setAllCompanies] = useState<SupportCtrlCompany[]>([]);
+  const [companiesLoading, setCompaniesLoading] = useState(false);
+  const [companiesError, setCompaniesError] = useState<string | null>(null);
+  const [companySavingId, setCompanySavingId] = useState<string | null>(null);
+  const [certCheckByCompany, setCertCheckByCompany] = useState<Record<string, CompanyCertificateCheck>>({});
+
+  async function loadCompanies() {
+    setCompaniesLoading(true);
+    setCompaniesError(null);
+    try {
+      const res = await fetch('/api/owner/companies', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        const rows = Array.isArray(data) ? data : (data?.rows ?? []);
+        setAllCompanies(rows);
+      } else {
+        const errText = await res.text().catch(() => String(res.status));
+        setCompaniesError(`Error ${res.status}: ${errText}`);
+      }
+    } catch (e) {
+      setCompaniesError(`Network error: ${String(e)}`);
+    } finally {
+      setCompaniesLoading(false);
+    }
+  }
+
+  async function patchCompany(companyId: string, body: Record<string, unknown>) {
+    setCompanySavingId(companyId);
+    try {
+      const res = await fetch(`/api/owner/companies/${companyId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const updated = await res.json().catch(() => null);
+        setAllCompanies(prev => prev.map(c => c.id === companyId ? { ...c, ...(updated || body) } as SupportCtrlCompany : c));
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      setCompanySavingId(null);
+    }
+  }
+
+  // AI-based certificate verification: confirms the uploaded commercial
+  // license / commercial registration files genuinely match the numbers
+  // the company entered. Backend endpoint is expected to run OCR + AI
+  // comparison and return { match: boolean, message?: string }.
+  async function verifyCompanyCertificate(company: SupportCtrlCompany) {
+    setCertCheckByCompany(prev => ({ ...prev, [company.id]: { status: 'checking' } }));
+    try {
+      const res = await fetch(`/api/owner/companies/${company.id}/verify-certificate`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commercialRegistrationNumber: company.commercialRegistrationNumber,
+          commercialLicenseNumber: company.commercialLicenseNumber,
+          commercialRegistrationFileUrl: company.commercialRegistrationFileUrl,
+          commercialLicenseFileUrl: company.commercialLicenseFileUrl,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCertCheckByCompany(prev => ({
+          ...prev,
+          [company.id]: { status: data?.match ? 'match' : 'mismatch', message: data?.message },
+        }));
+      } else {
+        setCertCheckByCompany(prev => ({ ...prev, [company.id]: { status: 'error', message: `HTTP ${res.status}` } }));
+      }
+    } catch (e) {
+      setCertCheckByCompany(prev => ({ ...prev, [company.id]: { status: 'error', message: String(e) } }));
+    }
+  }
+
 
 
   async function loadRecordings() {
@@ -3663,7 +3765,9 @@ export default function SettingsPage() {
                         whileTap={{ scale: 0.98 }}
                         type="button"
                         onClick={() => {
+                          setUcTab('users');
                           loadOwnerData();
+                          loadCompanies();
                           setShowSupportUsers(true);
                         }}
                         className="flex items-center justify-between"
@@ -3689,6 +3793,45 @@ export default function SettingsPage() {
                             <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>User Control</span>
                             <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
                               Username color · Edit username · Password · Ban
+                            </span>
+                          </span>
+                        </div>
+                        <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
+                      </motion.button>
+
+                      {/* Companies — activate / deactivate registered company accounts */}
+                      <motion.button
+                        whileTap={{ scale: 0.98 }}
+                        type="button"
+                        onClick={() => {
+                          setUcTab('company');
+                          loadOwnerData();
+                          loadCompanies();
+                          setShowSupportUsers(true);
+                        }}
+                        className="flex items-center justify-between"
+                        style={{
+                          width: '100%',
+                          background: T.surface,
+                          border: `1px solid ${T.surfaceBorder}`,
+                          borderRadius: 14,
+                          padding: '14px 16px',
+                          color: T.text,
+                          cursor: 'pointer',
+                        }}
+                        aria-label="Companies"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="flex items-center justify-center" style={{
+                            width: 38, height: 38, borderRadius: 12, background: T.primaryFaint,
+                            border: `1px solid ${T.primaryBorder}`, color: T.primary,
+                          }}>
+                            <Building2 size={19} strokeWidth={2.1} />
+                          </span>
+                          <span style={{ textAlign: 'left' }}>
+                            <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Companies</span>
+                            <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
+                              Activate / deactivate registered company accounts
                             </span>
                           </span>
                         </div>
@@ -5636,34 +5779,204 @@ export default function SettingsPage() {
               </p>
               <button
                 type="button"
-                onClick={() => loadOwnerData()}
-                disabled={usersLoading}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--primary))', padding: 4, opacity: usersLoading ? 0.4 : 1, fontSize: '1.1rem', fontWeight: 700 }}
+                onClick={() => { loadOwnerData(); loadCompanies(); }}
+                disabled={usersLoading || companiesLoading}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--primary))', padding: 4, opacity: (usersLoading || companiesLoading) ? 0.4 : 1, fontSize: '1.1rem', fontWeight: 700 }}
                 title="إعادة تحميل"
               >
-                {usersLoading ? '…' : '↻'}
+                {(usersLoading || companiesLoading) ? '…' : '↻'}
               </button>
               <span style={{ color: 'rgba(200,180,180,0.6)', fontSize: '0.7rem' }}>
-                {allUsers.length}
+                {ucTab === 'company' ? allCompanies.length : allUsers.length}
               </span>
             </div>
 
-            <div style={{ padding: '10px 14px', flexShrink: 0 }}>
-              <input
-                value={supportUsersSearch}
-                onChange={e => setSupportUsersSearch(e.target.value)}
-                placeholder="بحث باليوزر / الإيميل / الاسم…"
-                style={{
-                  width: '100%', boxSizing: 'border-box',
-                  padding: '10px 12px', borderRadius: 12,
-                  background: 'rgba(239,68,68,0.06)',
-                  border: '1px solid rgba(239,68,68,0.25)',
-                  color: 'rgba(240,220,220,0.95)', fontSize: '0.85rem', outline: 'none',
-                }}
-              />
+            {/* ── Users / Companies / Ban tab switcher ── */}
+            <div style={{ display: 'flex', gap: 8, padding: '10px 14px 0', flexShrink: 0 }}>
+              {([
+                { key: 'users' as UserControlTab, label: 'Users', count: allUsers.length },
+                { key: 'company' as UserControlTab, label: 'Company', count: allCompanies.length },
+                { key: 'ban' as UserControlTab, label: 'Ban', count: allUsers.filter(u => u.isBanned).length },
+              ]).map(tab => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setUcTab(tab.key)}
+                  style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
+                    background: ucTab === tab.key ? 'rgba(239,68,68,0.14)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${ucTab === tab.key ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                    color: ucTab === tab.key ? '#fca5a5' : 'rgba(220,200,200,0.75)',
+                    fontWeight: 800, fontSize: '0.78rem',
+                  }}
+                >
+                  {tab.label}
+                  <span style={{
+                    minWidth: 18, height: 18, borderRadius: 9, padding: '0 5px',
+                    background: ucTab === tab.key ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.08)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.68rem',
+                  }}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
             </div>
 
+            {ucTab !== 'company' && (
+              <div style={{ padding: '10px 14px', flexShrink: 0 }}>
+                <input
+                  value={supportUsersSearch}
+                  onChange={e => setSupportUsersSearch(e.target.value)}
+                  placeholder="بحث باليوزر / الإيميل / الاسم…"
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    padding: '10px 12px', borderRadius: 12,
+                    background: 'rgba(239,68,68,0.06)',
+                    border: '1px solid rgba(239,68,68,0.25)',
+                    color: 'rgba(240,220,220,0.95)', fontSize: '0.85rem', outline: 'none',
+                  }}
+                />
+              </div>
+            )}
+
             <div style={{ flex: 1, overflowY: 'auto', padding: '4px 14px 24px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {ucTab === 'company' ? (
+                <>
+                  {companiesLoading && (
+                    <p style={{ textAlign: 'center', color: 'rgba(180,150,150,0.55)', marginTop: 40, fontSize: '0.8rem' }}>Loading…</p>
+                  )}
+                  {!companiesLoading && companiesError && (
+                    <div style={{ margin: '20px 0', padding: '14px', borderRadius: 12, background: 'hsl(var(--destructive)/0.1)', border: '1px solid hsl(var(--destructive)/0.35)', color: 'hsl(var(--destructive))', fontSize: '0.78rem', textAlign: 'center' }}>
+                      <p style={{ margin: '0 0 8px', fontWeight: 700 }}>Failed to load companies</p>
+                      <p style={{ margin: '0 0 10px', opacity: 0.8, wordBreak: 'break-all' }}>{companiesError}</p>
+                      <button type="button" onClick={() => loadCompanies()} style={{ background: 'hsl(var(--destructive)/0.2)', border: '1px solid hsl(var(--destructive)/0.4)', borderRadius: 8, padding: '6px 14px', color: 'hsl(var(--destructive))', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                  {!companiesLoading && !companiesError && allCompanies.length === 0 && (
+                    <p style={{ textAlign: 'center', color: 'rgba(180,150,150,0.5)', marginTop: 40, fontSize: '0.8rem' }}>No registered companies</p>
+                  )}
+                  {!companiesLoading && !companiesError && allCompanies.map(c => {
+                    const check = certCheckByCompany[c.id];
+                    return (
+                      <div key={c.id} style={{
+                        padding: '12px 14px', borderRadius: 14,
+                        background: 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${c.status === 'active' ? 'rgba(34,197,94,0.35)' : c.status === 'rejected' ? 'rgba(239,68,68,0.35)' : 'rgba(234,179,8,0.35)'}`,
+                        display: 'flex', flexDirection: 'column', gap: 8,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{
+                            width: 38, height: 38, borderRadius: 12, flexShrink: 0,
+                            background: 'rgba(0,188,212,0.1)', border: '1px solid rgba(0,188,212,0.3)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00BCD4',
+                          }}>
+                            <Building2 size={18} />
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: 'rgba(230,220,220,0.95)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {c.name}
+                            </p>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.68rem', color: 'rgba(180,160,160,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {c.email || '—'}
+                            </p>
+                          </div>
+                          <span style={{
+                            fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: 8,
+                            color: c.status === 'active' ? '#22c55e' : c.status === 'rejected' ? '#ef4444' : '#eab308',
+                            background: c.status === 'active' ? 'rgba(34,197,94,0.12)' : c.status === 'rejected' ? 'rgba(239,68,68,0.12)' : 'rgba(234,179,8,0.12)',
+                          }}>
+                            {c.status.toUpperCase()}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.7rem', color: 'rgba(200,190,190,0.75)' }}>
+                          <span>Commercial registration #: {c.commercialRegistrationNumber || '—'}</span>
+                          <span>Commercial license #: {c.commercialLicenseNumber || '—'}</span>
+                        </div>
+
+                        {(c.commercialRegistrationFileUrl || c.commercialLicenseFileUrl) && (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            {c.commercialRegistrationFileUrl && (
+                              <a href={c.commercialRegistrationFileUrl} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', padding: '6px 8px', borderRadius: 8, background: 'rgba(0,188,212,0.1)', border: '1px solid rgba(0,188,212,0.3)', color: '#00BCD4', fontSize: '0.68rem', fontWeight: 700, textDecoration: 'none' }}>
+                                Registration file
+                              </a>
+                            )}
+                            {c.commercialLicenseFileUrl && (
+                              <a href={c.commercialLicenseFileUrl} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', padding: '6px 8px', borderRadius: 8, background: 'rgba(0,188,212,0.1)', border: '1px solid rgba(0,188,212,0.3)', color: '#00BCD4', fontSize: '0.68rem', fontWeight: 700, textDecoration: 'none' }}>
+                                License file
+                              </a>
+                            )}
+                          </div>
+                        )}
+
+                        {/* AI certificate verification */}
+                        <button
+                          type="button"
+                          disabled={check?.status === 'checking'}
+                          onClick={() => verifyCompanyCertificate(c)}
+                          style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                            padding: '8px', borderRadius: 10, cursor: 'pointer', border: '1px solid rgba(168,85,247,0.35)',
+                            background: 'rgba(168,85,247,0.1)', color: '#c084fc', fontWeight: 700, fontSize: '0.72rem',
+                            opacity: check?.status === 'checking' ? 0.6 : 1,
+                          }}
+                        >
+                          <Sparkles size={14} />
+                          {check?.status === 'checking' ? 'Running AI check…' : 'Verify certificate with AI'}
+                        </button>
+                        {check && check.status !== 'checking' && (
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 10,
+                            background: check.status === 'match' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+                            border: `1px solid ${check.status === 'match' ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)'}`,
+                            color: check.status === 'match' ? '#22c55e' : '#ef4444', fontSize: '0.7rem', fontWeight: 700,
+                          }}>
+                            <AlertTriangle size={13} />
+                            {check.status === 'match'
+                              ? 'Certificate matches the registration and license numbers'
+                              : (check.message || 'Certificate is invalid or does not match — please review')}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <motion.button
+                            whileTap={{ scale: 0.97 }}
+                            type="button"
+                            disabled={companySavingId === c.id}
+                            onClick={() => patchCompany(c.id, { status: 'active' })}
+                            style={{
+                              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                              padding: '9px', borderRadius: 10, cursor: 'pointer', border: '1px solid rgba(34,197,94,0.4)',
+                              background: 'rgba(34,197,94,0.12)', color: '#22c55e', fontWeight: 800, fontSize: '0.74rem',
+                              opacity: companySavingId === c.id ? 0.6 : 1,
+                            }}
+                          >
+                            <CheckCircle size={14} /> Activate
+                          </motion.button>
+                          <motion.button
+                            whileTap={{ scale: 0.97 }}
+                            type="button"
+                            disabled={companySavingId === c.id}
+                            onClick={() => patchCompany(c.id, { status: 'rejected' })}
+                            style={{
+                              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                              padding: '9px', borderRadius: 10, cursor: 'pointer', border: '1px solid rgba(239,68,68,0.4)',
+                              background: 'rgba(239,68,68,0.12)', color: '#ef4444', fontWeight: 800, fontSize: '0.74rem',
+                              opacity: companySavingId === c.id ? 0.6 : 1,
+                            }}
+                          >
+                            <XCircle size={14} /> Deactivate
+                          </motion.button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+              <>
               {usersLoading && (
                 <p style={{ textAlign: 'center', color: 'rgba(180,150,150,0.55)', marginTop: 40, fontSize: '0.8rem' }}>جاري التحميل…</p>
               )}
@@ -5677,6 +5990,7 @@ export default function SettingsPage() {
                 </div>
               )}
               {!usersLoading && !usersError && allUsers
+                .filter(u => (ucTab === 'ban' ? !!u.isBanned : true))
                 .filter(u => {
                   const q = supportUsersSearch.trim().toLowerCase();
                   if (!q) return true;
@@ -5760,6 +6074,8 @@ export default function SettingsPage() {
                     </motion.button>
                   );
                 })}
+              </>
+              )}
             </div>
           </motion.div>
         )}
