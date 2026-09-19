@@ -485,7 +485,8 @@ function parseProductAd(text: string | null | undefined): ProductAdData | null {
 function productAdDisplayTitle(post: PostItem): string {
   const ad = parseProductAd(post.text);
   if (ad?.title?.trim()) return ad.title.trim();
-  return (post.text || '').split('\n')[0]?.trim().slice(0, 80) || 'إعلان';
+  const clean = extractTextMediaEmbeds(post.text || '').cleanText;
+  return clean.split('\n')[0]?.trim().slice(0, 80) || 'إعلان';
 }
 
 /** استفسار عن منتج — يُرسل كرسالة شات للشركة ويظهر في صندوق شات الشركات */
@@ -3433,13 +3434,50 @@ function XStatusEmbed({ statusUrl }: { statusUrl: string }) {
   return <PostLinkEmbeds embeds={items} />;
 }
 
+function formatMediaTime(secs: number): string {
+  if (!isFinite(secs) || secs < 0) return '0:00';
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
 // ── عارض ملء الشاشة للوسائط — يفتح عند النقر على الفيديو/الصورة داخل البوست.
-// أيقونات إعجاب/تعليق/مشاركة/الثلاث خطوط تظهر هنا فقط، مكدّسة أسفل الشاشة ────────
+// شريط واحد أسفل الشاشة فيه: تشغيل/إيقاف + مدة الفيديو (للفيديو فقط)، وإعجاب/
+// تعليق/مشاركة/الثلاث خطوط بجانبها بنفس الشريط ───────────────────────────────
 function PostMediaFullscreen({ m, onClose }: { m: { url: string; type: 'image' | 'video' }; onClose: () => void }) {
-  const fsBtnStyle: React.CSSProperties = {
-    width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
-    background: 'rgba(255,255,255,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(true);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  useEffect(() => {
+    if (m.type !== 'video') return;
+    const v = videoRef.current;
+    if (!v) return;
+    // نشغّل الصوت مباشرة بمجرد فتح الفيديو (نفس لفتة نقر المستخدم) — وإن رفضه
+    // المتصفح نجرّب مكتوم الصوت حتى لا يبقى الفيديو معلّقًا بلا تشغيل
+    v.muted = false;
+    const p = v.play();
+    if (p && typeof p.catch === 'function') {
+      p.catch(() => {
+        v.muted = true;
+        v.play().catch(() => {});
+      });
+    }
+  }, [m.type, m.url]);
+
+  const togglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) v.play().catch(() => {}); else v.pause();
   };
+
+  const iconBtnStyle: React.CSSProperties = {
+    width: 32, height: 32, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0,
+    background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  };
+
   return (
     <div
       onClick={onClose}
@@ -3464,11 +3502,15 @@ function PostMediaFullscreen({ m, onClose }: { m: { url: string; type: 'image' |
 
       {m.type === 'video' ? (
         <video
+          ref={videoRef}
           src={m.url}
-          autoPlay
           loop
           playsInline
-          onClick={e => e.stopPropagation()}
+          onClick={togglePlay}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onLoadedMetadata={e => setDuration(e.currentTarget.duration || 0)}
+          onTimeUpdate={e => setCurrentTime(e.currentTarget.currentTime || 0)}
           style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
         />
       ) : (
@@ -3480,25 +3522,38 @@ function PostMediaFullscreen({ m, onClose }: { m: { url: string; type: 'image' |
         />
       )}
 
-      {/* إعجاب / تعليق / مشاركة / الثلاث خطوط — مكدّسة أسفل الشاشة */}
+      {/* شريط واحد أسفل الشاشة: تشغيل/إيقاف + المدة (فيديو فقط) + إعجاب/تعليق/مشاركة/الثلاث خطوط */}
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          position: 'absolute', insetInlineEnd: 14, bottom: 24,
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18,
+          position: 'absolute', insetInlineStart: 0, insetInlineEnd: 0, bottom: 0,
+          padding: '10px 14px calc(10px + env(safe-area-inset-bottom))',
+          display: 'flex', alignItems: 'center', gap: 14,
+          background: 'linear-gradient(to top, rgba(0,0,0,0.7), rgba(0,0,0,0))',
         }}
       >
-        <button type="button" style={fsBtnStyle} aria-label="إعجاب">
-          <Heart size={24} color="#fff" strokeWidth={2} />
+        {m.type === 'video' && (
+          <>
+            <button type="button" onClick={togglePlay} style={iconBtnStyle} aria-label={playing ? 'إيقاف' : 'تشغيل'}>
+              {playing ? <Pause size={20} color="#fff" /> : <Play size={20} color="#fff" fill="#fff" />}
+            </button>
+            <span style={{ color: '#fff', fontSize: '0.72rem', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+              {formatMediaTime(currentTime)} / {formatMediaTime(duration)}
+            </span>
+          </>
+        )}
+        <div style={{ flex: 1 }} />
+        <button type="button" style={iconBtnStyle} aria-label="إعجاب">
+          <Heart size={22} color="#fff" strokeWidth={2} />
         </button>
-        <button type="button" style={fsBtnStyle} aria-label="تعليق">
-          <MessageCircle size={24} color="#fff" strokeWidth={2} />
+        <button type="button" style={iconBtnStyle} aria-label="تعليق">
+          <MessageCircle size={22} color="#fff" strokeWidth={2} />
         </button>
-        <button type="button" style={fsBtnStyle} aria-label="مشاركة">
-          <Repeat2 size={24} color="#fff" strokeWidth={2} />
+        <button type="button" style={iconBtnStyle} aria-label="مشاركة">
+          <Repeat2 size={22} color="#fff" strokeWidth={2} />
         </button>
-        <button type="button" style={fsBtnStyle} aria-label="المزيد">
-          <Menu size={22} color="#fff" strokeWidth={2.2} />
+        <button type="button" style={iconBtnStyle} aria-label="المزيد">
+          <Menu size={20} color="#fff" strokeWidth={2.2} />
         </button>
       </div>
     </div>
@@ -3506,9 +3561,20 @@ function PostMediaFullscreen({ m, onClose }: { m: { url: string; type: 'image' |
 }
 
 // ── بطاقة وسائط مفردة (فيديو/صورة) — بدون أي أيقونات فوقها. الفيديو ساكن
-// كالصورة، والنقر على أي منهما يفتح عارض ملء الشاشة مباشرة ─────────────────
+// كالصورة (بإطار حقيقي وليس أسود)، والنقر على أي منهما يفتح عارض ملء الشاشة ───
 function PostMediaTile({ m }: { m: { url: string; type: 'image' | 'video' } }) {
   const [open, setOpen] = useState(false);
+  const thumbRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (m.type !== 'video') return;
+    const v = thumbRef.current;
+    if (!v) return;
+    // إجبار المتصفح على رسم أول إطار كمعاينة بدل تركه أسود قبل التشغيل
+    const onLoaded = () => { try { v.currentTime = Math.min(0.1, v.duration || 0.1); } catch { /* ignore */ } };
+    v.addEventListener('loadedmetadata', onLoaded);
+    return () => v.removeEventListener('loadedmetadata', onLoaded);
+  }, [m.type, m.url]);
 
   return (
     <>
@@ -3518,10 +3584,11 @@ function PostMediaTile({ m }: { m: { url: string; type: 'image' | 'video' } }) {
       >
         {m.type === 'video' ? (
           <video
+            ref={thumbRef}
             src={m.url}
             muted
             playsInline
-            preload="metadata"
+            preload="auto"
             style={{ width: '100%', maxHeight: '70vh', display: 'block', background: '#000' }}
           />
         ) : (
@@ -4450,7 +4517,7 @@ function PostCard({
                   <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{productAd.details}</p>
                 ) : post.text && !post.text.trim().startsWith('{') ? (
                   <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                    {post.text.replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()}
+                    {extractTextMediaEmbeds(post.text.replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()).cleanText}
                   </p>
                 ) : null}
                 {(productAd?.extras ?? []).map((ex, i) => (
@@ -15245,7 +15312,7 @@ export default function AddFriendPage() {
                         <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{ad.details}</p>
                       ) : singlePostView.text && !singlePostView.text.trim().startsWith('{') ? (
                         <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                          {singlePostView.text.replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()}
+                          {extractTextMediaEmbeds(singlePostView.text.replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()).cleanText}
                         </p>
                       ) : null}
                       {(ad?.extras ?? []).map((ex, i) => (
