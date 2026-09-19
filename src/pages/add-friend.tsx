@@ -3683,28 +3683,22 @@ function PostMediaItems(post: PostItem): { url: string; type: 'image' | 'video' 
 // يصير تحديث بالخلفية (كل ثانيتين) أو عند فتح بانر "New Posts". ──
 function mergePostsPreservingMedia(prevPosts: PostItem[], serverPosts: PostItem[]): PostItem[] {
   const prevById = new Map(prevPosts.map(p => [p.id, p]));
-  const merged = serverPosts.map(serverPost => {
+  return serverPosts.map(serverPost => {
     const existing = prevById.get(serverPost.id);
     if (!existing) return serverPost;
     const existingCount = existing.mediaUrls?.length ?? (existing.mediaUrl ? 1 : 0);
     const serverCount = serverPost.mediaUrls?.length ?? (serverPost.mediaUrl ? 1 : 0);
-    if (existingCount > 0 && existingCount >= serverCount) {
+    if (existingCount > serverCount) {
       return {
         ...serverPost,
-        mediaUrl: existing.mediaUrl || serverPost.mediaUrl,
-        mediaType: existing.mediaType || serverPost.mediaType,
-        mediaUrls: (existing.mediaUrls?.length ? existing.mediaUrls : serverPost.mediaUrls) ?? [],
-        mediaTypes: (existing.mediaTypes?.length ? existing.mediaTypes : serverPost.mediaTypes) ?? [],
-        text: serverPost.text || existing.text,
+        mediaUrl: existing.mediaUrl,
+        mediaType: existing.mediaType,
+        mediaUrls: existing.mediaUrls,
+        mediaTypes: existing.mediaTypes,
       };
     }
     return serverPost;
   });
-  const serverIds = new Set(serverPosts.map(p => p.id));
-  for (const p of prevPosts) {
-    if (!serverIds.has(p.id)) merged.unshift(p);
-  }
-  return merged;
 }
 
 function PostCard({
@@ -9457,7 +9451,7 @@ export default function AddFriendPage() {
             file.name.split('.').pop() ||
             (isVideo ? 'mp4' : 'jpg')
           ).replace(/^\./, '');
-          // Server requires raw body + image/* or video/* Content-Type (FormData is rejected)
+          // Server accepts raw body only with image/* or video/* Content-Type
           let contentType = (file.type || '').split(';')[0].toLowerCase();
           if (!contentType.startsWith('image/') && !contentType.startsWith('video/')) {
             contentType = isVideo ? 'video/mp4' : 'image/jpeg';
@@ -9531,7 +9525,6 @@ export default function AddFriendPage() {
       let saved: PostItem | null = null;
 
       if (mediaUrl && mediaType) {
-        // Same create path as quickPublishMedia (keeps media on server), then set product text
         const mediaDest = mediaType === 'video' ? 'videos' : 'photos';
         let createRes = await fetch('/api/posts', {
           method: 'POST',
@@ -9580,7 +9573,6 @@ export default function AddFriendPage() {
         const createData = await createRes.json();
         if (!createData?.post?.id) throw new Error('المنشور لم يُحفظ على السيرفر');
 
-        // Always keep uploaded media on the client post (server may omit fields)
         saved = {
           ...createData.post,
           text: createData.post.text || finalText || '',
@@ -9603,7 +9595,7 @@ export default function AddFriendPage() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ text: finalText }),
             });
-          } catch { /* keep local text */ }
+          } catch { /* keep local */ }
           saved = {
             ...saved,
             text: finalText,
@@ -15244,15 +15236,42 @@ export default function AddFriendPage() {
                   background: 'transparent', border: 'none',
                 }}
               >
-                <div style={{
-                  width: 28, height: 28, borderRadius: '50%', overflow: 'hidden',
-                  backgroundImage: 'url(/airo-assets/images/logo/horizontal)',
-                  backgroundSize: 'cover', backgroundPosition: 'center',
-                  animation: textFeedTab === 'app' ? 'stooornaFeedOrbit 8s linear infinite' : 'none',
-                  opacity: textFeedTab === 'app' ? 1 : 0.45,
-                  boxShadow: textFeedTab === 'app' ? '0 0 10px rgba(0,188,212,0.4)' : 'none',
-                  transition: 'opacity 0.2s ease',
-                }} />
+                <style>{`@keyframes stooornaAppIconSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                <span
+                  aria-hidden
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: '50%',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'radial-gradient(circle at 35% 30%, #123a40 0%, #061014 70%)',
+                    boxShadow: textFeedTab === 'app'
+                      ? '0 0 12px rgba(0,188,212,0.55), inset 0 0 0 1.5px rgba(0,188,212,0.85)'
+                      : 'inset 0 0 0 1.5px rgba(0,188,212,0.35)',
+                    opacity: textFeedTab === 'app' ? 1 : 0.45,
+                    transition: 'opacity 0.2s ease, box-shadow 0.2s ease',
+                    animation: textFeedTab === 'app' ? 'stooornaAppIconSpin 12s linear infinite' : 'none',
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="18" cy="18" r="15.5" stroke="#00BCD4" strokeWidth="2.2" opacity="0.95" />
+                    <path
+                      d="M11 20.5c2.2-5.2 5.4-8.2 7-9.2 1.6 1 4.8 4 7 9.2-2.1 1.6-4.6 2.6-7 2.6s-4.9-1-7-2.6Z"
+                      fill="#00BCD4"
+                      opacity="0.92"
+                    />
+                    <path
+                      d="M18 11.3c1.1 2.4 1.7 5.1 1.7 8.2 0 1.1-.1 2.1-.3 3"
+                      stroke="#7ee8f5"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      opacity="0.9"
+                    />
+                    <circle cx="18" cy="18" r="2.2" fill="#7ee8f5" />
+                  </svg>
+                </span>
               </button>
               <span
                 aria-hidden
