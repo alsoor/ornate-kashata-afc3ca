@@ -10574,7 +10574,6 @@ export default function AddFriendPage() {
   }
   const [companies, setCompanies] = useState<CompanyAccount[]>([]);
   /** شركة = New Post + إعلان قصة؛ فرد = قصة فقط (بدون بوست) */
-  const myLiveActive = useLiveBroadcastActive(user?.id);
 
   const isCompanyPublisher = useMemo(
     () => isCompanyUserAccount(user, companies),
@@ -12101,47 +12100,7 @@ export default function AddFriendPage() {
           </motion.button>
           )}
 
-          {/* ── بث صوتي للحساب — مكان أيقونة الإعدادات السابق (الإعدادات في الشريط السفلي) ── */}
-          {user && (
-          <motion.button
-            whileTap={{ scale: 0.88 }}
-            animate={
-              myLiveActive
-                ? { opacity: headerOpen ? [1, 0.4, 1] : 0 }
-                : { opacity: headerOpen ? 1 : 0 }
-            }
-            transition={
-              myLiveActive && headerOpen
-                ? { duration: 1.2, repeat: Infinity, ease: 'easeInOut' }
-                : { duration: 0.2 }
-            }
-            onClick={() => {
-              const qs = new URLSearchParams({
-                hostId: user.id,
-                hostName: user.name || (user as any).username || 'Host',
-              });
-              if ((user as any).username) qs.set('hostUsername', String((user as any).username));
-              const av = (user as any).avatarUrl || (user as any).image;
-              if (av) qs.set('hostAvatar', String(av));
-              navigate(`/live?${qs.toString()}`);
-            }}
-            aria-label="بث صوتي"
-            style={{
-              position: 'absolute', top: 84, right: 14, zIndex: 7,
-              width: 32, height: 32,
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              color: myLiveActive ? '#ef4444' : CLR_PRIMARY,
-              cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              pointerEvents: headerOpen ? 'auto' : 'none',
-              filter: myLiveActive ? 'drop-shadow(0 0 6px rgba(239,68,68,0.75))' : 'none',
-            }}
-          >
-            <Radio size={17} strokeWidth={2.2} color={myLiveActive ? '#ef4444' : CLR_PRIMARY} />
-          </motion.button>
-          )}
+          {/* ── بث صوتي للحساب — نُقل إلى الشريط السفلي (RootLayout) ── */}
 
 
           {/* ── Everything above the Video|Post|Photo switcher (music button, avatar/stats

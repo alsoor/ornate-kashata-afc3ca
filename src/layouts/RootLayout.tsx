@@ -1,7 +1,7 @@
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollRestoration, useLocation, useNavigate } from "react-router";
-import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX } from 'lucide-react';
+import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio } from 'lucide-react';
 import HomepageSameAsJsonLd from '@/components/HomepageSameAsJsonLd';
 import Website from '@/layouts/Website';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
@@ -36,6 +36,93 @@ function isCompanySessionUser(user: any): boolean {
     }
   } catch { /* ignore */ }
   return false;
+}
+
+// ── بث صوتي نشط لحساب المستخدم — نفس منطق صفحة البروفايل ──────────────────
+function liveChannelForHost(hostId: string): string {
+  const clean = String(hostId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+  if (clean) return `stooorna-live-${clean}`;
+  let h = 0;
+  const s = String(hostId || '');
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  const uid = Math.abs(h) % 100_000 || 1;
+  return `stooorna-live-${uid}`;
+}
+
+function readLocalLiveActive(hostId: string): boolean {
+  try {
+    const raw = localStorage.getItem(`stooorna_live_active_${hostId}`);
+    if (!raw) return false;
+    const data = JSON.parse(raw) as { active?: boolean; at?: number };
+    if (!data?.active) return false;
+    if (data.at && Date.now() - data.at > 20_000) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** هل يوجد بث صوتي شغّال لهذا الحساب الآن؟ */
+function useLiveBroadcastActive(hostId: string | null | undefined): boolean {
+  const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    if (!hostId) {
+      setActive(false);
+      return;
+    }
+    let cancelled = false;
+    const channel = liveChannelForHost(hostId);
+
+    const apply = (v: boolean) => {
+      if (!cancelled) setActive(v);
+    };
+
+    const checkLocal = () => apply(readLocalLiveActive(hostId));
+
+    const checkRoom = async () => {
+      if (readLocalLiveActive(hostId)) {
+        apply(true);
+      }
+      try {
+        const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
+        if (!r.ok) {
+          checkLocal();
+          return;
+        }
+        const data = await r.json() as { members?: unknown[] };
+        const n = Array.isArray(data.members) ? data.members.length : 0;
+        if (n > 0) apply(true);
+        else apply(readLocalLiveActive(hostId));
+      } catch {
+        checkLocal();
+      }
+    };
+
+    checkRoom();
+    const interval = window.setInterval(checkRoom, 4000);
+
+    const onEvt = (e: Event) => {
+      const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean } | undefined;
+      if (!d || !d.hostId) return;
+      if (String(d.hostId) === String(hostId)) apply(!!d.active);
+    };
+    window.addEventListener('stooorna:live-active', onEvt);
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === `stooorna_live_active_${hostId}`) checkLocal();
+    };
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('stooorna:live-active', onEvt);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [hostId]);
+
+  return active;
 }
 
 type CompanyInboxPeer = {
@@ -206,6 +293,7 @@ function GlobalBottomNavigation() {
   } = useSession();
   const notifCounts = useNotificationCounts(!!user);
   const isCompanyAccount = useMemo(() => isCompanySessionUser(user), [user, (user as any)?.id, (user as any)?.email, (user as any)?.accountType]);
+  const myLiveActive = useLiveBroadcastActive((user as any)?.id);
 
   // ── صندوق شات الشركات (استفسارات المنتجات) — بدل المايك الأحمر ──
   const [companyChatOpen, setCompanyChatOpen] = useState(false);
@@ -2528,6 +2616,48 @@ function GlobalBottomNavigation() {
             </div>
           </button>
 
+        {/* بث صوتي — نُقلت من أعلى صفحة البروفايل إلى هنا (يسار الشريط السفلي) */}
+        {user && (
+        <button
+          type="button"
+          onClick={() => {
+            popNavBubble('live');
+            const qs = new URLSearchParams({
+              hostId: String((user as any).id),
+              hostName: String((user as any).name || (user as any).username || 'Host'),
+            });
+            if ((user as any).username) qs.set('hostUsername', String((user as any).username));
+            const av = (user as any).avatarUrl || (user as any).image;
+            if (av) qs.set('hostAvatar', String(av));
+            navigate(`/live?${qs.toString()}`);
+          }}
+          aria-label="بث صوتي"
+          style={{
+            position: 'absolute',
+            left: 10,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: 44,
+            height: 36,
+            border: 'none',
+            background: 'transparent',
+            borderRadius: 12,
+            color: myLiveActive ? '#ef4444' : '#00BCD4',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2,
+            WebkitTapHighlightColor: 'transparent',
+            animation: myLiveActive ? 'stooornaLivePulse 1.2s ease-in-out infinite' : undefined,
+            filter: myLiveActive ? 'drop-shadow(0 0 6px rgba(239,68,68,0.75))' : 'none',
+          }}
+        >
+          <NavBubble id="live" color={myLiveActive ? 'rgba(239,68,68,0.65)' : 'rgba(0,188,212,0.65)'} />
+          <Radio size={20} strokeWidth={2.2} />
+        </button>
+        )}
+
         {/* الإعدادات — ثلاث خطوط أقصى يمين الشريط السفلي */}
         <button
           type="button"
@@ -2693,6 +2823,6 @@ export default function RootLayout({
         ) : children}
       </div>
       <GlobalBottomNavigation />
-      <style>{`@keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-10deg) scale(1); } 50% { transform: rotate(10deg) scale(1.08); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } }`}</style>
+      <style>{`@keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-10deg) scale(1); } 50% { transform: rotate(10deg) scale(1.08); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } } @keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
     </Website>;
 }
