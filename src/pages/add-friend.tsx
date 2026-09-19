@@ -4361,38 +4361,16 @@ function PostCard({
                 {productAd?.price ? (
                   <p style={{ margin: '8px 0 0', color: '#00BCD4', fontSize: '1rem', fontWeight: 800 }}>{productAd.price}</p>
                 ) : null}
-                {(() => {
-                  const stripPreviewUrls = (t: string) =>
-                    t.replace(URL_IN_TEXT_RE, (match) => {
-                      const raw = match.replace(/[.,;:!?،؛]+$/, '');
-                      const resolved = composerLookupOriginalUrl(raw);
-                      if (parseXStatusId(resolved) || classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved)) return '';
-                      return match;
-                    }).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-                  const detailsShown = productAd?.details ? stripPreviewUrls(productAd.details) : '';
-                  const fallbackShown = !productAd?.details && post.text && !post.text.trim().startsWith('{')
-                    ? stripPreviewUrls(post.text.replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim())
-                    : '';
-                  if (detailsShown) {
-                    return <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{detailsShown}</p>;
-                  }
-                  if (fallbackShown) {
-                    return <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{fallbackShown}</p>;
-                  }
-                  return null;
-                })()}
-                {(productAd?.extras ?? []).map((ex, i) => {
-                  const cleaned = ex.replace(URL_IN_TEXT_RE, (match) => {
-                    const raw = match.replace(/[.,;:!?،؛]+$/, '');
-                    const resolved = composerLookupOriginalUrl(raw);
-                    if (parseXStatusId(resolved) || classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved)) return '';
-                    return match;
-                  }).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-                  if (!cleaned) return null;
-                  return (
-                    <p key={i} style={{ margin: '10px 0 0', color: '#333', fontSize: '0.86rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.06)' }}>{cleaned}</p>
-                  );
-                })}
+                {productAd?.details ? (
+                  <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{productAd.details}</p>
+                ) : post.text && !post.text.trim().startsWith('{') ? (
+                  <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                    {post.text.replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()}
+                  </p>
+                ) : null}
+                {(productAd?.extras ?? []).map((ex, i) => (
+                  <p key={i} style={{ margin: '10px 0 0', color: '#333', fontSize: '0.86rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.06)' }}>{ex}</p>
+                ))}
                 <button
                   type="button"
                   onClick={() => setProductDetailsOpen(false)}
@@ -9256,17 +9234,15 @@ export default function AddFriendPage() {
     const price = (composerProductPrice || '').trim();
     const extras = (composerProductExtras || []).map(s => String(s).trim()).filter(Boolean);
     const linkRaw = (composerLinkInput || '').trim();
-    const linkCandidates = linkRaw
-      ? linkRaw.split(/[\s\n]+/).map(s => s.trim()).filter(Boolean).map(s => {
-          try {
-            const withProto = /^https?:\/\//i.test(s) ? s : `https://${s}`;
-            const u = new URL(withProto);
-            if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
-            return u.toString();
-          } catch { return ''; }
-        }).filter(Boolean)
-      : [];
-    const linkNormalized = linkCandidates[0] || '';
+    const linkNormalized = (() => {
+      if (!linkRaw) return '';
+      try {
+        const withProto = /^https?:\/\//i.test(linkRaw) ? linkRaw : `https://${linkRaw}`;
+        const u = new URL(withProto);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+        return u.toString();
+      } catch { return ''; }
+    })();
 
     if (!title && !details && !price && extras.length === 0 && !linkNormalized && composerMediaFiles.length === 0) {
       setComposerError('أضف عنوان المنتج أو تفاصيل أو وسائط قبل النشر');
@@ -9276,16 +9252,7 @@ export default function AddFriendPage() {
     setComposerPosting(true);
     setComposerError('');
     try {
-      const nonMediaLinks: string[] = [];
-      for (const u of linkCandidates) {
-        const resolved = composerLookupOriginalUrl(u);
-        const isMediaPreview =
-          !!parseXStatusId(resolved) ||
-          !!classifyMediaUrl(resolved) ||
-          !!classifyDirectMediaUrl(resolved);
-        if (!isMediaPreview) nonMediaLinks.push(u);
-      }
-      const detailsWithLink = [details, ...nonMediaLinks].filter(Boolean).join('\n');
+      const detailsWithLink = [details, linkNormalized].filter(Boolean).join('\n');
       const finalText = buildProductPostText({
         title: title || 'منتج',
         details: detailsWithLink,
@@ -9299,8 +9266,8 @@ export default function AddFriendPage() {
 
       const extractUploadUrl = async (res: Response): Promise<string | null> => {
         try {
-          const d = await res.json() as { url?: string; mediaUrl?: string; path?: string; fileUrl?: string; file?: string };
-          const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path || d?.file;
+          const d = await res.json() as { url?: string; mediaUrl?: string; path?: string; fileUrl?: string };
+          const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path;
           return u ? String(u) : null;
         } catch {
           return null;
@@ -9490,14 +9457,15 @@ export default function AddFriendPage() {
             file.name.split('.').pop() ||
             (isVideo ? 'mp4' : 'jpg')
           ).replace(/^\./, '');
-          const contentType =
-            file.type ||
-            (isVideo ? 'video/mp4' : 'image/jpeg');
+          // Server requires raw body + image/* or video/* Content-Type (FormData is rejected)
+          let contentType = (file.type || '').split(';')[0].toLowerCase();
+          if (!contentType.startsWith('image/') && !contentType.startsWith('video/')) {
+            contentType = isVideo ? 'video/mp4' : 'image/jpeg';
+          }
 
           let uploadRes: Response | null = null;
           let lastBody = '';
 
-          // Same path as quickPublishMedia (raw body first)
           try {
             uploadRes = await fetch('/api/posts/media', {
               method: 'POST',
@@ -9534,24 +9502,6 @@ export default function AddFriendPage() {
           }
 
           if (!uploadRes || !uploadRes.ok) {
-            try {
-              const fd = new FormData();
-              fd.append('file', file, file.name || `media.${ext}`);
-              fd.append('type', mediaType);
-              fd.append('mediaType', mediaType);
-              uploadRes = await fetch('/api/posts/media', {
-                method: 'POST',
-                credentials: 'include',
-                body: fd,
-              });
-              if (!uploadRes.ok) lastBody = await uploadRes.text().catch(() => '');
-            } catch (e) {
-              lastBody = e instanceof Error ? e.message : 'formdata fail';
-              uploadRes = null;
-            }
-          }
-
-          if (!uploadRes || !uploadRes.ok) {
             lastUploadError = `رفع ${isVideo ? 'الفيديو' : 'الملف'} فشل${uploadRes ? ` (${uploadRes.status})` : ''} ${lastBody.slice(0, 100)}`;
             console.error('[Post media upload]', lastUploadError);
             continue;
@@ -9573,31 +9523,6 @@ export default function AddFriendPage() {
         return;
       }
 
-      if (linkCandidates.length) {
-        const seenMedia = new Set(uploadedMedia.map(m => m.url));
-        for (const raw of linkCandidates) {
-          try {
-            const resolved = composerLookupOriginalUrl(raw);
-            const kind = classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved);
-            if (kind && !seenMedia.has(resolved)) {
-              seenMedia.add(resolved);
-              uploadedMedia.push({ url: resolved, type: kind });
-              continue;
-            }
-            if (parseXStatusId(resolved)) {
-              const media = await resolveLinkToDirectMedia(resolved);
-              if (media?.length) {
-                for (const m of media) {
-                  if (seenMedia.has(m.url)) continue;
-                  seenMedia.add(m.url);
-                  uploadedMedia.push(m);
-                }
-              }
-            }
-          } catch { /* next */ }
-        }
-      }
-
       const mediaUrl = uploadedMedia[0]?.url ?? null;
       const mediaType = uploadedMedia[0]?.type ?? null;
       const mediaUrls = uploadedMedia.map(m => m.url);
@@ -9606,7 +9531,9 @@ export default function AddFriendPage() {
       let saved: PostItem | null = null;
 
       if (mediaUrl && mediaType) {
-        const createRes = await fetch('/api/posts', {
+        // Same create path as quickPublishMedia (keeps media on server), then set product text
+        const mediaDest = mediaType === 'video' ? 'videos' : 'photos';
+        let createRes = await fetch('/api/posts', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -9625,7 +9552,7 @@ export default function AddFriendPage() {
           }),
         });
         if (!createRes.ok) {
-          const createRes2 = await fetch('/api/posts', {
+          createRes = await fetch('/api/posts', {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
@@ -9636,71 +9563,59 @@ export default function AddFriendPage() {
               mediaUrls,
               mediaTypes,
               hashtags: [],
-              audience: 'text',
-              destination: 'text',
+              audience: 'public',
+              destination: mediaDest,
               publisherType: isCompanyPublisher ? 'company' : 'user',
               isCompanyPost: !!isCompanyPublisher,
               authorIsCompany: !!isCompanyPublisher,
             }),
           });
-          if (!createRes2.ok) {
-            const errBody = await createRes2.text().catch(() => '');
-            let msg = '';
-            try { msg = (JSON.parse(errBody) as { error?: string }).error || ''; } catch { msg = errBody.slice(0, 120); }
-            throw new Error(msg || `فشل إنشاء المنشور (${createRes2.status})`);
-          }
-          const createData2 = await createRes2.json();
-          if (!createData2?.post?.id) throw new Error('المنشور لم يُحفظ على السيرفر');
+        }
+        if (!createRes.ok) {
+          const errBody = await createRes.text().catch(() => '');
+          let msg = '';
+          try { msg = (JSON.parse(errBody) as { error?: string }).error || ''; } catch { msg = errBody.slice(0, 120); }
+          throw new Error(msg || `فشل إنشاء المنشور (${createRes.status})`);
+        }
+        const createData = await createRes.json();
+        if (!createData?.post?.id) throw new Error('المنشور لم يُحفظ على السيرفر');
+
+        // Always keep uploaded media on the client post (server may omit fields)
+        saved = {
+          ...createData.post,
+          text: createData.post.text || finalText || '',
+          mediaUrl,
+          mediaType,
+          mediaUrls,
+          mediaTypes,
+          audience: 'text',
+          destination: 'text',
+          publisherType: isCompanyPublisher ? 'company' : 'user',
+          isCompanyPost: !!isCompanyPublisher,
+          authorIsCompany: !!isCompanyPublisher,
+        } as PostItem;
+
+        if (finalText.trim() && !(createData.post.text || '').trim()) {
+          try {
+            await fetch(`/api/posts/${saved.id}/caption`, {
+              method: 'PATCH',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: finalText }),
+            });
+          } catch { /* keep local text */ }
           saved = {
-            ...createData2.post,
-            text: finalText || createData2.post.text || '',
+            ...saved,
+            text: finalText,
             mediaUrl,
             mediaType,
             mediaUrls,
             mediaTypes,
             audience: 'text',
             destination: 'text',
-            publisherType: isCompanyPublisher ? 'company' : 'user',
-            isCompanyPost: !!isCompanyPublisher,
-            authorIsCompany: !!isCompanyPublisher,
-          } as PostItem;
-          if (finalText.trim()) {
-            try {
-              await fetch(`/api/posts/${saved.id}/caption`, {
-                method: 'PATCH',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: finalText }),
-              });
-            } catch { /* keep local */ }
-          }
-        } else {
-          const createData = await createRes.json();
-          if (!createData?.post?.id) throw new Error('المنشور لم يُحفظ على السيرفر');
-          saved = {
-            ...createData.post,
-            text: createData.post.text || finalText || '',
-            mediaUrl,
-            mediaType,
-            mediaUrls,
-            mediaTypes,
-            audience: 'text',
-            destination: 'text',
-            publisherType: isCompanyPublisher ? 'company' : 'user',
-            isCompanyPost: !!isCompanyPublisher,
-            authorIsCompany: !!isCompanyPublisher,
-          } as PostItem;
-          if (finalText.trim() && !(createData.post.text || '').trim()) {
-            try {
-              await fetch(`/api/posts/${saved.id}/caption`, {
-                method: 'PATCH',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: finalText }),
-              });
-              saved = { ...saved, text: finalText, mediaUrl, mediaType, mediaUrls, mediaTypes };
-            } catch { /* keep local */ }
-          }
+          };
+        } else if (finalText.trim()) {
+          saved = { ...saved, text: finalText, mediaUrl, mediaType, mediaUrls, mediaTypes };
         }
       } else {
         // ── بدون وسائط: منشور نصي مباشر ──
@@ -15329,31 +15244,15 @@ export default function AddFriendPage() {
                   background: 'transparent', border: 'none',
                 }}
               >
-                <img
-                  src="/og-image.svg"
-                  alt="Stooorna"
-                  width={28}
-                  height={28}
-                  draggable={false}
-                  onError={(e) => {
-                    const el = e.currentTarget;
-                    if (el.dataset.fallback === '1') return;
-                    el.dataset.fallback = '1';
-                    el.src = 'https://stooorna.com/og-image.svg';
-                  }}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    objectFit: 'cover',
-                    display: 'block',
-                    background: '#0a1214',
-                    opacity: textFeedTab === 'app' ? 1 : 0.45,
-                    boxShadow: textFeedTab === 'app' ? '0 0 10px rgba(0,188,212,0.45)' : 'none',
-                    transition: 'opacity 0.2s ease',
-                    pointerEvents: 'none',
-                  }}
-                />
+                <div style={{
+                  width: 28, height: 28, borderRadius: '50%', overflow: 'hidden',
+                  backgroundImage: 'url(/airo-assets/images/logo/horizontal)',
+                  backgroundSize: 'cover', backgroundPosition: 'center',
+                  animation: textFeedTab === 'app' ? 'stooornaFeedOrbit 8s linear infinite' : 'none',
+                  opacity: textFeedTab === 'app' ? 1 : 0.45,
+                  boxShadow: textFeedTab === 'app' ? '0 0 10px rgba(0,188,212,0.4)' : 'none',
+                  transition: 'opacity 0.2s ease',
+                }} />
               </button>
               <span
                 aria-hidden
