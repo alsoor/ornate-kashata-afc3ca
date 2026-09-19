@@ -881,6 +881,9 @@ export function isCompanyAccountRow(u: {
   } catch { /* ignore */ }
   // licenseNumber + companyName معاً أقوى من الاسم وحده
   if (u.licenseNumber && (u.companyName || u.tradeName)) return true;
+  // اسم/يوزر يحتوي كلمة شركة أو مؤسسة أو ما يعادلها بالإنجليزي — يصنَّف شركة
+  const nameBlob = `${u.username || ''} ${u.name || ''} ${u.companyName || ''} ${u.tradeName || ''}`;
+  if (/شركة|مؤسسة|company|corp\b|corporation|ltd\b|llc\b/i.test(nameBlob)) return true;
   return false;
 }
 
