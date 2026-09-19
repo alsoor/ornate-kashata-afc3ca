@@ -3667,7 +3667,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         width: 80, height: 80, borderRadius: '50%', overflow: 'hidden',
         marginBottom: 20, flexShrink: 0,
         boxShadow: `0 0 28px ${T.primaryFaint}`,
-        backgroundImage: 'url(/airo-assets/images/logo/horizontal)',
+        backgroundImage: 'url(/airo-assets/images/logo/primary)',
         backgroundSize: 'cover',
         backgroundPosition: 'center center',
         backgroundRepeat: 'no-repeat',

@@ -15229,14 +15229,28 @@ export default function AddFriendPage() {
                 }}
               >
                 <div style={{
-                  width: 28, height: 28, borderRadius: '50%', overflow: 'hidden',
-                  backgroundImage: 'url(/airo-assets/images/logo/horizontal)',
-                  backgroundSize: 'cover', backgroundPosition: 'center',
+                  width: 32, height: 32, borderRadius: '50%', overflow: 'hidden',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'rgba(0,188,212,0.12)',
                   animation: textFeedTab === 'app' ? 'stooornaFeedOrbit 8s linear infinite' : 'none',
                   opacity: textFeedTab === 'app' ? 1 : 0.45,
                   boxShadow: textFeedTab === 'app' ? '0 0 10px rgba(0,188,212,0.4)' : 'none',
                   transition: 'opacity 0.2s ease',
-                }} />
+                }}>
+                  <img
+                    src="/airo-assets/images/logo/primary"
+                    alt="Stooorna"
+                    width={32}
+                    height={32}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    onError={(e) => {
+                      const el = e.currentTarget;
+                      if (el.dataset.fallback === '1') return;
+                      el.dataset.fallback = '1';
+                      el.src = '/airo-assets/images/logo/horizontal';
+                    }}
+                  />
+                </div>
               </button>
               <span
                 aria-hidden

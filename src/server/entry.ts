@@ -84,7 +84,7 @@ import posts_comment_unread_post_70 from "./api/posts/comment-unread/POST";
 import posts_comments_received_get_71 from "./api/posts/comments/received/GET";
 import posts_hashtags_get_72 from "./api/posts/hashtags/GET";
 import posts_interactions_received_get_73 from "./api/posts/interactions/received/GET";
-import posts_media_post_74 from "./api/posts/media/POST";
+import posts_media_post_74, { multerMiddleware as posts_media_multer } from "./api/posts/media/POST";
 import posts_shared_received_get_75 from "./api/posts/shared/received/GET";
 import posts_id_delete_76 from "./api/posts/[id]/DELETE";
 import posts_id_get_77 from "./api/posts/[id]/GET";
@@ -142,7 +142,7 @@ import secret_room_mic_lock_get_128 from "./api/secret-room/mic-lock/GET";
 import secret_room_mic_lock_post_129 from "./api/secret-room/mic-lock/POST";
 import status_delete_130 from "./api/status/DELETE";
 import status_get_131 from "./api/status/GET";
-import status_post_132 from "./api/status/POST";
+import status_post_132, { multerMiddleware as status_multer } from "./api/status/POST";
 import status_comments_received_get_133 from "./api/status/comments/received/GET";
 import status_view_post_134 from "./api/status/view/POST";
 import status_id_comments_delete_135 from "./api/status/[id]/comments/DELETE";
@@ -319,10 +319,9 @@ const BINARY_ROUTES = [
 
 app.use((req, res, next) => {
   const path = req.path;
-  // /api/status with multipart/form-data must go straight to multer — skip rawBinary.
-  // /api/status with a raw image/video Content-Type uses the legacy binary path.
-  if (path === '/api/status') {
-    const ct = (req.headers['content-type'] ?? '').toLowerCase();
+  const ct = (req.headers['content-type'] ?? '').toLowerCase();
+  // /api/status and /api/posts/media: multipart → multer; raw image/video → express.raw
+  if (path === '/api/status' || path === '/api/posts/media') {
     if (ct.startsWith('multipart/')) return next();
     return rawBinary(req, res, next);
   }
@@ -412,7 +411,11 @@ app.post("/api/posts/comment-unread", posts_comment_unread_post_70);
 app.get("/api/posts/comments/received", posts_comments_received_get_71);
 app.get("/api/posts/hashtags", posts_hashtags_get_72);
 app.get("/api/posts/interactions/received", posts_interactions_received_get_73);
-app.post("/api/posts/media", posts_media_post_74);
+app.post("/api/posts/media", (req, res, next) => {
+  const ct = (req.headers['content-type'] ?? '').toLowerCase();
+  if (ct.startsWith('multipart/')) return posts_media_multer(req, res, next);
+  return next();
+}, posts_media_post_74);
 app.get("/api/posts/shared/received", posts_shared_received_get_75);
 app.delete("/api/posts/:id", posts_id_delete_76);
 app.get("/api/posts/:id", posts_id_get_77);
@@ -470,7 +473,11 @@ app.get("/api/secret-room/mic-lock", secret_room_mic_lock_get_128);
 app.post("/api/secret-room/mic-lock", secret_room_mic_lock_post_129);
 app.delete("/api/status", status_delete_130);
 app.get("/api/status", status_get_131);
-app.post("/api/status", status_post_132);
+app.post("/api/status", (req, res, next) => {
+  const ct = (req.headers['content-type'] ?? '').toLowerCase();
+  if (ct.startsWith('multipart/')) return status_multer(req, res, next);
+  return next();
+}, status_post_132);
 app.get("/api/status/comments/received", status_comments_received_get_133);
 app.post("/api/status/view", status_view_post_134);
 app.delete("/api/status/:id/comments", status_id_comments_delete_135);
