@@ -129,7 +129,7 @@ export default async function handler(req: Request, res: Response) {
     let u: Record<string, unknown> = {};
     try {
       const userRows = (await db.execute(
-        sql`SELECT name, username, image FROM "user" WHERE id = ${userId} LIMIT 1`
+        sql`SELECT name, username, image FROM \user\ WHERE id = ${userId} LIMIT 1`
       ) as unknown as [any[]])[0];
       u = userRows?.[0] ?? {};
     } catch (profileError) {
