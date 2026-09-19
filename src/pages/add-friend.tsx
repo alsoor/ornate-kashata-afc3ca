@@ -4355,16 +4355,38 @@ function PostCard({
                 {productAd?.price ? (
                   <p style={{ margin: '8px 0 0', color: '#00BCD4', fontSize: '1rem', fontWeight: 800 }}>{productAd.price}</p>
                 ) : null}
-                {productAd?.details ? (
-                  <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{productAd.details}</p>
-                ) : post.text && !post.text.trim().startsWith('{') ? (
-                  <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                    {post.text.replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()}
-                  </p>
-                ) : null}
-                {(productAd?.extras ?? []).map((ex, i) => (
-                  <p key={i} style={{ margin: '10px 0 0', color: '#333', fontSize: '0.86rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.06)' }}>{ex}</p>
-                ))}
+                {(() => {
+                  const stripPreviewUrls = (t: string) =>
+                    t.replace(URL_IN_TEXT_RE, (match) => {
+                      const raw = match.replace(/[.,;:!?،؛]+$/, '');
+                      const resolved = composerLookupOriginalUrl(raw);
+                      if (parseXStatusId(resolved) || classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved)) return '';
+                      return match;
+                    }).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+                  const detailsShown = productAd?.details ? stripPreviewUrls(productAd.details) : '';
+                  const fallbackShown = !productAd?.details && post.text && !post.text.trim().startsWith('{')
+                    ? stripPreviewUrls(post.text.replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim())
+                    : '';
+                  if (detailsShown) {
+                    return <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{detailsShown}</p>;
+                  }
+                  if (fallbackShown) {
+                    return <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{fallbackShown}</p>;
+                  }
+                  return null;
+                })()}
+                {(productAd?.extras ?? []).map((ex, i) => {
+                  const cleaned = ex.replace(URL_IN_TEXT_RE, (match) => {
+                    const raw = match.replace(/[.,;:!?،؛]+$/, '');
+                    const resolved = composerLookupOriginalUrl(raw);
+                    if (parseXStatusId(resolved) || classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved)) return '';
+                    return match;
+                  }).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+                  if (!cleaned) return null;
+                  return (
+                    <p key={i} style={{ margin: '10px 0 0', color: '#333', fontSize: '0.86rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.06)' }}>{cleaned}</p>
+                  );
+                })}
                 <button
                   type="button"
                   onClick={() => setProductDetailsOpen(false)}
@@ -9228,15 +9250,18 @@ export default function AddFriendPage() {
     const price = (composerProductPrice || '').trim();
     const extras = (composerProductExtras || []).map(s => String(s).trim()).filter(Boolean);
     const linkRaw = (composerLinkInput || '').trim();
-    const linkNormalized = (() => {
-      if (!linkRaw) return '';
-      try {
-        const withProto = /^https?:\/\//i.test(linkRaw) ? linkRaw : `https://${linkRaw}`;
-        const u = new URL(withProto);
-        if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
-        return u.toString();
-      } catch { return ''; }
-    })();
+    // قد يكون أكثر من رابط (سطر أو مسافة) بعد استخراج وسائط X
+    const linkCandidates = linkRaw
+      ? linkRaw.split(/[\s\n]+/).map(s => s.trim()).filter(Boolean).map(s => {
+          try {
+            const withProto = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+            const u = new URL(withProto);
+            if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+            return u.toString();
+          } catch { return ''; }
+        }).filter(Boolean)
+      : [];
+    const linkNormalized = linkCandidates[0] || '';
 
     if (!title && !details && !price && extras.length === 0 && !linkNormalized && composerMediaFiles.length === 0) {
       setComposerError('أضف عنوان المنتج أو تفاصيل أو وسائط قبل النشر');
@@ -9246,7 +9271,17 @@ export default function AddFriendPage() {
     setComposerPosting(true);
     setComposerError('');
     try {
-      const detailsWithLink = [details, linkNormalized].filter(Boolean).join('\n');
+      // روابط معاينة صورة/فيديو (X أو مباشر) لا تُخزَّن في نص المنتج — تُعرض كوسائط فقط
+      const nonMediaLinks: string[] = [];
+      for (const u of linkCandidates) {
+        const resolved = composerLookupOriginalUrl(u);
+        const isMediaPreview =
+          !!parseXStatusId(resolved) ||
+          !!classifyMediaUrl(resolved) ||
+          !!classifyDirectMediaUrl(resolved);
+        if (!isMediaPreview) nonMediaLinks.push(u);
+      }
+      const detailsWithLink = [details, ...nonMediaLinks].filter(Boolean).join('\n');
       const finalText = buildProductPostText({
         title: title || 'منتج',
         details: detailsWithLink,
@@ -9528,6 +9563,32 @@ export default function AddFriendPage() {
         setComposerError(lastUploadError || 'تعذر رفع الملف (صورة / فيديو / PDF)');
         setComposerPosting(false);
         return;
+      }
+
+      // روابط المعاينة (X / صورة / فيديو مباشر) → وسائط المنشور بدل إبقاء الرابط في النص
+      if (linkCandidates.length) {
+        const seenMedia = new Set(uploadedMedia.map(m => m.url));
+        for (const raw of linkCandidates) {
+          try {
+            const resolved = composerLookupOriginalUrl(raw);
+            const kind = classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved);
+            if (kind && !seenMedia.has(resolved)) {
+              seenMedia.add(resolved);
+              uploadedMedia.push({ url: resolved, type: kind });
+              continue;
+            }
+            if (parseXStatusId(resolved)) {
+              const media = await resolveLinkToDirectMedia(resolved);
+              if (media?.length) {
+                for (const m of media) {
+                  if (seenMedia.has(m.url)) continue;
+                  seenMedia.add(m.url);
+                  uploadedMedia.push(m);
+                }
+              }
+            }
+          } catch { /* next link */ }
+        }
       }
 
       const mediaUrl = uploadedMedia[0]?.url ?? null;
