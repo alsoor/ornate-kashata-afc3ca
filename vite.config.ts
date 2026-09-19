@@ -131,10 +131,10 @@ function worktreePreviewPlugin(): Plugin {
             });
           });
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          res.statusCode = 500;
-          res.end(JSON.stringify({ error: Worktree server bundle failed: ${message} }));
-        }
+            const message = err instanceof Error ? err.message : String(err);
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: Worktree server bundle failed: ${message} }));
+          }
       });
     }
   };
