@@ -1,7 +1,7 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { fileURLToPath } from "node:url";
-import { dirname, extname, join } from "node:path";
-import { readFileSync } from "node:fs";
+import { dirname, extname, join, resolve as pathResolve } from "node:path";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 // Static import so the SSR bundler doesn't see a mixed static/dynamic
 // import of this module (it's imported statically elsewhere, e.g. in
 // api/room/join/POST.ts). closeConnection is optional at runtime, so the
@@ -84,7 +84,7 @@ import posts_comment_unread_post_70 from "./api/posts/comment-unread/POST";
 import posts_comments_received_get_71 from "./api/posts/comments/received/GET";
 import posts_hashtags_get_72 from "./api/posts/hashtags/GET";
 import posts_interactions_received_get_73 from "./api/posts/interactions/received/GET";
-import posts_media_post_74 from "./api/posts/media/POST";
+import posts_media_post_74, { multerMiddleware as posts_media_multer } from "./api/posts/media/POST";
 import posts_shared_received_get_75 from "./api/posts/shared/received/GET";
 import posts_id_delete_76 from "./api/posts/[id]/DELETE";
 import posts_id_get_77 from "./api/posts/[id]/GET";
@@ -142,7 +142,7 @@ import secret_room_mic_lock_get_128 from "./api/secret-room/mic-lock/GET";
 import secret_room_mic_lock_post_129 from "./api/secret-room/mic-lock/POST";
 import status_delete_130 from "./api/status/DELETE";
 import status_get_131 from "./api/status/GET";
-import status_post_132 from "./api/status/POST";
+import status_post_132, { multerMiddleware as status_multer } from "./api/status/POST";
 import status_comments_received_get_133 from "./api/status/comments/received/GET";
 import status_view_post_134 from "./api/status/view/POST";
 import status_id_comments_delete_135 from "./api/status/[id]/comments/DELETE";
@@ -270,6 +270,25 @@ normalizeCommerceApiBaseUrlEnv();
 
 const app = express();
 
+const cors = require('cors');
+
+const allowedOrigins = [
+    'https://stooorna.com',
+    'https://www.stooorna.com',
+    'https://stoooorna.onrender.com'
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true
+}));
+
 // Honour x-forwarded-* from the load balancer so req.protocol/req.hostname
 // reflect the public-facing values. Express-maintained parsing respects the
 // existing trust-proxy config; direct header reads would let a client spoof
@@ -300,10 +319,9 @@ const BINARY_ROUTES = [
 
 app.use((req, res, next) => {
   const path = req.path;
-  // /api/status with multipart/form-data must go straight to multer — skip rawBinary.
-  // /api/status with a raw image/video Content-Type uses the legacy binary path.
-  if (path === '/api/status') {
-    const ct = (req.headers['content-type'] ?? '').toLowerCase();
+  const ct = (req.headers['content-type'] ?? '').toLowerCase();
+  // /api/status and /api/posts/media: multipart → multer; raw image/video → express.raw
+  if (path === '/api/status' || path === '/api/posts/media') {
     if (ct.startsWith('multipart/')) return next();
     return rawBinary(req, res, next);
   }
@@ -315,6 +333,107 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// ── Serve user uploads & media slots from shared-storage ────────────────────
+// APIs write files under /shared-storage/public/assets/... and return public
+// URLs under /airo-assets/uploads/... (and /airo-assets/images/... for logo
+// slots). Without this middleware every avatar, story, post media, and logo
+// request 404s in production (Vite plugin only covers dev).
+const AiroContentTypes: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg",
+  ".m4a": "audio/mp4",
+  ".ogg": "audio/ogg",
+  ".pdf": "application/pdf",
+};
+
+const SHARED_ROOTS = [
+  "/shared-storage/public/assets/uploads",
+  "/shared-storage/public/assets",
+  "/shared-storage/public",
+];
+
+function safeJoinUnder(base: string, relative: string): string | null {
+  if (!relative || relative.includes("\0") || relative.includes("..")) return null;
+  const resolved = pathResolve(base, relative);
+  const baseResolved = pathResolve(base);
+  if (resolved !== baseResolved && !resolved.startsWith(baseResolved + "/")) return null;
+  return resolved;
+}
+
+function tryServeUpload(res: Response, relativePath: string): boolean {
+  for (const root of SHARED_ROOTS) {
+    const filePath = safeJoinUnder(root, relativePath);
+    if (!filePath) continue;
+    try {
+      if (!existsSync(filePath) || !statSync(filePath).isFile()) continue;
+    } catch {
+      continue;
+    }
+    const ct = AiroContentTypes[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+    res.setHeader("Content-Type", ct);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    createReadStream(filePath).pipe(res);
+    return true;
+  }
+  return false;
+}
+
+app.get(/^\/airo-assets\/uploads\/.+/, (req, res, next) => {
+  const pathname = (req.path || "").split("?")[0];
+  const relative = pathname.replace(/^\/airo-assets\/uploads\//, "");
+  if (!relative) return next();
+  if (tryServeUpload(res, relative)) return;
+  // Fallback: chat-images etc. stored directly under assets/<folder>
+  if (tryServeUpload(res, relative.replace(/^uploads\//, ""))) return;
+  res.status(404).json({ error: "file not found" });
+});
+
+// Logo / image slots: /airo-assets/images/logo/primary → resolve via airo-media.json
+app.get(/^\/airo-assets\/images\/.+/, (req, res, next) => {
+  try {
+    const pathname = (req.path || "").split("?")[0];
+    const slotPath = pathname.replace(/^\/airo-assets\/images\//, "");
+    const manifestPaths = [
+      join(process.cwd(), "airo-media.json"),
+      join(process.cwd(), "public", "airo-media.json"),
+      join(dirname(fileURLToPath(import.meta.url)), "client", "airo-media.json"),
+      join(dirname(fileURLToPath(import.meta.url)), "..", "airo-media.json"),
+    ];
+    let manifest: Record<string, { currentUrl?: string }> = {};
+    for (const mp of manifestPaths) {
+      try {
+        if (existsSync(mp)) {
+          manifest = JSON.parse(readFileSync(mp, "utf8"));
+          break;
+        }
+      } catch { /* try next */ }
+    }
+    const slot = manifest[slotPath];
+    const target = slot?.currentUrl;
+    if (!target) return next();
+    if (target.startsWith("/airo-assets/uploads/")) {
+      const relative = target.replace(/^\/airo-assets\/uploads\//, "");
+      if (tryServeUpload(res, relative)) return;
+    }
+    if (target.startsWith("http://") || target.startsWith("https://")) {
+      res.redirect(302, target);
+      return;
+    }
+    return next();
+  } catch {
+    return next();
+  }
+});
 
 // ── IP tracking: lightweight — stored via /api/me/update-ip ─────────────────
 
@@ -393,7 +512,11 @@ app.post("/api/posts/comment-unread", posts_comment_unread_post_70);
 app.get("/api/posts/comments/received", posts_comments_received_get_71);
 app.get("/api/posts/hashtags", posts_hashtags_get_72);
 app.get("/api/posts/interactions/received", posts_interactions_received_get_73);
-app.post("/api/posts/media", posts_media_post_74);
+app.post("/api/posts/media", (req, res, next) => {
+  const ct = (req.headers['content-type'] ?? '').toLowerCase();
+  if (ct.startsWith('multipart/')) return posts_media_multer(req, res, next);
+  return next();
+}, posts_media_post_74);
 app.get("/api/posts/shared/received", posts_shared_received_get_75);
 app.delete("/api/posts/:id", posts_id_delete_76);
 app.get("/api/posts/:id", posts_id_get_77);
@@ -451,7 +574,11 @@ app.get("/api/secret-room/mic-lock", secret_room_mic_lock_get_128);
 app.post("/api/secret-room/mic-lock", secret_room_mic_lock_post_129);
 app.delete("/api/status", status_delete_130);
 app.get("/api/status", status_get_131);
-app.post("/api/status", status_post_132);
+app.post("/api/status", (req, res, next) => {
+  const ct = (req.headers['content-type'] ?? '').toLowerCase();
+  if (ct.startsWith('multipart/')) return status_multer(req, res, next);
+  return next();
+}, status_post_132);
 app.get("/api/status/comments/received", status_comments_received_get_133);
 app.post("/api/status/view", status_view_post_134);
 app.delete("/api/status/:id/comments", status_id_comments_delete_135);
