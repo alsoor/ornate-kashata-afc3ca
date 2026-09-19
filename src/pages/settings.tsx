@@ -3,9 +3,237 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, Briefcase, Menu, ChevronDown, AlertTriangle, FileText, ShieldOff } from 'lucide-react';
 import { useSession, signOut, signIn, signUp } from '@/lib/auth/auth-client';
 import { usePresenceQuery } from '@/hooks/usePresence';
+
+// ─── Replaced virtual:content ───────────────────────────────────────────────
+const settings = {
+  supportHeader: 'Support',
+  chooseLang: 'Choose language / اختر اللغة',
+  langEn: 'English',
+  langAr: 'العربية',
+  taskDone: 'المهمة مكتملة',
+  taskDoneSimple: 'تم',
+  deleteCountdown: 'سيتم حذف المحادثة خلال',
+  noMessages: 'لا توجد رسائل بعد',
+  supportReplyPlaceholder: 'اكتب ردك...',
+};
+
+// ─── Inlined SUPPORT_COPY (was @/lib/support-copy) ──────────────────────────
+type SupportLang = 'ar' | 'en';
+type SupportCopy = {
+  askRole: string;
+  roleUser: string;
+  roleCompany: string;
+  greetingUser: (name: string) => string;
+  greetingCompany: (companyName: string, license?: string) => string;
+  howHelp: string;
+  btnForgotPw: string;
+  btnTalkSupport: string;
+  waitForgot: string;
+  waitSupport: string;
+  waiting: string;
+  supportJoined: string;
+  blocked: string;
+  askTitle: string;
+  unavailable: string;
+  notFound: string;
+  playing: string;
+  attach: string;
+  placeholder: string;
+};
+
+const SUPPORT_COPY: Record<SupportLang, SupportCopy> = {
+  ar: {
+    askRole: 'هل أنت مستخدم فردي أم شركة؟',
+    roleUser: 'مستخدم',
+    roleCompany: 'شركة',
+    greetingUser: (name) => `أهلاً ${name} 👋\nكيف نقدر نساعدك؟`,
+    greetingCompany: (companyName, license) =>
+      `أهلاً بكم من ${companyName}${license ? ` (ترخيص: ${license})` : ''} 👋\nكيف نقدر نساعدكم؟`,
+    howHelp: 'اختر نوع المساعدة:',
+    btnForgotPw: 'نسيت كلمة المرور',
+    btnTalkSupport: 'التحدث مع الدعم',
+    waitForgot: 'تم استلام طلبك بخصوص كلمة المرور. سيتم الرد عليك قريباً...',
+    waitSupport: 'تم تحويل طلبك للدعم. سيتم الرد عليك قريباً...',
+    waiting: 'نعتذر عن التأخير، الدعم سيتواصل معك في أقرب وقت...',
+    supportJoined: 'انضم فريق الدعم للمحادثة 👋',
+    blocked: 'عذراً، لا يمكن معالجة هذا النوع من الرسائل.',
+    askTitle: 'ما اسم الأغنية أو السورة التي تريد سماعها؟',
+    unavailable: 'عذراً، هذه الخدمة غير متوفرة حالياً.',
+    notFound: 'لم يتم العثور على الملف المطلوب.',
+    playing: 'جارٍ التشغيل:',
+    attach: 'إرفاق ملف',
+    placeholder: 'اكتب رسالتك...',
+  },
+  en: {
+    askRole: 'Are you an individual user or a company?',
+    roleUser: 'User',
+    roleCompany: 'Company',
+    greetingUser: (name) => `Hello ${name} 👋\nHow can we help you?`,
+    greetingCompany: (companyName, license) =>
+      `Welcome from ${companyName}${license ? ` (License: ${license})` : ''} 👋\nHow can we help you?`,
+    howHelp: 'Choose the type of help:',
+    btnForgotPw: 'Forgot password',
+    btnTalkSupport: 'Talk to support',
+    waitForgot: 'Your password request has been received. We will reply soon...',
+    waitSupport: 'Your request has been forwarded to support. We will reply soon...',
+    waiting: 'Sorry for the delay, support will contact you shortly...',
+    supportJoined: 'Support has joined the chat 👋',
+    blocked: 'Sorry, this type of message cannot be processed.',
+    askTitle: 'What song or surah would you like to listen to?',
+    unavailable: 'Sorry, this service is currently unavailable.',
+    notFound: 'The requested file was not found.',
+    playing: 'Now playing:',
+    attach: 'Attach file',
+    placeholder: 'Type your message...',
+  },
+};
+
+// ─── Inlined auth-copy (was @/lib/auth-copy) ────────────────────────────────
+export type AuthLang = 'ar' | 'en';
+
+type AuthCopy = {
+  enterEmailPw: string;
+  pwMismatch: string;
+  pwShort: string;
+  needUsername: string;
+  userFmt: string;
+  userTaken: string;
+  needCompanyName: string;
+  needTradeName: string;
+  needOwnerName: string;
+  needLicense: string;
+  needSector: string;
+  needPhone: string;
+  needName: string;
+  joinNow: string;
+  welcomeBack: string;
+  createAccount: string;
+  login: string;
+  companyToggle: string;
+  companyToggleHint: string;
+  companyName: string;
+  tradeName: string;
+  ownerName: string;
+  username: string;
+  checkingUser: string;
+  userAvailable: string;
+  userInvalid: string;
+  license: string;
+  sector: string;
+  sectorHint: string;
+  phone: string;
+  phoneAlt: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  confirmEmail: string;
+  name: string;
+  submitCreate: string;
+  submitLogin: string;
+  haveAccount: string;
+  noAccount: string;
+  goLogin: string;
+  goRegister: string;
+};
+
+const AUTH_COPY: Record<AuthLang, AuthCopy> = {
+  ar: {
+    enterEmailPw: 'أدخل البريد وكلمة المرور',
+    pwMismatch: 'كلمتا المرور غير متطابقتين',
+    pwShort: 'كلمة المرور قصيرة جداً (٦ أحرف على الأقل)',
+    needUsername: 'اليوزرنيم مطلوب',
+    userFmt: 'صيغة اليوزرنيم غير صحيحة',
+    userTaken: 'اليوزرنيم مستخدم مسبقاً',
+    needCompanyName: 'اسم الشركة مطلوب',
+    needTradeName: 'الاسم التجاري مطلوب',
+    needOwnerName: 'اسم المالك مطلوب',
+    needLicense: 'رقم السجل التجاري مطلوب',
+    needSector: 'القطاع مطلوب',
+    needPhone: 'رقم الهاتف مطلوب',
+    needName: 'الاسم مطلوب',
+    joinNow: 'انضم الآن',
+    welcomeBack: 'مرحباً بعودتك',
+    createAccount: 'إنشاء حساب',
+    login: 'تسجيل الدخول',
+    companyToggle: 'حساب شركة',
+    companyToggleHint: 'سجّل كشركة بدلاً من فرد',
+    companyName: 'اسم الشركة',
+    tradeName: 'الاسم التجاري',
+    ownerName: 'اسم المالك',
+    username: 'اليوزرنيم',
+    checkingUser: 'جاري التحقق...',
+    userAvailable: 'متاح ✓',
+    userInvalid: 'غير صالح',
+    license: 'رقم السجل التجاري',
+    sector: 'القطاع',
+    sectorHint: 'اكتب القطاع',
+    phone: 'رقم الهاتف',
+    phoneAlt: 'رقم هاتف آخر (اختياري)',
+    email: 'البريد الإلكتروني',
+    password: 'كلمة المرور',
+    confirmPassword: 'تأكيد كلمة المرور',
+    confirmEmail: 'تأكيد البريد',
+    name: 'الاسم',
+    submitCreate: 'إنشاء الحساب',
+    submitLogin: 'دخول',
+    haveAccount: 'لديك حساب؟',
+    noAccount: 'ليس لديك حساب؟',
+    goLogin: 'سجّل الدخول',
+    goRegister: 'إنشاء حساب',
+  },
+  en: {
+    enterEmailPw: 'Enter email and password',
+    pwMismatch: 'Passwords do not match',
+    pwShort: 'Password is too short (min 6 characters)',
+    needUsername: 'Username is required',
+    userFmt: 'Invalid username format',
+    userTaken: 'Username is already taken',
+    needCompanyName: 'Company name is required',
+    needTradeName: 'Trade name is required',
+    needOwnerName: 'Owner name is required',
+    needLicense: 'License number is required',
+    needSector: 'Sector is required',
+    needPhone: 'Phone number is required',
+    needName: 'Name is required',
+    joinNow: 'Join now',
+    welcomeBack: 'Welcome back',
+    createAccount: 'Create account',
+    login: 'Log in',
+    companyToggle: 'Company account',
+    companyToggleHint: 'Register as a company instead of individual',
+    companyName: 'Company name',
+    tradeName: 'Trade name',
+    ownerName: 'Owner name',
+    username: 'Username',
+    checkingUser: 'Checking...',
+    userAvailable: 'Available ✓',
+    userInvalid: 'Invalid',
+    license: 'Commercial registration number',
+    sector: 'Sector',
+    sectorHint: 'Enter sector',
+    phone: 'Phone number',
+    phoneAlt: 'Alternative phone (optional)',
+    email: 'Email',
+    password: 'Password',
+    confirmPassword: 'Confirm password',
+    confirmEmail: 'Confirm email',
+    name: 'Name',
+    submitCreate: 'Create account',
+    submitLogin: 'Log in',
+    haveAccount: 'Already have an account?',
+    noAccount: "Don't have an account?",
+    goLogin: 'Log in',
+    goRegister: 'Sign up',
+  },
+};
+
+function getAuthCopy(lang: AuthLang): AuthCopy {
+  return AUTH_COPY[lang] || AUTH_COPY.ar;
+}
+
 type Tab = 'account' | 'live';
 /** حساب الدعم الوحيد — له صلاحيات شات الدعم + تحكم المستخدمين */
 const SUPPORT_OWNER_EMAIL = 'stooorna@mail.com';
@@ -40,6 +268,665 @@ function isSupportOwnerAccount(
 }
 
 /** مستخدم عادي مسجّل → يظهر له أيقونة الدعم فوق */
+
+// ─── Company registration registry (pending / active / inactive) ─────────────
+// Shared across AuthScreen + owner admin panel. Backend routes preferred when available.
+export type CompanyRegStatus = 'pending' | 'active' | 'inactive';
+export type CompanyRegistration = {
+  id: string;
+  companyName: string;
+  tradeName: string;
+  ownerName: string;
+  licenseNumber: string;
+  /** رقم الترخيص التجاري */
+  tradeLicenseNumber?: string;
+  /** شهادة السجل التجاري — base64 data URL */
+  commercialRegCert?: string;
+  /** اسم ملف شهادة السجل التجاري */
+  commercialRegCertName?: string;
+  /** شهادة الترخيص التجاري — base64 data URL */
+  tradeLicenseCert?: string;
+  /** اسم ملف شهادة الترخيص التجاري */
+  tradeLicenseCertName?: string;
+  sector?: string;
+  sectorCustom?: string;
+  phone: string;
+  phoneAlt?: string;
+  email: string;
+  /** username فريد للحساب */
+  username?: string;
+  /** stored only to allow post-approval first login when account was not created yet */
+  password?: string;
+  status: CompanyRegStatus;
+  createdAt: string;
+  updatedAt: string;
+  userId?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+};
+
+const COMPANIES_REGISTRY_KEY = 'stooorna_companies_registry';
+const COMPANY_NOTICES_KEY = 'stooorna_company_notices';
+const COMPANY_ACTIVATIONS_KEY = 'stooorna_company_activations';
+const DELETED_USERS_KEY = 'stooorna_deleted_users';
+
+/** نوع جلسة الحساب — يمنع تحوّل الفرد لشركة بالخطأ */
+export function setSessionAccountKind(kind: 'personal' | 'company', userId?: string | null) {
+  try {
+    localStorage.setItem('stooorna_session_account_kind', kind);
+    if (userId) localStorage.setItem('stooorna_session_user_id', String(userId));
+    window.dispatchEvent(new CustomEvent('stooorna:session-account-kind', { detail: { kind, userId } }));
+  } catch { /* */ }
+}
+export function getSessionAccountKind(): 'personal' | 'company' | null {
+  try {
+    const k = localStorage.getItem('stooorna_session_account_kind');
+    return k === 'company' || k === 'personal' ? k : null;
+  } catch { return null; }
+}
+
+const FREED_USERNAMES_KEY = 'stooorna_freed_usernames';
+
+const COMPANY_USERNAME_FEATURE_KEY = 'stooorna_company_username_feature';
+
+/** هل فعّل الأونر ميزة يوزرنيم للشركات؟ */
+export function isCompanyUsernameFeatureEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(COMPANY_USERNAME_FEATURE_KEY);
+    if (!raw) return false;
+    const o = JSON.parse(raw);
+    return o === true || o?.enabled === true;
+  } catch {
+    return false;
+  }
+}
+
+export function setCompanyUsernameFeatureEnabled(enabled: boolean) {
+  try {
+    localStorage.setItem(COMPANY_USERNAME_FEATURE_KEY, JSON.stringify({ enabled: !!enabled, at: new Date().toISOString() }));
+    window.dispatchEvent(new CustomEvent('stooorna:company-username-feature', { detail: { enabled: !!enabled } }));
+  } catch { /* ignore */ }
+}
+
+
+export type DeletedUserRecord = {
+  id: string;
+  email?: string | null;
+  username?: string | null;
+  deletedAt: string;
+};
+
+export function loadDeletedUsers(): DeletedUserRecord[] {
+  try {
+    const raw = localStorage.getItem(DELETED_USERS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveDeletedUsers(list: DeletedUserRecord[]) {
+  try {
+    localStorage.setItem(DELETED_USERS_KEY, JSON.stringify(list));
+    window.dispatchEvent(new CustomEvent('stooorna:users-deleted', { detail: list }));
+  } catch { /* ignore */ }
+}
+
+/** إعادة تعيين كل الحسابات المحذوفة — تسمح بإعادة استخدام اليوزر/الإيميل */
+export function clearAllDeletedUsers() {
+  try {
+    localStorage.removeItem(DELETED_USERS_KEY);
+    window.dispatchEvent(new CustomEvent('stooorna:users-deleted', { detail: [] }));
+  } catch { /* ignore */ }
+}
+
+/** إعادة تعيين اليوزرات المحذوفة — تسمح بإعادة إنشاء نفس اليوزر (فرد/شركة) */
+export function ensureDeletedUsersResetOnce() {
+  try {
+    // v3: إلغاء حظر الحسابات المحذوفة نهائياً للسماح بإعادة التسجيل
+    if (localStorage.getItem('stooorna_deleted_users_reset_v3') === '1') {
+      // تأكد أن القائمة فارغة دائماً
+      try { localStorage.removeItem(DELETED_USERS_KEY); } catch { /* */ }
+      return;
+    }
+    const old = loadDeletedUsers();
+    for (const u of old) {
+      if (u.username) markUsernameFreed(String(u.username).replace(/^@/, '').replace(/^deleted_/, ''));
+      if (u.username && String(u.username).startsWith('deleted_')) {
+        markUsernameFreed(String(u.username).replace(/^deleted_/, ''));
+      }
+      if (u.email) {
+        markUsernameFreed(String(u.email).split('@')[0]);
+        markUsernameFreed(String(u.email));
+      }
+    }
+    clearAllDeletedUsers();
+    try { localStorage.removeItem(DELETED_USERS_KEY); } catch { /* */ }
+    localStorage.setItem('stooorna_deleted_users_reset_v3', '1');
+    localStorage.setItem('stooorna_deleted_users_reset_v2', '1');
+  } catch { /* ignore */ }
+}
+
+export function markUserDeleted(u: { id?: string | null; email?: string | null; username?: string | null }) {
+  const id = String(u.id || '').trim();
+  const email = String(u.email || '').trim().toLowerCase();
+  const username = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
+  if (!id && !email && !username) return loadDeletedUsers();
+  const list = loadDeletedUsers();
+  const exists = list.some(x =>
+    (id && x.id === id) ||
+    (email && String(x.email || '').toLowerCase() === email) ||
+    (username && String(x.username || '').replace(/^@/, '').toLowerCase() === username),
+  );
+  if (!exists) {
+    list.unshift({
+      id: id || `del-${Date.now()}`,
+      email: email || null,
+      username: username || null,
+      deletedAt: new Date().toISOString(),
+    });
+    saveDeletedUsers(list.slice(0, 2000));
+  }
+  return list;
+}
+
+export function isUserDeleted(u: { id?: string | null; email?: string | null; username?: string | null } | null | undefined): boolean {
+  if (!u) return false;
+  // تم إلغاء الحظر النهائي — يمكن إعادة استخدام اليوزر/الإيميل بعد الحذف
+  // نُبقي فقط تصفية العرض للحسابات التي يوزرها يبدأ بـ deleted_ (حساب شبح من السيرفر)
+  const username = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
+  if (username.startsWith('deleted_')) return true;
+  // القائمة المحلية فارغة بعد الريست — لا نحظر التسجيل
+  return false;
+}
+
+
+export function loadFreedUsernames(): string[] {
+  try {
+    const raw = localStorage.getItem(FREED_USERNAMES_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list.map((x: string) => String(x).replace(/^@/, '').toLowerCase()) : [];
+  } catch { return []; }
+}
+
+export function markUsernameFreed(username?: string | null) {
+  const u = String(username || '').replace(/^@/, '').trim().toLowerCase();
+  if (!u) return;
+  const list = loadFreedUsernames();
+  if (!list.includes(u)) {
+    list.push(u);
+    try { localStorage.setItem(FREED_USERNAMES_KEY, JSON.stringify(list)); } catch { /* */ }
+  }
+}
+
+export function isUsernameFreed(username?: string | null): boolean {
+  const u = String(username || '').replace(/^@/, '').trim().toLowerCase();
+  if (!u) return false;
+  if (loadFreedUsernames().includes(u)) return true;
+  return loadDeletedUsers().some(x => String(x.username || '').replace(/^@/, '').toLowerCase() === u);
+}
+
+/** طبّق قرارات التفعيل المحلية (Approve) فوق أي نسخة قديمة من السجل */
+function applyRememberedActivations(list: CompanyRegistration[]): CompanyRegistration[] {
+  let acts: Record<string, { status: CompanyRegStatus; at: string; email: string }> = {};
+  try {
+    const raw = localStorage.getItem(COMPANY_ACTIVATIONS_KEY);
+    const o = raw ? JSON.parse(raw) : {};
+    acts = o && typeof o === 'object' ? o : {};
+  } catch { acts = {}; }
+  return list.map(c => {
+    const em = String(c.email || '').trim().toLowerCase();
+    const remembered = em ? acts[em]?.status : null;
+    if (!remembered) return c;
+    // قرار الأونر المحلي (active/inactive) يثبت ولا يرجع pending من السيرفر
+    if (remembered === 'active' || remembered === 'inactive') {
+      return {
+        ...c,
+        status: remembered,
+        approvedAt: remembered === 'active' ? (c.approvedAt || acts[em]?.at || new Date().toISOString()) : c.approvedAt,
+        updatedAt: c.updatedAt || acts[em]?.at || new Date().toISOString(),
+      };
+    }
+    return c;
+  });
+}
+
+export function loadCompaniesRegistry(): CompanyRegistration[] {
+  try {
+    const raw = localStorage.getItem(COMPANIES_REGISTRY_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    const arr = Array.isArray(list) ? list as CompanyRegistration[] : [];
+    // لا تظهر الشركات/المستخدمون المحذوفون في السجل أو الدليل العام
+    const alive = arr.filter(c => {
+      if (isUserDeleted({ id: c.userId || c.id, email: c.email, username: c.username })) return false;
+      const un = String(c.username || '').replace(/^@/, '').toLowerCase();
+      if (un.startsWith('deleted_')) return false;
+      return true;
+    });
+    return applyRememberedActivations(alive);
+  } catch {
+    return [];
+  }
+}
+
+export function saveCompaniesRegistry(list: CompanyRegistration[]) {
+  try {
+    // ثبّت التفعيل قبل الحفظ حتى لا يُكتب pending فوق active
+    const fixed = applyRememberedActivations(list).filter(c => {
+      if (isUserDeleted({ id: c.userId || c.id, email: c.email, username: c.username })) return false;
+      const un = String(c.username || '').replace(/^@/, '').toLowerCase();
+      if (un.startsWith('deleted_')) return false;
+      return true;
+    });
+    localStorage.setItem(COMPANIES_REGISTRY_KEY, JSON.stringify(fixed));
+    // keep public directory in sync (active only) for add-friend Company tab
+    const active = fixed.filter(c => c.status === 'active').map(c => ({
+      id: c.userId || c.id,
+      companyName: c.companyName,
+      name: c.companyName,
+      tradeName: c.tradeName,
+      ownerName: c.ownerName,
+      email: c.email,
+      username: c.username || null,
+      accountType: 'company',
+      isCompany: true,
+      status: 'active',
+    }));
+    localStorage.setItem('stooorna_companies_directory', JSON.stringify(active));
+    window.dispatchEvent(new CustomEvent('stooorna:companies-registry', { detail: fixed }));
+  } catch { /* ignore */ }
+}
+
+export function upsertCompanyRegistration(entry: CompanyRegistration) {
+  // لا نستخدم loadCompaniesRegistry هنا حتى لا نخلط الذاكرة أثناء الدمج
+  let list: CompanyRegistration[] = [];
+  try {
+    const raw = localStorage.getItem(COMPANIES_REGISTRY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    list = Array.isArray(parsed) ? parsed : [];
+  } catch { list = []; }
+  const em = String(entry.email || '').toLowerCase();
+  const un = String(entry.username || '').replace(/^@/, '').toLowerCase();
+  const idx = list.findIndex(c => {
+    if (entry.id && c.id === entry.id) return true;
+    if (entry.userId && c.userId && String(c.userId) === String(entry.userId)) return true;
+    const cem = String(c.email || '').toLowerCase();
+    const cun = String(c.username || '').replace(/^@/, '').toLowerCase();
+    if (em && cem === em) return true;
+    if (un && cun && un === cun) return true;
+    return false;
+  });
+  if (idx >= 0) {
+    const prev = list[idx];
+    // لا تخفض حالة active/inactive إلى pending عند دمج بيانات السيرفر
+    let status = entry.status ?? prev.status;
+    const remembered = em ? getRememberedCompanyStatus(em) : null;
+    if (remembered === 'active' || remembered === 'inactive') status = remembered;
+    else if ((prev.status === 'active' || prev.status === 'inactive') && status === 'pending') status = prev.status;
+    list[idx] = {
+      ...prev,
+      ...entry,
+      status,
+      email: em || prev.email,
+      username: entry.username || prev.username,
+      password: entry.password || prev.password,
+      approvedAt: status === 'active' ? (entry.approvedAt || prev.approvedAt || new Date().toISOString()) : (entry.approvedAt ?? prev.approvedAt),
+      approvedBy: entry.approvedBy || prev.approvedBy,
+      userId: entry.userId || prev.userId,
+      id: prev.id || entry.id,
+    };
+  } else {
+    list.unshift(entry);
+  }
+  saveCompaniesRegistry(list);
+  return applyRememberedActivations(list);
+}
+
+export function setCompanyRegStatus(idOrEmail: string, status: CompanyRegStatus, meta?: { approvedBy?: string }) {
+  let list: CompanyRegistration[] = [];
+  try {
+    const raw = localStorage.getItem(COMPANIES_REGISTRY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    list = Array.isArray(parsed) ? parsed : [];
+  } catch { list = []; }
+  const key = String(idOrEmail || '').trim().toLowerCase();
+  let matchedEmail = '';
+  const next = list.map(c => {
+    const cem = String(c.email || '').toLowerCase();
+    const cid = String(c.id || '').toLowerCase();
+    const cuid = String(c.userId || '').toLowerCase();
+    const cun = String(c.username || '').replace(/^@/, '').toLowerCase();
+    const hit =
+      cid === key ||
+      cem === key ||
+      (cuid && cuid === key) ||
+      (cun && cun === key) ||
+      String(c.id) === idOrEmail ||
+      String(c.userId || '') === idOrEmail;
+    if (!hit) return c;
+    matchedEmail = cem || matchedEmail;
+    return {
+      ...c,
+      status,
+      updatedAt: new Date().toISOString(),
+      approvedAt: status === 'active' ? new Date().toISOString() : c.approvedAt,
+      approvedBy: status === 'active' ? (meta?.approvedBy || c.approvedBy) : c.approvedBy,
+    };
+  });
+  // إن لم يُعثر على صف، لا نُسقط القرار — نخزّن التفعيل بالإيميل إن وُجد لاحقاً
+  if (matchedEmail) {
+    rememberCompanyActivation(matchedEmail, status);
+  } else if (key.includes('@')) {
+    rememberCompanyActivation(key, status);
+  }
+  // ثبّت كل التفعيلات المعروفة على القائمة
+  const fixed = applyRememberedActivations(next);
+  saveCompaniesRegistry(fixed);
+  // notice for the company email when approved
+  if (status === 'active') {
+    try {
+      const target = fixed.find(c => {
+        const cem = String(c.email || '').toLowerCase();
+        return cem === matchedEmail || cem === key || String(c.id) === idOrEmail;
+      });
+      if (target?.email) {
+        const notices = JSON.parse(localStorage.getItem(COMPANY_NOTICES_KEY) || '{}') as Record<string, string[]>;
+        const arr = notices[target.email.toLowerCase()] || [];
+        arr.push('يمكنكم تسجيل الدخول الآن — تمت الموافقة على حساب شركتكم');
+        notices[target.email.toLowerCase()] = arr.slice(-10);
+        localStorage.setItem(COMPANY_NOTICES_KEY, JSON.stringify(notices));
+        window.dispatchEvent(new CustomEvent('stooorna:company-notice', {
+          detail: { email: target.email, message: arr[arr.length - 1] },
+        }));
+      }
+    } catch { /* ignore */ }
+  }
+  return fixed;
+}
+
+export function getCompanyNotice(email: string): string | null {
+  try {
+    const notices = JSON.parse(localStorage.getItem(COMPANY_NOTICES_KEY) || '{}') as Record<string, string[]>;
+    const arr = notices[email.toLowerCase()] || [];
+    return arr.length ? arr[arr.length - 1] : null;
+  } catch {
+    return null;
+  }
+}
+
+export function findCompanyByEmail(email: string): CompanyRegistration | null {
+  const em = email.trim().toLowerCase();
+  return loadCompaniesRegistry().find(c => c.email.toLowerCase() === em) || null;
+}
+
+export function loadCompanyActivations(): Record<string, { status: CompanyRegStatus; at: string; email: string }> {
+  try {
+    const raw = localStorage.getItem(COMPANY_ACTIVATIONS_KEY);
+    const o = raw ? JSON.parse(raw) : {};
+    return o && typeof o === 'object' ? o : {};
+  } catch {
+    return {};
+  }
+}
+
+export function rememberCompanyActivation(email: string, status: CompanyRegStatus) {
+  const em = email.trim().toLowerCase();
+  if (!em) return;
+  try {
+    const all = loadCompanyActivations();
+    all[em] = { status, at: new Date().toISOString(), email: em };
+    localStorage.setItem(COMPANY_ACTIVATIONS_KEY, JSON.stringify(all));
+    window.dispatchEvent(new CustomEvent('stooorna:company-activated', { detail: all[em] }));
+  } catch { /* */ }
+}
+
+export function getRememberedCompanyStatus(email: string): CompanyRegStatus | null {
+  const em = email.trim().toLowerCase();
+  const rec = loadCompanyActivations()[em];
+  return rec?.status || null;
+}
+
+/** مزامنة الحالة مع السيرفر بعد Approve حتى يستطيع الحساب الدخول */
+export async function pushCompanyStatusToServer(co: CompanyRegistration, status: CompanyRegStatus) {
+  const payload = {
+    id: co.id,
+    email: co.email,
+    username: co.username,
+    companyName: co.companyName,
+    tradeName: co.tradeName,
+    ownerName: co.ownerName,
+    licenseNumber: co.licenseNumber,
+    phone: co.phone,
+    password: co.password,
+    status,
+    accountType: 'company',
+    isCompany: true,
+    approved: status === 'active',
+    active: status === 'active',
+  };
+  const endpoints: Array<{ url: string; method: string }> = [
+    { url: `/api/company/${encodeURIComponent(co.id)}/status`, method: 'PATCH' },
+    { url: `/api/companies/${encodeURIComponent(co.id)}/status`, method: 'PATCH' },
+    { url: `/api/owner/companies/${encodeURIComponent(co.id)}/status`, method: 'PATCH' },
+    { url: `/api/owner/company-requests/${encodeURIComponent(co.id)}`, method: 'PATCH' },
+    { url: '/api/owner/companies/activate', method: 'POST' },
+    { url: '/api/company/activate', method: 'POST' },
+    { url: '/api/companies/activate', method: 'POST' },
+    { url: '/api/company/status', method: 'POST' },
+    { url: '/api/auth/company-activate', method: 'POST' },
+  ];
+  for (const ep of endpoints) {
+    try {
+      const r = await fetch(ep.url, {
+        method: ep.method,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (r.ok || r.status === 201 || r.status === 204) return true;
+    } catch { /* next */ }
+  }
+  return false;
+}
+
+
+/** يقبل الإيميل فقط — لا تحويل من يوزرنيم */
+export async function resolveLoginEmailFromUsername(raw: string): Promise<{ email: string | null; username: string | null }> {
+  const v = String(raw || '').trim().replace(/^@/, '');
+  if (!v) return { email: null, username: null };
+  if (v.includes('@')) return { email: v.toLowerCase(), username: null };
+  return { email: null, username: v };
+}
+
+/** دخول بالإيميل فقط — يرفض اليوزرنيم (أفراد وشركات) */
+// @ts-ignore TS6133: retained for future reuse.
+async function signInWithEmailOrUsername(identifier: string, password: string) {
+  const raw = String(identifier || '').trim().replace(/^@/, '');
+  if (!raw || !password) return { ok: false as const, email: '', error: 'missing-credentials' };
+  if (!raw.includes('@')) return { ok: false as const, email: '', error: 'email-required' };
+  const email = raw.toLowerCase();
+  try {
+    const r = await signIn.email({ email, password });
+    if (!(r as { error?: unknown })?.error) return { ok: true as const, email, error: null };
+    return { ok: false as const, email, error: 'login-failed' };
+  } catch {
+    return { ok: false as const, email, error: 'login-failed' };
+  }
+}
+
+export async function fetchCompanyStatusFromServer(email: string): Promise<CompanyRegStatus | null> {
+  const em = encodeURIComponent(email.trim().toLowerCase());
+  const urls = [
+    `/api/company/status?email=${em}`,
+    `/api/companies/status?email=${em}`,
+    `/api/owner/companies?email=${em}`,
+    `/api/company/by-email?email=${em}`,
+  ];
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) continue;
+      const d = await r.json();
+      const row = Array.isArray(d) ? d[0] : (d.company || d.registration || d);
+      const st = String(row?.status || row?.state || '').toLowerCase();
+      if (st === 'active' || row?.active === true || row?.approved === true) return 'active';
+      if (st === 'inactive' || row?.active === false) return 'inactive';
+      if (st === 'pending') return 'pending';
+    } catch { /* next */ }
+  }
+  return null;
+}
+
+/** Personal accounts that must stay in User Control — never Companies */
+const PERSONAL_USER_BLOCKLIST = new Set([
+  'nadoosha',
+  'nadoshatota',
+  'nadoshatota@gmail.com',
+  'libra',
+  'ليبرا',
+  'ليبر',
+  'account.kw@yahoo.com',
+]);
+
+export function isPersonalBlockedAccount(u: {
+  email?: string | null;
+  username?: string | null;
+  name?: string | null;
+} | null | undefined): boolean {
+  if (!u) return false;
+  const em = String(u.email || '').trim().toLowerCase();
+  const un = String(u.username || '').replace(/^@/, '').replace(/❤️/g, '').trim().toLowerCase();
+  const nm = String(u.name || '').replace(/❤️/g, '').trim().toLowerCase();
+  if (em && PERSONAL_USER_BLOCKLIST.has(em)) return true;
+  if (un && PERSONAL_USER_BLOCKLIST.has(un)) return true;
+  if (nm && PERSONAL_USER_BLOCKLIST.has(nm.replace(/\s+/g, ''))) return true;
+  if (/nadoosha/i.test(String(u.username || u.name || u.email || ''))) return true;
+  // Libra يبقى في تحكم المستخدمين وليس قسم الشركات فقط
+  if (/libra|ليبر/i.test(String(u.username || u.name || u.email || ''))) return true;
+  return false;
+}
+
+/** Canonical Arabic title for known company brands */
+export function preferredCompanyDisplayName(row: {
+  companyName?: string | null;
+  name?: string | null;
+  tradeName?: string | null;
+  email?: string | null;
+  username?: string | null;
+}): string {
+  const un = String(row.username || '').replace(/^@/, '').trim();
+  // كل شركة حساب مستقل — نعرض اسمها/يوزرها الحقيقي بدون دمج العلامات
+  for (const val of [row.companyName, row.name, un, row.tradeName, row.email]) {
+    if (val && String(val).trim()) return String(val).trim();
+  }
+  return 'Company';
+}
+
+/** Clean registry: drop personal accounts, normalize Libra Arabic name, dedupe */
+export function sanitizeCompaniesRegistry(): CompanyRegistration[] {
+  const list = loadCompaniesRegistry();
+  const out: CompanyRegistration[] = [];
+  const seen = new Set<string>();
+  for (const c of list) {
+    const un = String((c as CompanyRegistration).username || '').replace(/^@/, '').toLowerCase();
+    if (/nadoosha/i.test(`${c.email} ${un} ${c.companyName || ''}`)) continue;
+    const uniqueKey = (
+      String(c.id || '') + '|' +
+      String(c.email || '').toLowerCase() + '|' +
+      un
+    );
+    if (seen.has(uniqueKey)) continue;
+    seen.add(uniqueKey);
+    out.push({
+      ...c,
+      companyName: c.companyName || c.tradeName || un || c.email,
+    });
+  }
+  saveCompaniesRegistry(out);
+  return out;
+}
+
+/** هل هذا الصف حساب شركة؟ (يُستبعد من User Control ويُعرض في قسم الشركات فقط) */
+export function isCompanyAccountRow(u: {
+  email?: string | null;
+  username?: string | null;
+  name?: string | null;
+  accountType?: string | null;
+  type?: string | null;
+  role?: string | null;
+  userType?: string | null;
+  isCompany?: boolean | null;
+  companyName?: string | null;
+  tradeName?: string | null;
+  licenseNumber?: string | null;
+  id?: string | null;
+} | null | undefined): boolean {
+  if (!u) return false;
+  if (isPersonalBlockedAccount(u)) return false;
+  const t = String(u.accountType || u.type || u.role || u.userType || '').toLowerCase();
+  if (t === 'user' || t === 'personal' || t === 'individual') return false;
+  if (t === 'company' || t === 'business') return true;
+  if (u.isCompany === true) return true;
+  if (u.isCompany === false) return false;
+  // سجل الشركات فقط بمطابقة إيميل/يوزر — بدون اسم عام
+  if (u.email) {
+    const reg = findCompanyByEmail(u.email);
+    if (reg) return true;
+  }
+  try {
+    const un = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
+    const reg = loadCompaniesRegistry();
+    if (un && reg.some(c => String((c as any).username || '').replace(/^@/, '').toLowerCase() === un)) return true;
+  } catch { /* ignore */ }
+  // licenseNumber + companyName معاً أقوى من الاسم وحده
+  if (u.licenseNumber && (u.companyName || u.tradeName)) return true;
+  return false;
+}
+
+/** Ensure a user row is stored in the companies registry (Companies panel only) */
+export function ensureCompanyInRegistry(row: any): CompanyRegistration | null {
+  if (isPersonalBlockedAccount(row)) return null; // never put NaDooSha etc. in Companies
+  const em = String(row?.email || '').trim().toLowerCase();
+  if (!em && !row?.id) return null;
+  const existing = em ? findCompanyByEmail(em) : null;
+  const remembered = em ? getRememberedCompanyStatus(em) : null;
+  const serverActive = row?.status === 'active' || row?.isActive === true || row?.approved === true;
+  const serverInactive = row?.status === 'inactive' || row?.isBanned === true || row?.active === false;
+  // أولوية: قرار التفعيل المحلي (Approve) ثم السيرفر ثم السجل السابق — لا نرجع من active إلى pending
+  let status: CompanyRegStatus = 'pending';
+  if (remembered === 'active' || remembered === 'inactive') status = remembered;
+  else if (serverActive) status = 'active';
+  else if (serverInactive) status = 'inactive';
+  else if (existing?.status === 'active' || existing?.status === 'inactive') status = existing.status;
+  else status = 'pending';
+  const entry: CompanyRegistration = {
+    id: String(existing?.id || row.id || `co-${em || row.username || Date.now()}`),
+    companyName: preferredCompanyDisplayName({ companyName: row.companyName || existing?.companyName, name: row.name, tradeName: row.tradeName, email: em || row.email, username: row.username }),
+    tradeName: (() => {
+      const preferred = preferredCompanyDisplayName({ companyName: row.companyName, name: row.name, tradeName: row.tradeName, email: em, username: row.username });
+      if (/ليبر|libra/i.test(preferred)) return row.tradeName && /[؀-ۿ]/.test(row.tradeName) ? row.tradeName : (existing?.tradeName && /[؀-ۿ]/.test(existing.tradeName) ? existing.tradeName : 'لإدارة وتأجير العقارات المملوكة او المؤجرة');
+      return row.tradeName || existing?.tradeName || row.companyName || row.name || '';
+    })(),
+    ownerName: row.ownerName || existing?.ownerName || row.name || '',
+    licenseNumber: row.licenseNumber || existing?.licenseNumber || '',
+    phone: row.phone || existing?.phone || '',
+    phoneAlt: row.phoneAlt || existing?.phoneAlt,
+    email: em || existing?.email || '',
+    username: row.username || existing?.username,
+    password: existing?.password,
+    status,
+    createdAt: row.createdAt || existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    userId: row.id || existing?.userId || null,
+    approvedAt: status === 'active' ? (existing?.approvedAt || new Date().toISOString()) : existing?.approvedAt || null,
+    approvedBy: existing?.approvedBy || null,
+  };
+  upsertCompanyRegistration(entry);
+  return entry;
+}
+
+
 function shouldShowSupportHeaderIcon(
   user: { email?: string | null; username?: string | null; name?: string | null } | null | undefined,
   profileUsername?: string | null,
@@ -58,7 +945,7 @@ interface Recording {
 }
 
 // Theme colors matching the cyan main screen
-const T = {
+const SETTINGS_CLR = {
   bg: 'radial-gradient(ellipse 70% 60% at 50% 40%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)',
   primary: '#00BCD4',
   primaryDim: 'rgba(0,188,212,0.7)',
@@ -93,6 +980,8 @@ const T = {
   yellowBorder: 'rgba(234,179,8,0.5)',
   yellow: '#eab308'
 };
+/** Alias kept for all existing T.xxx references in this file */
+const T = SETTINGS_CLR;
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -350,47 +1239,12 @@ type SupportMsg = {
   mediaType?: 'image' | 'video' | 'file' | 'audio';
 };
 
-type AiPhase = 'pick_lang' | 'idle' | 'waiting' | 'ask_category' | 'ask_title' | 'playing' | 'human';
+type AiPhase = 'pick_lang' | 'ask_role' | 'ask_help' | 'idle' | 'waiting' | 'ask_category' | 'ask_title' | 'playing' | 'human';
 
 /** Max playback for song / music / Quran in the support AI player */
 const SUPPORT_AUDIO_MAX_SEC = 5 * 60; // 5 minutes
 
-const SUPPORT_COPY = {
-  ar: {
-    pickLang: 'اختر اللغة / Choose language',
-    greeting: 'أرسل مشكلتك أو ما هي مشكلتك بالتطبيق لنتمكن من مساعدتك؟',
-    waiting: 'أرجو الانتظار لحين الرد عليكم من قبل الدعم',
-    askListen: 'أريد أن أسألك سؤالاً: ماذا تريد أن تسمع؟ أغنية عربية، أغنية إنجليزية، أو قرآن؟',
-    askTitle: 'ماذا تحب أن تسمع بالضبط؟ اكتب الاسم أو السورة.',
-    unavailable: 'غير متوفر هذا الطلب. اطلب شيء آخر: أغنية عربية، أغنية إنجليزية، موسيقى، أو قرآن.',
-    blocked: 'عذراً، لا يمكن تنفيذ هذا الطلب.',
-    playing: 'جاري التشغيل (حد أقصى 5 دقائق)…',
-    notFound: 'لم أجد هذا المحتوى. جرّب اسماً آخر أو اختر قرآن / أغنية / موسيقى.',
-    supportJoined: 'الدعم متصل الآن — يمكنك التحدث معه مباشرة.',
-    placeholder: 'اكتب رسالتك…',
-    title: 'Stooorna (Support)',
-    attach: 'إرفاق صورة / فيديو / ملف',
-    nowPlaying: 'يعمل الآن',
-    typing: 'Type...',
-  },
-  en: {
-    pickLang: 'Choose language / اختر اللغة',
-    greeting: 'Send your problem or what is your issue in the app so we can help you?',
-    waiting: 'Please wait until support replies to you.',
-    askListen: 'I want to ask you something: what would you like to hear? An Arabic song, an English song, or Quran?',
-    askTitle: 'What exactly would you like to hear? Type the name or surah.',
-    unavailable: 'This request is not available. Please ask for something else: Arabic song, English song, music, or Quran.',
-    blocked: 'Sorry, this request cannot be fulfilled.',
-    playing: 'Playing (max 5 minutes)…',
-    notFound: 'Could not find that. Try another name, or choose Quran / song / music.',
-    supportJoined: 'Support is now connected — you can talk to them directly.',
-    placeholder: 'Type your message…',
-    title: 'Stooorna (Support)',
-    attach: 'Attach image / video / file',
-    nowPlaying: 'Now playing',
-    typing: 'Type...',
-  },
-} as const;
+// SUPPORT_COPY is imported from @/lib/support-copy — do not redeclare here.
 
 const BLOCKED_RE =
   /(sex|porn|xxx|nude|كسم|شرموط|زب|طيز|نيك|سكس|إباحي|اباحي|قتل|انتحار|bomb|terror|hack|دوكس)/i;
@@ -479,6 +1333,9 @@ function queueSupportTicket(ticket: {
   mediaUrl?: string;
   mediaType?: string;
   lang?: string;
+  accountRole?: string;
+  companyName?: string;
+  licenseNumber?: string;
 }) {
   try {
     const key = 'stooorna_support_tickets';
@@ -696,6 +1553,7 @@ function SupportChatOverlay({
   const [sending, setSending] = useState(false);
   const [userMsgCount, setUserMsgCount] = useState(0);
   const [aiPhase, setAiPhase] = useState<AiPhase>('pick_lang');
+  const [accountRole, setAccountRole] = useState<'user' | 'company' | null>(null);
   const [listenCategory, setListenCategory] = useState<'quran' | 'ar_song' | 'en_song' | 'music' | null>(null);
   const [nowPlaying, setNowPlaying] = useState<{ title: string; url: string } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -712,6 +1570,7 @@ function SupportChatOverlay({
   const typeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const maxPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const langRef = useRef<'ar' | 'en'>('ar');
+  const accountRoleRef = useRef<'user' | 'company' | null>(null);
 
   // Calm background music URLs (lofi / ambient)
   const CALM_MUSIC_URLS = [
@@ -896,6 +1755,8 @@ function SupportChatOverlay({
     setInput('');
     setUserMsgCount(stored?.messages?.filter(m => m.from === 'user').length || 0);
     setListenCategory(null);
+    setAccountRole(null);
+    accountRoleRef.current = null;
     lastSupportIdRef.current = null;
     setIsTyping(false);
     stopAudio();
@@ -945,9 +1806,88 @@ function SupportChatOverlay({
     setLang(chosen);
     langRef.current = chosen;
     try { localStorage.setItem('lang', chosen); } catch { /* */ }
-    setAiPhase('idle');
-    aiPhaseRef.current = 'idle';
-    await pushBotTyped(SUPPORT_COPY[chosen].greeting);
+    setAiPhase('ask_role');
+    aiPhaseRef.current = 'ask_role';
+    // أزرار فقط — بدون رسالة AI
+  }
+
+  /** Resolve display name for individual users */
+  function resolveUserDisplayName(): string {
+    const u = currentUser as { username?: string | null; name?: string | null } | null;
+    const un = (u?.username || '').replace(/^@/, '').trim();
+    if (un) return un;
+    const nm = (u?.name || '').trim();
+    if (nm) return nm;
+    return langRef.current === 'ar' ? 'عزيزي' : 'there';
+  }
+
+  /** Resolve company registration info from local registry + session */
+  function resolveCompanyInfo(): { companyName: string; license?: string; tradeName?: string } {
+    const email = (currentUser?.email || '').trim().toLowerCase();
+    let reg: CompanyRegistration | null = null;
+    try {
+      if (email) reg = findCompanyByEmail(email);
+      if (!reg && currentUser) {
+        const list = loadCompaniesRegistry();
+        const un = String((currentUser as any)?.username || '').replace(/^@/, '').trim().toLowerCase();
+        reg = list.find(c => {
+          const blob = `${c.companyName} ${c.tradeName} ${c.email} ${c.ownerName}`.toLowerCase();
+          return (un && blob.includes(un)) || (email && c.email.toLowerCase() === email);
+        }) || null;
+      }
+    } catch { /* ignore */ }
+    const companyName =
+      preferredCompanyDisplayName({
+        companyName: reg?.companyName,
+        name: currentUser?.name,
+        tradeName: reg?.tradeName,
+        email: currentUser?.email,
+        username: (currentUser as any)?.username,
+      }) ||
+      (currentUser?.name || '').trim() ||
+      (langRef.current === 'ar' ? 'الشركة' : 'your company');
+    return {
+      companyName,
+      license: reg?.licenseNumber || undefined,
+      tradeName: reg?.tradeName || undefined,
+    };
+  }
+
+  async function selectRole(role: 'user' | 'company') {
+    setAccountRole(role);
+    accountRoleRef.current = role;
+    const L = SUPPORT_COPY[langRef.current];
+    if (role === 'user') {
+      const name = resolveUserDisplayName();
+      await pushBotTyped(L.greetingUser(name));
+    } else {
+      const info = resolveCompanyInfo();
+      await pushBotTyped(L.greetingCompany(info.companyName, info.license));
+    }
+    await pushBotTyped(L.howHelp);
+    setAiPhase('ask_help');
+    aiPhaseRef.current = 'ask_help';
+  }
+
+  async function selectHelpTopic(topic: 'forgot_pw' | 'talk_support') {
+    if (aiPhaseRef.current === 'human' || aiPhaseRef.current === 'waiting') return;
+    const L = SUPPORT_COPY[langRef.current];
+    const label = topic === 'forgot_pw' ? L.btnForgotPw : L.btnTalkSupport;
+    const waitMsg = topic === 'forgot_pw' ? L.waitForgot : L.waitSupport;
+    setMessages(prev => [...prev, {
+      id: `u-help-${Date.now()}`,
+      from: 'user',
+      text: label,
+      at: Date.now(),
+    }]);
+    setUserMsgCount(c => c + 1);
+    await deliverToSupport({
+      text: `[${topic === 'forgot_pw' ? 'forgot_password' : 'talk_to_support'}] ${label}`,
+    });
+    setAiPhase('waiting');
+    aiPhaseRef.current = 'waiting';
+    await pushBotTyped(waitMsg);
+    startAutoMusic();
   }
 
   // Auto-scroll
@@ -963,7 +1903,7 @@ function SupportChatOverlay({
     if (waitTimerRef.current) clearInterval(waitTimerRef.current);
     waitTimerRef.current = setInterval(() => {
       const phase = aiPhaseRef.current;
-      if (phase === 'human' || phase === 'idle' || phase === 'pick_lang') return;
+      if (phase === 'human' || phase === 'idle' || phase === 'pick_lang' || phase === 'ask_role') return;
       void pushBotTyped(SUPPORT_COPY[langRef.current].waiting);
     }, 120_000);
     return () => {
@@ -1041,25 +1981,39 @@ function SupportChatOverlay({
     const fromEmail = currentUser?.email ?? null;
     const fromUserId = currentUser?.id;
 
+    const role = accountRoleRef.current;
+    const companyInfo = role === 'company' ? resolveCompanyInfo() : null;
+    const roleLabel = role === 'company' ? 'company' : role === 'user' ? 'user' : 'unknown';
+    const notifyPrefix =
+      role === 'company' && companyInfo
+        ? `[شركة] ${companyInfo.companyName}${companyInfo.license ? ` | ترخيص: ${companyInfo.license}` : ''}`
+        : role === 'user'
+          ? `[مستخدم] @${fromUsername || fromName || 'user'}`
+          : '';
+    const notifyText = notifyPrefix ? `${notifyPrefix}\n${text}` : text;
+
     // Always queue locally so owner inbox can pick it up
     queueSupportTicket({
       fromUserId,
       fromUsername,
       fromName,
       fromEmail,
-      text,
+      text: notifyText || text,
       mediaUrl: payload.mediaUrl,
       mediaType: payload.mediaType,
       lang: langRef.current,
+      accountRole: roleLabel,
+      companyName: companyInfo?.companyName,
+      licenseNumber: companyInfo?.license,
     });
 
-    // Real delivery into the app messaging system → @stooorna
+    // Real delivery into the app messaging system → @stooorna (إشعار للدعم)
     try {
       const supportId = await resolveSupportUserId();
       if (supportId) {
         await sendRealChatMessage({
           toUserId: supportId,
-          text: text || (payload.mediaType ? `[${payload.mediaType}]` : ''),
+          text: notifyText || (payload.mediaType ? `[${payload.mediaType}]` : ''),
           mediaUrl: payload.mediaUrl,
           mediaType: payload.mediaType,
           meta: {
@@ -1068,6 +2022,9 @@ function SupportChatOverlay({
             fromUsername,
             fromName,
             lang: langRef.current,
+            accountRole: roleLabel,
+            companyName: companyInfo?.companyName,
+            licenseNumber: companyInfo?.license,
           },
         });
       }
@@ -1077,7 +2034,7 @@ function SupportChatOverlay({
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text,
+          text: notifyText || text,
           mediaUrl: payload.mediaUrl,
           mediaType: payload.mediaType,
           toUsername: 'stooorna',
@@ -1087,13 +2044,16 @@ function SupportChatOverlay({
           fromName,
           fromEmail,
           lang: langRef.current,
+          accountRole: roleLabel,
+          companyName: companyInfo?.companyName,
+          licenseNumber: companyInfo?.license,
         }),
       }).catch(() => {});
     } catch { /* non-blocking */ }
   }
 
   async function handleAiTurn(userText: string) {
-    if (aiPhaseRef.current === 'human' || aiPhaseRef.current === 'pick_lang') return;
+    if (aiPhaseRef.current === 'human' || aiPhaseRef.current === 'pick_lang' || aiPhaseRef.current === 'ask_role') return;
     const L = SUPPORT_COPY[langRef.current];
     if (BLOCKED_RE.test(userText)) {
       await pushBotTyped(L.blocked);
@@ -1145,7 +2105,7 @@ function SupportChatOverlay({
   }
 
   async function handleSend(textOverride?: string, media?: { url: string; type: 'image' | 'video' | 'file' }) {
-    if (!lang || aiPhaseRef.current === 'pick_lang') return;
+    if (!lang || aiPhaseRef.current === 'pick_lang' || aiPhaseRef.current === 'ask_role') return;
     const text = (textOverride ?? input).trim();
     if (!text && !media) return;
     if (sending || isTyping) return;
@@ -1238,7 +2198,7 @@ function SupportChatOverlay({
           flexDirection: 'column',
         }}
       >
-        {/* Header — slim: avatar + Stooorna (Support) only */}
+        {/* Header — slim: avatar + Stooorna stacked title */}
         <div
           style={{
             display: 'flex',
@@ -1306,22 +2266,27 @@ function SupportChatOverlay({
               }}
             />
           </div>
-          <p
-            style={{
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <p style={{
               margin: 0,
-              flex: 1,
-              minWidth: 0,
               color: '#00BCD4',
-              fontWeight: 800,
-              fontSize: '0.9rem',
-              letterSpacing: '0.01em',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Stooorna (Support)
-          </p>
+              fontWeight: 900,
+              fontSize: '0.95rem',
+              letterSpacing: '0.02em',
+              lineHeight: 1.15,
+            }}>
+              Stooorna
+            </p>
+            <p style={{
+              margin: '1px 0 0',
+              color: 'rgba(150,190,190,0.85)',
+              fontWeight: 700,
+              fontSize: '0.68rem',
+              lineHeight: 1.2,
+            }}>
+              {settings.supportHeader}
+            </p>
+          </div>
           {/* Auto calm music toggle button */}
           {autoMusicRef.current && (
             <motion.button
@@ -1374,44 +2339,129 @@ function SupportChatOverlay({
             background: 'radial-gradient(ellipse 70% 50% at 50% 0%, #0d2a2e 0%, #060e0e 70%)',
           }}
         >
-          {/* Language choice — before any AI message */}
+          {/* Language choice — before any AI message (مربعات أصغر) */}
           {!lang && (
             <div style={{
-              marginTop: 24,
+              marginTop: 20,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 14,
+              gap: 10,
             }}>
-              <p style={{ margin: 0, color: 'rgba(200,230,230,0.85)', fontSize: '0.88rem', fontWeight: 600 }}>
-                Choose language · اختر اللغة
+              <p style={{ margin: 0, color: 'rgba(200,230,230,0.85)', fontSize: '0.8rem', fontWeight: 600 }}>
+                {settings.chooseLang}
               </p>
-              <div style={{ display: 'flex', gap: 12, width: '100%', maxWidth: 320 }}>
+              <div style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 240 }}>
                 <motion.button
                   whileTap={{ scale: 0.96 }}
                   type="button"
                   onClick={() => selectLang('en')}
                   style={{
-                    flex: 1, padding: '14px 0', borderRadius: 14, cursor: 'pointer',
-                    background: 'rgba(0,188,212,0.12)', border: '1.5px solid rgba(0,188,212,0.45)',
-                    color: '#00BCD4', fontWeight: 800, fontSize: '0.95rem',
+                    flex: 1, padding: '8px 0', borderRadius: 10, cursor: 'pointer',
+                    background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
+                    color: '#00BCD4', fontWeight: 700, fontSize: '0.78rem',
                   }}
                 >
-                  English
+                  {settings.langEn}
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.96 }}
                   type="button"
                   onClick={() => selectLang('ar')}
                   style={{
-                    flex: 1, padding: '14px 0', borderRadius: 14, cursor: 'pointer',
-                    background: 'rgba(0,188,212,0.12)', border: '1.5px solid rgba(0,188,212,0.45)',
-                    color: '#00BCD4', fontWeight: 800, fontSize: '0.95rem',
+                    flex: 1, padding: '8px 0', borderRadius: 10, cursor: 'pointer',
+                    background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
+                    color: '#00BCD4', fontWeight: 700, fontSize: '0.78rem',
                   }}
                 >
-                  العربية
+                  {settings.langAr}
                 </motion.button>
               </div>
+            </div>
+          )}
+
+          {/* اختيار مستخدم أو شركة بعد اللغة — أزرار فقط */}
+          {lang && aiPhase === 'ask_role' && !accountRole && (
+            <div style={{
+              marginTop: 8,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 10,
+            }}>
+              <p style={{ margin: 0, color: 'rgba(200,230,230,0.85)', fontSize: '0.8rem', fontWeight: 600 }}>
+                {SUPPORT_COPY[lang].askRole}
+              </p>
+              <div style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 280 }}>
+                <motion.button
+                  whileTap={{ scale: 0.96 }}
+                  type="button"
+                  onClick={() => void selectRole('user')}
+                  style={{
+                    flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
+                    background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
+                    color: '#00BCD4', fontWeight: 800, fontSize: '0.8rem',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  <Users size={14} strokeWidth={2.2} />
+                  {SUPPORT_COPY[lang].roleUser}
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.96 }}
+                  type="button"
+                  onClick={() => void selectRole('company')}
+                  style={{
+                    flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
+                    background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
+                    color: '#00BCD4', fontWeight: 800, fontSize: '0.8rem',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  <Building2 size={14} strokeWidth={2.2} />
+                  {SUPPORT_COPY[lang].roleCompany}
+                </motion.button>
+              </div>
+            </div>
+          )}
+
+          {/* أزرار المساعدة: نسيت كلمة المرور / التحدث لخدمة العملاء */}
+          {lang && aiPhase === 'ask_help' && accountRole && (
+            <div style={{
+              marginTop: 4,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              width: '100%',
+              maxWidth: 320,
+              alignSelf: 'center',
+            }}>
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                type="button"
+                onClick={() => void selectHelpTopic('forgot_pw')}
+                style={{
+                  width: '100%', padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
+                  background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
+                  color: '#00BCD4', fontWeight: 800, fontSize: '0.84rem',
+                  textAlign: 'center',
+                }}
+              >
+                {SUPPORT_COPY[lang].btnForgotPw}
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                type="button"
+                onClick={() => void selectHelpTopic('talk_support')}
+                style={{
+                  width: '100%', padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
+                  background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
+                  color: '#00BCD4', fontWeight: 800, fontSize: '0.84rem',
+                  textAlign: 'center',
+                }}
+              >
+                {SUPPORT_COPY[lang].btnTalkSupport}
+              </motion.button>
             </div>
           )}
 
@@ -1886,7 +2936,13 @@ function OwnerSupportThread({
         <button
           type="button"
           onClick={() => {
-            if (peer.username) window.location.href = `/u/${peer.username}`;
+            // البروفايل الجديد (بث / منشورات) وليس صفحة /u/ القديمة
+            const q = new URLSearchParams();
+            q.set('openProfile', peer.id);
+            if (peer.name) q.set('openProfileName', peer.name);
+            if (peer.username) q.set('openProfileUsername', peer.username);
+            if (peer.avatarUrl) q.set('openProfileAvatar', peer.avatarUrl);
+            window.location.href = `/add-friend?${q.toString()}`;
           }}
           style={{
             display: 'flex',
@@ -1960,11 +3016,11 @@ function OwnerSupportThread({
             boxShadow: taskDone ? 'none' : '0 0 14px rgba(239,68,68,0.35)',
           }}
         >
-          {taskDone ? '✓ تم تنفيذ الطلب — الحذف خلال 10 دقائق' : 'تم تنفيذ الطلب'}
+          {taskDone ? settings.taskDone : settings.taskDoneSimple}
         </motion.button>
         {ttlLeft != null && ttlLeft > 0 && (
           <p style={{ margin: 0, textAlign: 'center', color: 'rgba(252,165,165,0.85)', fontSize: '0.68rem' }}>
-            تُحذف المحادثة خلال {Math.floor(ttlLeft / 60000)}:{String(Math.floor((ttlLeft % 60000) / 1000)).padStart(2, '0')}
+            {settings.deleteCountdown} {Math.floor(ttlLeft / 60000)}:{String(Math.floor((ttlLeft % 60000) / 1000)).padStart(2, '0')}
           </p>
         )}
       </div>
@@ -1997,7 +3053,7 @@ function OwnerSupportThread({
         })}
         {messages.length === 0 && (
           <p style={{ color: 'rgba(150,190,190,0.5)', fontSize: '0.8rem', textAlign: 'center', marginTop: 40 }}>
-            لا رسائل بعد — ابدأ المحادثة مع المستخدم
+            {settings.noMessages}
           </p>
         )}
       </div>
@@ -2018,7 +3074,7 @@ function OwnerSupportThread({
         <textarea
           value={input}
           onChange={e => setInput(e.target.value.slice(0, 2000))}
-          placeholder="اكتب رد الدعم…"
+          placeholder={settings.supportReplyPlaceholder}
           rows={1}
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
@@ -2045,35 +3101,518 @@ function OwnerSupportThread({
 
 // ─── Auth screen (shown when not logged in) ───────────────────────────────────
 function AuthScreen({ T }: { T: Record<string, string> }) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  type AuthMode = 'login' | 'register';
+  type AccountKind = 'personal' | 'company';
+  // AuthLang imported from @/lib/auth-copy
+  const [mode, setMode] = useState<AuthMode>('login');
+    // تحرير اليوزرات المحذوفة سابقاً (مرة واحدة) لإعادة التسجيل
+  useEffect(() => {
+    try {
+      ensureDeletedUsersResetOnce();
+      clearAllDeletedUsers();
+      localStorage.removeItem('stooorna_deleted_users');
+    } catch { /* */ }
+  }, []);
+
+  const [accountKind, setAccountKind] = useState<AccountKind>('personal');
+  /** لغة شاشة الدخول/التسجيل فقط (عربي افتراضي — إنجليزي اختياري) */
+  const [authLang, setAuthLang] = useState<AuthLang>(() => {
+    try {
+      const s = localStorage.getItem('stooorna_auth_lang');
+      return s === 'en' ? 'en' : 'ar';
+    } catch { return 'ar'; }
+  });
+  function setAuthLanguage(next: AuthLang) {
+    setAuthLang(next);
+    try { localStorage.setItem('stooorna_auth_lang', next); } catch { /* */ }
+  }
+  const L = getAuthCopy(authLang);
+  const isEn = authLang === 'en';
+  const dir = isEn ? 'ltr' : 'rtl';
+
+  // Personal fields
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+
+  // Company registration fields
+  const [companyName, setCompanyName] = useState('');
+  const [tradeName, setTradeName] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [licenseNumber, setLicenseNumber] = useState('');
+  const [tradeLicenseNumber, setTradeLicenseNumber] = useState('');
+  const [commercialRegFile, setCommercialRegFile] = useState<{ dataUrl: string; name: string } | null>(null);
+  const [tradeLicenseFile, setTradeLicenseFile] = useState<{ dataUrl: string; name: string } | null>(null);
+  const [companySector, setCompanySector] = useState('');
+  const [companySectorCustom, setCompanySectorCustom] = useState('');
+  const [sectorOpen, setSectorOpen] = useState(false);
+  const [companyPhone, setCompanyPhone] = useState('');
+  const [companyPhone2, setCompanyPhone2] = useState('');
+  const [confirmEmail, setConfirmEmail] = useState('');
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [companyPendingMsg, setCompanyPendingMsg] = useState('');
+
+  function resetFormErrors() {
+    setError('');
+    setCompanyPendingMsg('');
+  }
+
+  function switchMode(next: AuthMode) {
+    setMode(next);
+    resetFormErrors();
+    setConfirmPassword('');
+    setConfirmEmail('');
+    setUsernameStatus('idle');
+    if (next === 'login') setAccountKind('personal');
+  }
+
+  function switchKind(next: AccountKind) {
+    setAccountKind(next);
+    resetFormErrors();
+    setConfirmPassword('');
+    setConfirmEmail('');
+    setUsernameStatus('idle');
+  }
+
+  /** تحقق مباشر من توفر اليوزر */
+  async function checkUsernameAvailable(raw: string): Promise<'available' | 'taken' | 'invalid'> {
+    const u = raw.trim().replace(/^@/, '');
+    if (!u || !/^[a-zA-Z0-9_]{2,30}$/.test(u)) return 'invalid';
+    if (isUsernameFreed(u) || isUserDeleted({ username: u })) return 'available';
+    // تحقق محلي من سجل الشركات — تجاهل المحذوف/المحرر
+    try {
+      const reg = loadCompaniesRegistry();
+      if (reg.some(c => (c.username || '').toLowerCase() === u.toLowerCase() && !isUserDeleted(c) && !isUsernameFreed(c.username))) return 'taken';
+    } catch { /* */ }
+    try {
+      const chk = await fetch(`/api/users/check-username?username=${encodeURIComponent(u)}`, { credentials: 'include' });
+      if (chk.ok) {
+        const d = await chk.json();
+        if (d && d.available === false) return 'taken';
+        if (d && d.available === true) return 'available';
+      }
+    } catch { /* */ }
+    // fallback: by-username
+    try {
+      const r = await fetch(`/api/users/by-username/${encodeURIComponent(u)}`, { credentials: 'include' });
+      if (r.ok) {
+        const d = await r.json();
+        if (d && (d.id || d.user?.id || d.username)) {
+          if (isUsernameFreed(u) || isUserDeleted({ username: u, id: d.id || d.user?.id, email: d.email || d.user?.email })) return 'available';
+          return 'taken';
+        }
+      }
+      if (r.status === 404) return 'available';
+    } catch { /* */ }
+    return 'available';
+  }
+
+  // debounce تحقق اليوزر أثناء الكتابة
+  useEffect(() => {
+    if (mode !== 'register') {
+      setUsernameStatus('idle');
+      return;
+    }
+    const u = username.trim().replace(/^@/, '');
+    if (!u) {
+      setUsernameStatus('idle');
+      return;
+    }
+    if (!/^[a-zA-Z0-9_]{2,30}$/.test(u)) {
+      setUsernameStatus('invalid');
+      return;
+    }
+    setUsernameStatus('checking');
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      const st = await checkUsernameAvailable(u);
+      if (!cancelled) setUsernameStatus(st);
+    }, 450);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [username, mode]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    if (mode === 'register' && password !== confirmPassword) {
-      setError('كلمتا المرور غير متطابقتين');
+
+    const rawId = email.trim().replace(/^@/, '');
+    if (!rawId || !password) {
+      setError(L.enterEmailPw);
       return;
     }
-    setLoading(true);
-    try {
-      if (mode === 'login') {
-        const res = await signIn.email({ email, password });
-        if ((res as { error?: { message?: string } })?.error) {
-          setError((res as { error?: { message?: string } }).error?.message || 'فشل تسجيل الدخول');
+    // الدخول والتسجيل بالإيميل فقط
+    if (!rawId.includes('@')) {
+      setError(authLang === 'en' ? 'Enter a valid email address' : 'أدخل بريداً إلكترونياً صالحاً');
+      return;
+    }
+    const em = rawId.toLowerCase();
+    if (!em || !password) {
+      setError(L.enterEmailPw);
+      return;
+    }
+
+    if (mode === 'register') {
+      if (password !== confirmPassword) {
+        setError(L.pwMismatch);
+        return;
+      }
+      if (password.length < 8) {
+        setError(L.pwShort);
+        return;
+      }
+      // اليوزرنيم مطلوب للأفراد والشركات عند التسجيل
+      {
+        const uname = username.trim().replace(/^@/, '');
+        if (!uname) {
+          setError(L.needUsername);
+          return;
+        }
+        if (!/^[a-zA-Z0-9_]{2,30}$/.test(uname)) {
+          setError(L.userFmt);
+          return;
+        }
+        const unStatus = await checkUsernameAvailable(uname);
+        if (unStatus === 'taken') {
+          setError(L.userTaken);
+          setUsernameStatus('taken');
+          return;
+        }
+        if (unStatus === 'invalid') {
+          setError(L.userFmt);
+          setUsernameStatus('invalid');
+          return;
+        }
+      }
+
+      if (accountKind === 'company') {
+        if (!companyName.trim()) {
+          setError(L.needCompanyName);
+          return;
+        }
+        if (!tradeName.trim()) {
+          setError(L.needTradeName);
+          return;
+        }
+        if (!ownerName.trim()) {
+          setError(L.needOwnerName);
+          return;
+        }
+        if (!licenseNumber.trim()) {
+          setError(L.needLicense);
+          return;
+        }
+        if (!tradeLicenseNumber.trim()) {
+          setError('رقم الترخيص التجاري مطلوب');
+          return;
+        }
+        if (!commercialRegFile) {
+          setError('⚠️ يجب رفع شهادة السجل التجاري لإتمام التسجيل');
+          return;
+        }
+        if (!tradeLicenseFile) {
+          setError('⚠️ يجب رفع شهادة الترخيص التجاري لإتمام التسجيل');
+          return;
+        }
+        if (!companySector.trim() && !companySectorCustom.trim()) {
+          setError(L.needSector);
+          return;
+        }
+        const phoneNorm = companyPhone.replace(/[\s\-()]/g, '').trim();
+        if (!phoneNorm) {
+          setError(L.needPhone);
+          return;
+        }
+        if (!/^\+?[0-9]{8,15}$/.test(phoneNorm)) {
+          setError('رقم الهاتف غير صالح — أدخل رقماً صحيحاً (8–15 رقماً)');
+          return;
+        }
+        if (companyPhone2.trim()) {
+          const altNorm = companyPhone2.replace(/[\s\-()]/g, '').trim();
+          if (altNorm && !/^\+?[0-9]{8,15}$/.test(altNorm)) {
+            setError('رقم الهاتف البديل غير صالح');
+            return;
+          }
+        }
+        if (em !== confirmEmail.trim().toLowerCase()) {
+          setError('البريد الإلكتروني وتأكيده غير متطابقين');
+          return;
         }
       } else {
-        const res = await signUp.email({ name, email, password });
-        if ((res as { error?: { message?: string } })?.error) {
-          setError((res as { error?: { message?: string } }).error?.message || 'فشل إنشاء الحساب');
+        if (!name.trim()) {
+          setError(L.needName);
+          return;
         }
+      }
+    }
+
+    setLoading(true);
+    try {
+      // تم إلغاء حظر اليوزرات المحذوفة — يمكن إعادة إنشاء الحساب بنفس اليوزر/الإيميل
+      try { ensureDeletedUsersResetOnce(); } catch { /* */ }
+      if (mode === 'login') {
+        const reg = findCompanyByEmail(em);
+        // دخول موحّد: إيميل شركة → مسار الشركات، وإلا أفراد
+        const treatAsCompany = !!reg || accountKind === 'company';
+
+        // ── دخول حسابات الشركات ──
+        if (treatAsCompany) {
+          let companyReg = reg;
+          const remembered = getRememberedCompanyStatus(em);
+          const remote = await fetchCompanyStatusFromServer(em);
+          const resolved: CompanyRegStatus | null =
+            remote || remembered || companyReg?.status || null;
+          if (companyReg && resolved && companyReg.status !== resolved) {
+            setCompanyRegStatus(companyReg.id, resolved);
+            companyReg = { ...companyReg, status: resolved };
+          }
+          if (!companyReg && resolved === 'active') {
+            companyReg = {
+              id: `co-${em}`,
+              companyName: em,
+              tradeName: '',
+              ownerName: '',
+              licenseNumber: '',
+              phone: '',
+              email: em,
+              status: 'active',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            upsertCompanyRegistration(companyReg);
+          }
+          if (!companyReg) {
+            // ربما تمت الموافقة وأنشئ الحساب على السيرفر — جرّب الدخول
+            const tryRemote = await signIn.email({ email: em, password });
+            if (!(tryRemote as { error?: unknown })?.error) {
+              rememberCompanyActivation(em, 'active');
+              setLoading(false);
+              return;
+            }
+            setError(
+              'هذا الحساب ليس حساب شركة. سجّل الدخول من قسم الأفراد.',
+            );
+            setLoading(false);
+            return;
+          }
+          if (companyReg.status === 'pending') {
+            // إذا وافق الأونر من جهاز آخر: جرّب الدخول قبل الرفض
+            const tryPending = await signIn.email({ email: em, password });
+            if (!(tryPending as { error?: unknown })?.error) {
+              setCompanyRegStatus(companyReg.id, 'active');
+              rememberCompanyActivation(em, 'active');
+              setLoading(false);
+              return;
+            }
+            setError('طلبكم قيد المراجعة — سوف يتم الاتصال بكم قريباً');
+            setCompanyPendingMsg('سوف يتم الاتصال بكم قريباً');
+            setLoading(false);
+            return;
+          }
+          if (companyReg.status === 'inactive') {
+            setError('حساب الشركة غير مفعّل — تواصل مع الإدارة');
+            setLoading(false);
+            return;
+          }
+          // active: إن لم يُنشأ حساب بعد، أنشئه ثم سجّل الدخول
+          if (companyReg.status === 'active') {
+            const reg = companyReg;
+            const notice = getCompanyNotice(em);
+            if (notice) setCompanyPendingMsg(notice);
+            try {
+              const trySignIn = await signIn.email({ email: em, password });
+              if (!(trySignIn as { error?: unknown })?.error) {
+                setLoading(false);
+                return;
+              }
+              const displayName = reg.companyName || reg.ownerName || em;
+              const up = await signUp.email({ name: displayName, email: em, password: password || reg.password || '' });
+              if ((up as { error?: { message?: string } })?.error) {
+                const res2 = await signIn.email({ email: em, password });
+                if ((res2 as { error?: { message?: string } })?.error) {
+                  setError((res2 as { error?: { message?: string } }).error?.message || 'فشل تسجيل الدخول — تأكد من كلمة المرور');
+                  setLoading(false);
+                  return;
+                }
+              } else {
+                await signIn.email({ email: em, password: password || reg.password || '' });
+                try { setSessionAccountKind('company'); } catch { /* */ }
+              }
+              setLoading(false);
+              return;
+            } catch (err) {
+              setError(String(err));
+              setLoading(false);
+              return;
+            }
+          }
+        }
+
+        // ── دخول أفراد عادي ──
+        const res = await signIn.email({ email: em, password });
+        if ((res as { error?: { message?: string } })?.error) {
+          setError((res as { error?: { message?: string } }).error?.message || 'فشل تسجيل الدخول');
+        } else if (accountKind === 'personal') {
+          try { setSessionAccountKind('personal'); } catch { /* */ }
+          // تحقق إضافي من السيرفر: إن كان الحساب شركة أخرج وأظهر تنبيهاً
+          try {
+            const me = await fetch('/api/users/me', { credentials: 'include' });
+            if (me.ok) {
+              const d = await me.json();
+              const u = d.user || d;
+              const isCo =
+                String(u.accountType || u.type || u.role || '').toLowerCase() === 'company' ||
+                u.isCompany === true ||
+                !!findCompanyByEmail(em);
+              if (isCo || findCompanyByEmail(em)) {
+                try { await signOut(); } catch { /* ignore */ }
+                setError(
+                  'هذا الحساب خاص بالشركات وليس للأفراد. يرجى المحاولة وتسجيل الدخول من قسم الشركات.',
+                );
+                setCompanyPendingMsg(
+                  'حساب شركات — استخدم تبويب «شركات» لتسجيل الدخول',
+                );
+              }
+            }
+          } catch { /* ignore */ }
+        }
+      } else if (accountKind === 'personal') {
+        if (findCompanyByEmail(em)) {
+          setError(
+            'هذا البريد مسجّل كحساب شركة. يرجى استخدام قسم الشركات.',
+          );
+          setCompanyPendingMsg(
+            'حساب شركات — استخدم تبويب «شركات»',
+          );
+          setLoading(false);
+          return;
+        }
+        const uname = username.trim().replace(/^@/, '');
+        const res = await signUp.email({
+          name: name.trim(),
+          email: em,
+          password,
+          // بعض إصدارات better-auth تدعم حقولاً إضافية
+          ...( { username: uname } as any ),
+        } as any);
+        if (!(res as { error?: { message?: string } })?.error) {
+          try { setSessionAccountKind('personal'); } catch { /* */ }
+        }
+        if ((res as { error?: { message?: string } })?.error) {
+          const msg = (res as { error?: { message?: string } }).error?.message || 'فشل إنشاء الحساب';
+          if (/username|user name|already|taken|exists|موجود|مستخدم/i.test(msg)) {
+            setError(L.userTaken);
+            setUsernameStatus('taken');
+          } else {
+            setError(msg);
+          }
+        } else {
+          // تأكيد حفظ اليوزر على الملف الشخصي
+          try {
+            await fetch('/api/users/me', {
+              method: 'PATCH',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username: uname }),
+            });
+          } catch { /* ignore */ }
+        }
+      } else {
+        // Company signup: طلب تسجيل فقط — لا دخول مباشر حتى يوافق @Stooorna
+        const existing = findCompanyByEmail(em);
+        if (existing && existing.status === 'pending') {
+          setError('طلبكم قيد المراجعة — سوف يتم الاتصال بكم قريباً');
+          setCompanyPendingMsg('سوف يتم الاتصال بكم قريباً');
+          return;
+        }
+        if (existing && existing.status === 'inactive') {
+          setError('حساب الشركة معطّل — تواصل مع الدعم');
+          return;
+        }
+        if (existing && existing.status === 'active') {
+          setError('الشركة مفعّلة مسبقاً — سجّل الدخول من تبويب الدخول');
+          return;
+        }
+
+        const companyPayload: CompanyRegistration = {
+          id: `co-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          companyName: companyName.trim(),
+          tradeName: tradeName.trim(),
+          ownerName: ownerName.trim(),
+          licenseNumber: licenseNumber.trim(),
+          tradeLicenseNumber: tradeLicenseNumber.trim(),
+          commercialRegCert: commercialRegFile?.dataUrl,
+          commercialRegCertName: commercialRegFile?.name,
+          tradeLicenseCert: tradeLicenseFile?.dataUrl,
+          tradeLicenseCertName: tradeLicenseFile?.name,
+          sector: companySector.trim() || 'other',
+          sectorCustom: companySectorCustom.trim() || undefined,
+          phone: companyPhone.replace(/[\s\-()]/g, '').trim(),
+          phoneAlt: companyPhone2.trim() ? companyPhone2.replace(/[\s\-()]/g, '').trim() : undefined,
+          email: em,
+          username: username.trim().replace(/^@/, ''),
+          password, // مؤقت حتى الموافقة وإنشاء الحساب
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          userId: null,
+          approvedAt: null,
+          approvedBy: null,
+        };
+
+        try {
+          const freed = loadFreedUsernames().filter(x => x !== String(companyPayload.username || '').toLowerCase());
+          localStorage.setItem(FREED_USERNAMES_KEY, JSON.stringify(freed));
+        } catch { /* */ }
+        upsertCompanyRegistration(companyPayload);
+        try { setSessionAccountKind('company'); } catch { /* */ }
+        try {
+          localStorage.setItem('stooorna_company_profile', JSON.stringify({ ...companyPayload, at: Date.now() }));
+          localStorage.setItem('stooorna_company_last_request', JSON.stringify(companyPayload));
+        } catch { /* ignore */ }
+        try {
+          window.dispatchEvent(new CustomEvent('stooorna:company-register-request', { detail: companyPayload }));
+          window.dispatchEvent(new CustomEvent('stooorna:companies-registry', { detail: loadCompaniesRegistry() }));
+        } catch { /* ignore */ }
+
+        // إشعار السيرفر + صندوق طلبات الأونر إن وُجد — بدون تسجيل دخول المستخدم
+        const endpoints = [
+          '/api/company/register',
+          '/api/companies/register',
+          '/api/auth/company-signup',
+          '/api/owner/company-requests',
+          '/api/owner/companies',
+          '/api/support/company-requests',
+          '/api/companies/pending',
+        ];
+        for (const url of endpoints) {
+          try {
+            const r = await fetch(url, {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...companyPayload, accountType: 'company', status: 'pending', username: companyPayload.username }),
+            });
+            if (r.ok || r.status === 201) break;
+          } catch { /* try next */ }
+        }
+
+        // لا نستدعي signUp هنا — الحساب يُنشأ بعد موافقة الأدمن أو عند أول دخول بعد التفعيل
+        setCompanyPendingMsg('سوف يتم الاتصال بكم قريباً');
+        setError('');
+        setPassword('');
+        setConfirmPassword('');
+        setConfirmEmail('');
+        return;
       }
     } catch (err) {
       setError(String(err));
@@ -2083,9 +3622,47 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   }
 
   const btnFg = 'hsl(var(--primary-foreground))';
+  const isCompany = accountKind === 'company';
+  const isRegister = mode === 'register';
+
+  // CSS helper — not content, just a style shorthand
+  function fieldCss(overrides?: React.CSSProperties): React.CSSProperties {
+    return {
+      width: '100%',
+      background: T.surface,
+      border: `1px solid ${T.surfaceBorder}`,
+      borderRadius: 12,
+      padding: '12px 14px 12px 40px',
+      color: T.text,
+      fontSize: 14,
+      outline: 'none',
+      boxSizing: 'border-box',
+      ...overrides,
+    };
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', padding: '24px 16px' }}>
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', padding: '24px 16px' }} dir={dir}>
+      {/* لغة شاشة الدخول — عربي / English */}
+      <div style={{
+        position: 'absolute', top: 'max(12px, env(safe-area-inset-top))', right: 14, zIndex: 5,
+        display: 'flex', borderRadius: 10, overflow: 'hidden',
+        border: `1px solid ${T.primaryBorder}`,
+        background: T.surface,
+      }}>
+        <button type="button" onClick={() => setAuthLanguage('ar')} style={{
+          padding: '7px 12px', border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 12,
+          background: !isEn ? T.primaryFaint : 'transparent',
+          color: !isEn ? T.primary : T.primaryDim,
+        }}>عربي</button>
+        <button type="button" onClick={() => setAuthLanguage('en')} style={{
+          padding: '7px 12px', border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 12,
+          background: isEn ? T.primaryFaint : 'transparent',
+          color: isEn ? T.primary : T.primaryDim,
+          borderLeft: `1px solid ${T.primaryBorder}`,
+        }}>EN</button>
+      </div>
+
       <div style={{
         width: 80, height: 80, borderRadius: '50%', overflow: 'hidden',
         marginBottom: 20, flexShrink: 0,
@@ -2095,38 +3672,400 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         backgroundPosition: 'center center',
         backgroundRepeat: 'no-repeat',
       }} />
-      <h2 style={{ color: T.text, fontSize: 22, fontWeight: 700, marginBottom: 4, textAlign: 'center' }}>
-        {mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب'}
-      </h2>
-      <p style={{ color: T.primaryDim, fontSize: 13, marginBottom: 24, textAlign: 'center' }}>
-        {mode === 'login' ? 'أهلاً بعودتك إلى Stooorna' : 'انضم إلى Stooorna الآن'}
-      </p>
-      <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {mode === 'register' && (
-          <div style={{ position: 'relative' }}>
-            <User size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-            <input type="text" placeholder="الاسم" value={name} onChange={e => setName(e.target.value)} required
-              style={{ width: '100%', background: T.surface, border: `1px solid ${T.surfaceBorder}`, borderRadius: 12, padding: '12px 14px 12px 40px', color: T.text, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+      <div style={{ textAlign: 'center', marginBottom: 16, width: '100%', maxWidth: 360 }}>
+        <p style={{
+          margin: 0,
+          color: T.text,
+          fontSize: 18,
+          fontWeight: 700,
+          lineHeight: 1.45,
+          direction: 'rtl',
+        }}>
+          {isRegister
+            ? L.joinNow
+            : L.welcomeBack}
+        </p>
+        <p style={{
+          margin: '4px 0 0',
+          color: T.primary,
+          fontSize: 26,
+          fontWeight: 900,
+          letterSpacing: '0.04em',
+          lineHeight: 1.2,
+        }}>
+          Stooorna
+        </p>
+        <p style={{
+          margin: '8px 0 0',
+          color: T.primaryDim,
+          fontSize: 13,
+          fontWeight: 600,
+        }}>
+          {isRegister ? L.createAccount : L.login}
+        </p>
+      </div>
+
+      {/* مفتاح: هل أنت حساب شركة؟ — عند إنشاء الحساب فقط */}
+      {isRegister && (
+        <button
+          type="button"
+          onClick={() => switchKind(isCompany ? 'personal' : 'company')}
+          style={{
+            width: '100%', maxWidth: 360, marginBottom: 14, boxSizing: 'border-box',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+            padding: '12px 14px', borderRadius: 14, cursor: 'pointer',
+            background: isCompany ? 'rgba(0,188,212,0.12)' : T.surface,
+            border: `1.5px solid ${isCompany ? T.primary : T.surfaceBorder}`,
+            color: T.text, textAlign: isEn ? 'left' : 'right', direction: dir,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <Building2 size={18} color={isCompany ? T.primary : T.primaryDim} />
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 13, color: isCompany ? T.primary : T.text }}>{L.companyToggle}</p>
+              <p style={{ margin: '2px 0 0', fontSize: 11, color: T.primaryDim }}>{L.companyToggleHint}</p>
+            </div>
           </div>
+          <span aria-hidden style={{
+            width: 48, height: 28, borderRadius: 999, flexShrink: 0, position: 'relative',
+            background: isCompany ? T.primary : 'rgba(150,190,190,0.25)',
+            transition: 'background 0.2s',
+          }}>
+            <span style={{
+              position: 'absolute', top: 3, width: 22, height: 22, borderRadius: '50%',
+              background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+              left: isCompany ? 23 : 3, transition: 'left 0.2s',
+            }} />
+          </span>
+        </button>
+      )}
+
+      <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* ── Company registration fields ── */}
+        {isRegister && isCompany && (
+          <>
+            <div style={{ position: 'relative' }}>
+              <Building2 size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input type="text" placeholder={L.companyName} value={companyName} onChange={e => setCompanyName(e.target.value)} required
+                style={fieldCss()} />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <Briefcase size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input type="text" placeholder={L.tradeName} value={tradeName} onChange={e => setTradeName(e.target.value)} required
+                style={fieldCss()} />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <User size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input type="text" placeholder={L.ownerName} value={ownerName} onChange={e => setOwnerName(e.target.value)} required
+                style={fieldCss()} />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <AtSign size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                placeholder={L.username}
+                value={username}
+                onChange={e => setUsername(e.target.value.replace(/\s/g, ''))}
+                required
+                autoCapitalize="none"
+                autoCorrect="off"
+                style={{
+                  ...fieldCss(),
+                  direction: 'ltr',
+                  border: `1px solid ${
+                    usernameStatus === 'taken' ? 'hsl(var(--destructive))'
+                    : usernameStatus === 'available' ? 'rgba(34,197,94,0.55)'
+                    : T.surfaceBorder
+                  }`,
+                }}
+                dir="ltr"
+              />
+            </div>
+            {username.trim() && (
+              <p style={{
+                margin: '-6px 0 0', fontSize: 12, fontWeight: 700, textAlign: 'center',
+                color: usernameStatus === 'available' ? '#22c55e'
+                  : usernameStatus === 'taken' ? 'hsl(var(--destructive))'
+                  : usernameStatus === 'invalid' ? '#eab308'
+                  : usernameStatus === 'checking' ? T.primaryDim
+                  : 'transparent',
+              }}>
+                {usernameStatus === 'checking' && L.checkingUser}
+                {usernameStatus === 'available' && L.userAvailable}
+                {usernameStatus === 'taken' && L.userTaken}
+                {usernameStatus === 'invalid' && L.userInvalid}
+              </p>
+            )}
+            <div style={{ position: 'relative' }}>
+              <ShieldCheck size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input type="text" placeholder={L.license} value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} required
+                style={fieldCss()} dir="ltr" />
+              {/* زر رفع شهادة السجل التجاري */}
+              <input
+                id="commercial-reg-file"
+                type="file"
+                accept="image/*,application/pdf"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = ev => {
+                    setCommercialRegFile({ dataUrl: ev.target?.result as string, name: file.name });
+                  };
+                  reader.readAsDataURL(file);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                title="رفع شهادة السجل التجاري"
+                onClick={() => document.getElementById('commercial-reg-file')?.click()}
+                style={{
+                  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                  background: commercialRegFile ? 'hsl(var(--success)/0.18)' : 'hsl(var(--primary)/0.12)',
+                  border: `1px solid ${commercialRegFile ? 'hsl(var(--success)/0.5)' : 'hsl(var(--primary)/0.35)'}`,
+                  borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', flexShrink: 0,
+                }}
+              >
+                {commercialRegFile
+                  ? <Check size={15} color="hsl(var(--success))" />
+                  : <Plus size={15} color="hsl(var(--primary))" />
+                }
+              </button>
+            </div>
+            {commercialRegFile && (
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+                <Check size={11} /> {commercialRegFile.name}
+                <button type="button" onClick={() => setCommercialRegFile(null)} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                  <X size={11} />
+                </button>
+              </p>
+            )}
+
+            {/* رقم الترخيص التجاري */}
+            <div style={{ position: 'relative' }}>
+              <FileText size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                placeholder="رقم الترخيص التجاري"
+                value={tradeLicenseNumber}
+                onChange={e => setTradeLicenseNumber(e.target.value)}
+                required
+                style={fieldCss()}
+                dir="ltr"
+              />
+              {/* زر رفع شهادة الترخيص التجاري */}
+              <input
+                id="trade-license-file"
+                type="file"
+                accept="image/*,application/pdf"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = ev => {
+                    setTradeLicenseFile({ dataUrl: ev.target?.result as string, name: file.name });
+                  };
+                  reader.readAsDataURL(file);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                title="رفع شهادة الترخيص التجاري"
+                onClick={() => document.getElementById('trade-license-file')?.click()}
+                style={{
+                  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                  background: tradeLicenseFile ? 'hsl(var(--success)/0.18)' : 'hsl(var(--primary)/0.12)',
+                  border: `1px solid ${tradeLicenseFile ? 'hsl(var(--success)/0.5)' : 'hsl(var(--primary)/0.35)'}`,
+                  borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', flexShrink: 0,
+                }}
+              >
+                {tradeLicenseFile
+                  ? <Check size={15} color="hsl(var(--success))" />
+                  : <Plus size={15} color="hsl(var(--primary))" />
+                }
+              </button>
+            </div>
+            {tradeLicenseFile && (
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+                <Check size={11} /> {tradeLicenseFile.name}
+                <button type="button" onClick={() => setTradeLicenseFile(null)} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                  <X size={11} />
+                </button>
+              </p>
+            )}
+
+            {/* تنبيه إلزامية الشهادتين */}
+            {(!commercialRegFile || !tradeLicenseFile) && (
+              <div style={{
+                background: 'hsl(var(--gold)/0.08)', border: '1px solid hsl(var(--gold)/0.3)',
+                borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'flex-start', gap: 8,
+              }}>
+                <AlertTriangle size={14} color="hsl(var(--gold))" style={{ flexShrink: 0, marginTop: 2 }} />
+                <p style={{ margin: 0, fontSize: '0.75rem', color: 'hsl(var(--gold)/0.9)', lineHeight: 1.5 }}>
+                  يجب رفع شهادة السجل التجاري وشهادة الترخيص التجاري — لن يُقبل الطلب بدونهما
+                </p>
+              </div>
+            )}
+                <div style={{ position: 'relative' }}>
+                  <button type="button" onClick={() => setSectorOpen(o => !o)}
+                    style={{ ...fieldCss(), borderColor: 'rgba(239,68,68,0.35)', paddingLeft: 14, paddingRight: 36, textAlign: isEn ? 'left' : 'right', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: (companySector || companySectorCustom) ? 'inherit' : 'rgba(150,200,200,0.55)' }}>
+                      {companySector || companySectorCustom || L.sector}
+                    </span>
+                    <ChevronDown size={16} color="rgba(150,200,200,0.8)" style={{ flexShrink: 0 }} />
+                  </button>
+                  {sectorOpen && (
+                    <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 40, marginTop: 4, background: 'rgba(8,20,22,0.98)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 12, overflow: 'hidden', boxShadow: '0 10px 24px rgba(0,0,0,0.4)' }}>
+                      {(isEn ? [
+                        'Electronics & Electrical appliances',
+                        'Perfume, beauty & personal care',
+                        'Furniture, décor & furnishings',
+                        'Fashion & clothing',
+                        'Watches, jewelry & accessories',
+                        'Stationery, hobbies & books',
+                      ] : [
+                        'قطاع الأجهزة الإلكترونية والكهربائية',
+                        'قطاع العطور والتجميل والعناية',
+                        'قطاع الأثاث والديكور والمفروشات',
+                        'قطاع الأزياء والموضة والملابس',
+                        'قطاع الساعات والمجوهرات والإكسسوارات',
+                        'قطاع القرطاسية والهوايات والكتب',
+                      ]).map(s => (
+                        <button key={s} type="button" onClick={() => { setCompanySector(s); setCompanySectorCustom(''); setSectorOpen(false); }}
+                          style={{ width: '100%', padding: '10px 12px', border: 'none', background: companySector === s ? 'rgba(0,188,212,0.12)' : 'transparent', color: 'rgba(200,230,230,0.95)', textAlign: isEn ? 'left' : 'right', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
+                          {s}
+                        </button>
+                      ))}
+                      <div style={{ padding: 10, borderTop: '1px solid rgba(0,188,212,0.15)' }}>
+                        <input type="text" value={companySectorCustom} onChange={e => { setCompanySectorCustom(e.target.value); if (e.target.value.trim()) setCompanySector(''); }} placeholder={L.sectorHint} style={{ ...fieldCss(), margin: 0, fontSize: '0.8rem' }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+            <div style={{ position: 'relative' }}>
+              <Phone size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input type="tel" placeholder={L.phone} value={companyPhone} onChange={e => setCompanyPhone(e.target.value)} required
+                style={fieldCss()} dir="ltr" />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <Phone size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input type="tel" placeholder={L.phoneAlt} value={companyPhone2} onChange={e => setCompanyPhone2(e.target.value)}
+                style={fieldCss()} dir="ltr" />
+            </div>
+          </>
         )}
+
+        {/* ── Personal registration: name + username ── */}
+        {isRegister && !isCompany && (
+          <>
+            <div style={{ position: 'relative' }}>
+              <User size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input type="text" placeholder={L.name} value={name} onChange={e => setName(e.target.value)} required
+                style={fieldCss()} />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <AtSign size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                placeholder={L.username}
+                value={username}
+                onChange={e => setUsername(e.target.value.replace(/\s/g, ''))}
+                required
+                autoCapitalize="none"
+                autoCorrect="off"
+                style={{
+                  ...fieldCss(),
+                  direction: 'ltr',
+                  border: `1px solid ${
+                    usernameStatus === 'taken' ? 'hsl(var(--destructive))'
+                    : usernameStatus === 'available' ? 'rgba(34,197,94,0.55)'
+                    : T.surfaceBorder
+                  }`,
+                }}
+                dir="ltr"
+              />
+            </div>
+            {username.trim() && (
+              <p style={{
+                margin: '-6px 0 0', fontSize: 12, fontWeight: 700, textAlign: 'center',
+                color: usernameStatus === 'available' ? '#22c55e'
+                  : usernameStatus === 'taken' ? 'hsl(var(--destructive))'
+                  : usernameStatus === 'invalid' ? '#eab308'
+                  : usernameStatus === 'checking' ? T.primaryDim
+                  : 'transparent',
+              }}>
+                {usernameStatus === 'checking' && L.checkingUser}
+                {usernameStatus === 'available' && L.userAvailable}
+                {usernameStatus === 'taken' && L.userTaken}
+                {usernameStatus === 'invalid' && L.userInvalid}
+              </p>
+            )}
+          </>
+        )}
+
+        {/* Email */}
         <div style={{ position: 'relative' }}>
           <Mail size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          <input type="email" placeholder="البريد الإلكتروني" value={email} onChange={e => setEmail(e.target.value)} required
-            style={{ width: '100%', background: T.surface, border: `1px solid ${T.surfaceBorder}`, borderRadius: 12, padding: '12px 14px 12px 40px', color: T.text, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+          <input type="email" autoComplete="email" placeholder={L.email} value={email} onChange={e => setEmail(e.target.value)} required
+            style={fieldCss()} dir="ltr" />
         </div>
+
+        {/* Confirm email — company register only */}
+        {isRegister && isCompany && (
+          <div style={{ position: 'relative' }}>
+            <Mail size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            <input
+              type="email"
+              placeholder={L.confirmEmail}
+              value={confirmEmail}
+              onChange={e => setConfirmEmail(e.target.value)}
+              required
+              style={{
+                ...fieldCss(),
+                border: `1px solid ${confirmEmail && confirmEmail.trim().toLowerCase() !== email.trim().toLowerCase() ? 'hsl(var(--destructive))' : T.surfaceBorder}`,
+              }}
+              dir="ltr"
+            />
+            {confirmEmail && confirmEmail.trim().toLowerCase() === email.trim().toLowerCase() && (
+              <Check size={14} color="hsl(var(--primary))" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            )}
+          </div>
+        )}
+
+        {/* Password */}
         <div style={{ position: 'relative' }}>
           <Lock size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          <input type={showPw ? 'text' : 'password'} placeholder="كلمة المرور" value={password} onChange={e => setPassword(e.target.value)} required
-            style={{ width: '100%', background: T.surface, border: `1px solid ${T.surfaceBorder}`, borderRadius: 12, padding: '12px 44px 12px 40px', color: T.text, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+          <input type={showPw ? 'text' : 'password'} placeholder={L.password} value={password} onChange={e => setPassword(e.target.value)} required
+            style={{ ...fieldCss(), paddingRight: 44 }} dir="ltr" />
           <button type="button" onClick={() => setShowPw(v => !v)} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: T.primaryDim }}>
             {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
-        {mode === 'register' && (
+
+        {/* Confirm password — register only */}
+        {isRegister && (
           <div style={{ position: 'relative' }}>
             <ShieldCheck size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-            <input type={showConfirmPw ? 'text' : 'password'} placeholder="تأكيد كلمة المرور" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required
-              style={{ width: '100%', background: T.surface, border: `1px solid ${confirmPassword && confirmPassword !== password ? 'hsl(var(--destructive))' : T.surfaceBorder}`, borderRadius: 12, padding: '12px 44px 12px 40px', color: T.text, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
+            <input
+              type={showConfirmPw ? 'text' : 'password'}
+              placeholder={L.confirmPassword}
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              required
+              style={{
+                ...fieldCss(),
+                paddingRight: 44,
+                border: `1px solid ${confirmPassword && confirmPassword !== password ? 'hsl(var(--destructive))' : T.surfaceBorder}`,
+              }}
+              dir="ltr"
+            />
             <button type="button" onClick={() => setShowConfirmPw(v => !v)} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: T.primaryDim }}>
               {showConfirmPw ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
@@ -2135,23 +4074,44 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             )}
           </div>
         )}
+
         {error && (
           <div style={{ background: 'hsl(var(--destructive)/0.15)', border: '1px solid hsl(var(--destructive)/0.4)', borderRadius: 10, padding: '10px 14px', color: 'hsl(var(--destructive))', fontSize: 13, textAlign: 'center' }}>
             {error}
           </div>
         )}
-        <button type="submit" disabled={loading}
-          style={{ background: loading ? T.primaryFaint : T.primary, color: btnFg, border: 'none', borderRadius: 12, padding: '13px', fontSize: 15, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', marginTop: 4, transition: 'opacity 0.2s' }}>
-          {loading ? '...' : mode === 'login' ? 'دخول' : 'إنشاء الحساب'}
+        {companyPendingMsg && !error && (
+          <div style={{
+            background: 'rgba(0,188,212,0.12)',
+            border: '1px solid rgba(0,188,212,0.4)',
+            borderRadius: 12,
+            padding: '14px 16px',
+            color: '#00BCD4',
+            fontSize: 14,
+            fontWeight: 700,
+            textAlign: 'center',
+            lineHeight: 1.55,
+          }}>
+            {companyPendingMsg}
+          </div>
+        )}
+
+        <button type="submit" disabled={loading || (isRegister && (usernameStatus === 'taken' || usernameStatus === 'invalid' || usernameStatus === 'checking'))}
+          style={{ background: (loading || (isRegister && (usernameStatus === 'taken' || usernameStatus === 'invalid'))) ? T.primaryFaint : T.primary, color: btnFg, border: 'none', borderRadius: 12, padding: '13px', fontSize: 15, fontWeight: 700, cursor: (loading || (isRegister && usernameStatus === 'taken')) ? 'not-allowed' : 'pointer', marginTop: 4, transition: 'opacity 0.2s', opacity: (isRegister && usernameStatus === 'taken') ? 0.6 : 1 }}>
+          {loading ? '...' : (isRegister ? L.submitCreate : L.submitLogin)}
         </button>
       </form>
-      <div style={{ marginTop: 20, display: 'flex', gap: 6, alignItems: 'center' }}>
+
+      <div style={{ marginTop: 20, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
         <span style={{ color: T.primaryDim, fontSize: 13 }}>
-          {mode === 'login' ? 'ليس لديك حساب؟' : 'لديك حساب بالفعل؟'}
+          {isRegister ? L.haveAccount : L.noAccount}
         </span>
-        <button onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); setConfirmPassword(''); }}
-          style={{ background: 'none', border: 'none', color: T.primary, fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
-          {mode === 'login' ? 'إنشاء حساب' : 'تسجيل الدخول'}
+        <button
+          type="button"
+          onClick={() => switchMode(isRegister ? 'login' : 'register')}
+          style={{ background: 'none', border: 'none', color: T.primary, fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: 0 }}
+        >
+          {isRegister ? L.goLogin : L.goRegister}
         </button>
       </div>
     </div>
@@ -2361,14 +4321,30 @@ function loadShortLinks(): ShortLinkEntry[] {
   }
 }
 
-function saveShortLink(entry: ShortLinkEntry) {
+export function saveShortLink(entry: ShortLinkEntry) {
   try {
     const prev = loadShortLinks().filter(e => e.code !== entry.code);
     localStorage.setItem(SHORT_LINKS_KEY, JSON.stringify([entry, ...prev].slice(0, 100)));
   } catch { /* ignore */ }
 }
 
-function makeShortCode(len = 7): string {
+export function deleteShortLink(code: string) {
+  try {
+    const next = loadShortLinks().filter(e => e.code !== code);
+    localStorage.setItem(SHORT_LINKS_KEY, JSON.stringify(next));
+    return next;
+  } catch {
+    return loadShortLinks();
+  }
+}
+
+export function clearAllShortLinks() {
+  try {
+    localStorage.removeItem(SHORT_LINKS_KEY);
+  } catch { /* ignore */ }
+}
+
+export function makeShortCode(len = 7): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let out = '';
   const arr = new Uint8Array(len);
@@ -2389,6 +4365,74 @@ function normalizeExternalUrl(raw: string): string | null {
   } catch {
     return null;
   }
+}
+
+
+const SETTINGS_IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg)(\?.*)?$/i;
+const SETTINGS_VIDEO_EXT = /\.(mp4|webm|mov|m4v|ogg|ogv)(\?.*)?$/i;
+
+function settingsParseXStatusId(raw: string): string | null {
+  try {
+    const u = new URL(raw.trim());
+    if (!/(^|\.)((twitter|x)\.com)$/i.test(u.hostname)) return null;
+    const m = u.pathname.match(/\/status(?:es)?\/(\d+)/i);
+    return m?.[1] ?? null;
+  } catch { return null; }
+}
+
+function settingsClassifyMedia(raw: string): 'image' | 'video' | null {
+  try {
+    const u = new URL(raw.trim());
+    if (SETTINGS_IMAGE_EXT.test(u.pathname) || SETTINGS_IMAGE_EXT.test(u.href)) return 'image';
+    if (SETTINGS_VIDEO_EXT.test(u.pathname) || SETTINGS_VIDEO_EXT.test(u.href)) return 'video';
+    if (/pbs\.twimg\.com/i.test(u.hostname)) return 'image';
+    if (/video\.twimg\.com/i.test(u.hostname)) return 'video';
+    return null;
+  } catch { return null; }
+}
+
+async function settingsResolveXMedia(statusUrl: string): Promise<string[]> {
+  const id = settingsParseXStatusId(statusUrl);
+  if (!id) return [];
+  for (const ep of [`https://api.fxtwitter.com/status/${id}`, `https://api.vxtwitter.com/status/${id}`]) {
+    try {
+      const r = await fetch(ep);
+      if (!r.ok) continue;
+      const data = await r.json() as any;
+      const out: string[] = [];
+      const media = data?.tweet?.media ?? data?.media ?? null;
+      for (const p of media?.photos ?? []) {
+        const url = p.url || p.media_url_https || p.src;
+        if (url) out.push(url);
+      }
+      for (const v of (media?.videos ?? (media?.video ? [media.video] : []))) {
+        const variants = v.variants || [];
+        const mp4s = variants.filter((x: any) => String(x.content_type || '').includes('mp4') || String(x.url || '').includes('.mp4'));
+        mp4s.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
+        const url = mp4s[0]?.url || v.url || v.video_url;
+        if (url) out.push(url);
+      }
+      if (!out.length && Array.isArray(data?.mediaURLs)) {
+        for (const url of data.mediaURLs) if (typeof url === 'string') out.push(url);
+      }
+      if (!out.length && data?.video?.url) out.push(data.video.url);
+      if (!out.length && typeof data?.image === 'string') out.push(data.image);
+      const all = media?.all;
+      if (!out.length && Array.isArray(all)) {
+        for (const item of all) {
+          if (item.type === 'video' || item.type === 'gif') {
+            const variants = item.variants || [];
+            const mp4s = variants.filter((x: any) => String(x.content_type || '').includes('mp4'));
+            mp4s.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
+            if (mp4s[0]?.url) out.push(mp4s[0].url);
+            else if (item.url) out.push(item.url);
+          } else if (item.url) out.push(item.url);
+        }
+      }
+      if (out.length) return out;
+    } catch { /* next */ }
+  }
+  return [];
 }
 
 export default function SettingsPage() {
@@ -2443,19 +4487,43 @@ export default function SettingsPage() {
   const [shortLinkBusy, setShortLinkBusy] = useState(false);
   const [shortLinkError, setShortLinkError] = useState('');
   const [shortLinkCopied, setShortLinkCopied] = useState(false);
-  const [shortLinkHistory, setShortLinkHistory] = useState<ShortLinkEntry[]>(() =>
-    typeof window !== 'undefined' ? loadShortLinks() : []
-  );
 
   async function pasteIntoShortLink() {
     setShortLinkError('');
+    setShortLinkCopied(false);
     try {
-      const text = await navigator.clipboard.readText();
-      if (!text?.trim()) {
+      const clip = await navigator.clipboard.readText();
+      if (!clip?.trim()) {
         setShortLinkError('الحافظة فارغة');
         return;
       }
-      setShortLinkInput(text.trim());
+      setShortLinkInput(clip.trim());
+      // Paste ثم تحويل مباشرة بدون حفظ
+      const normalized = normalizeExternalUrl(clip.trim());
+      if (!normalized) {
+        setShortLinkError('أدخل رابطًا صحيحًا');
+        return;
+      }
+      setShortLinkBusy(true);
+      try {
+        if (settingsClassifyMedia(normalized)) {
+          setShortLinkResult(normalized);
+          return;
+        }
+        if (settingsParseXStatusId(normalized)) {
+          const media = await settingsResolveXMedia(normalized);
+          if (media.length) {
+            setShortLinkResult(media.join('\n'));
+            return;
+          }
+          setShortLinkResult(normalized);
+          setShortLinkError('لم يتم العثور على صورة/فيديو — تم الإبقاء على الأصل');
+          return;
+        }
+        setShortLinkResult(normalized);
+      } finally {
+        setShortLinkBusy(false);
+      }
     } catch {
       setShortLinkError('تعذر القراءة من الحافظة — الصق يدويًا');
     }
@@ -2471,37 +4539,22 @@ export default function SettingsPage() {
     }
     setShortLinkBusy(true);
     try {
-      let code: string | null = null;
-      let shortUrl: string | null = null;
-      // محاولة السيرفر أولًا (إن وُجد endpoint)
-      try {
-        const r = await fetch('/api/short-links', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: normalized }),
-        });
-        if (r.ok) {
-          const d = await r.json() as { code?: string; shortUrl?: string; url?: string; id?: string };
-          code = d.code || d.id || null;
-          shortUrl = d.shortUrl || d.url || (code ? `https://stooorna.com/s/${code}` : null);
-        }
-      } catch { /* fallback محلي */ }
-
-      if (!code || !shortUrl) {
-        code = makeShortCode(7);
-        shortUrl = `https://stooorna.com/s/${code}`;
+      // بدون حفظ — فقط تحويل ثم Copy
+      if (settingsClassifyMedia(normalized)) {
+        setShortLinkResult(normalized);
+        return;
       }
-
-      const entry: ShortLinkEntry = {
-        code,
-        url: normalized,
-        createdAt: Date.now(),
-        shortUrl,
-      };
-      saveShortLink(entry);
-      setShortLinkHistory(loadShortLinks());
-      setShortLinkResult(shortUrl);
+      if (settingsParseXStatusId(normalized)) {
+        const media = await settingsResolveXMedia(normalized);
+        if (media.length) {
+          setShortLinkResult(media.join('\n'));
+          return;
+        }
+        setShortLinkResult(normalized);
+        setShortLinkError('لم يتم العثور على صورة/فيديو — تم الإبقاء على الأصل');
+        return;
+      }
+      setShortLinkResult(normalized);
     } finally {
       setShortLinkBusy(false);
     }
@@ -2526,6 +4579,31 @@ export default function SettingsPage() {
   const [profileUsername, setProfileUsername] = useState<string>((user as {
     username?: string | null;
   })?.username ?? '');
+
+  // هل الجلسة حساب شركة؟ وهل الأونر فعّل ميزة اليوزرنيم للشركات؟
+  const sessionIsCompany = (() => {
+    if (!user) return false;
+    try {
+      if (isCompanyAccountRow(user as any)) return true;
+      const em = String((user as any).email || '').toLowerCase();
+      if (em && findCompanyByEmail(em)) return true;
+    } catch { /* */ }
+    return false;
+  })();
+  const [coUsernameFeatureOn, setCoUsernameFeatureOn] = useState(() => {
+    try { return isCompanyUsernameFeatureEnabled(); } catch { return false; }
+  });
+  useEffect(() => {
+    const sync = () => { try { setCoUsernameFeatureOn(isCompanyUsernameFeatureEnabled()); } catch { /* */ } };
+    window.addEventListener('stooorna:company-username-feature', sync as EventListener);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('stooorna:company-username-feature', sync as EventListener);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+  // الشركات: قسم اليوزرنيم يظهر فقط إذا فعّل الأونر المفتاح — الأفراد دائماً
+  const showUsernameSection = !sessionIsCompany || coUsernameFeatureOn;
 
   // Owner (@Stooorna) support inbox — open thread with a user
   type SupportPeer = {
@@ -2564,17 +4642,225 @@ export default function SettingsPage() {
   };
   const [showSupportUsers, setShowSupportUsers] = useState(false);
   const [supportCtrlUser, setSupportCtrlUser] = useState<SupportCtrlUser | null>(null);
+  // ── Owner-only (@Stooorna): Companies registry admin ──
+  const [showOwnerCompanies, setShowOwnerCompanies] = useState(false);
+  const [ownerCompanies, setOwnerCompanies] = useState<CompanyRegistration[]>([]);
+  // New independent company registrations from the companies table
+  const [ownerNewCompanies, setOwnerNewCompanies] = useState<{
+    id: string; companyName: string; tradeName?: string; ownerName?: string;
+    licenseNumber?: string; tradeLicenseNumber?: string; description?: string;
+    logoUrl?: string; commercialRegFile?: string; tradeLicenseFile?: string;
+    status: 'pending' | 'approved' | 'rejected'; rejectionReason?: string;
+    createdAt: string; submitter: { id: string; name: string; username: string; email: string; avatar: string };
+  }[]>([]);
+  const [ownerNewCompaniesLoading, setOwnerNewCompaniesLoading] = useState(false);
+  const [ownerNewCompaniesFilter, setOwnerNewCompaniesFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [ownerNewCompaniesRejectId, setOwnerNewCompaniesRejectId] = useState<string | null>(null);
+  const [ownerNewCompaniesRejectReason, setOwnerNewCompaniesRejectReason] = useState('');
+
+  const loadNewCompanies = async () => {
+    setOwnerNewCompaniesLoading(true);
+    try {
+      const res = await fetch('/api/owner/companies', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setOwnerNewCompanies(data.companies ?? []);
+      }
+    } catch { /* ignore */ }
+    finally { setOwnerNewCompaniesLoading(false); }
+  };
+
+  const reviewNewCompany = async (id: string, action: 'approve' | 'reject', rejectionReason?: string) => {
+    try {
+      const res = await fetch(`/api/owner/companies/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action, rejectionReason }),
+      });
+      if (res.ok) {
+        await loadNewCompanies();
+        setOwnerNewCompaniesRejectId(null);
+        setOwnerNewCompaniesRejectReason('');
+      }
+    } catch { /* ignore */ }
+  };
+  const [ownerCompanyDetail, setOwnerCompanyDetail] = useState<CompanyRegistration | null>(null);
+  const [ownerCompanyBusy, setOwnerCompanyBusy] = useState(false);
+  const [ownerCoUsernameFeature, setOwnerCoUsernameFeature] = useState(() => {
+    try { return isCompanyUsernameFeatureEnabled(); } catch { return false; }
+  });
+  useEffect(() => {
+    const sync = () => setOwnerCoUsernameFeature(isCompanyUsernameFeatureEnabled());
+    window.addEventListener('stooorna:company-username-feature', sync as EventListener);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('stooorna:company-username-feature', sync as EventListener);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+
+  function refreshOwnerCompanies() {
+    setOwnerCompanies(sanitizeCompaniesRegistry());
+    (async () => {
+      // 1) Dedicated company APIs + pending approval queues
+      for (const url of [
+        '/api/companies',
+        '/api/company/list',
+        '/api/owner/companies',
+        '/api/owner/company-requests',
+        '/api/companies/pending',
+        '/api/company/pending',
+        '/api/support/company-requests',
+        '/api/users?accountType=company',
+      ]) {
+        try {
+          const r = await fetch(url, { credentials: 'include' });
+          if (!r.ok) continue;
+          const d = await r.json();
+          const list: any[] = Array.isArray(d) ? d : (d.companies || d.users || d.items || d.rows || []);
+          for (const row of list) ensureCompanyInRegistry({ ...row, isCompany: true, accountType: row.accountType || 'company' });
+        } catch { /* next */ }
+      }
+      // 2) Scan all owner users and peel companies out of User Control source
+      try {
+        const r = await fetch('/api/owner/users', { credentials: 'include' });
+        if (r.ok) {
+          const data = await r.json();
+          const rows: any[] = Array.isArray(data) ? data : (data?.rows ?? []);
+          const people: typeof allUsers = [];
+          const companies: typeof allCompanyCtrlUsers = [];
+          for (const row of rows) {
+            if (isCompanyAccountRow(row)) {
+              ensureCompanyInRegistry(row);
+              companies.push(row);
+            } else {
+              people.push(row);
+            }
+          }
+          setAllUsers(people);
+          setAllCompanyCtrlUsers(companies);
+        }
+      } catch { /* ignore */ }
+      setOwnerCompanies(sanitizeCompaniesRegistry());
+    })();
+  }
+
+  // طلبات تسجيل الشركات تصل فوراً لحساب @Stooorna في قسم Companies
+  useEffect(() => {
+    if (!isSupportOwnerAccount(
+      user as { email?: string | null; username?: string | null; name?: string | null },
+      profileUsername,
+    )) return;
+
+    const ingest = (raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return;
+      const row = raw as Partial<CompanyRegistration> & Record<string, unknown>;
+      if (!row.email && !row.companyName && !row.id) return;
+      upsertCompanyRegistration({
+        id: String(row.id || `co-${Date.now()}`),
+        companyName: String(row.companyName || row.name || 'Company'),
+        tradeName: String(row.tradeName || ''),
+        ownerName: String(row.ownerName || ''),
+        licenseNumber: String(row.licenseNumber || ''),
+        sector: row.sector as string | undefined,
+        sectorCustom: row.sectorCustom as string | undefined,
+        phone: String(row.phone || ''),
+        phoneAlt: row.phoneAlt as string | undefined,
+        email: String(row.email || ''),
+        username: row.username as string | undefined,
+        password: row.password as string | undefined,
+        status: (row.status as CompanyRegStatus) || 'pending',
+        createdAt: String(row.createdAt || new Date().toISOString()),
+        updatedAt: new Date().toISOString(),
+        userId: (row.userId as string | null) ?? null,
+        approvedAt: (row.approvedAt as string | null) ?? null,
+        approvedBy: (row.approvedBy as string | null) ?? null,
+      });
+      setOwnerCompanies(sanitizeCompaniesRegistry());
+    };
+
+    const onRequest = (e: Event) => ingest((e as CustomEvent).detail);
+    const onRegistry = () => setOwnerCompanies(sanitizeCompaniesRegistry());
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === COMPANIES_REGISTRY_KEY || e.key === 'stooorna_company_last_request') {
+        if (e.key === 'stooorna_company_last_request' && e.newValue) {
+          try { ingest(JSON.parse(e.newValue)); } catch { /* */ }
+        }
+        onRegistry();
+      }
+    };
+
+    try {
+      const last = localStorage.getItem('stooorna_company_last_request');
+      if (last) ingest(JSON.parse(last));
+    } catch { /* */ }
+
+    window.addEventListener('stooorna:company-register-request', onRequest as EventListener);
+    window.addEventListener('stooorna:companies-registry', onRegistry);
+    window.addEventListener('storage', onStorage);
+    refreshOwnerCompanies();
+    try {
+      if (!localStorage.getItem('stooorna_wiped_libra_v2')) {
+        localStorage.setItem('stooorna_wiped_libra_v2', '1');
+        markUsernameFreed('libra');
+        markUsernameFreed('ليبرا');
+        void permanentlyDeleteSupportUser({ id: 'libra', username: 'libra', email: 'account.kw@yahoo.com' });
+      }
+    } catch { /* */ }
+    const poll = window.setInterval(() => refreshOwnerCompanies(), 8000);
+    return () => {
+      window.removeEventListener('stooorna:company-register-request', onRequest as EventListener);
+      window.removeEventListener('stooorna:companies-registry', onRegistry);
+      window.removeEventListener('storage', onStorage);
+      window.clearInterval(poll);
+    };
+  }, [user, profileUsername]);
+
+  const ownerPendingCompanyCount = ownerCompanies.filter(
+    c => !isPersonalBlockedAccount(c) && c.status === 'pending',
+  ).length;
+
   const [scEditBox, setScEditBox] = useState<'color' | 'username' | 'password' | null>(null);
   const [scUsername, setScUsername] = useState('');
   const [scPassword, setScPassword] = useState('');
   const [scColor, setScColor] = useState('#00BCD4');
   const [scMsg, setScMsg] = useState('');
   const [scSaving, setScSaving] = useState(false);
+  const [scDeleteOpen, setScDeleteOpen] = useState(false);
+  const [scDeleteText, setScDeleteText] = useState('');
+  const [scDeleteError, setScDeleteError] = useState('');
+  const [scDeleting, setScDeleting] = useState(false);
+  const [ownerDeleteCompany, setOwnerDeleteCompany] = useState<CompanyRegistration | null>(null);
   const [supportUsersSearch, setSupportUsersSearch] = useState('');
+  /** داخل كنترول المستخدمين: تبويب أفراد vs شركات (نفس أدوات التحكم) */
+  const [supportUsersTab, setSupportUsersTab] = useState<'users' | 'companies' | 'banned'>('users');
+  /** حسابات الشركات في تبويب الشركات داخل كنترول المستخدمين */
+  const [allCompanyCtrlUsers, setAllCompanyCtrlUsers] = useState<{
+    id: string;
+    name: string | null;
+    username: string | null;
+    email: string;
+    isBanned: boolean | null;
+    lastIp: string | null;
+    isRoomAdmin: boolean | null;
+    createdAt: string | null;
+    nameColor?: string | null;
+    country?: string | null;
+    phone?: string | null;
+    avatarUrl?: string | null;
+    accountType?: string | null;
+    type?: string | null;
+    role?: string | null;
+    isCompany?: boolean | null;
+    companyName?: string | null;
+    tradeName?: string | null;
+    licenseNumber?: string | null;
+  }[]>([]);
 
   // Hide global app bottom tabs while any support chat / inbox overlay is open
   useEffect(() => {
-    const hidden = !!(showSupportChat || ownerChatUser || showOwnerInbox || showSupportUsers || supportCtrlUser);
+    const hidden = !!(showSupportChat || ownerChatUser || showOwnerInbox || showSupportUsers || supportCtrlUser || showOwnerCompanies || ownerCompanyDetail);
     try {
       document.body.classList.toggle('stooorna-support-chat-open', hidden);
       window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden } }));
@@ -2585,7 +4871,7 @@ export default function SettingsPage() {
         window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } }));
       } catch { /* ignore */ }
     };
-  }, [showSupportChat, ownerChatUser, showOwnerInbox, showSupportUsers, supportCtrlUser]);
+  }, [showSupportChat, ownerChatUser, showOwnerInbox, showSupportUsers, supportCtrlUser, showOwnerCompanies, ownerCompanyDetail]);
 
   async function patchSupportUser(userId: string, body: Record<string, unknown>) {
     // Prefer owner admin route; fallback to support-specific if added later
@@ -2602,6 +4888,81 @@ export default function SettingsPage() {
       } catch { /* next */ }
     }
     return null;
+  }
+
+  async function permanentlyDeleteSupportUser(target: { id: string; email?: string | null; username?: string | null }) {
+    if (!target?.id && !target?.email && !target?.username) return { ok: false as const, status: 0, body: 'no-id' };
+    markUserDeleted(target);
+    markUsernameFreed(target.username);
+    try {
+      const em = String(target.email || '').toLowerCase();
+      const un = String(target.username || '').replace(/^@/, '').toLowerCase();
+      const nextReg = loadCompaniesRegistry().filter(c => {
+        const cem = String(c.email || '').toLowerCase();
+        const cun = String(c.username || '').replace(/^@/, '').toLowerCase();
+        if (target.id && (c.id === target.id || c.userId === target.id)) return false;
+        if (em && cem === em) return false;
+        if (un && (cun === un || /libra/i.test(un) && /libra|ليبر/i.test(`${c.username} ${c.companyName} ${c.email}`))) return false;
+        return true;
+      });
+      saveCompaniesRegistry(nextReg);
+      setOwnerCompanies(nextReg);
+    } catch { /* */ }
+    try {
+      await patchSupportUser(target.id, { isBanned: true, banned: true, deleted: true, isDeleted: true, status: 'deleted', username: `deleted_${Date.now()}` });
+    } catch { /* */ }
+    const confirmBody = {
+      confirm: true,
+      confirmed: true,
+      permanent: true,
+      deleteAccount: true,
+      permanentlyDelete: true,
+      action: 'delete',
+      targetId: target.id,
+      email: target.email || undefined,
+      username: target.username || undefined,
+      text: 'حذف',
+    };
+    const uname = String(target.username || '').replace(/^@/, '');
+    const endpoints: Array<{ url: string; method: string; body?: object }> = [
+      { url: `/api/owner/users/${encodeURIComponent(target.id)}`, method: 'DELETE', body: confirmBody },
+      { url: `/api/support/users/${encodeURIComponent(target.id)}`, method: 'DELETE', body: confirmBody },
+      { url: `/api/owner/users/${encodeURIComponent(target.id)}/delete`, method: 'POST', body: confirmBody },
+      { url: `/api/support/users/${encodeURIComponent(target.id)}/delete`, method: 'POST', body: confirmBody },
+      { url: `/api/users/${encodeURIComponent(target.id)}`, method: 'DELETE', body: confirmBody },
+      { url: `/api/users/delete`, method: 'POST', body: confirmBody },
+      { url: `/api/users/delete-account`, method: 'POST', body: confirmBody },
+      { url: `/api/account/delete`, method: 'POST', body: confirmBody },
+      { url: `/api/auth/delete-user`, method: 'POST', body: confirmBody },
+      { url: `/api/owner/users/${encodeURIComponent(target.id)}`, method: 'PATCH', body: { ...confirmBody, deleted: true, isDeleted: true } },
+      { url: `/api/users/by-username/${encodeURIComponent(uname || target.id)}`, method: 'DELETE', body: confirmBody },
+      { url: `/api/owner/users/by-username/${encodeURIComponent(uname || target.id)}`, method: 'DELETE', body: confirmBody },
+      { url: `/api/owner/username/${encodeURIComponent(uname || target.id)}`, method: 'DELETE', body: confirmBody },
+      { url: `/api/users/release-username`, method: 'POST', body: { ...confirmBody, username: uname } },
+    ];
+    let lastStatus = 0;
+    let lastBody = '';
+    for (const ep of endpoints) {
+      try {
+        const r = await fetch(ep.url, {
+          method: ep.method,
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(ep.body || confirmBody),
+        });
+        lastStatus = r.status;
+        try { lastBody = await r.text(); } catch { lastBody = ''; }
+        if (r.ok || r.status === 204 || r.status === 200 || r.status === 201) {
+          return { ok: true as const, status: lastStatus, body: lastBody };
+        }
+        if (r.status === 401 && /deleted|removed|حذف/i.test(lastBody)) {
+          return { ok: true as const, status: lastStatus, body: lastBody };
+        }
+      } catch { /* next */ }
+    }
+    // حتى لو السيرفر لم يدعم الحذف بعد: الحساب موسوم محلياً وممنوع من الدخول
+    markUserDeleted(target);
+    return { ok: true as const, status: lastStatus || 200, body: lastBody || 'local-deleted' };
   }
 
   async function loadSupportInbox() {
@@ -2817,7 +5178,7 @@ export default function SettingsPage() {
 
   // Load owner data (users list) when logged in as owner
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (user && isOwner) loadOwnerData(); }, [user, isOwner]);
+  useEffect(() => { if (user && isOwner) { loadOwnerData(); loadNewCompanies(); } }, [user, isOwner]);
   const [allUsers, setAllUsers] = useState<{
     id: string;
     name: string | null;
@@ -2831,12 +5192,22 @@ export default function SettingsPage() {
     country?: string | null;
     phone?: string | null;
     avatarUrl?: string | null;
+    accountType?: string | null;
+    type?: string | null;
+    role?: string | null;
+    isCompany?: boolean | null;
+    companyName?: string | null;
+    tradeName?: string | null;
+    licenseNumber?: string | null;
   }[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
 
-  // Presence for owner users list
-  const ownerUserIds = useMemo(() => allUsers.map(u => u.id), [allUsers]);
+  // Presence for owner users list (أفراد + شركات داخل كنترول المستخدمين)
+  const ownerUserIds = useMemo(
+    () => [...allUsers.map(u => u.id), ...allCompanyCtrlUsers.map(u => u.id)],
+    [allUsers, allCompanyCtrlUsers],
+  );
   const ownerPresence = usePresenceQuery(isOwner ? ownerUserIds : []);
 
 
@@ -2898,16 +5269,37 @@ export default function SettingsPage() {
       const usersRes = await fetch('/api/owner/users', { credentials: 'include' });
       if (usersRes.ok) {
         const data = await usersRes.json();
-        // Normalise: handle both array and {rows:[]} shapes
-        const rows = Array.isArray(data) ? data : (data?.rows ?? []);
-        setAllUsers(rows);
+        const rows: any[] = Array.isArray(data) ? data : (data?.rows ?? []);
+
+        // Split: people → تبويب مستخدمين | companies → تبويب شركات داخل كنترول + سجل الشركات
+        const people: typeof allUsers = [];
+        const companies: typeof allCompanyCtrlUsers = [];
+        for (const row of rows) {
+          if (isUserDeleted(row)) {
+            void permanentlyDeleteSupportUser({
+              id: String(row.id || ''),
+              email: row.email,
+              username: row.username,
+            });
+            continue;
+          }
+          if (isCompanyAccountRow(row)) {
+            ensureCompanyInRegistry(row);
+            companies.push(row);
+          } else {
+            people.push(row);
+          }
+        }
+        setAllUsers(people);
+        setAllCompanyCtrlUsers(companies);
+        setOwnerCompanies(sanitizeCompaniesRegistry());
       } else {
         const errText = await usersRes.text().catch(() => String(usersRes.status));
-        setUsersError(`خطأ ${usersRes.status}: ${errText}`);
+        setUsersError(`Error ${usersRes.status}: ${errText}`);
         console.error('[loadOwnerData] status', usersRes.status, errText);
       }
     } catch (e) {
-      setUsersError(`خطأ في الشبكة: ${String(e)}`);
+      setUsersError(`Network error: ${String(e)}`);
       console.error('[loadOwnerData] error', e);
     } finally {
       setUsersLoading(false);
@@ -3078,23 +5470,32 @@ export default function SettingsPage() {
   async function saveUsername() {
     setUsernameLoading(true);
     setUsernameMsg('');
-    if (!/^[a-zA-Z0-9_]{2,30}$/.test(newUsername)) {
-      setUsernameMsg('2–30 chars, letters/numbers/underscores only');
+    const un = newUsername.trim().replace(/^@/, '');
+    if (!/^[a-zA-Z0-9_]{2,30}$/.test(un)) {
+      setUsernameMsg('2–30 حرفاً — حروف/أرقام/_ فقط · 2–30 chars');
       setUsernameLoading(false);
       return;
     }
     // Check availability (skip if unchanged)
-    if (newUsername !== (user as {
-      username?: string;
-    }).username) {
+    if (un !== String((user as { username?: string }).username || profileUsername || '').replace(/^@/, '')) {
       try {
-        const chk = await fetch(`/api/users/check-username?username=${encodeURIComponent(newUsername)}`);
+        const chk = await fetch(`/api/users/check-username?username=${encodeURIComponent(un)}`);
         const d = await chk.json();
-        if (!d.available) {
-          setUsernameMsg('Username already taken — choose another');
+        if (d.available === false || d.taken === true) {
+          setUsernameMsg('غير متاح — اليوزر مستخدم · Username taken');
           setUsernameLoading(false);
           return;
         }
+        // سجل الشركات المحلي
+        try {
+          const reg = loadCompaniesRegistry();
+          if (reg.some(c => String(c.username || '').replace(/^@/, '').toLowerCase() === un.toLowerCase()
+            && String(c.email || '').toLowerCase() !== String((user as any)?.email || '').toLowerCase())) {
+            setUsernameMsg('غير متاح — اليوزر مستخدم · Username taken');
+            setUsernameLoading(false);
+            return;
+          }
+        } catch { /* */ }
       } catch {/* network error — proceed */}
     }
     try {
@@ -3104,14 +5505,25 @@ export default function SettingsPage() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          username: newUsername
+          username: un
         })
       });
       const d = await r.json();
-      if (!r.ok) setUsernameMsg(d.error || 'Failed');else {
-        setUsernameMsg('Saved!');
+      if (!r.ok) setUsernameMsg(d.error || 'Failed'); else {
+        setUsernameMsg('متاح وتم الحفظ · Saved!');
         setEditingUsername(false);
-        setProfileUsername(newUsername);
+        setProfileUsername(un);
+        setNewUsername(un);
+        // حدّث سجل الشركة إن وُجد
+        try {
+          const em = String((user as any)?.email || '').toLowerCase();
+          if (em) {
+            const co = findCompanyByEmail(em);
+            if (co) {
+              upsertCompanyRegistration({ ...co, username: un, updatedAt: new Date().toISOString() });
+            }
+          }
+        } catch { /* */ }
       }
     } catch {
       setUsernameMsg('Error saving');
@@ -3694,6 +6106,60 @@ export default function SettingsPage() {
                         </div>
                         <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
                       </motion.button>
+
+                      {/* الشركات — فقط @Stooorna / الأونر */}
+                      {isSupportOwnerAccount(
+                        user as { email?: string | null; username?: string | null; name?: string | null },
+                        profileUsername,
+                      ) && (
+                        <motion.button
+                          whileTap={{ scale: 0.98 }}
+                          type="button"
+                          onClick={() => {
+                            void loadOwnerData();
+                            refreshOwnerCompanies();
+                            setShowOwnerCompanies(true);
+                          }}
+                          className="flex items-center justify-between"
+                          style={{
+                            width: '100%',
+                            background: T.surface,
+                            border: `1px solid ${T.surfaceBorder}`,
+                            borderRadius: 14,
+                            padding: '14px 16px',
+                            color: T.text,
+                            cursor: 'pointer',
+                          }}
+                          aria-label="Companies"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="flex items-center justify-center" style={{
+                              width: 38, height: 38, borderRadius: 12, background: 'rgba(0,188,212,0.1)',
+                              border: '1px solid rgba(0,188,212,0.35)', color: T.primary,
+                            }}>
+                              <Building2 size={19} strokeWidth={2.1} />
+                            </span>
+                            <span style={{ textAlign: 'left' }}>
+                              <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Companies</span>
+                              <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
+                                Activate / deactivate registered company accounts
+                              </span>
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {ownerPendingCompanyCount > 0 && (
+                              <span style={{
+                                minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+                                background: '#eab308', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}>
+                                {ownerPendingCompanyCount > 9 ? '9+' : ownerPendingCompanyCount}
+                              </span>
+                            )}
+                            <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
+                          </div>
+                        </motion.button>
+                      )}
                     </>
                   )}
 
@@ -3951,7 +6417,8 @@ export default function SettingsPage() {
                     </AnimatePresence>
                   </div>
 
-                  {/* ── Username ── */}
+                  {/* ── Username — للشركات فقط إذا فعّل الأونر المفتاح ── */}
+                  {showUsernameSection && (
                   <div style={{
                 background: T.surface,
                 border: `1px solid ${T.surfaceBorder}`,
@@ -3965,7 +6432,7 @@ export default function SettingsPage() {
                   textTransform: 'uppercase',
                   fontWeight: 500,
                   marginBottom: 10
-                }}>Username</p>
+                }}>{sessionIsCompany ? 'يوزرنيم الشركة · Username' : 'Username'}</p>
                     {editingUsername ? <div className="flex flex-col gap-2">
                         <div className="flex gap-2">
                           <div className="relative flex-1 flex items-center">
@@ -4053,6 +6520,7 @@ export default function SettingsPage() {
                         </motion.button>
                       </div>}
                   </div>
+                  )}
 
                   {/* ── Phone Number ── */}
                   <div style={{
@@ -4825,71 +7293,51 @@ export default function SettingsPage() {
                           {shortLinkCopied ? <Check size={14} /> : <Copy size={14} />}
                           {shortLinkCopied ? 'Copied' : 'Copy'}
                         </motion.button>
+
                       </div>
                     )}
 
                     {shortLinkError && (
                       <p style={{ margin: 0, color: T.danger, fontSize: '0.72rem', textAlign: 'center' }}>{shortLinkError}</p>
                     )}
-
-                    {shortLinkHistory.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <p style={{ margin: 0, color: T.textMuted, fontSize: '0.65rem', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                          آخر الروابط
-                        </p>
-                        {shortLinkHistory.slice(0, 5).map(item => (
-                          <button
-                            key={item.code + item.createdAt}
-                            type="button"
-                            onClick={() => { setShortLinkInput(item.url); setShortLinkResult(item.shortUrl); setShortLinkError(''); setShortLinkCopied(false); }}
-                            style={{
-                              textAlign: 'left', cursor: 'pointer',
-                              background: 'rgba(255,255,255,0.03)', border: `1px solid ${T.surfaceBorder}`,
-                              borderRadius: 10, padding: '8px 10px',
-                              display: 'flex', flexDirection: 'column', gap: 2,
-                            }}
-                          >
-                            <span style={{ color: T.primary, fontSize: '0.72rem', fontWeight: 700, direction: 'ltr' }}>{item.shortUrl}</span>
-                            <span style={{ color: T.textMuted, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'ltr' }}>{item.url}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
 
                   {/* ── Privacy + Sign Out ── */}
-                  <div style={{
-                display: 'flex',
-                gap: 8
-              }}>
-                    <motion.button whileTap={{
-                  scale: 0.97
-                }} onClick={() => navigate('/privacy')} className="flex-1 flex items-center justify-center gap-2 rounded-xl py-3" style={{
-                  background: T.primaryFaint,
-                  border: `1px solid ${T.primaryBorder}`,
-                  color: T.primary,
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => navigate('/privacy')}
+                      className="flex-1 flex items-center justify-center gap-2 rounded-xl py-3"
+                      style={{
+                        background: T.primaryFaint,
+                        border: `1px solid ${T.primaryBorder}`,
+                        color: T.primary,
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
                       <Eye size={14} />
                       Privacy
                     </motion.button>
-                    <motion.button whileTap={{
-                  scale: 0.97
-                }} onClick={handleLogout} className="flex-1 flex items-center justify-center gap-2 rounded-xl py-3" style={{
-                  background: 'transparent',
-                  border: `1px solid ${T.dangerBorder}`,
-                  color: T.danger,
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}>
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      onClick={handleLogout}
+                      className="flex-1 flex items-center justify-center gap-2 rounded-xl py-3"
+                      style={{
+                        background: 'transparent',
+                        border: `1px solid ${T.dangerBorder}`,
+                        color: T.danger,
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
                       <LogOut size={14} />
                       Sign Out
                     </motion.button>
                   </div>
-                </motion.div>;
+                </motion.div>
           })()}
 
             {/* ── LOGGED IN — LIVE TAB ── */}
@@ -5354,7 +7802,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Bottom nav bar — hidden while support overlays are open */}
-        {!showSupportChat && !ownerChatUser && !showOwnerInbox && !showSupportUsers && !supportCtrlUser && (
+        {!showSupportChat && !ownerChatUser && !showOwnerInbox && !showSupportUsers && !supportCtrlUser && !showOwnerCompanies && !ownerCompanyDetail && (
           <div className="w-full flex items-center justify-center px-10 py-4 z-10" style={{
             background: T.navBg,
             borderTop: `1px solid ${T.navBorder}`
@@ -5417,9 +7865,10 @@ export default function SettingsPage() {
                 border: '2px solid #00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: '#041018', fontWeight: 800, fontSize: '0.75rem',
               }}>S</div>
-              <p style={{ margin: 0, flex: 1, color: '#00BCD4', fontWeight: 800, fontSize: '0.9rem' }}>
-                Stooorna (Support)
-              </p>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, color: '#00BCD4', fontWeight: 900, fontSize: '0.95rem', lineHeight: 1.15 }}>Stooorna</p>
+                <p style={{ margin: '1px 0 0', color: 'rgba(150,190,190,0.85)', fontWeight: 700, fontSize: '0.68rem' }}>الدعم · Support</p>
+              </div>
               {supportUnreadTotal > 0 && (
                 <span style={{
                   minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px',
@@ -5516,7 +7965,13 @@ export default function SettingsPage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           setShowOwnerInbox(false);
-                          navigate(`/u/${encodeURIComponent(peer.username!)}`);
+                          // البروفايل الجديد في صفحة المنشورات (بث صوتي) — ليس /u/ القديمة
+                          const q = new URLSearchParams();
+                          q.set('openProfile', peer.id);
+                          if (peer.name) q.set('openProfileName', peer.name);
+                          if (peer.username) q.set('openProfileUsername', peer.username);
+                          if (peer.avatarUrl) q.set('openProfileAvatar', peer.avatarUrl);
+                          navigate(`/add-friend?${q.toString()}`);
                         }}
                         style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -5624,7 +8079,7 @@ export default function SettingsPage() {
             }}>
               <button
                 type="button"
-                onClick={() => { setShowSupportUsers(false); setSupportUsersSearch(''); }}
+                onClick={() => { setShowSupportUsers(false); setSupportUsersSearch(''); setSupportUsersTab('users'); }}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }}
                 aria-label="Close"
               >
@@ -5644,20 +8099,94 @@ export default function SettingsPage() {
                 {usersLoading ? '…' : '↻'}
               </button>
               <span style={{ color: 'rgba(200,180,180,0.6)', fontSize: '0.7rem' }}>
-                {allUsers.length}
+                {supportUsersTab === 'companies'
+                  ? allCompanyCtrlUsers.length
+                  : supportUsersTab === 'banned'
+                    ? [...allUsers, ...allCompanyCtrlUsers].filter(u => u.isBanned).length
+                    : allUsers.length}
               </span>
+            </div>
+
+            {/* ثلاث تبويبات: مستخدمين | شركات | محظورين — نفس أدوات التحكم */}
+            <div style={{
+              display: 'flex', gap: 8, padding: '10px 14px 0', flexShrink: 0,
+            }}>
+              <button
+                type="button"
+                onClick={() => { setSupportUsersTab('users'); setSupportUsersSearch(''); }}
+                style={{
+                  flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
+                  fontWeight: 800, fontSize: '0.8rem',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  background: supportUsersTab === 'users' ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${supportUsersTab === 'users' ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                  color: supportUsersTab === 'users' ? '#fca5a5' : 'rgba(200,180,180,0.7)',
+                }}
+              >
+                <Users size={14} strokeWidth={2.2} />
+                مستخدمين
+                <span style={{
+                  fontSize: '0.65rem', fontWeight: 700, opacity: 0.85,
+                  background: supportUsersTab === 'users' ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.06)',
+                  padding: '2px 7px', borderRadius: 8,
+                }}>{allUsers.length}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSupportUsersTab('companies'); setSupportUsersSearch(''); }}
+                style={{
+                  flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
+                  fontWeight: 800, fontSize: '0.8rem',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  background: supportUsersTab === 'companies' ? 'rgba(0,188,212,0.15)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${supportUsersTab === 'companies' ? 'rgba(0,188,212,0.45)' : 'rgba(255,255,255,0.1)'}`,
+                  color: supportUsersTab === 'companies' ? '#00BCD4' : 'rgba(200,180,180,0.7)',
+                }}
+              >
+                <Building2 size={14} strokeWidth={2.2} />
+                شركات
+                <span style={{
+                  fontSize: '0.65rem', fontWeight: 700, opacity: 0.85,
+                  background: supportUsersTab === 'companies' ? 'rgba(0,188,212,0.2)' : 'rgba(255,255,255,0.06)',
+                  padding: '2px 7px', borderRadius: 8,
+                }}>{allCompanyCtrlUsers.length}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSupportUsersTab('banned'); setSupportUsersSearch(''); }}
+                style={{
+                  flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
+                  fontWeight: 800, fontSize: '0.8rem',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  background: supportUsersTab === 'banned' ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${supportUsersTab === 'banned' ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                  color: supportUsersTab === 'banned' ? '#fca5a5' : 'rgba(200,180,180,0.7)',
+                }}
+              >
+                <ShieldOff size={14} strokeWidth={2.2} />
+                محظورين
+                <span style={{
+                  fontSize: '0.65rem', fontWeight: 700, opacity: 0.85,
+                  background: supportUsersTab === 'banned' ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.06)',
+                  padding: '2px 7px', borderRadius: 8,
+                }}>{[...allUsers, ...allCompanyCtrlUsers].filter(u => u.isBanned).length}</span>
+              </button>
             </div>
 
             <div style={{ padding: '10px 14px', flexShrink: 0 }}>
               <input
                 value={supportUsersSearch}
                 onChange={e => setSupportUsersSearch(e.target.value)}
-                placeholder="بحث باليوزر / الإيميل / الاسم…"
+                placeholder={supportUsersTab === 'companies'
+                  ? 'بحث باسم الشركة / الإيميل / اليوزر…'
+                  : supportUsersTab === 'banned'
+                    ? 'بحث بين المحظورين — يوزر / إيميل / اسم…'
+                    : 'بحث باليوزر / الإيميل / الاسم…'}
                 style={{
                   width: '100%', boxSizing: 'border-box',
                   padding: '10px 12px', borderRadius: 12,
-                  background: 'rgba(239,68,68,0.06)',
-                  border: '1px solid rgba(239,68,68,0.25)',
+                  background: supportUsersTab === 'companies' ? 'rgba(0,188,212,0.06)' : 'rgba(239,68,68,0.06)',
+                  border: `1px solid ${supportUsersTab === 'companies' ? 'rgba(0,188,212,0.25)' : 'rgba(239,68,68,0.25)'}`,
                   color: 'rgba(240,220,220,0.95)', fontSize: '0.85rem', outline: 'none',
                 }}
               />
@@ -5676,20 +8205,57 @@ export default function SettingsPage() {
                   </button>
                 </div>
               )}
-              {!usersLoading && !usersError && allUsers
-                .filter(u => {
+              {!usersLoading && !usersError && (() => {
+                const source = supportUsersTab === 'companies'
+                  ? allCompanyCtrlUsers
+                  : supportUsersTab === 'banned'
+                    ? [...allUsers, ...allCompanyCtrlUsers]
+                    : allUsers;
+                const filtered = source.filter(u => {
+                  if (isUserDeleted(u)) return false;
+                  if (supportUsersTab === 'banned' && !u.isBanned) return false;
                   const q = supportUsersSearch.trim().toLowerCase();
                   if (!q) return true;
+                  const companyBlob = `${u.companyName || ''} ${u.tradeName || ''} ${u.name || ''}`.toLowerCase();
                   return (
                     (u.username || '').toLowerCase().includes(q) ||
                     (u.name || '').toLowerCase().includes(q) ||
                     (u.email || '').toLowerCase().includes(q) ||
-                    (u.lastIp || '').includes(q)
+                    (u.lastIp || '').includes(q) ||
+                    companyBlob.includes(q)
                   );
-                })
-                .map(u => {
+                });
+                if (filtered.length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', marginTop: 48, padding: '0 16px' }}>
+                      {supportUsersTab === 'companies'
+                        ? <Building2 size={32} style={{ color: 'rgba(0,188,212,0.35)', marginBottom: 10 }} />
+                        : supportUsersTab === 'banned'
+                          ? <ShieldOff size={32} style={{ color: 'rgba(239,68,68,0.35)', marginBottom: 10 }} />
+                          : <Users size={32} style={{ color: 'rgba(239,68,68,0.35)', marginBottom: 10 }} />}
+                      <p style={{ color: 'rgba(200,230,230,0.85)', fontSize: '0.88rem', fontWeight: 700, margin: '0 0 6px' }}>
+                        {supportUsersTab === 'companies' ? 'لا حسابات شركات' : supportUsersTab === 'banned' ? 'لا يوجد محظورين' : 'لا مستخدمين'}
+                      </p>
+                      <p style={{ color: 'rgba(150,190,190,0.55)', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
+                        {supportUsersTab === 'companies'
+                          ? 'حسابات الشركات المسجّلة تظهر هنا مع نفس أدوات التحكم (لون اليوزر · تعديل اليوزر · كلمة المرور · حظر).'
+                          : supportUsersTab === 'banned'
+                            ? 'كل من يتم حظره من هنا يظهر في هذه القائمة مع مفتاح لرفع الحظر عنه.'
+                            : 'لا نتائج مطابقة للبحث.'}
+                      </p>
+                    </div>
+                  );
+                }
+                return filtered.map(u => {
                   const online = ownerPresence[u.id]?.online ?? false;
-                  const color = (u as SupportCtrlUser).nameColor || '#00BCD4';
+                  const color = (u as SupportCtrlUser).nameColor || (supportUsersTab === 'companies' ? '#00BCD4' : '#00BCD4');
+                  const isCo = supportUsersTab === 'banned' ? isCompanyAccountRow(u) : supportUsersTab === 'companies';
+                  const title = isCo
+                    ? preferredCompanyDisplayName(u)
+                    : `@${u.username || '—'}`;
+                  const subtitle = isCo
+                    ? `${u.username ? `@${u.username} · ` : ''}${u.email}${u.lastIp ? ` · ${u.lastIp}` : ''}`
+                    : `${u.email}${u.lastIp ? ` · ${u.lastIp}` : ''}`;
                   return (
                     <motion.button
                       key={u.id}
@@ -5713,15 +8279,19 @@ export default function SettingsPage() {
                       style={{
                         display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                         padding: '12px 14px', borderRadius: 14, cursor: 'pointer', textAlign: 'left',
-                        background: u.isBanned ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${u.isBanned ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                        background: u.isBanned
+                          ? 'rgba(239,68,68,0.1)'
+                          : isCo ? 'rgba(0,188,212,0.05)' : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${u.isBanned
+                          ? 'rgba(239,68,68,0.35)'
+                          : isCo ? 'rgba(0,188,212,0.2)' : 'rgba(255,255,255,0.08)'}`,
                         color: 'rgba(230,220,220,0.95)',
                       }}
                     >
                       <div style={{ position: 'relative', width: 42, height: 42, flexShrink: 0 }}>
                         <div style={{
                           width: 42, height: 42, borderRadius: '50%',
-                          background: 'rgba(0,0,0,0.35)',
+                          background: isCo ? 'rgba(0,188,212,0.12)' : 'rgba(0,0,0,0.35)',
                           border: `2px solid ${color}`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           color, fontWeight: 800, fontSize: '0.8rem',
@@ -5729,7 +8299,9 @@ export default function SettingsPage() {
                         }}>
                           {(u as SupportCtrlUser).avatarUrl
                             ? <img src={(u as SupportCtrlUser).avatarUrl!} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            : (u.username || u.name || u.email || '?')[0].toUpperCase()}
+                            : isCo
+                              ? <Building2 size={18} strokeWidth={2.2} />
+                              : (u.username || u.name || u.email || '?')[0].toUpperCase()}
                         </div>
                         <span style={{
                           position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: '50%',
@@ -5742,24 +8314,60 @@ export default function SettingsPage() {
                           margin: 0, fontSize: '0.88rem', fontWeight: 700,
                           color, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>
-                          @{u.username || '—'}
+                          {title}
                         </p>
                         <p style={{
                           margin: '2px 0 0', color: 'rgba(180,160,160,0.65)', fontSize: '0.68rem',
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>
-                          {u.email}{u.lastIp ? ` · ${u.lastIp}` : ''}
+                          {subtitle}
                         </p>
                       </div>
-                      {u.isBanned && (
+                      {isCo && (
+                        <span style={{
+                          fontSize: '0.58rem', fontWeight: 800, color: '#00BCD4',
+                          background: 'rgba(0,188,212,0.12)', padding: '3px 7px', borderRadius: 8,
+                          border: '1px solid rgba(0,188,212,0.3)', flexShrink: 0,
+                        }}>شركة</span>
+                      )}
+                      {u.isBanned && supportUsersTab !== 'banned' && (
                         <span style={{
                           fontSize: '0.6rem', fontWeight: 800, color: '#ef4444',
                           background: 'rgba(239,68,68,0.15)', padding: '3px 7px', borderRadius: 8,
                         }}>BAN</span>
                       )}
+                      {supportUsersTab === 'banned' && (
+                        <span
+                          role="switch"
+                          aria-checked={!!u.isBanned}
+                          aria-label="رفع الحظر / إعادة الحظر"
+                          onClick={async e => {
+                            e.stopPropagation();
+                            const next = !u.isBanned;
+                            const res = await patchSupportUser(u.id, { isBanned: next, banned: next });
+                            if (res) {
+                              setAllUsers(prev => prev.map(x => x.id === u.id ? { ...x, isBanned: next } : x));
+                              setAllCompanyCtrlUsers(prev => prev.map(x => x.id === u.id ? { ...x, isBanned: next } : x));
+                            }
+                          }}
+                          style={{
+                            flexShrink: 0, width: 42, height: 24, borderRadius: 999, cursor: 'pointer',
+                            position: 'relative', transition: 'background 0.2s',
+                            background: u.isBanned ? '#ef4444' : 'rgba(255,255,255,0.12)',
+                            border: `1px solid ${u.isBanned ? 'rgba(239,68,68,0.6)' : 'rgba(255,255,255,0.2)'}`,
+                          }}
+                        >
+                          <span style={{
+                            position: 'absolute', top: 2, left: u.isBanned ? 20 : 2,
+                            width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                            transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                          }} />
+                        </span>
+                      )}
                     </motion.button>
                   );
-                })}
+                });
+              })()}
             </div>
           </motion.div>
         )}
@@ -5827,7 +8435,16 @@ export default function SettingsPage() {
                     onClick={() => {
                       setSupportCtrlUser(null);
                       setScEditBox(null);
-                      navigate(`/u/${encodeURIComponent(supportCtrlUser.username!)}`);
+                      // البروفايل الجديد (نفس بروفايل البوست/المنتج) — ليس صفحة /u/ القديمة بالشات
+                      const q = new URLSearchParams();
+                      q.set('openProfile', supportCtrlUser.id);
+                      if (supportCtrlUser.name) q.set('openProfileName', supportCtrlUser.name);
+                      if (supportCtrlUser.username) q.set('openProfileUsername', supportCtrlUser.username);
+                      if (supportCtrlUser.avatarUrl) q.set('openProfileAvatar', supportCtrlUser.avatarUrl);
+                      if (supportUsersTab === 'companies' || isCompanyAccountRow(supportCtrlUser)) {
+                        q.set('openProfileCompany', '1');
+                      }
+                      navigate(`/add-friend?${q.toString()}`);
                     }}
                     style={{
                       background: 'hsl(var(--primary) / 0.12)', border: '1px solid hsl(var(--primary) / 0.35)',
@@ -5934,6 +8551,7 @@ export default function SettingsPage() {
                                 setScMsg('تم تفعيل اللون ✓');
                                 setSupportCtrlUser(prev => prev ? { ...prev, nameColor: c } : prev);
                                 setAllUsers(prev => prev.map(x => x.id === supportCtrlUser.id ? { ...x, nameColor: c } as typeof x & { nameColor?: string } : x));
+                                setAllCompanyCtrlUsers(prev => prev.map(x => x.id === supportCtrlUser.id ? { ...x, nameColor: c } as typeof x & { nameColor?: string } : x));
                                 setScEditBox(null);
                               } else setScMsg('فشل التفعيل');
                             }}
@@ -5978,6 +8596,7 @@ export default function SettingsPage() {
                             setScMsg('تم تفعيل اللون ✓');
                             setSupportCtrlUser(prev => prev ? { ...prev, nameColor: scColor } : prev);
                             setAllUsers(prev => prev.map(x => x.id === supportCtrlUser.id ? { ...x, nameColor: scColor } as typeof x & { nameColor?: string } : x));
+                            setAllCompanyCtrlUsers(prev => prev.map(x => x.id === supportCtrlUser.id ? { ...x, nameColor: scColor } as typeof x & { nameColor?: string } : x));
                             setScEditBox(null);
                           } else setScMsg('فشل الحفظ — تحقق من صلاحيات السيرفر');
                         }}
@@ -6026,6 +8645,7 @@ export default function SettingsPage() {
                           setScMsg('تم حفظ اليوزر');
                           setSupportCtrlUser(prev => prev ? { ...prev, username: next } : prev);
                           setAllUsers(prev => prev.map(x => x.id === supportCtrlUser.id ? { ...x, username: next } : x));
+                          setAllCompanyCtrlUsers(prev => prev.map(x => x.id === supportCtrlUser.id ? { ...x, username: next } : x));
                           setScEditBox(null);
                         } else setScMsg('فشل الحفظ — قد يكون اليوزر مستخدماً');
                       }}
@@ -6101,6 +8721,7 @@ export default function SettingsPage() {
                       setScMsg(next ? 'تم الحظر' : 'تم رفع الحظر');
                       setSupportCtrlUser(prev => prev ? { ...prev, isBanned: next } : prev);
                       setAllUsers(prev => prev.map(x => x.id === supportCtrlUser.id ? { ...x, isBanned: next } : x));
+                      setAllCompanyCtrlUsers(prev => prev.map(x => x.id === supportCtrlUser.id ? { ...x, isBanned: next } : x));
                     } else setScMsg('فشل تنفيذ الحظر');
                   }}
                   style={{
@@ -6112,11 +8733,812 @@ export default function SettingsPage() {
                   }}>
                   {supportCtrlUser.isBanned ? '✅ رفع الحظر' : '🚫 حظر / طرد من التطبيق'}
                 </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  disabled={scSaving || scDeleting || isSupportOwnerAccount(supportCtrlUser, supportCtrlUser.username)}
+                  onClick={() => {
+                    if (isSupportOwnerAccount(supportCtrlUser, supportCtrlUser.username)) {
+                      setScMsg('لا يمكن حذف حساب الدعم');
+                      return;
+                    }
+                    setScDeleteText('');
+                    setScDeleteError('');
+                    setScDeleteOpen(true);
+                  }}
+                  style={{
+                    padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                    background: 'rgba(239,68,68,0.18)',
+                    border: '1px solid rgba(239,68,68,0.45)',
+                    color: '#ef4444',
+                    fontWeight: 800, fontSize: '0.85rem',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    opacity: isSupportOwnerAccount(supportCtrlUser, supportCtrlUser.username) ? 0.45 : 1,
+                  }}>
+                  <Trash2 size={15} strokeWidth={2} />
+                  حذف الحساب من التطبيق نهائياً
+                </motion.button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ══ تأكيد الحذف النهائي لأي مستخدم — @Stooorna فقط ══ */}
+      <AnimatePresence>
+        {scDeleteOpen && (supportCtrlUser || ownerDeleteCompany) && (
+          <motion.div
+            key="support-user-delete-confirm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => { if (!scDeleting) { setScDeleteOpen(false); setOwnerDeleteCompany(null); } }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10480,
+              background: 'rgba(0,0,0,0.72)',
+              backdropFilter: 'blur(6px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20,
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 34 }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: '100%',
+                maxWidth: 340,
+                background: 'linear-gradient(160deg, #1a1212 0%, #0e0a0a 100%)',
+                border: '1px solid rgba(239,68,68,0.35)',
+                borderRadius: 16,
+                padding: '22px 18px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 14,
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: '50%',
+                  background: 'rgba(239,68,68,0.15)',
+                  border: '1px solid rgba(239,68,68,0.35)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Trash2 size={22} color="#ef4444" strokeWidth={2} />
+                </div>
+                <p style={{ color: 'rgba(200,230,230,0.95)', fontSize: '0.92rem', fontWeight: 800, margin: 0, textAlign: 'center' }}>
+                  تأكيد حذف الحساب
+                </p>
+              </div>
+              <p style={{
+                color: 'rgba(150,190,190,0.7)', fontSize: '0.78rem', lineHeight: 1.55,
+                textAlign: 'center', margin: 0,
+              }}>
+                سيتم حذف
+                {' '}
+                <span style={{ color: '#ef4444', fontWeight: 800 }}>
+                  @{(supportCtrlUser?.username || ownerDeleteCompany?.username || supportCtrlUser?.email || ownerDeleteCompany?.email)}
+                </span>
+                {' '}
+                وكل بياناته من التطبيق نهائياً. لا يمكن التراجع.
+              </p>
+              <p style={{ color: 'rgba(150,190,190,0.65)', fontSize: '0.72rem', textAlign: 'center', margin: 0 }}>
+                اكتب <span style={{ color: '#ef4444', fontWeight: 700 }}>حذف</span> أو <span style={{ color: '#ef4444', fontWeight: 700 }}>delete</span> للتأكيد
+              </p>
+              <input
+                value={scDeleteText}
+                onChange={e => { setScDeleteText(e.target.value); setScDeleteError(''); }}
+                disabled={scDeleting}
+                placeholder="حذف"
+                autoFocus
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: '11px 12px',
+                  borderRadius: 10, border: '1px solid rgba(239,68,68,0.35)',
+                  background: 'rgba(0,0,0,0.35)', color: 'rgba(200,230,230,0.95)',
+                  fontSize: '0.88rem', outline: 'none', textAlign: 'center',
+                }}
+              />
+              {scDeleteError ? (
+                <p style={{ color: '#ef4444', fontSize: '0.72rem', margin: 0, textAlign: 'center' }}>{scDeleteError}</p>
+              ) : null}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <motion.button
+                  whileTap={{ scale: 0.96 }}
+                  type="button"
+                  disabled={scDeleting}
+                  onClick={() => setScDeleteOpen(false)}
+                  style={{
+                    flex: 1, padding: '11px', borderRadius: 10,
+                    border: '1px solid rgba(0,188,212,0.2)',
+                    background: 'rgba(0,188,212,0.08)',
+                    color: 'rgba(200,230,230,0.9)',
+                    fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  إلغاء
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.96 }}
+                  type="button"
+                  disabled={scDeleting}
+                  onClick={async () => {
+                    const normalized = scDeleteText.trim().toLowerCase();
+                    if (normalized !== 'حذف' && normalized !== 'delete') {
+                      setScDeleteError('اكتب «حذف» أو «delete» للتأكيد');
+                      return;
+                    }
+                    const targetUser = supportCtrlUser;
+                    const targetCo = ownerDeleteCompany;
+                    if (!targetUser && !targetCo) return;
+                    setScDeleting(true);
+                    setScDeleteError('');
+                    const target = targetUser
+                      ? { id: targetUser.id, email: targetUser.email, username: targetUser.username }
+                      : { id: targetCo!.userId || targetCo!.id, email: targetCo!.email, username: targetCo!.username || targetCo!.companyName };
+                    markUserDeleted(target);
+                    markUsernameFreed(target.username);
+                    setAllUsers(prev => prev.filter(x => x.id !== target.id && String(x.username || '').toLowerCase() !== String(target.username || '').toLowerCase()));
+                    setAllCompanyCtrlUsers(prev => prev.filter(x => x.id !== target.id));
+                    const res = await permanentlyDeleteSupportUser(target);
+                    setOwnerCompanies(loadCompaniesRegistry());
+                    setOwnerDeleteCompany(null);
+                    if (!res.ok) {
+                      // الحذف المحلي تم — نعيد المحاولة على السيرفر دون إرجاع الحساب للقائمة
+                      console.warn('[delete-user] server path failed', res.status, res.body);
+                    }
+                    try {
+                      const list = loadCompaniesRegistry().filter(c =>
+                        c.userId !== target.id && c.email.toLowerCase() !== String(target.email || '').toLowerCase(),
+                      );
+                      saveCompaniesRegistry(list);
+                      setOwnerCompanies(sanitizeCompaniesRegistry());
+                    } catch { /* */ }
+                    setScDeleting(false);
+                    setScDeleteOpen(false);
+                    setSupportCtrlUser(null);
+                    setScEditBox(null);
+                    setScMsg('تم حذف الحساب نهائياً');
+                  }}
+                  style={{
+                    flex: 1, padding: '11px', borderRadius: 10,
+                    border: '1px solid rgba(239,68,68,0.4)',
+                    background: 'rgba(239,68,68,0.22)',
+                    color: '#ef4444',
+                    fontSize: '0.82rem', fontWeight: 800,
+                    cursor: scDeleting ? 'wait' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    opacity: scDeleting ? 0.7 : 1,
+                  }}
+                >
+                  {scDeleting ? '…' : 'حذف نهائي'}
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      
+      {/* ══ Owner (@Stooorna only): Companies registry ══ */}
+      <AnimatePresence>
+        {showOwnerCompanies && !ownerCompanyDetail && isSupportOwnerAccount(
+          user as { email?: string | null; username?: string | null; name?: string | null },
+          profileUsername,
+        ) && (
+          <motion.div
+            key="owner-companies"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10390,
+              background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(10px)',
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+              borderBottom: '1px solid rgba(0,188,212,0.25)',
+              background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
+              minHeight: 52, flexShrink: 0,
+            }}>
+              <button
+                type="button"
+                onClick={() => setShowOwnerCompanies(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00BCD4', padding: 2 }}
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+              <Building2 size={18} style={{ color: '#00BCD4' }} />
+              <p style={{ margin: 0, flex: 1, color: '#00BCD4', fontWeight: 800, fontSize: '0.9rem' }}>
+                Companies
+              </p>
+              <button
+                type="button"
+                onClick={() => refreshOwnerCompanies()}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00BCD4', fontWeight: 700, fontSize: '1.1rem' }}
+                title="تحديث"
+              >
+                ↻
+              </button>
+              <span style={{ color: 'rgba(150,190,190,0.6)', fontSize: '0.7rem' }}>{ownerCompanies.filter(c => !/nadoosha/i.test(`${c.email} ${c.username || c.companyName || ''}`)).length}</span>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px 24px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {ownerCompanies.length === 0 && (
+                <div style={{ textAlign: 'center', marginTop: 48, padding: '0 16px' }}>
+                  <Building2 size={32} style={{ color: 'rgba(0,188,212,0.35)', marginBottom: 10 }} />
+                  <p style={{ color: 'rgba(200,230,230,0.85)', fontSize: '0.88rem', fontWeight: 700, margin: '0 0 6px' }}>
+                    No registered companies yet
+                  </p>
+                  <p style={{ color: 'rgba(150,190,190,0.55)', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
+                    Companies that register from the auth screen (Companies tab) appear here only — separate from User Control.
+                  </p>
+                </div>
+              )}
+              {ownerPendingCompanyCount > 0 && (
+                <p style={{ margin: '4px 0 2px', color: '#eab308', fontWeight: 800, fontSize: '0.78rem', textAlign: 'right' }}>
+                  طلبات بانتظار الموافقة ({ownerPendingCompanyCount})
+                </p>
+              )}
+              {/* مفتاح الأونر: تفعيل يوزرنيم للشركات في إعداداتها */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                padding: '12px 14px', borderRadius: 14, marginBottom: 8,
+                background: 'rgba(0,188,212,0.08)', border: '1px solid rgba(0,188,212,0.3)',
+              }}>
+                <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+                  <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, fontSize: '0.82rem' }}>
+                    يوزرنيم للشركات
+                  </p>
+                  <p style={{ margin: '4px 0 0', color: 'rgba(150,190,190,0.75)', fontSize: '0.7rem', lineHeight: 1.4 }}>
+                    عند التشغيل تظهر للشركات إضافة يوزرنيم في إعداداتهم. عند الإيقاف تختفي الميزة.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !isCompanyUsernameFeatureEnabled();
+                    setCompanyUsernameFeatureEnabled(next);
+                    setOwnerCoUsernameFeature(next);
+                  }}
+                  style={{
+                    width: 52, height: 30, borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0,
+                    background: ownerCoUsernameFeature ? '#00BCD4' : 'rgba(100,130,140,0.35)',
+                    position: 'relative', transition: 'background 0.2s',
+                  }}
+                  aria-label="Toggle company username feature"
+                >
+                  <span style={{
+                    position: 'absolute', top: 3, width: 24, height: 24, borderRadius: '50%', background: '#fff',
+                    left: ownerCoUsernameFeature ? 25 : 3, transition: 'left 0.2s',
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+                  }} />
+                </button>
+              </div>
+              {ownerCompanies
+                .filter(co => !/nadoosha/i.test(`${co.email} ${co.username || co.companyName || ''}`))
+                .slice()
+                .sort((a, b) => {
+                  const rank = (st: CompanyRegStatus) => st === 'pending' ? 0 : st === 'active' ? 1 : 2;
+                  return rank(a.status) - rank(b.status);
+                })
+                .map(co => {
+                const isActive = co.status === 'active';
+                const isPending = co.status === 'pending';
+                const displayName = co.username
+                  ? `@${String(co.username).replace(/^@/, '')}`
+                  : preferredCompanyDisplayName(co);
+                const displayTrade = co.companyName && co.username
+                  ? `${co.companyName}${co.tradeName ? ' · ' + co.tradeName : ''}`
+                  : (co.tradeName || co.companyName || co.email);
+                return (
+                  <div
+                    key={co.id}
+                    style={{
+                      display: 'flex', alignItems: 'stretch', gap: 0,
+                      borderRadius: 14, overflow: 'hidden',
+                      border: `1px solid ${isActive ? 'rgba(34,197,94,0.35)' : isPending ? 'rgba(234,179,8,0.35)' : 'rgba(239,68,68,0.3)'}`,
+                      background: isActive ? 'rgba(34,197,94,0.06)' : isPending ? 'rgba(234,179,8,0.06)' : 'rgba(239,68,68,0.06)',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setOwnerCompanyDetail({ ...co, companyName: displayName, tradeName: displayTrade || co.tradeName })}
+                      style={{
+                        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4,
+                        padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'right',
+                        color: 'rgba(200,230,230,0.95)',
+                      }}
+                    >
+                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#00BCD4' }}>{displayName}</span>
+                      <span style={{ fontSize: '0.72rem', color: 'rgba(150,190,190,0.75)' }}>{displayTrade}</span>
+                      <span style={{ fontSize: '0.65rem', color: 'rgba(150,190,190,0.55)' }}>{co.email}</span>
+                    </button>
+                    <button
+                      type="button"
+                      title="عرض كامل بيانات التسجيل"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOwnerCompanyDetail({ ...co, companyName: displayName, tradeName: displayTrade || co.tradeName });
+                      }}
+                      style={{
+                        width: 44, flexShrink: 0, border: 'none', cursor: 'pointer',
+                        background: 'rgba(0,188,212,0.1)',
+                        borderLeft: '1px solid rgba(0,188,212,0.2)',
+                        color: '#00BCD4',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <Menu size={18} strokeWidth={2.4} />
+                    </button>
+                    <button
+                      type="button"
+                      title="حذف نهائي"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOwnerDeleteCompany(co);
+                        setScDeleteText('');
+                        setScDeleteError('');
+                        setScDeleteOpen(true);
+                      }}
+                      style={{
+                        width: 44, flexShrink: 0, border: 'none', cursor: 'pointer',
+                        background: 'rgba(239,68,68,0.12)',
+                        borderLeft: '1px solid rgba(239,68,68,0.25)',
+                        color: '#ef4444',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <Trash2 size={16} strokeWidth={2.2} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={ownerCompanyBusy}
+                      onClick={() => {
+                        const next: CompanyRegStatus = isActive ? 'inactive' : 'active';
+                        setOwnerCompanyBusy(true);
+                        // ثبّت بالإيميل أولاً ثم بالمعرّف — حتى لا يضيع التفعيل
+                        rememberCompanyActivation(co.email, next);
+                        setCompanyRegStatus(co.email || co.id, next, {
+                          approvedBy: profileUsername || 'stooorna',
+                        });
+                        if (co.id && co.email) setCompanyRegStatus(co.id, next, { approvedBy: profileUsername || 'stooorna' });
+                        const updated = loadCompaniesRegistry();
+                        setOwnerCompanies(updated);
+                        void pushCompanyStatusToServer({ ...co, status: next }, next).finally(() => {
+                          setOwnerCompanies(loadCompaniesRegistry());
+                          setOwnerCompanyBusy(false);
+                        });
+                      }}
+                      style={{
+                        width: 88, flexShrink: 0, border: 'none', cursor: 'pointer',
+                        background: isActive ? 'rgba(34,197,94,0.18)' : isPending ? 'rgba(234,179,8,0.15)' : 'rgba(239,68,68,0.15)',
+                        color: isActive ? '#22c55e' : isPending ? '#eab308' : '#ef4444',
+                        fontWeight: 800, fontSize: '0.72rem',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        writingMode: 'horizontal-tb',
+                      }}
+                    >
+                      {isActive ? 'Active' : isPending ? 'Approve' : 'Inactive'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ══ Owner: company full registration details ══ */}
+      <AnimatePresence>
+        {ownerCompanyDetail && isSupportOwnerAccount(
+          user as { email?: string | null; username?: string | null; name?: string | null },
+          profileUsername,
+        ) && (
+          <motion.div
+            key="owner-company-detail"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10400,
+              background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            }}
+            onClick={() => setOwnerCompanyDetail(null)}
+          >
+            <motion.div
+              initial={{ y: 40 }}
+              animate={{ y: 0 }}
+              exit={{ y: 60 }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: '100%', maxWidth: 480, maxHeight: '92dvh', overflowY: 'auto',
+                background: 'linear-gradient(180deg, #0d2a2e 0%, #0a1a1a 100%)',
+                borderTopLeftRadius: 22, borderTopRightRadius: 22,
+                border: '1px solid rgba(0,188,212,0.3)',
+                padding: '16px 16px max(20px, env(safe-area-inset-bottom))',
+                boxSizing: 'border-box',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <Building2 size={22} color="#00BCD4" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {ownerCompanyDetail.companyName}
+                  </p>
+                  <p style={{ margin: '2px 0 0', color: 'rgba(150,190,190,0.7)', fontSize: '0.7rem' }}>
+                    كامل بيانات تسجيل الشركة — للدعم فقط
+                  </p>
+                </div>
+                <button type="button" onClick={() => setOwnerCompanyDetail(null)} style={{ background: 'none', border: 'none', color: '#00BCD4', cursor: 'pointer' }}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div style={{
+                background: 'rgba(255,255,255,0.04)', borderRadius: 14,
+                border: '1px solid rgba(255,255,255,0.08)', padding: '12px 14px',
+                display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14,
+                fontSize: '0.8rem', color: 'rgba(220,230,230,0.95)',
+              }}>
+                {[
+                  ['اسم الشركة', ownerCompanyDetail.companyName],
+                  ['الاسم التجاري', ownerCompanyDetail.tradeName],
+                  ['صاحب الشركة', ownerCompanyDetail.ownerName],
+                  ['رقم السجل التجاري', ownerCompanyDetail.licenseNumber],
+                  ['رقم الترخيص التجاري', ownerCompanyDetail.tradeLicenseNumber || '—'],
+                  ['القطاع', [ownerCompanyDetail.sector, ownerCompanyDetail.sectorCustom].filter(Boolean).join(' — ')],
+                  ['رقم الهاتف', ownerCompanyDetail.phone],
+                  ['رقم هاتف آخر (اختياري)', ownerCompanyDetail.phoneAlt || '—'],
+                  ['البريد الإلكتروني', ownerCompanyDetail.email],
+                  ['كلمة المرور', ownerCompanyDetail.password || '— (غير محفوظة محلياً)'],
+                  ['الحالة', ownerCompanyDetail.status === 'active' ? 'مفعّل (Active)' : ownerCompanyDetail.status === 'pending' ? 'قيد المراجعة (Pending)' : 'غير مفعّل (Inactive)'],
+                  ['تاريخ الطلب', ownerCompanyDetail.createdAt ? new Date(ownerCompanyDetail.createdAt).toLocaleString('ar-KW') : '—'],
+                  ['تاريخ الموافقة', ownerCompanyDetail.approvedAt ? new Date(ownerCompanyDetail.approvedAt).toLocaleString('ar-KW') : '—'],
+                  ['المعرّف', ownerCompanyDetail.id],
+                  ['معرّف المستخدم', ownerCompanyDetail.userId || '—'],
+                  ['وافق بواسطة', ownerCompanyDetail.approvedBy || '—'],
+                ].map(([k, v]) => (
+                  <div key={k as string} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                    <span style={{ color: 'rgba(150,190,190,0.65)', flexShrink: 0, minWidth: 110 }}>{k}</span>
+                    <span style={{
+                      textAlign: 'right', wordBreak: 'break-all', fontWeight: 600,
+                      color: k === 'كلمة المرور' && ownerCompanyDetail.password ? '#eab308' : undefined,
+                      fontFamily: k === 'كلمة المرور' ? 'ui-monospace, monospace' : undefined,
+                      direction: k === 'كلمة المرور' || k === 'البريد الإلكتروني' || k === 'رقم الهاتف' || k === 'رقم هاتف آخر (اختياري)' || k === 'رقم السجل التجاري' || k === 'المعرّف' || k === 'معرّف المستخدم' ? 'ltr' : undefined,
+                    }}>{v as string}</span>
+                  </div>
+                ))}
+
+                {/* شهادة السجل التجاري */}
+                {ownerCompanyDetail.commercialRegCert && (
+                  <div style={{ borderTop: '1px solid hsl(var(--primary)/0.15)', paddingTop: 10, marginTop: 4 }}>
+                    <p style={{ margin: '0 0 6px', color: 'hsl(var(--primary)/0.7)', fontSize: '0.75rem', fontWeight: 700 }}>
+                      شهادة السجل التجاري
+                    </p>
+                    {ownerCompanyDetail.commercialRegCert.startsWith('data:image') ? (
+                      <img
+                        src={ownerCompanyDetail.commercialRegCert}
+                        alt="شهادة السجل التجاري"
+                        style={{ width: '100%', borderRadius: 10, border: '1px solid hsl(var(--primary)/0.2)', objectFit: 'contain', maxHeight: 260 }}
+                      />
+                    ) : (
+                      <a
+                        href={ownerCompanyDetail.commercialRegCert}
+                        download={ownerCompanyDetail.commercialRegCertName || 'commercial-reg.pdf'}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'hsl(var(--primary)/0.1)', border: '1px solid hsl(var(--primary)/0.25)', borderRadius: 10, color: 'hsl(var(--primary))', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 700 }}
+                      >
+                        <FileText size={16} />
+                        {ownerCompanyDetail.commercialRegCertName || 'تحميل الشهادة'}
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* شهادة الترخيص التجاري */}
+                {ownerCompanyDetail.tradeLicenseCert && (
+                  <div style={{ borderTop: '1px solid hsl(var(--gold)/0.15)', paddingTop: 10, marginTop: 4 }}>
+                    <p style={{ margin: '0 0 6px', color: 'hsl(var(--gold)/0.8)', fontSize: '0.75rem', fontWeight: 700 }}>
+                      شهادة الترخيص التجاري
+                    </p>
+                    {ownerCompanyDetail.tradeLicenseCert.startsWith('data:image') ? (
+                      <img
+                        src={ownerCompanyDetail.tradeLicenseCert}
+                        alt="شهادة الترخيص التجاري"
+                        style={{ width: '100%', borderRadius: 10, border: '1px solid hsl(var(--gold)/0.2)', objectFit: 'contain', maxHeight: 260 }}
+                      />
+                    ) : (
+                      <a
+                        href={ownerCompanyDetail.tradeLicenseCert}
+                        download={ownerCompanyDetail.tradeLicenseCertName || 'trade-license.pdf'}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'hsl(var(--gold)/0.1)', border: '1px solid hsl(var(--gold)/0.25)', borderRadius: 10, color: 'hsl(var(--gold))', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 700 }}
+                      >
+                        <FileText size={16} />
+                        {ownerCompanyDetail.tradeLicenseCertName || 'تحميل الشهادة'}
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* تنبيه إذا لم ترفق الشهادات */}
+                {(!ownerCompanyDetail.commercialRegCert || !ownerCompanyDetail.tradeLicenseCert) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'hsl(var(--destructive)/0.08)', border: '1px solid hsl(var(--destructive)/0.25)', borderRadius: 10, marginTop: 4 }}>
+                    <AlertTriangle size={14} color="hsl(var(--destructive))" style={{ flexShrink: 0 }} />
+                    <p style={{ margin: 0, fontSize: '0.72rem', color: 'hsl(var(--destructive)/0.85)' }}>
+                      {!ownerCompanyDetail.commercialRegCert && !ownerCompanyDetail.tradeLicenseCert
+                        ? 'لم يتم رفع شهادة السجل التجاري ولا شهادة الترخيص التجاري'
+                        : !ownerCompanyDetail.commercialRegCert
+                          ? 'لم يتم رفع شهادة السجل التجاري'
+                          : 'لم يتم رفع شهادة الترخيص التجاري'
+                      }
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                type="button"
+                onClick={() => {
+                  setOwnerDeleteCompany(ownerCompanyDetail);
+                  setScDeleteText('');
+                  setScDeleteError('');
+                  setScDeleteOpen(true);
+                }}
+                style={{
+                  width: '100%', padding: '12px', borderRadius: 12, border: '1px solid rgba(239,68,68,0.4)',
+                  background: 'rgba(239,68,68,0.14)', color: '#ef4444', fontWeight: 800, fontSize: '0.85rem',
+                  cursor: 'pointer', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
+              >
+                <Trash2 size={15} />
+                حذف الحساب نهائياً وتحرير اليوزر
+              </motion.button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  type="button"
+                  disabled={ownerCompanyBusy || ownerCompanyDetail.status === 'active'}
+                  onClick={() => {
+                    setOwnerCompanyBusy(true);
+                    rememberCompanyActivation(ownerCompanyDetail.email, 'active');
+                    setCompanyRegStatus(ownerCompanyDetail.email || ownerCompanyDetail.id, 'active', {
+                      approvedBy: profileUsername || 'stooorna',
+                    });
+                    if (ownerCompanyDetail.id) setCompanyRegStatus(ownerCompanyDetail.id, 'active', { approvedBy: profileUsername || 'stooorna' });
+                    const updated = loadCompaniesRegistry();
+                    setOwnerCompanies(updated);
+                    setOwnerCompanyDetail(prev => prev ? { ...prev, status: 'active', approvedAt: new Date().toISOString() } : prev);
+                    void pushCompanyStatusToServer({ ...ownerCompanyDetail, status: 'active' }, 'active').finally(() => {
+                      setOwnerCompanies(loadCompaniesRegistry());
+                      setOwnerCompanyBusy(false);
+                    });
+                  }}
+                  style={{
+                    flex: 1, padding: '12px', borderRadius: 12, border: 'none', cursor: 'pointer',
+                    background: ownerCompanyDetail.status === 'active' ? 'rgba(34,197,94,0.2)' : '#22c55e',
+                    color: ownerCompanyDetail.status === 'active' ? '#86efac' : '#041018',
+                    fontWeight: 800, fontSize: '0.85rem',
+                    opacity: ownerCompanyDetail.status === 'active' ? 0.7 : 1,
+                  }}
+                >
+                  Activate
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  type="button"
+                  disabled={ownerCompanyBusy || ownerCompanyDetail.status === 'inactive'}
+                  onClick={() => {
+                    setOwnerCompanyBusy(true);
+                    rememberCompanyActivation(ownerCompanyDetail.email, 'inactive');
+                    setCompanyRegStatus(ownerCompanyDetail.email || ownerCompanyDetail.id, 'inactive');
+                    if (ownerCompanyDetail.id) setCompanyRegStatus(ownerCompanyDetail.id, 'inactive');
+                    const updated = loadCompaniesRegistry();
+                    setOwnerCompanies(updated);
+                    setOwnerCompanyDetail(prev => prev ? { ...prev, status: 'inactive' } : prev);
+                    void pushCompanyStatusToServer({ ...ownerCompanyDetail, status: 'inactive' }, 'inactive').finally(() => {
+                      setOwnerCompanies(loadCompaniesRegistry());
+                      setOwnerCompanyBusy(false);
+                    });
+                  }}
+                  style={{
+                    flex: 1, padding: '12px', borderRadius: 12, border: 'none', cursor: 'pointer',
+                    background: ownerCompanyDetail.status === 'inactive' ? 'rgba(239,68,68,0.2)' : '#ef4444',
+                    color: ownerCompanyDetail.status === 'inactive' ? '#fca5a5' : '#fff',
+                    fontWeight: 800, fontSize: '0.85rem',
+                    opacity: ownerCompanyDetail.status === 'inactive' ? 0.7 : 1,
+                  }}
+                >
+                  Deactivate
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Owner: New Company Registration Requests ── */}
+      {isOwner && tab === 'account' && ownerNewCompanies.length > 0 && (
+        <div style={{
+          margin: '0 20px 20px',
+          background: 'hsl(var(--card))',
+          border: '1px solid hsl(var(--border))',
+          borderRadius: 16,
+          padding: 16,
+          direction: 'rtl',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <p style={{ fontWeight: 800, fontSize: 14, color: 'hsl(var(--foreground))' }}>
+              طلبات تسجيل الشركات
+              {ownerNewCompanies.filter(c => c.status === 'pending').length > 0 && (
+                <span style={{
+                  marginRight: 8, padding: '2px 8px', borderRadius: 20,
+                  background: 'hsl(var(--primary)/0.2)', color: 'hsl(var(--primary))',
+                  fontSize: 11, fontWeight: 700,
+                }}>
+                  {ownerNewCompanies.filter(c => c.status === 'pending').length} جديد
+                </span>
+              )}
+            </p>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(['pending', 'approved', 'rejected', 'all'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setOwnerNewCompaniesFilter(f)}
+                  style={{
+                    padding: '4px 10px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                    fontSize: 11, fontWeight: 600,
+                    background: ownerNewCompaniesFilter === f ? 'hsl(var(--primary))' : 'hsl(var(--muted)/0.5)',
+                    color: ownerNewCompaniesFilter === f ? 'hsl(var(--primary-foreground))' : 'hsl(var(--muted-foreground))',
+                  }}
+                >
+                  {f === 'pending' ? 'انتظار' : f === 'approved' ? 'معتمد' : f === 'rejected' ? 'مرفوض' : 'الكل'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {ownerNewCompaniesLoading ? (
+            <p style={{ textAlign: 'center', color: 'hsl(var(--muted-foreground))', fontSize: 13, padding: 12 }}>جاري التحميل…</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {ownerNewCompanies
+                .filter(c => ownerNewCompaniesFilter === 'all' || c.status === ownerNewCompaniesFilter)
+                .map(c => (
+                  <div key={c.id} style={{
+                    background: 'hsl(var(--muted)/0.3)',
+                    border: `1px solid ${c.status === 'pending' ? 'hsl(var(--primary)/0.3)' : c.status === 'approved' ? 'hsl(var(--success)/0.3)' : 'hsl(var(--destructive)/0.3)'}`,
+                    borderRadius: 12, padding: 12,
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontWeight: 700, fontSize: 14, color: 'hsl(var(--foreground))' }}>{c.companyName}</p>
+                        {c.tradeName && <p style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>{c.tradeName}</p>}
+                        <p style={{ fontSize: 11, color: 'hsl(var(--muted-foreground))', marginTop: 4 }}>
+                          مقدّم من: {c.submitter.name || c.submitter.username || c.submitter.email}
+                        </p>
+                        {c.licenseNumber && <p style={{ fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>سجل: {c.licenseNumber}</p>}
+                        {c.tradeLicenseNumber && <p style={{ fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>رخصة: {c.tradeLicenseNumber}</p>}
+                        {c.description && <p style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))', marginTop: 4 }}>{c.description}</p>}
+                        {/* Documents */}
+                        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                          {c.commercialRegFile ? (
+                            <a href={c.commercialRegFile} target="_blank" rel="noopener noreferrer"
+                              style={{ fontSize: 11, color: 'hsl(var(--primary))', textDecoration: 'underline' }}>
+                              📄 السجل التجاري
+                            </a>
+                          ) : (
+                            <span style={{ fontSize: 11, color: 'hsl(var(--destructive))' }}>⚠ لا يوجد سجل تجاري</span>
+                          )}
+                          {c.tradeLicenseFile ? (
+                            <a href={c.tradeLicenseFile} target="_blank" rel="noopener noreferrer"
+                              style={{ fontSize: 11, color: 'hsl(var(--primary))', textDecoration: 'underline' }}>
+                              📄 الترخيص التجاري
+                            </a>
+                          ) : (
+                            <span style={{ fontSize: 11, color: 'hsl(var(--destructive))' }}>⚠ لا يوجد ترخيص</span>
+                          )}
+                        </div>
+                      </div>
+                      <span style={{
+                        padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+                        background: c.status === 'pending' ? 'hsl(var(--primary)/0.15)' : c.status === 'approved' ? 'hsl(var(--success)/0.15)' : 'hsl(var(--destructive)/0.15)',
+                        color: c.status === 'pending' ? 'hsl(var(--primary))' : c.status === 'approved' ? 'hsl(var(--success))' : 'hsl(var(--destructive))',
+                      }}>
+                        {c.status === 'pending' ? 'انتظار' : c.status === 'approved' ? 'معتمد ✓' : 'مرفوض'}
+                      </span>
+                    </div>
+
+                    {/* Reject reason input */}
+                    {ownerNewCompaniesRejectId === c.id && (
+                      <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+                        <input
+                          value={ownerNewCompaniesRejectReason}
+                          onChange={e => setOwnerNewCompaniesRejectReason(e.target.value)}
+                          placeholder="سبب الرفض (اختياري)"
+                          style={{
+                            flex: 1, padding: '8px 10px', borderRadius: 8,
+                            border: '1px solid hsl(var(--border))',
+                            background: 'hsl(var(--muted)/0.4)',
+                            color: 'hsl(var(--foreground))', fontSize: 12, direction: 'rtl',
+                          }}
+                        />
+                        <button
+                          onClick={() => reviewNewCompany(c.id, 'reject', ownerNewCompaniesRejectReason)}
+                          style={{
+                            padding: '8px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                            background: 'hsl(var(--destructive))', color: 'hsl(var(--destructive-foreground))',
+                            fontSize: 12, fontWeight: 700,
+                          }}
+                        >
+                          تأكيد الرفض
+                        </button>
+                        <button
+                          onClick={() => setOwnerNewCompaniesRejectId(null)}
+                          style={{
+                            padding: '8px 12px', borderRadius: 8, border: '1px solid hsl(var(--border))',
+                            background: 'transparent', color: 'hsl(var(--muted-foreground))',
+                            fontSize: 12, cursor: 'pointer',
+                          }}
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Action buttons */}
+                    {c.status === 'pending' && ownerNewCompaniesRejectId !== c.id && (
+                      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                        <button
+                          onClick={() => reviewNewCompany(c.id, 'approve')}
+                          style={{
+                            flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                            background: 'hsl(var(--success))', color: 'hsl(var(--success-foreground))',
+                            fontSize: 12, fontWeight: 700,
+                          }}
+                        >
+                          ✓ قبول
+                        </button>
+                        <button
+                          onClick={() => { setOwnerNewCompaniesRejectId(c.id); setOwnerNewCompaniesRejectReason(''); }}
+                          style={{
+                            flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                            background: 'hsl(var(--destructive))', color: 'hsl(var(--destructive-foreground))',
+                            fontSize: 12, fontWeight: 700,
+                          }}
+                        >
+                          ✕ رفض
+                        </button>
+                      </div>
+                    )}
+                    {c.status === 'approved' && (
+                      <button
+                        onClick={() => reviewNewCompany(c.id, 'reject', 'تم إلغاء الاعتماد')}
+                        style={{
+                          marginTop: 8, padding: '6px 14px', borderRadius: 8,
+                          border: '1px solid hsl(var(--destructive)/0.5)',
+                          background: 'transparent', color: 'hsl(var(--destructive))',
+                          fontSize: 11, cursor: 'pointer',
+                        }}
+                      >
+                        إلغاء الاعتماد
+                      </button>
+                    )}
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Music modal — from profile Music button ── */}
       <AnimatePresence>
