@@ -3433,90 +3433,109 @@ function XStatusEmbed({ statusUrl }: { statusUrl: string }) {
   return <PostLinkEmbeds embeds={items} />;
 }
 
-// ── بطاقة وسائط مفردة (فيديو/صورة) — بدون أزرار تشغيل/إيقاف افتراضية للمتصفح.
-// الفيديو يبقى ساكنًا كصورة حتى يُنقر عليه (نفس سلوك الصورة)، مع مكدّس أيقونات
-// إعجاب/تعليق/مشاركة فوق الوسائط، وأيقونة الثلاث خطوط في المنتصف تمامًا ─────────
-function PostMediaTile({ m }: { m: { url: string; type: 'image' | 'video' } }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying] = useState(false);
-
-  const toggle = (e: React.MouseEvent | React.KeyboardEvent) => {
-    e.stopPropagation();
-    const v = videoRef.current;
-    if (!v) return;
-    if (v.paused) { v.play().catch(() => {}); } else { v.pause(); }
+// ── عارض ملء الشاشة للوسائط — يفتح عند النقر على الفيديو/الصورة داخل البوست.
+// أيقونات إعجاب/تعليق/مشاركة/الثلاث خطوط تظهر هنا فقط، مكدّسة أسفل الشاشة ────────
+function PostMediaFullscreen({ m, onClose }: { m: { url: string; type: 'image' | 'video' }; onClose: () => void }) {
+  const fsBtnStyle: React.CSSProperties = {
+    width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
+    background: 'rgba(255,255,255,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center',
   };
-
-  const overlayBtnStyle: React.CSSProperties = {
-    width: 34, height: 34, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
-    background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-  };
-
   return (
-    <div style={{ position: 'relative', width: '100%', background: '#000' }}>
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999, background: '#000',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); onClose(); }}
+        aria-label="إغلاق"
+        style={{
+          position: 'absolute', top: 14, insetInlineStart: 14, zIndex: 2,
+          width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer',
+          background: 'rgba(255,255,255,0.14)', color: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <X size={20} />
+      </button>
+
       {m.type === 'video' ? (
         <video
-          ref={videoRef}
           src={m.url}
-          playsInline
+          autoPlay
           loop
-          onClick={toggle}
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
-          style={{ width: '100%', maxHeight: '70vh', display: 'block', background: '#000', cursor: 'pointer' }}
+          playsInline
+          onClick={e => e.stopPropagation()}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
         />
       ) : (
         <img
           src={m.url}
           alt=""
-          style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block', background: '#000' }}
+          onClick={e => e.stopPropagation()}
+          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
         />
       )}
 
-      {/* زر تشغيل مركزي — يظهر فقط قبل النقر (لا أزرار تشغيل/إيقاف افتراضية) */}
-      {m.type === 'video' && !playing && (
-        <div onClick={toggle} style={{
-          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}>
-          <div style={{
-            width: 60, height: 60, borderRadius: '50%', background: 'rgba(0,0,0,0.45)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Play size={26} color="#fff" fill="#fff" style={{ marginInlineStart: 3 }} />
-          </div>
-        </div>
-      )}
-
-      {/* مكدّس إعجاب / تعليق / مشاركة — على نفس الوسائط، فيديو أو صورة */}
-      <div onClick={e => e.stopPropagation()} style={{
-        position: 'absolute', insetInlineEnd: 10, bottom: 14,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
-      }}>
-        <button type="button" style={overlayBtnStyle} aria-label="إعجاب">
-          <Heart size={20} color="#fff" strokeWidth={2} />
-        </button>
-        <button type="button" style={overlayBtnStyle} aria-label="تعليق">
-          <MessageCircle size={20} color="#fff" strokeWidth={2} />
-        </button>
-        <button type="button" style={overlayBtnStyle} aria-label="مشاركة">
-          <Repeat2 size={20} color="#fff" strokeWidth={2} />
-        </button>
-      </div>
-
-      {/* أيقونة الثلاث خطوط — في منتصف الوسائط تمامًا */}
-      <button
-        type="button"
+      {/* إعجاب / تعليق / مشاركة / الثلاث خطوط — مكدّسة أسفل الشاشة */}
+      <div
         onClick={e => e.stopPropagation()}
-        aria-label="المزيد"
         style={{
-          position: 'absolute', top: '50%', insetInlineEnd: 10, transform: 'translateY(-50%)',
-          width: 34, height: 34, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
-          background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'absolute', insetInlineEnd: 14, bottom: 24,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18,
         }}
       >
-        <Menu size={18} color="#fff" strokeWidth={2.2} />
-      </button>
+        <button type="button" style={fsBtnStyle} aria-label="إعجاب">
+          <Heart size={24} color="#fff" strokeWidth={2} />
+        </button>
+        <button type="button" style={fsBtnStyle} aria-label="تعليق">
+          <MessageCircle size={24} color="#fff" strokeWidth={2} />
+        </button>
+        <button type="button" style={fsBtnStyle} aria-label="مشاركة">
+          <Repeat2 size={24} color="#fff" strokeWidth={2} />
+        </button>
+        <button type="button" style={fsBtnStyle} aria-label="المزيد">
+          <Menu size={22} color="#fff" strokeWidth={2.2} />
+        </button>
+      </div>
     </div>
+  );
+}
+
+// ── بطاقة وسائط مفردة (فيديو/صورة) — بدون أي أيقونات فوقها. الفيديو ساكن
+// كالصورة، والنقر على أي منهما يفتح عارض ملء الشاشة مباشرة ─────────────────
+function PostMediaTile({ m }: { m: { url: string; type: 'image' | 'video' } }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <div
+        onClick={e => { e.stopPropagation(); setOpen(true); }}
+        style={{ position: 'relative', width: '100%', background: '#000', cursor: 'pointer' }}
+      >
+        {m.type === 'video' ? (
+          <video
+            src={m.url}
+            muted
+            playsInline
+            preload="metadata"
+            style={{ width: '100%', maxHeight: '70vh', display: 'block', background: '#000' }}
+          />
+        ) : (
+          <img
+            src={m.url}
+            alt=""
+            style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block', background: '#000' }}
+          />
+        )}
+      </div>
+      {open && typeof document !== 'undefined'
+        ? createPortal(<PostMediaFullscreen m={m} onClose={() => setOpen(false)} />, document.body)
+        : null}
+    </>
   );
 }
 
