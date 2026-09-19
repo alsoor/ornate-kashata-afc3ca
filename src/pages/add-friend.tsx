@@ -3688,7 +3688,6 @@ function mergePostsPreservingMedia(prevPosts: PostItem[], serverPosts: PostItem[
     if (!existing) return serverPost;
     const existingCount = existing.mediaUrls?.length ?? (existing.mediaUrl ? 1 : 0);
     const serverCount = serverPost.mediaUrls?.length ?? (serverPost.mediaUrl ? 1 : 0);
-    // Keep local media when server returns text-only or fewer items
     if (existingCount > 0 && existingCount >= serverCount) {
       return {
         ...serverPost,
@@ -3701,7 +3700,6 @@ function mergePostsPreservingMedia(prevPosts: PostItem[], serverPosts: PostItem[
     }
     return serverPost;
   });
-  // Keep brand-new local posts not yet returned by the server
   const serverIds = new Set(serverPosts.map(p => p.id));
   for (const p of prevPosts) {
     if (!serverIds.has(p.id)) merged.unshift(p);
@@ -9278,7 +9276,6 @@ export default function AddFriendPage() {
     setComposerPosting(true);
     setComposerError('');
     try {
-      // Media/X preview links stay out of product text — shown as media only
       const nonMediaLinks: string[] = [];
       for (const u of linkCandidates) {
         const resolved = composerLookupOriginalUrl(u);
@@ -9500,7 +9497,7 @@ export default function AddFriendPage() {
           let uploadRes: Response | null = null;
           let lastBody = '';
 
-          // Same upload path as quickPublishMedia (proven working)
+          // Same path as quickPublishMedia (raw body first)
           try {
             uploadRes = await fetch('/api/posts/media', {
               method: 'POST',
@@ -9576,7 +9573,6 @@ export default function AddFriendPage() {
         return;
       }
 
-      // Preview links (X / direct media) → post media instead of storing URL in text
       if (linkCandidates.length) {
         const seenMedia = new Set(uploadedMedia.map(m => m.url));
         for (const raw of linkCandidates) {
@@ -9598,7 +9594,7 @@ export default function AddFriendPage() {
                 }
               }
             }
-          } catch { /* next link */ }
+          } catch { /* next */ }
         }
       }
 
@@ -9610,7 +9606,6 @@ export default function AddFriendPage() {
       let saved: PostItem | null = null;
 
       if (mediaUrl && mediaType) {
-        // Create with media + text together so image/video is stored with the product post
         const createRes = await fetch('/api/posts', {
           method: 'POST',
           credentials: 'include',
@@ -9630,7 +9625,6 @@ export default function AddFriendPage() {
           }),
         });
         if (!createRes.ok) {
-          // Fallback: media-only create then caption (older servers)
           const createRes2 = await fetch('/api/posts', {
             method: 'POST',
             credentials: 'include',
@@ -9678,12 +9672,11 @@ export default function AddFriendPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: finalText }),
               });
-            } catch { /* keep local text */ }
+            } catch { /* keep local */ }
           }
         } else {
           const createData = await createRes.json();
           if (!createData?.post?.id) throw new Error('المنشور لم يُحفظ على السيرفر');
-          // Always prefer uploaded media URLs so the feed shows image/video with text
           saved = {
             ...createData.post,
             text: createData.post.text || finalText || '',
@@ -9697,7 +9690,6 @@ export default function AddFriendPage() {
             isCompanyPost: !!isCompanyPublisher,
             authorIsCompany: !!isCompanyPublisher,
           } as PostItem;
-          // If server dropped text, patch caption without clearing media
           if (finalText.trim() && !(createData.post.text || '').trim()) {
             try {
               await fetch(`/api/posts/${saved.id}/caption`, {
@@ -15337,15 +15329,31 @@ export default function AddFriendPage() {
                   background: 'transparent', border: 'none',
                 }}
               >
-                <div style={{
-                  width: 28, height: 28, borderRadius: '50%', overflow: 'hidden',
-                  backgroundImage: 'url(/airo-assets/images/logo/horizontal)',
-                  backgroundSize: 'cover', backgroundPosition: 'center',
-                  animation: textFeedTab === 'app' ? 'stooornaFeedOrbit 8s linear infinite' : 'none',
-                  opacity: textFeedTab === 'app' ? 1 : 0.45,
-                  boxShadow: textFeedTab === 'app' ? '0 0 10px rgba(0,188,212,0.4)' : 'none',
-                  transition: 'opacity 0.2s ease',
-                }} />
+                <img
+                  src="/og-image.svg"
+                  alt="Stooorna"
+                  width={28}
+                  height={28}
+                  draggable={false}
+                  onError={(e) => {
+                    const el = e.currentTarget;
+                    if (el.dataset.fallback === '1') return;
+                    el.dataset.fallback = '1';
+                    el.src = 'https://stooorna.com/og-image.svg';
+                  }}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    display: 'block',
+                    background: '#0a1214',
+                    opacity: textFeedTab === 'app' ? 1 : 0.45,
+                    boxShadow: textFeedTab === 'app' ? '0 0 10px rgba(0,188,212,0.45)' : 'none',
+                    transition: 'opacity 0.2s ease',
+                    pointerEvents: 'none',
+                  }}
+                />
               </button>
               <span
                 aria-hidden
