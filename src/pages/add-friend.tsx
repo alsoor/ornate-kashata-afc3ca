@@ -3471,6 +3471,88 @@ function PostLinkEmbeds({ embeds }: { embeds: { url: string; type: 'image' | 'vi
   );
 }
 
+// ── روابط X (Twitter) داخل نص البوست — تعمل لنشر المستخدمين والشركات ─────────────
+// الرابط يبقى في النص كما هو، والصورة/الفيديو تظهر كاملة مباشرة
+// (معاينة مربع الكتابة + الفييد + صفحة البوست المفتوح).
+const X_MEDIA_CACHE = new Map<string, Promise<{ url: string; type: 'image' | 'video' }[]>>();
+
+/** كل روابط تغريدات X/Twitter داخل نص (بدون تكرار، بنفس ترتيب ظهورها) */
+function extractXStatusUrls(text: string | null | undefined): string[] {
+  if (!text) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const matches = text.match(URL_IN_TEXT_RE) || [];
+  for (const m of matches) {
+    const raw = m.replace(/[.,;:!?،؛]+$/, '');
+    const resolved = composerLookupOriginalUrl(raw);
+    const id = parseXStatusId(resolved);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(resolved);
+  }
+  return out;
+}
+
+/** نفس resolveXStatusMedia لكن مع كاش (لا يعيد الجلب عند كل عرض/تمرير). الفشل لا يُخزَّن حتى يمكن إعادة المحاولة */
+function resolveXStatusMediaCached(statusUrl: string): Promise<{ url: string; type: 'image' | 'video' }[]> {
+  const key = parseXStatusId(statusUrl) || statusUrl;
+  let pending = X_MEDIA_CACHE.get(key);
+  if (!pending) {
+    pending = resolveXStatusMedia(statusUrl)
+      .then(list => {
+        if (!list.length) X_MEDIA_CACHE.delete(key);
+        return list;
+      })
+      .catch(() => {
+        X_MEDIA_CACHE.delete(key);
+        return [] as { url: string; type: 'image' | 'video' }[];
+      });
+    X_MEDIA_CACHE.set(key, pending);
+  }
+  return pending;
+}
+
+/** رابط X → الصورة/الفيديو كاملة مباشرة (بدون أي ضغطة). failedNote: نص بديل بدل الرابط عند عدم وجود وسائط */
+function XLinkMedia({ statusUrl, failedNote }: { statusUrl: string; failedNote?: string }) {
+  const [items, setItems] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
+  useEffect(() => {
+    let cancelled = false;
+    setStatus('loading');
+    setItems([]);
+    resolveXStatusMediaCached(statusUrl).then(media => {
+      if (cancelled) return;
+      if (media.length) { setItems(media); setStatus('ready'); }
+      else setStatus('failed');
+    });
+    return () => { cancelled = true; };
+  }, [statusUrl]);
+
+  if (status === 'loading') {
+    return (
+      <div onClick={e => e.stopPropagation()} style={{
+        width: '100%', minHeight: 120, borderRadius: 14, marginTop: 8, boxSizing: 'border-box',
+        background: 'rgba(0,188,212,0.06)', border: `1px solid ${CLR_POST_BORDER}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#536471', fontSize: '0.75rem',
+      }}>
+        جاري تحميل الوسائط…
+      </div>
+    );
+  }
+  if (status === 'failed') {
+    if (failedNote) {
+      return <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p>;
+    }
+    return (
+      <a href={statusUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+        style={{ color: CLR_PRIMARY, fontSize: '0.75rem', wordBreak: 'break-all' }}>
+        {statusUrl}
+      </a>
+    );
+  }
+  return <PostLinkEmbeds embeds={items} />;
+}
+
 // ── PostText — renders post text with #hashtags highlighted ──────────────────
 function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, bold = false, collapseLong = false, onMore }: {
   text: string;
@@ -3651,6 +3733,8 @@ function PostCard({
   const mediaScrollRef = useRef<HTMLDivElement | null>(null);
   const productAd = parseProductAd(post.text);
   const isProductAd = !!productAd;
+  // روابط X داخل نص المنشور — نص إعلان/منشور المنتج مخفي في الفييد، فنعرض وسائط الرابط مباشرة
+  const postXUrls = isProductAd ? extractXStatusUrls(post.text) : [];
   const [productDetailsOpen, setProductDetailsOpen] = useState(false);
   function goToMediaPage(idx: number) {
     const el = mediaScrollRef.current;
@@ -4015,6 +4099,13 @@ function PostCard({
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* رابط X داخل نص المنشور (مستخدم أو شركة): الصورة/الفيديو تظهر كاملة مباشرة بدون ضغطة */}
+        {postXUrls.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingInline: hasMedia ? 14 : 0, paddingTop: hasMedia ? 10 : 0 }}>
+            {postXUrls.map(u => <XLinkMedia key={u} statusUrl={u} />)}
           </div>
         )}
 
@@ -8432,6 +8523,17 @@ export default function AddFriendPage() {
   const [composerLinkStep, setComposerLinkStep] = useState(false);
   const [composerLinkInput, setComposerLinkInput] = useState('');
   const [composerLinkShortening, setComposerLinkShortening] = useState(false);
+  // ── روابط X داخل مربع الكتابة (العنوان + التفاصيل + الحقول الإضافية) ──
+  // بمجرد لصق/كتابة الرابط تظهر الصورة أو الفيديو كاملة أسفل المربع (مستخدم + شركة — نفس الـ composer).
+  // debounce قصير حتى لا نجلب أثناء كتابة رقم التغريدة. الرابط يبقى داخل النص كما هو.
+  const [composerXText, setComposerXText] = useState('');
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setComposerXText([composerProductTitle, composerProductDetails, ...composerProductExtras].join('\n'));
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [composerProductTitle, composerProductDetails, composerProductExtras]);
+  const composerXUrls = useMemo(() => extractXStatusUrls(composerXText).slice(0, 4), [composerXText]);
   const [openComments, setOpenComments] = useState<PostItem | null>(null);
   // Only the "Post" tab (text posts) opens PostDetailPage with a slide-in-from-the-side
   // animation; Video/Photo grid thumbnails keep the original fade/scale-in behavior.
@@ -14492,6 +14594,14 @@ export default function AddFriendPage() {
                     }}
                   />
                 </div>
+{/* معاينة فورية لروابط X: الصورة/الفيديو تظهر كاملة بمجرد وضع الرابط (مستخدم أو شركة) */}
+                {composerXUrls.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {composerXUrls.map(u => (
+                      <XLinkMedia key={u} statusUrl={u} failedNote="لا توجد صورة أو فيديو في هذا الرابط" />
+                    ))}
+                  </div>
+                )}
 {isCompanyPublisher && (
                 <div>
                   <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>السعر</label>
@@ -14697,6 +14807,7 @@ export default function AddFriendPage() {
           const ad = parseProductAd(singlePostView.text);
           const mediaItems = PostMediaItems(singlePostView);
           const primary = mediaItems[0];
+          const xUrls = extractXStatusUrls(singlePostView.text);
           const isPdf = !!(primary?.url && /\.pdf(\?|$)/i.test(primary.url));
           const livePost = posts.find(p => p.id === singlePostView.id) ?? singlePostView;
           return (
@@ -14751,6 +14862,12 @@ export default function AddFriendPage() {
                   ) : (
                     <img src={primary.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }} />
                   )
+                ) : xUrls.length > 0 ? (
+                  <div style={{ width: '100%', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '56px 12px 12px', boxSizing: 'border-box' }}>
+                    <div style={{ margin: 'auto 0', width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {xUrls.map(u => <XLinkMedia key={u} statusUrl={u} />)}
+                    </div>
+                  </div>
                 ) : (
                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
                     <p style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, textAlign: 'center', lineHeight: 1.5 }}>
