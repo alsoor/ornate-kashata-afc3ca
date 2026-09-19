@@ -903,6 +903,7 @@ export default function RecorderScreen({
   const [cameraRecording, setCameraRecording] = useState(false);
   const [cameraRecordingSeconds, setCameraRecordingSeconds] = useState(0);
   const [cameraPublishing, setCameraPublishing] = useState(false);
+  const [cameraPublishError, setCameraPublishError] = useState('');
   const [cameraFlashOn, setCameraFlashOn] = useState(false);
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const cameraRecorderRef = useRef<MediaRecorder | null>(null);
@@ -1101,27 +1102,95 @@ export default function RecorderScreen({
     setCameraOpen(false);
     await openHomeCamera();
   }, [cameraPreviewUrl, openHomeCamera]);
+  /**
+   * إصلاح: publishHomeStory كانت تكتفي بإطلاق CustomEvent('stooorna:publish-home-post')
+   * بدون أي مستمع (listener) يرفع الملف فعليًا — فتُقفل الكاميرا وكأن النشر تم، بينما
+   * لا شيء يُرفع للسيرفر ولا تظهر الصورة/الفيديو أبدًا. الآن الدالة ترفع كل ملف
+   * وتنشئ المنشور مباشرة (نفس مسار quickPublishMedia الناجح)، ثم تحدّث الحالة محليًا.
+   */
   const publishHomeStory = useCallback(async () => {
     const filesToPublish = cameraMediaFiles.length > 0
       ? cameraMediaFiles
       : (cameraMediaFile ? [cameraMediaFile] : []);
     if (filesToPublish.length === 0 || cameraPublishing) return;
     setCameraPublishing(true);
+    setCameraPublishError('');
+    let successCount = 0;
     try {
-      filesToPublish.forEach(file => {
-        window.dispatchEvent(new CustomEvent('stooorna:publish-home-post', {
-          detail: {
-            file,
-            mediaType: file.type.startsWith('video/') ? 'video' : 'image',
-          },
-        }));
-      });
+      for (const file of filesToPublish) {
+        const mediaType: 'image' | 'video' = file.type.startsWith('video/') ? 'video' : 'image';
+        try {
+          // 1) رفع الملف
+          let uploadRes: Response | null = null;
+          try {
+            const fd = new FormData();
+            fd.append('file', file, file.name || `story.${mediaType === 'video' ? 'webm' : 'jpg'}`);
+            fd.append('type', mediaType);
+            fd.append('mediaType', mediaType);
+            uploadRes = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+          } catch { /* جرّب البديل تحت */ }
+          if (!uploadRes || !uploadRes.ok) {
+            uploadRes = await fetch('/api/posts/media', {
+              method: 'POST',
+              credentials: 'include',
+              headers: {
+                'Content-Type': file.type || (mediaType === 'video' ? 'video/webm' : 'image/jpeg'),
+                'X-File-Ext': `.${(file.name.split('.').pop() || (mediaType === 'video' ? 'webm' : 'jpg'))}`,
+                'X-Media-Type': mediaType,
+              },
+              body: file,
+            });
+          }
+          if (!uploadRes.ok) throw new Error(`upload failed (${uploadRes.status})`);
+          const uploadData = await uploadRes.json().catch(() => null) as { url?: string; mediaUrl?: string; path?: string; fileUrl?: string } | null;
+          const url = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
+          if (!url) throw new Error('upload returned no url');
+
+          // 2) إنشاء المنشور نفسه — نفس صيغة quickPublishMedia الناجحة
+          const createRes = await fetch('/api/posts', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: '',
+              mediaUrl: url,
+              mediaType,
+              mediaUrls: [url],
+              mediaTypes: [mediaType],
+              hashtags: [],
+              audience: 'public',
+              destination: mediaType === 'video' ? 'videos' : 'photos',
+            }),
+          });
+          if (!createRes.ok) throw new Error(`create failed (${createRes.status})`);
+          const createData = await createRes.json().catch(() => null) as { post?: { id?: number } } | null;
+          if (!createData?.post?.id) throw new Error('post not saved');
+          successCount++;
+
+          // نبقي الحدث القديم لأي مستمع آخر قد يعتمد عليه بمكان ثاني بالتطبيق
+          window.dispatchEvent(new CustomEvent('stooorna:publish-home-post', {
+            detail: { file, mediaType, url, post: createData.post },
+          }));
+        } catch (fileErr) {
+          console.error('[HomeCamera] upload/publish failed for one file:', fileErr);
+        }
+      }
+
+      if (successCount === 0) {
+        setCameraPublishError('تعذر نشر الصورة/الفيديو — حاول مرة ثانية');
+        return;
+      }
+
+      window.dispatchEvent(new CustomEvent('stooorna:refresh-text-feed'));
+      void loadStatuses();
       closeHomeCamera();
     } catch (error) {
       console.error('[HomeCamera] Public post publish failed:', error);
+      setCameraPublishError('تعذر نشر الصورة/الفيديو — حاول مرة ثانية');
+    } finally {
       setCameraPublishing(false);
     }
-  }, [cameraMediaFile, cameraMediaFiles, cameraPublishing, closeHomeCamera]);
+  }, [cameraMediaFile, cameraMediaFiles, cameraPublishing, closeHomeCamera, loadStatuses]);
 
   // Owner check — used for blue highlight across all sections
   const OWNER_USERNAME = 'Q8';
@@ -3207,6 +3276,11 @@ export default function RecorderScreen({
               gap: 12,
               background: 'rgba(5,9,9,0.98)',
             }}>
+                {cameraPublishError && (
+                  <p style={{ color: '#f87171', fontSize: '0.72rem', textAlign: 'center', margin: '0 0 4px', maxWidth: 420 }}>
+                    {cameraPublishError}
+                  </p>
+                )}
                 <div style={{ width: '100%', maxWidth: 420, display: 'flex', gap: 8 }}>
                   <button
                     type="button"

@@ -9547,8 +9547,8 @@ export default function AddFriendPage() {
             text: '',
             mediaUrl,
             mediaType,
-            mediaUrls: [mediaUrl],
-            mediaTypes: [mediaType],
+            mediaUrls,
+            mediaTypes,
             hashtags: [],
             // إعلان/منشور المنتج عام للجميع ويظهر في تغذية المنشورات النصية
             audience: 'text',
