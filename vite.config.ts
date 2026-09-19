@@ -6,9 +6,12 @@ import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { URL } from "node:url";
 
+
+
+
+
 import { formatOverridesPlugin } from "./export-plugins/format-overrides-plugin.ts";
-import { contentPlugin } from "./export-plugins/content-plugin/index.ts";
-import { mediaAssetsPlugin } from "./export-plugins/media-assets-plugin.ts";
+import { contentPlugin } from "./export-plugins/content-plugin/index.ts";import { mediaAssetsPlugin } from "./export-plugins/media-assets-plugin.ts";
 
 function extractHostname(value: string): string {
   try {
@@ -41,6 +44,16 @@ function apiDevPlugin(): Plugin {
   };
 }
 
+/**
+ * Serves the pre-built output of an automation worktree when the
+ * X-Worktree-Root header is present. Enables automation scan tools to
+ * verify rendered HTML without affecting the user's live preview.
+ *
+ * Flow: dev-supervisor injects the header on requests carrying X-Base-Dir.
+ * When the worktree has been built (dist/client/index.html exists), this
+ * plugin serves the production build. Otherwise returns 503 so the
+ * automation knows a build is needed first.
+ */
 const MIME_TYPES: Record<string, string> = {
   ".js": "application/javascript",
   ".mjs": "application/javascript",
@@ -54,7 +67,7 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 function worktreePreviewPlugin(): Plugin {
-  const serverBundleCache = new Map<string, { app: unknown; mtimeMs: number }>();
+  const serverBundleCache = new Map<string, {app: unknown;mtimeMs: number;}>();
 
   return {
     name: "worktree-preview",
@@ -75,6 +88,7 @@ function worktreePreviewPlugin(): Plugin {
         }
 
         const url = req.url || "/";
+
         const ext = path.extname(url.split("?")[0] || "");
         if (ext && ext !== ".html") {
           const assetPath = path.resolve(clientDir, "." + (url.split("?")[0] || ""));
@@ -103,10 +117,10 @@ function worktreePreviewPlugin(): Plugin {
           }
 
           const app = cached.app as (
-            req: IncomingMessage,
-            res: ServerResponse,
-            next: () => void
-          ) => void;
+          req: IncomingMessage,
+          res: ServerResponse,
+          next: () => void)
+          => void;
 
           app(req, res, () => {
             readFile(indexPath, "utf-8").then((html) => {
@@ -127,7 +141,7 @@ function worktreePreviewPlugin(): Plugin {
   };
 }
 
-const allowedHosts: string[] = ["www.stooorna.com", "stooorna.com"];
+const allowedHosts: string[] = [];
 const corsOrigins: string[] = [];
 
 if (process.env.FRONTEND_DOMAIN) {
@@ -155,17 +169,24 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
   envPrefix: ["VITE_", "SITE_"],
 
   plugins: [
-    react({
-      babel: {
-        plugins: []
-      }
-    }),
-    worktreePreviewPlugin(),
-    apiDevPlugin(),
-    mediaAssetsPlugin(),
-    formatOverridesPlugin(__dirname),
-    contentPlugin()
-  ],
+  react({
+    babel: {
+      plugins: []
+    }
+  }),
+  worktreePreviewPlugin(),
+  apiDevPlugin(), mediaAssetsPlugin(),
+  formatOverridesPlugin(__dirname),
+  contentPlugin()],
+
+
+
+
+
+
+
+
+
 
   resolve: {
     dedupe: ["react", "react-dom", "react-router"],
@@ -177,12 +198,14 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
   },
 
   optimizeDeps: {
-    include: ["react", "react-dom", "react-router", "motion/react"],
-    exclude: ["drizzle-orm", "mysql2"]
+    include: ["react", "react-dom", "react-router", "motion/react"], exclude: ["drizzle-orm", "mysql2"]
   },
 
   ssr: {
     noExternal: isSsrBuild ? true : undefined,
+    // agora-rtc-sdk-ng uses browser APIs — must never be loaded in Node/SSR
+    // db/schema.ts and db/client.ts are excluded from the SSR bundle to
+    // resolve a dynamic/static import conflict that was crashing the build
     external: ['agora-rtc-sdk-ng', './src/server/db/schema.ts', './src/server/db/client.ts']
   },
 
@@ -203,6 +226,11 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
     watch: {
       ignored: ["*/dist/*"]
     },
+    // Pre-transform the entry chain on dev-server start so the FIRST iframe
+    // request doesn't pay the full cold on-demand transpile cost. Paired with
+    // the container's pre-start vite optimize (container-scripts/preview/
+    // nomad_setup.sh), this shrinks the mount→IFRAME_READY window that the
+    // builder's recovery logic waits on.
     warmup: {
       clientFiles: ["./src/main.tsx", "./src/App.tsx"]
     }
@@ -212,7 +240,7 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
     host: process.env.HOST || "0.0.0.0",
     port: parseInt(process.env.PORT || "5173"),
     strictPort: !!process.env.PORT,
-    allowedHosts: true,
+    allowedHosts,
     cors: {
       origin: corsOrigins,
       credentials: true,
@@ -221,7 +249,8 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
     }
   },
 
-  build: {
+  build: isSsrBuild ?
+  {
     outDir: "dist",
     emptyOutDir: false,
     copyPublicDir: false,
@@ -233,6 +262,49 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
         entryFileNames: "server.bundle.mjs",
         chunkFileNames: "bin/[name]-[hash].js",
         banner: "import { createRequire } from 'module';\nconst require = createRequire(import.meta.url);"
+      }
+    }
+  } :
+  {
+    outDir: "dist/client",
+    emptyOutDir: true,
+    copyPublicDir: true,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom"],
+          "add-friend": ["./src/pages/add-friend.tsx"],
+          "radix-ui": [
+          "@radix-ui/react-accordion",
+          "@radix-ui/react-alert-dialog",
+          "@radix-ui/react-aspect-ratio",
+          "@radix-ui/react-avatar",
+          "@radix-ui/react-checkbox",
+          "@radix-ui/react-collapsible",
+          "@radix-ui/react-context-menu",
+          "@radix-ui/react-dialog",
+          "@radix-ui/react-dropdown-menu",
+          "@radix-ui/react-hover-card",
+          "@radix-ui/react-label",
+          "@radix-ui/react-menubar",
+          "@radix-ui/react-navigation-menu",
+          "@radix-ui/react-popover",
+          "@radix-ui/react-progress",
+          "@radix-ui/react-scroll-area",
+          "@radix-ui/react-select",
+          "@radix-ui/react-separator",
+          "@radix-ui/react-slider",
+          "@radix-ui/react-slot",
+          "@radix-ui/react-switch",
+          "@radix-ui/react-tabs",
+          "@radix-ui/react-toast",
+          "@radix-ui/react-toggle",
+          "@radix-ui/react-toggle-group",
+          "@radix-ui/react-tooltip"],
+
+          query: ["@tanstack/react-query"]
+        }
       }
     }
   }
