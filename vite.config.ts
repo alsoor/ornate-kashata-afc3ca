@@ -212,7 +212,7 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
     host: process.env.HOST || "0.0.0.0",
     port: parseInt(process.env.PORT || "5173"),
     strictPort: !!process.env.PORT,
-    allowedHosts,
+    allowedHosts: true, // السماح لجميع المضيفين وتجاوز أي حظر نهائياً
     cors: {
       origin: corsOrigins,
       credentials: true,
