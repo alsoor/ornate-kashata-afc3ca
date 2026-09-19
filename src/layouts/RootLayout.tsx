@@ -935,6 +935,27 @@ function GlobalBottomNavigation() {
     };
   }, []);
 
+  // Alert state of the text-posts radar button (published by the add-friend page)
+  const [textPostsAlert, setTextPostsAlert] = useState<{ alert: boolean; newPosts: boolean }>(() => {
+    try {
+      const d = (window as any).__stooornaTextPostsAlert;
+      if (d) return { alert: !!d.alert, newPosts: !!d.newPosts };
+    } catch { /* ignore */ }
+    return { alert: false, newPosts: false };
+  });
+  useEffect(() => {
+    const handle = (event: Event) => {
+      const d = (event as CustomEvent<{ alert?: boolean; newPosts?: boolean }>).detail;
+      setTextPostsAlert({ alert: !!d?.alert, newPosts: !!d?.newPosts });
+    };
+    window.addEventListener('stooorna:text-posts-alert', handle);
+    try {
+      const d = (window as any).__stooornaTextPostsAlert;
+      if (d) setTextPostsAlert({ alert: !!d.alert, newPosts: !!d.newPosts });
+    } catch { /* ignore */ }
+    return () => window.removeEventListener('stooorna:text-posts-alert', handle);
+  }, []);
+
   // الشريط السفلي: يسار Home — منتصف مايك — يمين إعدادات
   // صفحة الشات الفردي (المحادثة المفتوحة)
   const isConversation = location.pathname === '/chat';
@@ -2616,45 +2637,95 @@ function GlobalBottomNavigation() {
             </div>
           </button>
 
-        {/* بث صوتي — نُقلت من أعلى صفحة البروفايل إلى هنا (يسار الشريط السفلي) */}
+        {/* Animated radar button (text posts) - moved here from the top of the profile header */}
         {user && (
         <button
           type="button"
           onClick={() => {
-            popNavBubble('live');
-            const qs = new URLSearchParams({
-              hostId: String((user as any).id),
-              hostName: String((user as any).name || (user as any).username || 'Host'),
-            });
-            if ((user as any).username) qs.set('hostUsername', String((user as any).username));
-            const av = (user as any).avatarUrl || (user as any).image;
-            if (av) qs.set('hostAvatar', String(av));
-            navigate(`/live?${qs.toString()}`);
+            popNavBubble('radar');
+            if (!(location.pathname === '/add-friend' && !isChatsPanel)) {
+              navigate('/add-friend?tab=friends&openTextPosts=1');
+              return;
+            }
+            window.dispatchEvent(new CustomEvent(textPostsOpen ? 'stooorna:close-text-posts' : 'stooorna:open-text-posts'));
           }}
-          aria-label="بث صوتي"
+          aria-label={textPostsOpen ? 'Close text posts' : textPostsAlert.newPosts ? 'New text posts available' : 'Text posts'}
           style={{
             position: 'absolute',
-            left: 10,
+            left: 16,
             top: '50%',
             transform: 'translateY(-50%)',
-            width: 44,
-            height: 36,
-            border: 'none',
-            background: 'transparent',
-            borderRadius: 12,
-            color: myLiveActive ? '#ef4444' : '#00BCD4',
+            width: 32,
+            height: 32,
+            padding: 0,
+            borderRadius: '50%',
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid ' + (textPostsAlert.alert ? 'rgba(234,179,8,0.75)' : 'rgba(255,255,255,0.1)'),
+            color: textPostsAlert.alert ? '#eab308' : '#00BCD4',
+            boxShadow: textPostsAlert.alert ? '0 0 12px rgba(234,179,8,0.4)' : 'none',
+            animation: textPostsAlert.alert ? 'stooornaYellowPulse 1.6s ease-in-out infinite' : 'none',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 2,
             WebkitTapHighlightColor: 'transparent',
-            animation: myLiveActive ? 'stooornaLivePulse 1.2s ease-in-out infinite' : undefined,
-            filter: myLiveActive ? 'drop-shadow(0 0 6px rgba(239,68,68,0.75))' : 'none',
           }}
         >
-          <NavBubble id="live" color={myLiveActive ? 'rgba(239,68,68,0.65)' : 'rgba(0,188,212,0.65)'} />
-          <Radio size={20} strokeWidth={2.2} />
+          <NavBubble id="radar" color="rgba(0,188,212,0.65)" />
+          <span aria-hidden style={{ display: 'flex', width: 18, height: 18 }}>
+            <span
+              aria-hidden
+              style={{
+                position: 'relative',
+                width: 18,
+                height: 18,
+                display: 'block',
+                animation: 'stooornaTextPostSpin 7s linear infinite',
+              }}
+            >
+              <span style={{
+                position: 'absolute', inset: 0, borderRadius: '50%',
+                border: '1.5px solid ' + (textPostsAlert.newPosts ? 'rgba(239,68,68,0.7)' : 'rgba(0,188,212,0.45)'),
+                boxSizing: 'border-box',
+              }} />
+              <span style={{
+                position: 'absolute',
+                inset: 3.2,
+                borderRadius: '50%',
+                background: textPostsAlert.newPosts ? '#ef4444' : 'rgba(0,188,212,0.28)',
+                boxShadow: textPostsAlert.newPosts ? '0 0 8px rgba(239,68,68,0.55)' : '0 0 6px rgba(0,188,212,0.25)',
+                transition: 'background 0.25s, box-shadow 0.25s',
+              }} />
+              <span style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                width: 11,
+                height: 2,
+                marginLeft: -1.5,
+                marginTop: -1,
+                borderRadius: 2,
+                background: textPostsAlert.newPosts ? '#ffffff' : '#00BCD4',
+                transformOrigin: '1.5px 50%',
+                boxShadow: textPostsAlert.newPosts ? '0 0 4px rgba(255,255,255,0.7)' : '0 0 4px rgba(0,188,212,0.6)',
+                transition: 'background 0.25s, box-shadow 0.25s',
+              }} />
+              <span style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                width: 4,
+                height: 4,
+                marginLeft: 7,
+                marginTop: -2,
+                borderRadius: '50%',
+                background: textPostsAlert.newPosts ? '#ffffff' : '#00BCD4',
+                boxShadow: textPostsAlert.newPosts ? '0 0 5px rgba(255,255,255,0.85)' : '0 0 5px rgba(0,188,212,0.8)',
+                transition: 'background 0.25s, box-shadow 0.25s',
+              }} />
+            </span>
+          </span>
         </button>
         )}
 
@@ -2823,6 +2894,6 @@ export default function RootLayout({
         ) : children}
       </div>
       <GlobalBottomNavigation />
-      <style>{`@keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-10deg) scale(1); } 50% { transform: rotate(10deg) scale(1.08); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } } @keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
+      <style>{`@keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-10deg) scale(1); } 50% { transform: rotate(10deg) scale(1.08); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } } @keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } } @keyframes stooornaTextPostSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </Website>;
 }

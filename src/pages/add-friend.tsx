@@ -10591,6 +10591,17 @@ export default function AddFriendPage() {
     id: string; fromId: string; fromName: string | null; fromUsername: string | null;
     fromAvatar: string | null; post: PostItem; note: string; at: number; read: boolean;
   }>>([]);
+
+  const myLiveActive = useLiveBroadcastActive(user?.id ? String(user.id) : null);
+
+  // Publish the text-posts alert state so the bottom bar radar button can mirror it
+  useEffect(() => {
+    const newPosts = newPostsAvailable > 0;
+    const unread = userShareInbox.some(x => !x.read);
+    const detail = { newPosts, alert: !textPostsPageOpen && (newPosts || unread) };
+    try { (window as any).__stooornaTextPostsAlert = detail; } catch { /* ignore */ }
+    window.dispatchEvent(new CustomEvent('stooorna:text-posts-alert', { detail }));
+  }, [textPostsPageOpen, newPostsAvailable, userShareInbox]);
   const [companyInboxOpen, setCompanyInboxOpen] = useState(false);
   const [companyInboxTick, setCompanyInboxTick] = useState(0);
   const [userShareChatPeer, setUserShareChatPeer] = useState<{
@@ -11977,29 +11988,29 @@ export default function AddFriendPage() {
             )}
           </div>
 
-          {/* ── Globe (search-friends) button — hidden for guests ── */}
+          {/* Live audio broadcast button - swapped with the animated radar (radar now lives in the bottom bar) */}
           {user && (
           <motion.button
             whileTap={{ scale: 0.88 }}
             onClick={() => {
-              if (textPostsPageOpen) {
-                setTextPostsPageOpen(false);
-                setTextPostsMenuOpen(false);
-              } else {
-                textPostsOpenedFromUrl.current = false;
-                setTextPostsPageOpen(true);
-              }
+              const qs = new URLSearchParams({
+                hostId: String(user.id),
+                hostName: String((user as any).name || (user as any).username || 'Host'),
+              });
+              if ((user as any).username) qs.set('hostUsername', String((user as any).username));
+              const av = (user as any).avatarUrl || (user as any).image;
+              if (av) qs.set('hostAvatar', String(av));
+              navigate('/live?' + qs.toString());
             }}
-            aria-label={textPostsPageOpen ? "Close text posts" : newPostsAvailable > 0 ? "New text posts available" : "Text posts"}
+            aria-label={myLiveActive ? 'Live broadcast is on' : 'Live audio broadcast'}
             style={{
               position: 'absolute', top: 124, right: 14, zIndex: 7,
               width: 32, height: 32, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.05)',
-              border: `1px solid ${!textPostsPageOpen && (newPostsAvailable > 0 || userShareInbox.some(x => !x.read)) ? 'rgba(234,179,8,0.75)' : 'rgba(255,255,255,0.1)'}`,
-              color: !textPostsPageOpen && (newPostsAvailable > 0 || userShareInbox.some(x => !x.read)) ? '#eab308' : CLR_PRIMARY,
+              background: myLiveActive ? 'rgba(239,68,68,0.14)' : 'rgba(255,255,255,0.05)',
+              border: '1px solid ' + (myLiveActive ? 'rgba(239,68,68,0.55)' : 'rgba(255,255,255,0.1)'),
+              color: myLiveActive ? '#ef4444' : CLR_PRIMARY,
               cursor: 'pointer',
-              boxShadow: !textPostsPageOpen && (newPostsAvailable > 0 || userShareInbox.some(x => !x.read)) ? '0 0 12px rgba(234,179,8,0.4)' : 'none',
-              animation: !textPostsPageOpen && (newPostsAvailable > 0 || userShareInbox.some(x => !x.read)) ? 'stooornaYellowPulse 1.6s ease-in-out infinite' : 'none',
+              boxShadow: myLiveActive ? '0 0 12px rgba(239,68,68,0.4)' : 'none',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               opacity: headerOpen ? 1 : 0,
               pointerEvents: headerOpen ? 'auto' : 'none',
@@ -12008,99 +12019,18 @@ export default function AddFriendPage() {
                 : 'opacity 140ms ease-in',
             }}
           >
-            <style>{`
-              @keyframes stooornaTextPostSpin {
-                from { transform: rotate(0deg); }
-                to { transform: rotate(360deg); }
-              }
-            `}</style>
-            <style>{`@keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } }`}</style>
-
-            <AnimatePresence mode="wait" initial={false}>
-              {textPostsPageOpen ? (
-                <motion.span
-                  key="close-text-posts"
-                  initial={{ opacity: 0, rotate: -90, scale: 0.65 }}
-                  animate={{ opacity: 1, rotate: 0, scale: 1 }}
-                  exit={{ opacity: 0, rotate: 90, scale: 0.65 }}
-                  transition={{ duration: 0.2 }}
-                  style={{ display: 'flex' }}
-                >
-                  <X size={19} strokeWidth={2.1} />
-                </motion.span>
-              ) : (
-                <motion.span
-                  key="open-text-posts"
-                  initial={{ opacity: 0, scale: 0.65 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.65 }}
-                  transition={{ duration: 0.2 }}
-                  style={{ display: 'flex', width: 18, height: 18 }}
-                >
-                  <span
-                    aria-hidden
-                    style={{
-                      position: 'relative',
-                      width: 18,
-                      height: 18,
-                      display: 'block',
-                      animation: 'stooornaTextPostSpin 7s linear infinite',
-                    }}
-                  >
-                    <span style={{
-                      position: 'absolute', inset: 0, borderRadius: '50%',
-                      border: `1.5px solid ${newPostsAvailable > 0 ? 'rgba(239,68,68,0.7)' : 'rgba(0,188,212,0.45)'}`,
-                      boxSizing: 'border-box',
-                    }} />
-                    <span style={{
-                      position: 'absolute',
-                      inset: 3.2,
-                      borderRadius: '50%',
-                      background: newPostsAvailable > 0 ? '#ef4444' : 'rgba(0,188,212,0.28)',
-                      boxShadow: newPostsAvailable > 0
-                        ? '0 0 8px rgba(239,68,68,0.55)'
-                        : '0 0 6px rgba(0,188,212,0.25)',
-                      transition: 'background 0.25s, box-shadow 0.25s',
-                    }} />
-                    <span style={{
-                      position: 'absolute',
-                      left: '50%',
-                      top: '50%',
-                      width: 11,
-                      height: 2,
-                      marginLeft: -1.5,
-                      marginTop: -1,
-                      borderRadius: 2,
-                      background: newPostsAvailable > 0 ? '#ffffff' : '#00BCD4',
-                      transformOrigin: '1.5px 50%',
-                      boxShadow: newPostsAvailable > 0
-                        ? '0 0 4px rgba(255,255,255,0.7)'
-                        : '0 0 4px rgba(0,188,212,0.6)',
-                      transition: 'background 0.25s, box-shadow 0.25s',
-                    }} />
-                    <span style={{
-                      position: 'absolute',
-                      left: '50%',
-                      top: '50%',
-                      width: 4,
-                      height: 4,
-                      marginLeft: 7,
-                      marginTop: -2,
-                      borderRadius: '50%',
-                      background: newPostsAvailable > 0 ? '#ffffff' : '#00BCD4',
-                      boxShadow: newPostsAvailable > 0
-                        ? '0 0 5px rgba(255,255,255,0.85)'
-                        : '0 0 5px rgba(0,188,212,0.8)',
-                      transition: 'background 0.25s, box-shadow 0.25s',
-                    }} />
-                  </span>
-                </motion.span>
-              )}
-            </AnimatePresence>
+            <style>{'@keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }'}</style>
+            <span style={{
+              display: 'flex',
+              animation: myLiveActive ? 'stooornaLivePulse 1.2s ease-in-out infinite' : 'none',
+              filter: myLiveActive ? 'drop-shadow(0 0 6px rgba(239,68,68,0.75))' : 'none',
+            }}>
+              <Radio size={18} strokeWidth={2.2} />
+            </span>
           </motion.button>
           )}
 
-          {/* ── بث صوتي للحساب — نُقل إلى الشريط السفلي (RootLayout) ── */}
+          {/* Animated radar (text posts) button - now in the bottom bar (RootLayout) */}
 
 
           {/* ── Everything above the Video|Post|Photo switcher (music button, avatar/stats
