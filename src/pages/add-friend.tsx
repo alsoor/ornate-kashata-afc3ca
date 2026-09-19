@@ -3553,6 +3553,63 @@ function XLinkMedia({ statusUrl, failedNote }: { statusUrl: string; failedNote?:
   return <PostLinkEmbeds embeds={items} />;
 }
 
+// ── روابط الصور/الفيديو (X أو رابط مباشر) — مستطيل Paste + الفييد ─────────────────
+/** تصنيف صارم لروابط الملفات المباشرة (امتداد/format=/مضيفات معروفة) — حتى لا نُدرج صفحات عادية كفيديو */
+function classifyDirectMediaUrl(raw: string): 'image' | 'video' | null {
+  try {
+    const u = new URL(raw);
+    const full = u.href;
+    if (IMAGE_EXT_RE.test(u.pathname) || IMAGE_EXT_RE.test(full)) return 'image';
+    if (VIDEO_EXT_RE.test(u.pathname) || VIDEO_EXT_RE.test(full)) return 'video';
+    if (/[?&](format|ext|type)=(png|jpe?g|gif|webp|avif)/i.test(full)) return 'image';
+    if (/[?&](format|ext|type)=(mp4|webm|mov)/i.test(full)) return 'video';
+    if (/(^|\.)video\.twimg\.com$/i.test(u.hostname)) return 'video';
+    if (/(^|\.)(pbs\.twimg\.com|images\.unsplash\.com|i\.imgur\.com|cdn\.discordapp\.com|media\.tenor\.com)$/i.test(u.hostname)) return 'image';
+  } catch { /* not a url */ }
+  return null;
+}
+
+/** كل الروابط التي تُعرض كوسائط داخل نص: تغريدات X + روابط صور/فيديو مباشرة (بدون تكرار) */
+function extractLinkMediaUrls(text: string | null | undefined): string[] {
+  if (!text) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const matches = text.match(URL_IN_TEXT_RE) || [];
+  for (const m of matches) {
+    const raw = m.replace(/[.,;:!?،؛]+$/, '');
+    const resolved = composerLookupOriginalUrl(raw);
+    const xId = parseXStatusId(resolved);
+    const key = xId ? `x:${xId}` : resolved;
+    if (seen.has(key)) continue;
+    if (xId || classifyDirectMediaUrl(resolved)) {
+      seen.add(key);
+      out.push(resolved);
+    }
+  }
+  return out;
+}
+
+/** أول رابط داخل نص الحافظة (يقبل: https://… أو www… أو x.com/…) وإلا null */
+function pickLinkFromText(raw: string | null | undefined): string | null {
+  const t = (raw || '').trim();
+  if (!t) return null;
+  const found = t.match(URL_IN_TEXT_RE);
+  if (found && found[0]) return found[0].replace(/[.,;:!?،؛]+$/, '');
+  if (/^(www\.\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)$/i.test(t)) return composerNormalizeUrl(t);
+  return null;
+}
+
+/** رابط واحد (X أو صورة/فيديو مباشر) → الصورة/الفيديو كاملة مباشرة. failedNote يظهر إن تعذّر العرض */
+function LinkMediaPreview({ url, failedNote }: { url: string; failedNote?: string }) {
+  const normalized = composerNormalizeUrl(url);
+  if (!normalized) return null;
+  const resolved = composerLookupOriginalUrl(normalized);
+  if (parseXStatusId(resolved)) return <XLinkMedia statusUrl={resolved} failedNote={failedNote} />;
+  const kind = classifyDirectMediaUrl(resolved);
+  if (kind) return <PostLinkEmbeds embeds={[{ url: resolved, type: kind }]} />;
+  return failedNote ? <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p> : null;
+}
+
 // ── PostText — renders post text with #hashtags highlighted ──────────────────
 function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, bold = false, collapseLong = false, onMore }: {
   text: string;
@@ -3734,7 +3791,7 @@ function PostCard({
   const productAd = parseProductAd(post.text);
   const isProductAd = !!productAd;
   // روابط X داخل نص المنشور — نص إعلان/منشور المنتج مخفي في الفييد، فنعرض وسائط الرابط مباشرة
-  const postXUrls = isProductAd ? extractXStatusUrls(post.text) : [];
+  const postXUrls = isProductAd ? extractLinkMediaUrls(post.text) : [];
   const [productDetailsOpen, setProductDetailsOpen] = useState(false);
   function goToMediaPage(idx: number) {
     const el = mediaScrollRef.current;
@@ -4105,7 +4162,7 @@ function PostCard({
         {/* رابط X داخل نص المنشور (مستخدم أو شركة): الصورة/الفيديو تظهر كاملة مباشرة بدون ضغطة */}
         {postXUrls.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingInline: hasMedia ? 14 : 0, paddingTop: hasMedia ? 10 : 0 }}>
-            {postXUrls.map(u => <XLinkMedia key={u} statusUrl={u} />)}
+            {postXUrls.map(u => <LinkMediaPreview key={u} url={u} />)}
           </div>
         )}
 
@@ -8533,7 +8590,33 @@ export default function AddFriendPage() {
     }, 250);
     return () => window.clearTimeout(t);
   }, [composerProductTitle, composerProductDetails, composerProductExtras]);
-  const composerXUrls = useMemo(() => extractXStatusUrls(composerXText).slice(0, 4), [composerXText]);
+  // ── مستطيل «Paste»: الرابط المُلصق (composerLinkInput) يُعرض كاملًا فورًا مع النص ──
+  const [composerLinkPreviewUrl, setComposerLinkPreviewUrl] = useState('');
+  useEffect(() => {
+    const t = window.setTimeout(() => setComposerLinkPreviewUrl(composerLinkInput.trim()), 250);
+    return () => window.clearTimeout(t);
+  }, [composerLinkInput]);
+  // روابط الوسائط داخل النص نفسه (بدون تكرار ما في المستطيل)
+  const composerXUrls = useMemo(() => {
+    const own = composerLinkPreviewUrl ? extractLinkMediaUrls(composerLinkPreviewUrl) : [];
+    return extractLinkMediaUrls(composerXText).filter(u => !own.includes(u)).slice(0, 4);
+  }, [composerXText, composerLinkPreviewUrl]);
+  /** زر Paste: يقرأ الحافظة وينزّل الرابط مباشرة في المستطيل */
+  async function pasteLinkFromClipboard() {
+    setComposerError('');
+    try {
+      const clip = await navigator.clipboard.readText();
+      const link = pickLinkFromText(clip);
+      if (!link) {
+        setComposerError(clip?.trim() ? 'الحافظة لا تحتوي رابطًا صالحًا' : 'الحافظة فارغة');
+        return;
+      }
+      setComposerLinkInput(link);
+      setComposerLinkPreviewUrl(link);
+    } catch {
+      setComposerError('تعذر القراءة من الحافظة — اضغط مطولًا داخل المستطيل والصق الرابط');
+    }
+  }
   const [openComments, setOpenComments] = useState<PostItem | null>(null);
   // Only the "Post" tab (text posts) opens PostDetailPage with a slide-in-from-the-side
   // animation; Video/Photo grid thumbnails keep the original fade/scale-in behavior.
@@ -14594,11 +14677,78 @@ export default function AddFriendPage() {
                     }}
                   />
                 </div>
-{/* معاينة فورية لروابط X: الصورة/الفيديو تظهر كاملة بمجرد وضع الرابط (مستخدم أو شركة) */}
+{/* ── مستطيل Paste: رابط صورة أو فيديو (X أو رابط مباشر) — للمستخدمين والشركات ── */}
+                <div>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>
+                    {isCompanyPublisher ? 'رابط إعلان (صورة أو فيديو)' : 'رابط صورة أو فيديو'}
+                  </label>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, minHeight: 48, boxSizing: 'border-box',
+                    border: '1.5px dashed rgba(29,155,240,0.55)', background: 'rgba(29,155,240,0.06)',
+                    borderRadius: 12, padding: '4px 6px 4px 12px',
+                  }}>
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.94 }}
+                      onClick={() => void pasteLinkFromClipboard()}
+                      aria-label="Paste"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                        height: 36, padding: '0 14px', borderRadius: 10, border: 'none',
+                        background: '#1d9bf0', color: '#fff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer',
+                      }}
+                    >
+                      <ClipboardPaste size={16} strokeWidth={2.4} /> Paste
+                    </motion.button>
+                    <input
+                      dir="ltr"
+                      inputMode="url"
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      value={composerLinkInput}
+                      onChange={e => setComposerLinkInput(e.target.value)}
+                      onPaste={e => {
+                        const link = pickLinkFromText(e.clipboardData?.getData('text'));
+                        if (!link) return;
+                        e.preventDefault();
+                        setComposerError('');
+                        setComposerLinkInput(link);
+                        setComposerLinkPreviewUrl(link);
+                      }}
+                      placeholder={isCompanyPublisher ? 'الصق رابط الإعلان (صورة أو فيديو)' : 'الصق رابط صورة أو فيديو'}
+                      style={{
+                        flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
+                        fontSize: '0.85rem', color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left',
+                      }}
+                    />
+                    {composerLinkInput.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => { setComposerLinkInput(''); setComposerLinkPreviewUrl(''); setComposerError(''); }}
+                        aria-label="مسح الرابط"
+                        style={{
+                          width: 30, height: 30, borderRadius: '50%', border: 'none', flexShrink: 0,
+                          background: 'rgba(15,20,25,0.08)', color: '#0f1419', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >
+                        <X size={15} strokeWidth={2.4} />
+                      </button>
+                    )}
+                  </div>
+                  {composerLinkPreviewUrl.includes('.') && (
+                    <LinkMediaPreview
+                      url={composerLinkPreviewUrl}
+                      failedNote="الرابط لا يبدو صورة أو فيديو — الصق رابط X أو رابط ملف مباشر (jpg / png / mp4)"
+                    />
+                  )}
+                </div>
+                {/* معاينة فورية لروابط X: الصورة/الفيديو تظهر كاملة بمجرد وضع الرابط (مستخدم أو شركة) */}
                 {composerXUrls.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {composerXUrls.map(u => (
-                      <XLinkMedia key={u} statusUrl={u} failedNote="لا توجد صورة أو فيديو في هذا الرابط" />
+                      <LinkMediaPreview key={u} url={u} failedNote="لا توجد صورة أو فيديو في هذا الرابط" />
                     ))}
                   </div>
                 )}
@@ -14807,7 +14957,7 @@ export default function AddFriendPage() {
           const ad = parseProductAd(singlePostView.text);
           const mediaItems = PostMediaItems(singlePostView);
           const primary = mediaItems[0];
-          const xUrls = extractXStatusUrls(singlePostView.text);
+          const xUrls = extractLinkMediaUrls(singlePostView.text);
           const isPdf = !!(primary?.url && /\.pdf(\?|$)/i.test(primary.url));
           const livePost = posts.find(p => p.id === singlePostView.id) ?? singlePostView;
           return (
@@ -14865,7 +15015,7 @@ export default function AddFriendPage() {
                 ) : xUrls.length > 0 ? (
                   <div style={{ width: '100%', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '56px 12px 12px', boxSizing: 'border-box' }}>
                     <div style={{ margin: 'auto 0', width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {xUrls.map(u => <XLinkMedia key={u} statusUrl={u} />)}
+                      {xUrls.map(u => <LinkMediaPreview key={u} url={u} />)}
                     </div>
                   </div>
                 ) : (
