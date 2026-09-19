@@ -3683,22 +3683,30 @@ function PostMediaItems(post: PostItem): { url: string; type: 'image' | 'video' 
 // يصير تحديث بالخلفية (كل ثانيتين) أو عند فتح بانر "New Posts". ──
 function mergePostsPreservingMedia(prevPosts: PostItem[], serverPosts: PostItem[]): PostItem[] {
   const prevById = new Map(prevPosts.map(p => [p.id, p]));
-  return serverPosts.map(serverPost => {
+  const merged = serverPosts.map(serverPost => {
     const existing = prevById.get(serverPost.id);
     if (!existing) return serverPost;
     const existingCount = existing.mediaUrls?.length ?? (existing.mediaUrl ? 1 : 0);
     const serverCount = serverPost.mediaUrls?.length ?? (serverPost.mediaUrl ? 1 : 0);
-    if (existingCount > serverCount) {
+    // Keep local media when server returns text-only or fewer items
+    if (existingCount > 0 && existingCount >= serverCount) {
       return {
         ...serverPost,
-        mediaUrl: existing.mediaUrl,
-        mediaType: existing.mediaType,
-        mediaUrls: existing.mediaUrls,
-        mediaTypes: existing.mediaTypes,
+        mediaUrl: existing.mediaUrl || serverPost.mediaUrl,
+        mediaType: existing.mediaType || serverPost.mediaType,
+        mediaUrls: (existing.mediaUrls?.length ? existing.mediaUrls : serverPost.mediaUrls) ?? [],
+        mediaTypes: (existing.mediaTypes?.length ? existing.mediaTypes : serverPost.mediaTypes) ?? [],
+        text: serverPost.text || existing.text,
       };
     }
     return serverPost;
   });
+  // Keep brand-new local posts not yet returned by the server
+  const serverIds = new Set(serverPosts.map(p => p.id));
+  for (const p of prevPosts) {
+    if (!serverIds.has(p.id)) merged.unshift(p);
+  }
+  return merged;
 }
 
 function PostCard({
@@ -9250,7 +9258,6 @@ export default function AddFriendPage() {
     const price = (composerProductPrice || '').trim();
     const extras = (composerProductExtras || []).map(s => String(s).trim()).filter(Boolean);
     const linkRaw = (composerLinkInput || '').trim();
-    // قد يكون أكثر من رابط (سطر أو مسافة) بعد استخراج وسائط X
     const linkCandidates = linkRaw
       ? linkRaw.split(/[\s\n]+/).map(s => s.trim()).filter(Boolean).map(s => {
           try {
@@ -9271,7 +9278,7 @@ export default function AddFriendPage() {
     setComposerPosting(true);
     setComposerError('');
     try {
-      // روابط معاينة صورة/فيديو (X أو مباشر) لا تُخزَّن في نص المنتج — تُعرض كوسائط فقط
+      // Media/X preview links stay out of product text — shown as media only
       const nonMediaLinks: string[] = [];
       for (const u of linkCandidates) {
         const resolved = composerLookupOriginalUrl(u);
@@ -9295,8 +9302,8 @@ export default function AddFriendPage() {
 
       const extractUploadUrl = async (res: Response): Promise<string | null> => {
         try {
-          const d = await res.json() as { url?: string; mediaUrl?: string; path?: string; fileUrl?: string };
-          const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path;
+          const d = await res.json() as { url?: string; mediaUrl?: string; path?: string; fileUrl?: string; file?: string };
+          const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path || d?.file;
           return u ? String(u) : null;
         } catch {
           return null;
@@ -9493,19 +9500,21 @@ export default function AddFriendPage() {
           let uploadRes: Response | null = null;
           let lastBody = '';
 
+          // Same upload path as quickPublishMedia (proven working)
           try {
-            const fd = new FormData();
-            fd.append('file', file, file.name || `media.${ext}`);
-            fd.append('type', mediaType);
-            fd.append('mediaType', mediaType);
             uploadRes = await fetch('/api/posts/media', {
               method: 'POST',
               credentials: 'include',
-              body: fd,
+              headers: {
+                'Content-Type': contentType,
+                'X-File-Ext': `.${ext}`,
+              },
+              body: file,
             });
             if (!uploadRes.ok) lastBody = await uploadRes.text().catch(() => '');
           } catch (e) {
-            lastBody = e instanceof Error ? e.message : 'formdata fail';
+            lastBody = e instanceof Error ? e.message : 'raw fail';
+            uploadRes = null;
           }
 
           if (!uploadRes || !uploadRes.ok) {
@@ -9522,24 +9531,26 @@ export default function AddFriendPage() {
               });
               if (!uploadRes.ok) lastBody = await uploadRes.text().catch(() => '');
             } catch (e) {
-              lastBody = e instanceof Error ? e.message : 'raw fail';
+              lastBody = e instanceof Error ? e.message : 'raw2 fail';
+              uploadRes = null;
             }
           }
 
           if (!uploadRes || !uploadRes.ok) {
             try {
+              const fd = new FormData();
+              fd.append('file', file, file.name || `media.${ext}`);
+              fd.append('type', mediaType);
+              fd.append('mediaType', mediaType);
               uploadRes = await fetch('/api/posts/media', {
                 method: 'POST',
                 credentials: 'include',
-                headers: {
-                  'Content-Type': contentType,
-                  'X-File-Ext': `.${ext}`,
-                },
-                body: file,
+                body: fd,
               });
               if (!uploadRes.ok) lastBody = await uploadRes.text().catch(() => '');
             } catch (e) {
-              lastBody = e instanceof Error ? e.message : 'retry fail';
+              lastBody = e instanceof Error ? e.message : 'formdata fail';
+              uploadRes = null;
             }
           }
 
@@ -9565,7 +9576,7 @@ export default function AddFriendPage() {
         return;
       }
 
-      // روابط المعاينة (X / صورة / فيديو مباشر) → وسائط المنشور بدل إبقاء الرابط في النص
+      // Preview links (X / direct media) → post media instead of storing URL in text
       if (linkCandidates.length) {
         const seenMedia = new Set(uploadedMedia.map(m => m.url));
         for (const raw of linkCandidates) {
@@ -9599,19 +9610,18 @@ export default function AddFriendPage() {
       let saved: PostItem | null = null;
 
       if (mediaUrl && mediaType) {
-        // ── الخطوة 1: إنشاء منشور وسائط مثل quickPublish (هذا المسار يعمل على السيرفر) ──
+        // Create with media + text together so image/video is stored with the product post
         const createRes = await fetch('/api/posts', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            text: '',
+            text: finalText || '',
             mediaUrl,
             mediaType,
             mediaUrls,
             mediaTypes,
             hashtags: [],
-            // إعلان/منشور المنتج عام للجميع ويظهر في تغذية المنشورات النصية
             audience: 'text',
             destination: 'text',
             publisherType: isCompanyPublisher ? 'company' : 'user',
@@ -9620,46 +9630,84 @@ export default function AddFriendPage() {
           }),
         });
         if (!createRes.ok) {
-          const errBody = await createRes.text().catch(() => '');
-          let msg = '';
-          try { msg = (JSON.parse(errBody) as { error?: string }).error || ''; } catch { msg = errBody.slice(0, 120); }
-          throw new Error(msg || `فشل إنشاء المنشور (${createRes.status})`);
-        }
-        const createData = await createRes.json();
-        if (!createData?.post?.id) throw new Error('المنشور لم يُحفظ على السيرفر');
-
-        saved = {
-          ...createData.post,
-          mediaUrl: createData.post.mediaUrl ?? mediaUrl,
-          mediaType: createData.post.mediaType ?? mediaType,
-          mediaUrls: createData.post.mediaUrls?.length ? createData.post.mediaUrls : mediaUrls,
-          mediaTypes: createData.post.mediaTypes?.length ? createData.post.mediaTypes : mediaTypes,
-          audience: 'text',
-          destination: 'text',
-          publisherType: isCompanyPublisher ? 'company' : 'user',
-          isCompanyPost: !!isCompanyPublisher,
-          authorIsCompany: !!isCompanyPublisher,
-        } as PostItem;
-
-        // ── الخطوة 2: كتابة نص المنتج عبر caption (منفصل عن الإنشاء) ──
-        if (finalText.trim()) {
-          try {
-            const capRes = await fetch(`/api/posts/${saved.id}/caption`, {
-              method: 'PATCH',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: finalText }),
-            });
-            if (capRes.ok) {
-              saved = { ...saved, text: finalText };
-            } else {
-              // لا نفشل النشر كله — الصورة نُشرت؛ نحدّث محليًا على الأقل
-              console.warn('[Post caption]', capRes.status, await capRes.text().catch(() => ''));
-              saved = { ...saved, text: finalText };
-            }
-          } catch (capErr) {
-            console.warn('[Post caption]', capErr);
-            saved = { ...saved, text: finalText };
+          // Fallback: media-only create then caption (older servers)
+          const createRes2 = await fetch('/api/posts', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: '',
+              mediaUrl,
+              mediaType,
+              mediaUrls,
+              mediaTypes,
+              hashtags: [],
+              audience: 'text',
+              destination: 'text',
+              publisherType: isCompanyPublisher ? 'company' : 'user',
+              isCompanyPost: !!isCompanyPublisher,
+              authorIsCompany: !!isCompanyPublisher,
+            }),
+          });
+          if (!createRes2.ok) {
+            const errBody = await createRes2.text().catch(() => '');
+            let msg = '';
+            try { msg = (JSON.parse(errBody) as { error?: string }).error || ''; } catch { msg = errBody.slice(0, 120); }
+            throw new Error(msg || `فشل إنشاء المنشور (${createRes2.status})`);
+          }
+          const createData2 = await createRes2.json();
+          if (!createData2?.post?.id) throw new Error('المنشور لم يُحفظ على السيرفر');
+          saved = {
+            ...createData2.post,
+            text: finalText || createData2.post.text || '',
+            mediaUrl,
+            mediaType,
+            mediaUrls,
+            mediaTypes,
+            audience: 'text',
+            destination: 'text',
+            publisherType: isCompanyPublisher ? 'company' : 'user',
+            isCompanyPost: !!isCompanyPublisher,
+            authorIsCompany: !!isCompanyPublisher,
+          } as PostItem;
+          if (finalText.trim()) {
+            try {
+              await fetch(`/api/posts/${saved.id}/caption`, {
+                method: 'PATCH',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: finalText }),
+              });
+            } catch { /* keep local text */ }
+          }
+        } else {
+          const createData = await createRes.json();
+          if (!createData?.post?.id) throw new Error('المنشور لم يُحفظ على السيرفر');
+          // Always prefer uploaded media URLs so the feed shows image/video with text
+          saved = {
+            ...createData.post,
+            text: createData.post.text || finalText || '',
+            mediaUrl,
+            mediaType,
+            mediaUrls,
+            mediaTypes,
+            audience: 'text',
+            destination: 'text',
+            publisherType: isCompanyPublisher ? 'company' : 'user',
+            isCompanyPost: !!isCompanyPublisher,
+            authorIsCompany: !!isCompanyPublisher,
+          } as PostItem;
+          // If server dropped text, patch caption without clearing media
+          if (finalText.trim() && !(createData.post.text || '').trim()) {
+            try {
+              await fetch(`/api/posts/${saved.id}/caption`, {
+                method: 'PATCH',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: finalText }),
+              });
+              saved = { ...saved, text: finalText, mediaUrl, mediaType, mediaUrls, mediaTypes };
+            } catch { /* keep local */ }
           }
         }
       } else {
