@@ -5,7 +5,7 @@ import React from 'react';
 import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import UserAvatar from '@/components/UserAvatar';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, Bell, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, ChevronLeft, ChevronRight, Settings, Radio, Building2, LogIn } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, Bell, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, ChevronLeft, ChevronRight, Settings, Radio, Building2, LogIn, Menu } from 'lucide-react';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -3311,9 +3311,10 @@ function extractTextMediaEmbeds(text: string): { cleanText: string; embeds: { ur
     if (kind && !seen.has(resolved)) {
       seen.add(resolved);
       embeds.push({ url: resolved, type: kind });
+      // الرابط لا يظهر مع النص — فقط الصورة/الفيديو تُعرض تحته
       return '';
     }
-    // رابط تغريدة X — يُعرض لاحقًا كميديا كاملة عبر مكوّن async
+    // رابط تغريدة X — يُعرض لاحقًا كميديا كاملة عبر مكوّن async، والرابط لا يظهر بالنص
     if (parseXStatusId(resolved) && !seen.has(resolved)) {
       seen.add(resolved);
       xStatusUrls.push(resolved);
@@ -3432,6 +3433,93 @@ function XStatusEmbed({ statusUrl }: { statusUrl: string }) {
   return <PostLinkEmbeds embeds={items} />;
 }
 
+// ── بطاقة وسائط مفردة (فيديو/صورة) — بدون أزرار تشغيل/إيقاف افتراضية للمتصفح.
+// الفيديو يبقى ساكنًا كصورة حتى يُنقر عليه (نفس سلوك الصورة)، مع مكدّس أيقونات
+// إعجاب/تعليق/مشاركة فوق الوسائط، وأيقونة الثلاث خطوط في المنتصف تمامًا ─────────
+function PostMediaTile({ m }: { m: { url: string; type: 'image' | 'video' } }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+
+  const toggle = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) { v.play().catch(() => {}); } else { v.pause(); }
+  };
+
+  const overlayBtnStyle: React.CSSProperties = {
+    width: 34, height: 34, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
+    background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  };
+
+  return (
+    <div style={{ position: 'relative', width: '100%', background: '#000' }}>
+      {m.type === 'video' ? (
+        <video
+          ref={videoRef}
+          src={m.url}
+          playsInline
+          loop
+          onClick={toggle}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          style={{ width: '100%', maxHeight: '70vh', display: 'block', background: '#000', cursor: 'pointer' }}
+        />
+      ) : (
+        <img
+          src={m.url}
+          alt=""
+          style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block', background: '#000' }}
+        />
+      )}
+
+      {/* زر تشغيل مركزي — يظهر فقط قبل النقر (لا أزرار تشغيل/إيقاف افتراضية) */}
+      {m.type === 'video' && !playing && (
+        <div onClick={toggle} style={{
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        }}>
+          <div style={{
+            width: 60, height: 60, borderRadius: '50%', background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Play size={26} color="#fff" fill="#fff" style={{ marginInlineStart: 3 }} />
+          </div>
+        </div>
+      )}
+
+      {/* مكدّس إعجاب / تعليق / مشاركة — على نفس الوسائط، فيديو أو صورة */}
+      <div onClick={e => e.stopPropagation()} style={{
+        position: 'absolute', insetInlineEnd: 10, bottom: 14,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+      }}>
+        <button type="button" style={overlayBtnStyle} aria-label="إعجاب">
+          <Heart size={20} color="#fff" strokeWidth={2} />
+        </button>
+        <button type="button" style={overlayBtnStyle} aria-label="تعليق">
+          <MessageCircle size={20} color="#fff" strokeWidth={2} />
+        </button>
+        <button type="button" style={overlayBtnStyle} aria-label="مشاركة">
+          <Repeat2 size={20} color="#fff" strokeWidth={2} />
+        </button>
+      </div>
+
+      {/* أيقونة الثلاث خطوط — في منتصف الوسائط تمامًا */}
+      <button
+        type="button"
+        onClick={e => e.stopPropagation()}
+        aria-label="المزيد"
+        style={{
+          position: 'absolute', top: '50%', insetInlineEnd: 10, transform: 'translateY(-50%)',
+          width: 34, height: 34, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
+          background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <Menu size={18} color="#fff" strokeWidth={2.2} />
+      </button>
+    </div>
+  );
+}
+
 // ── Auto-expand image/video links large (no tap required) ─────────────────────
 function PostLinkEmbeds({ embeds }: { embeds: { url: string; type: 'image' | 'video' }[] }) {
   if (!embeds.length) return null;
@@ -3448,23 +3536,7 @@ function PostLinkEmbeds({ embeds }: { embeds: { url: string; type: 'image' | 'vi
             border: `1px solid ${CLR_POST_BORDER}`, background: '#000',
           }}
         >
-          {m.type === 'video' ? (
-            <video
-              src={m.url}
-              controls
-              autoPlay
-              muted
-              playsInline
-              loop
-              style={{ width: '100%', maxHeight: '70vh', display: 'block', background: '#000' }}
-            />
-          ) : (
-            <img
-              src={m.url}
-              alt=""
-              style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block', background: '#000' }}
-            />
-          )}
+          <PostMediaTile m={m} />
         </div>
       ))}
     </div>
