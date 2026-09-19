@@ -144,10 +144,12 @@ const allowedHosts: string[] = [];
 const corsOrigins: string[] = [];
 
 if (process.env.FRONTEND_DOMAIN) {
-  const frontendHost = extractHostname(process.env.FRONTEND_DOMAIN);
+  const frontendHost = process.env.FRONTEND_DOMAIN;
   allowedHosts.push(frontendHost);
   corsOrigins.push(http://${frontendHost}, https://${frontendHost});
 }
+allowedHosts.push("stooorna.com", "stooorna.up.railway.app");
+corsOrigins.push("http://stooorna.com", "https://stooorna.com", "http://stooorna.up.railway.app", "https://stooorna.up.railway.app");
 if (process.env.ALLOWED_ORIGINS) {
   const origins = process.env.ALLOWED_ORIGINS.split(",");
   allowedHosts.push(...origins.map(extractHostname));
