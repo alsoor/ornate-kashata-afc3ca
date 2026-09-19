@@ -110,7 +110,8 @@ function worktreePreviewPlugin(): Plugin {
           const bundleMtime: number = statSync(bundlePath).mtimeMs;
           let cached = serverBundleCache.get(worktreeRoot);
           if (!cached || cached.mtimeMs < bundleMtime) {
-            const mod = await import(/* @vite-ignore */ bundlePath);
+            const cacheBuster: string = `?t=${bundleMtime}`;
+            const mod = await import(/* @vite-ignore */`${bundlePath}${cacheBuster}`);
             cached = { app: mod.default, mtimeMs: bundleMtime };
             serverBundleCache.set(worktreeRoot, cached);
           }
@@ -131,10 +132,10 @@ function worktreePreviewPlugin(): Plugin {
             });
           });
         } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            res.statusCode = 500;
-            res.end(JSON.stringify({ error: "Worktree server bundle failed" }));
-          }
+          const message = err instanceof Error ? err.message : String(err);
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: `Worktree server bundle failed: ${message}` }));
+        }
       });
     }
   };
@@ -144,12 +145,10 @@ const allowedHosts: string[] = [];
 const corsOrigins: string[] = [];
 
 if (process.env.FRONTEND_DOMAIN) {
-  const frontendHost = process.env.FRONTEND_DOMAIN;
+  const frontendHost = extractHostname(process.env.FRONTEND_DOMAIN);
   allowedHosts.push(frontendHost);
-  corsOrigins.push(http://${frontendHost}, https://${frontendHost});
+  corsOrigins.push(`http://${frontendHost}`, `https://${frontendHost}`);
 }
-   allowedHosts.push("stooorna.com", "www.stooorna.com", "stooorna.up.railway.app", "www.stooorna.up.railway.app");
-   corsOrigins.push("http://stooorna.com", "https://stooorna.com", "http://www.stooorna.com", "https://www.stooorna.com", "http://stooorna.up.railway.app", "https://stooorna.up.railway.app", "http://www.stooorna.up.railway.app", "https://www.stooorna.up.railway.app");
 if (process.env.ALLOWED_ORIGINS) {
   const origins = process.env.ALLOWED_ORIGINS.split(",");
   allowedHosts.push(...origins.map(extractHostname));
@@ -225,11 +224,11 @@ export default defineConfig(({ mode, isSsrBuild }) => ({
       overlay: false
     },
     watch: {
-      ignored: ["*/dist/*"]
+      ignored: ["**/dist/**"]
     },
     // Pre-transform the entry chain on dev-server start so the FIRST iframe
     // request doesn't pay the full cold on-demand transpile cost. Paired with
-    // the container's pre-start vite optimize (container-scripts/preview/
+    // the container's pre-start `vite optimize` (container-scripts/preview/
     // nomad_setup.sh), this shrinks the mount→IFRAME_READY window that the
     // builder's recovery logic waits on.
     warmup: {
