@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, XCircle, Sparkles, AlertTriangle } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, XCircle } from 'lucide-react';
 import { useSession, signOut, signIn, signUp } from '@/lib/auth/auth-client';
 import { usePresenceQuery } from '@/hooks/usePresence';
 type Tab = 'account' | 'live';
@@ -2561,6 +2561,7 @@ export default function SettingsPage() {
     createdAt: string | null;
     online?: boolean;
     avatarUrl?: string | null;
+    isCompany?: boolean | null;
   };
   const [showSupportUsers, setShowSupportUsers] = useState(false);
   const [supportCtrlUser, setSupportCtrlUser] = useState<SupportCtrlUser | null>(null);
@@ -2818,7 +2819,7 @@ export default function SettingsPage() {
   // Load owner data (users list) when logged in as owner
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (user && isOwner) loadOwnerData(); }, [user, isOwner]);
-  const [allUsers, setAllUsers] = useState<{
+  type OwnerUserRow = {
     id: string;
     name: string | null;
     username: string | null;
@@ -2831,7 +2832,9 @@ export default function SettingsPage() {
     country?: string | null;
     phone?: string | null;
     avatarUrl?: string | null;
-  }[]>([]);
+    isCompany?: boolean | null;
+  };
+  const [allUsers, setAllUsers] = useState<OwnerUserRow[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
 
@@ -2843,105 +2846,84 @@ export default function SettingsPage() {
   type UserControlTab = 'users' | 'company' | 'ban';
   const [ucTab, setUcTab] = useState<UserControlTab>('users');
 
-  // Company registration record reviewed inside User Control
-  type CompanyCertificateCheck = {
-    status: 'unchecked' | 'checking' | 'match' | 'mismatch' | 'error';
-    message?: string;
-  };
-  type SupportCtrlCompany = {
-    id: string;
-    name: string;
-    email: string | null;
-    ownerUserId?: string | null;
-    commercialRegistrationNumber?: string | null;
-    commercialLicenseNumber?: string | null;
-    commercialRegistrationFileUrl?: string | null;
-    commercialLicenseFileUrl?: string | null;
-    status: 'pending' | 'active' | 'rejected' | 'inactive';
-    createdAt?: string | null;
-    lastIp?: string | null;
-  };
-  const [allCompanies, setAllCompanies] = useState<SupportCtrlCompany[]>([]);
-  const [companiesLoading, setCompaniesLoading] = useState(false);
-  const [companiesError, setCompaniesError] = useState<string | null>(null);
-  const [companySavingId, setCompanySavingId] = useState<string | null>(null);
-  const [certCheckByCompany, setCertCheckByCompany] = useState<Record<string, CompanyCertificateCheck>>({});
+  // Company accounts and regular user accounts both come from the same
+  // /api/owner/users list (a company account is just a user record with
+  // isCompany = true). Split them client-side instead of calling a
+  // separate /api/owner/companies endpoint, which the backend does not
+  // expose yet (was returning 404).
+  const companyAccounts = useMemo(() => allUsers.filter(u => !!u.isCompany), [allUsers]);
+  const regularAccounts = useMemo(() => allUsers.filter(u => !u.isCompany), [allUsers]);
 
-  async function loadCompanies() {
-    setCompaniesLoading(true);
-    setCompaniesError(null);
+  // Ban history — kept in localStorage so a user who gets unbanned still
+  // shows up under the Ban tab (with a Delete account option) until the
+  // owner explicitly removes their account, instead of just disappearing.
+  const BAN_HISTORY_KEY = 'stooorna_uc_ban_history';
+  function readBanHistory(): string[] {
     try {
-      const res = await fetch('/api/owner/companies', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        const rows = Array.isArray(data) ? data : (data?.rows ?? []);
-        setAllCompanies(rows);
-      } else {
-        const errText = await res.text().catch(() => String(res.status));
-        setCompaniesError(`Error ${res.status}: ${errText}`);
-      }
-    } catch (e) {
-      setCompaniesError(`Network error: ${String(e)}`);
-    } finally {
-      setCompaniesLoading(false);
+      const raw = localStorage.getItem(BAN_HISTORY_KEY);
+      return raw ? (JSON.parse(raw) as string[]) : [];
+    } catch {
+      return [];
     }
   }
-
-  async function patchCompany(companyId: string, body: Record<string, unknown>) {
-    setCompanySavingId(companyId);
+  function addToBanHistory(userId: string) {
     try {
-      const res = await fetch(`/api/owner/companies/${companyId}`, {
-        method: 'PATCH',
+      const set = new Set(readBanHistory());
+      set.add(userId);
+      localStorage.setItem(BAN_HISTORY_KEY, JSON.stringify(Array.from(set)));
+      setBanHistoryIds(Array.from(set));
+    } catch { /* ignore */ }
+  }
+  function removeFromBanHistory(userId: string) {
+    try {
+      const set = new Set(readBanHistory());
+      set.delete(userId);
+      localStorage.setItem(BAN_HISTORY_KEY, JSON.stringify(Array.from(set)));
+      setBanHistoryIds(Array.from(set));
+    } catch { /* ignore */ }
+  }
+  const [banHistoryIds, setBanHistoryIds] = useState<string[]>(() => readBanHistory());
+  const banTabAccounts = useMemo(() => {
+    const historySet = new Set(banHistoryIds);
+    return regularAccounts.filter(u => !!u.isBanned || historySet.has(u.id));
+  }, [regularAccounts, banHistoryIds]);
+
+  const [companySavingId, setCompanySavingId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+
+  // Activate / deactivate a company account — reuses the same owner PATCH
+  // route already used for user bans, so it works with the existing backend.
+  async function setCompanyActive(companyId: string, active: boolean) {
+    setCompanySavingId(companyId);
+    const ok = await patchSupportUser(companyId, { isBanned: !active, banned: !active });
+    if (ok) {
+      setAllUsers(prev => prev.map(u => u.id === companyId ? { ...u, isBanned: !active } : u));
+    }
+    setCompanySavingId(null);
+    return ok;
+  }
+
+  // Permanently remove an account from the app (used mainly for users who
+  // were unbanned but the owner still wants their account gone).
+  async function deleteOwnerAccount(userId: string) {
+    setDeletingUserId(userId);
+    try {
+      const res = await fetch(`/api/owner/users/${userId}`, {
+        method: 'DELETE',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
       });
       if (res.ok) {
-        const updated = await res.json().catch(() => null);
-        setAllCompanies(prev => prev.map(c => c.id === companyId ? { ...c, ...(updated || body) } as SupportCtrlCompany : c));
+        setAllUsers(prev => prev.filter(u => u.id !== userId));
+        removeFromBanHistory(userId);
         return true;
       }
       return false;
     } catch {
       return false;
     } finally {
-      setCompanySavingId(null);
+      setDeletingUserId(null);
     }
   }
-
-  // AI-based certificate verification: confirms the uploaded commercial
-  // license / commercial registration files genuinely match the numbers
-  // the company entered. Backend endpoint is expected to run OCR + AI
-  // comparison and return { match: boolean, message?: string }.
-  async function verifyCompanyCertificate(company: SupportCtrlCompany) {
-    setCertCheckByCompany(prev => ({ ...prev, [company.id]: { status: 'checking' } }));
-    try {
-      const res = await fetch(`/api/owner/companies/${company.id}/verify-certificate`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          commercialRegistrationNumber: company.commercialRegistrationNumber,
-          commercialLicenseNumber: company.commercialLicenseNumber,
-          commercialRegistrationFileUrl: company.commercialRegistrationFileUrl,
-          commercialLicenseFileUrl: company.commercialLicenseFileUrl,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setCertCheckByCompany(prev => ({
-          ...prev,
-          [company.id]: { status: data?.match ? 'match' : 'mismatch', message: data?.message },
-        }));
-      } else {
-        setCertCheckByCompany(prev => ({ ...prev, [company.id]: { status: 'error', message: `HTTP ${res.status}` } }));
-      }
-    } catch (e) {
-      setCertCheckByCompany(prev => ({ ...prev, [company.id]: { status: 'error', message: String(e) } }));
-    }
-  }
-
-
 
   async function loadRecordings() {
     setRecLoading(true);
@@ -3767,7 +3749,6 @@ export default function SettingsPage() {
                         onClick={() => {
                           setUcTab('users');
                           loadOwnerData();
-                          loadCompanies();
                           setShowSupportUsers(true);
                         }}
                         className="flex items-center justify-between"
@@ -3806,7 +3787,6 @@ export default function SettingsPage() {
                         onClick={() => {
                           setUcTab('company');
                           loadOwnerData();
-                          loadCompanies();
                           setShowSupportUsers(true);
                         }}
                         className="flex items-center justify-between"
@@ -5779,24 +5759,24 @@ export default function SettingsPage() {
               </p>
               <button
                 type="button"
-                onClick={() => { loadOwnerData(); loadCompanies(); }}
-                disabled={usersLoading || companiesLoading}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--primary))', padding: 4, opacity: (usersLoading || companiesLoading) ? 0.4 : 1, fontSize: '1.1rem', fontWeight: 700 }}
+                onClick={() => loadOwnerData()}
+                disabled={usersLoading}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--primary))', padding: 4, opacity: usersLoading ? 0.4 : 1, fontSize: '1.1rem', fontWeight: 700 }}
                 title="إعادة تحميل"
               >
-                {(usersLoading || companiesLoading) ? '…' : '↻'}
+                {usersLoading ? '…' : '↻'}
               </button>
               <span style={{ color: 'rgba(200,180,180,0.6)', fontSize: '0.7rem' }}>
-                {ucTab === 'company' ? allCompanies.length : allUsers.length}
+                {ucTab === 'company' ? companyAccounts.length : ucTab === 'ban' ? banTabAccounts.length : regularAccounts.length}
               </span>
             </div>
 
             {/* ── Users / Companies / Ban tab switcher ── */}
             <div style={{ display: 'flex', gap: 8, padding: '10px 14px 0', flexShrink: 0 }}>
               {([
-                { key: 'users' as UserControlTab, label: 'Users', count: allUsers.length },
-                { key: 'company' as UserControlTab, label: 'Company', count: allCompanies.length },
-                { key: 'ban' as UserControlTab, label: 'Ban', count: allUsers.filter(u => u.isBanned).length },
+                { key: 'users' as UserControlTab, label: 'Users', count: regularAccounts.length },
+                { key: 'company' as UserControlTab, label: 'Company', count: companyAccounts.length },
+                { key: 'ban' as UserControlTab, label: 'Ban', count: banTabAccounts.length },
               ]).map(tab => (
                 <button
                   key={tab.key}
@@ -5843,28 +5823,29 @@ export default function SettingsPage() {
             <div style={{ flex: 1, overflowY: 'auto', padding: '4px 14px 24px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {ucTab === 'company' ? (
                 <>
-                  {companiesLoading && (
+                  {usersLoading && (
                     <p style={{ textAlign: 'center', color: 'rgba(180,150,150,0.55)', marginTop: 40, fontSize: '0.8rem' }}>Loading…</p>
                   )}
-                  {!companiesLoading && companiesError && (
-                    <div style={{ margin: '20px 0', padding: '14px', borderRadius: 12, background: 'hsl(var(--destructive)/0.1)', border: '1px solid hsl(var(--destructive)/0.35)', color: 'hsl(var(--destructive))', fontSize: '0.78rem', textAlign: 'center' }}>
-                      <p style={{ margin: '0 0 8px', fontWeight: 700 }}>Failed to load companies</p>
-                      <p style={{ margin: '0 0 10px', opacity: 0.8, wordBreak: 'break-all' }}>{companiesError}</p>
-                      <button type="button" onClick={() => loadCompanies()} style={{ background: 'hsl(var(--destructive)/0.2)', border: '1px solid hsl(var(--destructive)/0.4)', borderRadius: 8, padding: '6px 14px', color: 'hsl(var(--destructive))', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
-                        Retry
-                      </button>
-                    </div>
-                  )}
-                  {!companiesLoading && !companiesError && allCompanies.length === 0 && (
+                  {!usersLoading && !usersError && companyAccounts.length === 0 && (
                     <p style={{ textAlign: 'center', color: 'rgba(180,150,150,0.5)', marginTop: 40, fontSize: '0.8rem' }}>No registered companies</p>
                   )}
-                  {!companiesLoading && !companiesError && allCompanies.map(c => {
-                    const check = certCheckByCompany[c.id];
+                  {!usersLoading && companyAccounts
+                    .filter(c => {
+                      const q = supportUsersSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        (c.username || '').toLowerCase().includes(q) ||
+                        (c.name || '').toLowerCase().includes(q) ||
+                        (c.email || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map(c => {
+                    const active = !c.isBanned;
                     return (
                       <div key={c.id} style={{
                         padding: '12px 14px', borderRadius: 14,
                         background: 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${c.status === 'active' ? 'rgba(34,197,94,0.35)' : c.status === 'rejected' ? 'rgba(239,68,68,0.35)' : 'rgba(234,179,8,0.35)'}`,
+                        border: `1px solid ${active ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)'}`,
                         display: 'flex', flexDirection: 'column', gap: 8,
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -5877,7 +5858,7 @@ export default function SettingsPage() {
                           </span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: 'rgba(230,220,220,0.95)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {c.name}
+                              @{c.username || c.name || '—'}
                             </p>
                             <p style={{ margin: '2px 0 0', fontSize: '0.68rem', color: 'rgba(180,160,160,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {c.email || '—'}
@@ -5885,73 +5866,24 @@ export default function SettingsPage() {
                           </div>
                           <span style={{
                             fontSize: '0.62rem', fontWeight: 800, padding: '3px 8px', borderRadius: 8,
-                            color: c.status === 'active' ? '#22c55e' : c.status === 'rejected' ? '#ef4444' : '#eab308',
-                            background: c.status === 'active' ? 'rgba(34,197,94,0.12)' : c.status === 'rejected' ? 'rgba(239,68,68,0.12)' : 'rgba(234,179,8,0.12)',
+                            color: active ? '#22c55e' : '#ef4444',
+                            background: active ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
                           }}>
-                            {c.status.toUpperCase()}
+                            {active ? 'ACTIVE' : 'DEACTIVATED'}
                           </span>
                         </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.7rem', color: 'rgba(200,190,190,0.75)' }}>
-                          <span>Commercial registration #: {c.commercialRegistrationNumber || '—'}</span>
-                          <span>Commercial license #: {c.commercialLicenseNumber || '—'}</span>
-                        </div>
-
-                        {(c.commercialRegistrationFileUrl || c.commercialLicenseFileUrl) && (
-                          <div style={{ display: 'flex', gap: 8 }}>
-                            {c.commercialRegistrationFileUrl && (
-                              <a href={c.commercialRegistrationFileUrl} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', padding: '6px 8px', borderRadius: 8, background: 'rgba(0,188,212,0.1)', border: '1px solid rgba(0,188,212,0.3)', color: '#00BCD4', fontSize: '0.68rem', fontWeight: 700, textDecoration: 'none' }}>
-                                Registration file
-                              </a>
-                            )}
-                            {c.commercialLicenseFileUrl && (
-                              <a href={c.commercialLicenseFileUrl} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', padding: '6px 8px', borderRadius: 8, background: 'rgba(0,188,212,0.1)', border: '1px solid rgba(0,188,212,0.3)', color: '#00BCD4', fontSize: '0.68rem', fontWeight: 700, textDecoration: 'none' }}>
-                                License file
-                              </a>
-                            )}
-                          </div>
-                        )}
-
-                        {/* AI certificate verification */}
-                        <button
-                          type="button"
-                          disabled={check?.status === 'checking'}
-                          onClick={() => verifyCompanyCertificate(c)}
-                          style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                            padding: '8px', borderRadius: 10, cursor: 'pointer', border: '1px solid rgba(168,85,247,0.35)',
-                            background: 'rgba(168,85,247,0.1)', color: '#c084fc', fontWeight: 700, fontSize: '0.72rem',
-                            opacity: check?.status === 'checking' ? 0.6 : 1,
-                          }}
-                        >
-                          <Sparkles size={14} />
-                          {check?.status === 'checking' ? 'Running AI check…' : 'Verify certificate with AI'}
-                        </button>
-                        {check && check.status !== 'checking' && (
-                          <div style={{
-                            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderRadius: 10,
-                            background: check.status === 'match' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-                            border: `1px solid ${check.status === 'match' ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.35)'}`,
-                            color: check.status === 'match' ? '#22c55e' : '#ef4444', fontSize: '0.7rem', fontWeight: 700,
-                          }}>
-                            <AlertTriangle size={13} />
-                            {check.status === 'match'
-                              ? 'Certificate matches the registration and license numbers'
-                              : (check.message || 'Certificate is invalid or does not match — please review')}
-                          </div>
-                        )}
 
                         <div style={{ display: 'flex', gap: 8 }}>
                           <motion.button
                             whileTap={{ scale: 0.97 }}
                             type="button"
-                            disabled={companySavingId === c.id}
-                            onClick={() => patchCompany(c.id, { status: 'active' })}
+                            disabled={companySavingId === c.id || active}
+                            onClick={() => setCompanyActive(c.id, true)}
                             style={{
                               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                               padding: '9px', borderRadius: 10, cursor: 'pointer', border: '1px solid rgba(34,197,94,0.4)',
                               background: 'rgba(34,197,94,0.12)', color: '#22c55e', fontWeight: 800, fontSize: '0.74rem',
-                              opacity: companySavingId === c.id ? 0.6 : 1,
+                              opacity: (companySavingId === c.id || active) ? 0.5 : 1,
                             }}
                           >
                             <CheckCircle size={14} /> Activate
@@ -5959,13 +5891,13 @@ export default function SettingsPage() {
                           <motion.button
                             whileTap={{ scale: 0.97 }}
                             type="button"
-                            disabled={companySavingId === c.id}
-                            onClick={() => patchCompany(c.id, { status: 'rejected' })}
+                            disabled={companySavingId === c.id || !active}
+                            onClick={() => setCompanyActive(c.id, false)}
                             style={{
                               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                               padding: '9px', borderRadius: 10, cursor: 'pointer', border: '1px solid rgba(239,68,68,0.4)',
                               background: 'rgba(239,68,68,0.12)', color: '#ef4444', fontWeight: 800, fontSize: '0.74rem',
-                              opacity: companySavingId === c.id ? 0.6 : 1,
+                              opacity: (companySavingId === c.id || !active) ? 0.5 : 1,
                             }}
                           >
                             <XCircle size={14} /> Deactivate
@@ -5989,8 +5921,7 @@ export default function SettingsPage() {
                   </button>
                 </div>
               )}
-              {!usersLoading && !usersError && allUsers
-                .filter(u => (ucTab === 'ban' ? !!u.isBanned : true))
+              {!usersLoading && !usersError && (ucTab === 'ban' ? banTabAccounts : regularAccounts)
                 .filter(u => {
                   const q = supportUsersSearch.trim().toLowerCase();
                   if (!q) return true;
@@ -6417,6 +6348,7 @@ export default function SettingsPage() {
                       setScMsg(next ? 'تم الحظر' : 'تم رفع الحظر');
                       setSupportCtrlUser(prev => prev ? { ...prev, isBanned: next } : prev);
                       setAllUsers(prev => prev.map(x => x.id === supportCtrlUser.id ? { ...x, isBanned: next } : x));
+                      if (next) addToBanHistory(supportCtrlUser.id);
                     } else setScMsg('فشل تنفيذ الحظر');
                   }}
                   style={{
@@ -6428,6 +6360,27 @@ export default function SettingsPage() {
                   }}>
                   {supportCtrlUser.isBanned ? '✅ رفع الحظر' : '🚫 حظر / طرد من التطبيق'}
                 </motion.button>
+
+                {banHistoryIds.includes(supportCtrlUser.id) && (
+                  <motion.button whileTap={{ scale: 0.98 }} type="button" disabled={deletingUserId === supportCtrlUser.id}
+                    onClick={async () => {
+                      if (!window.confirm(`حذف حساب @${supportCtrlUser.username || supportCtrlUser.email} نهائيًا من التطبيق؟`)) return;
+                      setScMsg('');
+                      const ok = await deleteOwnerAccount(supportCtrlUser.id);
+                      if (ok) {
+                        setScMsg('تم حذف الحساب');
+                        setSupportCtrlUser(null);
+                      } else setScMsg('فشل حذف الحساب');
+                    }}
+                    style={{
+                      padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                      background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.5)',
+                      color: '#ef4444', fontWeight: 800, fontSize: '0.85rem',
+                      opacity: deletingUserId === supportCtrlUser.id ? 0.6 : 1,
+                    }}>
+                    {deletingUserId === supportCtrlUser.id ? '…' : '🗑️ حذف الحساب نهائيًا من التطبيق'}
+                  </motion.button>
+                )}
               </div>
             </motion.div>
           </motion.div>
