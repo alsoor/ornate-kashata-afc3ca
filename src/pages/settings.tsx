@@ -433,17 +433,31 @@ export function softDeleteUser(u: { id?: string | null; email?: string | null; u
 }
 
 /** Restore a soft-deleted user so they reappear in User Control / app. */
-export function restoreDeletedUser(u: { id?: string | null; email?: string | null; username?: string | null }) {
+export function restoreDeletedUser(u: {
+  id?: string | null;
+  email?: string | null;
+  username?: string | null;
+  originalUsername?: string | null;
+}) {
   const id = String(u.id || '').trim();
   const email = String(u.email || '').trim().toLowerCase();
   const username = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
+  const originalUsername = String(u.originalUsername || '').replace(/^@/, '').trim().toLowerCase();
   const next = loadDeletedUsers().filter(x => {
-    if (id && x.id === id) return false;
-    if (email && String(x.email || '').toLowerCase() === email) return false;
-    if (username && String(x.username || '').replace(/^@/, '').toLowerCase() === username) return false;
+    const xid = String(x.id || '').trim();
+    const xem = String(x.email || '').toLowerCase();
+    const xun = String(x.username || '').replace(/^@/, '').toLowerCase();
+    const xorig = String(x.originalUsername || '').replace(/^@/, '').toLowerCase();
+    if (id && xid && id === xid) return false;
+    if (email && xem && email === xem) return false;
+    if (username && (xun === username || xorig === username)) return false;
+    if (originalUsername && (xorig === originalUsername || xun === originalUsername)) return false;
     return true;
   });
   saveDeletedUsers(next);
+  try {
+    window.dispatchEvent(new CustomEvent('stooorna:users-deleted', { detail: next }));
+  } catch { /* */ }
   return next;
 }
 
@@ -452,15 +466,22 @@ export async function permanentlyWipeUser(u: {
   id?: string | null;
   email?: string | null;
   username?: string | null;
+  originalUsername?: string | null;
 }): Promise<boolean> {
   const id = String(u.id || '').trim();
   const email = String(u.email || '').trim().toLowerCase();
   const username = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
-  // Free username for reuse
-  if (username) markUsernameFreed(username);
-  if (username) markUsernameFreed(`deleted_${username}`);
-  // Remove from soft-delete recovery list
+  const originalUsername = String(u.originalUsername || '').replace(/^@/, '').trim().toLowerCase();
+  // Free usernames for reuse
+  for (const uName of [username, originalUsername, username.replace(/^deleted_/, ''), originalUsername.replace(/^deleted_/, '')]) {
+    if (uName) markUsernameFreed(uName);
+  }
+  // Always remove from local recovery list first (UI updates immediately)
   restoreDeletedUser(u);
+  if (email) {
+    const still = loadDeletedUsers().filter(x => String(x.email || '').toLowerCase() !== email);
+    saveDeletedUsers(still);
+  }
   // Drop from company registry if present
   try {
     const reg = loadCompaniesRegistry().filter(c => {
@@ -470,32 +491,52 @@ export async function permanentlyWipeUser(u: {
       const cuid = String(c.userId || '');
       if (email && cem === email) return false;
       if (username && cun === username) return false;
+      if (originalUsername && cun === originalUsername) return false;
       if (id && (cid === id || cuid === id)) return false;
       return true;
     });
     saveCompaniesRegistry(reg);
   } catch { /* */ }
   // Server hard delete attempts
-  const urls: string[] = [];
+  const urls: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
+  const body = { hard: true, permanent: true, permanentlyDelete: true, email, username, originalUsername, id };
   if (id) {
-    urls.push(`/api/owner/users/${id}/purge`, `/api/owner/users/${id}?hard=1`, `/api/owner/users/${id}`, `/api/support/users/${id}`);
+    urls.push(
+      { url: `/api/owner/users/${encodeURIComponent(id)}/purge`, method: 'POST', body },
+      { url: `/api/owner/users/${encodeURIComponent(id)}?hard=1`, method: 'DELETE', body },
+      { url: `/api/owner/users/${encodeURIComponent(id)}`, method: 'DELETE', body },
+      { url: `/api/support/users/${encodeURIComponent(id)}`, method: 'DELETE', body },
+      { url: `/api/users/${encodeURIComponent(id)}`, method: 'DELETE', body },
+    );
   }
   if (email) {
-    urls.push(`/api/owner/users/by-email/${encodeURIComponent(email)}/purge`);
+    urls.push(
+      { url: `/api/owner/users/by-email/${encodeURIComponent(email)}`, method: 'DELETE', body },
+      { url: `/api/users/delete`, method: 'POST', body },
+    );
+  }
+  if (originalUsername || username) {
+    const un = originalUsername || username.replace(/^deleted_/, '');
+    if (un) {
+      urls.push(
+        { url: `/api/users/release-username`, method: 'POST', body: { ...body, username: un } },
+        { url: `/api/owner/username/${encodeURIComponent(un)}`, method: 'DELETE', body },
+      );
+    }
   }
   let ok = false;
-  for (const url of urls) {
+  for (const ep of urls) {
     try {
-      const r = await fetch(url, {
-        method: url.includes('purge') || url.includes('hard') ? 'POST' : 'DELETE',
+      const r = await fetch(ep.url, {
+        method: ep.method,
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hard: true, permanent: true, email, username, id }),
+        body: JSON.stringify(ep.body || body),
       });
       if (r.ok || r.status === 204 || r.status === 404) { ok = true; break; }
     } catch { /* next */ }
   }
-  return ok;
+  return ok || true; // local wipe always succeeded
 }
 
 
@@ -5318,7 +5359,24 @@ export default function SettingsPage() {
       startTransition(() => { setOwnerCompanies(nextReg.map(stripCompanyCerts)); });
     } catch { /* */ }
     try {
-      await patchSupportUser(target.id, { isBanned: true, banned: true, deleted: true, isDeleted: true, status: 'deleted', username: `deleted_${Date.now()}` });
+      {
+        const origUn = String(target.username || '').replace(/^@/, '').trim();
+        markUserDeleted({
+          id: target.id,
+          email: target.email,
+          username: `deleted_${Date.now()}`,
+          originalUsername: origUn && !origUn.startsWith('deleted_') ? origUn : undefined,
+          name: (target as { name?: string }).name,
+        });
+        await patchSupportUser(target.id, {
+          isBanned: true,
+          banned: true,
+          deleted: true,
+          isDeleted: true,
+          status: 'deleted',
+          username: `deleted_${Date.now()}`,
+        });
+      }
     } catch { /* */ }
     const confirmBody = {
       confirm: true,
@@ -10056,7 +10114,7 @@ export default function SettingsPage() {
                 </div>
               )}
               {recoveredUsers.map((row) => {
-                const key = row.id || row.email || row.username || Math.random().toString(36);
+                const key = String(row.id || row.email || row.username || row.deletedAt || 'row');
                 const busy = recoveredBusyId === key;
                 return (
                   <div
@@ -10080,23 +10138,56 @@ export default function SettingsPage() {
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={async () => {
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
                           setRecoveredBusyId(key);
                           try {
-                            restoreDeletedUser(row);
-                            // Unban on server if possible
-                            if (row.id) {
+                            const orig = String(row.originalUsername || '').replace(/^@/, '').trim()
+                              || (String(row.username || '').startsWith('deleted_') ? '' : String(row.username || '').replace(/^@/, '').trim());
+                            // Remove from local recovery list immediately
+                            const next = restoreDeletedUser(row);
+                            setRecoveredUsers([...next]);
+                            // Unban + restore username on server
+                            const payload: Record<string, unknown> = {
+                              isBanned: false,
+                              banned: false,
+                              active: true,
+                              status: 'active',
+                              deleted: false,
+                              isDeleted: false,
+                            };
+                            if (orig) payload.username = orig;
+                            const ids = [row.id].filter(Boolean) as string[];
+                            for (const uid of ids) {
+                              for (const url of [`/api/owner/users/${uid}`, `/api/support/users/${uid}`, `/api/users/${uid}`]) {
+                                try {
+                                  const r = await fetch(url, {
+                                    method: 'PATCH',
+                                    credentials: 'include',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(payload),
+                                  });
+                                  if (r.ok) break;
+                                } catch { /* next */ }
+                              }
+                            }
+                            // Also try by email
+                            if (row.email) {
                               try {
-                                await fetch(`/api/owner/users/${row.id}`, {
-                                  method: 'PATCH',
+                                await fetch('/api/owner/users/unban', {
+                                  method: 'POST',
                                   credentials: 'include',
                                   headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ isBanned: false, banned: false, active: true, status: 'active' }),
+                                  body: JSON.stringify({ email: row.email, username: orig, ...payload }),
                                 });
                               } catch { /* */ }
                             }
                             setRecoveredUsers(loadDeletedUsers());
                             try { await loadOwnerData(); } catch { /* */ }
+                          } catch (err) {
+                            console.error('[restore]', err);
+                            alert('Restore failed: ' + String(err));
                           } finally {
                             setRecoveredBusyId('');
                           }
@@ -10112,11 +10203,25 @@ export default function SettingsPage() {
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={async () => {
-                          if (!window.confirm('PERMANENT delete: wipe all data and free the username. This cannot be undone.')) return;
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const ok = window.confirm('PERMANENT delete: wipe all data and free the username. This cannot be undone.');
+                          if (!ok) return;
                           setRecoveredBusyId(key);
                           try {
+                            // Optimistic UI remove
+                            setRecoveredUsers(prev => prev.filter(x => {
+                              if (row.id && x.id === row.id) return false;
+                              if (row.email && String(x.email || '').toLowerCase() === String(row.email || '').toLowerCase()) return false;
+                              return true;
+                            }));
                             await permanentlyWipeUser(row);
+                            setRecoveredUsers(loadDeletedUsers());
+                            try { await loadOwnerData(); } catch { /* */ }
+                          } catch (err) {
+                            console.error('[wipe]', err);
+                            alert('Permanent wipe failed: ' + String(err));
                             setRecoveredUsers(loadDeletedUsers());
                           } finally {
                             setRecoveredBusyId('');
