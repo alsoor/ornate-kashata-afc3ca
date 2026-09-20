@@ -5050,12 +5050,10 @@ const MiniProfileModal = ({
                   same layout as the own-profile header, so any visited profile shows the
                   full picture (posts, likes, and follow counts) at a glance. ── */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginTop: 10 }}>
-                {isCompanyUserAccount(profile) && (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                    <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.postsCount ?? 0}</span>
-                    <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Post</span>
-                  </div>
-                )}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.postsCount ?? 0}</span>
+                  <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Post</span>
+                </div>
                 <motion.button
                   whileTap={isOwnProfile ? { scale: 0.94 } : undefined}
                   onClick={() => { if (isOwnProfile) setFollowersModalOpen(true); }}
@@ -5068,18 +5066,6 @@ const MiniProfileModal = ({
                   )}
                   <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Followers</span>
                 </motion.button>
-                {!isCompanyUserAccount(profile) && (
-                  <>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                      <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{(profile as any)?.videosCount ?? (profile as any)?.videoCount ?? 0}</span>
-                      <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Video</span>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                      <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{(profile as any)?.photosCount ?? (profile as any)?.photoCount ?? 0}</span>
-                      <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Photo</span>
-                    </div>
-                  </>
-                )}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                   <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.likesCount ?? 0}</span>
                   <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Likes</span>
@@ -5367,8 +5353,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           const dest = String(p.destination || p.audience || '');
           const isVid = t === 'video' || dest === 'videos';
           const isPhoto = t === 'image' || dest === 'photos' || (!!p.mediaUrl && t !== 'video');
-          if (friendProfileMediaTab === 'videos') return isVid;
-          if (friendProfileMediaTab === 'photos') return isPhoto || (!isVid && !p.mediaUrl && !p.mediaUrls?.length);
           return true;
         });
     if (profile?.pinnedPostId == null) return list;
@@ -5449,14 +5433,12 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             </p>
           )}
 
-          {/* Company: Post / Followers / Likes — User: Followers / Video / Photo / Likes */}
+          {/* Post / Followers / Likes */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {isCompanyProfile && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.postsCount ?? authorPosts.length}</span>
-                <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Post</span>
-              </div>
-            )}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.postsCount ?? authorPosts.length}</span>
+              <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Post</span>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
               {(!isCompanyProfile && (!!profile?.isPrivate || profile?.followersVisible === false)) ? (
                 <Lock size={13} strokeWidth={2.2} color={CLR_TEXT_DIM} />
@@ -5465,25 +5447,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               )}
               <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Followers</span>
             </div>
-            {!isCompanyProfile && (
-              <>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>
-                    {authorPosts.filter(p => (p.mediaTypes?.[0] ?? p.mediaType) === 'video' || p.destination === 'videos').length}
-                  </span>
-                  <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Video</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>
-                    {authorPosts.filter(p => {
-                      const t = p.mediaTypes?.[0] ?? p.mediaType;
-                      return t === 'image' || p.destination === 'photos' || (!!p.mediaUrl && t !== 'video');
-                    }).length}
-                  </span>
-                  <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Photo</span>
-                </div>
-              </>
-            )}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
               <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>
                 {profile?.likesCount ?? authorPosts.reduce((sum, p) => sum + (p.likesCount ?? 0), 0)}
@@ -5568,42 +5531,17 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           </div>
         ) : (
           <>
-            {/* الشركات: منتجات فقط — بدون تبويب Video/Photo (خاص بالمستخدمين) */}
-            {!isCompanyProfile && (
-            <div style={{ display: 'flex', borderTop: `1px solid ${CLR_NAV_BORDER}`, borderBottom: `1px solid ${CLR_NAV_BORDER}`, marginTop: 8 }}>
-              {(['videos', 'photos'] as const).map(tab => {
-                const active = friendProfileMediaTab === tab;
-                return (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setFriendProfileMediaTab(tab)}
-                    style={{
-                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      padding: '11px 0', border: 'none', cursor: 'pointer',
-                      background: active ? CLR_TAB_ACTIVE : 'transparent',
-                      color: active ? CLR_PRIMARY : CLR_TEXT_DIM,
-                      fontSize: '0.78rem', fontWeight: 700,
-                    }}
-                  >
-                    {tab === 'videos' ? <Video size={15} strokeWidth={2} /> : <ImageIcon size={15} strokeWidth={2} />}
-                    {tab === 'videos' ? 'Video' : 'Photo'}
-                  </button>
-                );
-              })}
+            {/* Single Post section header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '10px 0', marginTop: 8,
+              borderTop: `1px solid ${CLR_NAV_BORDER}`, borderBottom: `1px solid ${CLR_NAV_BORDER}`,
+              color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 800,
+              background: CLR_TAB_ACTIVE,
+            }}>
+              <FileText size={15} strokeWidth={2} />
+              Post
             </div>
-            )}
-            {isCompanyProfile && (
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                padding: '10px 0', marginTop: 8,
-                borderTop: `1px solid ${CLR_NAV_BORDER}`, borderBottom: `1px solid ${CLR_NAV_BORDER}`,
-                color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 800,
-              }}>
-                <Building2 size={15} strokeWidth={2} />
-                المنتجات
-              </div>
-            )}
 
             {loading ? (
               <div className="flex items-center justify-center" style={{ padding: '24px 0' }}>
@@ -12086,12 +12024,10 @@ export default function AddFriendPage() {
                 )}
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-                  {isCompanyPublisher && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaPosts.length}</span>
-                      <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Post</span>
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaPosts.length}</span>
+                    <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Post</span>
+                  </div>
                   <motion.button
                     whileTap={{ scale: 0.94 }}
                     onClick={() => setFollowersModalOpen(true)}
@@ -12104,18 +12040,6 @@ export default function AddFriendPage() {
                     )}
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Followers</span>
                   </motion.button>
-                  {!isCompanyPublisher && (
-                    <>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                        <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myVideoPosts.length}</span>
-                        <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Video</span>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                        <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myPhotoPosts.length}</span>
-                        <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Photo</span>
-                      </div>
-                    </>
-                  )}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaLikesTotal}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
@@ -12228,44 +12152,18 @@ export default function AddFriendPage() {
           </div>
 
 
-          {/* ══ Content header — Video | Photo للمستخدم فقط؛ الشركة: منتجات ══ */}
-          {pageTab === 'profile' && !isCompanyPublisher && (
-            <div style={{ padding: '0 0 8px' }}>
-              <div style={{ display: 'flex', width: '100%', marginBottom: 8, borderRadius: 0, overflow: 'hidden', borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}` }}>
-                {(['videos', 'photos'] as const).map(tab => {
-                  const active = (profileContentTab || 'videos') === tab;
-                  return (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setProfileContentTab(tab)}
-                      style={{
-                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                        padding: '9px 4px', border: 'none', cursor: 'pointer',
-                        background: active ? CLR_TAB_ACTIVE : 'transparent',
-                        color: active ? CLR_PRIMARY : CLR_TEXT_DIM,
-                        fontSize: '0.72rem', fontWeight: 700,
-                      }}
-                    >
-                      {tab === 'videos' ? <Video size={14} strokeWidth={2} /> : <ImageIcon size={14} strokeWidth={2} />}
-                      {tab === 'videos' ? 'Video' : 'Photo'}
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{ height: 1, background: CLR_NAV_BORDER }} />
-            </div>
-          )}
-          {pageTab === 'profile' && isCompanyPublisher && (
+          {/* Content header — single Post section */}
+          {pageTab === 'profile' && (
             <div style={{ padding: '0 0 8px' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 padding: '9px 4px', marginBottom: 8,
                 borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}`,
                 color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800,
+                background: CLR_TAB_ACTIVE,
               }}>
-                <Building2 size={14} strokeWidth={2} />
-                المنتجات
+                <FileText size={14} strokeWidth={2} />
+                Post
               </div>
               <div style={{ height: 1, background: CLR_NAV_BORDER }} />
             </div>
@@ -12339,18 +12237,8 @@ export default function AddFriendPage() {
                   let myTextPosts = combinedFeedPosts.filter(p =>
                     !!user && String(p.authorId) === String(user.id)
                   );
-                  // Filter by Video / Photo tab on profile
-                  myTextPosts = myTextPosts.filter(p => {
-                    const t = (p.mediaTypes?.[0] ?? p.mediaType) || '';
-                    const dest = String(p.destination || p.audience || '');
-                    const isVid = t === 'video' || dest === 'videos';
-                    const isPhoto = t === 'image' || dest === 'photos' || (!!p.mediaUrl && t !== 'video');
-                    // الشركة: كل المنتجات بدون فلتر Video/Photo
-                    if (isCompanyPublisher) return true;
-                    if (profileContentTab === 'videos') return isVid;
-                    if (profileContentTab === 'photos') return isPhoto || (!isVid && !p.mediaUrl && !p.mediaUrls?.length);
-                    return true;
-                  });
+                  // Single Post section — show all posts (no Video/Photo split)
+                  ;
                   // المنشور المثبّت (إن وُجد) يظهر أولًا، والباقي يتبعه بترتيبه الطبيعي
                   if (pinnedPostId !== null) {
                     const pinnedIndex = myTextPosts.findIndex(p => p.id === pinnedPostId);
@@ -16002,7 +15890,7 @@ export default function AddFriendPage() {
             style={{
               position: 'fixed', inset: 0, zIndex: 10080,
               background: 'rgba(0,0,0,0.45)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
               padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
               boxSizing: 'border-box',
             }}
@@ -16049,38 +15937,20 @@ export default function AddFriendPage() {
                   minWidth: 0,
                   overflow: 'hidden',
                 }}>
-                  <button
-                    type="button"
-                    onClick={() => setFriendsPanelTab('friends')}
+                  <div
                     style={{
                       display: 'flex', alignItems: 'center', gap: 4,
-                      padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
-                      background: friendsPanelTab === 'friends' ? 'rgba(0,188,212,0.18)' : 'transparent',
-                      border: `1px solid ${friendsPanelTab === 'friends' ? CLR_PRIMARY_BORDER : 'transparent'}`,
-                      color: friendsPanelTab === 'friends' ? CLR_PRIMARY : CLR_TEXT_DIM,
+                      padding: '6px 10px', borderRadius: 999,
+                      background: 'rgba(0,188,212,0.18)',
+                      border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      color: CLR_PRIMARY,
                       fontSize: '0.72rem', fontWeight: 800,
                       flexShrink: 0,
                     }}
                   >
                     <Users size={13} strokeWidth={2.2} />
                     Friends
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFriendsPanelTab('company')}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 4,
-                      padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
-                      background: friendsPanelTab === 'company' ? 'rgba(0,188,212,0.18)' : 'transparent',
-                      border: `1px solid ${friendsPanelTab === 'company' ? CLR_PRIMARY_BORDER : 'transparent'}`,
-                      color: friendsPanelTab === 'company' ? CLR_PRIMARY : CLR_TEXT_DIM,
-                      fontSize: '0.72rem', fontWeight: 800,
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Building2 size={13} strokeWidth={2.2} />
-                    Company
-                  </button>
+                  </div>
                 </div>
                 <button type="button" onClick={() => {
                   setNamesBarOpen(false);
@@ -16096,7 +15966,7 @@ export default function AddFriendPage() {
               </div>
 
               {/* ── Friends tab ── */}
-              {friendsPanelTab === 'friends' && (
+              {true && (
                 <>
                   <style>{`.names-bar-strip::-webkit-scrollbar{display:none}`}</style>
                   <div className="names-bar-strip" style={{
@@ -16132,7 +16002,7 @@ export default function AddFriendPage() {
               )}
 
               {/* ── Company tab — قائمة عمودية: اسم الشركة + الاسم التجاري فقط (بدون إيميل) ── */}
-              {friendsPanelTab === 'company' && (
+              {false && friendsPanelTab === 'company' && (
                 <div style={{
                   overflowY: 'auto',
                   flex: 1,

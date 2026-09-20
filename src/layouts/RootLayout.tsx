@@ -2304,7 +2304,7 @@ function GlobalBottomNavigation() {
         ? 'radial-gradient(ellipse 60% 50% at 50% 80%, rgba(0,188,212,0.35), rgba(6,14,14,0.92) 70%)'
         : 'rgba(6,10,12,0.55)',
       display: 'flex', flexDirection: 'column',
-      justifyContent: (homeCallPickerOpen && homeCallPhase === 'idle') ? 'center' : 'flex-end',
+      justifyContent: 'flex-end',
       animation: homeCallPhase === 'animating' ? 'stooornaHomeCallIn 0.9s ease-out' : undefined,
     }}>
       {homeCallPhase === 'animating' && (
@@ -2324,7 +2324,7 @@ function GlobalBottomNavigation() {
           onClick={() => setHomeCallPickerOpen(false)}
           style={{
             position: 'absolute', inset: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
             padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
             boxSizing: 'border-box',
           }}
