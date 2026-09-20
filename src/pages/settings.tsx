@@ -384,9 +384,103 @@ export function loadBusinessRegistry(): BusinessRegistration[] {
   }
 }
 
+const BUSINESS_DIRECTORY_KEY = 'stooorna_business_directory';
+
+export type PublicBusinessAccount = {
+  userId: string;
+  username?: string | null;
+  email?: string | null;
+  projectName?: string | null;
+};
+
+export function syncBusinessPublicDirectory(list?: BusinessRegistration[]) {
+  try {
+    const src = list || loadBusinessRegistry();
+    const approved: PublicBusinessAccount[] = src
+      .filter(x => x.status === 'approved')
+      .map(x => ({
+        userId: String(x.userId),
+        username: x.username ? String(x.username).replace(/^@/, '').trim().toLowerCase() : null,
+        email: x.email ? String(x.email).trim().toLowerCase() : null,
+        projectName: x.projectName || null,
+      }));
+    localStorage.setItem(BUSINESS_DIRECTORY_KEY, JSON.stringify(approved));
+    window.dispatchEvent(new CustomEvent('stooorna:business-directory', { detail: approved }));
+  } catch { /* ignore */ }
+}
+
+export function loadBusinessPublicDirectory(): PublicBusinessAccount[] {
+  try {
+    const raw = localStorage.getItem(BUSINESS_DIRECTORY_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+/** True when this identity is an approved Business account — used app-wide next to @username */
+export function isPublicBusinessAccount(u?: {
+  id?: string | null;
+  userId?: string | null;
+  username?: string | null;
+  email?: string | null;
+} | null): boolean {
+  if (!u) return false;
+  const id = String(u.id || u.userId || '').trim();
+  const un = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
+  const em = String(u.email || '').trim().toLowerCase();
+  if (id && isBusinessApproved(id)) return true;
+  const dir = loadBusinessPublicDirectory();
+  if (dir.some(x =>
+    (id && x.userId === id) ||
+    (un && x.username === un) ||
+    (em && x.email === em)
+  )) return true;
+  try {
+    const list = loadBusinessRegistry();
+    return list.some(x =>
+      x.status === 'approved' && (
+        (id && String(x.userId) === id) ||
+        (un && String(x.username || '').replace(/^@/, '').trim().toLowerCase() === un) ||
+        (em && String(x.email || '').trim().toLowerCase() === em)
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Small yellow Business head shown beside @username for every viewer */
+export function BusinessHeadBadge({ compact }: { compact?: boolean }) {
+  return (
+    <span
+      title="Business"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        fontSize: compact ? '0.52rem' : '0.58rem',
+        fontWeight: 900,
+        color: '#0a0a0a',
+        background: '#eab308',
+        borderRadius: 5,
+        padding: compact ? '1px 5px' : '2px 7px',
+        letterSpacing: '0.04em',
+        lineHeight: 1.2,
+        boxShadow: '0 0 8px rgba(234,179,8,0.45)',
+        verticalAlign: 'middle',
+        flexShrink: 0,
+      }}
+    >
+      Business
+    </span>
+  );
+}
+
 export function saveBusinessRegistry(list: BusinessRegistration[]) {
   try {
     localStorage.setItem(BUSINESS_REGISTRY_KEY, JSON.stringify(list.slice(0, 2000)));
+    syncBusinessPublicDirectory(list);
     window.dispatchEvent(new CustomEvent('stooorna:business-registry', { detail: list }));
   } catch { /* ignore */ }
 }
@@ -6604,12 +6698,8 @@ export default function SettingsPage() {
                       textShadow: isOwner ? '0 0 8px rgba(37,99,235,0.5)' : 'none',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap',
                     }}>@{profileUsername}
-                      {businessRow?.status === 'approved' && (
-                        <span style={{
-                          fontSize: '0.58rem', fontWeight: 900, color: '#0a0a0a',
-                          background: '#eab308', borderRadius: 5, padding: '2px 7px',
-                          letterSpacing: '0.04em', boxShadow: '0 0 8px rgba(234,179,8,0.45)',
-                        }}>Business</span>
+                      {(businessRow?.status === 'approved' || isPublicBusinessAccount({ id: user?.id, username: profileUsername, email: user?.email })) && (
+                        <BusinessHeadBadge />
                       )}
                     </p>}
                         <div style={{
@@ -9060,6 +9150,7 @@ export default function SettingsPage() {
                   const title = isCo
                     ? preferredCompanyDisplayName(u)
                     : `@${u.username || '—'}`;
+                  const bizOk = !isCo && isPublicBusinessAccount(u);
                   const subtitle = isCo
                     ? `${u.username ? `@${u.username} · ` : ''}${u.email}${u.lastIp ? ` · ${u.lastIp}` : ''}`
                     : `${u.email}${u.lastIp ? ` · ${u.lastIp}` : ''}`;
@@ -9120,8 +9211,10 @@ export default function SettingsPage() {
                         <p style={{
                           margin: 0, fontSize: '0.88rem', fontWeight: 700,
                           color, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          display: 'flex', alignItems: 'center', gap: 6,
                         }}>
-                          {title}
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+                          {bizOk && <BusinessHeadBadge compact />}
                         </p>
                         <p style={{
                           margin: '2px 0 0', color: 'rgba(180,160,160,0.65)', fontSize: '0.68rem',
@@ -9199,8 +9292,10 @@ export default function SettingsPage() {
                   <p style={{
                     margin: 0, fontWeight: 800, fontSize: '1rem',
                     color: supportCtrlUser.nameColor || 'hsl(var(--primary))',
+                    display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
                   }}>
                     @{supportCtrlUser.username || '—'}
+                    {isPublicBusinessAccount(supportCtrlUser) && <BusinessHeadBadge compact />}
                   </p>
                   <p style={{ margin: '2px 0 0', color: 'hsl(var(--muted-foreground))', fontSize: '0.72rem' }}>
                     {supportCtrlUser.name || 'بدون اسم'}
@@ -9222,6 +9317,9 @@ export default function SettingsPage() {
                       if (supportCtrlUser.avatarUrl) q.set('openProfileAvatar', supportCtrlUser.avatarUrl);
                       if (supportUsersTab === 'companies' || isCompanyAccountRow(supportCtrlUser)) {
                         q.set('openProfileCompany', '1');
+                      }
+                      if (isPublicBusinessAccount(supportCtrlUser)) {
+                        q.set('openProfileBusiness', '1');
                       }
                       navigate(`/add-friend?${q.toString()}`);
                     }}
