@@ -510,6 +510,43 @@ export function loadCompaniesRegistry(): CompanyRegistration[] {
   }
 }
 
+/** Drop heavy base64 cert payloads for list UIs — keeps settings responsive. */
+export function stripCompanyCerts(c: CompanyRegistration): CompanyRegistration {
+  return {
+    ...c,
+    commercialRegCert: undefined,
+    tradeLicenseCert: undefined,
+    commercialRegCertName: c.commercialRegCertName || (c.commercialRegCert ? 'attached' : undefined),
+    tradeLicenseCertName: c.tradeLicenseCertName || (c.tradeLicenseCert ? 'attached' : undefined),
+  };
+}
+
+/** Registry for list/admin panels without multi-MB base64 fields. */
+export function loadCompaniesRegistryLight(): CompanyRegistration[] {
+  return loadCompaniesRegistry().map(stripCompanyCerts);
+}
+
+/** Full row (with certificates) for owner detail view only. */
+export function loadCompanyRegistrationFull(idOrEmail: string): CompanyRegistration | null {
+  const key = String(idOrEmail || '').trim().toLowerCase();
+  if (!key) return null;
+  const list = loadCompaniesRegistry();
+  return (
+    list.find(c => {
+      const cem = String(c.email || '').toLowerCase();
+      const cid = String(c.id || '').toLowerCase();
+      const cuid = String(c.userId || '').toLowerCase();
+      return (
+        cid === key ||
+        cem === key ||
+        (cuid && cuid === key) ||
+        String(c.id) === idOrEmail ||
+        String(c.userId || '') === idOrEmail
+      );
+    }) || null
+  );
+}
+
 export function saveCompaniesRegistry(list: CompanyRegistration[]) {
   try {
     // ثبّت التفعيل قبل الحفظ حتى لا يُكتب pending فوق active
@@ -534,7 +571,7 @@ export function saveCompaniesRegistry(list: CompanyRegistration[]) {
       status: 'active',
     }));
     localStorage.setItem('stooorna_companies_directory', JSON.stringify(active));
-    window.dispatchEvent(new CustomEvent('stooorna:companies-registry', { detail: fixed }));
+    window.dispatchEvent(new CustomEvent('stooorna:companies-registry', { detail: fixed.map(stripCompanyCerts) }));
   } catch { /* ignore */ }
 }
 
@@ -876,7 +913,8 @@ export function sanitizeCompaniesRegistry(): CompanyRegistration[] {
     });
   }
   saveCompaniesRegistry(out);
-  return out;
+  // Return stripped rows so React state does not hold multi-MB base64 certs
+  return out.map(stripCompanyCerts);
 }
 
 /** هل هذا الصف حساب شركة؟ (يُستبعد من User Control ويُعرض في قسم الشركات فقط) */
@@ -4949,7 +4987,7 @@ export default function SettingsPage() {
   }, []);
 
   function refreshOwnerCompanies() {
-    setOwnerCompanies(sanitizeCompaniesRegistry());
+    startTransition(() => { setOwnerCompanies(sanitizeCompaniesRegistry()); });
     (async () => {
       // 1) Dedicated company APIs + pending approval queues
       for (const url of [
@@ -4990,7 +5028,7 @@ export default function SettingsPage() {
           setAllCompanyCtrlUsers(companies);
         }
       } catch { /* ignore */ }
-      setOwnerCompanies(sanitizeCompaniesRegistry());
+      startTransition(() => { setOwnerCompanies(sanitizeCompaniesRegistry()); });
     })();
   }
 
@@ -5025,11 +5063,11 @@ export default function SettingsPage() {
         approvedAt: (row.approvedAt as string | null) ?? null,
         approvedBy: (row.approvedBy as string | null) ?? null,
       });
-      setOwnerCompanies(sanitizeCompaniesRegistry());
+      startTransition(() => { setOwnerCompanies(sanitizeCompaniesRegistry()); });
     };
 
     const onRequest = (e: Event) => ingest((e as CustomEvent).detail);
-    const onRegistry = () => setOwnerCompanies(sanitizeCompaniesRegistry());
+    const onRegistry = () => startTransition(() => { setOwnerCompanies(sanitizeCompaniesRegistry()); });
     const onStorage = (e: StorageEvent) => {
       if (e.key === COMPANIES_REGISTRY_KEY || e.key === 'stooorna_company_last_request') {
         if (e.key === 'stooorna_company_last_request' && e.newValue) {
@@ -5167,7 +5205,7 @@ export default function SettingsPage() {
         return true;
       });
       saveCompaniesRegistry(nextReg);
-      setOwnerCompanies(nextReg);
+      startTransition(() => { setOwnerCompanies(nextReg.map(stripCompanyCerts)); });
     } catch { /* */ }
     try {
       await patchSupportUser(target.id, { isBanned: true, banned: true, deleted: true, isDeleted: true, status: 'deleted', username: `deleted_${Date.now()}` });
@@ -5437,6 +5475,18 @@ export default function SettingsPage() {
   // Owner: all users + highlights
   const isOwner = isPrivilegedUser(user as { email?: string | null; username?: string | null; name?: string | null } | null);
 
+  // Non-owners never stay on the Company tab
+  useEffect(() => {
+    if (tab !== 'companies') return;
+    if (!isSupportOwnerAccount(
+      user as { email?: string | null; username?: string | null; name?: string | null },
+      profileUsername,
+    )) {
+      setTab('account');
+    }
+  }, [tab, user, profileUsername]);
+
+
   // Load owner data (users list) when logged in as owner
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (user && isOwner) { loadOwnerData(); loadNewCompanies(); } }, [user, isOwner]);
@@ -5553,7 +5603,7 @@ export default function SettingsPage() {
         }
         setAllUsers(people);
         setAllCompanyCtrlUsers(companies);
-        setOwnerCompanies(sanitizeCompaniesRegistry());
+        startTransition(() => { setOwnerCompanies(sanitizeCompaniesRegistry()); });
       } else {
         const errText = await usersRes.text().catch(() => String(usersRes.status));
         setUsersError(`Error ${usersRes.status}: ${errText}`);
@@ -5937,9 +5987,10 @@ export default function SettingsPage() {
 
         {/* Tabs — only when logged in */}
         {user && <div className="flex z-10 px-5 pt-4 gap-3">
-            {(['account', 'live', 'companies'] as Tab[]).map(t => <motion.button key={t} whileTap={{
-          scale: 0.95
-        }} onClick={() => setTab(t)} style={{
+            {((isSupportOwnerAccount(
+              user as { email?: string | null; username?: string | null; name?: string | null },
+              profileUsername,
+            ) ? (['account', 'live', 'companies'] as Tab[]) : (['account', 'live'] as Tab[]))).map(t => <button key={t} type="button" onClick={() => startTransition(() => setTab(t))} style={{
           flex: 1,
           padding: '8px 0',
           borderRadius: 8,
@@ -5954,7 +6005,7 @@ export default function SettingsPage() {
           transition: 'all 0.2s'
         }}>
                 {t === 'account' ? 'Profile' : t === 'live' ? 'Live' : 'Company'}
-              </motion.button>)}
+              </button>)}
           </div>}
 
         {/* Content */}
@@ -6331,96 +6382,6 @@ export default function SettingsPage() {
                         </div>
                       </motion.button>
 
-                      {/* تحكم المستخدمين — تحت شات الدعم */}
-                      <motion.button
-                        whileTap={{ scale: 0.98 }}
-                        type="button"
-                        onClick={() => {
-                          loadOwnerData();
-                          setShowSupportUsers(true);
-                        }}
-                        className="flex items-center justify-between"
-                        style={{
-                          width: '100%',
-                          background: T.surface,
-                          border: `1px solid ${T.surfaceBorder}`,
-                          borderRadius: 14,
-                          padding: '14px 16px',
-                          color: T.text,
-                          cursor: 'pointer',
-                        }}
-                        aria-label="User Control"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="flex items-center justify-center" style={{
-                            width: 38, height: 38, borderRadius: 12, background: 'rgba(239,68,68,0.1)',
-                            border: '1px solid rgba(239,68,68,0.35)', color: '#ef4444',
-                          }}>
-                            <Users size={19} strokeWidth={2.1} />
-                          </span>
-                          <span style={{ textAlign: 'left' }}>
-                            <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>User Control</span>
-                            <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-                              Username color · Edit username · Password · Ban
-                            </span>
-                          </span>
-                        </div>
-                        <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
-                      </motion.button>
-
-                      {/* الشركات — فقط @Stooorna / الأونر */}
-                      {isSupportOwnerAccount(
-                        user as { email?: string | null; username?: string | null; name?: string | null },
-                        profileUsername,
-                      ) && (
-                        <motion.button
-                          whileTap={{ scale: 0.98 }}
-                          type="button"
-                          onClick={() => {
-                            void loadOwnerData();
-                            refreshOwnerCompanies();
-                            setShowOwnerCompanies(true);
-                          }}
-                          className="flex items-center justify-between"
-                          style={{
-                            width: '100%',
-                            background: T.surface,
-                            border: `1px solid ${T.surfaceBorder}`,
-                            borderRadius: 14,
-                            padding: '14px 16px',
-                            color: T.text,
-                            cursor: 'pointer',
-                          }}
-                          aria-label="Companies"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="flex items-center justify-center" style={{
-                              width: 38, height: 38, borderRadius: 12, background: 'rgba(0,188,212,0.1)',
-                              border: '1px solid rgba(0,188,212,0.35)', color: T.primary,
-                            }}>
-                              <Building2 size={19} strokeWidth={2.1} />
-                            </span>
-                            <span style={{ textAlign: 'left' }}>
-                              <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Companies</span>
-                              <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-                                Activate / deactivate registered company accounts
-                              </span>
-                            </span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {ownerPendingCompanyCount > 0 && (
-                              <span style={{
-                                minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
-                                background: '#eab308', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              }}>
-                                {ownerPendingCompanyCount > 9 ? '9+' : ownerPendingCompanyCount}
-                              </span>
-                            )}
-                            <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
-                          </div>
-                        </motion.button>
-                      )}
                     </>
                   )}
 
@@ -8340,7 +8301,7 @@ export default function SettingsPage() {
             }}>
               <button
                 type="button"
-                onClick={() => { setShowSupportUsers(false); setSupportUsersSearch(''); setSupportUsersTab('users'); }}
+                onClick={() => { startTransition(() => setShowSupportUsers(false)); setSupportUsersSearch(''); setSupportUsersTab('users'); }}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }}
                 aria-label="Close"
               >
@@ -9083,7 +9044,7 @@ export default function SettingsPage() {
                     setAllUsers(prev => prev.filter(x => x.id !== target.id && String(x.username || '').toLowerCase() !== String(target.username || '').toLowerCase()));
                     setAllCompanyCtrlUsers(prev => prev.filter(x => x.id !== target.id));
                     const res = await permanentlyDeleteSupportUser(target);
-                    setOwnerCompanies(loadCompaniesRegistry());
+                    startTransition(() => { setOwnerCompanies(loadCompaniesRegistryLight()); });
                     setOwnerDeleteCompany(null);
                     if (!res.ok) {
                       // الحذف المحلي تم — نعيد المحاولة على السيرفر دون إرجاع الحساب للقائمة
@@ -9094,7 +9055,7 @@ export default function SettingsPage() {
                         c.userId !== target.id && c.email.toLowerCase() !== String(target.email || '').toLowerCase(),
                       );
                       saveCompaniesRegistry(list);
-                      setOwnerCompanies(sanitizeCompaniesRegistry());
+                      startTransition(() => { setOwnerCompanies(sanitizeCompaniesRegistry()); });
                     } catch { /* */ }
                     setScDeleting(false);
                     setScDeleteOpen(false);
@@ -9148,7 +9109,7 @@ export default function SettingsPage() {
             }}>
               <button
                 type="button"
-                onClick={() => setShowOwnerCompanies(false)}
+                onClick={() => startTransition(() => setShowOwnerCompanies(false))}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00BCD4', padding: 2 }}
                 aria-label="Close"
               >
@@ -9247,7 +9208,12 @@ export default function SettingsPage() {
                         // startTransition: يخلي الضغطة تستجيب فوراً بدون تجمّد
                         // بينما يُعاد رسم التفاصيل الثقيلة (الصور) بشكل غير عاجل
                         startTransition(() => {
-                          setOwnerCompanyDetail({ ...co, companyName: displayName, tradeName: displayTrade || co.tradeName });
+                          const full = loadCompanyRegistrationFull(co.id || co.email) || co;
+                          setOwnerCompanyDetail({
+                            ...full,
+                            companyName: displayName,
+                            tradeName: displayTrade || full.tradeName || co.tradeName,
+                          });
                         });
                       }}
                       style={{
@@ -9268,7 +9234,12 @@ export default function SettingsPage() {
                         // startTransition: يخلي الضغطة تستجيب فوراً بدون تجمّد
                         // بينما يُعاد رسم التفاصيل الثقيلة (الصور) بشكل غير عاجل
                         startTransition(() => {
-                          setOwnerCompanyDetail({ ...co, companyName: displayName, tradeName: displayTrade || co.tradeName });
+                          const full = loadCompanyRegistrationFull(co.id || co.email) || co;
+                          setOwnerCompanyDetail({
+                            ...full,
+                            companyName: displayName,
+                            tradeName: displayTrade || full.tradeName || co.tradeName,
+                          });
                         });
                       }}
                       style={{
@@ -9313,7 +9284,7 @@ export default function SettingsPage() {
                         });
                         if (co.id && co.email) setCompanyRegStatus(co.id, next, { approvedBy: profileUsername || 'stooorna' });
                         const updated = loadCompaniesRegistry();
-                        setOwnerCompanies(updated);
+                        startTransition(() => { setOwnerCompanies(updated.map(stripCompanyCerts)); });
                         void (async () => {
                           try {
                             await pushCompanyStatusToServer({ ...co, status: next }, next);
@@ -9321,7 +9292,7 @@ export default function SettingsPage() {
                               await provisionCompanyAuthAccount({ ...co, status: 'active' });
                             }
                           } finally {
-                            setOwnerCompanies(loadCompaniesRegistry());
+                            startTransition(() => { setOwnerCompanies(loadCompaniesRegistryLight()); });
                             setOwnerCompanyBusy(false);
                           }
                         })();
@@ -9528,14 +9499,14 @@ export default function SettingsPage() {
                     });
                     if (ownerCompanyDetail.id) setCompanyRegStatus(ownerCompanyDetail.id, 'active', { approvedBy: profileUsername || 'stooorna' });
                     const updated = loadCompaniesRegistry();
-                    setOwnerCompanies(updated);
+                    startTransition(() => { setOwnerCompanies(updated.map(stripCompanyCerts)); });
                     setOwnerCompanyDetail(prev => prev ? { ...prev, status: 'active', approvedAt: new Date().toISOString() } : prev);
                     void (async () => {
                       try {
                         await pushCompanyStatusToServer({ ...ownerCompanyDetail, status: 'active' }, 'active');
                         await provisionCompanyAuthAccount({ ...ownerCompanyDetail, status: 'active' });
                       } finally {
-                        setOwnerCompanies(loadCompaniesRegistry());
+                        startTransition(() => { setOwnerCompanies(loadCompaniesRegistryLight()); });
                         setOwnerCompanyBusy(false);
                       }
                     })();
@@ -9560,10 +9531,10 @@ export default function SettingsPage() {
                     setCompanyRegStatus(ownerCompanyDetail.email || ownerCompanyDetail.id, 'inactive');
                     if (ownerCompanyDetail.id) setCompanyRegStatus(ownerCompanyDetail.id, 'inactive');
                     const updated = loadCompaniesRegistry();
-                    setOwnerCompanies(updated);
+                    startTransition(() => { setOwnerCompanies(updated.map(stripCompanyCerts)); });
                     setOwnerCompanyDetail(prev => prev ? { ...prev, status: 'inactive' } : prev);
                     void pushCompanyStatusToServer({ ...ownerCompanyDetail, status: 'inactive' }, 'inactive').finally(() => {
-                      setOwnerCompanies(loadCompaniesRegistry());
+                      startTransition(() => { setOwnerCompanies(loadCompaniesRegistryLight()); });
                       setOwnerCompanyBusy(false);
                     });
                   }}
@@ -9583,23 +9554,100 @@ export default function SettingsPage() {
         )}
       </AnimatePresence>
 
-      {/* ── Companies tab ── */}
-      {!isPending && user && tab === 'companies' && (
-        <div style={{ padding: '0 20px', paddingTop: 16 }}>
-          <div style={{
-            padding: 20, borderRadius: 14,
-            background: 'rgba(0,188,212,0.08)',
-            border: '1px solid rgba(0,188,212,0.25)',
-            color: 'rgba(200,230,230,0.9)',
-            textAlign: 'center', fontSize: '0.9rem', fontWeight: 600,
-          }}>
-            تسجيل الشركات — قريباً
-          </div>
+      {/* ── Company tab (owner only): User Control + Companies ── */}
+      {!isPending && user && tab === 'companies' && isSupportOwnerAccount(
+        user as { email?: string | null; username?: string | null; name?: string | null },
+        profileUsername,
+      ) && (
+        <div style={{ padding: '0 20px', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <motion.button
+            whileTap={{ scale: 0.98 }}
+            type="button"
+            onClick={() => {
+              loadOwnerData();
+              startTransition(() => setShowSupportUsers(true));
+            }}
+            className="flex items-center justify-between"
+            style={{
+              width: '100%',
+              background: T.surface,
+              border: `1px solid ${T.surfaceBorder}`,
+              borderRadius: 14,
+              padding: '14px 16px',
+              color: T.text,
+              cursor: 'pointer',
+            }}
+            aria-label="User Control"
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex items-center justify-center" style={{
+                width: 38, height: 38, borderRadius: 12, background: 'rgba(239,68,68,0.1)',
+                border: '1px solid rgba(239,68,68,0.35)', color: '#ef4444',
+              }}>
+                <Users size={19} strokeWidth={2.1} />
+              </span>
+              <span style={{ textAlign: 'left' }}>
+                <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>User Control</span>
+                <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
+                  Username color · Edit username · Password · Ban
+                </span>
+              </span>
+            </div>
+            <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
+          </motion.button>
+
+          <motion.button
+            whileTap={{ scale: 0.98 }}
+            type="button"
+            onClick={() => {
+              void loadOwnerData();
+              refreshOwnerCompanies();
+              startTransition(() => setShowOwnerCompanies(true));
+            }}
+            className="flex items-center justify-between"
+            style={{
+              width: '100%',
+              background: T.surface,
+              border: `1px solid ${T.surfaceBorder}`,
+              borderRadius: 14,
+              padding: '14px 16px',
+              color: T.text,
+              cursor: 'pointer',
+            }}
+            aria-label="Companies"
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex items-center justify-center" style={{
+                width: 38, height: 38, borderRadius: 12, background: 'rgba(0,188,212,0.1)',
+                border: '1px solid rgba(0,188,212,0.35)', color: T.primary,
+              }}>
+                <Building2 size={19} strokeWidth={2.1} />
+              </span>
+              <span style={{ textAlign: 'left' }}>
+                <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Companies</span>
+                <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
+                  Activate / deactivate registered company accounts
+                </span>
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {ownerPendingCompanyCount > 0 && (
+                <span style={{
+                  minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+                  background: '#eab308', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {ownerPendingCompanyCount > 9 ? '9+' : ownerPendingCompanyCount}
+                </span>
+              )}
+              <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
+            </div>
+          </motion.button>
         </div>
       )}
 
       {/* ── Owner: New Company Registration Requests ── */}
-      {isOwner && tab === 'account' && ownerNewCompanies.length > 0 && (
+      {isOwner && tab === 'companies' && ownerNewCompanies.length > 0 && (
         <div style={{
           margin: '0 20px 20px',
           background: 'hsl(var(--card))',
