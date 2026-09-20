@@ -9025,7 +9025,14 @@ export default function AddFriendPage() {
   // منشورات عامة فعلية. هنا نُلحقها بقائمة posts (بدون تكرار) لتظهر مع بقية منشوراتي. ──
   const combinedFeedPosts = useMemo(() => {
     const seenIds = new Set(posts.map(p => p.id));
-    const extras = myMediaPosts.filter(p => !seenIds.has(p.id));
+    // Keep Photo/Video (story page grid) out of the text/public feed
+    const extras = myMediaPosts.filter(p => {
+      if (seenIds.has(p.id)) return false;
+      const dest = String(p.destination || '');
+      if (dest === 'photos' || dest === 'videos') return false;
+      if (p.mediaType === 'image' || p.mediaType === 'video') return false;
+      return true;
+    });
     if (extras.length === 0) return posts;
     return [...posts, ...extras].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -15738,26 +15745,29 @@ export default function AddFriendPage() {
             }}
             style={{
               position: 'fixed', inset: 0, zIndex: 10090,
-              background: 'rgba(0,0,0,0.5)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
+              background: 'rgba(0,0,0,0.45)',
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              padding: '0 0 calc(52px + env(safe-area-inset-bottom))',
               boxSizing: 'border-box',
             }}
           >
             <motion.div
               onClick={e => e.stopPropagation()}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.92 }}
-              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 420, damping: 36, mass: 0.85 }}
               style={{
-                width: 'min(92vw, 360px)',
-                maxHeight: 'min(70vh, 520px)',
+                width: '100%',
+                maxWidth: 420,
+                maxHeight: 'min(58vh, 480px)',
                 display: 'flex', flexDirection: 'column',
                 background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
                 border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                borderRadius: 18,
-                boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+                borderBottom: 'none',
+                borderTopLeftRadius: 18,
+                borderTopRightRadius: 18,
+                boxShadow: '0 -12px 36px rgba(0,0,0,0.45)',
                 overflow: 'hidden',
                 boxSizing: 'border-box',
               }}
@@ -15932,11 +15942,20 @@ export default function AddFriendPage() {
                       if (!d?.post?.id) throw new Error('Post not saved');
                       const saved: PostItem = {
                         ...d.post,
+                        mediaUrl: d.post.mediaUrl || url,
+                        mediaType: type,
+                        mediaUrls: d.post.mediaUrls?.length ? d.post.mediaUrls : [url],
+                        mediaTypes: [type],
                         audience: 'public',
                         destination: dest,
                         text: d.post.text || storyMediaText.trim(),
+                        authorId: d.post.authorId || String(user.id),
                       };
-                      setMyMediaPosts(prev => [saved, ...prev]);
+                      setMyMediaPosts(prev => {
+                        const without = prev.filter(p => p.id !== saved.id);
+                        return [saved, ...without];
+                      });
+                      try { void fetchMyMediaPosts(); } catch { /* */ }
                       try { playNewPostSound(); } catch { /* */ }
                       setStoryMediaText('');
                       setStoryMediaUrl('');
