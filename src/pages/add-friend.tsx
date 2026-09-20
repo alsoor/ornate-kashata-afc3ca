@@ -15813,15 +15813,19 @@ export default function AddFriendPage() {
           >
             <motion.div
               onClick={e => e.stopPropagation()}
-              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.9 }}
+              initial={{ y: '-100%' }} animate={{ y: 0 }} exit={{ y: '-100%' }}
+              transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.85 }}
               style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: '82vh',
+                position: 'absolute', top: 0, left: 0, right: 0,
+                height: 'min(62vh, calc(100dvh - 120px))',
+                maxHeight: 'min(62vh, calc(100dvh - 120px))',
                 display: 'flex', flexDirection: 'column',
-                paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))',
-                background: PAGE_BG, borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
-                borderTopLeftRadius: 18, borderTopRightRadius: 18,
-                boxShadow: '0 -12px 32px rgba(0,0,0,0.4)',
+                paddingTop: 'max(10px, env(safe-area-inset-top, 0px))',
+                background: PAGE_BG,
+                borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
+                borderBottomLeftRadius: 18, borderBottomRightRadius: 18,
+                boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+                overflow: 'hidden',
               }}
             >
               {/* Header + tabs: Friends | Company */}
