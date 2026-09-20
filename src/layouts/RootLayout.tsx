@@ -2294,7 +2294,8 @@ function GlobalBottomNavigation() {
       background: homeCallPhase === 'animating'
         ? 'radial-gradient(ellipse 60% 50% at 50% 80%, rgba(0,188,212,0.35), rgba(6,14,14,0.92) 70%)'
         : 'rgba(6,10,12,0.55)',
-      display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+      display: 'flex', flexDirection: 'column',
+      justifyContent: (homeCallPickerOpen && homeCallPhase === 'idle') ? 'center' : 'flex-end',
       animation: homeCallPhase === 'animating' ? 'stooornaHomeCallIn 0.9s ease-out' : undefined,
     }}>
       {homeCallPhase === 'animating' && (
@@ -2310,19 +2311,48 @@ function GlobalBottomNavigation() {
       )}
 
       {homeCallPickerOpen && homeCallPhase === 'idle' && (
-        <div style={{
-          maxHeight: '78dvh', background: 'linear-gradient(180deg,#0e2226 0%,#071214 100%)',
-          borderTopLeftRadius: 22, borderTopRightRadius: 22,
-          padding: '14px 14px calc(16px + env(safe-area-inset-bottom))',
-          direction: 'rtl',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800 }}>اختر أشخاص للمكالمة</p>
-            <button type="button" onClick={() => setHomeCallPickerOpen(false)} style={{ background: 'none', border: 'none', color: '#00BCD4', cursor: 'pointer' }}>
-              <X size={20} />
+        <div
+          onClick={() => setHomeCallPickerOpen(false)}
+          style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
+            boxSizing: 'border-box',
+          }}
+        >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            width: 'min(92vw, 360px)',
+            height: 'min(56vh, 420px)',
+            maxHeight: 'min(56vh, 420px)',
+            background: 'linear-gradient(180deg,#0a1f22 0%,#061014 100%)',
+            border: '1px solid rgba(0,188,212,0.25)',
+            borderRadius: 18,
+            padding: '12px 12px 14px',
+            direction: 'rtl',
+            boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+            animation: 'stooornaPlusFanIn 0.28s ease-out',
+          }}
+        >
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginBottom: 10, flexShrink: 0, gap: 8,
+          }}>
+            <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, fontSize: '0.88rem' }}>Call</p>
+            <button type="button" onClick={() => setHomeCallPickerOpen(false)} style={{
+              width: 28, height: 28, borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.08)', color: '#00BCD4', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}>
+              <X size={14} />
             </button>
           </div>
-          <div style={{ maxHeight: '52dvh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {homeCallFriends.length === 0 && (
               <p style={{ color: 'rgba(180,210,210,0.7)', textAlign: 'center' }}>لا أصدقاء بعد</p>
             )}
@@ -2361,8 +2391,9 @@ function GlobalBottomNavigation() {
               color: '#041018', fontWeight: 800, cursor: Object.values(homeCallSelected).some(Boolean) ? 'pointer' : 'default',
             }}
           >
-            اتصال
+            Call
           </button>
+        </div>
         </div>
       )}
 
@@ -2584,77 +2615,6 @@ function GlobalBottomNavigation() {
       justifyContent: 'center',
       position: 'relative',
     }}>
-        {/* Home — نقرة = هوم، ضغط مطوّل = قائمة الاتصال، رنين وارد = رد */}
-        <button
-          type="button"
-          onClick={() => {
-            if (homeLongPressFired.current) {
-              homeLongPressFired.current = false;
-              return;
-            }
-            if (homeIncoming && homeCallPhase === 'idle') {
-              void answerHomeIncoming();
-              return;
-            }
-            if (homeCallPhase !== 'idle' || homeCallPickerOpen) return;
-            popNavBubble('home');
-            openStoryHome();
-          }}
-          onPointerDown={() => {
-            homeLongPressFired.current = false;
-            if (homeLongPressTimer.current) clearTimeout(homeLongPressTimer.current);
-            homeLongPressTimer.current = setTimeout(() => {
-              homeLongPressFired.current = true;
-              if (homeIncoming && homeCallPhase === 'idle') {
-                ignoreHomeIncoming();
-                try { navigator.vibrate?.(20); } catch { /* */ }
-                return;
-              }
-              popNavBubble('home');
-              setHomeCallPickerOpen(true);
-              try { navigator.vibrate?.(25); } catch { /* */ }
-            }, 480);
-          }}
-          onPointerUp={() => {
-            if (homeLongPressTimer.current) {
-              clearTimeout(homeLongPressTimer.current);
-              homeLongPressTimer.current = null;
-            }
-          }}
-          onPointerLeave={() => {
-            if (homeLongPressTimer.current) {
-              clearTimeout(homeLongPressTimer.current);
-              homeLongPressTimer.current = null;
-            }
-          }}
-          onContextMenu={(e) => { e.preventDefault(); }}
-          style={itemStyle(isHomeActive)}
-          aria-label="Home"
-        >
-            <div style={{
-              ...activePill(isHomeActive),
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              position: 'relative',
-            }}>
-              <NavBubble id="home" color={homeIncoming ? 'rgba(34,197,94,0.75)' : 'rgba(0,188,212,0.65)'} />
-              {homeIncoming ? (
-                <span style={{
-                  width: 38, height: 38, borderRadius: 10,
-                  background: '#22c55e',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  animation: 'stooornaHomeRingShake 0.45s ease-in-out infinite',
-                  boxShadow: '0 0 16px rgba(34,197,94,0.85)',
-                }}>
-                  <Phone size={18} strokeWidth={2.6} color="#fff" />
-                </span>
-              ) : (
-                <Home size={20} strokeWidth={2} />
-              )}
-            </div>
-          </button>
-
         {/* Plus menu — Settings / Friends / Account live / Text posts radar */}
         <div style={{
           position: 'absolute',
@@ -2711,6 +2671,34 @@ function GlobalBottomNavigation() {
                 >
                   <Settings size={20} strokeWidth={2.2} />
                 </button>
+                {user && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    if (homeIncoming && homeCallPhase === 'idle') {
+                      void answerHomeIncoming();
+                      return;
+                    }
+                    setHomeCallPickerOpen(true);
+                  }}
+                  aria-label="Call"
+                  style={{
+                    width: 44, height: 44, borderRadius: '50%',
+                    border: '1px solid ' + (homeIncoming ? 'rgba(34,197,94,0.55)' : 'rgba(0,188,212,0.4)'),
+                    background: 'rgba(6,20,22,0.96)',
+                    color: homeIncoming ? '#22c55e' : '#00BCD4',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: homeIncoming
+                      ? '0 0 14px rgba(34,197,94,0.5)'
+                      : '0 4px 16px rgba(0,0,0,0.45)',
+                    animation: homeIncoming ? 'stooornaHomeRingShake 0.45s ease-in-out infinite' : 'none',
+                  }}
+                >
+                  <Phone size={20} strokeWidth={2.2} />
+                </button>
+                )}
                 {user && (
                 <button
                   type="button"
@@ -2877,6 +2865,10 @@ function GlobalBottomNavigation() {
               if (friendsPanelOpen) {
                 window.dispatchEvent(new CustomEvent('stooorna:close-friends-panel'));
                 setFriendsPanelOpen(false);
+                return;
+              }
+              if (homeCallPickerOpen) {
+                setHomeCallPickerOpen(false);
                 return;
               }
               // Otherwise open fan
