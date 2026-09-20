@@ -1,7 +1,7 @@
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollRestoration, useLocation, useNavigate } from "react-router";
-import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio } from 'lucide-react';
+import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus } from 'lucide-react';
 import HomepageSameAsJsonLd from '@/components/HomepageSameAsJsonLd';
 import Website from '@/layouts/Website';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
@@ -328,6 +328,7 @@ function GlobalBottomNavigation() {
   const prevUserUnreadRef = useRef(0);
   /** فقاعات النقر — مرة واحدة عند الضغط ثم تُزال تلقائياً (لا تتكرر كل ثانية) */
   const [navBubble, setNavBubble] = useState<Record<string, number>>({});
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const settingsSheetOpen = location.pathname === '/settings' || location.pathname.startsWith('/settings');
   const navBubbleTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   function popNavBubble(id: string) {
@@ -2729,86 +2730,166 @@ function GlobalBottomNavigation() {
         </button>
         )}
 
-        {/* Friends — opens Friend / Company sheet from bottom */}
-        {user && (
-        <button
-          type="button"
-          onClick={() => {
-            popNavBubble('friends');
-            const open = () => {
-              try {
-                window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', {
-                  detail: { tab: 'friends' },
-                }));
-              } catch { /* */ }
-            };
-            if (location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend')) {
-              open();
-              return;
-            }
-            navigate('/add-friend?tab=friends&openFriendsPanel=1');
-            window.setTimeout(open, 80);
-          }}
-          aria-label="Friends"
-          style={{
-            position: 'absolute',
-            left: '68%',
-            right: 'auto',
-            top: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: 44,
-            height: 36,
-            border: 'none',
-            background: 'transparent',
-            borderRadius: 12,
-            color: 'rgba(0,188,212,0.85)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2,
-            WebkitTapHighlightColor: 'transparent',
-          }}
-        >
-          <NavBubble id="friends" color="rgba(0,188,212,0.65)" />
-          <Users size={21} strokeWidth={2.2} />
-        </button>
-        )}
-
-        {/* Settings menu — three lines far right */}
-        <button
-          type="button"
-          onClick={() => {
-            popNavBubble('menu');
-            if (settingsSheetOpen) {
-              window.dispatchEvent(new CustomEvent('stooorna:close-settings-sheet'));
-              return;
-            }
-            navigate('/settings');
-          }}
-          aria-label="Settings"
-          style={{
-            position: 'absolute',
-            right: 10,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            width: 44,
-            height: 36,
-            border: 'none',
-            background: settingsSheetOpen ? 'rgba(0,188,212,0.14)' : 'transparent',
-            borderRadius: 12,
-            color: settingsSheetOpen ? '#00BCD4' : 'rgba(0,188,212,0.7)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2,
-            WebkitTapHighlightColor: 'transparent',
-          }}
-        >
-          <NavBubble id="menu" color="rgba(0,188,212,0.65)" />
-          <Menu size={22} strokeWidth={2.2} />
-        </button>
+        {/* Plus menu — Settings / Friends / Account live */}
+        <div style={{
+          position: 'absolute',
+          right: 8,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: 48,
+          height: 40,
+          zIndex: 3,
+        }}>
+          {plusMenuOpen && (
+            <>
+              <button
+                type="button"
+                aria-label="Close menu"
+                onClick={() => setPlusMenuOpen(false)}
+                style={{
+                  position: 'fixed', inset: 0, zIndex: 10210,
+                  background: 'transparent', border: 'none', cursor: 'default',
+                }}
+              />
+              <div style={{
+                position: 'absolute',
+                bottom: 48,
+                right: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 10,
+                zIndex: 10220,
+                animation: 'stooornaPlusFanIn 0.28s ease-out',
+              }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    popNavBubble('menu');
+                    if (settingsSheetOpen) {
+                      window.dispatchEvent(new CustomEvent('stooorna:close-settings-sheet'));
+                      return;
+                    }
+                    navigate('/settings');
+                  }}
+                  aria-label="Settings"
+                  style={{
+                    width: 44, height: 44, borderRadius: '50%',
+                    border: '1px solid rgba(0,188,212,0.4)',
+                    background: 'rgba(6,20,22,0.96)',
+                    color: '#00BCD4',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                  }}
+                >
+                  <Settings size={20} strokeWidth={2.2} />
+                </button>
+                {user && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    popNavBubble('friends');
+                    const open = () => {
+                      try {
+                        window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', {
+                          detail: { tab: 'friends' },
+                        }));
+                      } catch { /* */ }
+                    };
+                    if (location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend')) {
+                      open();
+                      return;
+                    }
+                    navigate('/add-friend?tab=friends&openFriendsPanel=1');
+                    window.setTimeout(open, 80);
+                  }}
+                  aria-label="Friends"
+                  style={{
+                    width: 44, height: 44, borderRadius: '50%',
+                    border: '1px solid rgba(0,188,212,0.4)',
+                    background: 'rgba(6,20,22,0.96)',
+                    color: '#00BCD4',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                  }}
+                >
+                  <Users size={20} strokeWidth={2.2} />
+                </button>
+                )}
+                {user && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    const qs = new URLSearchParams({
+                      hostId: String(user.id),
+                      hostName: String((user as any).name || (user as any).username || 'Host'),
+                    });
+                    if ((user as any).username) qs.set('hostUsername', String((user as any).username));
+                    const av = (user as any).avatarUrl || (user as any).image;
+                    if (av) qs.set('hostAvatar', String(av));
+                    navigate('/live?' + qs.toString());
+                  }}
+                  aria-label="Account live broadcast"
+                  style={{
+                    width: 44, height: 44, borderRadius: '50%',
+                    border: '1px solid rgba(0,188,212,0.4)',
+                    background: 'rgba(6,20,22,0.96)',
+                    color: myLiveActive ? '#ef4444' : '#00BCD4',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: myLiveActive
+                      ? '0 0 14px rgba(239,68,68,0.45)'
+                      : '0 4px 16px rgba(0,0,0,0.45)',
+                  }}
+                >
+                  <Radio size={20} strokeWidth={2.2} />
+                </button>
+                )}
+              </div>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              popNavBubble('plus');
+              setPlusMenuOpen(o => !o);
+            }}
+            aria-label="Open menu"
+            aria-expanded={plusMenuOpen}
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: 44,
+              height: 36,
+              border: 'none',
+              background: plusMenuOpen ? 'rgba(0,188,212,0.14)' : 'transparent',
+              borderRadius: 12,
+              color: plusMenuOpen ? '#00BCD4' : 'rgba(0,188,212,0.85)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 2,
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            <NavBubble id="plus" color="rgba(0,188,212,0.65)" />
+            <span style={{
+              display: 'flex',
+              transition: 'transform 0.25s ease',
+              transform: plusMenuOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+            }}>
+              <Plus size={26} strokeWidth={2.4} />
+            </span>
+          </button>
+        </div>
 
         {/* طلبات الإضافة تُستقبل من كاميرا نشر القصة — لا شارة عائمة هنا */}
       </div>
