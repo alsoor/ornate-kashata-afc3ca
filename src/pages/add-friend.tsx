@@ -47,7 +47,7 @@ interface SecretChat {
   created_at: string | null;
   member_count: number;
 }
-// â”€â”€ Design tokens â€” CSS colour aliases used throughout this page â”€â”€
+// ?? Design tokens — CSS colour aliases used throughout this page ??
 // These are raw CSS values (gradients, rgba, hsl), not user-visible copy,
 // so they intentionally live here rather than in virtual:content.
 const PAGE_BG   = 'radial-gradient(ellipse 70% 60% at 50% 30%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)';
@@ -67,7 +67,7 @@ const CLR_TAB_BORDER    = 'rgba(0,188,212,0.3)';
 
 const CLR_POST_BORDER   = '#0d3d33';
 
-// â”€â”€ Ø¨Ø« ØµÙˆØªÙŠ Ù†Ø´Ø·: Ø£ÙŠÙ‚ÙˆÙ†Ø© Ø­Ù…Ø±Ø§Ø¡ ÙˆØ§Ù…Ø¶Ø© Ù„ÙƒÙ„ Ø§Ù„Ø¨Ø«ÙˆØ« â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? ÈË ÕæÊí äÔØ: ÃíŞæäÉ ÍãÑÇÁ æÇãÖÉ áßá ÇáÈËæË ?????????????????????????????
 function liveChannelForHost(hostId: string): string {
   const clean = String(hostId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
   if (clean) return `stooorna-live-${clean}`;
@@ -91,7 +91,7 @@ function readLocalLiveActive(hostId: string): boolean {
   }
 }
 
-/** Ù‡Ù„ ÙŠÙˆØ¬Ø¯ Ø¨Ø« ØµÙˆØªÙŠ Ø´ØºÙ‘Ø§Ù„ Ù„Ù‡Ø°Ø§ Ø§Ù„Ø­Ø³Ø§Ø¨ Ø§Ù„Ø¢Ù†ØŸ */
+/** åá íæÌÏ ÈË ÕæÊí ÔÛøÇá áåĞÇ ÇáÍÓÇÈ ÇáÂä¿ */
 function useLiveBroadcastActive(hostId: string | null | undefined): boolean {
   const [active, setActive] = useState(false);
 
@@ -155,7 +155,7 @@ function useLiveBroadcastActive(hostId: string | null | undefined): boolean {
 }
 
 
-// â”€â”€ Notification sound design â€” small synthesized tones (water-drop / bubble mixes) â”€â”€
+// ?? Notification sound design — small synthesized tones (water-drop / bubble mixes) ??
 // No audio files needed: each event gets its own tiny Web Audio mix so the tones stay distinct.
 let sfxCtx: AudioContext | null = null;
 function getSfxCtx(): AudioContext | null {
@@ -183,7 +183,7 @@ function sfxTone(ctx: AudioContext, startTime: number, freq: number, duration: n
   osc.start(startTime);
   osc.stop(startTime + duration + 0.03);
 }
-/** Ù†Ø´Ø± Ø¨ÙˆØ³Øª Ø¬Ø¯ÙŠØ¯ â€” Ù†Ù‚Ø±ØªØ§ "Ù‚Ø·Ø±Ø© Ù…Ø§Ø¡" ØµØ§Ø¹Ø¯ØªØ§Ù† ÙˆÙ„Ù…Ù‘Ø§Ø¹ØªØ§Ù† */
+/** äÔÑ ÈæÓÊ ÌÏíÏ — äŞÑÊÇ "ŞØÑÉ ãÇÁ" ÕÇÚÏÊÇä æáãøÇÚÊÇä */
 function playNewPostSound() {
   const ctx = getSfxCtx();
   if (!ctx) return;
@@ -191,7 +191,7 @@ function playNewPostSound() {
   sfxTone(ctx, t, 1100, 0.16, { type: 'sine', peakGain: 0.26, glideTo: 550 });
   sfxTone(ctx, t + 0.1, 1500, 0.18, { type: 'sine', peakGain: 0.26, glideTo: 720 });
 }
-/** Ø¥Ø´Ø¹Ø§Ø± ÙˆØµÙˆÙ„ Ù…Ø­ØªÙˆÙ‰ Ø¬Ø¯ÙŠØ¯ (Ø¨Ø§Ù†Ø± New Post) â€” Ø±Ù†Ø© Ø¬Ø±Ø³ÙŠØ© Ù†Ø§Ø¹Ù…Ø© Ø¨Ù†ØºÙ…ØªÙŠÙ† */
+/** ÅÔÚÇÑ æÕæá ãÍÊæì ÌÏíÏ (ÈÇäÑ New Post) — ÑäÉ ÌÑÓíÉ äÇÚãÉ ÈäÛãÊíä */
 function playNotificationSound() {
   const ctx = getSfxCtx();
   if (!ctx) return;
@@ -200,7 +200,7 @@ function playNotificationSound() {
   sfxTone(ctx, t, 1324, 0.32, { type: 'sine', peakGain: 0.12 });
   sfxTone(ctx, t + 0.16, 990, 0.3, { type: 'sine', peakGain: 0.16 });
 }
-/** ÙˆØµÙˆÙ„ Ù…Ø³Ø¬ Ø´ÙŠØ± â€” "Ù‚Ø·Ø±Ø© ØªØ³Ù‚Ø·" Ø«Ù… "ÙÙ‚Ø§Ø¹Ø©" ØµØºÙŠØ±Ø© ØªØµØ¹Ø¯ */
+/** æÕæá ãÓÌ ÔíÑ — "ŞØÑÉ ÊÓŞØ" Ëã "İŞÇÚÉ" ÕÛíÑÉ ÊÕÚÏ */
 function playShareArrivedSound() {
   const ctx = getSfxCtx();
   if (!ctx) return;
@@ -208,10 +208,10 @@ function playShareArrivedSound() {
   sfxTone(ctx, t, 700, 0.14, { type: 'sine', peakGain: 0.24, glideTo: 260 });
   sfxTone(ctx, t + 0.12, 340, 0.22, { type: 'triangle', peakGain: 0.18, glideTo: 680 });
 }
-/** ÙˆØ¬ÙˆØ¯ Ø£Ø­Ø¯ Ø¹Ù„Ù‰ Ø§Ù„Ù…Ø§ÙŠÙƒ â€” Ù†Ù‚Ø±Ø© Ø¬Ø±Ø³ Ù‡Ø§ØªÙ Ù‚ØµÙŠØ±Ø©ØŒ Ø£Ù‚Ù„ Ù…Ù† Ø«Ø§Ù†ÙŠØªÙŠÙ†ØŒ ØªÙØ´ØºÙÙ‘Ù„ Ù…Ø±Ø© ÙˆØ§Ø­Ø¯Ø© ÙˆØªØ®ØªÙÙŠ */
-/** Ø±Ù†Ø© Ø§ØªØµØ§Ù„ ÙˆØ§Ø±Ø¯Ø© â€” Ù†ØºÙ…Ø© "Ø±Ù†ÙŠÙ† Ø¬ÙˆØ§Ù„" Ø­Ù‚ÙŠÙ‚ÙŠØ©: Ù…Ù‚Ø·Ø¹ Ø³Ø±ÙŠØ¹ Ù…Ù† Ø£Ø±Ø¨Ø¹ Ù†ØºÙ…Ø§Øª ØµØ§Ø¹Ø¯Ø© (Ø²ÙŠ Ø±Ù†Ø§Øª
- *  Ø§Ù„Ø¬ÙˆØ§Ù„Ø§Øª Ø§Ù„Ø§ÙØªØ±Ø§Ø¶ÙŠØ©)ØŒ ÙŠØªÙƒØ±Ø± Ù…Ø±ØªÙŠÙ† Ù…ØªØªØ§Ù„ÙŠØªÙŠÙ† Ù„ÙƒÙ„ Ø¯ÙØ¹Ø© Ø±Ù†ÙŠÙ†. Ø§Ù„Ø¯ÙØ¹Ø© Ù†ÙØ³Ù‡Ø§ ØªØªÙƒØ±Ø± Ù…Ù† Ø§Ù„Ø®Ø§Ø±Ø¬
- *  (Ø§Ù†Ø¸Ø± ringIntervalRef Ø¨Ù…ÙƒÙˆÙ‘Ù† GlobeVoiceControl) Ù„ÙŠÙ† ÙŠØ±Ø¯ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø£Ùˆ ÙŠÙ†Ù‚Ø·Ø¹ Ø§Ù„Ø§ØªØµØ§Ù„ */
+/** æÌæÏ ÃÍÏ Úáì ÇáãÇíß — äŞÑÉ ÌÑÓ åÇÊİ ŞÕíÑÉ¡ ÃŞá ãä ËÇäíÊíä¡ ÊõÔÛóøá ãÑÉ æÇÍÏÉ æÊÎÊİí */
+/** ÑäÉ ÇÊÕÇá æÇÑÏÉ — äÛãÉ "Ñäíä ÌæÇá" ÍŞíŞíÉ: ãŞØÚ ÓÑíÚ ãä ÃÑÈÚ äÛãÇÊ ÕÇÚÏÉ (Òí ÑäÇÊ
+ *  ÇáÌæÇáÇÊ ÇáÇİÊÑÇÖíÉ)¡ íÊßÑÑ ãÑÊíä ãÊÊÇáíÊíä áßá ÏİÚÉ Ñäíä. ÇáÏİÚÉ äİÓåÇ ÊÊßÑÑ ãä ÇáÎÇÑÌ
+ *  (ÇäÙÑ ringIntervalRef Èãßæøä GlobeVoiceControl) áíä íÑÏ ÇáãÓÊÎÏã Ãæ íäŞØÚ ÇáÇÊÕÇá */
 function playIncomingCallRing() {
   const ctx = getSfxCtx();
   if (!ctx) return;
@@ -226,7 +226,7 @@ function playIncomingCallRing() {
   playTrill(t + 0.42);
 }
 
-// â”€â”€ ScVoiceBubble â€” voice player for secret chat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? ScVoiceBubble — voice player for secret chat ??????????????????????????????
 const SC_BARS = 24;
 function ScVoiceBubble({
   url,
@@ -344,7 +344,7 @@ function ScVoiceBubble({
     }}>{label}</span>
     </div>;
 }
-// â”€â”€ Story types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? Story types ???????????????????????????????????????????????????????????????
 interface StoryItem {
   id: number;
   mediaUrl: string;
@@ -356,8 +356,8 @@ interface StoryItem {
   audioUrl?: string | null;
   overlayText?: string | null;
   overlayColor?: string | null;
-  overlayX?: number | null;   // 0â€“1 fraction of container width
-  overlayY?: number | null;   // 0â€“1 fraction of container height
+  overlayX?: number | null;   // 0–1 fraction of container width
+  overlayY?: number | null;   // 0–1 fraction of container height
   musicBadgeX?: number | null;
   musicBadgeY?: number | null;
   musicBadgeScale?: number | null;
@@ -370,7 +370,7 @@ interface StoryGroup {
   items: StoryItem[];
 }
 
-// â”€â”€ Post (feed) types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? Post (feed) types ?????????????????????????????????????????????????????????
 interface PostComment {
   id: number;
   authorId: string;
@@ -391,7 +391,7 @@ interface PostItem {
   mediaType: 'image' | 'video' | null;
   mediaUrls?: string[];
   mediaTypes?: ('image' | 'video')[];
-  // text = Ù…Ù†Ø´ÙˆØ± Ù†ØµÙŠ (Ù‚Ø¯ ÙŠØ­Ù…Ù„ ÙˆØ³Ø§Ø¦Ø· Ù…Ø±ÙÙ‚Ø©)ØŒ photos/videos = Ø£Ù‚Ø³Ø§Ù… Ø§Ù„ÙˆØ³Ø§Ø¦Ø· Ø§Ù„Ù…Ø³ØªÙ‚Ù„Ø© ÙÙ‚Ø·
+  // text = ãäÔæÑ äÕí (ŞÏ íÍãá æÓÇÆØ ãÑİŞÉ)¡ photos/videos = ÃŞÓÇã ÇáæÓÇÆØ ÇáãÓÊŞáÉ İŞØ
   audience?: 'text' | 'public' | string | null;
   destination?: 'text' | 'photos' | 'videos' | string | null;
   hashtags: string[];
@@ -401,21 +401,21 @@ interface PostItem {
   repostsCount: number;
   repostedByMe: boolean;
   commentsCount: number;
-  // Present only on a feed entry that represents someone reposting this post â€”
+  // Present only on a feed entry that represents someone reposting this post —
   // used to render the "X reposted this" ribbon above the (otherwise unchanged) post card.
   repostedBy?: { id: string; name: string | null; username: string | null; avatarUrl: string | null } | null;
   repostedAt?: string | null;
   repostKey?: string;
-  // Ù‡Ù„ Ø­Ø³Ø§Ø¨ Ø§Ù„Ù†Ø§Ø´Ø± Ø®Ø§Øµ (Private)ØŸ ÙŠØ­Ø¯Ø¯ Ø³Ù„ÙˆÙƒ Ø²Ø± "Follow": Ù„Ùˆ false (Ø¹Ø§Ù…) ØªØªÙ…
-  // Ø§Ù„Ø¥Ø¶Ø§ÙØ© ÙÙˆØ±Ù‹Ø§ Ø¨Ù„Ø§ Ø§Ù†ØªØ¸Ø§Ø±ØŒ ÙˆÙ„Ùˆ true ØªÙØ±Ø³Ù„ ÙƒØ·Ù„Ø¨ ØµØ¯Ø§Ù‚Ø© Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø§Ù„Ù‚Ø¨ÙˆÙ„. Ø§Ø®ØªÙŠØ§Ø±ÙŠ
-  // Ù„Ø£Ù† Ø§Ù„Ø­Ù‚Ù„ Ù‚Ø¯ Ù„Ø§ ÙŠÙƒÙˆÙ† Ù…Ø¶Ø§ÙÙ‹Ø§ Ø¨Ø¹Ø¯ Ù…Ù† Ø·Ø±Ù Ø§Ù„Ù€ API â€” Ù†ÙØªØ±Ø¶ Ø§Ù„Ø­Ø°Ø± (Ø§Ù†ØªØ¸Ø§Ø±) Ù„Ùˆ ØºØ§Ø¨.
+  // åá ÍÓÇÈ ÇáäÇÔÑ ÎÇÕ (Private)¿ íÍÏÏ Óáæß ÒÑ "Follow": áæ false (ÚÇã) ÊÊã
+  // ÇáÅÖÇİÉ İæÑğÇ ÈáÇ ÇäÊÙÇÑ¡ æáæ true ÊõÑÓá ßØáÈ ÕÏÇŞÉ ÈÇäÊÙÇÑ ÇáŞÈæá. ÇÎÊíÇÑí
+  // áÃä ÇáÍŞá ŞÏ áÇ íßæä ãÖÇİğÇ ÈÚÏ ãä ØÑİ ÇáÜ API — äİÊÑÖ ÇáÍĞÑ (ÇäÊÙÇÑ) áæ ÛÇÈ.
   authorIsPrivate?: boolean;
 }
 
-// â”€â”€ Product ad â€” plain Arabic text only (server rejected JSON / special markers) â”€â”€
+// ?? Product ad — plain Arabic text only (server rejected JSON / special markers) ??
 // Format stored in post.text:
 //   LINE1: title
-//   optional "Ø§Ù„Ø³Ø¹Ø±: â€¦"
+//   optional "ÇáÓÚÑ: …"
 //   then details + extra paragraphs separated by blank lines
 interface ProductAdData {
   __productAd: 1;
@@ -425,12 +425,12 @@ interface ProductAdData {
   extras: string[];
 }
 function buildProductPostText(data: { title: string; details: string; price: string; extras: string[] }): string {
-  const title = (data.title || 'Ù…Ù†ØªØ¬').trim();
+  const title = (data.title || 'ãäÊÌ').trim();
   const price = (data.price || '').trim();
   const details = (data.details || '').trim();
   const extras = (data.extras || []).map(s => s.trim()).filter(Boolean);
   const parts: string[] = [title];
-  if (price) parts.push(`Ø§Ù„Ø³Ø¹Ø±: ${price}`);
+  if (price) parts.push(`ÇáÓÚÑ: ${price}`);
   if (details) parts.push(details);
   for (const ex of extras) parts.push(ex);
   return parts.join('\n\n');
@@ -450,7 +450,7 @@ function parseProductAd(text: string | null | undefined): ProductAdData | null {
       if (o && (o as any).__productAd === 1) return o;
     } catch { /* ignore */ }
   }
-  const marker = trimmed.match(/âŸ¦stooorna-product:([A-Za-z0-9+/=]+)âŸ§\s*$/);
+  const marker = trimmed.match(/?stooorna-product:([A-Za-z0-9+/=]+)?\s*$/);
   if (marker) {
     try {
       const json = decodeURIComponent(escape(atob(marker[1])));
@@ -459,7 +459,7 @@ function parseProductAd(text: string | null | undefined): ProductAdData | null {
     } catch { /* ignore */ }
   }
   // plain format produced by buildProductPostText
-  const body = trimmed.replace(/\n*âŸ¦stooorna-product:[A-Za-z0-9+/=]+âŸ§\s*$/, '').trim();
+  const body = trimmed.replace(/\n*?stooorna-product:[A-Za-z0-9+/=]+?\s*$/, '').trim();
   if (!body) return null;
   const blocks = body.split(/\n\n+/).map(b => b.trim()).filter(Boolean);
   if (blocks.length === 0) return null;
@@ -468,8 +468,8 @@ function parseProductAd(text: string | null | undefined): ProductAdData | null {
   const rest: string[] = [];
   for (let i = 1; i < blocks.length; i++) {
     const b = blocks[i];
-    if (!price && /^Ø§Ù„Ø³Ø¹Ø±\s*:/.test(b)) {
-      price = b.replace(/^Ø§Ù„Ø³Ø¹Ø±\s*:\s*/, '').trim();
+    if (!price && /^ÇáÓÚÑ\s*:/.test(b)) {
+      price = b.replace(/^ÇáÓÚÑ\s*:\s*/, '').trim();
     } else {
       rest.push(b);
     }
@@ -485,10 +485,10 @@ function parseProductAd(text: string | null | undefined): ProductAdData | null {
 function productAdDisplayTitle(post: PostItem): string {
   const ad = parseProductAd(post.text);
   if (ad?.title?.trim()) return ad.title.trim();
-  return (post.text || '').split('\n')[0]?.trim().slice(0, 80) || 'Ø¥Ø¹Ù„Ø§Ù†';
+  return (post.text || '').split('\n')[0]?.trim().slice(0, 80) || 'ÅÚáÇä';
 }
 
-/** Ø§Ø³ØªÙØ³Ø§Ø± Ø¹Ù† Ù…Ù†ØªØ¬ â€” ÙŠÙØ±Ø³Ù„ ÙƒØ±Ø³Ø§Ù„Ø© Ø´Ø§Øª Ù„Ù„Ø´Ø±ÙƒØ© ÙˆÙŠØ¸Ù‡Ø± ÙÙŠ ØµÙ†Ø¯ÙˆÙ‚ Ø´Ø§Øª Ø§Ù„Ø´Ø±ÙƒØ§Øª */
+/** ÇÓÊİÓÇÑ Úä ãäÊÌ — íõÑÓá ßÑÓÇáÉ ÔÇÊ ááÔÑßÉ æíÙåÑ İí ÕäÏæŞ ÔÇÊ ÇáÔÑßÇÊ */
 const PRODUCT_INQUIRY_PREFIX = '__PRODUCT_INQUIRY__';
 export type ProductInquiryPayload = {
   postId: number;
@@ -514,7 +514,7 @@ export function parseProductInquiry(body: string | null | undefined): ProductInq
   return null;
 }
 const PRODUCT_INQUIRY_THREADS_KEY = 'stooorna_product_inquiry_threads';
-/** Ø®ÙŠÙˆØ· Ø§Ø³ØªÙØ³Ø§Ø± Ù†Ø´Ø·Ø© Ø¹Ù†Ø¯ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… â€” Ù„Ù…ØµÙØ±Ø© Ø£ÙŠÙ‚ÙˆÙ†Ø© Ø§Ù„Ø´ÙŠØ± Ø¹Ù†Ø¯ Ø±Ø¯ Ø§Ù„Ø´Ø±ÙƒØ© */
+/** ÎíæØ ÇÓÊİÓÇÑ äÔØÉ ÚäÏ ÇáãÓÊÎÏã — áãÕİÑÉ ÃíŞæäÉ ÇáÔíÑ ÚäÏ ÑÏ ÇáÔÑßÉ */
 function loadProductInquiryThreads(): Record<string, { companyId: string; hasReply: boolean; postId: number }> {
   try {
     const raw = localStorage.getItem(PRODUCT_INQUIRY_THREADS_KEY);
@@ -585,7 +585,7 @@ function pushUserShareInbox(toUserId: string, item: Omit<UserShareInboxItem, 'id
     read: false,
   };
   saveUserShareInbox(toUserId, [next, ...list.filter(x => x.id !== next.id)]);
-  // Ù‚Ø§Ø¦Ù…Ø© Chat Friends ÙÙŠ Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ â€” Ø¹Ù†Ø¯ Ø§Ù„Ø·Ø±ÙÙŠÙ†
+  // ŞÇÆãÉ Chat Friends İí ÇáÔÑíØ ÇáÓİáí — ÚäÏ ÇáØÑİíä
   const upsertFriendBar = (ownerId: string, peer: { id: string; name: string | null; username: string | null; avatarUrl: string | null; text: string; unread: number }) => {
     if (!ownerId || !peer.id) return;
     try {
@@ -629,7 +629,7 @@ function pushUserShareInbox(toUserId: string, item: Omit<UserShareInboxItem, 'id
     name: next.fromName,
     username: next.fromUsername,
     avatarUrl: next.fromAvatar,
-    text: next.note || (next.post?.text || 'Ù…Ø´Ø§Ø±ÙƒØ© Ù…Ù†Ø´ÙˆØ±').slice(0, 80),
+    text: next.note || (next.post?.text || 'ãÔÇÑßÉ ãäÔæÑ').slice(0, 80),
     unread: 1,
   });
   if (next.fromId && next.fromId !== toUserId) {
@@ -638,7 +638,7 @@ function pushUserShareInbox(toUserId: string, item: Omit<UserShareInboxItem, 'id
       name: null,
       username: null,
       avatarUrl: null,
-      text: next.note || 'ØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ø´Ø§Ø±ÙƒØ©',
+      text: next.note || 'Êã ÅÑÓÇá ÇáãÔÇÑßÉ',
       unread: 0,
     });
   }
@@ -685,7 +685,7 @@ function pushShareThreadMsg(a: string, b: string, postId: string | number, msg: 
   return next;
 }
 
-// â”€â”€ Shared-posts inbox types â€” posts someone sent me via the share sheet â”€â”€â”€â”€â”€â”€
+// ?? Shared-posts inbox types — posts someone sent me via the share sheet ??????
 interface SharedPostComment {
   id: number;
   authorId: string;
@@ -716,7 +716,7 @@ interface SharedPostItem {
   read: boolean;
 }
 
-// â”€â”€ Story-comment inbox types â€” comments friends left on one of my stories â”€â”€â”€â”€
+// ?? Story-comment inbox types — comments friends left on one of my stories ????
 interface StoryComment {
   id: number;
   authorId: string;
@@ -739,19 +739,19 @@ interface StoryCommentThread {
   read: boolean;
 }
 
-// â”€â”€ Post-comment inbox types â€” comments friends left on one of my video/photo posts,
-//    shown in the same inbox box as the story-comment threads above, same 24h auto-expiry. â”€â”€
+// ?? Post-comment inbox types — comments friends left on one of my video/photo posts,
+//    shown in the same inbox box as the story-comment threads above, same 24h auto-expiry. ??
 interface PostCommentThread {
-  post: PostItem; // the full post â€” reused directly by loadComments/PostDetailPage to open it
+  post: PostItem; // the full post — reused directly by loadComments/PostDetailPage to open it
   expiresAt: string; // the thread disappears from the box 24h after the post was published
   commentsCount: number;
   lastComment: { text: string; authorName: string; createdAt: string } | null;
   read: boolean;
 }
 
-// â”€â”€ MusicSearchModal â€” global music search & favorites (iTunes Search API, free 30s previews, no API key).
+// ?? MusicSearchModal — global music search & favorites (iTunes Search API, free 30s previews, no API key).
 // Ported here (self-contained) so the music icon on this page's profile header works on its own,
-// without depending on RecorderScreen being mounted. Same component/behavior as the one there. â”€â”€
+// without depending on RecorderScreen being mounted. Same component/behavior as the one there. ??
 export interface MusicTrack {
   id: string;
   title: string;
@@ -759,14 +759,14 @@ export interface MusicTrack {
   artwork: string;
   previewUrl: string;
 }
-// â”€â”€ musicPlayerStore â€” global music-player singleton living OUTSIDE the React tree â”€â”€
+// ?? musicPlayerStore — global music-player singleton living OUTSIDE the React tree ??
 // It used to live as useState/useRef inside AddFriendPage, so its <audio> element got
 // destroyed (and the song cut off) the instant the user navigated to another screen and
 // this page unmounted. Module-scope state and a plain `new Audio()` (never attached to
-// the DOM) aren't tied to any component's lifecycle â€” as long as the app doesn't do a
+// the DOM) aren't tied to any component's lifecycle — as long as the app doesn't do a
 // full page reload, this JS module stays loaded, so the song keeps playing in the
 // background no matter which page the user browses to next. Any component (here, and any
-// other page that later imports this) can read this store with useSyncExternalStore. â”€â”€
+// other page that later imports this) can read this store with useSyncExternalStore. ??
 type MusicPlayerListener = () => void;
 const musicPlayerStore = (() => {
   let audio: HTMLAudioElement | null = null;
@@ -799,7 +799,7 @@ const musicPlayerStore = (() => {
       const a = getAudio();
       if (!a) return;
       if (currentTrack?.id === track.id) {
-        // Ù†ÙØ³ Ø§Ù„Ù…Ù‚Ø·Ø¹: ØªØ¨Ø¯ÙŠÙ„ ØªØ´ØºÙŠÙ„/Ø¥ÙŠÙ‚Ø§Ù Ø¨Ø¯Ù„ Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„ØªØ­Ù…ÙŠÙ„
+        // äİÓ ÇáãŞØÚ: ÊÈÏíá ÊÔÛíá/ÅíŞÇİ ÈÏá ÅÚÇÏÉ ÇáÊÍãíá
         if (a.paused) void a.play(); else a.pause();
         return;
       }
@@ -841,9 +841,9 @@ interface MusicSearchModalProps {
   onPlayTrack: (track: MusicTrack) => void;
   favorites: MusicTrack[];
   onToggleFavorite: (track: MusicTrack) => void;
-  // â”€â”€ Pinned track (profile "Get" button) â€” id of the track currently pinned to my
+  // ?? Pinned track (profile "Get" button) — id of the track currently pinned to my
   // profile (or null), plus handlers to pin/unpin. Pinning never touches playback or
-  // favorites; it's a separate action shown as its own small button per row. â”€â”€
+  // favorites; it's a separate action shown as its own small button per row. ??
   pinnedTrackId: string | null;
   onPinTrack: (track: MusicTrack) => void;
   onUnpinTrack: () => void;
@@ -873,7 +873,7 @@ function MusicSearchModal({ onClose, currentTrack, isPlaying, onPlayTrack, favor
           }));
         setMusicModalResults(items);
       })
-      .catch(() => setMusicModalError('ØªØ¹Ø°Ø± Ø§Ù„Ø¨Ø­Ø«ØŒ ØªØ­Ù‚Ù‚ Ù…Ù† Ø§Ù„Ø§ØªØµØ§Ù„ Ø¨Ø§Ù„Ø¥Ù†ØªØ±Ù†Øª'))
+      .catch(() => setMusicModalError('ÊÚĞÑ ÇáÈÍË¡ ÊÍŞŞ ãä ÇáÇÊÕÇá ÈÇáÅäÊÑäÊ'))
       .finally(() => setMusicModalSearching(false));
   }, []);
   function handleMusicQueryChange(v: string) {
@@ -915,7 +915,7 @@ function MusicSearchModal({ onClose, currentTrack, isPlaying, onPlayTrack, favor
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
               <Music size={16} color="#00BCD4" />
-              Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰
+              ÇáãæÓíŞì
             </span>
             <button
               onClick={onClose}
@@ -930,7 +930,7 @@ function MusicSearchModal({ onClose, currentTrack, isPlaying, onPlayTrack, favor
               autoFocus
               value={musicModalQuery}
               onChange={(e) => handleMusicQueryChange(e.target.value)}
-              placeholder="Ø§Ø¨Ø­Ø« Ø¹Ù† Ø£ØºÙ†ÙŠØ© Ø£Ùˆ ÙÙ†Ø§Ù†..."
+              placeholder="ÇÈÍË Úä ÃÛäíÉ Ãæ İäÇä..."
               style={{
                 width: '100%', padding: '9px 36px 9px 12px',
                 borderRadius: 12,
@@ -941,7 +941,7 @@ function MusicSearchModal({ onClose, currentTrack, isPlaying, onPlayTrack, favor
             />
           </div>
         </div>
-        {/* tabs: Ø¨Ø­Ø« / Ù…ÙØ¶Ù„Ø© */}
+        {/* tabs: ÈÍË / ãİÖáÉ */}
         <div style={{ display: 'flex', padding: '8px 14px 0' }}>
           {(['search', 'favorites'] as const).map((tKey) => (
             <button
@@ -955,26 +955,26 @@ function MusicSearchModal({ onClose, currentTrack, isPlaying, onPlayTrack, favor
                 borderBottom: musicModalTab === tKey ? '2px solid #00BCD4' : '2px solid transparent',
               }}
             >
-              {tKey === 'search' ? 'Ø¨Ø­Ø«' : `Ø§Ù„Ù…ÙØ¶Ù„Ø©${favorites.length ? ` (${favorites.length})` : ''}`}
+              {tKey === 'search' ? 'ÈÍË' : `ÇáãİÖáÉ${favorites.length ? ` (${favorites.length})` : ''}`}
             </button>
           ))}
         </div>
         {/* list */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px 14px' }}>
           {musicModalTab === 'search' && musicModalSearching && (
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>Ø¬Ø§Ø±ÙŠ Ø§Ù„Ø¨Ø­Ø«...</p>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>ÌÇÑí ÇáÈÍË...</p>
           )}
           {musicModalTab === 'search' && !musicModalSearching && musicModalError && (
             <p style={{ color: 'rgba(239,68,68,0.8)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>{musicModalError}</p>
           )}
           {musicModalTab === 'search' && !musicModalSearching && !musicModalError && musicModalQuery.trim() && musicList.length === 0 && (
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>Ù„Ø§ ØªÙˆØ¬Ø¯ Ù†ØªØ§Ø¦Ø¬</p>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>áÇ ÊæÌÏ äÊÇÆÌ</p>
           )}
           {musicModalTab === 'search' && !musicModalQuery.trim() && (
-            <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>Ø§ÙƒØªØ¨ Ø§Ø³Ù… Ø£ØºÙ†ÙŠØ© Ø£Ùˆ ÙÙ†Ø§Ù† Ù„Ù„Ø¨Ø­Ø«</p>
+            <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>ÇßÊÈ ÇÓã ÃÛäíÉ Ãæ İäÇä ááÈÍË</p>
           )}
           {musicModalTab === 'favorites' && favorites.length === 0 && (
-            <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>Ù„Ø§ ØªÙˆØ¬Ø¯ Ø£ØºØ§Ù†ÙŠ ÙÙŠ Ø§Ù„Ù…ÙØ¶Ù„Ø© Ø¨Ø¹Ø¯</p>
+            <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>áÇ ÊæÌÏ ÃÛÇäí İí ÇáãİÖáÉ ÈÚÏ</p>
           )}
           {musicList.map((track) => {
             const active = currentTrack?.id === track.id;
@@ -1007,11 +1007,11 @@ function MusicSearchModal({ onClose, currentTrack, isPlaying, onPlayTrack, favor
                 >
                   <Heart size={16} color={isMusicFav(track.id) ? '#ef4444' : 'rgba(255,255,255,0.35)'} fill={isMusicFav(track.id) ? '#ef4444' : 'none'} />
                 </button>
-                {/* â”€â”€ Get / X â€” pins this track to my profile (shown above my name, playable
-                    by anyone who visits). Pressing it again on the pinned track unpins it. â”€â”€ */}
+                {/* ?? Get / X — pins this track to my profile (shown above my name, playable
+                    by anyone who visits). Pressing it again on the pinned track unpins it. ?? */}
                 <button
                   onClick={() => (pinnedTrackId === track.id ? onUnpinTrack() : onPinTrack(track))}
-                  aria-label={pinnedTrackId === track.id ? 'Ø¥Ù„ØºØ§Ø¡ Ø§Ù„ØªØ«Ø¨ÙŠØª' : 'ØªØ«Ø¨ÙŠØª Ø¹Ù„Ù‰ Ø§Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„'}
+                  aria-label={pinnedTrackId === track.id ? 'ÅáÛÇÁ ÇáÊËÈíÊ' : 'ÊËÈíÊ Úáì ÇáÈÑæİÇíá'}
                   style={{
                     background: pinnedTrackId === track.id ? 'rgba(239,68,68,0.15)' : 'rgba(0,188,212,0.12)',
                     border: `1px solid ${pinnedTrackId === track.id ? 'rgba(239,68,68,0.4)' : 'rgba(0,188,212,0.3)'}`,
@@ -1047,12 +1047,12 @@ function MusicSearchModal({ onClose, currentTrack, isPlaying, onPlayTrack, favor
   );
 }
 
-// â”€â”€ PinnedTrackBar â€” the pinned "now playing" pill shown above a profile's name/avatar.
+// ?? PinnedTrackBar — the pinned "now playing" pill shown above a profile's name/avatar.
 // Borderless rounded rectangle: small artwork, play/pause toggle, a little waveform that
 // animates while it's playing, and the track's name. Shown both on my own header (above my
-// name/username) and on my profile as seen by any visitor (above the avatar) â€” anyone who
+// name/username) and on my profile as seen by any visitor (above the avatar) — anyone who
 // presses play hears the pinned 30-second preview and sees its title. Purely a display +
-// playback control; pinning/unpinning itself happens from the music search modal. â”€â”€
+// playback control; pinning/unpinning itself happens from the music search modal. ??
 function PinnedTrackBar({ track, style }: { track: MusicTrack | null; style?: React.CSSProperties }) {
   const musicSnapshot = useSyncExternalStore(musicPlayerStore.subscribe, musicPlayerStore.getSnapshot);
   if (!track) return null;
@@ -1078,7 +1078,7 @@ function PinnedTrackBar({ track, style }: { track: MusicTrack | null; style?: Re
       <motion.button
         whileTap={{ scale: 0.88 }}
         onClick={() => musicPlayerStore.playTrack(track)}
-        aria-label={isThisPlaying ? 'Ø¥ÙŠÙ‚Ø§Ù' : 'ØªØ´ØºÙŠÙ„'}
+        aria-label={isThisPlaying ? 'ÅíŞÇİ' : 'ÊÔÛíá'}
         style={{
           width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
           background: 'rgba(0,188,212,0.2)', border: 'none', cursor: 'pointer',
@@ -1112,8 +1112,8 @@ function PinnedTrackBar({ track, style }: { track: MusicTrack | null; style?: Re
   );
 }
 
-// â”€â”€ Builds a MusicTrack out of a fetched profile's pinned-track fields, or null if
-// nothing is pinned (or the backend hasn't added the columns yet). â”€â”€
+// ?? Builds a MusicTrack out of a fetched profile's pinned-track fields, or null if
+// nothing is pinned (or the backend hasn't added the columns yet). ??
 function pinnedTrackFromProfile(profile: MiniProfileData | null): MusicTrack | null {
   if (!profile?.pinnedTrackId || !profile?.pinnedTrackPreviewUrl) return null;
   return {
@@ -1125,20 +1125,20 @@ function pinnedTrackFromProfile(profile: MiniProfileData | null): MusicTrack | n
   };
 }
 
-// â”€â”€ ÙˆÙ‚Øª Ù†Ø³Ø¨ÙŠ Ø¨Ø§Ù„Ø¹Ø±Ø¨ÙŠ (Ù„Ø¹Ø±Ø¶Ù‡ Ø¨Ø¬Ø§Ù†Ø¨ Ø§Ø³Ù… Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… ÙÙŠ Ø§Ù„Ø³ØªÙˆØ±ÙŠ) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? æŞÊ äÓÈí ÈÇáÚÑÈí (áÚÑÖå ÈÌÇäÈ ÇÓã ÇáãÓÊÎÏã İí ÇáÓÊæÑí) ???????????????????
 function storyRelativeTime(dateStr: string): string {
   const arabicNumber = (value: number) => new Intl.NumberFormat('ar-KW').format(value);
   const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000));
-  if (diffSeconds < 60) return `Ù…Ù†Ø° ${arabicNumber(diffSeconds || 1)} Ø«Ø§Ù†ÙŠØ©`;
+  if (diffSeconds < 60) return `ãäĞ ${arabicNumber(diffSeconds || 1)} ËÇäíÉ`;
   const minutes = Math.floor(diffSeconds / 60);
-  if (minutes < 60) return `Ù…Ù†Ø° ${arabicNumber(minutes)} Ø¯Ù‚ÙŠÙ‚Ø©`;
+  if (minutes < 60) return `ãäĞ ${arabicNumber(minutes)} ÏŞíŞÉ`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Ù…Ù†Ø° ${arabicNumber(hours)} Ø³Ø§Ø¹Ø©`;
+  if (hours < 24) return `ãäĞ ${arabicNumber(hours)} ÓÇÚÉ`;
   const days = Math.floor(hours / 24);
-  return `Ù…Ù†Ø° ${arabicNumber(days)} ÙŠÙˆÙ…`;
+  return `ãäĞ ${arabicNumber(days)} íæã`;
 }
 
-/** ØªØ³Ù…ÙŠØ© ÙˆÙ‚Øª ØµØºÙŠØ±Ø© Ù„Ø´Ø¨ÙƒØ© Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª (3 Ø£Ø¹Ù…Ø¯Ø©) â€” Ù…Ù† Ø§Ù„Ø®Ø§Ø±Ø¬ Ø£Ø³ÙÙ„ Ø§Ù„Ù…Ø±Ø¨Ø¹ */
+/** ÊÓãíÉ æŞÊ ÕÛíÑÉ áÔÈßÉ ÇáãäÔæÑÇÊ (3 ÃÚãÏÉ) — ãä ÇáÎÇÑÌ ÃÓİá ÇáãÑÈÚ */
 function postGridTimeLabel(dateStr: string | null | undefined): { relative: string; date: string } {
   if (!dateStr) return { relative: '', date: '' };
   const d = new Date(dateStr);
@@ -1148,7 +1148,7 @@ function postGridTimeLabel(dateStr: string | null | undefined): { relative: stri
 }
 
 
-/** Ù‡Ù„ Ø§Ù„Ø­Ø³Ø§Ø¨ Ø§Ù„Ø­Ø§Ù„ÙŠ Ø´Ø±ÙƒØ©ØŸ (ØµÙ„Ø§Ø­ÙŠØ© New Post / Ø¥Ø¹Ù„Ø§Ù† Ù„Ù„Ù‚ØµØ©) â€” Ø§Ù„Ø£ÙØ±Ø§Ø¯ Ù„Ø§ ÙŠÙ†Ø´Ø±ÙˆÙ† Ø¨ÙˆØ³ØªØ§Øª */
+/** åá ÇáÍÓÇÈ ÇáÍÇáí ÔÑßÉ¿ (ÕáÇÍíÉ New Post / ÅÚáÇä ááŞÕÉ) — ÇáÃİÑÇÏ áÇ íäÔÑæä ÈæÓÊÇÊ */
 function isCompanyUserAccount(user: any, companiesList?: Array<{ id?: string; email?: string | null; username?: string | null; name?: string | null }> | null): boolean {
   if (!user) return false;
   const t = String(user.accountType || user.type || user.role || user.userType || '').toLowerCase();
@@ -1284,33 +1284,33 @@ function PostGridTimeFooter({ createdAt, onMedia }: { createdAt?: string | null;
   );
 }
 
-// â”€â”€ Ù„ÙˆÙ† Ø­Ù„Ù‚Ø© Ø§Ù„Ø³ØªÙˆØ±ÙŠ: Ø­Ø§Ù„ØªØ§Ù† ÙÙ‚Ø· Ø¨Ø¯ÙˆÙ† Ø£ÙŠ ÙÙˆØ§ØµÙ„ Ø£Ùˆ Ø¹Ø¯Ù‘ ØªÙ†Ø§Ø²Ù„ÙŠ â€”
-//    Ø£ØµÙØ± Ø¨Ø§Ù„ÙƒØ§Ù…Ù„ Ù…Ø§ Ø¯Ø§Ù… ÙÙŠ Ø¹Ù†ØµØ± ÙˆØ§Ø­Ø¯ Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„ Ù„Ù… ÙŠÙØ´Ø§Ù‡ÙØ¯ Ø¨Ø¹Ø¯ØŒ
-//    ÙˆØ¨Ù…Ø¬Ø±Ø¯ Ù…Ø´Ø§Ù‡Ø¯Ø© ÙƒÙ„ Ø¹Ù†Ø§ØµØ± Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… ØªØªØ­ÙˆÙ„ Ø§Ù„Ø­Ù„Ù‚Ø© Ø¨Ø§Ù„ÙƒØ§Ù…Ù„ Ù„Ù„Ø£Ø²Ø±Ù‚
-//    (Ù†ÙØ³ Ø£Ø²Ø±Ù‚ Ø¯Ø§Ø¦Ø±Ø© "Ù‚ØµØªÙŠ" Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©) ÙˆØªØ¨Ù‚Ù‰ ÙƒØ°Ù„Ùƒ Ø­ØªÙ‰ Ø§Ù†ØªÙ‡Ø§Ø¡ Ø§Ù„Ø³ØªÙˆØ±ÙŠ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? áæä ÍáŞÉ ÇáÓÊæÑí: ÍÇáÊÇä İŞØ ÈÏæä Ãí İæÇÕá Ãæ ÚÏø ÊäÇÒáí —
+//    ÃÕİÑ ÈÇáßÇãá ãÇ ÏÇã İí ÚäÕÑ æÇÍÏ Úáì ÇáÃŞá áã íõÔÇåóÏ ÈÚÏ¡
+//    æÈãÌÑÏ ãÔÇåÏÉ ßá ÚäÇÕÑ ÇáãÓÊÎÏã ÊÊÍæá ÇáÍáŞÉ ÈÇáßÇãá ááÃÒÑŞ
+//    (äİÓ ÃÒÑŞ ÏÇÆÑÉ "ŞÕÊí" ÇáÑÆíÓíÉ) æÊÈŞì ßĞáß ÍÊì ÇäÊåÇÁ ÇáÓÊæÑí ??????????
 function storyRingColor(items: StoryItem[], unseenColor: string, seenColor: string): string {
   if (items.length === 0) return seenColor;
   const hasUnseen = items.some(it => !it.seen);
   return hasUnseen ? unseenColor : seenColor;
 }
 
-// â”€â”€ CameraStoryCapture â€” ÙƒØ§Ù…ÙŠØ±Ø§ Ù…Ø¯Ù…Ø¬Ø© Ù„Ù†Ø´Ø± Ø§Ù„Ù‚ØµØ© Ù…Ø¨Ø§Ø´Ø±Ø© â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Ù†Ù‚Ø±Ø© Ù‚ØµÙŠØ±Ø© Ø¹Ù„Ù‰ Ø§Ù„Ø¯Ø§Ø¦Ø±Ø© = ØµÙˆØ±Ø©ØŒ Ø¶ØºØ· Ù…Ø·ÙˆÙ‘Ù„ = ØªØ³Ø¬ÙŠÙ„ ÙÙŠØ¯ÙŠÙˆ (Ù…Ø¹ Ø¹Ø¯Ù‘Ø§Ø¯ Ù…Ø¯Ø©)ØŒ
-// Ù†Ù‚Ø±ØªØ§Ù† Ù…ØªØªØ§Ù„ÙŠØªØ§Ù† Ø¹Ù„Ù‰ Ø§Ù„Ø´Ø§Ø´Ø© = ØªØ¨Ø¯ÙŠÙ„ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ Ø§Ù„Ø£Ù…Ø§Ù…ÙŠØ©/Ø§Ù„Ø®Ù„ÙÙŠØ©ØŒ ÙˆØ£Ø²Ø±Ø§Ø± Ø§Ù„ØªØ­ÙƒÙ…
-// Ø§Ù„ÙˆØ­ÙŠØ¯Ø© Ù‡ÙŠ: ÙÙ„Ø§Ø´ ÙˆÙÙ„Ø§ØªØ± Ù…ØªÙ‚Ø¯Ù…Ø©. Ø¨Ø¹Ø¯ Ø§Ù„ØªØµÙˆÙŠØ± ØªØ¸Ù‡Ø± Ø«Ù„Ø§Ø«Ø© Ø®ÙŠØ§Ø±Ø§Øª Ù†ØµÙŠØ©:
-// Ù†Ø´Ø± Ø§Ù„Ù‚ØµØ© / Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„ØªØµÙˆÙŠØ± / Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§. Ø§Ù„Ø¥ØºÙ„Ø§Ù‚ ÙŠÙ†Ø²Ù„ Ø§Ù„Ø´Ø§Ø´Ø© Ø¨Ø£Ù†ÙŠÙ…ÙŠØ´Ù† Ù„Ù„Ø£Ø³ÙÙ„.
+// ?? CameraStoryCapture — ßÇãíÑÇ ãÏãÌÉ áäÔÑ ÇáŞÕÉ ãÈÇÔÑÉ ????????????????????????
+// äŞÑÉ ŞÕíÑÉ Úáì ÇáÏÇÆÑÉ = ÕæÑÉ¡ ÖÛØ ãØæøá = ÊÓÌíá İíÏíæ (ãÚ ÚÏøÇÏ ãÏÉ)¡
+// äŞÑÊÇä ãÊÊÇáíÊÇä Úáì ÇáÔÇÔÉ = ÊÈÏíá ÇáßÇãíÑÇ ÇáÃãÇãíÉ/ÇáÎáİíÉ¡ æÃÒÑÇÑ ÇáÊÍßã
+// ÇáæÍíÏÉ åí: İáÇÔ æİáÇÊÑ ãÊŞÏãÉ. ÈÚÏ ÇáÊÕæíÑ ÊÙåÑ ËáÇËÉ ÎíÇÑÇÊ äÕíÉ:
+// äÔÑ ÇáŞÕÉ / ÅÚÇÏÉ ÇáÊÕæíÑ / ÅÛáÇŞ ÇáßÇãíÑÇ. ÇáÅÛáÇŞ íäÒá ÇáÔÇÔÉ ÈÃäíãíÔä ááÃÓİá.
 type CameraFilterId = 'none' | 'soft' | 'glow' | 'bw' | 'warm' | 'cool' | 'vivid' | 'dramatic' | 'vintage' | 'fade';
 const CAMERA_FILTERS: { id: CameraFilterId; label: string; css: string }[] = [
-  { id: 'none', label: 'Ø¹Ø§Ø¯ÙŠ', css: 'none' },
-  { id: 'soft', label: 'Ù†Ø§Ø¹Ù…', css: 'brightness(1.08) contrast(0.92) saturate(1.05)' },
-  { id: 'glow', label: 'Ø¥Ø´Ø±Ø§Ù‚', css: 'brightness(1.12) contrast(0.95) saturate(1.12)' },
-  { id: 'bw', label: 'Ø£Ø¨ÙŠØ¶ ÙˆØ£Ø³ÙˆØ¯', css: 'grayscale(1) contrast(1.05)' },
-  { id: 'warm', label: 'Ø¯Ø§ÙØ¦', css: 'sepia(0.35) saturate(1.4) contrast(1.05)' },
-  { id: 'cool', label: 'Ø¨Ø§Ø±Ø¯', css: 'hue-rotate(180deg) saturate(1.2)' },
-  { id: 'vivid', label: 'Ø­ÙŠÙˆÙŠ', css: 'saturate(1.6) contrast(1.15)' },
-  { id: 'dramatic', label: 'Ø¯Ø±Ø§Ù…ÙŠ', css: 'contrast(1.3) brightness(0.9) saturate(1.1)' },
-  { id: 'vintage', label: 'Ø¹ØªÙŠÙ‚', css: 'sepia(0.5) contrast(0.9) brightness(1.05) saturate(0.85)' },
-  { id: 'fade', label: 'Ø¨Ø§Ù‡Øª', css: 'contrast(0.85) brightness(1.1) saturate(0.7)' },
+  { id: 'none', label: 'ÚÇÏí', css: 'none' },
+  { id: 'soft', label: 'äÇÚã', css: 'brightness(1.08) contrast(0.92) saturate(1.05)' },
+  { id: 'glow', label: 'ÅÔÑÇŞ', css: 'brightness(1.12) contrast(0.95) saturate(1.12)' },
+  { id: 'bw', label: 'ÃÈíÖ æÃÓæÏ', css: 'grayscale(1) contrast(1.05)' },
+  { id: 'warm', label: 'ÏÇİÆ', css: 'sepia(0.35) saturate(1.4) contrast(1.05)' },
+  { id: 'cool', label: 'ÈÇÑÏ', css: 'hue-rotate(180deg) saturate(1.2)' },
+  { id: 'vivid', label: 'Ííæí', css: 'saturate(1.6) contrast(1.15)' },
+  { id: 'dramatic', label: 'ÏÑÇãí', css: 'contrast(1.3) brightness(0.9) saturate(1.1)' },
+  { id: 'vintage', label: 'ÚÊíŞ', css: 'sepia(0.5) contrast(0.9) brightness(1.05) saturate(0.85)' },
+  { id: 'fade', label: 'ÈÇåÊ', css: 'contrast(0.85) brightness(1.1) saturate(0.7)' },
 ];
 
 function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendRequests = [], onRespondFriendRequest, onOpenStoryComments, storyCommentUnread = 0, shareChatUnread = 0, allowMusic = true, publishLabel }: {
@@ -1320,13 +1320,13 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   userName?: string | null;
   friendRequests?: IncomingRequest[];
   onRespondFriendRequest?: (id: number, action: 'accept' | 'reject') => void | Promise<void>;
-  /** Ø¬Ø±Ø³ Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª Ø¯Ø§Ø®Ù„ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ â€” ØªØ¹Ù„ÙŠÙ‚Ø§Øª Ø§Ù„Ø£ØµØ¯Ù‚Ø§Ø¡ Ø¹Ù„Ù‰ Ø§Ù„Ø³ØªÙˆØ±ÙŠ */
+  /** ÌÑÓ ÇáÊäÈíåÇÊ ÏÇÎá ÇáßÇãíÑÇ — ÊÚáíŞÇÊ ÇáÃÕÏŞÇÁ Úáì ÇáÓÊæÑí */
   onOpenStoryComments?: () => void;
-  /** Ø¹Ø¯Ø¯ Ø®ÙŠÙˆØ· ØªØ¹Ù„ÙŠÙ‚Ø§Øª Ø§Ù„Ø³ØªÙˆØ±ÙŠ ØºÙŠØ± Ø§Ù„Ù…Ù‚Ø±ÙˆØ¡Ø© (Ø´Ø§Ø±Ø© Ø§Ù„Ø¬Ø±Ø³) */
+  /** ÚÏÏ ÎíæØ ÊÚáíŞÇÊ ÇáÓÊæÑí ÛíÑ ÇáãŞÑæÁÉ (ÔÇÑÉ ÇáÌÑÓ) */
   storyCommentUnread?: number;
-  /** Ù…Ø´Ø§Ø±ÙƒØ§Øª ÙˆØ§Ø±Ø¯Ø© Ù…Ù† Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† â€” ØªØµÙÙ‘Ø± Ø§Ù„Ø¬Ø±Ø³ Ø£ØµÙØ± */
+  /** ãÔÇÑßÇÊ æÇÑÏÉ ãä ãÓÊÎÏãíä — ÊÕİøÑ ÇáÌÑÓ ÃÕİÑ */
   shareChatUnread?: number;
-  /** Ø§Ù„Ø£ÙØ±Ø§Ø¯: Ù…ÙˆØ³ÙŠÙ‚Ù‰ + Ù†ØµØ› Ø§Ù„Ø´Ø±ÙƒØ§Øª: Ø¨Ø¯ÙˆÙ† Ù…ÙˆØ³ÙŠÙ‚Ù‰ (ØªØ¹Ù„ÙŠÙ‚/Ù†Øµ ÙÙ‚Ø·) */
+  /** ÇáÃİÑÇÏ: ãæÓíŞì + äÕº ÇáÔÑßÇÊ: ÈÏæä ãæÓíŞì (ÊÚáíŞ/äÕ İŞØ) */
   allowMusic?: boolean;
   publishLabel?: string;
 }) {
@@ -1342,7 +1342,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
 
-  // Ù†Ù‚Ø±ØªØ§Ù† Ù…ØªØªØ§Ù„ÙŠØªØ§Ù† Ø¹Ù„Ù‰ Ø´Ø§Ø´Ø© Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ = ØªØ¨Ø¯ÙŠÙ„ Ø£Ù…Ø§Ù…ÙŠØ©/Ø®Ù„ÙÙŠØ©
+  // äŞÑÊÇä ãÊÊÇáíÊÇä Úáì ÔÇÔÉ ÇáßÇãíÑÇ = ÊÈÏíá ÃãÇãíÉ/ÎáİíÉ
   function handleVideoDoubleTap() {
     const now = Date.now();
     if (now - lastTapRef.current < 350) {
@@ -1352,7 +1352,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   }
   const [requestsBoxOpen, setRequestsBoxOpen] = useState(false);
   const [respondingId, setRespondingId] = useState<number | null>(null);
-  // Ø¨Ø­Ø« ÙŠÙˆØ²Ø±Ø§Øª Ø¯Ø§Ø®Ù„ Ø¨ÙƒØ³ Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ø¥Ø¶Ø§ÙØ© (Ø¨Ø¯ÙˆÙ† ØªØºÙŠÙŠØ± Ø´ÙƒÙ„ Ø§Ù„Ø¨ÙƒØ³)
+  // ÈÍË íæÒÑÇÊ ÏÇÎá ÈßÓ ØáÈÇÊ ÇáÅÖÇİÉ (ÈÏæä ÊÛííÑ Ôßá ÇáÈßÓ)
   const [camSearchQuery, setCamSearchQuery] = useState('');
   const [camSearchResults, setCamSearchResults] = useState<SearchUser[]>([]);
   const [camSearching, setCamSearching] = useState(false);
@@ -1412,13 +1412,13 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const [flashOn, setFlashOn] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filter, setFilter] = useState<CameraFilterId>('none');
-  // ÙÙ‚Ø· 0.5x (Ø¹Ø¯Ø³Ø© ÙˆØ§Ø³Ø¹Ø©) Ùˆ1x (Ø·Ø¨ÙŠØ¹ÙŠ) â€” Ø£Ø²Ù„Ù†Ø§ 2x/3x Ù„Ø£Ù†Ù‡Ù…Ø§ Ø¨Ø¯ÙˆÙ† ØªÙƒØ¨ÙŠØ± Ø¹ØªØ§Ø¯ Ø­Ù‚ÙŠÙ‚ÙŠ
-  // ÙƒØ§Ù†Ø§ ÙŠØ¹Ø·ÙŠØ§Ù† Ù†ÙØ³ Ù†ØªÙŠØ¬Ø© Ø§Ù„Ù‚ØµÙ‘ Ø§Ù„Ø±Ù‚Ù…ÙŠ Ø§Ù„Ø¨Ø³ÙŠØ· ÙˆÙ„Ø§ ÙŠØ¶ÙŠÙØ§Ù† Ø´ÙŠØ¡ ÙØ¹Ù„ÙŠÙ‹Ø§.
+  // İŞØ 0.5x (ÚÏÓÉ æÇÓÚÉ) æ1x (ØÈíÚí) — ÃÒáäÇ 2x/3x áÃäåãÇ ÈÏæä ÊßÈíÑ ÚÊÇÏ ÍŞíŞí
+  // ßÇäÇ íÚØíÇä äİÓ äÊíÌÉ ÇáŞÕø ÇáÑŞãí ÇáÈÓíØ æáÇ íÖíİÇä ÔíÁ İÚáíğÇ.
   const [zoom, setZoom] = useState<0.5 | 1>(1);
   const [, setHardwareZoomOk] = useState(false);
-  // Ù…Ø¹Ø±Ù‘Ù ÙƒØ§Ù…ÙŠØ±Ø§ Ø§Ù„Ø¹Ø¯Ø³Ø© Ø§Ù„ÙˆØ§Ø³Ø¹Ø© (Ultra-Wide) Ø¥Ù† ÙˆÙØ¬Ø¯Øª Ø¹Ù„Ù‰ Ø§Ù„Ø¬Ù‡Ø§Ø² â€” Ù†Ø³ØªØ®Ø¯Ù…Ù‡Ø§ Ù„Ù€0.5x
-  // Ø§Ù„Ø­Ù‚ÙŠÙ‚ÙŠ Ø¨Ø¯Ù„ ØªÙƒØ¨ÙŠØ± Ø±Ù‚Ù…ÙŠ ÙˆÙ‡Ù…ÙŠØŒ Ù„Ø£Ù† 0.5x ÙØ¹Ù„ÙŠÙ‹Ø§ Ø¹Ø¯Ø³Ø© ÙÙŠØ²ÙŠØ§Ø¦ÙŠØ© Ù…Ø®ØªÙ„ÙØ© Ø¹Ù„Ù‰ Ø£ØºÙ„Ø¨ Ø§Ù„Ù‡ÙˆØ§ØªÙ
-  // ÙˆÙ„ÙŠØ³ Ù…Ø¬Ø±Ø¯ "Ø²ÙˆÙ… Ø¨Ø§Ù„Ø³Ø§Ù„Ø¨" Ø¹Ù„Ù‰ Ù†ÙØ³ Ø§Ù„Ø¹Ø¯Ø³Ø©.
+  // ãÚÑøİ ßÇãíÑÇ ÇáÚÏÓÉ ÇáæÇÓÚÉ (Ultra-Wide) Åä æõÌÏÊ Úáì ÇáÌåÇÒ — äÓÊÎÏãåÇ áÜ0.5x
+  // ÇáÍŞíŞí ÈÏá ÊßÈíÑ ÑŞãí æåãí¡ áÃä 0.5x İÚáíğÇ ÚÏÓÉ İíÒíÇÆíÉ ãÎÊáİÉ Úáì ÃÛáÈ ÇáåæÇÊİ
+  // æáíÓ ãÌÑÏ "Òæã ÈÇáÓÇáÈ" Úáì äİÓ ÇáÚÏÓÉ.
   const [ultraWideDeviceId, setUltraWideDeviceId] = useState<string | null>(null);
   const [backDeviceId, setBackDeviceId] = useState<string | null>(null);
   const [frontDeviceId, setFrontDeviceId] = useState<string | null>(null);
@@ -1429,15 +1429,15 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState('');
 
-  // â”€â”€ Ø´Ø§Ø´Ø© ØªØ­Ø±ÙŠØ± Ø§Ù„Ù‚ØµØ© (Ù†Øµ + Ù…ÙˆØ³ÙŠÙ‚Ù‰) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ?? ÔÇÔÉ ÊÍÑíÑ ÇáŞÕÉ (äÕ + ãæÓíŞì) ?????????????????????????????????????????
   const [editMode, setEditMode] = useState(false);
   const [overlayText, setOverlayText] = useState('');
   const [overlayColor, setOverlayColor] = useState('#ffffff');
-  // Ù…ÙˆØ¶Ø¹ Ø§Ù„Ù†Øµ Ø¹Ù„Ù‰ Ø§Ù„ØµÙˆØ±Ø© (0â€“1 Ù†Ø³Ø¨Ø© Ù…Ù† Ø£Ø¨Ø¹Ø§Ø¯ Ø§Ù„Ø­Ø§ÙˆÙŠØ©)
+  // ãæÖÚ ÇáäÕ Úáì ÇáÕæÑÉ (0–1 äÓÈÉ ãä ÃÈÚÇÏ ÇáÍÇæíÉ)
   const [overlayPos, setOverlayPos] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 });
   const overlayDragRef = useRef<{ startX: number; startY: number; startPosX: number; startPosY: number } | null>(null);
 
-  // â”€â”€ Ù…ÙˆØ¶Ø¹ ÙˆØ­Ø¬Ù… Ø´Ø§Ø±Ø© Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰ (Ù‚Ø§Ø¨Ù„Ø© Ù„Ù„Ø³Ø­Ø¨ ÙˆØ§Ù„ØªÙƒØ¨ÙŠØ±) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ?? ãæÖÚ æÍÌã ÔÇÑÉ ÇáãæÓíŞì (ŞÇÈáÉ ááÓÍÈ æÇáÊßÈíÑ) ??????????????????????????
   const [musicBadgePos, setMusicBadgePos] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.88 });
   const [musicBadgeScale, setMusicBadgeScale] = useState(1);
   const musicDragRef = useRef<{
@@ -1451,7 +1451,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const musicPreviewRef = useRef<HTMLAudioElement | null>(null);
   const [previewingMusic, setPreviewingMusic] = useState<string | null>(null);
 
-  // â”€â”€ Ø¨Ø­Ø« Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰ Ø¹Ø¨Ø± iTunes Search API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ?? ÈÍË ÇáãæÓíŞì ÚÈÑ iTunes Search API ??????????????????????????????????????
   const [musicQuery, setMusicQuery] = useState('');
   const [musicResults, setMusicResults] = useState<{ id: string; title: string; artist: string; previewUrl: string; artworkUrl: string }[]>([]);
   const [musicSearching, setMusicSearching] = useState(false);
@@ -1494,23 +1494,23 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
       const resp = await fetch(track.previewUrl);
       const blob = await resp.blob();
       const file = new File([blob], `${track.title}-${track.artist}.m4a`, { type: 'audio/mp4' });
-      setSelectedMusic({ label: `${track.title} â€” ${track.artist}`, file });
+      setSelectedMusic({ label: `${track.title} — ${track.artist}`, file });
       setSelectedBuiltinMusic(null);
       setSelectedSearchMusic(track);
-    } catch { /* ØªØ¬Ø§Ù‡Ù„ */ }
+    } catch { /* ÊÌÇåá */ }
     setMusicDownloading(null);
   }
 
-  // Ø£Ù„ÙˆØ§Ù† Ø§Ù„Ù†Øµ Ø§Ù„Ù…ØªØ§Ø­Ø©
+  // ÃáæÇä ÇáäÕ ÇáãÊÇÍÉ
   const TEXT_COLORS = ['#ffffff','#000000','#facc15','#f87171','#34d399','#60a5fa','#e879f9','#fb923c'];
 
-  // Ù…ÙˆØ³ÙŠÙ‚Ù‰ Ù…Ø¯Ù…Ø¬Ø© â€” Ù…Ù„ÙØ§Øª ØµÙˆØªÙŠØ© Ù…Ù† Ø§Ù„Ù…ÙƒØªØ¨Ø© Ø§Ù„Ø¹Ø§Ù…Ø© (royalty-free)
+  // ãæÓíŞì ãÏãÌÉ — ãáİÇÊ ÕæÊíÉ ãä ÇáãßÊÈÉ ÇáÚÇãÉ (royalty-free)
   const BUILTIN_MUSIC: { id: string; label: string; emoji: string; url: string }[] = [
-    { id: 'upbeat',   label: 'Ù†Ø´ÙŠØ·',      emoji: 'ğŸµ', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
-    { id: 'chill',    label: 'Ù‡Ø§Ø¯Ø¦',      emoji: 'ğŸ¶', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
-    { id: 'romantic', label: 'Ø±ÙˆÙ…Ø§Ù†Ø³ÙŠ',   emoji: 'ğŸ’•', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' },
-    { id: 'epic',     label: 'Ù…Ù„Ø­Ù…ÙŠ',     emoji: 'ğŸ”¥', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' },
-    { id: 'fun',      label: 'Ù…Ø±Ø­',       emoji: 'ğŸ‰', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3' },
+    { id: 'upbeat',   label: 'äÔíØ',      emoji: '??', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
+    { id: 'chill',    label: 'åÇÏÆ',      emoji: '??', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
+    { id: 'romantic', label: 'ÑæãÇäÓí',   emoji: '??', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' },
+    { id: 'epic',     label: 'ãáÍãí',     emoji: '??', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' },
+    { id: 'fun',      label: 'ãÑÍ',       emoji: '??', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3' },
   ];
   const [selectedBuiltinMusic, setSelectedBuiltinMusic] = useState<string | null>(null);
 
@@ -1536,21 +1536,21 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 
   const activeFilterCss = CAMERA_FILTERS.find(f => f.id === filter)?.css ?? 'none';
 
-  // Ø§Ù„Ø¨Ø­Ø« Ø¹Ù† Ø¹Ø¯Ø³Ø© ÙˆØ§Ø³Ø¹Ø© (Ultra-Wide) ÙØ¹Ù„ÙŠØ© Ø¹Ù„Ù‰ Ø§Ù„Ø¬Ù‡Ø§Ø² â€” Ù‡Ø°Ù‡ ØºØ§Ù„Ø¨Ù‹Ø§ ÙƒØ§Ù…ÙŠØ±Ø§ ÙÙŠØ²ÙŠØ§Ø¦ÙŠØ©
-  // Ù…Ù†ÙØµÙ„Ø© Ø¹Ù† Ø§Ù„Ø¹Ø¯Ø³Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ© (deviceId Ù…Ø®ØªÙ„Ù)ØŒ ÙˆÙ„ÙŠØ³Øª Ù…Ø¬Ø±Ø¯ Ø±Ù‚Ù… "Ø²ÙˆÙ…" Ø¹Ù„Ù‰ Ù†ÙØ³ Ø§Ù„Ø¹Ø¯Ø³Ø©.
-  // Ù†Ø¹ØªÙ…Ø¯ Ø¹Ù„Ù‰ ØªØ³Ù…ÙŠØ© Ø§Ù„Ø¬Ù‡Ø§Ø² (label) Ø§Ù„ØªÙŠ ØªØ¸Ù‡Ø± Ø¨Ø¹Ø¯ Ø¥Ø°Ù† Ø§Ù„ÙˆØµÙˆÙ„ Ù„Ù„ÙƒØ§Ù…ÙŠØ±Ø§ â€” Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ù…Ø¹ÙŠØ§Ø±
-  // ÙˆÙŠØ¨ Ù…ÙˆØ­Ù‘Ø¯ Ù„ØªØ­Ø¯ÙŠØ¯ "Ø£ÙŠ Ø¹Ø¯Ø³Ø© Ù‡ÙŠ Ø§Ù„ÙˆØ§Ø³Ø¹Ø©"ØŒ ÙÙ‡Ø°Ø§ Ø£ÙØ¶Ù„ ØªÙ‚Ø±ÙŠØ¨ Ù…ØªØ§Ø­ ÙÙŠ Ø§Ù„Ù…ØªØµÙØ­.
+  // ÇáÈÍË Úä ÚÏÓÉ æÇÓÚÉ (Ultra-Wide) İÚáíÉ Úáì ÇáÌåÇÒ — åĞå ÛÇáÈğÇ ßÇãíÑÇ İíÒíÇÆíÉ
+  // ãäİÕáÉ Úä ÇáÚÏÓÉ ÇáÑÆíÓíÉ (deviceId ãÎÊáİ)¡ æáíÓÊ ãÌÑÏ ÑŞã "Òæã" Úáì äİÓ ÇáÚÏÓÉ.
+  // äÚÊãÏ Úáì ÊÓãíÉ ÇáÌåÇÒ (label) ÇáÊí ÊÙåÑ ÈÚÏ ÅĞä ÇáæÕæá ááßÇãíÑÇ — áÇ íæÌÏ ãÚíÇÑ
+  // æíÈ ãæÍøÏ áÊÍÏíÏ "Ãí ÚÏÓÉ åí ÇáæÇÓÚÉ"¡ İåĞÇ ÃİÖá ÊŞÑíÈ ãÊÇÍ İí ÇáãÊÕİÍ.
   useEffect(() => {
     let cancelled = false;
     async function findCameras() {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const cams = devices.filter(d => d.kind === 'videoinput');
-        // ÙƒØ§Ù…ÙŠØ±Ø§ Ø®Ù„ÙÙŠØ©: Ø£ÙŠ ÙƒØ§Ù…ÙŠØ±Ø§ ØªØ­Ù…Ù„ back/rear/environment ÙÙŠ Ø§Ø³Ù…Ù‡Ø§
+        // ßÇãíÑÇ ÎáİíÉ: Ãí ßÇãíÑÇ ÊÍãá back/rear/environment İí ÇÓãåÇ
         const backCam = cams.find(d => /back|rear|environment/i.test(d.label));
-        // ÙƒØ§Ù…ÙŠØ±Ø§ Ø£Ù…Ø§Ù…ÙŠØ©: Ø£ÙŠ ÙƒØ§Ù…ÙŠØ±Ø§ ØªØ­Ù…Ù„ front/user/face ÙÙŠ Ø§Ø³Ù…Ù‡Ø§
+        // ßÇãíÑÇ ÃãÇãíÉ: Ãí ßÇãíÑÇ ÊÍãá front/user/face İí ÇÓãåÇ
         const frontCam = cams.find(d => /front|user|face/i.test(d.label));
-        // Ø¹Ø¯Ø³Ø© ÙˆØ§Ø³Ø¹Ø©
+        // ÚÏÓÉ æÇÓÚÉ
         const wantedUW = facingMode === 'user' ? /front|user|face/i : /back|rear|environment/i;
         const ultra = cams.find(d => /ultra.?wide|0\.5x|wide angle/i.test(d.label) && wantedUW.test(d.label))
           ?? cams.find(d => /ultra.?wide|0\.5x/i.test(d.label));
@@ -1565,11 +1565,11 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     return () => { cancelled = true; };
   }, [facingMode]);
 
-  // ÙØªØ­/Ø¥Ø¹Ø§Ø¯Ø© ÙØªØ­ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ Ø¹Ù†Ø¯ ØªØ¨Ø¯ÙŠÙ„ Ø§Ù„Ø§ØªØ¬Ø§Ù‡ (Ø£Ù…Ø§Ù…ÙŠØ©/Ø®Ù„ÙÙŠØ©)ØŒ Ø£Ùˆ ÙÙ‚Ø· Ø¹Ù†Ø¯ ØªØ¨Ø¯ÙŠÙ„
-  // 0.5x/1x Ø¥Ø°Ø§ ÙƒØ§Ù† Ù‡Ø°Ø§ Ø§Ù„ØªØ¨Ø¯ÙŠÙ„ ÙØ¹Ù„ÙŠÙ‹Ø§ ÙŠØ­ØªØ§Ø¬ ÙØªØ­ Ø¬Ù‡Ø§Ø² ÙƒØ§Ù…ÙŠØ±Ø§ Ù…Ø®ØªÙ„Ù (Ø¹Ø¯Ø³Ø© ÙˆØ§Ø³Ø¹Ø©
-  // Ù…Ù†ÙØµÙ„Ø©). Ø¥Ø°Ø§ Ø§Ù„Ø¬Ù‡Ø§Ø² Ù…Ø§ ÙÙŠÙ‡ Ø¹Ø¯Ø³Ø© ÙˆØ§Ø³Ø¹Ø© Ù…Ù†ÙØµÙ„Ø© Ø£ØµÙ„Ø§Ù‹ØŒ ÙÙ€0.5x Ùˆ1x ÙŠØ³ØªØ®Ø¯Ù…Ø§Ù† Ù†ÙØ³
-  // Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ Ø¨Ù†ÙØ³ Ø§Ù„Ù‚ÙŠÙˆØ¯ ØªÙ…Ø§Ù…Ù‹Ø§ØŒ ÙÙ„Ø§ Ø¯Ø§Ø¹ÙŠ Ù„Ø¥Ø¹Ø§Ø¯Ø© ÙØªØ­ Ø£ÙŠ Ø´ÙŠ â€” ÙˆÙ‡Ø°Ø§ Ù‡Ùˆ Ø³Ø¨Ø¨ Ø§Ù„Ø´Ø§Ø´Ø©
-  // Ø§Ù„Ø³ÙˆØ¯Ø§Ø¡ Ø³Ø§Ø¨Ù‚Ù‹Ø§: ÙƒÙ†Ø§ Ù†Ø¹ÙŠØ¯ ÙØªØ­ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ Ø­ØªÙ‰ Ù„Ùˆ Ø§Ù„Ø¬Ù‡Ø§Ø² Ø§Ù„Ù…Ø·Ù„ÙˆØ¨ Ù†ÙØ³Ù‡ Ù„Ù… ÙŠØªØºÙŠÙ‘Ø±.
+  // İÊÍ/ÅÚÇÏÉ İÊÍ ÇáßÇãíÑÇ ÚäÏ ÊÈÏíá ÇáÇÊÌÇå (ÃãÇãíÉ/ÎáİíÉ)¡ Ãæ İŞØ ÚäÏ ÊÈÏíá
+  // 0.5x/1x ÅĞÇ ßÇä åĞÇ ÇáÊÈÏíá İÚáíğÇ íÍÊÇÌ İÊÍ ÌåÇÒ ßÇãíÑÇ ãÎÊáİ (ÚÏÓÉ æÇÓÚÉ
+  // ãäİÕáÉ). ÅĞÇ ÇáÌåÇÒ ãÇ İíå ÚÏÓÉ æÇÓÚÉ ãäİÕáÉ ÃÕáÇğ¡ İÜ0.5x æ1x íÓÊÎÏãÇä äİÓ
+  // ÇáßÇãíÑÇ ÈäİÓ ÇáŞíæÏ ÊãÇãğÇ¡ İáÇ ÏÇÚí áÅÚÇÏÉ İÊÍ Ãí Ôí — æåĞÇ åæ ÓÈÈ ÇáÔÇÔÉ
+  // ÇáÓæÏÇÁ ÓÇÈŞğÇ: ßäÇ äÚíÏ İÊÍ ÇáßÇãíÑÇ ÍÊì áæ ÇáÌåÇÒ ÇáãØáæÈ äİÓå áã íÊÛíøÑ.
   const wantUltraWide = zoom === 0.5 && !!ultraWideDeviceId && facingMode === 'environment';
   useEffect(() => {
     let cancelled = false;
@@ -1577,11 +1577,11 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
       try {
         let stream: MediaStream | null = null;
 
-        // Ù†Ø¨Ù†ÙŠ Ù‚Ø§Ø¦Ù…Ø© Ù…Ø­Ø§ÙˆÙ„Ø§Øª Ø¨ØªØ±ØªÙŠØ¨ Ø§Ù„Ø£ÙˆÙ„ÙˆÙŠØ©:
-        // 1. deviceId Ù…Ø­Ø¯Ø¯ (Ø£Ø¯Ù‚) Ø¥Ù† ÙƒØ§Ù† Ù…ØªØ§Ø­Ø§Ù‹
+        // äÈäí ŞÇÆãÉ ãÍÇæáÇÊ ÈÊÑÊíÈ ÇáÃæáæíÉ:
+        // 1. deviceId ãÍÏÏ (ÃÏŞ) Åä ßÇä ãÊÇÍÇğ
         // 2. facingMode:exact
         // 3. facingMode:ideal
-        // 4. facingMode Ø¨Ø¯ÙˆÙ† exact/ideal
+        // 4. facingMode ÈÏæä exact/ideal
         const specificId = wantUltraWide
           ? ultraWideDeviceId!
           : facingMode === 'environment'
@@ -1598,18 +1598,18 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         for (const video of attempts) {
           try {
             stream = await navigator.mediaDevices.getUserMedia({ video, audio: true });
-            // ØªØ­Ù‚Ù‚ Ø£Ù† Ø§Ù„Ù€ stream ÙØ¹Ù„Ø§Ù‹ Ù…Ù† Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ Ø§Ù„Ù…Ø·Ù„ÙˆØ¨Ø©
+            // ÊÍŞŞ Ãä ÇáÜ stream İÚáÇğ ãä ÇáßÇãíÑÇ ÇáãØáæÈÉ
             const track = stream.getVideoTracks()[0];
             const settings = track?.getSettings?.() ?? {};
             const gotFacing = (settings as { facingMode?: string }).facingMode;
-            // Ø¥Ø°Ø§ Ø­ØµÙ„Ù†Ø§ Ø¹Ù„Ù‰ facing Ù…Ø®ØªÙ„Ù Ø¹Ù† Ø§Ù„Ù…Ø·Ù„ÙˆØ¨ Ù†ÙˆÙ‚Ù Ù‡Ø°Ø§ Ø§Ù„Ù€ stream ÙˆÙ†Ø¬Ø±Ø¨ Ø§Ù„ØªØ§Ù„ÙŠ
+            // ÅĞÇ ÍÕáäÇ Úáì facing ãÎÊáİ Úä ÇáãØáæÈ äæŞİ åĞÇ ÇáÜ stream æäÌÑÈ ÇáÊÇáí
             if (gotFacing && gotFacing !== facingMode && !wantUltraWide) {
               stream.getTracks().forEach(t => t.stop());
               stream = null;
               continue;
             }
             break;
-          } catch { /* Ø¬Ø±Ù‘Ø¨ Ø§Ù„Ù‚ÙŠØ¯ Ø§Ù„ØªØ§Ù„ÙŠ */ }
+          } catch { /* ÌÑøÈ ÇáŞíÏ ÇáÊÇáí */ }
         }
 
         if (!stream) {
@@ -1617,7 +1617,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         }
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
 
-        // Ø§Ø­ÙØ¸ deviceId Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ Ø§Ù„ØªÙŠ ÙÙØªØ­Øª ÙØ¹Ù„Ø§Ù‹ Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù…Ù‡Ø§ ÙÙŠ Ø§Ù„ØªØ¨Ø¯ÙŠÙ„ Ø§Ù„Ù‚Ø§Ø¯Ù…
+        // ÇÍİÙ deviceId ÇáßÇãíÑÇ ÇáÊí İõÊÍÊ İÚáÇğ áÇÓÊÎÏÇãåÇ İí ÇáÊÈÏíá ÇáŞÇÏã
         const openedTrack = stream.getVideoTracks()[0];
         const openedSettings = openedTrack?.getSettings?.() ?? {};
         const openedDeviceId = (openedSettings as { deviceId?: string }).deviceId;
@@ -1642,20 +1642,20 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         setFlashOn(false);
         setError('');
       } catch {
-        if (!cancelled) setError('ØªØ¹Ø°Ø± ÙØªØ­ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ â€” ØªØ£ÙƒØ¯ Ù…Ù† Ø§Ù„Ø³Ù…Ø§Ø­ Ø¨Ø§Ù„ÙˆØµÙˆÙ„');
+        if (!cancelled) setError('ÊÚĞÑ İÊÍ ÇáßÇãíÑÇ — ÊÃßÏ ãä ÇáÓãÇÍ ÈÇáæÕæá');
       }
     }
     void start();
     return () => { cancelled = true; };
   }, [facingMode, wantUltraWide, ultraWideDeviceId, backDeviceId, frontDeviceId]);
 
-  // Ø­Ù„Ù‚Ø© Ø±Ø³Ù…: Ù†Ø¹Ø±Ø¶ Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ÙƒØ§Ù…Ù„Ù‹Ø§ Ø¨Ø£Ø³Ù„ÙˆØ¨ contain Ø¯Ø§Ø®Ù„ Ø¥Ø·Ø§Ø± Ø¹Ù…ÙˆØ¯ÙŠ (Ø¨Ø¯ÙˆÙ† Ø²ÙˆÙ… Ø¥Ø¶Ø§ÙÙŠ)
+  // ÍáŞÉ ÑÓã: äÚÑÖ ÇáİíÏíæ ßÇãáğÇ ÈÃÓáæÈ contain ÏÇÎá ÅØÇÑ ÚãæÏí (ÈÏæä Òæã ÅÖÇİí)
   useEffect(() => {
     function draw() {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       if (video && canvas && video.videoWidth > 0 && video.videoHeight > 0) {
-        // Ø¥Ø·Ø§Ø± Ø¹Ù…ÙˆØ¯ÙŠ Ø«Ø§Ø¨Øª Ù„Ù„Ø£Ø¨Ø¹Ø§Ø¯ (Ù‚ØµØµ) â€” 9:16
+        // ÅØÇÑ ÚãæÏí ËÇÈÊ ááÃÈÚÇÏ (ŞÕÕ) — 9:16
         const targetW = 1080;
         const targetH = 1920;
         if (canvas.width !== targetW || canvas.height !== targetH) {
@@ -1672,24 +1672,24 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           const vw = video.videoWidth;
           const vh = video.videoHeight;
 
-          // zoom Ù…Ù†Ø·Ù‚:
-          // 1x  = Ù†Ù‚Ø±Ø£ 70% Ù…Ù† Ù…Ø±ÙƒØ² Ø§Ù„Ù…Ø³ØªØ´Ø¹Ø± (crop Ø±Ù‚Ù…ÙŠ = ØªÙƒØ¨ÙŠØ± Ø®ÙÙŠÙ)
-          // 0.5x = Ù†Ù‚Ø±Ø£ 100% Ù…Ù† Ø§Ù„Ù…Ø³ØªØ´Ø¹Ø± (Ø²Ø§ÙˆÙŠØ© Ø£ÙˆØ³Ø¹ = wide angle Ø±Ù‚Ù…ÙŠ)
-          // Ø§Ù„ÙØ±Ù‚ ÙŠÙƒÙˆÙ† ÙˆØ§Ø¶Ø­Ø§Ù‹ ÙˆÙ…Ø­Ø³ÙˆØ³Ø§Ù‹ Ø¨ÙŠÙ† Ø§Ù„ÙˆØ¶Ø¹ÙŠÙ†
+          // zoom ãäØŞ:
+          // 1x  = äŞÑÃ 70% ãä ãÑßÒ ÇáãÓÊÔÚÑ (crop ÑŞãí = ÊßÈíÑ Îİíİ)
+          // 0.5x = äŞÑÃ 100% ãä ÇáãÓÊÔÚÑ (ÒÇæíÉ ÃæÓÚ = wide angle ÑŞãí)
+          // ÇáİÑŞ íßæä æÇÖÍÇğ æãÍÓæÓÇğ Èíä ÇáæÖÚíä
           const readFraction = zoom === 0.5 ? 1.0 : 0.7;
           const srcW = vw * readFraction;
           const srcH = vh * readFraction;
           const srcX = (vw - srcW) / 2;
           const srcY = (vh - srcH) / 2;
 
-          // cover: Ù…Ù„Ø¡ Ø§Ù„Ø¥Ø·Ø§Ø± 9:16 Ø¨Ø¯ÙˆÙ† Ø£Ø´Ø±Ø·Ø© Ø³ÙˆØ¯Ø§Ø¡
+          // cover: ãáÁ ÇáÅØÇÑ 9:16 ÈÏæä ÃÔÑØÉ ÓæÏÇÁ
           const scale = Math.max(targetW / srcW, targetH / srcH);
           const dw = srcW * scale;
           const dh = srcH * scale;
           const dx = (targetW - dw) / 2;
           const dy = (targetH - dh) / 2;
 
-          // Ø¥Ù† ÙƒØ§Ù†Øª Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ Ø£Ù…Ø§Ù…ÙŠØ© Ù†Ø±Ø³Ù… Ù…Ø±Ø¢Ø© Ø£ÙÙ‚ÙŠØ© Ù„ØªØ·Ø§Ø¨Ù‚ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©
+          // Åä ßÇäÊ ÇáßÇãíÑÇ ÃãÇãíÉ äÑÓã ãÑÂÉ ÃİŞíÉ áÊØÇÈŞ ÇáãÚÇíäÉ
           if (facingMode === 'user') {
             ctx.translate(targetW, 0);
             ctx.scale(-1, 1);
@@ -1706,17 +1706,17 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [activeFilterCss, facingMode, zoom]);
 
-  // Ù…Ø­Ø§ÙˆÙ„Ø© ØªØ·Ø¨ÙŠÙ‚ ØªÙƒØ¨ÙŠØ± Ø¹ØªØ§Ø¯ Ø£Ù‚Ù„ Ù…Ù† 1x (Ø¨Ø¹Ø¶ Ø§Ù„Ø£Ø¬Ù‡Ø²Ø© ØªØ¯Ø¹Ù… zoom < 1 ÙƒÙ‚ÙŠØ¯ Ø¹Ù„Ù‰ Ù†ÙØ³
-  // Ø§Ù„Ù…Ø³ØªØ´Ø¹Ø±) â€” ØªÙØ³ØªØ®Ø¯Ù… ÙÙ‚Ø· ÙƒØ®ÙŠØ§Ø± Ø§Ø­ØªÙŠØ§Ø·ÙŠ Ø¥Ù† Ù„Ù… Ù†Ø¬Ø¯ Ø¬Ù‡Ø§Ø² Ø¹Ø¯Ø³Ø© ÙˆØ§Ø³Ø¹Ø© Ù…Ù†ÙØµÙ„.
+  // ãÍÇæáÉ ÊØÈíŞ ÊßÈíÑ ÚÊÇÏ ÃŞá ãä 1x (ÈÚÖ ÇáÃÌåÒÉ ÊÏÚã zoom < 1 ßŞíÏ Úáì äİÓ
+  // ÇáãÓÊÔÚÑ) — ÊõÓÊÎÏã İŞØ ßÎíÇÑ ÇÍÊíÇØí Åä áã äÌÏ ÌåÇÒ ÚÏÓÉ æÇÓÚÉ ãäİÕá.
   useEffect(() => {
     let cancelled = false;
     async function applyHardwareZoom() {
-      if (ultraWideDeviceId) { if (!cancelled) setHardwareZoomOk(true); return; } // Ù†Ø³ØªØ®Ø¯Ù… Ø§Ù„Ø¬Ù‡Ø§Ø² Ø§Ù„Ù…Ø®ØµØµ Ø£ØµÙ„Ù‹Ø§
+      if (ultraWideDeviceId) { if (!cancelled) setHardwareZoomOk(true); return; } // äÓÊÎÏã ÇáÌåÇÒ ÇáãÎÕÕ ÃÕáğÇ
       const track = streamRef.current?.getVideoTracks()[0];
       if (!track) { if (!cancelled) setHardwareZoomOk(false); return; }
       try {
         const caps = (track.getCapabilities?.() as MediaTrackCapabilities & { zoom?: { min: number; max: number } }) ?? {};
-        // Ù„Ø§ Ù†Ø·Ø¨Ù‘Ù‚ zoom Ø¹ØªØ§Ø¯ÙŠ Ø¹Ù†Ø¯ 1x â€” Ø¨Ø¹Ø¶ Ø§Ù„Ø£Ø¬Ù‡Ø²Ø© ØªÙØ³Ù‘Ø±Ù‡ ÙƒÙ‚ØµÙ‘ Ø±Ù‚Ù…ÙŠ
+        // áÇ äØÈøŞ zoom ÚÊÇÏí ÚäÏ 1x — ÈÚÖ ÇáÃÌåÒÉ ÊİÓøÑå ßŞÕø ÑŞãí
         if (zoom === 1) {
           if (caps.zoom) {
             try {
@@ -1731,14 +1731,14 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           if (!cancelled) setHardwareZoomOk(true);
           return;
         }
-      } catch { /* ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ… Ø¹Ù„Ù‰ Ù‡Ø°Ø§ Ø§Ù„Ø¬Ù‡Ø§Ø² */ }
+      } catch { /* ÛíÑ ãÏÚæã Úáì åĞÇ ÇáÌåÇÒ */ }
       if (!cancelled) setHardwareZoomOk(false);
     }
     void applyHardwareZoom();
     return () => { cancelled = true; };
   }, [zoom, facingMode, ultraWideDeviceId]);
 
-  // ØªÙ†Ø¸ÙŠÙ ÙƒØ§Ù…Ù„ Ø¹Ù†Ø¯ Ø¥Ø²Ø§Ù„Ø© Ø§Ù„Ù…ÙƒÙˆÙ‘Ù†
+  // ÊäÙíİ ßÇãá ÚäÏ ÅÒÇáÉ Çáãßæøä
   useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach(t => t.stop());
@@ -1787,14 +1787,14 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     setIsRecording(false);
   }
 
-  // Ø¹Ø¯Ù‘Ø§Ø¯ Ù…Ø¯Ø© Ø§Ù„ØªØ³Ø¬ÙŠÙ„
+  // ÚÏøÇÏ ãÏÉ ÇáÊÓÌíá
   useEffect(() => {
     if (!isRecording) return;
     const interval = setInterval(() => setRecordSeconds(s => s + 1), 1000);
     return () => clearInterval(interval);
   }, [isRecording]);
 
-  // Ù†Ù‚Ø±Ø© Ù‚ØµÙŠØ±Ø© = ØµÙˆØ±Ø©ØŒ Ø¶ØºØ· Ù…Ø·ÙˆÙ‘Ù„ (ÙÙˆÙ‚ 320ms) = Ø¨Ø¯Ø¡ ØªØ³Ø¬ÙŠÙ„ ÙÙŠØ¯ÙŠÙˆ
+  // äŞÑÉ ŞÕíÑÉ = ÕæÑÉ¡ ÖÛØ ãØæøá (İæŞ 320ms) = ÈÏÁ ÊÓÌíá İíÏíæ
   function handlePressStart() {
     if (captured) return;
     pressTimerRef.current = setTimeout(() => {
@@ -1819,7 +1819,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     const next = !flashOn;
     try {
       await track.applyConstraints({ advanced: [{ torch: next } as unknown as MediaTrackConstraintSet] });
-    } catch { /* Ø§Ù„ÙÙ„Ø§Ø´ ØºÙŠØ± Ù…Ø¯Ø¹ÙˆÙ… Ø¹Ù„Ù‰ Ù‡Ø°Ø§ Ø§Ù„Ø¬Ù‡Ø§Ø² â€” Ù†ØªØ¬Ø§Ù‡Ù„ Ø¨ØµÙ…Øª */ }
+    } catch { /* ÇáİáÇÔ ÛíÑ ãÏÚæã Úáì åĞÇ ÇáÌåÇÒ — äÊÌÇåá ÈÕãÊ */ }
     setFlashOn(next);
   }
 
@@ -1840,7 +1840,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   }
 
   function requestClose() {
-    // Ø¥ØºÙ„Ø§Ù‚ Ø¨Ø§Ù†Ø²Ù„Ø§Ù‚ Ù„Ù„Ø£Ø³ÙÙ„ Ø«Ù… Ø¥Ø²Ø§Ù„Ø© Ø§Ù„Ù…ÙƒÙˆÙ‘Ù†
+    // ÅÛáÇŞ ÈÇäÒáÇŞ ááÃÓİá Ëã ÅÒÇáÉ Çáãßæøä
     setClosing(true);
     setTimeout(() => {
       streamRef.current?.getTracks().forEach(t => t.stop());
@@ -1860,14 +1860,14 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             type: captured.type === 'video' ? 'video/webm' : 'image/jpeg',
           });
 
-      // Ø¥Ø°Ø§ Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…ÙˆØ³ÙŠÙ‚Ù‰ ÙˆÙ„Ø§ Ù†Øµ â€” Ù†Ø³ØªØ®Ø¯Ù… onPublish Ø§Ù„Ù…Ø¨Ø§Ø´Ø± (legacy)
+      // ÅĞÇ áÇ ÊæÌÏ ãæÓíŞì æáÇ äÕ — äÓÊÎÏã onPublish ÇáãÈÇÔÑ (legacy)
       if (!selectedMusic && !selectedBuiltinMusic && !overlayText.trim()) {
         await onPublish(mediaFile);
         requestClose();
         return;
       }
 
-      // Ù†Ø±Ø³Ù„ multipart/form-data Ù…Ø¹ Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰ ÙˆØ§Ù„Ù†Øµ
+      // äÑÓá multipart/form-data ãÚ ÇáãæÓíŞì æÇáäÕ
       const form = new FormData();
       form.append('media', mediaFile);
       if (overlayText.trim()) form.append('overlayText', overlayText.trim());
@@ -1883,7 +1883,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
       if (selectedMusic) {
         form.append('audio', selectedMusic.file);
       } else if (selectedBuiltinMusic) {
-        // Ù†Ø­Ù…Ù‘Ù„ Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰ Ø§Ù„Ù…Ø¯Ù…Ø¬Ø© ÙˆÙ†Ø±ÙØ¹Ù‡Ø§
+        // äÍãøá ÇáãæÓíŞì ÇáãÏãÌÉ æäÑİÚåÇ
         const track = BUILTIN_MUSIC.find(m => m.id === selectedBuiltinMusic);
         if (track) {
           try {
@@ -1891,7 +1891,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             const blob = await resp.blob();
             const audioFile = new File([blob], `music-${track.id}.mp3`, { type: 'audio/mpeg' });
             form.append('audio', audioFile);
-          } catch { /* ØªØ¬Ø§Ù‡Ù„ Ø®Ø·Ø£ ØªØ­Ù…ÙŠÙ„ Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰ */ }
+          } catch { /* ÊÌÇåá ÎØÃ ÊÍãíá ÇáãæÓíŞì */ }
         }
       }
 
@@ -1908,7 +1908,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
       requestClose();
     } catch (err) {
       console.error('[publish] caught error:', err);
-      setError('ØªØ¹Ø°Ø± Ù†Ø´Ø± Ø§Ù„Ù‚ØµØ© â€” Ø­Ø§ÙˆÙ„ Ù…Ø±Ø© Ø«Ø§Ù†ÙŠØ©');
+      setError('ÊÚĞÑ äÔÑ ÇáŞÕÉ — ÍÇæá ãÑÉ ËÇäíÉ');
       setPublishing(false);
     }
   }
@@ -1937,7 +1937,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         onClick={handleVideoDoubleTap}
         style={{ position: 'relative', flex: 1, overflow: 'hidden', display: captured ? 'none' : 'block', background: '#000' }}
       >
-        {/* Ù…Ø¹Ø§ÙŠÙ†Ø© Ù…Ø¨Ø§Ø´Ø±Ø© â€” cover ÙŠÙ…Ù„Ø£ Ø§Ù„Ø´Ø§Ø´Ø© */}
+        {/* ãÚÇíäÉ ãÈÇÔÑÉ — cover íãáÃ ÇáÔÇÔÉ */}
         <video
           ref={videoRef}
           muted
@@ -1948,9 +1948,9 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             width: '100%', height: '100%',
             objectFit: 'cover',
             background: '#000',
-            // 1x  = scale(1/0.7 â‰ˆ 1.43) â†’ crop Ø§Ù„Ù…Ù†ØªØµÙ â†’ ØªÙƒØ¨ÙŠØ± Ø®ÙÙŠÙ
-            // 0.5x = scale(1)             â†’ ÙƒØ§Ù…Ù„ Ø§Ù„Ù…Ø³ØªØ´Ø¹Ø± â†’ Ø²Ø§ÙˆÙŠØ© Ø£ÙˆØ³Ø¹
-            // Ù†Ø¬Ù…Ø¹ Ù…Ø¹ mirror Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ Ø§Ù„Ø£Ù…Ø§Ù…ÙŠØ©
+            // 1x  = scale(1/0.7 ? 1.43) ? crop ÇáãäÊÕİ ? ÊßÈíÑ Îİíİ
+            // 0.5x = scale(1)             ? ßÇãá ÇáãÓÊÔÚÑ ? ÒÇæíÉ ÃæÓÚ
+            // äÌãÚ ãÚ mirror ÇáßÇãíÑÇ ÇáÃãÇãíÉ
             transform: facingMode === 'user'
               ? `scaleX(${zoom === 0.5 ? -1 : -(1 / 0.7)}) scaleY(${zoom === 0.5 ? 1 : 1 / 0.7})`
               : zoom === 0.5 ? 'none' : `scale(${1 / 0.7})`,
@@ -1966,7 +1966,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           }}
         />
 
-        {/* â”€â”€ Ø´Ø±ÙŠØ· Ø¹Ù„ÙˆÙŠ Ù…Ø¶ØºÙˆØ· Ù„ÙŠØªÙ†Ø§Ø³Ø¨ Ù…Ø¹ Ø§Ù„Ø£Ø²Ø±Ø§Ø± â”€â”€ */}
+        {/* ?? ÔÑíØ Úáæí ãÖÛæØ áíÊäÇÓÈ ãÚ ÇáÃÒÑÇÑ ?? */}
         <div
           onClick={e => e.stopPropagation()}
           style={{
@@ -2010,7 +2010,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               {flashOn ? <Zap size={16} color="#FFD54A" strokeWidth={2.2} /> : <ZapOff size={16} color="#fff" strokeWidth={2.2} />}
             </motion.button>
-            {/* Ø¬Ø±Ø³ â€” ØªØ¹Ù„ÙŠÙ‚Ø§Øª Ø§Ù„Ø³ØªÙˆØ±ÙŠ ÙÙ‚Ø· */}
+            {/* ÌÑÓ — ÊÚáíŞÇÊ ÇáÓÊæÑí İŞØ */}
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={() => onOpenStoryComments?.()}
@@ -2036,7 +2036,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 </span>
               )}
             </motion.button>
-            {/* Ø£ÙŠÙ‚ÙˆÙ†Ø© Ø§Ù„Ø¥Ø¶Ø§ÙØ© â€” Ø·Ù„Ø¨Ø§Øª Ø§Ù„ØµØ¯Ø§Ù‚Ø© ØªØµÙ„ Ù‡Ù†Ø§ (Ø¨Ø¬Ø§Ù†Ø¨ Ø§Ù„Ø¬Ø±Ø³) */}
+            {/* ÃíŞæäÉ ÇáÅÖÇİÉ — ØáÈÇÊ ÇáÕÏÇŞÉ ÊÕá åäÇ (ÈÌÇäÈ ÇáÌÑÓ) */}
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={() => setRequestsBoxOpen(true)}
@@ -2058,7 +2058,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           </div>
         </div>
 
-        {/* Ø¨ÙˆÙƒØ³ Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ø¥Ø¶Ø§ÙØ© + Ø¨Ø­Ø« ÙŠÙˆØ²Ø±Ø§Øª (Ù†ÙØ³ Ø´ÙƒÙ„ Ø§Ù„Ø¨ÙƒØ³) */}
+        {/* ÈæßÓ ØáÈÇÊ ÇáÅÖÇİÉ + ÈÍË íæÒÑÇÊ (äİÓ Ôßá ÇáÈßÓ) */}
         {requestsBoxOpen && (
           <div
             onClick={e => { e.stopPropagation(); setRequestsBoxOpen(false); }}
@@ -2083,14 +2083,14 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ø¥Ø¶Ø§ÙØ©</span>
+                <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>ØáÈÇÊ ÇáÅÖÇİÉ</span>
                 <button type="button" onClick={() => setRequestsBoxOpen(false)}
                   style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <X size={16} />
                 </button>
               </div>
 
-              {/* Ø­Ù‚Ù„ Ø¨Ø­Ø« Ø§Ù„ÙŠÙˆØ²Ø±Ø§Øª â€” Ø¯Ø§Ø®Ù„ Ø§Ù„Ø¨ÙƒØ³ Ø¯ÙˆÙ† ØªØºÙŠÙŠØ± Ø´ÙƒÙ„Ù‡ */}
+              {/* ÍŞá ÈÍË ÇáíæÒÑÇÊ — ÏÇÎá ÇáÈßÓ Ïæä ÊÛííÑ Ôßáå */}
               <div style={{ position: 'relative', marginBottom: 12 }}>
                 <Search
                   size={14}
@@ -2100,7 +2100,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 <input
                   value={camSearchQuery}
                   onChange={e => setCamSearchQuery(e.target.value)}
-                  placeholder="Ø§Ø¨Ø­Ø« Ø¹Ù† ÙŠÙˆØ²Ø±â€¦"
+                  placeholder="ÇÈÍË Úä íæÒÑ…"
                   autoComplete="off"
                   style={{
                     width: '100%',
@@ -2119,10 +2119,10 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               {camSearchQuery.trim().length >= 2 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
                   {camSearching && (
-                    <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Ø¬Ø§Ø±ÙŠ Ø§Ù„Ø¨Ø­Ø«â€¦</p>
+                    <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>ÌÇÑí ÇáÈÍË…</p>
                   )}
                   {!camSearching && camSearchResults.length === 0 && (
-                    <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Ù„Ø§ ØªÙˆØ¬Ø¯ Ù†ØªØ§Ø¦Ø¬</p>
+                    <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>áÇ ÊæÌÏ äÊÇÆÌ</p>
                   )}
                   {!camSearching && camSearchResults.map(u => {
                     const isPending = u.friendStatus === 'pending' || u.iRequested;
@@ -2136,16 +2136,16 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                         <UserAvatar name={u.name || u.username || '?'} avatarUrl={u.avatarUrl ?? null} size={40} />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.82rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {u.name || u.username || 'Ù…Ø³ØªØ®Ø¯Ù…'}
+                            {u.name || u.username || 'ãÓÊÎÏã'}
                           </p>
                           {u.username && (
                             <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', margin: '2px 0 0' }}>@{u.username}</p>
                           )}
                         </div>
                         {isFriend ? (
-                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'rgba(0,188,212,0.85)', padding: '4px 8px' }}>ØµØ¯ÙŠÙ‚</span>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'rgba(0,188,212,0.85)', padding: '4px 8px' }}>ÕÏíŞ</span>
                         ) : isPending ? (
-                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'rgba(255,255,255,0.45)', padding: '4px 8px' }}>Ø¨Ø§Ù†ØªØ¸Ø§Ø±</span>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'rgba(255,255,255,0.45)', padding: '4px 8px' }}>ÈÇäÊÙÇÑ</span>
                         ) : (
                           <button
                             type="button"
@@ -2174,8 +2174,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                   }}>
                     <UserPlus size={20} color="#ef4444" />
                   </div>
-                  <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ø·Ù„Ø¨Ø§Øª Ø¥Ø¶Ø§ÙØ©</p>
-                  <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', margin: '8px 0 0' }}>Ø§Ø¨Ø­Ø« Ø¹Ù† ÙŠÙˆØ²Ø± Ø¨Ø§Ù„Ø£Ø¹Ù„Ù‰ Ø£Ùˆ Ø§Ù†ØªØ¸Ø± Ø·Ù„Ø¨Ø§Øª ÙˆØ§Ø±Ø¯Ø©</p>
+                  <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>áÇ íæÌÏ ØáÈÇÊ ÅÖÇİÉ</p>
+                  <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', margin: '8px 0 0' }}>ÇÈÍË Úä íæÒÑ ÈÇáÃÚáì Ãæ ÇäÊÙÑ ØáÈÇÊ æÇÑÏÉ</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
@@ -2188,7 +2188,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                       <UserAvatar name={req.name || req.username || '?'} avatarUrl={req.avatarUrl ?? null} size={40} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.82rem', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {req.name || req.username || 'Ù…Ø³ØªØ®Ø¯Ù…'}
+                          {req.name || req.username || 'ãÓÊÎÏã'}
                         </p>
                         {req.username && (
                           <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', margin: '2px 0 0' }}>@{req.username}</p>
@@ -2242,7 +2242,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           </div>
         )}
 
-        {/* Ø´Ø±ÙŠØ· ÙÙ„Ø§ØªØ± ÙÙˆÙ‚ Ø§Ù„Ø²ÙˆÙ… ÙˆØ§Ù„Ø¯Ø§Ø¦Ø±Ø© */}
+        {/* ÔÑíØ İáÇÊÑ İæŞ ÇáÒæã æÇáÏÇÆÑÉ */}
         <div
           onClick={e => e.stopPropagation()}
           style={{
@@ -2266,7 +2266,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             }}
           >
             <SlidersHorizontal size={13} strokeWidth={2.2} />
-            ÙÙ„Ø§ØªØ±{filter !== 'none' ? ` Â· ${CAMERA_FILTERS.find(f => f.id === filter)?.label ?? ''}` : ''}
+            İáÇÊÑ{filter !== 'none' ? ` · ${CAMERA_FILTERS.find(f => f.id === filter)?.label ?? ''}` : ''}
           </motion.button>
           {filtersOpen && (
             <div style={{
@@ -2290,7 +2290,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           )}
         </div>
 
-        {/* Ø²ÙˆÙ… 0.5x / 1x â€” ÙÙˆÙ‚ Ø¯Ø§Ø¦Ø±Ø© Ø§Ù„ØªØµÙˆÙŠØ± */}
+        {/* Òæã 0.5x / 1x — İæŞ ÏÇÆÑÉ ÇáÊÕæíÑ */}
         <div
           onClick={e => e.stopPropagation()}
           style={{
@@ -2319,7 +2319,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           ))}
         </div>
 
-        {/* Ø¯Ø§Ø¦Ø±Ø© Ø§Ù„ØªØµÙˆÙŠØ± + Ø²Ø± Ù…ÙƒØªØ¨Ø© Ø§Ù„ØµÙˆØ± + Ø²Ø± Ø¥ØºÙ„Ø§Ù‚ */}
+        {/* ÏÇÆÑÉ ÇáÊÕæíÑ + ÒÑ ãßÊÈÉ ÇáÕæÑ + ÒÑ ÅÛáÇŞ */}
         <div
           onClick={e => e.stopPropagation()}
           style={{
@@ -2330,9 +2330,9 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             padding: '0 20px',
           }}
         >
-          {/* Ø²Ø± Ù…ÙƒØªØ¨Ø© Ø§Ù„ØµÙˆØ± â€” ÙŠÙØªØ­ file picker */}
+          {/* ÒÑ ãßÊÈÉ ÇáÕæÑ — íİÊÍ file picker */}
           <label
-            aria-label="Ø§Ø®ØªÙŠØ§Ø± ØµÙˆØ±Ø© Ù…Ù† Ø§Ù„Ù…ÙƒØªØ¨Ø©"
+            aria-label="ÇÎÊíÇÑ ÕæÑÉ ãä ÇáãßÊÈÉ"
             className="cam-gallery-btn"
           >
             <Images size={20} strokeWidth={2.1} />
@@ -2356,7 +2356,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             onPointerUp={handlePressEnd}
             onPointerCancel={handlePressEnd}
             onPointerLeave={() => { if (isRecordingRef.current) stopRecording(); }}
-            aria-label={isRecording ? 'Ø¥ÙŠÙ‚Ø§Ù Ø§Ù„ØªØ³Ø¬ÙŠÙ„' : 'Ø§Ù„ØªÙ‚Ø§Ø·'}
+            aria-label={isRecording ? 'ÅíŞÇİ ÇáÊÓÌíá' : 'ÇáÊŞÇØ'}
             style={{
               width: 72, height: 72, borderRadius: '50%',
               border: `5px solid ${isRecording ? '#ef4444' : '#fff'}`,
@@ -2375,7 +2375,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={requestClose}
-            aria-label="Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§"
+            aria-label="ÅÛáÇŞ ÇáßÇãíÑÇ"
             style={{
               width: 46, height: 46, borderRadius: '50%', flexShrink: 0,
               background: 'rgba(0,0,0,0.55)',
@@ -2389,7 +2389,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         </div>
       </div>
 
-      {/* Ù…Ø¹Ø§ÙŠÙ†Ø© Ø¨Ø¹Ø¯ Ø§Ù„ØªØµÙˆÙŠØ± */}
+      {/* ãÚÇíäÉ ÈÚÏ ÇáÊÕæíÑ */}
       {captured && (
         <div style={{ position: 'relative', flex: 1, background: '#000', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0 }}>
@@ -2507,14 +2507,14 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 <span className="orb-bar" />
               </div>
             )}
-            <motion.button whileTap={{ scale: 0.9 }} onClick={requestClose} aria-label="Ø¥ØºÙ„Ø§Ù‚" className="story-close-btn">
+            <motion.button whileTap={{ scale: 0.9 }} onClick={requestClose} aria-label="ÅÛáÇŞ" className="story-close-btn">
               <X size={18} strokeWidth={2.4} />
             </motion.button>
             {overlayText.trim() && (
-              <div className="story-drag-hint">Ø§Ø³Ø­Ø¨ Ø§Ù„Ù†Øµ Ù„ØªØºÙŠÙŠØ± Ù…ÙˆØ¶Ø¹Ù‡</div>
+              <div className="story-drag-hint">ÇÓÍÈ ÇáäÕ áÊÛííÑ ãæÖÚå</div>
             )}
             {(selectedMusic || selectedBuiltinMusic) && (
-              <div className="story-drag-hint" style={{ bottom: overlayText.trim() ? 30 : 8 }}>Ø§Ø³Ø­Ø¨ Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰ â€¢ Ù‚Ø±Ù‘Ø¨ Ø¥ØµØ¨Ø¹ÙŠÙ† Ù„Ù„ØªÙƒØ¨ÙŠØ±</div>
+              <div className="story-drag-hint" style={{ bottom: overlayText.trim() ? 30 : 8 }}>ÇÓÍÈ ÇáãæÓíŞì • ŞÑøÈ ÅÕÈÚíä ááÊßÈíÑ</div>
             )}
           </div>
 
@@ -2523,23 +2523,23 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           <div className="story-preview-bar">
             <motion.button whileTap={{ scale: 0.97 }} onClick={() => setEditMode(true)} className="story-edit-btn">
               <PenLine size={15} strokeWidth={2.2} />
-              ØªØ­Ø±ÙŠØ± (Ù†Øµ + Ù…ÙˆØ³ÙŠÙ‚Ù‰)
+              ÊÍÑíÑ (äÕ + ãæÓíŞì)
               {(overlayText.trim() || selectedMusic || selectedBuiltinMusic) && (
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'hsl(var(--primary))', display: 'inline-block' }} />
               )}
             </motion.button>
             <motion.button whileTap={{ scale: 0.97 }} disabled={publishing} onClick={() => void publish()} className="story-edit-publish-btn">
-              {publishing ? 'Ø¬Ø§Ø±Ù Ø§Ù„Ù†Ø´Ø±â€¦' : (publishLabel || (allowMusic ? 'Ù†Ø´Ø± Ù‚ØµØ©' : 'Ù†Ø´Ø± Ø¥Ø¹Ù„Ø§Ù† Ù„Ù„Ù‚ØµØ©'))}
+              {publishing ? 'ÌÇÑö ÇáäÔÑ…' : (publishLabel || (allowMusic ? 'äÔÑ ŞÕÉ' : 'äÔÑ ÅÚáÇä ááŞÕÉ'))}
             </motion.button>
             <div style={{ display: 'flex', gap: 8 }}>
-              <motion.button whileTap={{ scale: 0.97 }} onClick={retake} disabled={publishing} className="story-edit-retake-btn">Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„ØªØµÙˆÙŠØ±</motion.button>
-              <motion.button whileTap={{ scale: 0.97 }} onClick={requestClose} disabled={publishing} className="story-edit-retake-btn">Ø¥ØºÙ„Ø§Ù‚</motion.button>
+              <motion.button whileTap={{ scale: 0.97 }} onClick={retake} disabled={publishing} className="story-edit-retake-btn">ÅÚÇÏÉ ÇáÊÕæíÑ</motion.button>
+              <motion.button whileTap={{ scale: 0.97 }} onClick={requestClose} disabled={publishing} className="story-edit-retake-btn">ÅÛáÇŞ</motion.button>
             </div>
           </div>
         </div>
       )}
 
-      {/* â”€â”€ Ø´Ø§Ø´Ø© Ø§Ù„ØªØ­Ø±ÙŠØ±: Ù†Øµ + Ù…ÙˆØ³ÙŠÙ‚Ù‰ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ?? ÔÇÔÉ ÇáÊÍÑíÑ: äÕ + ãæÓíŞì ??????????????????????????????????????? */}
       <AnimatePresence>
         {editMode && captured && (
           <motion.div
@@ -2557,24 +2557,24 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             </div>
 
             <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              {/* Ø´Ø±ÙŠØ· Ø¹Ù„ÙˆÙŠ */}
+              {/* ÔÑíØ Úáæí */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(env(safe-area-inset-top,0px),12px) 16px 10px' }}>
                 <button className="story-edit-btn-back" onClick={() => setEditMode(false)}>
-                  <ArrowLeft size={18} strokeWidth={2.4} /> Ø±Ø¬ÙˆØ¹
+                  <ArrowLeft size={18} strokeWidth={2.4} /> ÑÌæÚ
                 </button>
-                <span style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem' }}>ØªØ­Ø±ÙŠØ± Ø§Ù„Ù‚ØµØ©</span>
-                <button className="story-edit-btn-done" onClick={() => setEditMode(false)}>ØªÙ…</button>
+                <span style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem' }}>ÊÍÑíÑ ÇáŞÕÉ</span>
+                <button className="story-edit-btn-done" onClick={() => setEditMode(false)}>Êã</button>
               </div>
 
-              {/* Ø­Ù‚Ù„ Ø§Ù„Ù†Øµ */}
+              {/* ÍŞá ÇáäÕ */}
               <div style={{ padding: '0 16px 12px' }}>
                 <div className="story-edit-section">
                   <p className="story-edit-section-label">
-                    <PenLine size={11} style={{ display: 'inline', marginLeft: 4 }} />Ù†Øµ Ø¹Ù„Ù‰ Ø§Ù„ØµÙˆØ±Ø©
+                    <PenLine size={11} style={{ display: 'inline', marginLeft: 4 }} />äÕ Úáì ÇáÕæÑÉ
                   </p>
                   <input
                     className="story-edit-text-input"
-                    placeholder="Ø§ÙƒØªØ¨ Ø´ÙŠØ¦Ø§Ù‹â€¦"
+                    placeholder="ÇßÊÈ ÔíÆÇğ…"
                     value={overlayText}
                     onChange={e => setOverlayText(e.target.value)}
                     maxLength={80}
@@ -2590,23 +2590,23 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 </div>
               </div>
 
-              {/* Ù‚Ø³Ù… Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰ â€” Ù„Ù„Ø£ÙØ±Ø§Ø¯ ÙÙ‚Ø· (Ø§Ù„Ø´Ø±ÙƒØ§Øª Ø¨Ø¯ÙˆÙ† Ù…ÙˆØ³ÙŠÙ‚Ù‰) */}
+              {/* ŞÓã ÇáãæÓíŞì — ááÃİÑÇÏ İŞØ (ÇáÔÑßÇÊ ÈÏæä ãæÓíŞì) */}
               {allowMusic && (
               <div style={{ padding: '0 16px', flex: 1, overflowY: 'auto' }}>
                 <div className="story-edit-section">
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                     <p className="story-edit-section-label">
-                      <Music size={11} style={{ display: 'inline', marginLeft: 4 }} />Ù…ÙˆØ³ÙŠÙ‚Ù‰ Ø®Ù„ÙÙŠØ©
+                      <Music size={11} style={{ display: 'inline', marginLeft: 4 }} />ãæÓíŞì ÎáİíÉ
                     </p>
                     {(selectedBuiltinMusic || selectedMusic) && (
                       <button type="button" className="story-music-remove-btn"
                         onClick={() => { setSelectedBuiltinMusic(null); setSelectedMusic(null); setSelectedSearchMusic(null); stopMusicPreview(); }}>
-                        Ø¥Ø²Ø§Ù„Ø©
+                        ÅÒÇáÉ
                       </button>
                     )}
                   </div>
 
-                  {/* Ø´Ø§Ø±Ø© Ø§Ù„Ø§Ø®ØªÙŠØ§Ø± Ø§Ù„Ø­Ø§Ù„ÙŠ */}
+                  {/* ÔÇÑÉ ÇáÇÎÊíÇÑ ÇáÍÇáí */}
                   {selectedMusic && (
                     <div className="story-music-selected-banner">
                       <Music size={14} color="hsl(var(--primary))" />
@@ -2615,20 +2615,20 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                     </div>
                   )}
 
-                  {/* â”€â”€ Ø¨Ø­Ø« iTunes â”€â”€ */}
+                  {/* ?? ÈÍË iTunes ?? */}
                   <div className="story-music-search-wrap">
                     <Search size={14} className="story-music-search-icon" />
                     <input
                       className="story-music-search-input"
-                      placeholder="Ø§Ø¨Ø­Ø« Ø¹Ù† Ø£ØºÙ†ÙŠØ© Ø£Ùˆ ÙÙ†Ø§Ù†â€¦"
+                      placeholder="ÇÈÍË Úä ÃÛäíÉ Ãæ İäÇä…"
                       value={musicQuery}
                       onChange={e => handleMusicQueryChange(e.target.value)}
                     />
                   </div>
 
-                  {musicSearching && <p className="story-music-search-empty">Ø¬Ø§Ø±Ù Ø§Ù„Ø¨Ø­Ø«â€¦</p>}
+                  {musicSearching && <p className="story-music-search-empty">ÌÇÑö ÇáÈÍË…</p>}
                   {!musicSearching && musicQuery.trim() && musicResults.length === 0 && (
-                    <p className="story-music-search-empty">Ù„Ø§ Ù†ØªØ§Ø¦Ø¬ â€” Ø¬Ø±Ù‘Ø¨ ÙƒÙ„Ù…Ø© Ø£Ø®Ø±Ù‰</p>
+                    <p className="story-music-search-empty">áÇ äÊÇÆÌ — ÌÑøÈ ßáãÉ ÃÎÑì</p>
                   )}
 
                   {musicResults.length > 0 && (
@@ -2659,8 +2659,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                                 {isDownloading
                                   ? <span className="cam-spinner" style={{ animation: 'spin 0.7s linear infinite' }} />
                                   : isSelected
-                                    ? <><Check size={12} strokeWidth={2.5} /> ØªÙ…</>
-                                    : <><Download size={12} strokeWidth={2.2} /> Ø§Ø®ØªÙŠØ§Ø±</>
+                                    ? <><Check size={12} strokeWidth={2.5} /> Êã</>
+                                    : <><Download size={12} strokeWidth={2.2} /> ÇÎÊíÇÑ</>
                                 }
                               </button>
                             </div>
@@ -2670,10 +2670,10 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                     </div>
                   )}
 
-                  {/* Ù…Ù‚Ø§Ø·Ø¹ Ù…Ø¯Ù…Ø¬Ø© â€” ØªØ¸Ù‡Ø± ÙÙ‚Ø· Ø¹Ù†Ø¯ Ø¹Ø¯Ù… Ø§Ù„Ø¨Ø­Ø« */}
+                  {/* ãŞÇØÚ ãÏãÌÉ — ÊÙåÑ İŞØ ÚäÏ ÚÏã ÇáÈÍË */}
                   {!musicQuery.trim() && (
                     <>
-                      <p className="story-music-section-title">Ù…Ù‚Ø§Ø·Ø¹ Ù…Ø¯Ù…Ø¬Ø©</p>
+                      <p className="story-music-section-title">ãŞÇØÚ ãÏãÌÉ</p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {BUILTIN_MUSIC.map(track => (
                           <div key={track.id}
@@ -2696,11 +2696,11 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                     </>
                   )}
 
-                  {/* Ø±ÙØ¹ Ù…Ù† Ø§Ù„Ø¬Ù‡Ø§Ø² */}
-                  <p className="story-music-section-title" style={{ marginTop: 12 }}>Ù…Ù† Ø¬Ù‡Ø§Ø²Ùƒ</p>
+                  {/* ÑİÚ ãä ÇáÌåÇÒ */}
+                  <p className="story-music-section-title" style={{ marginTop: 12 }}>ãä ÌåÇÒß</p>
                   <label className="story-music-upload-label">
                     <Music size={15} color="hsl(var(--muted-foreground))" />
-                    <span>{(selectedMusic && !selectedSearchMusic) ? `âœ“ ${selectedMusic.label}` : 'Ø±ÙØ¹ Ù…Ù„Ù ØµÙˆØªÙŠâ€¦'}</span>
+                    <span>{(selectedMusic && !selectedSearchMusic) ? `? ${selectedMusic.label}` : 'ÑİÚ ãáİ ÕæÊí…'}</span>
                     <input type="file" accept="audio/*" style={{ display: 'none' }}
                       onChange={e => {
                         const f = e.target.files?.[0]; if (!f) return;
@@ -2712,7 +2712,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               </div>
               )}
 
-              {/* Ù…Ø¹Ø§ÙŠÙ†Ø© Ø§Ù„Ù†Øµ â€” Ù‚Ø§Ø¨Ù„ Ù„Ù„Ø³Ø­Ø¨ */}
+              {/* ãÚÇíäÉ ÇáäÕ — ŞÇÈá ááÓÍÈ */}
               {overlayText.trim() && (
                 <span
                   className="story-overlay-text story-overlay-draggable"
@@ -2765,7 +2765,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   );
 }
 
-// â”€â”€ StoryViewer â€” fullscreen viewer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? StoryViewer — fullscreen viewer ???????????????????????????????????????????
 function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia, onPublishPhoto, onPublishVideo, onOpenCamera, onDeleteItem, onSendComment, isCompanyPublisher = false }: {
   groups: StoryGroup[];
   startGroupIdx: number;
@@ -2778,7 +2778,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
   onOpenCamera: () => void;
   onDeleteItem: (storyId: number) => void;
   onSendComment: (storyId: number, text: string) => Promise<boolean>;
-  /** Ø´Ø±ÙƒØ© = Ø¥Ø¹Ù„Ø§Ù† Ù„Ù„Ù‚ØµØ©Ø› ÙØ±Ø¯ = Ù†Ø´Ø± Ù‚ØµØ© (Ù…Ø¹ Ù…ÙˆØ³ÙŠÙ‚Ù‰/Ù†Øµ ÙÙŠ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§) */
+  /** ÔÑßÉ = ÅÚáÇä ááŞÕÉº İÑÏ = äÔÑ ŞÕÉ (ãÚ ãæÓíŞì/äÕ İí ÇáßÇãíÑÇ) */
   isCompanyPublisher?: boolean;
 }) {
   const [gIdx, setGIdx] = useState(startGroupIdx);
@@ -2789,9 +2789,9 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Ù…ÙˆØ³ÙŠÙ‚Ù‰ Ø§Ù„Ù‚ØµØ©
+  // ãæÓíŞì ÇáŞÕÉ
   const storyAudioRef = useRef<HTMLAudioElement | null>(null);
-  // â”€â”€ Inline story comment composer â€” stays on this same screen, never navigates away â”€â”€
+  // ?? Inline story comment composer — stays on this same screen, never navigates away ??
   const [commentText, setCommentText] = useState('');
   const [commentSending, setCommentSending] = useState(false);
   const [commentSent, setCommentSent] = useState(false);
@@ -2802,20 +2802,20 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
   const item = group?.items[iIdx];
   const isMyStory = group?.userId === myId;
 
-  // â”€â”€ ØªØªØ¨Ù‘Ø¹ Ø¨Ø§Ù„Ù…Ø¹Ø±Ù‘Ù Ù„Ø§ Ø¨Ø§Ù„ÙÙ‡Ø±Ø³ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // groups ØªØªØ¬Ø¯Ø¯ ÙƒÙ„ Ø«Ø§Ù†ÙŠØªÙŠÙ† ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹ (Ø±ÙŠÙØ±Ø´ Ø§Ù„Ù‚ØµØµ) ÙˆÙ‚Ø¯ ÙŠØªØºÙŠÙ‘Ø± ØªØ±ØªÙŠØ¨Ù‡Ø§ Ø£Ùˆ
-  // ØªÙØ­Ø°Ù/ØªÙØ¶Ø§Ù Ø¹Ù†Ø§ØµØ± Ù…Ù†Ù‡Ø§ Ù…Ù† Ù…ÙƒØ§Ù† Ø¢Ø®Ø±. Ù„Ùˆ Ø§Ø¹ØªÙ…Ø¯Ù†Ø§ Ø¹Ù„Ù‰ gIdx/iIdx ÙÙ‚Ø· ÙƒØ£Ø±Ù‚Ø§Ù…
-  // ÙÙ‡Ø±Ø³Ø©ØŒ ÙØ£ÙŠ ØªØºÙŠÙ‘Ø± ÙÙŠ Ø§Ù„Ù…ØµÙÙˆÙØ© ÙŠÙ‚ÙØ² Ø¨Ø§Ù„Ù…ÙØ´Ø§Ù‡Ø¯ Ù„Ø³ØªÙˆØ±ÙŠ Ø®Ø§Ø·Ø¦Ø© Ø£Ùˆ ÙŠÙØ±Øº Ø§Ù„Ø´Ø§Ø´Ø©.
-  // Ù„Ø°Ù„Ùƒ Ù†Ø­ØªÙØ¸ Ø¨Ù…Ø¹Ø±Ù‘Ù Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… ÙˆØ§Ù„Ø¹Ù†ØµØ± Ø§Ù„Ø­Ø§Ù„ÙŠÙŠÙ†ØŒ ÙˆÙ†Ø¹ÙŠØ¯ ØªØ­Ø¯ÙŠØ¯ Ù…ÙˆÙ‚Ø¹Ù‡Ù…Ø§ Ø§Ù„ÙØ¹Ù„ÙŠ
-  // Ø¯Ø§Ø®Ù„ groups Ø§Ù„Ø¬Ø¯ÙŠØ¯Ø© Ø¹Ù†Ø¯ ÙƒÙ„ ØªØ­Ø¯ÙŠØ«ØŒ Ø¨Ø¯Ù„ Ø§Ù„ÙˆØ«ÙˆÙ‚ Ø¨Ø§Ù„ÙÙ‡Ø±Ø³ Ø§Ù„Ù‚Ø¯ÙŠÙ….
+  // ?? ÊÊÈøÚ ÈÇáãÚÑøİ áÇ ÈÇáİåÑÓ ?????????????????????????????????????????????
+  // groups ÊÊÌÏÏ ßá ËÇäíÊíä ÊáŞÇÆíÇğ (ÑíİÑÔ ÇáŞÕÕ) æŞÏ íÊÛíøÑ ÊÑÊíÈåÇ Ãæ
+  // ÊõÍĞİ/ÊõÖÇİ ÚäÇÕÑ ãäåÇ ãä ãßÇä ÂÎÑ. áæ ÇÚÊãÏäÇ Úáì gIdx/iIdx İŞØ ßÃÑŞÇã
+  // İåÑÓÉ¡ İÃí ÊÛíøÑ İí ÇáãÕİæİÉ íŞİÒ ÈÇáãõÔÇåÏ áÓÊæÑí ÎÇØÆÉ Ãæ íİÑÛ ÇáÔÇÔÉ.
+  // áĞáß äÍÊİÙ ÈãÚÑøİ ÇáãÓÊÎÏã æÇáÚäÕÑ ÇáÍÇáííä¡ æäÚíÏ ÊÍÏíÏ ãæŞÚåãÇ ÇáİÚáí
+  // ÏÇÎá groups ÇáÌÏíÏÉ ÚäÏ ßá ÊÍÏíË¡ ÈÏá ÇáæËæŞ ÈÇáİåÑÓ ÇáŞÏíã.
   const viewingUserIdRef = useRef<string | null>(group?.userId ?? null);
   const viewingItemIdRef = useRef<number | null>(null);
   if (group) viewingUserIdRef.current = group.userId;
   if (item) viewingItemIdRef.current = item.id;
 
-  // ØªØ´ØºÙŠÙ„ Ù…ÙˆØ³ÙŠÙ‚Ù‰ Ø§Ù„Ù‚ØµØ© Ø¹Ù†Ø¯ ØªØºÙŠÙ‘Ø± Ø§Ù„Ø¹Ù†ØµØ±
+  // ÊÔÛíá ãæÓíŞì ÇáŞÕÉ ÚäÏ ÊÛíøÑ ÇáÚäÕÑ
   useEffect(() => {
-    // Ø£ÙˆÙ‚Ù Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰ Ø§Ù„Ø³Ø§Ø¨Ù‚Ø©
+    // ÃæŞİ ÇáãæÓíŞì ÇáÓÇÈŞÉ
     if (storyAudioRef.current) {
       storyAudioRef.current.pause();
       storyAudioRef.current.src = '';
@@ -2842,7 +2842,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
     if (targetUserId == null) return;
     const foundGIdx = groups.findIndex(g => g.userId === targetUserId);
     if (foundGIdx === -1) {
-      // Ø§Ù„Ù…Ø¬Ù…ÙˆØ¹Ø© Ø§Ø®ØªÙØª Ø¨Ø§Ù„ÙƒØ§Ù…Ù„ (ÙƒÙ„ Ø¹Ù†Ø§ØµØ±Ù‡Ø§ Ø§ØªØ­Ø°ÙØª/Ø§Ù†ØªÙ‡Øª) â€” Ù†ØºÙ„Ù‚ Ø§Ù„Ù…ÙØ´ØºÙ‘Ù„ Ø¨Ø¯Ù„ ØªØ¬Ù…ÙŠØ¯Ù‡ ÙØ§Ø±ØºØ§Ù‹.
+      // ÇáãÌãæÚÉ ÇÎÊİÊ ÈÇáßÇãá (ßá ÚäÇÕÑåÇ ÇÊÍĞİÊ/ÇäÊåÊ) — äÛáŞ ÇáãõÔÛøá ÈÏá ÊÌãíÏå İÇÑÛÇğ.
       onClose();
       return;
     }
@@ -2856,14 +2856,14 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
     } else if (g.items.length === 0) {
       onClose();
     } else {
-      // Ø§Ù„Ø¹Ù†ØµØ± Ø§Ù„Ù…Ø¹Ø±ÙˆØ¶ Ø§ØªØ­Ø°Ù Ù…Ù† Ù…ÙƒØ§Ù† Ø¢Ø®Ø± (ØªØ¨ÙˆÙŠØ¨ Ø«Ø§Ù†ÙŠ / ØªØ­Ø¯ÙŠØ« ØªÙ„Ù‚Ø§Ø¦ÙŠ) â€”
-      // Ù†Ù†ØªÙ‚Ù„ Ù„Ø£Ù‚Ø±Ø¨ Ø¹Ù†ØµØ± ØµØ§Ù„Ø­ Ø¨Ø¯Ù„ Ø´Ø§Ø´Ø© ÙØ§Ø±ØºØ© ØªÙ†ØªØ¸Ø± Ø®Ø±ÙˆØ¬ ÙˆØ¯Ø®ÙˆÙ„ ÙŠØ¯ÙˆÙŠ.
+      // ÇáÚäÕÑ ÇáãÚÑæÖ ÇÊÍĞİ ãä ãßÇä ÂÎÑ (ÊÈæíÈ ËÇäí / ÊÍÏíË ÊáŞÇÆí) —
+      // ääÊŞá áÃŞÑÈ ÚäÕÑ ÕÇáÍ ÈÏá ÔÇÔÉ İÇÑÛÉ ÊäÊÙÑ ÎÑæÌ æÏÎæá íÏæí.
       setIIdx(prev => Math.min(prev, g.items.length - 1));
     }
   }, [groups]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ÙƒÙ„ Ø³ØªÙˆØ±ÙŠ Ù…Ø³ØªÙ‚Ù„: Ø¹Ù†Ø¯ Ø§Ù„Ø§Ù†ØªÙ‡Ø§Ø¡ Ù…Ù† Ø¢Ø®Ø± Ø¹Ù†ØµØ± Ù„Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ù†ØºÙ„Ù‚ Ø§Ù„Ù…ÙØ´ØºÙ‘Ù„
-  // ÙˆÙ†Ø±Ø¬Ø¹ Ù„Ù„ØµÙØ­Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ© Ø¨Ø¯Ù„ Ø§Ù„Ø§Ù†ØªÙ‚Ø§Ù„ Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ Ù„Ø³ØªÙˆØ±ÙŠ Ù…Ø³ØªØ®Ø¯Ù… Ø¢Ø®Ø±.
+  // ßá ÓÊæÑí ãÓÊŞá: ÚäÏ ÇáÇäÊåÇÁ ãä ÂÎÑ ÚäÕÑ áåĞÇ ÇáãÓÊÎÏã äÛáŞ ÇáãõÔÛøá
+  // æäÑÌÚ ááÕİÍÉ ÇáÑÆíÓíÉ ÈÏá ÇáÇäÊŞÇá ÇáÊáŞÇÆí áÓÊæÑí ãÓÊÎÏã ÂÎÑ.
   const goNext = useCallback(() => {
     if (!group) return;
     if (iIdx < group.items.length - 1) {
@@ -2910,21 +2910,21 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
     try {
       const res = await fetch(`/api/status/${item.id}`, { method: 'DELETE', credentials: 'include' });
       if (!res.ok) {
-        // Ù†Ø·Ø¨Ø¹ ØªÙØ§ØµÙŠÙ„ Ø§Ù„ÙØ´Ù„ ÙÙŠ Ø§Ù„ÙƒÙˆÙ†Ø³ÙˆÙ„ ÙˆÙ†Ø¹Ø±Ø¶ Ø±Ø³Ø§Ù„Ø© Ù„Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø¨Ø¯Ù„ Ø§Ù„ÙØ´Ù„ Ø§Ù„ØµØ§Ù…Øª â€”
-        // Ù‡Ø°Ø§ Ù‡Ùˆ Ø³Ø¨Ø¨ "Ø§Ù„Ø­Ø°Ù Ù…Ø§ ÙŠØ´ØªØºÙ„ Ø£Ø¨Ø¯Ø§Ù‹": Ø§Ù„Ø·Ù„Ø¨ ÙŠÙØ´Ù„ Ù…Ù† Ø§Ù„Ø³ÙŠØ±ÙØ± (401/403/404/500)
-        // ÙˆÙ„Ø§Ø²Ù… Ù†Ø¹Ø±Ù Ø±Ù…Ø² Ø§Ù„Ø®Ø·Ø£ Ø¨Ø§Ù„Ø¶Ø¨Ø· Ù„ØªØ­Ø¯ÙŠØ¯ Ø³Ø¨Ø¨ Ø§Ù„ÙØ´Ù„ Ø§Ù„Ø­Ù‚ÙŠÙ‚ÙŠ ÙÙŠ Ø§Ù„Ù€ API.
+        // äØÈÚ ÊİÇÕíá ÇáİÔá İí ÇáßæäÓæá æäÚÑÖ ÑÓÇáÉ ááãÓÊÎÏã ÈÏá ÇáİÔá ÇáÕÇãÊ —
+        // åĞÇ åæ ÓÈÈ "ÇáÍĞİ ãÇ íÔÊÛá ÃÈÏÇğ": ÇáØáÈ íİÔá ãä ÇáÓíÑİÑ (401/403/404/500)
+        // æáÇÒã äÚÑİ ÑãÒ ÇáÎØÃ ÈÇáÖÈØ áÊÍÏíÏ ÓÈÈ ÇáİÔá ÇáÍŞíŞí İí ÇáÜ API.
         let detail = '';
         try { detail = await res.text(); } catch {/* ignore */}
-        console.error('[StoryViewer] ÙØ´Ù„ Ø­Ø°Ù Ø§Ù„Ø³ØªÙˆØ±ÙŠ', { id: item.id, status: res.status, statusText: res.statusText, body: detail });
-        setDeleteError(`ØªØ¹Ø°Ù‘Ø± Ø­Ø°Ù Ø§Ù„Ø³ØªÙˆØ±ÙŠ (Ø±Ù…Ø² Ø§Ù„Ø®Ø·Ø£ ${res.status}). Ø±Ø§Ø¬Ø¹ Ø§Ù„ÙƒÙˆÙ†Ø³ÙˆÙ„ Ù„Ù„ØªÙØ§ØµÙŠÙ„.`);
+        console.error('[StoryViewer] İÔá ÍĞİ ÇáÓÊæÑí', { id: item.id, status: res.status, statusText: res.statusText, body: detail });
+        setDeleteError(`ÊÚĞøÑ ÍĞİ ÇáÓÊæÑí (ÑãÒ ÇáÎØÃ ${res.status}). ÑÇÌÚ ÇáßæäÓæá ááÊİÇÕíá.`);
         setDeleting(false);
         return;
       }
       onDeleteItem(item.id);
-      // Ø§Ù†ØªÙ‚Ø§Ù„ ÙÙˆØ±ÙŠ ÙˆØ³Ù„Ø³ Ù„Ù„Ø¹Ù†ØµØ± Ø§Ù„ØªØ§Ù„ÙŠ/Ø§Ù„Ø¥ØºÙ„Ø§Ù‚. Ù‡Ø°Ø§ ØªØ®Ù…ÙŠÙ† Ù…ØªÙØ§Ø¦Ù„ Ø¨Ù†Ø§Ø¡Ù‹ Ø¹Ù„Ù‰ Ø§Ù„Ø­Ø§Ù„Ø©
-      // Ø§Ù„Ø­Ø§Ù„ÙŠØ© ÙÙ‚Ø· Ù„ØªÙØ§Ø¯ÙŠ Ø£ÙŠ ÙˆÙ…ÙŠØ¶Ø› Ø§Ù„ØªÙ…ÙˆØ¶Ø¹ Ø§Ù„ØµØ­ÙŠØ­ Ø§Ù„Ù†Ù‡Ø§Ø¦ÙŠ ØªØªÙƒÙÙ‘Ù„ Ø¨Ù‡ Ø§Ù„Ù…Ø²Ø§Ù…Ù†Ø©
-      // Ø¨Ø§Ù„Ù…Ø¹Ø±Ù‘Ù Ø£Ø¹Ù„Ø§Ù‡ (ØªØ¹Ù…Ù„ Ø¨Ø´ÙƒÙ„ ØµØ­ÙŠØ­ Ø­ØªÙ‰ Ù„Ùˆ ØªØºÙŠÙ‘Ø± ØªØ±ØªÙŠØ¨ groups Ø¨ÙØ¹Ù„ Ø§Ù„Ø±ÙŠÙØ±Ø´
-      // Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ ÙƒÙ„ Ø«Ø§Ù†ÙŠØªÙŠÙ† Ø£Ø«Ù†Ø§Ø¡ Ø§Ù„Ø­Ø°Ù).
+      // ÇäÊŞÇá İæÑí æÓáÓ ááÚäÕÑ ÇáÊÇáí/ÇáÅÛáÇŞ. åĞÇ ÊÎãíä ãÊİÇÆá ÈäÇÁğ Úáì ÇáÍÇáÉ
+      // ÇáÍÇáíÉ İŞØ áÊİÇÏí Ãí æãíÖº ÇáÊãæÖÚ ÇáÕÍíÍ ÇáäåÇÆí ÊÊßİøá Èå ÇáãÒÇãäÉ
+      // ÈÇáãÚÑøİ ÃÚáÇå (ÊÚãá ÈÔßá ÕÍíÍ ÍÊì áæ ÊÛíøÑ ÊÑÊíÈ groups ÈİÚá ÇáÑíİÑÔ
+      // ÇáÊáŞÇÆí ßá ËÇäíÊíä ÃËäÇÁ ÇáÍĞİ).
       if (group.items.length <= 1) {
         onClose();
       } else if (iIdx >= group.items.length - 1) {
@@ -2933,8 +2933,8 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
       setConfirmDelete(false);
       setDeleting(false);
     } catch (err) {
-      console.error('[StoryViewer] Ø®Ø·Ø£ Ø´Ø¨ÙƒØ© Ø£Ø«Ù†Ø§Ø¡ Ø­Ø°Ù Ø§Ù„Ø³ØªÙˆØ±ÙŠ', err);
-      setDeleteError('ØªØ¹Ø°Ù‘Ø± Ø§Ù„Ø§ØªØµØ§Ù„ Ø¨Ø§Ù„Ø³ÙŠØ±ÙØ± Ù„Ø­Ø°Ù Ø§Ù„Ø³ØªÙˆØ±ÙŠ. ØªØ­Ù‚Ù‚ Ù…Ù† Ø§Ù„Ø¥Ù†ØªØ±Ù†Øª ÙˆØ­Ø§ÙˆÙ„ Ù…Ø¬Ø¯Ø¯Ø§Ù‹.');
+      console.error('[StoryViewer] ÎØÃ ÔÈßÉ ÃËäÇÁ ÍĞİ ÇáÓÊæÑí', err);
+      setDeleteError('ÊÚĞøÑ ÇáÇÊÕÇá ÈÇáÓíÑİÑ áÍĞİ ÇáÓÊæÑí. ÊÍŞŞ ãä ÇáÅäÊÑäÊ æÍÇæá ãÌÏÏÇğ.');
       setDeleting(false);
     }
   }
@@ -2981,7 +2981,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
           </div>
         ))}
       </div>
-      {/* Story identity and controls â€” intentionally below the progress line */}
+      {/* Story identity and controls — intentionally below the progress line */}
       <div style={{ position: 'absolute', top: 28, left: 0, right: 0, zIndex: 3, display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px' }}>
         <UserAvatar name={group.name} avatarUrl={group.avatarUrl} size={36} style={{ border: '2px solid hsl(var(--card))', boxShadow: 'none' }} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
@@ -2994,26 +2994,26 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
               whileTap={{ scale: 0.88 }}
               onClick={e => { e.stopPropagation(); setStoryMenuOpen(open => !open); }}
               style={{ width: 34, height: 34, borderRadius: '50%', background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-              aria-label="Ø®ÙŠØ§Ø±Ø§Øª Ø§Ù„Ø­Ø§Ù„Ø©"
+              aria-label="ÎíÇÑÇÊ ÇáÍÇáÉ"
             >
               <MoreVertical size={19} strokeWidth={2.2} />
             </motion.button>
             {storyMenuOpen && (
               <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 40, right: 0, minWidth: 142, padding: 6, borderRadius: 12, background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', boxShadow: '0 12px 28px hsl(var(--background)/0.5)' }}>
                 <button onClick={() => { setStoryMenuOpen(false); onAddMedia(); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}>
-                  <Plus size={16} color="hsl(var(--primary))" /> {isCompanyPublisher ? 'Ù†Ø´Ø± Ø¥Ø¹Ù„Ø§Ù† Ù„Ù„Ù‚ØµØ©' : 'Ù†Ø´Ø± Ù‚ØµØ©'}
+                  <Plus size={16} color="hsl(var(--primary))" /> {isCompanyPublisher ? 'äÔÑ ÅÚáÇä ááŞÕÉ' : 'äÔÑ ŞÕÉ'}
                 </button>
                 <button onClick={() => { setStoryMenuOpen(false); onOpenCamera(); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}>
-                  <Camera size={16} color="hsl(var(--primary))" /> {isCompanyPublisher ? 'Ù†Ø´Ø± Ø¥Ø¹Ù„Ø§Ù† Ù„Ù„Ù‚ØµØ© Ø¹Ø¨Ø±' : 'Ù†Ø´Ø± Ø§Ù„Ù‚ØµØ© Ø¹Ø¨Ø±'}
+                  <Camera size={16} color="hsl(var(--primary))" /> {isCompanyPublisher ? 'äÔÑ ÅÚáÇä ááŞÕÉ ÚÈÑ' : 'äÔÑ ÇáŞÕÉ ÚÈÑ'}
                 </button>
                 <button onClick={() => { setStoryMenuOpen(false); setDeleteError(null); setConfirmDelete(true); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--destructive))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}>
-                  <Trash2 size={16} /> Ø­Ø°Ù Ø§Ù„Ø­Ø§Ù„Ø©
+                  <Trash2 size={16} /> ÍĞİ ÇáÍÇáÉ
                 </button>
               </div>
             )}
           </div>
         )}
-        <button onClick={e => { e.stopPropagation(); onClose(); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--foreground))', cursor: 'pointer', padding: 4 }} aria-label="Ø¥ØºÙ„Ø§Ù‚">
+        <button onClick={e => { e.stopPropagation(); onClose(); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--foreground))', cursor: 'pointer', padding: 4 }} aria-label="ÅÛáÇŞ">
           <X size={22} strokeWidth={2.2} />
         </button>
       </div>
@@ -3022,7 +3022,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
         ? <video src={item.mediaUrl} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         : <img src={item.mediaUrl} alt="story" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
       }
-      {/* Ù†Øµ overlay Ø¹Ù„Ù‰ Ø§Ù„Ù‚ØµØ© */}
+      {/* äÕ overlay Úáì ÇáŞÕÉ */}
       {item.overlayText && (
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3 }}>
           <span
@@ -3039,7 +3039,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
           </span>
         </div>
       )}
-      {/* Ø¯Ø§Ø¦Ø±Ø© Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰ â€” ØªØ¸Ù‡Ø± Ø¨Ø§Ù„Ù…ÙˆØ¶Ø¹ ÙˆØ§Ù„Ø­Ø¬Ù… Ø§Ù„Ù„Ø°ÙŠÙ† Ø§Ø®ØªØ§Ø±Ù‡Ù…Ø§ Ø§Ù„Ù†Ø§Ø´Ø± */}
+      {/* ÏÇÆÑÉ ÇáãæÓíŞì — ÊÙåÑ ÈÇáãæÖÚ æÇáÍÌã ÇááĞíä ÇÎÊÇÑåãÇ ÇáäÇÔÑ */}
       {item.audioUrl && (
         <div
           className="story-music-orb"
@@ -3060,7 +3060,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
           <span className="orb-bar" />
         </div>
       )}
-      {/* â”€â”€ Confirm delete overlay â”€â”€ */}
+      {/* ?? Confirm delete overlay ?? */}
       {confirmDelete && (
         <motion.div
           initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }}
@@ -3074,8 +3074,8 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
           }}
         >
           <Trash2 size={36} color="hsl(var(--destructive))" strokeWidth={1.8} />
-          <p style={{ color: 'hsl(var(--foreground))', fontSize: '1rem', fontWeight: 600, margin: 0 }}>Ø­Ø°Ù Ù‡Ø°Ù‡ Ø§Ù„Ø­Ø§Ù„Ø©ØŸ</p>
-          <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.78rem', margin: 0 }}>Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø§Ù„ØªØ±Ø§Ø¬Ø¹</p>
+          <p style={{ color: 'hsl(var(--foreground))', fontSize: '1rem', fontWeight: 600, margin: 0 }}>ÍĞİ åĞå ÇáÍÇáÉ¿</p>
+          <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.78rem', margin: 0 }}>áÇ íãßä ÇáÊÑÇÌÚ</p>
           {deleteError && (
             <p style={{ color: 'hsl(var(--destructive))', fontSize: '0.75rem', margin: 0, textAlign: 'center', maxWidth: 240 }}>{deleteError}</p>
           )}
@@ -3089,7 +3089,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
                 border: '1px solid hsl(var(--border))',
                 color: 'hsl(var(--foreground))', fontSize: '0.85rem', cursor: 'pointer',
               }}
-            >Ø¥Ù„ØºØ§Ø¡</motion.button>
+            >ÅáÛÇÁ</motion.button>
             <motion.button
               whileTap={{ scale: 0.92 }}
               onClick={handleDelete}
@@ -3101,12 +3101,12 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
                 color: 'hsl(var(--destructive-foreground))', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer',
                 opacity: deleting ? 0.6 : 1,
               }}
-            >{deleting ? 'â€¦' : 'Ø­Ø°Ù'}</motion.button>
+            >{deleting ? '…' : 'ÍĞİ'}</motion.button>
           </div>
         </motion.div>
       )}
 
-      {/* â”€â”€ Inline comment composer â€” Ù„Ø§ ÙŠÙØªØ­ ØµÙØ­Ø© Ø«Ø§Ù†ÙŠØ©ØŒ ÙƒØªØ§Ø¨Ø© ÙˆØ¥Ø±Ø³Ø§Ù„ ÙÙŠ Ù†ÙØ³ Ø§Ù„Ù…ÙƒØ§Ù† â”€â”€ */}
+      {/* ?? Inline comment composer — áÇ íİÊÍ ÕİÍÉ ËÇäíÉ¡ ßÊÇÈÉ æÅÑÓÇá İí äİÓ ÇáãßÇä ?? */}
       {!isMyStory && (
         <div
           onClick={e => e.stopPropagation()}
@@ -3137,7 +3137,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               onClick={() => setEmojiOpen(o => !o)}
-              aria-label="Ø¥ÙŠÙ…ÙˆØ¬ÙŠ"
+              aria-label="ÅíãæÌí"
               style={{
                 width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
                 background: emojiOpen ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.12)',
@@ -3152,7 +3152,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
               value={commentText}
               onChange={e => setCommentText(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !commentSending) handleSubmitComment(); }}
-              placeholder="Ø§ÙƒØªØ¨ ØªØ¹Ù„ÙŠÙ‚Ø§Ù‹..."
+              placeholder="ÇßÊÈ ÊÚáíŞÇğ..."
               style={{
                 flex: 1, background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)',
                 borderRadius: 22, padding: '10px 16px', color: '#fff', fontSize: '0.85rem', outline: 'none',
@@ -3162,7 +3162,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
               whileTap={{ scale: 0.9 }}
               disabled={commentSending || !commentText.trim()}
               onClick={handleSubmitComment}
-              aria-label="Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„ØªØ¹Ù„ÙŠÙ‚"
+              aria-label="ÅÑÓÇá ÇáÊÚáíŞ"
               style={{
                 width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
                 background: commentText.trim() ? 'hsl(var(--primary))' : 'rgba(255,255,255,0.14)',
@@ -3183,7 +3183,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
                 initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }}
                 style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.68rem', margin: '0 4px', textAlign: 'center' }}
               >
-                ØªÙ… Ø¥Ø±Ø³Ø§Ù„ ØªØ¹Ù„ÙŠÙ‚Ùƒ
+                Êã ÅÑÓÇá ÊÚáíŞß
               </motion.p>
             )}
           </AnimatePresence>
@@ -3193,7 +3193,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
   );
 }
 
-// â”€â”€ Detect image/video URLs inside plain text (for text posts with pasted links) â”€â”€
+// ?? Detect image/video URLs inside plain text (for text posts with pasted links) ??
 const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"')\]]+/gi;
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|bmp|svg)(\?.*)?$/i;
 const VIDEO_EXT_RE = /\.(mp4|webm|mov|m4v|ogg|ogv)(\?.*)?$/i;
@@ -3214,7 +3214,7 @@ function composerLookupOriginalUrl(maybeShort: string): string {
 }
 
 
-/** Ø§Ø³ØªØ®Ø±Ø§Ø¬ Ù…Ø¹Ø±Ù Ø§Ù„ØªØºØ±ÙŠØ¯Ø© Ù…Ù† Ø±Ø§Ø¨Ø· x.com / twitter.com */
+/** ÇÓÊÎÑÇÌ ãÚÑİ ÇáÊÛÑíÏÉ ãä ÑÇÈØ x.com / twitter.com */
 function parseXStatusId(raw: string): string | null {
   try {
     const u = new URL(raw.trim());
@@ -3225,8 +3225,8 @@ function parseXStatusId(raw: string): string | null {
 }
 
 /**
- * Ø¬Ù„Ø¨ ÙˆØ³Ø§Ø¦Ø· ØªØºØ±ÙŠØ¯Ø© X Ø¹Ø¨Ø± ÙˆØ§Ø¬Ù‡Ø§Øª Ø¹Ø§Ù…Ø© (Ø¨Ø¯ÙˆÙ† Ù…ÙØªØ§Ø­ API).
- * ØªÙØ¹ÙŠØ¯ Ø±ÙˆØ§Ø¨Ø· Ù…Ø¨Ø§Ø´Ø±Ø© Ù„ØµÙˆØ±/ÙÙŠØ¯ÙŠÙˆ Ù…Ù† pbs.twimg.com / video.twimg.com
+ * ÌáÈ æÓÇÆØ ÊÛÑíÏÉ X ÚÈÑ æÇÌåÇÊ ÚÇãÉ (ÈÏæä ãİÊÇÍ API).
+ * ÊõÚíÏ ÑæÇÈØ ãÈÇÔÑÉ áÕæÑ/İíÏíæ ãä pbs.twimg.com / video.twimg.com
  */
 async function resolveXStatusMedia(statusUrl: string): Promise<{ url: string; type: 'image' | 'video' }[]> {
   const id = parseXStatusId(statusUrl);
@@ -3294,17 +3294,17 @@ async function resolveXStatusMedia(statusUrl: string): Promise<{ url: string; ty
 
 function classifyMediaUrl(raw: string): 'image' | 'video' | null {
   try {
-    // Ø­Ù„Ù‘ Ø§Ù„Ø±ÙˆØ§Ø¨Ø· Ø§Ù„Ù‚ØµÙŠØ±Ø© Ø§Ù„Ù…Ø­Ù„ÙŠØ© Ø¥Ù„Ù‰ Ø§Ù„Ø£ØµÙ„ Ù‚Ø¨Ù„ Ø§Ù„ØªØµÙ†ÙŠÙ
+    // Íáø ÇáÑæÇÈØ ÇáŞÕíÑÉ ÇáãÍáíÉ Åáì ÇáÃÕá ŞÈá ÇáÊÕäíİ
     const resolved = composerLookupOriginalUrl(raw);
     const u = new URL(resolved);
     const path = u.pathname || '';
     const full = u.href;
     if (IMAGE_EXT_RE.test(path) || IMAGE_EXT_RE.test(full)) return 'image';
     if (VIDEO_EXT_RE.test(path) || VIDEO_EXT_RE.test(full)) return 'video';
-    // Ø§Ø³ØªØ¹Ù„Ø§Ù…Ø§Øª ?format=jpg ÙˆØºÙŠØ±Ù‡Ø§
+    // ÇÓÊÚáÇãÇÊ ?format=jpg æÛíÑåÇ
     if (/[?&](format|ext|type)=(png|jpe?g|gif|webp|avif)/i.test(full)) return 'image';
     if (/[?&](format|ext|type)=(mp4|webm|mov)/i.test(full)) return 'video';
-    // hosts Ø´Ø§Ø¦Ø¹Ø© Ù„Ù„ØµÙˆØ±
+    // hosts ÔÇÆÚÉ ááÕæÑ
     if (/(images\.unsplash\.com|i\.imgur\.com|cdn\.discordapp\.com|media\.tenor\.com|pbs\.twimg\.com|instagram\.|fbcdn\.|googleusercontent\.com)/i.test(u.hostname)) return 'image';
     if (/video\.twimg\.com/i.test(u.hostname)) return 'video';
     if (/\/image|\/img|\/photo|\/photos|\/thumb|\/media\/.*\.(png|jpe?g|gif|webp)/i.test(full)) return 'image';
@@ -3341,7 +3341,7 @@ function extractTextMediaEmbeds(text: string): { cleanText: string; embeds: { ur
       embeds.push({ url: resolved, type: kind });
       return '';
     }
-    // Ø±Ø§Ø¨Ø· ØªØºØ±ÙŠØ¯Ø© X â€” ÙŠÙØ¹Ø±Ø¶ Ù„Ø§Ø­Ù‚Ù‹Ø§ ÙƒÙ…ÙŠØ¯ÙŠØ§ ÙƒØ§Ù…Ù„Ø© Ø¹Ø¨Ø± Ù…ÙƒÙˆÙ‘Ù† async
+    // ÑÇÈØ ÊÛÑíÏÉ X — íõÚÑÖ áÇÍŞğÇ ßãíÏíÇ ßÇãáÉ ÚÈÑ ãßæøä async
     if (parseXStatusId(resolved) && !seen.has(resolved)) {
       seen.add(resolved);
       xStatusUrls.push(resolved);
@@ -3352,7 +3352,7 @@ function extractTextMediaEmbeds(text: string): { cleanText: string; embeds: { ur
   return { cleanText, embeds, xStatusUrls };
 }
 
-// â”€â”€ Ø±ÙˆØ§Ø¨Ø· Ø§Ù„ÙˆØ³Ø§Ø¦Ø·: Ù†Ø­ØªÙØ¸ Ø¨Ø§Ù„Ø±Ø§Ø¨Ø· Ø§Ù„Ø£ØµÙ„ÙŠ Ù„Ù„ØµÙˆØ±Ø©/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ Ø­ØªÙ‰ ØªÙØ¹Ø±Ø¶ Ù…Ø¨Ø§Ø´Ø±Ø© Ø¯Ø§Ø®Ù„ Ø§Ù„Ø¨ÙˆØ³Øª â”€â”€
+// ?? ÑæÇÈØ ÇáæÓÇÆØ: äÍÊİÙ ÈÇáÑÇÈØ ÇáÃÕáí ááÕæÑÉ/ÇáİíÏíæ ÍÊì ÊõÚÑÖ ãÈÇÔÑÉ ÏÇÎá ÇáÈæÓÊ ??
 export function composerMakeShortCode(len = 7): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let out = '';
@@ -3382,20 +3382,20 @@ function composerSaveShortLink(entry: { code: string; url: string; shortUrl: str
 async function composerCreateShortLink(rawUrl: string): Promise<string | null> {
   const normalized = composerNormalizeUrl(rawUrl);
   if (!normalized) return null;
-  // Ø±Ø§Ø¨Ø· Ù‚ØµÙŠØ± Ù‚Ø¯ÙŠÙ… Ù…Ø­Ù„ÙŠ â†’ Ø£Ø±Ø¬Ø¹ Ø§Ù„Ø£ØµÙ„ Ø¥Ù† ÙˆÙØ¬Ø¯ (Ø­ØªÙ‰ Ù„Ø§ ÙŠÙØªØ­ 404)
+  // ÑÇÈØ ŞÕíÑ ŞÏíã ãÍáí ? ÃÑÌÚ ÇáÃÕá Åä æõÌÏ (ÍÊì áÇ íİÊÍ 404)
   if (/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(normalized)) {
     const original = composerLookupOriginalUrl(normalized);
-    // Ø¥Ù† Ù„Ù… Ù†Ø¬Ø¯ Ø§Ù„Ø£ØµÙ„ Ù„Ø§ Ù†ÙØ¹ÙŠØ¯ /s/ Ø§Ù„Ù…Ø¹Ø·ÙˆØ¨ â€” Ø£ÙØ¶Ù„ Ø¥Ø±Ø¬Ø§Ø¹ null Ù„ÙŠØ¸Ù‡Ø± Ø®Ø·Ø£ ÙˆØ§Ø¶Ø­
+    // Åä áã äÌÏ ÇáÃÕá áÇ äõÚíÏ /s/ ÇáãÚØæÈ — ÃİÖá ÅÑÌÇÚ null áíÙåÑ ÎØÃ æÇÖÍ
     if (original && !/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(original)) return original;
     return null;
   }
-  // ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ Ù…Ø¨Ø§Ø´Ø±Ø©: Ø§Ù„Ø±Ø§Ø¨Ø· Ø§Ù„Ø£ØµÙ„ÙŠ ÙƒÙ…Ø§ Ù‡Ùˆ â†’ ÙŠÙØ¹Ø±Ø¶ ÙƒØ¨ÙŠØ±Ù‹Ø§ Ø¯Ø§Ø®Ù„ Ø§Ù„Ø¨ÙˆØ³Øª
+  // ÕæÑÉ/İíÏíæ ãÈÇÔÑÉ: ÇáÑÇÈØ ÇáÃÕáí ßãÇ åæ ? íõÚÑÖ ßÈíÑğÇ ÏÇÎá ÇáÈæÓÊ
   const mediaKind = classifyMediaUrl(normalized);
   if (mediaKind === 'image' || mediaKind === 'video') {
     return normalized;
   }
-  // ØµÙØ­Ø§Øª (Ù…Ø«Ù„ x.com / Ù…Ù‚Ø§Ù„Ø§Øª): Ø¬Ø±Ù‘Ø¨ API Ø§Ù„Ø³ÙŠØ±ÙØ± ÙÙ‚Ø· â€” Ø¥Ù† ÙØ´Ù„ Ù†ÙØ¨Ù‚ÙŠ Ø§Ù„Ø±Ø§Ø¨Ø· Ø§Ù„Ø£ØµÙ„ÙŠ
-  // ÙˆÙ„Ø§ Ù†Ø®ØªÙ„Ù‚ Ø£Ø¨Ø¯Ù‹Ø§ stooorna.com/s/xxx Ø¨Ø¯ÙˆÙ† Ù…Ø³Ø§Ø± Ø­Ù‚ÙŠÙ‚ÙŠ Ø¹Ù„Ù‰ Ø§Ù„Ø³ÙŠØ±ÙØ± (Ø³Ø¨Ø¨ Ø§Ù„Ù€ 404)
+  // ÕİÍÇÊ (ãËá x.com / ãŞÇáÇÊ): ÌÑøÈ API ÇáÓíÑİÑ İŞØ — Åä İÔá äõÈŞí ÇáÑÇÈØ ÇáÃÕáí
+  // æáÇ äÎÊáŞ ÃÈÏğÇ stooorna.com/s/xxx ÈÏæä ãÓÇÑ ÍŞíŞí Úáì ÇáÓíÑİÑ (ÓÈÈ ÇáÜ 404)
   try {
     const r = await fetch('/api/short-links', {
       method: 'POST',
@@ -3407,7 +3407,7 @@ async function composerCreateShortLink(rawUrl: string): Promise<string | null> {
       const d = await r.json() as { code?: string; shortUrl?: string; url?: string; id?: string };
       const code = d.code || d.id;
       const shortUrl = d.shortUrl || (code ? `https://stooorna.com/s/${code}` : null);
-      // Ù†Ù‚Ø¨Ù„ Ø§Ù„Ù‚ØµÙŠØ± ÙÙ‚Ø· Ø¥Ù† Ø§Ù„Ø³ÙŠØ±ÙØ± Ø£ÙƒÙ‘Ø¯ Ø§Ù„Ø­ÙØ¸ (ok) â€” ÙˆØ¥Ù„Ø§ Ø§Ù„Ø£ØµÙ„
+      // äŞÈá ÇáŞÕíÑ İŞØ Åä ÇáÓíÑİÑ ÃßøÏ ÇáÍİÙ (ok) — æÅáÇ ÇáÃÕá
       if (shortUrl && code) {
         composerSaveShortLink({ code, url: normalized, shortUrl, createdAt: Date.now() });
         return shortUrl;
@@ -3415,11 +3415,11 @@ async function composerCreateShortLink(rawUrl: string): Promise<string | null> {
       if (shortUrl && !/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(shortUrl)) return shortUrl;
     }
   } catch { /* keep original */ }
-  // Ù„Ø§ Ø§Ø®ØªØµØ§Ø± ÙˆÙ‡Ù…ÙŠ â€” Ø§Ù„Ø±Ø§Ø¨Ø· Ø§Ù„Ø£ØµÙ„ÙŠ (x.com ÙˆØºÙŠØ±Ù‡) ÙŠØ¨Ù‚Ù‰ ÙƒÙ…Ø§ Ù‡Ùˆ ÙˆÙŠØ¹Ù…Ù„
+  // áÇ ÇÎÊÕÇÑ æåãí — ÇáÑÇÈØ ÇáÃÕáí (x.com æÛíÑå) íÈŞì ßãÇ åæ æíÚãá
   return normalized;
 }
 
-// â”€â”€ X status â†’ full image/video embed (fetches direct media) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? X status ? full image/video embed (fetches direct media) ???????????????????
 function XStatusEmbed({ statusUrl }: { statusUrl: string }) {
   const [items, setItems] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3445,7 +3445,7 @@ function XStatusEmbed({ statusUrl }: { statusUrl: string }) {
         background: 'rgba(0,188,212,0.06)', border: `1px solid ${CLR_POST_BORDER}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_TEXT_DIM, fontSize: '0.75rem',
       }}>
-        Ø¬Ø§Ø±ÙŠ ØªØ­Ù…ÙŠÙ„ Ø§Ù„ÙˆØ³Ø§Ø¦Ø·â€¦
+        ÌÇÑí ÊÍãíá ÇáæÓÇÆØ…
       </div>
     );
   }
@@ -3460,7 +3460,7 @@ function XStatusEmbed({ statusUrl }: { statusUrl: string }) {
   return <PostLinkEmbeds embeds={items} />;
 }
 
-// â”€â”€ Auto-expand image/video links large (no tap required) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? Auto-expand image/video links large (no tap required) ?????????????????????
 function PostLinkEmbeds({ embeds }: { embeds: { url: string; type: 'image' | 'video' }[] }) {
   if (!embeds.length) return null;
   return (
@@ -3499,19 +3499,19 @@ function PostLinkEmbeds({ embeds }: { embeds: { url: string; type: 'image' | 'vi
   );
 }
 
-// â”€â”€ Ø±ÙˆØ§Ø¨Ø· X (Twitter) Ø¯Ø§Ø®Ù„ Ù†Øµ Ø§Ù„Ø¨ÙˆØ³Øª â€” ØªØ¹Ù…Ù„ Ù„Ù†Ø´Ø± Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† ÙˆØ§Ù„Ø´Ø±ÙƒØ§Øª â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Ø§Ù„Ø±Ø§Ø¨Ø· ÙŠØ¨Ù‚Ù‰ ÙÙŠ Ø§Ù„Ù†Øµ ÙƒÙ…Ø§ Ù‡ÙˆØŒ ÙˆØ§Ù„ØµÙˆØ±Ø©/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ØªØ¸Ù‡Ø± ÙƒØ§Ù…Ù„Ø© Ù…Ø¨Ø§Ø´Ø±Ø©
-// (Ù…Ø¹Ø§ÙŠÙ†Ø© Ù…Ø±Ø¨Ø¹ Ø§Ù„ÙƒØªØ§Ø¨Ø© + Ø§Ù„ÙÙŠÙŠØ¯ + ØµÙØ­Ø© Ø§Ù„Ø¨ÙˆØ³Øª Ø§Ù„Ù…ÙØªÙˆØ­).
+// ?? ÑæÇÈØ X (Twitter) ÏÇÎá äÕ ÇáÈæÓÊ — ÊÚãá áäÔÑ ÇáãÓÊÎÏãíä æÇáÔÑßÇÊ ?????????????
+// ÇáÑÇÈØ íÈŞì İí ÇáäÕ ßãÇ åæ¡ æÇáÕæÑÉ/ÇáİíÏíæ ÊÙåÑ ßÇãáÉ ãÈÇÔÑÉ
+// (ãÚÇíäÉ ãÑÈÚ ÇáßÊÇÈÉ + ÇáİííÏ + ÕİÍÉ ÇáÈæÓÊ ÇáãİÊæÍ).
 const X_MEDIA_CACHE = new Map<string, Promise<{ url: string; type: 'image' | 'video' }[]>>();
 
-/** ÙƒÙ„ Ø±ÙˆØ§Ø¨Ø· ØªØºØ±ÙŠØ¯Ø§Øª X/Twitter Ø¯Ø§Ø®Ù„ Ù†Øµ (Ø¨Ø¯ÙˆÙ† ØªÙƒØ±Ø§Ø±ØŒ Ø¨Ù†ÙØ³ ØªØ±ØªÙŠØ¨ Ø¸Ù‡ÙˆØ±Ù‡Ø§) */
+/** ßá ÑæÇÈØ ÊÛÑíÏÇÊ X/Twitter ÏÇÎá äÕ (ÈÏæä ÊßÑÇÑ¡ ÈäİÓ ÊÑÊíÈ ÙåæÑåÇ) */
 function extractXStatusUrls(text: string | null | undefined): string[] {
   if (!text) return [];
   const out: string[] = [];
   const seen = new Set<string>();
   const matches = text.match(URL_IN_TEXT_RE) || [];
   for (const m of matches) {
-    const raw = m.replace(/[.,;:!?ØŒØ›]+$/, '');
+    const raw = m.replace(/[.,;:!?¡º]+$/, '');
     const resolved = composerLookupOriginalUrl(raw);
     const id = parseXStatusId(resolved);
     if (!id || seen.has(id)) continue;
@@ -3521,7 +3521,7 @@ function extractXStatusUrls(text: string | null | undefined): string[] {
   return out;
 }
 
-/** Ù†ÙØ³ resolveXStatusMedia Ù„ÙƒÙ† Ù…Ø¹ ÙƒØ§Ø´ (Ù„Ø§ ÙŠØ¹ÙŠØ¯ Ø§Ù„Ø¬Ù„Ø¨ Ø¹Ù†Ø¯ ÙƒÙ„ Ø¹Ø±Ø¶/ØªÙ…Ø±ÙŠØ±). Ø§Ù„ÙØ´Ù„ Ù„Ø§ ÙŠÙØ®Ø²ÙÙ‘Ù† Ø­ØªÙ‰ ÙŠÙ…ÙƒÙ† Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø© */
+/** äİÓ resolveXStatusMedia áßä ãÚ ßÇÔ (áÇ íÚíÏ ÇáÌáÈ ÚäÏ ßá ÚÑÖ/ÊãÑíÑ). ÇáİÔá áÇ íõÎÒóøä ÍÊì íãßä ÅÚÇÏÉ ÇáãÍÇæáÉ */
 function resolveXStatusMediaCached(statusUrl: string): Promise<{ url: string; type: 'image' | 'video' }[]> {
   const key = parseXStatusId(statusUrl) || statusUrl;
   let pending = X_MEDIA_CACHE.get(key);
@@ -3540,7 +3540,7 @@ function resolveXStatusMediaCached(statusUrl: string): Promise<{ url: string; ty
   return pending;
 }
 
-/** Ø±Ø§Ø¨Ø· X â†’ Ø§Ù„ØµÙˆØ±Ø©/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ÙƒØ§Ù…Ù„Ø© Ù…Ø¨Ø§Ø´Ø±Ø© (Ø¨Ø¯ÙˆÙ† Ø£ÙŠ Ø¶ØºØ·Ø©). failedNote: Ù†Øµ Ø¨Ø¯ÙŠÙ„ Ø¨Ø¯Ù„ Ø§Ù„Ø±Ø§Ø¨Ø· Ø¹Ù†Ø¯ Ø¹Ø¯Ù… ÙˆØ¬ÙˆØ¯ ÙˆØ³Ø§Ø¦Ø· */
+/** ÑÇÈØ X ? ÇáÕæÑÉ/ÇáİíÏíæ ßÇãáÉ ãÈÇÔÑÉ (ÈÏæä Ãí ÖÛØÉ). failedNote: äÕ ÈÏíá ÈÏá ÇáÑÇÈØ ÚäÏ ÚÏã æÌæÏ æÓÇÆØ */
 function XLinkMedia({ statusUrl, failedNote }: { statusUrl: string; failedNote?: string }) {
   const [items, setItems] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
@@ -3563,7 +3563,7 @@ function XLinkMedia({ statusUrl, failedNote }: { statusUrl: string; failedNote?:
         background: 'rgba(0,188,212,0.06)', border: `1px solid ${CLR_POST_BORDER}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#536471', fontSize: '0.75rem',
       }}>
-        Ø¬Ø§Ø±ÙŠ ØªØ­Ù…ÙŠÙ„ Ø§Ù„ÙˆØ³Ø§Ø¦Ø·â€¦
+        ÌÇÑí ÊÍãíá ÇáæÓÇÆØ…
       </div>
     );
   }
@@ -3581,8 +3581,8 @@ function XLinkMedia({ statusUrl, failedNote }: { statusUrl: string; failedNote?:
   return <PostLinkEmbeds embeds={items} />;
 }
 
-// â”€â”€ Ø±ÙˆØ§Ø¨Ø· Ø§Ù„ØµÙˆØ±/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ (X Ø£Ùˆ Ø±Ø§Ø¨Ø· Ù…Ø¨Ø§Ø´Ø±) â€” Ù…Ø³ØªØ·ÙŠÙ„ Paste + Ø§Ù„ÙÙŠÙŠØ¯ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-/** ØªØµÙ†ÙŠÙ ØµØ§Ø±Ù… Ù„Ø±ÙˆØ§Ø¨Ø· Ø§Ù„Ù…Ù„ÙØ§Øª Ø§Ù„Ù…Ø¨Ø§Ø´Ø±Ø© (Ø§Ù…ØªØ¯Ø§Ø¯/format=/Ù…Ø¶ÙŠÙØ§Øª Ù…Ø¹Ø±ÙˆÙØ©) â€” Ø­ØªÙ‰ Ù„Ø§ Ù†ÙØ¯Ø±Ø¬ ØµÙØ­Ø§Øª Ø¹Ø§Ø¯ÙŠØ© ÙƒÙÙŠØ¯ÙŠÙˆ */
+// ?? ÑæÇÈØ ÇáÕæÑ/ÇáİíÏíæ (X Ãæ ÑÇÈØ ãÈÇÔÑ) — ãÓÊØíá Paste + ÇáİííÏ ?????????????????
+/** ÊÕäíİ ÕÇÑã áÑæÇÈØ ÇáãáİÇÊ ÇáãÈÇÔÑÉ (ÇãÊÏÇÏ/format=/ãÖíİÇÊ ãÚÑæİÉ) — ÍÊì áÇ äõÏÑÌ ÕİÍÇÊ ÚÇÏíÉ ßİíÏíæ */
 function classifyDirectMediaUrl(raw: string): 'image' | 'video' | null {
   try {
     const u = new URL(raw);
@@ -3597,14 +3597,14 @@ function classifyDirectMediaUrl(raw: string): 'image' | 'video' | null {
   return null;
 }
 
-/** ÙƒÙ„ Ø§Ù„Ø±ÙˆØ§Ø¨Ø· Ø§Ù„ØªÙŠ ØªÙØ¹Ø±Ø¶ ÙƒÙˆØ³Ø§Ø¦Ø· Ø¯Ø§Ø®Ù„ Ù†Øµ: ØªØºØ±ÙŠØ¯Ø§Øª X + Ø±ÙˆØ§Ø¨Ø· ØµÙˆØ±/ÙÙŠØ¯ÙŠÙˆ Ù…Ø¨Ø§Ø´Ø±Ø© (Ø¨Ø¯ÙˆÙ† ØªÙƒØ±Ø§Ø±) */
+/** ßá ÇáÑæÇÈØ ÇáÊí ÊõÚÑÖ ßæÓÇÆØ ÏÇÎá äÕ: ÊÛÑíÏÇÊ X + ÑæÇÈØ ÕæÑ/İíÏíæ ãÈÇÔÑÉ (ÈÏæä ÊßÑÇÑ) */
 function extractLinkMediaUrls(text: string | null | undefined): string[] {
   if (!text) return [];
   const out: string[] = [];
   const seen = new Set<string>();
   const matches = text.match(URL_IN_TEXT_RE) || [];
   for (const m of matches) {
-    const raw = m.replace(/[.,;:!?ØŒØ›]+$/, '');
+    const raw = m.replace(/[.,;:!?¡º]+$/, '');
     const resolved = composerLookupOriginalUrl(raw);
     const xId = parseXStatusId(resolved);
     const key = xId ? `x:${xId}` : resolved;
@@ -3617,17 +3617,17 @@ function extractLinkMediaUrls(text: string | null | undefined): string[] {
   return out;
 }
 
-/** Ø£ÙˆÙ„ Ø±Ø§Ø¨Ø· Ø¯Ø§Ø®Ù„ Ù†Øµ Ø§Ù„Ø­Ø§ÙØ¸Ø© (ÙŠÙ‚Ø¨Ù„: https://â€¦ Ø£Ùˆ wwwâ€¦ Ø£Ùˆ x.com/â€¦) ÙˆØ¥Ù„Ø§ null */
+/** Ãæá ÑÇÈØ ÏÇÎá äÕ ÇáÍÇİÙÉ (íŞÈá: https://… Ãæ www… Ãæ x.com/…) æÅáÇ null */
 function pickLinkFromText(raw: string | null | undefined): string | null {
   const t = (raw || '').trim();
   if (!t) return null;
   const found = t.match(URL_IN_TEXT_RE);
-  if (found && found[0]) return found[0].replace(/[.,;:!?ØŒØ›]+$/, '');
+  if (found && found[0]) return found[0].replace(/[.,;:!?¡º]+$/, '');
   if (/^(www\.\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)$/i.test(t)) return composerNormalizeUrl(t);
   return null;
 }
 
-/** Ø±Ø§Ø¨Ø· ÙˆØ§Ø­Ø¯ (X Ø£Ùˆ ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ Ù…Ø¨Ø§Ø´Ø±) â†’ Ø§Ù„ØµÙˆØ±Ø©/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ÙƒØ§Ù…Ù„Ø© Ù…Ø¨Ø§Ø´Ø±Ø©. failedNote ÙŠØ¸Ù‡Ø± Ø¥Ù† ØªØ¹Ø°Ù‘Ø± Ø§Ù„Ø¹Ø±Ø¶ */
+/** ÑÇÈØ æÇÍÏ (X Ãæ ÕæÑÉ/İíÏíæ ãÈÇÔÑ) ? ÇáÕæÑÉ/ÇáİíÏíæ ßÇãáÉ ãÈÇÔÑÉ. failedNote íÙåÑ Åä ÊÚĞøÑ ÇáÚÑÖ */
 function LinkMediaPreview({ url, failedNote }: { url: string; failedNote?: string }) {
   const normalized = composerNormalizeUrl(url);
   if (!normalized) return null;
@@ -3638,7 +3638,7 @@ function LinkMediaPreview({ url, failedNote }: { url: string; failedNote?: strin
   return failedNote ? <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p> : null;
 }
 
-// â”€â”€ PostText â€” renders post text with #hashtags highlighted â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? PostText — renders post text with #hashtags highlighted ??????????????????
 function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, bold = false, collapseLong = false, onMore }: {
   text: string;
   color: string;
@@ -3646,7 +3646,7 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
   onHashtag?: (tag: string) => void;
   embedMediaLinks?: boolean;
   bold?: boolean;
-  /** ÙÙŠ Ø§Ù„ÙÙŠÙŠØ¯: Ø£ÙƒØ«Ø± Ù…Ù† 10 Ø£Ø³Ø·Ø± â†’ Ø£ÙˆÙ„ 4 + More ÙŠÙØªØ­ ØµÙØ­Ø© ÙƒØ§Ù…Ù„Ø© */
+  /** İí ÇáİííÏ: ÃßËÑ ãä 10 ÃÓØÑ ? Ãæá 4 + More íİÊÍ ÕİÍÉ ßÇãáÉ */
   collapseLong?: boolean;
   onMore?: () => void;
 }) {
@@ -3661,7 +3661,7 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
   const allLines = cleanText ? cleanText.split('\n') : [];
   const shouldCollapse = !!collapseLong && !!onMore && allLines.length > COLLAPSE_AFTER_LINES;
   const visibleText = shouldCollapse
-    ? allLines.slice(0, PREVIEW_LINES).join('\n') + (allLines.length > PREVIEW_LINES ? '\nâ€¦' : '')
+    ? allLines.slice(0, PREVIEW_LINES).join('\n') + (allLines.length > PREVIEW_LINES ? '\n…' : '')
     : cleanText;
   const parts = visibleText ? visibleText.split(/(#[\p{L}\p{N}_]+|@[\p{L}\p{N}_]+|https?:\/\/[^\s<>"')\]]+)/gu) : [];
   return (
@@ -3694,7 +3694,7 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
   );
 }
 
-// â”€â”€ PostCard â€” a single feed post: one card, paper-style text area, small expandable media â”€â”€
+// ?? PostCard — a single feed post: one card, paper-style text area, small expandable media ??
 function PostMediaItems(post: PostItem): { url: string; type: 'image' | 'video' }[] {
   if (post.mediaUrls?.length) {
     return post.mediaUrls.map((url, index) => ({
@@ -3705,10 +3705,10 @@ function PostMediaItems(post: PostItem): { url: string; type: 'image' | 'video' 
   return post.mediaUrl ? [{ url: post.mediaUrl, type: post.mediaType ?? 'image' }] : [];
 }
 
-// â”€â”€ Ø¯Ù…Ø¬ Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø¬Ø§ÙŠØ© Ù…Ù† Ø§Ù„Ø³ÙŠØ±ÙØ± Ù…Ø¹ Ø§Ù„Ù†Ø³Ø®Ø© Ø§Ù„Ù…Ø­Ù„ÙŠØ© Ø§Ù„Ø­Ø§Ù„ÙŠØ© â€” ÙŠØ­Ù…ÙŠ Ù…Ù†Ø´ÙˆØ±Ø§ØªÙ†Ø§ Ø§Ù„Ù„ÙŠ
-// ÙÙŠÙ‡Ø§ Ø£ÙƒØ«Ø± Ù…Ù† ØµÙˆØ±Ø©: Ù„Ùˆ Ø§Ù„Ø³ÙŠØ±ÙØ± Ø±Ø¬Ù‘Ø¹ Ù†ÙØ³ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø¨Ø¹Ø¯Ø¯ ØµÙˆØ± Ø£Ù‚Ù„ (Ù…Ø«Ù„Ø§Ù‹ ØµÙˆØ±Ø© ÙˆØ­Ø¯Ø©
-// Ø¨Ø³ Ø¨Ø¯Ù„ Ù¤ Ø£Ùˆ Ù¥)ØŒ Ù†Ø­Ø§ÙØ¸ Ø¹Ù„Ù‰ Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„ØµÙˆØ± Ø§Ù„Ù…Ø­Ù„ÙŠØ© Ø§Ù„ÙƒØ§Ù…Ù„Ø© Ø¨Ø¯Ù„ Ù…Ø§ Ù†ÙÙ‚Ø¯Ù‡Ø§ ÙƒÙ„ Ù…Ø§
-// ÙŠØµÙŠØ± ØªØ­Ø¯ÙŠØ« Ø¨Ø§Ù„Ø®Ù„ÙÙŠØ© (ÙƒÙ„ Ø«Ø§Ù†ÙŠØªÙŠÙ†) Ø£Ùˆ Ø¹Ù†Ø¯ ÙØªØ­ Ø¨Ø§Ù†Ø± "New Posts". â”€â”€
+// ?? ÏãÌ ãäÔæÑÇÊ ÌÇíÉ ãä ÇáÓíÑİÑ ãÚ ÇáäÓÎÉ ÇáãÍáíÉ ÇáÍÇáíÉ — íÍãí ãäÔæÑÇÊäÇ Çááí
+// İíåÇ ÃßËÑ ãä ÕæÑÉ: áæ ÇáÓíÑİÑ ÑÌøÚ äİÓ ÇáãäÔæÑ ÈÚÏÏ ÕæÑ ÃŞá (ãËáÇğ ÕæÑÉ æÍÏÉ
+// ÈÓ ÈÏá 4 Ãæ 5)¡ äÍÇİÙ Úáì ŞÇÆãÉ ÇáÕæÑ ÇáãÍáíÉ ÇáßÇãáÉ ÈÏá ãÇ äİŞÏåÇ ßá ãÇ
+// íÕíÑ ÊÍÏíË ÈÇáÎáİíÉ (ßá ËÇäíÊíä) Ãæ ÚäÏ İÊÍ ÈÇäÑ "New Posts". ??
 function mergePostsPreservingMedia(prevPosts: PostItem[], serverPosts: PostItem[]): PostItem[] {
   const prevById = new Map(prevPosts.map(p => [p.id, p]));
   return serverPosts.map(serverPost => {
@@ -3755,15 +3755,15 @@ function PostCard({
 }: {
   post: PostItem;
   isMine: boolean;
-  // null Ù„ØµØ§Ø­Ø¨ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ù†ÙØ³Ù‡ (Ù…Ø§ Ù†Ø¹Ø±Ø¶ Ù„Ù‡ Ø²Ø± Ù…ØªØ§Ø¨Ø¹Ø© Ø¹Ù„Ù‰ Ù…Ù†Ø´ÙˆØ±Ù‡)ØŒ ÙˆØ¥Ù„Ø§ Ø­Ø§Ù„Ø© Ø§Ù„Ø¹Ù„Ø§Ù‚Ø©
-  // Ø§Ù„Ø­Ø§Ù„ÙŠØ© Ø¨ÙŠÙ† Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø§Ù„Ø­Ø§Ù„ÙŠ ÙˆÙ†Ø§Ø´Ø± Ù‡Ø°Ø§ Ø§Ù„Ù…Ù†Ø´ÙˆØ±.
+  // null áÕÇÍÈ ÇáãäÔæÑ äİÓå (ãÇ äÚÑÖ áå ÒÑ ãÊÇÈÚÉ Úáì ãäÔæÑå)¡ æÅáÇ ÍÇáÉ ÇáÚáÇŞÉ
+  // ÇáÍÇáíÉ Èíä ÇáãÓÊÎÏã ÇáÍÇáí æäÇÔÑ åĞÇ ÇáãäÔæÑ.
   followStatus: 'accepted' | 'pending' | 'none' | null;
   onFollow: (post: PostItem) => void;
   onToggleLike: (post: PostItem) => void;
-  /** ÙŠØ²ÙŠØ¯ Ø¹Ù†Ø¯ ÙƒÙ„ Ù„Ø§ÙŠÙƒ Ù„ØªØ´ØºÙŠÙ„ Ø£Ù†ÙŠÙ…ÙŠØ´Ù† Ø§Ù„ÙÙ‚Ø§Ø¹Ø© */
+  /** íÒíÏ ÚäÏ ßá áÇíß áÊÔÛíá ÃäíãíÔä ÇáİŞÇÚÉ */
   likeBurstKey?: number;
   onOpenPost: (post: PostItem) => void;
-  /** Instagram-style comments sheet â€” only the comment icon should open this */
+  /** Instagram-style comments sheet — only the comment icon should open this */
   onOpenComments?: (post: PostItem) => void;
   onRequestDelete: (post: PostItem) => void;
   onRemoveMedia: (post: PostItem) => void;
@@ -3771,19 +3771,19 @@ function PostCard({
   onToggleFavorite: (post: PostItem) => void;
   isFavorited: (postId: number) => boolean;
   onShare: (post: PostItem) => void;
-  /** Ù‚Ø§Ø¦Ù…Ø© Ø´ÙŠØ± Ø§Ù„Ù…Ù†ØªØ¬: Ø®Ø§Ø±Ø¬ÙŠ Ø£Ùˆ Ø§Ø³ØªÙØ³Ø§Ø± */
+  /** ŞÇÆãÉ ÔíÑ ÇáãäÊÌ: ÎÇÑÌí Ãæ ÇÓÊİÓÇÑ */
   onProductShareMenu?: (post: PostItem) => void;
-  /** Ø´ÙŠØ± Ø£ØµÙØ± Ø¹Ù†Ø¯ ÙˆØ¬ÙˆØ¯ Ø±Ø¯ Ù…Ù† Ø§Ù„Ø´Ø±ÙƒØ© Ø¹Ù„Ù‰ Ø§Ø³ØªÙØ³Ø§Ø± */
+  /** ÔíÑ ÃÕİÑ ÚäÏ æÌæÏ ÑÏ ãä ÇáÔÑßÉ Úáì ÇÓÊİÓÇÑ */
   productShareAlert?: boolean;
-  /** Ù…Ù†Ø´ÙˆØ± Ø´Ø±ÙƒØ© â€” Ù†ÙØ³ Ø´Ø±ÙŠØ· Ø§Ù„Ù…Ù†ØªØ¬ Ø¨Ø§Ù„Ø®Ø§Ø±Ø¬ */
+  /** ãäÔæÑ ÔÑßÉ — äİÓ ÔÑíØ ÇáãäÊÌ ÈÇáÎÇÑÌ */
   isCompanyAuthor?: boolean;
   onRepost: (post: PostItem) => void;
   onDownload: (post: PostItem) => void;
-  // ÙØªØ­ ØµÙˆØ±Ø© Ø§Ù„Ù…Ù„Ù Ø§Ù„Ø´Ø®ØµÙŠ Ø§Ù„Ø¢Ù† ÙŠÙØªØ­ Ù…Ø±Ø¨Ø¹ Ø§Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ø§Ù„ÙƒØ§Ù…Ù„ (Ø¨ÙŠØ§Ù†Ø§Øª + Ø´Ø§Øª + Ù…ÙƒØ§Ù„Ù…Ø©) Ø¨Ø¯Ù„
-  // Ù…Ø¹Ø§ÙŠÙ†Ø© Ø§Ù„ØµÙˆØ±Ø© ÙˆØ­Ø¯Ù‡Ø§ â€” Ù„Ø§ ÙŠÙØ³ØªØ¯Ø¹Ù‰ Ù„Ù…Ù†Ø´ÙˆØ±Ùƒ Ø£Ù†Øª (isMine).
+  // İÊÍ ÕæÑÉ Çáãáİ ÇáÔÎÕí ÇáÂä íİÊÍ ãÑÈÚ ÇáÈÑæİÇíá ÇáßÇãá (ÈíÇäÇÊ + ÔÇÊ + ãßÇáãÉ) ÈÏá
+  // ãÚÇíäÉ ÇáÕæÑÉ æÍÏåÇ — áÇ íõÓÊÏÚì áãäÔæÑß ÃäÊ (isMine).
   onOpenProfile: (post: PostItem) => void;
-  // Ù‡Ù„ Ù‡Ø°Ø§ Ù‡Ùˆ Ù…Ù†Ø´ÙˆØ±ÙŠ Ø§Ù„Ù…Ø«Ø¨Ù‘ØªØŸ Ø§Ø®ØªÙŠØ§Ø±ÙŠ â€” ÙŠØ¸Ù‡Ø± Ø´Ø§Ø±Ø© "Ù…Ø«Ø¨Øª" ÙˆÙŠØªÙŠØ­ Ø®ÙŠØ§Ø± "Ø¥Ù„ØºØ§Ø¡ Ø§Ù„ØªØ«Ø¨ÙŠØª"
-  // Ø¨Ø¯Ù„ "ØªØ«Ø¨ÙŠØª" ÙÙŠ Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ø«Ù„Ø§Ø« Ù†Ù‚Ø§Ø·. Ù„Ø§ ÙŠÙÙ…Ø±ÙÙ‘Ø± Ø¥Ù„Ø§ Ø¹Ù„Ù‰ Ù…Ù†Ø´ÙˆØ±Ø§ØªÙŠ Ø£Ù†Ø§.
+  // åá åĞÇ åæ ãäÔæÑí ÇáãËÈøÊ¿ ÇÎÊíÇÑí — íÙåÑ ÔÇÑÉ "ãËÈÊ" æíÊíÍ ÎíÇÑ "ÅáÛÇÁ ÇáÊËÈíÊ"
+  // ÈÏá "ÊËÈíÊ" İí ŞÇÆãÉ ÇáËáÇË äŞÇØ. áÇ íõãÑóøÑ ÅáÇ Úáì ãäÔæÑÇÊí ÃäÇ.
   isPinned?: boolean;
   onTogglePin?: (post: PostItem) => void;
 }) {
@@ -3791,13 +3791,13 @@ function PostCard({
   const arabicNumber = (value: number) => new Intl.NumberFormat('ar-KW').format(value);
   const timeAgo = (() => {
     const diffSeconds = Math.max(0, Math.floor((Date.now() - postDate.getTime()) / 1000));
-    if (diffSeconds < 60) return `Ù…Ù†Ø° ${arabicNumber(diffSeconds || 1)} Ø«Ø§Ù†ÙŠØ©`;
+    if (diffSeconds < 60) return `ãäĞ ${arabicNumber(diffSeconds || 1)} ËÇäíÉ`;
     const minutes = Math.floor(diffSeconds / 60);
-    if (minutes < 60) return `Ù…Ù†Ø° ${arabicNumber(minutes)} Ø¯Ù‚ÙŠÙ‚Ø©`;
+    if (minutes < 60) return `ãäĞ ${arabicNumber(minutes)} ÏŞíŞÉ`;
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `Ù…Ù†Ø° ${arabicNumber(hours)} Ø³Ø§Ø¹Ø©`;
+    if (hours < 24) return `ãäĞ ${arabicNumber(hours)} ÓÇÚÉ`;
     const days = Math.floor(hours / 24);
-    return `Ù…Ù†Ø° ${arabicNumber(days)} ÙŠÙˆÙ…`;
+    return `ãäĞ ${arabicNumber(days)} íæã`;
   })();
   const publishedDate = postDate.toLocaleDateString('ar-KW', {
     day: 'numeric',
@@ -3808,17 +3808,17 @@ function PostCard({
   const hasMedia = mediaItems.length > 0;
   const [mediaLightbox, setMediaLightbox] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
   const [postMenuOpen, setPostMenuOpen] = useState(false);
-  // â”€â”€ Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ø«Ù„Ø§Ø« Ù†Ù‚Ø§Ø· + ÙƒØªÙ… Ø§Ù„ØµÙˆØª Ø¯Ø§Ø®Ù„ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø© ÙƒØ§Ù…Ù„Ø© Ø§Ù„Ø´Ø§Ø´Ø© (mediaLightbox) â”€â”€
+  // ?? ŞÇÆãÉ ÇáËáÇË äŞÇØ + ßÊã ÇáÕæÊ ÏÇÎá ÇáãÚÇíäÉ ßÇãáÉ ÇáÔÇÔÉ (mediaLightbox) ??
   const [lightboxMenuOpen, setLightboxMenuOpen] = useState(false);
   const [lightboxMuted, setLightboxMuted] = useState(false);
-  // â”€â”€ ÙƒØªÙ… Ø§Ù„ØµÙˆØª Ù„ÙƒÙ„ Ø¹Ù†ØµØ± ÙÙŠØ¯ÙŠÙˆ Ø¯Ø§Ø®Ù„ Ù…Ø¹Ø§ÙŠÙ†Ø© Ø§Ù„ÙÙŠÙŠØ¯ Ø§Ù„ØµØºÙŠØ±Ø© (Ù…ÙƒØªÙˆÙ… Ø§ÙØªØ±Ø§Ø¶ÙŠØ§Ù‹ ÙƒÙ…Ø¹Ø§ÙŠÙ†Ø©) â”€â”€
+  // ?? ßÊã ÇáÕæÊ áßá ÚäÕÑ İíÏíæ ÏÇÎá ãÚÇíäÉ ÇáİííÏ ÇáÕÛíÑÉ (ãßÊæã ÇİÊÑÇÖíÇğ ßãÚÇíäÉ) ??
   const [feedMuted, setFeedMuted] = useState<Record<number, boolean>>({});
-  // â”€â”€ Ù…Ø¹Ø±Ø¶ Ø§Ù„ØµÙˆØ± Ø§Ù„Ù…ØªØ¹Ø¯Ø¯Ø© Ø¯Ø§Ø®Ù„ Ø§Ù„Ù…Ù†Ø´ÙˆØ± â€” ØªÙ†Ù‚Ù„ ÙŠÙ…ÙŠÙ†/ÙŠØ³Ø§Ø± + Ø¹Ø¯Ø§Ø¯ ØµÙØ­Ø§Øª (1/N) Ø²ÙŠ Ø§Ù†Ø³ØªØºØ±Ø§Ù… â”€â”€
+  // ?? ãÚÑÖ ÇáÕæÑ ÇáãÊÚÏÏÉ ÏÇÎá ÇáãäÔæÑ — ÊäŞá íãíä/íÓÇÑ + ÚÏÇÏ ÕİÍÇÊ (1/N) Òí ÇäÓÊÛÑÇã ??
   const [mediaPage, setMediaPage] = useState(0);
   const mediaScrollRef = useRef<HTMLDivElement | null>(null);
   const productAd = parseProductAd(post.text);
   const isProductAd = !!productAd;
-  // Ø±ÙˆØ§Ø¨Ø· X Ø¯Ø§Ø®Ù„ Ù†Øµ Ø§Ù„Ù…Ù†Ø´ÙˆØ± â€” Ù†Øµ Ø¥Ø¹Ù„Ø§Ù†/Ù…Ù†Ø´ÙˆØ± Ø§Ù„Ù…Ù†ØªØ¬ Ù…Ø®ÙÙŠ ÙÙŠ Ø§Ù„ÙÙŠÙŠØ¯ØŒ ÙÙ†Ø¹Ø±Ø¶ ÙˆØ³Ø§Ø¦Ø· Ø§Ù„Ø±Ø§Ø¨Ø· Ù…Ø¨Ø§Ø´Ø±Ø©
+  // ÑæÇÈØ X ÏÇÎá äÕ ÇáãäÔæÑ — äÕ ÅÚáÇä/ãäÔæÑ ÇáãäÊÌ ãÎİí İí ÇáİííÏ¡ İäÚÑÖ æÓÇÆØ ÇáÑÇÈØ ãÈÇÔÑÉ
   const postXUrls = isProductAd ? extractLinkMediaUrls(post.text) : [];
   const [productDetailsOpen, setProductDetailsOpen] = useState(false);
   function goToMediaPage(idx: number) {
@@ -3847,14 +3847,14 @@ function PostCard({
           position: 'relative',
         }}
       >
-        {/* Repost attribution ribbon â€” only present on a feed entry created by a repost */}
+        {/* Repost attribution ribbon — only present on a feed entry created by a repost */}
         {post.repostedBy && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#000000', fontSize: '0.68rem', fontWeight: 700, paddingInline: 14, marginBottom: 8 }}>
             <Repeat2 size={13} strokeWidth={2.2} />
-            <span>Ø£Ø¹Ø§Ø¯ {post.repostedBy.name || post.repostedBy.username || 'â€”'} Ù†Ø´Ø± Ù‡Ø°Ø§ Ø§Ù„Ù…Ù†Ø´ÙˆØ±</span>
+            <span>ÃÚÇÏ {post.repostedBy.name || post.repostedBy.username || '—'} äÔÑ åĞÇ ÇáãäÔæÑ</span>
           </div>
         )}
-        {/* Header: ØµÙˆØ±Ø© Ø§Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ø¨Ø¬Ø§Ù†Ø¨ Ø§Ù„Ø§Ø³Ù… Ù„ÙƒÙ„ Ù…Ø³ØªØ®Ø¯Ù… ÙˆØ´Ø±ÙƒØ© */}
+        {/* Header: ÕæÑÉ ÇáÈÑæİÇíá ÈÌÇäÈ ÇáÇÓã áßá ãÓÊÎÏã æÔÑßÉ */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingInline: hasMedia ? 14 : 0, marginBottom: hasMedia ? 10 : 0 }}>
           <motion.button
             whileTap={{ scale: 0.94 }}
@@ -3863,19 +3863,19 @@ function PostCard({
               if (isMine) return;
               onOpenProfile(post);
             }}
-            aria-label="Ø¹Ø±Ø¶ Ø§Ù„Ù…Ù„Ù Ø§Ù„Ø´Ø®ØµÙŠ"
+            aria-label="ÚÑÖ Çáãáİ ÇáÔÎÕí"
             style={{ padding: 0, border: 'none', background: 'none', cursor: isMine ? 'default' : 'pointer', borderRadius: '50%', flexShrink: 0 }}
           >
             <UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={38} />
           </motion.button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ color: '#000000', fontSize: '0.82rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-              {post.authorName || post.authorUsername || 'â€”'}
+              {post.authorName || post.authorUsername || '—'}
               <span style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.66rem', fontWeight: 700, marginInlineStart: 6 }}>
                 {publishedDate}
               </span>
               <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: '0.64rem', fontWeight: 600 }}>
-                Â· {timeAgo}
+                · {timeAgo}
               </span>
               {isPinned && (
                 <span style={{
@@ -3885,7 +3885,7 @@ function PostCard({
                   fontSize: '0.62rem', fontWeight: 700,
                 }}>
                   <Pin size={10} strokeWidth={2.4} />
-                  Ù…Ø«Ø¨Øª
+                  ãËÈÊ
                 </span>
               )}
             </p>
@@ -3894,14 +3894,14 @@ function PostCard({
             </p>
           </div>
 
-          {/* Ø²Ø± Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©/Ø§Ù„Ø¥Ø¶Ø§ÙØ© â€” Ù„Ø§ ÙŠØ¸Ù‡Ø± Ø¹Ù„Ù‰ Ù…Ù†Ø´ÙˆØ±Ùƒ Ø£Ù†Øª (followStatus === null) */}
+          {/* ÒÑ ÇáãÊÇÈÚÉ/ÇáÅÖÇİÉ — áÇ íÙåÑ Úáì ãäÔæÑß ÃäÊ (followStatus === null) */}
           {followStatus === 'pending' && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
               padding: '5px 10px', borderRadius: 20, background: CLR_CARD_BG, border: `1px solid ${CLR_CARD_BORDER}`,
             }}>
               <Clock size={12} strokeWidth={2} color={CLR_TEXT_DIM} />
-              <span style={{ fontSize: '0.66rem', color: CLR_TEXT_DIM, fontWeight: 600, whiteSpace: 'nowrap' }}>Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø§Ù„Ù‚Ø¨ÙˆÙ„</span>
+              <span style={{ fontSize: '0.66rem', color: CLR_TEXT_DIM, fontWeight: 600, whiteSpace: 'nowrap' }}>ÈÇäÊÙÇÑ ÇáŞÈæá</span>
             </div>
           )}
           {followStatus === 'none' && (
@@ -3919,13 +3919,13 @@ function PostCard({
             </motion.button>
           )}
 
-          {/* â‹® Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ù†Ø§Ø´Ø± â€” Ø²Ø§ÙˆÙŠØ© Ø§Ù„Ø¨ÙˆØ³Øª ÙŠÙ…ÙŠÙ† */}
+          {/* ? ŞÇÆãÉ ÇáäÇÔÑ — ÒÇæíÉ ÇáÈæÓÊ íãíä */}
           {isMine && (
             <div style={{ position: 'relative', flexShrink: 0 }}>
               <motion.button
                 whileTap={{ scale: 0.88 }}
                 onClick={e => { e.stopPropagation(); setPostMenuOpen(v => !v); }}
-                aria-label="Ø®ÙŠØ§Ø±Ø§Øª Ø§Ù„Ù…Ù†Ø´ÙˆØ±"
+                aria-label="ÎíÇÑÇÊ ÇáãäÔæÑ"
                 style={{
                   width: 32, height: 32, borderRadius: '50%', border: 'none',
                   background: 'transparent', color: '#000000', cursor: 'pointer',
@@ -3965,7 +3965,7 @@ function PostCard({
                         }}
                       >
                         {isPinned ? <PinOff size={15} color={CLR_PRIMARY} /> : <Pin size={15} color={CLR_PRIMARY} />}
-                        {isPinned ? 'Ø¥Ù„ØºØ§Ø¡ Ø§Ù„ØªØ«Ø¨ÙŠØª' : 'ØªØ«Ø¨ÙŠØª Ø§Ù„Ù…Ù†Ø´ÙˆØ±'}
+                        {isPinned ? 'ÅáÛÇÁ ÇáÊËÈíÊ' : 'ÊËÈíÊ ÇáãäÔæÑ'}
                       </button>
                     )}
                     {hasMedia && (
@@ -3983,7 +3983,7 @@ function PostCard({
                         }}
                       >
                         <ImageIcon size={15} color={CLR_PRIMARY} />
-                        Ø­Ø°Ù Ø§Ù„ÙˆØ³Ø§Ø¦Ø·
+                        ÍĞİ ÇáæÓÇÆØ
                       </button>
                     )}
                     <button
@@ -4000,7 +4000,7 @@ function PostCard({
                       }}
                     >
                       <Trash2 size={15} />
-                      Ø­Ø°Ù Ø§Ù„Ù…Ù†Ø´ÙˆØ±
+                      ÍĞİ ÇáãäÔæÑ
                     </button>
                   </div>
                 </>
@@ -4009,15 +4009,15 @@ function PostCard({
           )}
         </div>
 
-        {/* Ù†Øµ ÙÙ‚Ø· Ø¨Ø¯ÙˆÙ† ÙˆØ³Ø§Ø¦Ø· */}
-        {/* Ø¥Ø¹Ù„Ø§Ù† Ù…Ù†ØªØ¬: Ù„Ø§ Ù†Øµ ÙÙˆÙ‚ Ø§Ù„ØµÙˆØ±Ø© â€” Ø§Ù„Ø¹Ù†ÙˆØ§Ù† ÙˆØ§Ù„Ø³Ø¹Ø± ÙˆØ§Ù„ØªÙØ§ØµÙŠÙ„ ÙÙ‚Ø· Ø¯Ø§Ø®Ù„ Ø£ÙŠÙ‚ÙˆÙ†Ø© Ø§Ù„Ø«Ù„Ø§Ø« Ø®Ø·ÙˆØ· */}
+        {/* äÕ İŞØ ÈÏæä æÓÇÆØ */}
+        {/* ÅÚáÇä ãäÊÌ: áÇ äÕ İæŞ ÇáÕæÑÉ — ÇáÚäæÇä æÇáÓÚÑ æÇáÊİÇÕíá İŞØ ÏÇÎá ÃíŞæäÉ ÇáËáÇË ÎØæØ */}
         {!hasMedia && post.text && !isProductAd && (
           <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column' }}>
             <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => onOpenPost(post)} />
           </div>
         )}
 
-        {/* Ù†Øµ Ø§Ù„Ù†Ø§Ø´Ø± ÙÙˆÙ‚ Ø§Ù„ØµÙˆØ±Ø©/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ â€” Ù…Ø®ÙÙŠ ØªÙ…Ø§Ù…Ù‹Ø§ Ù„Ø¥Ø¹Ù„Ø§Ù† Ø§Ù„Ù…Ù†ØªØ¬ */}
+        {/* äÕ ÇáäÇÔÑ İæŞ ÇáÕæÑÉ/ÇáİíÏíæ — ãÎİí ÊãÇãğÇ áÅÚáÇä ÇáãäÊÌ */}
         {hasMedia && post.text && !isProductAd && (
           <div style={{
             background: 'transparent', border: 'none', borderRadius: 0, padding: '0 14px 10px', margin: 0,
@@ -4027,8 +4027,8 @@ function PostCard({
           </div>
         )}
 
-        {/* Media â€” Ù…Ù† Ø§Ù„ÙŠÙ…ÙŠÙ† Ù„Ù„ÙŠØ³Ø§Ø± Ø¨Ø¹Ø±Ø¶ Ø§Ù„Ø´Ø§Ø´Ø© ÙƒØ§Ù…Ù„Ø§Ù‹. Ù„Ùˆ Ø£ÙƒØ«Ø± Ù…Ù† Ø¹Ù†ØµØ± ÙˆØ§Ø­Ø¯: Ù…Ø¹Ø±Ø¶ Ù‚Ø§Ø¨Ù„
-            Ù„Ù„ØªØµÙØ­ ÙŠÙ…ÙŠÙ†/ÙŠØ³Ø§Ø± (Ø³Ø­Ø¨ Ø£Ùˆ Ø£Ø²Ø±Ø§Ø± Ø§Ù„Ø£Ø³Ù‡Ù…) Ù…Ø¹ Ø¹Ø¯Ø§Ø¯ ØµÙØ­Ø§Øª "1/N" Ø²ÙŠ Ø§Ù†Ø³ØªØºØ±Ø§Ù…. */}
+        {/* Media — ãä Çáíãíä ááíÓÇÑ ÈÚÑÖ ÇáÔÇÔÉ ßÇãáÇğ. áæ ÃßËÑ ãä ÚäÕÑ æÇÍÏ: ãÚÑÖ ŞÇÈá
+            ááÊÕİÍ íãíä/íÓÇÑ (ÓÍÈ Ãæ ÃÒÑÇÑ ÇáÃÓåã) ãÚ ÚÏÇÏ ÕİÍÇÊ "1/N" Òí ÇäÓÊÛÑÇã. */}
         {hasMedia && (
           <div style={{ position: 'relative', width: '100%' }}>
             {mediaItems.length > 1 && (
@@ -4046,8 +4046,8 @@ function PostCard({
               }}
               style={{
                 display: 'flex', flexDirection: 'row', width: '100%',
-                // Ù†ÙØ±Ø¶ LTR Ø¯Ø§Ø®Ù„ Ø´Ø±ÙŠØ· Ø§Ù„ØªØµÙØ­ Ù†ÙØ³Ù‡ ÙÙ‚Ø· (Ø¨Ø¹ÙŠØ¯Ù‹Ø§ Ø¹Ù† Ø§ØªØ¬Ø§Ù‡ Ø§Ù„ØµÙØ­Ø© Ø§Ù„Ø¹Ø§Ù… RTL)
-                // Ø¹Ø´Ø§Ù† ÙŠÙƒÙˆÙ† ØªØ±ØªÙŠØ¨ Ø§Ù„Ø³Ø­Ø¨/Ø§Ù„Ø¹Ø¯Ù‘Ø§Ø¯ Ø«Ø§Ø¨Øª ÙˆÙ…ØªÙˆÙ‚Ù‘Ø¹ Ø¯Ø§ÙŠÙ…Ù‹Ø§: Ø³Ø­Ø¨ Ù„Ù„ÙŠØ³Ø§Ø± = Ø§Ù„ØµÙˆØ±Ø© Ø§Ù„ØªØ§Ù„ÙŠØ©.
+                // äİÑÖ LTR ÏÇÎá ÔÑíØ ÇáÊÕİÍ äİÓå İŞØ (ÈÚíÏğÇ Úä ÇÊÌÇå ÇáÕİÍÉ ÇáÚÇã RTL)
+                // ÚÔÇä íßæä ÊÑÊíÈ ÇáÓÍÈ/ÇáÚÏøÇÏ ËÇÈÊ æãÊæŞøÚ ÏÇíãğÇ: ÓÍÈ ááíÓÇÑ = ÇáÕæÑÉ ÇáÊÇáíÉ.
                 direction: 'ltr',
                 overflowX: mediaItems.length > 1 ? 'auto' : 'hidden',
                 scrollSnapType: mediaItems.length > 1 ? 'x mandatory' : undefined,
@@ -4066,14 +4066,14 @@ function PostCard({
                     type="button"
                     onClick={e => {
                       e.stopPropagation();
-                      // Ù…Ù†ØªØ¬ Ø£Ùˆ Ø´Ø±ÙƒØ© â†’ Ø§Ù„ØµÙØ­Ø© Ø§Ù„Ø¬Ø¯ÙŠØ¯Ø© ÙˆÙ„ÙŠØ³ Ø§Ù„Ù„Ø§ÙŠØªØ¨ÙˆÙƒØ³ Ø§Ù„Ù‚Ø¯ÙŠÙ… (ÙƒÙˆÙ…Ù†Øª/Ø±ÙŠØ¨ÙˆØ³Øª ÙÙ‚Ø·)
+                      // ãäÊÌ Ãæ ÔÑßÉ ? ÇáÕİÍÉ ÇáÌÏíÏÉ æáíÓ ÇááÇíÊÈæßÓ ÇáŞÏíã (ßæãäÊ/ÑíÈæÓÊ İŞØ)
                       if (isProductAd || isCompanyAuthor) {
                         onOpenPost(post);
                         return;
                       }
                       setMediaLightbox(media);
                     }}
-                    aria-label={media.type === 'video' ? 'ÙØªØ­ Ø§Ù„ÙÙŠØ¯ÙŠÙˆ' : 'ÙØªØ­ Ø§Ù„ØµÙˆØ±Ø©'}
+                    aria-label={media.type === 'video' ? 'İÊÍ ÇáİíÏíæ' : 'İÊÍ ÇáÕæÑÉ'}
                     style={{
                       position: 'relative', width: '100%', border: '3px solid #000', boxSizing: 'border-box', padding: 0,
                       background: '#000', cursor: 'pointer', display: 'block',
@@ -4098,8 +4098,8 @@ function PostCard({
                       />
                     )}
                   </button>
-                  {/* Ø£ÙŠÙ‚ÙˆÙ†Ø© ÙƒØªÙ…/ØªØ´ØºÙŠÙ„ Ø§Ù„ØµÙˆØª â€” ØªØ­Ù„ Ù…Ø­Ù„ Ø£Ø²Ø±Ø§Ø± Ø§Ù„ÙÙŠØ¯ÙŠÙˆ Ø§Ù„Ø§ÙØªØ±Ø§Ø¶ÙŠØ© (controls) Ø¹Ù„Ù‰
-                      Ù…Ø¹Ø§ÙŠÙ†Ø© Ø§Ù„ÙÙŠÙŠØ¯ Ø§Ù„ØµØºÙŠØ±Ø©ØŒ ÙØªØ¨Ù‚Ù‰ Ø§Ù„ØµÙˆØ±Ø©/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ØªØ¨ÙŠÙ† ÙƒØ§Ù…Ù„Ø© ÙˆØ¨Ø¹ÙŠØ¯Ø© Ø¨Ø¯ÙˆÙ† ØªØ­ÙƒÙ…Ø§Øª ÙƒØ¨ÙŠØ±Ø© ØªØºØ·ÙŠÙ‡Ø§. */}
+                  {/* ÃíŞæäÉ ßÊã/ÊÔÛíá ÇáÕæÊ — ÊÍá ãÍá ÃÒÑÇÑ ÇáİíÏíæ ÇáÇİÊÑÇÖíÉ (controls) Úáì
+                      ãÚÇíäÉ ÇáİííÏ ÇáÕÛíÑÉ¡ İÊÈŞì ÇáÕæÑÉ/ÇáİíÏíæ ÊÈíä ßÇãáÉ æÈÚíÏÉ ÈÏæä ÊÍßãÇÊ ßÈíÑÉ ÊÛØíåÇ. */}
                   {media.type === 'video' && (
                     <motion.button
                       whileTap={{ scale: 0.88 }}
@@ -4107,7 +4107,7 @@ function PostCard({
                         e.stopPropagation();
                         setFeedMuted(prev => ({ ...prev, [index]: prev[index] === false ? true : false }));
                       }}
-                      aria-label={feedMuted[index] === false ? 'ÙƒØªÙ… Ø§Ù„ØµÙˆØª' : 'ØªØ´ØºÙŠÙ„ Ø§Ù„ØµÙˆØª'}
+                      aria-label={feedMuted[index] === false ? 'ßÊã ÇáÕæÊ' : 'ÊÔÛíá ÇáÕæÊ'}
                       style={{
                         position: 'absolute', bottom: 10, insetInlineEnd: 10, width: 30, height: 30, borderRadius: '50%',
                         background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff', cursor: 'pointer',
@@ -4118,7 +4118,7 @@ function PostCard({
                     </motion.button>
                   )}
                   {isMine && index === 0 && (
-                    <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onRemoveMedia(post); }} aria-label="Ø­Ø°Ù Ø§Ù„ÙˆØ³Ø§Ø¦Ø·" style={{
+                    <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onRemoveMedia(post); }} aria-label="ÍĞİ ÇáæÓÇÆØ" style={{
                       position: 'absolute', top: 10, right: 10, width: 28, height: 28, borderRadius: '50%',
                       background: 'rgba(20,20,20,0.85)', border: `1px solid ${CLR_POST_BORDER}`, color: '#fff', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
@@ -4130,14 +4130,14 @@ function PostCard({
               ))}
             </div>
 
-            {/* Ø£Ø³Ù‡Ù… ÙŠÙ…ÙŠÙ†/ÙŠØ³Ø§Ø± + Ø¹Ø¯Ø§Ø¯ Ø§Ù„ØµÙØ­Ø§Øª â€” ØªØ¸Ù‡Ø± ÙÙ‚Ø· Ù„Ùˆ Ø§Ù„Ù…Ù†Ø´ÙˆØ± ÙÙŠÙ‡ Ø£ÙƒØ«Ø± Ù…Ù† ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ */}
+            {/* ÃÓåã íãíä/íÓÇÑ + ÚÏÇÏ ÇáÕİÍÇÊ — ÊÙåÑ İŞØ áæ ÇáãäÔæÑ İíå ÃßËÑ ãä ÕæÑÉ/İíÏíæ */}
             {mediaItems.length > 1 && (
               <>
                 {mediaPage > 0 && (
                   <motion.button
                     whileTap={{ scale: 0.88 }}
                     onClick={e => { e.stopPropagation(); goToMediaPage(mediaPage - 1); }}
-                    aria-label="Ø§Ù„ØµÙˆØ±Ø© Ø§Ù„Ø³Ø§Ø¨Ù‚Ø©"
+                    aria-label="ÇáÕæÑÉ ÇáÓÇÈŞÉ"
                     style={{
                       position: 'absolute', top: '50%', left: 8, transform: 'translateY(-50%)',
                       width: 30, height: 30, borderRadius: '50%',
@@ -4152,7 +4152,7 @@ function PostCard({
                   <motion.button
                     whileTap={{ scale: 0.88 }}
                     onClick={e => { e.stopPropagation(); goToMediaPage(mediaPage + 1); }}
-                    aria-label="Ø§Ù„ØµÙˆØ±Ø© Ø§Ù„ØªØ§Ù„ÙŠØ©"
+                    aria-label="ÇáÕæÑÉ ÇáÊÇáíÉ"
                     style={{
                       position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)',
                       width: 30, height: 30, borderRadius: '50%',
@@ -4187,14 +4187,14 @@ function PostCard({
           </div>
         )}
 
-        {/* Ø±Ø§Ø¨Ø· X Ø¯Ø§Ø®Ù„ Ù†Øµ Ø§Ù„Ù…Ù†Ø´ÙˆØ± (Ù…Ø³ØªØ®Ø¯Ù… Ø£Ùˆ Ø´Ø±ÙƒØ©): Ø§Ù„ØµÙˆØ±Ø©/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ØªØ¸Ù‡Ø± ÙƒØ§Ù…Ù„Ø© Ù…Ø¨Ø§Ø´Ø±Ø© Ø¨Ø¯ÙˆÙ† Ø¶ØºØ·Ø© */}
+        {/* ÑÇÈØ X ÏÇÎá äÕ ÇáãäÔæÑ (ãÓÊÎÏã Ãæ ÔÑßÉ): ÇáÕæÑÉ/ÇáİíÏíæ ÊÙåÑ ßÇãáÉ ãÈÇÔÑÉ ÈÏæä ÖÛØÉ */}
         {postXUrls.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingInline: hasMedia ? 14 : 0, paddingTop: hasMedia ? 10 : 0 }}>
             {postXUrls.map(u => <LinkMediaPreview key={u} url={u} />)}
           </div>
         )}
 
-        {/* Actions â€” Ù…Ù†ØªØ¬ Ø£Ùˆ Ø´Ø±ÙƒØ©: Ù„Ø§ÙŠÙƒ â†’ ØªØ¹Ù„ÙŠÙ‚Ø§Øª â†’ Ø´ÙŠØ± | ØªÙØ§ØµÙŠÙ„ (Ù†ÙØ³ Ø¯Ø§Ø®Ù„ Ø§Ù„Ø¨ÙˆØ³Øª) */}
+        {/* Actions — ãäÊÌ Ãæ ÔÑßÉ: áÇíß ? ÊÚáíŞÇÊ ? ÔíÑ | ÊİÇÕíá (äİÓ ÏÇÎá ÇáÈæÓÊ) */}
         {(isProductAd || isCompanyAuthor) ? (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -4223,7 +4223,7 @@ function PostCard({
                   if (onProductShareMenu) onProductShareMenu(post);
                   else onShare(post);
                 }}
-                aria-label="Ù…Ø´Ø§Ø±ÙƒØ©"
+                aria-label="ãÔÇÑßÉ"
                 style={{
                   display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer',
                   color: productShareAlert ? '#eab308' : '#000000',
@@ -4236,7 +4236,7 @@ function PostCard({
             <motion.button
               whileTap={{ scale: 0.92 }}
               onClick={e => { e.stopPropagation(); setProductDetailsOpen(true); }}
-              aria-label="ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ù…Ù†ØªØ¬"
+              aria-label="ÊİÇÕíá ÇáãäÊÌ"
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                 background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
@@ -4248,7 +4248,7 @@ function PostCard({
               <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
             </motion.button>
 
-            {/* Ù…ÙˆØ§Ø²Ù†Ø© Ø§Ù„Ù…Ø³Ø§Ø­Ø© Ø¨Ø¹Ø¯ Ù†Ù‚Ù„ Ø§Ù„ØªØ¹Ù„ÙŠÙ‚Ø§Øª Ø¨ÙŠÙ† Ø§Ù„Ù„Ø§ÙŠÙƒ ÙˆØ§Ù„Ø´ÙŠØ± */}
+            {/* ãæÇÒäÉ ÇáãÓÇÍÉ ÈÚÏ äŞá ÇáÊÚáíŞÇÊ Èíä ÇááÇíß æÇáÔíÑ */}
             <div style={{ minWidth: 72 }} />
           </div>
         ) : (
@@ -4307,7 +4307,7 @@ function PostCard({
             <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.likesCount > 0 ? post.likesCount : ''}</span>
           </motion.button>
           {PostMediaItems(post).length > 0 && (
-            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onDownload(post); }} style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }} aria-label="ØªÙ†Ø²ÙŠÙ„">
+            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onDownload(post); }} style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }} aria-label="ÊäÒíá">
               <Download size={15} strokeWidth={2} />
             </motion.button>
           )}
@@ -4319,8 +4319,8 @@ function PostCard({
           <motion.button
             whileTap={{ scale: 0.88 }}
             onClick={e => { e.stopPropagation(); onRepost(post); }}
-            aria-label="Ø¥Ø¹Ø§Ø¯Ø© Ù†Ø´Ø±"
-            title="Ø¥Ø¹Ø§Ø¯Ø© Ù†Ø´Ø±"
+            aria-label="ÅÚÇÏÉ äÔÑ"
+            title="ÅÚÇÏÉ äÔÑ"
             style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: post.repostedByMe ? 'hsl(var(--primary))' : '#000000' }}
           >
             <Repeat2 size={15} strokeWidth={2} />
@@ -4328,8 +4328,8 @@ function PostCard({
           <motion.button
             whileTap={{ scale: 0.88 }}
             onClick={e => { e.stopPropagation(); onToggleFavorite(post); }}
-            aria-label="Ø¥Ø¶Ø§ÙØ© Ø¥Ù„Ù‰ Ø§Ù„Ù…ÙØ¶Ù„Ø©"
-            title="Ø¥Ø¶Ø§ÙØ© Ø¥Ù„Ù‰ Ø§Ù„Ù…ÙØ¶Ù„Ø©"
+            aria-label="ÅÖÇİÉ Åáì ÇáãİÖáÉ"
+            title="ÅÖÇİÉ Åáì ÇáãİÖáÉ"
             style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: isFavorited(post.id) ? '#22c55e' : '#000000' }}
           >
             <Bookmark size={15} strokeWidth={2} fill={isFavorited(post.id) ? '#22c55e' : 'none'} />
@@ -4337,21 +4337,21 @@ function PostCard({
           <motion.button
             whileTap={{ scale: 0.88 }}
             onClick={e => { e.stopPropagation(); onShare(post); }}
-            aria-label="Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ù„Ù„Ø£ØµØ¯Ù‚Ø§Ø¡"
-            title="Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ù„Ù„Ø£ØµØ¯Ù‚Ø§Ø¡"
+            aria-label="ÅÑÓÇá ÇáãäÔæÑ ááÃÕÏŞÇÁ"
+            title="ÅÑÓÇá ÇáãäÔæÑ ááÃÕÏŞÇÁ"
             style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}
           >
             <Send size={15} strokeWidth={2} />
           </motion.button>
           {followStatus === 'accepted' && (
-            <span title="Ù…ØªØ§Ø¨ÙØ¹" style={{ display: 'flex', alignItems: 'center' }}>
+            <span title="ãÊÇÈóÚ" style={{ display: 'flex', alignItems: 'center' }}>
               <Check size={14} strokeWidth={3} color="#000000" />
             </span>
           )}
         </div>
         )}
 
-        {/* Ø´ÙŠØª ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ù…Ù†ØªØ¬ â€” ÙŠØµØ¹Ø¯ Ù…Ù† Ø§Ù„Ø£Ø³ÙÙ„ */}
+        {/* ÔíÊ ÊİÇÕíá ÇáãäÊÌ — íÕÚÏ ãä ÇáÃÓİá */}
         <AnimatePresence>
           {(isProductAd || isCompanyAuthor) && productDetailsOpen && (
             <motion.div
@@ -4378,7 +4378,7 @@ function PostCard({
               >
                 <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
                 <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.1rem', fontWeight: 800, lineHeight: 1.35 }}>
-                  {productAd?.title || productAdDisplayTitle(post) || post.authorName || 'ØªÙØ§ØµÙŠÙ„'}
+                  {productAd?.title || productAdDisplayTitle(post) || post.authorName || 'ÊİÇÕíá'}
                 </p>
                 {productAd?.price ? (
                   <p style={{ margin: '8px 0 0', color: '#00BCD4', fontSize: '1rem', fontWeight: 800 }}>{productAd.price}</p>
@@ -4386,7 +4386,7 @@ function PostCard({
                 {(() => {
                   const stripPreviewUrls = (t: string) =>
                     t.replace(URL_IN_TEXT_RE, (match) => {
-                      const raw = match.replace(/[.,;:!?ØŒØ›]+$/, '');
+                      const raw = match.replace(/[.,;:!?¡º]+$/, '');
                       const resolved = composerLookupOriginalUrl(raw);
                       if (parseXStatusId(resolved) || classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved)) return '';
                       return match;
@@ -4405,7 +4405,7 @@ function PostCard({
                 })()}
                 {(productAd?.extras ?? []).map((ex, i) => {
                   const cleaned = ex.replace(URL_IN_TEXT_RE, (match) => {
-                    const raw = match.replace(/[.,;:!?ØŒØ›]+$/, '');
+                    const raw = match.replace(/[.,;:!?¡º]+$/, '');
                     const resolved = composerLookupOriginalUrl(raw);
                     if (parseXStatusId(resolved) || classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved)) return '';
                     return match;
@@ -4423,7 +4423,7 @@ function PostCard({
                     background: '#0f1419', color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
                   }}
                 >
-                  Ø¥ØºÙ„Ø§Ù‚
+                  ÅÛáÇŞ
                 </button>
               </motion.div>
             </motion.div>
@@ -4431,7 +4431,7 @@ function PostCard({
         </AnimatePresence>
       </motion.div>
 
-      {/* Fullscreen media â€” ÙŠÙ…ÙŠÙ†/ÙŠØ³Ø§Ø± ÙƒØ§Ù…Ù„ Ø§Ù„Ø´Ø§Ø´Ø© + Ø§Ù„Ù†Øµ Ø£Ø¹Ù„Ù‰ Ø£Ùˆ Ø£Ø³ÙÙ„ */}
+      {/* Fullscreen media — íãíä/íÓÇÑ ßÇãá ÇáÔÇÔÉ + ÇáäÕ ÃÚáì Ãæ ÃÓİá */}
       {mediaLightbox && typeof document !== 'undefined' && createPortal(
         <motion.div
           initial={{ opacity: 0 }}
@@ -4460,13 +4460,13 @@ function PostCard({
               <X size={18} strokeWidth={2.4} />
             </button>
 
-            {/* â‹® Ù‚Ø§Ø¦Ù…Ø© Ø®ÙŠØ§Ø±Ø§Øª Ø§Ù„Ù…Ù†Ø´ÙˆØ± â€” ØªØ¸Ù‡Ø± Ø¯Ø§Ø®Ù„ Ù…Ø¹Ø§ÙŠÙ†Ø© Ø§Ù„ÙÙŠØ¯ÙŠÙˆ/Ø§Ù„ØµÙˆØ±Ø© ÙƒØ§Ù…Ù„Ø© Ø§Ù„Ø´Ø§Ø´Ø©ØŒ Ø£Ø¹Ù„Ù‰ Ø§Ù„ÙŠÙ…ÙŠÙ† */}
+            {/* ? ŞÇÆãÉ ÎíÇÑÇÊ ÇáãäÔæÑ — ÊÙåÑ ÏÇÎá ãÚÇíäÉ ÇáİíÏíæ/ÇáÕæÑÉ ßÇãáÉ ÇáÔÇÔÉ¡ ÃÚáì Çáíãíä */}
             {isMine && (
               <div style={{ position: 'relative' }}>
                 <button
                   type="button"
                   onClick={e => { e.stopPropagation(); setLightboxMenuOpen(v => !v); }}
-                  aria-label="Ø®ÙŠØ§Ø±Ø§Øª Ø§Ù„Ù…Ù†Ø´ÙˆØ±"
+                  aria-label="ÎíÇÑÇÊ ÇáãäÔæÑ"
                   style={{
                     width: 36, height: 36, borderRadius: '50%', border: 'none',
                     background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
@@ -4503,7 +4503,7 @@ function PostCard({
                           }}
                         >
                           {isPinned ? <PinOff size={15} color={CLR_PRIMARY} /> : <Pin size={15} color={CLR_PRIMARY} />}
-                          {isPinned ? 'Ø¥Ù„ØºØ§Ø¡ Ø§Ù„ØªØ«Ø¨ÙŠØª' : 'ØªØ«Ø¨ÙŠØª Ø§Ù„Ù…Ù†Ø´ÙˆØ±'}
+                          {isPinned ? 'ÅáÛÇÁ ÇáÊËÈíÊ' : 'ÊËÈíÊ ÇáãäÔæÑ'}
                         </button>
                       )}
                       <button
@@ -4517,7 +4517,7 @@ function PostCard({
                         }}
                       >
                         <ImageIcon size={15} color={CLR_PRIMARY} />
-                        Ø­Ø°Ù Ø§Ù„ÙˆØ³Ø§Ø¦Ø·
+                        ÍĞİ ÇáæÓÇÆØ
                       </button>
                       <button
                         type="button"
@@ -4530,7 +4530,7 @@ function PostCard({
                         }}
                       >
                         <Trash2 size={15} />
-                        Ø­Ø°Ù Ø§Ù„Ù…Ù†Ø´ÙˆØ±
+                        ÍĞİ ÇáãäÔæÑ
                       </button>
                     </div>
                   </>
@@ -4564,7 +4564,7 @@ function PostCard({
             )}
           </div>
 
-          {/* Ø´Ø±ÙŠØ· ØªØ­ÙƒÙ‘Ù… Ø£Ø³ÙÙ„ Ø§Ù„ÙÙŠØ¯ÙŠÙˆ/Ø§Ù„ØµÙˆØ±Ø©: ÙƒØªÙ… Ø§Ù„ØµÙˆØª + Ø§Ù„ØªØ¹Ù„ÙŠÙ‚Ø§Øª + Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„Ù†Ø´Ø± */}
+          {/* ÔÑíØ ÊÍßøã ÃÓİá ÇáİíÏíæ/ÇáÕæÑÉ: ßÊã ÇáÕæÊ + ÇáÊÚáíŞÇÊ + ÅÚÇÏÉ ÇáäÔÑ */}
           <div
             onClick={e => e.stopPropagation()}
             style={{
@@ -4577,7 +4577,7 @@ function PostCard({
               <motion.button
                 whileTap={{ scale: 0.88 }}
                 onClick={() => setLightboxMuted(v => !v)}
-                aria-label={lightboxMuted ? 'ØªØ´ØºÙŠÙ„ Ø§Ù„ØµÙˆØª' : 'ÙƒØªÙ… Ø§Ù„ØµÙˆØª'}
+                aria-label={lightboxMuted ? 'ÊÔÛíá ÇáÕæÊ' : 'ßÊã ÇáÕæÊ'}
                 style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
               >
                 {lightboxMuted ? <VolumeX size={19} strokeWidth={2} /> : <Volume2 size={19} strokeWidth={2} />}
@@ -4594,8 +4594,8 @@ function PostCard({
             <motion.button
               whileTap={{ scale: 0.88 }}
               onClick={() => onRepost(post)}
-              aria-label="Ø¥Ø¹Ø§Ø¯Ø© Ù†Ø´Ø±"
-              title="Ø¥Ø¹Ø§Ø¯Ø© Ù†Ø´Ø±"
+              aria-label="ÅÚÇÏÉ äÔÑ"
+              title="ÅÚÇÏÉ äÔÑ"
               style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: post.repostedByMe ? CLR_PRIMARY : '#fff' }}
             >
               <Repeat2 size={18} strokeWidth={2} />
@@ -4623,7 +4623,7 @@ function PostCard({
   );
 }
 
-// â”€â”€ MiniProfileModal â€” limited profile view opened from the wrench icon on a text post â”€â”€
+// ?? MiniProfileModal — limited profile view opened from the wrench icon on a text post ??
 // Shows only: cover + avatar (tappable to view large), a CHAT button, Display name, BIO, User Name, Phone Number.
 interface MiniProfileData {
   name: string | null;
@@ -4632,38 +4632,38 @@ interface MiniProfileData {
   coverUrl?: string | null;
   bio?: string | null;
   phoneNumber?: string | null;
-  // â”€â”€ Stats shown beside the avatar: Post / Followers / Following / Likes.
+  // ?? Stats shown beside the avatar: Post / Followers / Following / Likes.
   //    Optional so the modal still works if the backend hasn't added these fields yet
-  //    to /api/users/by-username/:username â€” they simply show as 0 until it does. â”€â”€
+  //    to /api/users/by-username/:username — they simply show as 0 until it does. ??
   postsCount?: number;
   followersCount?: number;
   followingCount?: number;
   likesCount?: number;
   repostsCount?: number;
-  // Optional so this still works if the backend hasn't added the field yet â€”
+  // Optional so this still works if the backend hasn't added the field yet —
   // defaults to false (public) until then.
   isPrivate?: boolean;
-  // Owner's manual "hide my followers list" switch â€” independent of isPrivate.
+  // Owner's manual "hide my followers list" switch — independent of isPrivate.
   // undefined/true = visible, false = hidden even on a public account. Optional so
   // this still degrades gracefully (stays visible) until the backend adds the field.
   followersVisible?: boolean;
-  // â”€â”€ Pinned profile track ("Get" button in the music search modal) â€” shown above the
+  // ?? Pinned profile track ("Get" button in the music search modal) — shown above the
   // avatar/name to anyone visiting this profile. Optional so this still degrades
   // gracefully (simply hides the pinned bar) until the backend adds these columns to
-  // /api/users/by-username/:username and /api/users/me. â”€â”€
+  // /api/users/by-username/:username and /api/users/me. ??
   pinnedTrackId?: string | null;
   pinnedTrackTitle?: string | null;
   pinnedTrackArtist?: string | null;
   pinnedTrackArtwork?: string | null;
   pinnedTrackPreviewUrl?: string | null;
-  // â”€â”€ Pinned POST id (Pin option in a post's â‹® menu) â€” when set, that post should be
+  // ?? Pinned POST id (Pin option in a post's ? menu) — when set, that post should be
   // shown first in this person's Posts list on their profile, ahead of the rest. Optional
   // so this degrades gracefully (no reordering) until the backend adds this column to
-  // /api/users/by-username/:username and /api/users/me. â”€â”€
+  // /api/users/by-username/:username and /api/users/me. ??
   pinnedPostId?: number | null;
 }
-// â”€â”€ FollowersListModal â€” switch only (no user list). When on, others see a lock
-// instead of the followers count. Independent from the private-account rule. â”€â”€
+// ?? FollowersListModal — switch only (no user list). When on, others see a lock
+// instead of the followers count. Independent from the private-account rule. ??
 function FollowersListModal({
   friends: _friends,
   followersVisible,
@@ -4675,7 +4675,7 @@ function FollowersListModal({
   onToggleVisible: (next: boolean) => void;
   onClose: () => void;
 }) {
-  // Switch only â€” no followers list for owner or visitors.
+  // Switch only — no followers list for owner or visitors.
   void _friends;
   const hidden = !followersVisible;
   return (
@@ -4719,7 +4719,7 @@ function FollowersListModal({
         <button
           type="button"
           onClick={onClose}
-          aria-label="Ø¥ØºÙ„Ø§Ù‚"
+          aria-label="ÅÛáÇŞ"
           style={{
             position: 'absolute', top: 12, left: 12,
             width: 30, height: 30, borderRadius: '50%', border: 'none',
@@ -4757,7 +4757,7 @@ function FollowersListModal({
           margin: 0, fontSize: '1rem', fontWeight: 800, color: 'rgba(220,245,245,0.95)',
           letterSpacing: '0.01em', textAlign: 'center',
         }}>
-          Ø®ØµÙˆØµÙŠØ© Ø§Ù„Ù…ØªØ§Ø¨Ø¹ÙŠÙ†
+          ÎÕæÕíÉ ÇáãÊÇÈÚíä
         </p>
         <p style={{
           margin: '8px 0 0', fontSize: '0.72rem', fontWeight: 500,
@@ -4765,8 +4765,8 @@ function FollowersListModal({
           maxWidth: 240,
         }}>
           {hidden
-            ? 'Ø§Ù„Ù…ØªØ§Ø¨Ø¹ÙˆÙ† Ù…Ø®ÙÙŠÙˆÙ† â€” ÙŠØ¸Ù‡Ø± Ù‚ÙÙ„ Ø¨Ø¯Ù„ Ø§Ù„Ø¹Ø¯Ø¯ Ù„Ù„Ø²ÙˆØ§Ø±'
-            : 'Ø§Ù„Ø¹Ø¯Ø¯ Ø¸Ø§Ù‡Ø± Ù„Ù„Ø¬Ù…ÙŠØ¹. ÙØ¹Ù‘Ù„ Ø§Ù„Ù…ÙØªØ§Ø­ Ù„Ø¥Ø®ÙØ§Ø¦Ù‡'}
+            ? 'ÇáãÊÇÈÚæä ãÎİíæä — íÙåÑ Şİá ÈÏá ÇáÚÏÏ ááÒæÇÑ'
+            : 'ÇáÚÏÏ ÙÇåÑ ááÌãíÚ. İÚøá ÇáãİÊÇÍ áÅÎİÇÆå'}
         </p>
 
         {/* Toggle row */}
@@ -4783,17 +4783,17 @@ function FollowersListModal({
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, textAlign: 'right' }}>
             <span style={{ fontSize: '0.8rem', fontWeight: 700, color: hidden ? '#00BCD4' : 'rgba(200,230,230,0.9)' }}>
-              {hidden ? 'Ù…Ø®ÙÙŠ' : 'Ø¸Ø§Ù‡Ø±'}
+              {hidden ? 'ãÎİí' : 'ÙÇåÑ'}
             </span>
             <span style={{ fontSize: '0.64rem', color: 'rgba(150,200,200,0.55)', lineHeight: 1.4 }}>
-              Ø¥Ø®ÙØ§Ø¡ Ù…ØªØ§Ø¨Ø¹ÙŠÙ†ÙŠ Ø¹Ù† Ø§Ù„Ø¢Ø®Ø±ÙŠÙ†
+              ÅÎİÇÁ ãÊÇÈÚíäí Úä ÇáÂÎÑíä
             </span>
           </div>
           <motion.button
             type="button"
             whileTap={{ scale: 0.9 }}
             onClick={() => onToggleVisible(!followersVisible)}
-            aria-label="ØªØ¨Ø¯ÙŠÙ„ Ø¥Ø®ÙØ§Ø¡ Ø§Ù„Ù…ØªØ§Ø¨Ø¹ÙŠÙ†"
+            aria-label="ÊÈÏíá ÅÎİÇÁ ÇáãÊÇÈÚíä"
             aria-pressed={hidden}
             style={{
               width: 52, height: 30, borderRadius: 999, padding: 3, border: 'none',
@@ -4851,7 +4851,7 @@ const MiniProfileModal = ({
   const [friendLoading, setFriendLoading] = useState(false);
   const [friendMenuOpen, setFriendMenuOpen] = useState(false);
   const [followersModalOpen, setFollowersModalOpen] = useState(false);
-  // Manual "hide my followers" switch â€” only meaningful/editable when this is my own
+  // Manual "hide my followers" switch — only meaningful/editable when this is my own
   // profile; persisted locally and best-effort synced to the backend (see
   // FollowersListModal for the shared implementation used across this file).
   const [followersVisible, setFollowersVisible] = useState<boolean>(() => {
@@ -4871,7 +4871,7 @@ const MiniProfileModal = ({
         credentials: 'include',
         body: JSON.stringify({ followersVisible: next }),
       });
-    } catch { /* silent â€” the local toggle above still governs this device */ }
+    } catch { /* silent — the local toggle above still governs this device */ }
   }, []);
 
   // Tell the profile owner "someone's here" for as long as this modal stays open.
@@ -4978,7 +4978,7 @@ const MiniProfileModal = ({
   const coverUrl = profile?.coverUrl ?? null;
   const bio = profile?.bio ?? null;
   const phoneNumber = profile?.phoneNumber ?? null;
-  // Ù…Ù‚Ø·Ø¹ Get Ø§Ù„Ù…Ø«Ø¨Øª ÙÙˆÙ‚ Ø§Ù„ØµÙˆØ±Ø© â€” Ù…Ù† Ø§Ù„Ø³ÙŠØ±ÙØ±ØŒ Ø£Ùˆ localStorage Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„ÙŠ
+  // ãŞØÚ Get ÇáãËÈÊ İæŞ ÇáÕæÑÉ — ãä ÇáÓíÑİÑ¡ Ãæ localStorage áÈÑæİÇíáí
   const miniPinnedTrack = (() => {
     const fromApi = pinnedTrackFromProfile(profile);
     if (fromApi) return fromApi;
@@ -4996,7 +4996,7 @@ const MiniProfileModal = ({
           {label}
         </p>
         <p style={{ color: CLR_TEXT, fontSize: '0.84rem', margin: 0, lineHeight: 1.5 }}>
-          {value || <span style={{ color: CLR_TEXT_DIM, fontStyle: 'italic' }}>â€”</span>}
+          {value || <span style={{ color: CLR_TEXT_DIM, fontStyle: 'italic' }}>—</span>}
         </p>
       </div>
     );
@@ -5028,7 +5028,7 @@ const MiniProfileModal = ({
           <motion.button
             whileTap={{ scale: 0.88 }}
             onClick={onClose}
-            aria-label="Ø¥ØºÙ„Ø§Ù‚"
+            aria-label="ÅÛáÇŞ"
             style={{
               position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: '50%',
               background: 'rgba(0,0,0,0.4)', border: 'none', color: '#fff', cursor: 'pointer',
@@ -5061,7 +5061,7 @@ const MiniProfileModal = ({
               )}
             </div>
 
-            {/* Avatar overlapping cover â€” tap to view large */}
+            {/* Avatar overlapping cover — tap to view large */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: -40, paddingBottom: 6 }}>
               <motion.button
                 whileTap={{ scale: 0.94 }}
@@ -5074,9 +5074,9 @@ const MiniProfileModal = ({
                 <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={80} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
               </motion.button>
 
-              {/* â”€â”€ Stats beside the profile picture: Post / Followers / Following / Likes â€”
+              {/* ?? Stats beside the profile picture: Post / Followers / Following / Likes —
                   same layout as the own-profile header, so any visited profile shows the
-                  full picture (posts, likes, and follow counts) at a glance. â”€â”€ */}
+                  full picture (posts, likes, and follow counts) at a glance. ?? */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                   <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.postsCount ?? 0}</span>
@@ -5104,17 +5104,17 @@ const MiniProfileModal = ({
                 </div>
               </div>
 
-              {/* Ø­Ø§Ù„Ø© Ø§Ù„ØµØ¯Ø§Ù‚Ø© ÙÙ‚Ø· â€” Ø§Ù„Ø´Ø§Øª ÙˆØ§Ù„Ø§ØªØµØ§Ù„ Ù†ÙÙ‚Ù„Ø§ Ø¥Ù„Ù‰ Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ ÙˆØ¯Ø§Ø®Ù„ ØµÙØ­Ø© Ø§Ù„Ø´Ø§Øª */}
+              {/* ÍÇáÉ ÇáÕÏÇŞÉ İŞØ — ÇáÔÇÊ æÇáÇÊÕÇá äõŞáÇ Åáì ÇáÔÑíØ ÇáÓİáí æÏÇÎá ÕİÍÉ ÇáÔÇÊ */}
               {!isOwnProfile && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
                 {friendState === 'accepted' ? (
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ padding: '8px 14px', borderRadius: 20, background: CLR_PRIMARY_FAINT, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700 }}>ØµØ¯ÙŠÙ‚</span>
-                    <button onClick={() => setFriendMenuOpen(open => !open)} aria-label="Ø®ÙŠØ§Ø±Ø§Øª Ø§Ù„ØµØ¯ÙŠÙ‚" aria-expanded={friendMenuOpen} style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${CLR_PRIMARY_BORDER}`, background: 'transparent', color: CLR_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                    <span style={{ padding: '8px 14px', borderRadius: 20, background: CLR_PRIMARY_FAINT, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700 }}>ÕÏíŞ</span>
+                    <button onClick={() => setFriendMenuOpen(open => !open)} aria-label="ÎíÇÑÇÊ ÇáÕÏíŞ" aria-expanded={friendMenuOpen} style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${CLR_PRIMARY_BORDER}`, background: 'transparent', color: CLR_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                       <MoreVertical size={17} />
                     </button>
                     {friendMenuOpen && <div style={{ position: 'absolute', top: 38, insetInlineEnd: 0, zIndex: 280, minWidth: 142, padding: 6, borderRadius: 12, background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', boxShadow: 'var(--shadow-lg)' }}>
-                      <button onClick={removeFriendship} disabled={friendLoading} style={{ width: '100%', padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'right', fontSize: '0.78rem' }}>Ø­Ø°Ù ØµØ¯ÙŠÙ‚</button>
-                      <button onClick={blockUser} disabled={friendLoading} style={{ width: '100%', padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--destructive))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'right', fontSize: '0.78rem' }}>Ø­Ø¸Ø±</button>
+                      <button onClick={removeFriendship} disabled={friendLoading} style={{ width: '100%', padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'right', fontSize: '0.78rem' }}>ÍĞİ ÕÏíŞ</button>
+                      <button onClick={blockUser} disabled={friendLoading} style={{ width: '100%', padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--destructive))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'right', fontSize: '0.78rem' }}>ÍÙÑ</button>
                     </div>}
                   </div>
                 ) : (
@@ -5122,10 +5122,10 @@ const MiniProfileModal = ({
                     {friendState === 'none' && (
                       <motion.button whileTap={{ scale: 0.95 }} onClick={requestFriendship} disabled={friendLoading} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'transparent', border: `1px solid ${CLR_PRIMARY}`, borderRadius: 20, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700, cursor: friendLoading ? 'default' : 'pointer', opacity: friendLoading ? 0.6 : 1 }}>
                         <UserPlus size={15} strokeWidth={2.4} />
-                        Ø·Ù„Ø¨ ØµØ¯Ø§Ù‚Ø©
+                        ØáÈ ÕÏÇŞÉ
                       </motion.button>
                     )}
-                    {friendState === 'pending' && <span style={{ padding: '8px 16px', borderRadius: 20, background: CLR_PRIMARY_FAINT, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700 }}>Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø§Ù„Ù‚Ø¨ÙˆÙ„</span>}
+                    {friendState === 'pending' && <span style={{ padding: '8px 16px', borderRadius: 20, background: CLR_PRIMARY_FAINT, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700 }}>ÈÇäÊÙÇÑ ÇáŞÈæá</span>}
                   </>
                 )}
               </div>}
@@ -5173,7 +5173,7 @@ const MiniProfileModal = ({
         )}
       </AnimatePresence>
 
-      {/* Followers list â€” only ever opened for my own profile from this modal, since we
+      {/* Followers list — only ever opened for my own profile from this modal, since we
           don't have another user's friends list to show. */}
       <AnimatePresence>
         {isOwnProfile && followersModalOpen && (
@@ -5189,9 +5189,9 @@ const MiniProfileModal = ({
   );
 }
 
-// â”€â”€ FriendStoryProfile â€” profile for another user: avatar, stats, and ONLY their posts.
+// ?? FriendStoryProfile — profile for another user: avatar, stats, and ONLY their posts.
 //    Video/Photo tabs removed; cover has no dark overlay. Posts (text + media alike) render
-//    three-per-row below, tapping any tile opens the full post page like a text post. â”€â”€
+//    three-per-row below, tapping any tile opens the full post page like a text post. ??
 export interface FriendStoryProfileProps {
   authorId: string;
   authorName: string | null;
@@ -5199,13 +5199,13 @@ export interface FriendStoryProfileProps {
   authorAvatarUrl: string | null;
   onClose: () => void;
   onOpenPost: (post: PostItem) => void;
-  /** ÙŠÙØªØ­ Ø´ÙŠØª Ø§Ù„ØªØ¹Ù„ÙŠÙ‚Ø§Øª Ø§Ù„Ù…Ù†Ø²Ù„Ù‚ Ù…Ù† Ø§Ù„Ø£Ø³ÙÙ„ ÙÙ‚Ø· (Ù†ÙØ³ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø¨ÙƒÙ„ Ù…ÙƒØ§Ù†) â€” Ø¨Ø¯ÙˆÙ† ÙØªØ­ ØµÙØ­Ø©
-   * Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø§Ù„ÙƒØ§Ù…Ù„Ø©. Ø§Ø®ØªÙŠØ§Ø±ÙŠ Ø­ØªÙ‰ Ù„Ø§ ÙŠÙ†ÙƒØ³Ø± Ø£ÙŠ Ø§Ø³ØªØ¯Ø¹Ø§Ø¡ Ù‚Ø¯ÙŠÙ… Ù„Ù‡Ø°Ø§ Ø§Ù„Ù…ÙƒÙˆÙ‘Ù†. */
+  /** íİÊÍ ÔíÊ ÇáÊÚáíŞÇÊ ÇáãäÒáŞ ãä ÇáÃÓİá İŞØ (äİÓ ÇáãÓÊÎÏã Èßá ãßÇä) — ÈÏæä İÊÍ ÕİÍÉ
+   * ÇáãäÔæÑ ÇáßÇãáÉ. ÇÎÊíÇÑí ÍÊì áÇ íäßÓÑ Ãí ÇÓÊÏÚÇÁ ŞÏíã áåĞÇ Çáãßæøä. */
   onToggleLike?: (post: PostItem) => void;
-  /** Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„Ù†Ø´Ø± â€” ØªØ¸Ù‡Ø± ÙƒØ²Ø± Ø¯Ø§Ø®Ù„ Ù…Ø¹Ø§ÙŠÙ†Ø© Ø§Ù„ØµÙˆØ±Ø©/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ÙƒØ§Ù…Ù„Ø© Ø§Ù„Ø´Ø§Ø´Ø© (Ù†ÙØ³ Ø´Ø±ÙŠØ· Ø§Ù„Ø¨ÙˆØ³Øª Ø§Ù„Ù†ØµÙŠ). Ø§Ø®ØªÙŠØ§Ø±ÙŠ. */
+  /** ÅÚÇÏÉ ÇáäÔÑ — ÊÙåÑ ßÒÑ ÏÇÎá ãÚÇíäÉ ÇáÕæÑÉ/ÇáİíÏíæ ßÇãáÉ ÇáÔÇÔÉ (äİÓ ÔÑíØ ÇáÈæÓÊ ÇáäÕí). ÇÎÊíÇÑí. */
   onRepost?: (post: PostItem) => void;
-  /** Ø­Ø³Ø§Ø¨ Ø´Ø±ÙƒØ© Ø¹Ø§Ù…: ÙŠØ¸Ù‡Ø± Ø§Ù„ÙŠÙˆØ²Ø± ÙˆØ§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª ÙˆØ§Ù„Ø¨Ø« Ù„Ù„Ø¬Ù…ÙŠØ¹ Ø¨Ø¯ÙˆÙ† Ø´Ø±Ø· ØµØ¯Ø§Ù‚Ø©.
-   * Ø§Ù„Ù„Ø§ÙŠÙƒ ÙˆØ§Ù„ØªØ¹Ù„ÙŠÙ‚ Ù…ØªØ§Ø­Ø§Ù† Ù„Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† Ø§Ù„Ù…Ø³Ø¬Ù‘Ù„ÙŠÙ† (guestGuard ÙƒÙ…Ø§ ÙÙŠ Ø¨Ø§Ù‚ÙŠ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚). */
+  /** ÍÓÇÈ ÔÑßÉ ÚÇã: íÙåÑ ÇáíæÒÑ æÇáãäÔæÑÇÊ æÇáÈË ááÌãíÚ ÈÏæä ÔÑØ ÕÏÇŞÉ.
+   * ÇááÇíß æÇáÊÚáíŞ ãÊÇÍÇä ááãÓÊÎÏãíä ÇáãÓÌøáíä (guestGuard ßãÇ İí ÈÇŞí ÇáÊØÈíŞ). */
   isCompanyProfile?: boolean;
 }
 export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, onRepost, isCompanyProfile = false }: FriendStoryProfileProps) {
@@ -5220,9 +5220,9 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [friendLoading, setFriendLoading] = useState(false);
   const [friendMenuOpen, setFriendMenuOpen] = useState(false);
   const [authorPosts, setAuthorPosts] = useState<PostItem[]>([]);
-  // ÙØªØ­ Ø§Ù„ØµÙˆØ±Ø©/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ÙÙ‚Ø· Ø¨Ù…Ù„Ø¡ Ø§Ù„Ø´Ø§Ø´Ø© â€” Ø¨Ø¯ÙˆÙ† ÙØªØ­ ØµÙØ­Ø© Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø§Ù„ÙƒØ§Ù…Ù„Ø© Ø§Ù„Ù‚Ø¯ÙŠÙ…Ø©
+  // İÊÍ ÇáÕæÑÉ/ÇáİíÏíæ İŞØ ÈãáÁ ÇáÔÇÔÉ — ÈÏæä İÊÍ ÕİÍÉ ÇáãäÔæÑ ÇáßÇãáÉ ÇáŞÏíãÉ
   const [mediaLightbox, setMediaLightbox] = useState<{ url: string; type: 'image' | 'video'; post: PostItem } | null>(null);
-  // ÙƒØªÙ… ØµÙˆØª Ù…Ø¹Ø§ÙŠÙ†Ø© Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ÙƒØ§Ù…Ù„Ø© Ø§Ù„Ø´Ø§Ø´Ø©
+  // ßÊã ÕæÊ ãÚÇíäÉ ÇáİíÏíæ ßÇãáÉ ÇáÔÇÔÉ
   const [lightboxMuted, setLightboxMuted] = useState(false);
 
   useProfileVisitHeartbeat(
@@ -5304,7 +5304,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
       try {
         // Prefer the username lookup (richer/cached), but always fall back to fetching
         // by ID so the cover photo and the rest of the profile still load even when a
-        // post came through without a username attached â€” e.g. opened from a text post.
+        // post came through without a username attached — e.g. opened from a text post.
         let d: MiniProfileData | null = null;
         if (authorUsername) {
           const r = await fetch(`/api/users/by-username/${encodeURIComponent(authorUsername)}`, { credentials: 'include' });
@@ -5322,7 +5322,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
     return () => { cancelled = true; };
   }, [authorId, authorUsername]);
 
-  // â”€â”€ Ù…Ù†Ø´ÙˆØ±Ø§Øª Ù‡Ø°Ø§ Ø§Ù„Ø­Ø³Ø§Ø¨ Ù„Ù„Ø¹Ø§Ù…Ø©: Ù†ØµÙŠØ© + Ù…Ù†ØªØ¬Ø§Øª (Ø­ØªÙ‰ Ù„Ùˆ Ø­ÙÙØ¸Øª audience=public Ù…Ø¹ ÙˆØ³Ø§Ø¦Ø·) â”€â”€
+  // ?? ãäÔæÑÇÊ åĞÇ ÇáÍÓÇÈ ááÚÇãÉ: äÕíÉ + ãäÊÌÇÊ (ÍÊì áæ ÍõİÙÊ audience=public ãÚ æÓÇÆØ) ??
   useEffect(() => {
     let cancelled = false;
     async function loadPosts() {
@@ -5373,11 +5373,11 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const avatarUrl = profile?.avatarUrl ?? authorAvatarUrl;
   const coverUrl = profile?.coverUrl ?? null;
   const pinnedTrack = pinnedTrackFromProfile(profile);
-  // Ø§Ù„Ø´Ø±ÙƒØ§Øª Ø¹Ø§Ù…Ø© Ø¯Ø§Ø¦Ù…Ø§Ù‹ â€” Ù„Ø§ ØªÙØ®ÙÙ‰ Ø­ØªÙ‰ Ù„Ùˆ ÙˆÙØ³Ù… Ø§Ù„Ø­Ø³Ø§Ø¨ Ø®Ø§ØµØ§Ù‹ Ø£Ùˆ Ø¨Ø¯ÙˆÙ† ØµØ¯Ø§Ù‚Ø©
+  // ÇáÔÑßÇÊ ÚÇãÉ ÏÇÆãÇğ — áÇ ÊõÎİì ÍÊì áæ æõÓã ÇáÍÓÇÈ ÎÇÕÇğ Ãæ ÈÏæä ÕÏÇŞÉ
   const isHiddenPrivate = !isCompanyProfile && !!profile?.isPrivate && friendState !== 'accepted';
-  // Ù…Ù†Ø´ÙˆØ± Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø§Ù„Ù…Ø«Ø¨Ù‘Øª (Ø¥Ù† ÙˆÙØ¬Ø¯) ÙŠØ¸Ù‡Ø± Ø£ÙˆÙ„Ù‹Ø§ØŒ ÙˆØ§Ù„Ø¨Ø§Ù‚ÙŠ ØªØ­ØªÙ‡ Ø¨ØªØ±ØªÙŠØ¨Ù‡ Ø§Ù„Ø·Ø¨ÙŠØ¹ÙŠ Ø¨Ø¯ÙˆÙ† ØªØ«Ø¨ÙŠØª
+  // ãäÔæÑ åĞÇ ÇáãÓÊÎÏã ÇáãËÈøÊ (Åä æõÌÏ) íÙåÑ ÃæáğÇ¡ æÇáÈÇŞí ÊÍÊå ÈÊÑÊíÈå ÇáØÈíÚí ÈÏæä ÊËÈíÊ
   const sortedAuthorPosts = useMemo(() => {
-    // Ø§Ù„Ø´Ø±ÙƒØ©: ÙƒÙ„ Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª/Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª Ø¨Ø¯ÙˆÙ† ØªØ¨ÙˆÙŠØ¨ Video/Photo
+    // ÇáÔÑßÉ: ßá ÇáãäÔæÑÇÊ/ÇáãäÊÌÇÊ ÈÏæä ÊÈæíÈ Video/Photo
     let list = isCompanyProfile
       ? [...authorPosts]
       : authorPosts.filter(p => {
@@ -5403,7 +5403,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
       style={{ position: 'fixed', inset: 0, zIndex: 10420, background: PAGE_BG, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
     >
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
-        {/* Cover photo + close â€” Ø¨Ø¯ÙˆÙ† ØªØ¹ØªÙŠÙ…Ø› Ø§Ù„Ø®Ù„ÙÙŠØ© Ù†ÙØ³ Ø§Ù„ØµÙØ­Ø© */}
+        {/* Cover photo + close — ÈÏæä ÊÚÊíãº ÇáÎáİíÉ äİÓ ÇáÕİÍÉ */}
         <div style={{ width: '100%', height: 130, position: 'relative', background: 'transparent' }}>
           {coverUrl && (
             <img
@@ -5411,14 +5411,14 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               alt=""
               style={{
                 width: '100%', height: '100%', objectFit: 'cover', display: 'block',
-                // Ø¨Ø¯ÙˆÙ† Ø£ÙŠ Ø·Ø¨Ù‚Ø© ØªØ¹ØªÙŠÙ… ÙÙˆÙ‚ ØµÙˆØ±Ø© Ø§Ù„ØºÙ„Ø§Ù
+                // ÈÏæä Ãí ØÈŞÉ ÊÚÊíã İæŞ ÕæÑÉ ÇáÛáÇİ
               }}
             />
           )}
           <motion.button
             whileTap={{ scale: 0.88 }}
             onClick={onClose}
-            aria-label="Ø¥ØºÙ„Ø§Ù‚"
+            aria-label="ÅÛáÇŞ"
             style={{
               position: 'absolute', top: 10, insetInlineStart: 10, width: 32, height: 32, borderRadius: '50%',
               background: coverUrl ? 'rgba(0,0,0,0.25)' : 'rgba(0,188,212,0.12)',
@@ -5430,7 +5430,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           >
             <X size={17} strokeWidth={2.4} />
           </motion.button>
-          {/* Ù…Ù‚Ø·Ø¹ Get Ø§Ù„Ù…Ø«Ø¨Øª â€” ÙÙŠ Ù…Ù†ØªØµÙ Ø£Ø¹Ù„Ù‰ Ø§Ù„ØºÙ„Ø§Ù ÙÙˆÙ‚ Ø§Ù„ØµÙˆØ±Ø© (Ù…ÙƒØ§Ù† Ø§Ù„Ø®Ø·ÙˆØ· Ø§Ù„Ø­Ù…Ø±Ø§Ø¡) */}
+          {/* ãŞØÚ Get ÇáãËÈÊ — İí ãäÊÕİ ÃÚáì ÇáÛáÇİ İæŞ ÇáÕæÑÉ (ãßÇä ÇáÎØæØ ÇáÍãÑÇÁ) */}
           {pinnedTrack && (
             <div style={{
               position: 'absolute', left: 0, right: 0, bottom: 44,
@@ -5457,7 +5457,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={80} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
           </motion.button>
 
-          <p style={{ color: CLR_TEXT, fontSize: '0.9rem', fontWeight: 700, margin: '8px 0 0' }}>{name || username || 'â€”'}</p>
+          <p style={{ color: CLR_TEXT, fontSize: '0.9rem', fontWeight: 700, margin: '8px 0 0' }}>{name || username || '—'}</p>
           {username && <p style={{ color: CLR_PRIMARY, fontSize: '0.75rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
             {(isCompanyProfile || readBusinessApproved(authorId)) && (
               <span style={{
@@ -5500,11 +5500,11 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             </div>
           </div>
 
-          {/* Ø­Ø§Ù„Ø© Ø§Ù„ØµØ¯Ø§Ù‚Ø© (Ù„Ø§ ØªØ¸Ù‡Ø± Ù„ØµØ§Ø­Ø¨ Ø§Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ù†ÙØ³Ù‡) + Ø¯Ø®ÙˆÙ„ Ø§Ù„Ø¨Ø« Ø§Ù„ØµÙˆØªÙŠ */}
+          {/* ÍÇáÉ ÇáÕÏÇŞÉ (áÇ ÊÙåÑ áÕÇÍÈ ÇáÈÑæİÇíá äİÓå) + ÏÎæá ÇáÈË ÇáÕæÊí */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
             {user?.id && String(user.id) !== String(authorId) && (
               friendState === 'accepted' ? (
-                <span aria-label="ØµØ¯ÙŠÙ‚" title="ØµØ¯ÙŠÙ‚" style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span aria-label="ÕÏíŞ" title="ÕÏíŞ" style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Check size={20} strokeWidth={3} color="#22c55e" />
                 </span>
               ) : (
@@ -5512,10 +5512,10 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   {friendState === 'none' && (
                     <motion.button whileTap={{ scale: 0.95 }} onClick={requestFriendship} disabled={friendLoading} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'transparent', border: `1px solid ${CLR_PRIMARY}`, borderRadius: 20, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700, cursor: friendLoading ? 'default' : 'pointer', opacity: friendLoading ? 0.6 : 1 }}>
                       <UserPlus size={15} strokeWidth={2.4} />
-                      Ø·Ù„Ø¨ ØµØ¯Ø§Ù‚Ø©
+                      ØáÈ ÕÏÇŞÉ
                     </motion.button>
                   )}
-                  {friendState === 'pending' && <span style={{ padding: '8px 16px', borderRadius: 20, background: CLR_PRIMARY_FAINT, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700 }}>Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø§Ù„Ù‚Ø¨ÙˆÙ„</span>}
+                  {friendState === 'pending' && <span style={{ padding: '8px 16px', borderRadius: 20, background: CLR_PRIMARY_FAINT, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700 }}>ÈÇäÊÙÇÑ ÇáŞÈæá</span>}
                 </>
               )
             )}
@@ -5533,7 +5533,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 if (avatarUrl) qs.set('hostAvatar', avatarUrl);
                 navigate(`/live?${qs.toString()}`);
               }}
-              aria-label="Ø§Ù„Ø¨Ø« Ø§Ù„ØµÙˆØªÙŠ"
+              aria-label="ÇáÈË ÇáÕæÊí"
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 padding: '8px 14px', borderRadius: 20,
@@ -5546,7 +5546,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               }}
             >
               <Radio size={15} strokeWidth={2.3} color={liveActive ? '#ef4444' : CLR_PRIMARY} />
-              {liveActive ? 'Ø§Ù„Ø¨Ø« Ù…Ø¨Ø§Ø´Ø±' : 'Ø¨Ø« ØµÙˆØªÙŠ'}
+              {liveActive ? 'ÇáÈË ãÈÇÔÑ' : 'ÈË ÕæÊí'}
             </motion.button>
           </div>
         </div>
@@ -5554,12 +5554,12 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         {friendState === 'accepted' && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', direction: 'ltr', padding: '4px 12px 0' }}>
             <div style={{ position: 'relative' }}>
-              <button onClick={() => setFriendMenuOpen(open => !open)} aria-label="Ø®ÙŠØ§Ø±Ø§Øª Ø§Ù„ØµØ¯ÙŠÙ‚" aria-expanded={friendMenuOpen} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent', color: CLR_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <button onClick={() => setFriendMenuOpen(open => !open)} aria-label="ÎíÇÑÇÊ ÇáÕÏíŞ" aria-expanded={friendMenuOpen} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent', color: CLR_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <MoreVertical size={18} strokeWidth={2} style={{ display: 'block' }} />
               </button>
               {friendMenuOpen && <div style={{ position: 'absolute', top: 34, left: 0, zIndex: 30, minWidth: 142, padding: 6, borderRadius: 12, background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', boxShadow: 'var(--shadow-lg)', direction: 'rtl' }}>
-                <button onClick={removeFriendship} disabled={friendLoading} style={{ width: '100%', padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'right', fontSize: '0.78rem' }}>Ø­Ø°Ù ØµØ¯ÙŠÙ‚</button>
-                <button onClick={blockUser} disabled={friendLoading} style={{ width: '100%', padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--destructive))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'right', fontSize: '0.78rem' }}>Ø­Ø¸Ø±</button>
+                <button onClick={removeFriendship} disabled={friendLoading} style={{ width: '100%', padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'right', fontSize: '0.78rem' }}>ÍĞİ ÕÏíŞ</button>
+                <button onClick={blockUser} disabled={friendLoading} style={{ width: '100%', padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--destructive))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'right', fontSize: '0.78rem' }}>ÍÙÑ</button>
               </div>}
             </div>
           </div>
@@ -5569,9 +5569,9 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_PRIMARY_DIM }}>
               <LockKeyhole size={22} strokeWidth={1.6} />
             </div>
-            <p style={{ color: CLR_TEXT, fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>Ù‡Ø°Ø§ Ø§Ù„Ø­Ø³Ø§Ø¨ Ø®Ø§Øµ</p>
+            <p style={{ color: CLR_TEXT, fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>åĞÇ ÇáÍÓÇÈ ÎÇÕ</p>
             <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', maxWidth: 240, lineHeight: 1.6 }}>
-                  Ø£Ø¶Ù {name ?? 'Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…'} ÙƒØµØ¯ÙŠÙ‚ Ù„Ø±Ø¤ÙŠØ© Ù…Ù†Ø´ÙˆØ±Ø§ØªÙ‡
+                  ÃÖİ {name ?? 'åĞÇ ÇáãÓÊÎÏã'} ßÕÏíŞ áÑÄíÉ ãäÔæÑÇÊå
             </p>
           </div>
         ) : (
@@ -5585,7 +5585,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               background: CLR_TAB_ACTIVE,
             }}>
               <FileText size={15} strokeWidth={2} />
-              {(isCompanyProfile || readBusinessApproved(authorId)) ? 'Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª' : 'Post'}
+              {(isCompanyProfile || readBusinessApproved(authorId)) ? 'ÇáãäÊÌÇÊ' : 'Post'}
             </div>
 
             {loading ? (
@@ -5597,9 +5597,9 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 const enrichedPosts = sortedAuthorPosts.map(post => {
                   const rawThumbUrl = post.mediaUrls?.[0] ?? post.mediaUrl;
                   const rawIsVideo = (post.mediaTypes?.[0] ?? post.mediaType) === 'video';
-                  // Ø¥Ø°Ø§ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø¨Ø¯ÙˆÙ† ÙˆØ³Ø§Ø¦Ø· Ù…Ø±ÙÙ‚Ø© Ù„ÙƒÙ† Ù†ØµÙ‘Ù‡ ÙŠØ­ØªÙˆÙŠ Ø±Ø§Ø¨Ø· ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ Ù…Ø¨Ø§Ø´Ø± (Ù…Ø«Ù„
-                  // video.twimg.com) â€” Ù†Ø³ØªØ®Ø±Ø¬Ù‡ ÙˆÙ†Ø¹Ø±Ø¶Ù‡ ÙƒØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ Ù…ØµØºÙ‘Ø± Ø¨Ø¯Ù„ ØªØ±Ùƒ Ø§Ù„Ø±Ø§Ø¨Ø· Ø§Ù„Ø®Ø§Ù…
-                  // ÙŠØ¸Ù‡Ø± ÙƒÙ†Øµ Ø¹Ø§Ø¯ÙŠ Ø¨Ù„Ø§ Ù…Ø¹Ø§ÙŠÙ†Ø©.
+                  // ÅĞÇ ÇáãäÔæÑ ÈÏæä æÓÇÆØ ãÑİŞÉ áßä äÕøå íÍÊæí ÑÇÈØ ÕæÑÉ/İíÏíæ ãÈÇÔÑ (ãËá
+                  // video.twimg.com) — äÓÊÎÑÌå æäÚÑÖå ßÕæÑÉ/İíÏíæ ãÕÛøÑ ÈÏá ÊÑß ÇáÑÇÈØ ÇáÎÇã
+                  // íÙåÑ ßäÕ ÚÇÏí ÈáÇ ãÚÇíäÉ.
                   const textEmbed = !rawThumbUrl && post.text ? extractTextMediaEmbeds(post.text) : null;
                   const embeddedMedia = textEmbed?.embeds?.[0] ?? null;
                   const thumbUrl = rawThumbUrl ?? embeddedMedia?.url;
@@ -5608,11 +5608,11 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   const isPinnedPost = profile?.pinnedPostId != null && profile.pinnedPostId === post.id;
                   return { post, thumbUrl, isVideo, displayText, isPinnedPost };
                 });
-                // ÙƒÙ„ Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª â€” Ù†ØµÙŠÙ‘Ø© Ø£Ùˆ ÙÙŠÙ‡Ø§ ÙˆØ³Ø§Ø¦Ø· â€” ØªØ¹Ø±Ø¶ Ø§Ù„Ø¢Ù† Ø³ÙˆØ§ ÙÙŠ Ø´Ø¨ÙƒØ© ÙˆØ§Ø­Ø¯Ø© Ø«Ù„Ø§Ø«Ø©
-                // Ø¬Ù…Ø¨ Ø¨Ø¹Ø¶ (Ù†ÙØ³ ØªØ±ØªÙŠØ¨ sortedAuthorPostsØŒ ÙˆØ§Ù„Ù…Ù†Ø´ÙˆØ± Ø§Ù„Ù…Ø«Ø¨Ù‘Øª Ø£ÙˆÙ„Ù‹Ø§). Ø§Ù„Ù…Ø±Ø¨Ø¹
-                // Ø§Ù„Ù„ÙŠ ÙÙŠÙ‡ ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ ÙŠØ¹Ø±Ø¶ Ø§Ù„Ù…Ø¹Ø§ÙŠÙ†Ø©ØŒ ÙˆØ§Ù„Ù…Ø±Ø¨Ø¹ Ø§Ù„Ù†ØµÙŠ Ø§Ù„Ø¨Ø­Øª ÙŠØ¹Ø±Ø¶ Ù…Ù‚ØªØ·Ù Ù…Ù†
-                // Ø§Ù„Ù†Øµ. Ø§Ù„Ù†Ù‚Ø± Ø¹Ù„Ù‰ Ø£ÙŠ Ù…Ø±Ø¨Ø¹ (Ù†ØµÙŠ Ø£Ùˆ ÙˆØ³Ø§Ø¦Ø·) ÙŠÙØªØ­ ØµÙØ­Ø© Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø§Ù„ÙƒØ§Ù…Ù„Ø© Ø¨Ù†ÙØ³
-                // Ø§Ù„Ø·Ø±ÙŠÙ‚Ø© Ø§Ù„Ù„ÙŠ ØªÙØªØ­ ÙÙŠÙ‡Ø§ Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø§Ù„Ù†ØµÙŠØ© Ø¨Ø§Ù„Ø¶Ø¨Ø·.
+                // ßá ÇáãäÔæÑÇÊ — äÕíøÉ Ãæ İíåÇ æÓÇÆØ — ÊÚÑÖ ÇáÂä ÓæÇ İí ÔÈßÉ æÇÍÏÉ ËáÇËÉ
+                // ÌãÈ ÈÚÖ (äİÓ ÊÑÊíÈ sortedAuthorPosts¡ æÇáãäÔæÑ ÇáãËÈøÊ ÃæáğÇ). ÇáãÑÈÚ
+                // Çááí İíå ÕæÑÉ/İíÏíæ íÚÑÖ ÇáãÚÇíäÉ¡ æÇáãÑÈÚ ÇáäÕí ÇáÈÍÊ íÚÑÖ ãŞÊØİ ãä
+                // ÇáäÕ. ÇáäŞÑ Úáì Ãí ãÑÈÚ (äÕí Ãæ æÓÇÆØ) íİÊÍ ÕİÍÉ ÇáãäÔæÑ ÇáßÇãáÉ ÈäİÓ
+                // ÇáØÑíŞÉ Çááí ÊİÊÍ İíåÇ ÇáãäÔæÑÇÊ ÇáäÕíÉ ÈÇáÖÈØ.
                 return (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, padding: '4px 0 24px' }}>
                     {enrichedPosts.map(({ post, thumbUrl, isVideo, displayText, isPinnedPost }) => (
@@ -5620,7 +5620,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                         key={post.id}
                         type="button"
                         onClick={() => onOpenPost(post)}
-                        aria-label={thumbUrl ? (isVideo ? 'ÙØªØ­ Ø§Ù„ÙÙŠØ¯ÙŠÙˆ' : 'ÙØªØ­ Ø§Ù„ØµÙˆØ±Ø©') : 'ÙØªØ­ Ø§Ù„Ù…Ù†Ø´ÙˆØ±'}
+                        aria-label={thumbUrl ? (isVideo ? 'İÊÍ ÇáİíÏíæ' : 'İÊÍ ÇáÕæÑÉ') : 'İÊÍ ÇáãäÔæÑ'}
                         style={{
                           position: 'relative', width: '100%', aspectRatio: '1 / 1', overflow: 'hidden',
                           border: isPinnedPost ? '3px solid #ef4444' : 'none', boxSizing: 'border-box', padding: 0,
@@ -5656,7 +5656,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                             </p>
                           </div>
                         )}
-                        {/* Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø§Ù„Ù…Ø«Ø¨Ù‘Øª ÙŠØ¨ÙŠÙ† Ø¨Ø§Ù„Ø£Ø­Ù…Ø± */}
+                        {/* ÇáãäÔæÑ ÇáãËÈøÊ íÈíä ÈÇáÃÍãÑ */}
                         {isPinnedPost && (
                           <div style={{
                             position: 'absolute', top: 6, insetInlineStart: 6,
@@ -5678,7 +5678,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   <FileText size={20} strokeWidth={1.5} />
                 </div>
                 <p style={{ color: CLR_TEXT_DIM, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
-                  Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø¨Ø¹Ø¯
+                  áÇ ÊæÌÏ ãäÔæÑÇÊ ÈÚÏ
                 </p>
               </div>
             )}
@@ -5686,8 +5686,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         )}
       </div>
 
-      {/* â”€â”€ Ø§Ù„ØµÙˆØ±Ø©/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ÙÙ‚Ø· Ø¨Ù…Ù„Ø¡ Ø§Ù„Ø´Ø§Ø´Ø© â€” Ø¨Ø¯ÙˆÙ† ÙØªØ­ ØµÙØ­Ø© Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø§Ù„ÙƒØ§Ù…Ù„Ø© Ø§Ù„Ù‚Ø¯ÙŠÙ…Ø©.
-          Ø§Ù„ØªØ¹Ù„ÙŠÙ‚Ø§Øª ØªÙÙØªØ­ ÙÙ‚Ø· Ù…Ù† Ø£ÙŠÙ‚ÙˆÙ†Ø© Ø§Ù„ØªØ¹Ù„ÙŠÙ‚Ø§Øª (Ø´ÙŠØª Ù…Ù†Ø²Ù„Ù‚ Ù…Ù† Ø§Ù„Ø£Ø³ÙÙ„ ÙŠØ¯ÙŠØ±Ù‡ Ø§Ù„Ù…Ø³ØªÙˆÙ‰ Ø§Ù„Ø£Ø¹Ù„Ù‰). â”€â”€ */}
+      {/* ?? ÇáÕæÑÉ/ÇáİíÏíæ İŞØ ÈãáÁ ÇáÔÇÔÉ — ÈÏæä İÊÍ ÕİÍÉ ÇáãäÔæÑ ÇáßÇãáÉ ÇáŞÏíãÉ.
+          ÇáÊÚáíŞÇÊ ÊõİÊÍ İŞØ ãä ÃíŞæäÉ ÇáÊÚáíŞÇÊ (ÔíÊ ãäÒáŞ ãä ÇáÃÓİá íÏíÑå ÇáãÓÊæì ÇáÃÚáì). ?? */}
       <AnimatePresence>
         {mediaLightbox && typeof document !== 'undefined' && createPortal(
           <motion.div
@@ -5708,7 +5708,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               <button
                 type="button"
                 onClick={() => setMediaLightbox(null)}
-                aria-label="Ø¥ØºÙ„Ø§Ù‚"
+                aria-label="ÅÛáÇŞ"
                 style={{
                   width: 36, height: 36, borderRadius: '50%', border: 'none',
                   background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
@@ -5741,7 +5741,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               )}
             </div>
 
-            {/* Ø´Ø±ÙŠØ· ØªØ­ÙƒÙ‘Ù… Ø£Ø³ÙÙ„ Ø§Ù„ÙÙŠØ¯ÙŠÙˆ/Ø§Ù„ØµÙˆØ±Ø©: ÙƒØªÙ… Ø§Ù„ØµÙˆØª + ÙØªØ­ Ø§Ù„ØªØ¹Ù„ÙŠÙ‚Ø§Øª */}
+            {/* ÔÑíØ ÊÍßøã ÃÓİá ÇáİíÏíæ/ÇáÕæÑÉ: ßÊã ÇáÕæÊ + İÊÍ ÇáÊÚáíŞÇÊ */}
             <div
               onClick={e => e.stopPropagation()}
               style={{
@@ -5754,7 +5754,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 <motion.button
                   whileTap={{ scale: 0.88 }}
                   onClick={() => setLightboxMuted(v => !v)}
-                  aria-label={lightboxMuted ? 'ØªØ´ØºÙŠÙ„ Ø§Ù„ØµÙˆØª' : 'ÙƒØªÙ… Ø§Ù„ØµÙˆØª'}
+                  aria-label={lightboxMuted ? 'ÊÔÛíá ÇáÕæÊ' : 'ßÊã ÇáÕæÊ'}
                   style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
                 >
                   {lightboxMuted ? <VolumeX size={19} strokeWidth={2} /> : <Volume2 size={19} strokeWidth={2} />}
@@ -5772,8 +5772,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 <motion.button
                   whileTap={{ scale: 0.88 }}
                   onClick={() => onRepost(mediaLightbox.post)}
-                  aria-label="Ø¥Ø¹Ø§Ø¯Ø© Ù†Ø´Ø±"
-                  title="Ø¥Ø¹Ø§Ø¯Ø© Ù†Ø´Ø±"
+                  aria-label="ÅÚÇÏÉ äÔÑ"
+                  title="ÅÚÇÏÉ äÔÑ"
                   style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: mediaLightbox.post.repostedByMe ? CLR_PRIMARY : '#fff' }}
                 >
                   <Repeat2 size={18} strokeWidth={2} />
@@ -5801,8 +5801,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   );
 }
 
-// â”€â”€ Instagram-style Comments sheet â€” white bottom sheet over the feed (like IG Reels/Posts).
-// Opens only when the user taps the comment icon â€” does NOT navigate to another page. â”€â”€
+// ?? Instagram-style Comments sheet — white bottom sheet over the feed (like IG Reels/Posts).
+// Opens only when the user taps the comment icon — does NOT navigate to another page. ??
 function InstagramCommentsSheet({
   post,
   comments,
@@ -5941,7 +5941,7 @@ function InstagramCommentsSheet({
           )}
         </div>
 
-        {/* Composer â€” Instagram style */}
+        {/* Composer — Instagram style */}
         <div style={{
           flexShrink: 0,
           borderTop: '1px solid rgba(0,0,0,0.08)',
@@ -5963,7 +5963,7 @@ function InstagramCommentsSheet({
           )}
           {/* emoji quick row */}
           <div style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '2px 2px 10px', scrollbarWidth: 'none' }}>
-            {['â¤ï¸', 'ğŸ™Œ', 'ğŸ”¥', 'ğŸ‘', 'ğŸ˜¢', 'ğŸ˜', 'ğŸ˜®', 'ğŸ˜‚'].map(emoji => (
+            {['??', '??', '??', '??', '??', '??', '??', '??'].map(emoji => (
               <button
                 key={emoji}
                 type="button"
@@ -5981,7 +5981,7 @@ function InstagramCommentsSheet({
               onKeyDown={e => { if (e.key === 'Enter' && !commentSending) submitWithReply(); }}
               placeholder="What do you think of this?"
               inputMode="text"
-              // Ù„Ø§ autoFocus â€” Ø§Ù„ÙƒÙŠØ¨ÙˆØ±Ø¯ ÙŠÙØªØ­ ÙÙ‚Ø· Ø¹Ù†Ø¯Ù…Ø§ ÙŠØ¶ØºØ· Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø¹Ù„Ù‰ Ø§Ù„Ø­Ù‚Ù„ Ø¨Ù†ÙØ³Ù‡
+              // áÇ autoFocus — ÇáßíÈæÑÏ íİÊÍ İŞØ ÚäÏãÇ íÖÛØ ÇáãÓÊÎÏã Úáì ÇáÍŞá ÈäİÓå
               style={{
                 flex: 1, background: 'transparent', border: '1px solid rgba(0,0,0,0.12)',
                 borderRadius: 22, padding: '11px 14px', color: '#0f0f0f', fontSize: '0.88rem',
@@ -6008,9 +6008,9 @@ function InstagramCommentsSheet({
   );
 }
 
-// â”€â”€ PostDetailPage â€” fullscreen "single post" page: media fills the screen edge-to-edge,
-// with the author/time overlaid on top. Likes + comments only apply to other people's posts â€”
-// the owner just sees their own media fullscreen with nothing under it. â”€â”€
+// ?? PostDetailPage — fullscreen "single post" page: media fills the screen edge-to-edge,
+// with the author/time overlaid on top. Likes + comments only apply to other people's posts —
+// the owner just sees their own media fullscreen with nothing under it. ??
 function PostDetailPage({
   post,
   isMine,
@@ -6046,9 +6046,9 @@ function PostDetailPage({
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const media = PostMediaItems(post);
   const hasMedia = media.length > 0;
-  // â”€â”€ Ø¯ÙØ§Ø¹ Ø¥Ø¶Ø§ÙÙŠ Ø¶Ø¯ Ù…Ø´ÙƒÙ„Ø© "Ø§Ù„Ù†Øµ Ø§Ù„Ø£Ø¨ÙŠØ¶ ÙŠÙ†Ø²Ù„ Ø¹Ù„Ù‰ Ø§Ù„ØªØ¹Ù„ÙŠÙ‚Ø§Øª": Ø­ØªÙ‰ Ù…Ø¹ Ø§Ù„Ù€ key Ø§Ù„Ù…ÙˆØ¬ÙˆØ¯ Ø¹Ù„Ù‰
-  // Ù…Ø³ØªÙˆÙ‰ Ø§Ù„Ø£Ø¨ (Ø§Ù„Ø°ÙŠ ÙŠÙØ±Ø¶ Ø¥Ø¹Ø§Ø¯Ø© ØªØ±ÙƒÙŠØ¨ Ù‡Ø°Ø§ Ø§Ù„Ù…ÙƒÙˆÙ‘Ù† Ø¨Ø§Ù„ÙƒØ§Ù…Ù„ Ø¹Ù†Ø¯ ØªØºÙŠÙ‘Ø± Ø§Ù„Ù…Ù†Ø´ÙˆØ±)ØŒ Ù†ØªØ£ÙƒØ¯ Ù‡Ù†Ø§
-  // Ø£ÙŠØ¶Ø§Ù‹ Ø£Ù† Ø´Ø±ÙŠØ· Ø§Ù„ØªÙ…Ø±ÙŠØ± ÙŠØ±Ø¬Ø¹ Ù„Ù„Ø£Ø¹Ù„Ù‰ ÙÙˆØ± ÙØªØ­ Ø£ÙŠ Ù…Ù†Ø´ÙˆØ±ØŒ Ø¨Ø¯Ù„ Ø£Ù† ÙŠØ¨Ù‚Ù‰ Ø¨Ù…ÙƒØ§Ù†Ù‡ Ù…Ù† Ù…Ù†Ø´ÙˆØ± Ø³Ø§Ø¨Ù‚. â”€â”€
+  // ?? ÏİÇÚ ÅÖÇİí ÖÏ ãÔßáÉ "ÇáäÕ ÇáÃÈíÖ íäÒá Úáì ÇáÊÚáíŞÇÊ": ÍÊì ãÚ ÇáÜ key ÇáãæÌæÏ Úáì
+  // ãÓÊæì ÇáÃÈ (ÇáĞí íİÑÖ ÅÚÇÏÉ ÊÑßíÈ åĞÇ Çáãßæøä ÈÇáßÇãá ÚäÏ ÊÛíøÑ ÇáãäÔæÑ)¡ äÊÃßÏ åäÇ
+  // ÃíÖÇğ Ãä ÔÑíØ ÇáÊãÑíÑ íÑÌÚ ááÃÚáì İæÑ İÊÍ Ãí ãäÔæÑ¡ ÈÏá Ãä íÈŞì ÈãßÇäå ãä ãäÔæÑ ÓÇÈŞ. ??
   const panelScrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (panelScrollRef.current) panelScrollRef.current.scrollTop = 0;
@@ -6060,13 +6060,13 @@ function PostDetailPage({
   const arabicNumber = (value: number) => new Intl.NumberFormat('ar-KW').format(value);
   const timeAgo = (() => {
     const diffSeconds = Math.max(0, Math.floor((Date.now() - postDate.getTime()) / 1000));
-    if (diffSeconds < 60) return `Ù…Ù†Ø° ${arabicNumber(diffSeconds || 1)} Ø«Ø§Ù†ÙŠØ©`;
+    if (diffSeconds < 60) return `ãäĞ ${arabicNumber(diffSeconds || 1)} ËÇäíÉ`;
     const minutes = Math.floor(diffSeconds / 60);
-    if (minutes < 60) return `Ù…Ù†Ø° ${arabicNumber(minutes)} Ø¯Ù‚ÙŠÙ‚Ø©`;
+    if (minutes < 60) return `ãäĞ ${arabicNumber(minutes)} ÏŞíŞÉ`;
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `Ù…Ù†Ø° ${arabicNumber(hours)} Ø³Ø§Ø¹Ø©`;
+    if (hours < 24) return `ãäĞ ${arabicNumber(hours)} ÓÇÚÉ`;
     const days = Math.floor(hours / 24);
-    return `Ù…Ù†Ø° ${arabicNumber(days)} ÙŠÙˆÙ…`;
+    return `ãäĞ ${arabicNumber(days)} íæã`;
   })();
 
   const formatCommentDate = (value: string) => new Intl.DateTimeFormat('ar-KW', {
@@ -6095,7 +6095,7 @@ function PostDetailPage({
         overflow: 'hidden',
       }}
     >
-      {/* Header â€” overlaid directly on the media so nothing eats into it */}
+      {/* Header — overlaid directly on the media so nothing eats into it */}
       <div style={{
         position: hasMedia ? 'absolute' : 'relative',
         top: 0, left: 0, right: 0, zIndex: 2,
@@ -6105,7 +6105,7 @@ function PostDetailPage({
         backdropFilter: hasMedia ? undefined : 'blur(14px)',
         borderBottom: hasMedia ? undefined : `1px solid ${CLR_NAV_BORDER}`,
       }}>
-        <button onClick={onClose} aria-label="Ø¥ØºÙ„Ø§Ù‚" style={{
+        <button onClick={onClose} aria-label="ÅÛáÇŞ" style={{
           background: 'none', border: 'none', color: hasMedia ? '#fff' : CLR_TEXT, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, flexShrink: 0,
         }}>
@@ -6114,14 +6114,14 @@ function PostDetailPage({
         <UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={34} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ color: hasMedia ? '#fff' : CLR_TEXT, fontSize: '0.82rem', fontWeight: 700, margin: 0, textShadow: hasMedia ? '0 1px 3px rgba(0,0,0,0.5)' : undefined }}>
-            {post.authorName || post.authorUsername || 'â€”'}
+            {post.authorName || post.authorUsername || '—'}
           </p>
           <p style={{ color: hasMedia ? 'rgba(255,255,255,0.82)' : CLR_TEXT_DIM, fontSize: '0.66rem', margin: '1px 0 0', textShadow: hasMedia ? '0 1px 3px rgba(0,0,0,0.5)' : undefined }}>
             {timeAgo}
           </p>
         </div>
         {isMine && (
-          <button onClick={() => onRequestDelete(post)} aria-label="Ø­Ø°Ù Ø§Ù„Ù…Ù†Ø´ÙˆØ±" style={{
+          <button onClick={() => onRequestDelete(post)} aria-label="ÍĞİ ÇáãäÔæÑ" style={{
             background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4,
           }}>
@@ -6130,7 +6130,7 @@ function PostDetailPage({
         )}
       </div>
 
-      {/* Fullscreen media â€” edge to edge, no border/padding/box, cover-fit so there are no gaps */}
+      {/* Fullscreen media — edge to edge, no border/padding/box, cover-fit so there are no gaps */}
       {hasMedia && (
         <div style={{
           position: 'relative', width: '100%', background: '#000', overflow: 'hidden',
@@ -6157,15 +6157,15 @@ function PostDetailPage({
             )}
             {media.length > 1 && (
               <>
-                <button type="button" aria-label="Ø§Ù„ÙˆØ³Ø§Ø¦Ø· Ø§Ù„Ø³Ø§Ø¨Ù‚Ø©" onClick={() => setActiveMediaIndex(index => (index - 1 + media.length) % media.length)} className="absolute top-1/2 start-2 -translate-y-1/2 rounded-full border-0 bg-primary text-primary-foreground" style={{ width: 36, height: 36, cursor: 'pointer', fontSize: '1.35rem', lineHeight: 1 }}>â€¹</button>
-                <button type="button" aria-label="Ø§Ù„ÙˆØ³Ø§Ø¦Ø· Ø§Ù„ØªØ§Ù„ÙŠØ©" onClick={() => setActiveMediaIndex(index => (index + 1) % media.length)} className="absolute top-1/2 end-2 -translate-y-1/2 rounded-full border-0 bg-primary text-primary-foreground" style={{ width: 36, height: 36, cursor: 'pointer', fontSize: '1.35rem', lineHeight: 1 }}>â€º</button>
+                <button type="button" aria-label="ÇáæÓÇÆØ ÇáÓÇÈŞÉ" onClick={() => setActiveMediaIndex(index => (index - 1 + media.length) % media.length)} className="absolute top-1/2 start-2 -translate-y-1/2 rounded-full border-0 bg-primary text-primary-foreground" style={{ width: 36, height: 36, cursor: 'pointer', fontSize: '1.35rem', lineHeight: 1 }}>‹</button>
+                <button type="button" aria-label="ÇáæÓÇÆØ ÇáÊÇáíÉ" onClick={() => setActiveMediaIndex(index => (index + 1) % media.length)} className="absolute top-1/2 end-2 -translate-y-1/2 rounded-full border-0 bg-primary text-primary-foreground" style={{ width: 36, height: 36, cursor: 'pointer', fontSize: '1.35rem', lineHeight: 1 }}>›</button>
               </>
             )}
           </div>
         </div>
       )}
 
-      {/* Below the media: caption, then â€” for other people's posts only â€” the like frame and comments */}
+      {/* Below the media: caption, then — for other people's posts only — the like frame and comments */}
       {showBelowPanel && (
         <>
         <style>{`.post-detail-panel::-webkit-scrollbar{display:none}`}</style>
@@ -6179,16 +6179,16 @@ function PostDetailPage({
               <textarea
                 value={mediaText}
                 onChange={event => setMediaText(event.target.value)}
-                placeholder="Ø§ÙƒØªØ¨ Ù…Ù†Ø´ÙˆØ±Ø§Ù‹ Ù†ØµÙŠØ§Ù‹ Ù„Ù„ØµÙˆØ±Ø© Ø£Ùˆ Ø§Ù„ÙÙŠØ¯ÙŠÙˆ"
+                placeholder="ÇßÊÈ ãäÔæÑÇğ äÕíÇğ ááÕæÑÉ Ãæ ÇáİíÏíæ"
                 rows={3}
                 style={{ width: '100%', resize: 'vertical', borderRadius: 12, border: `1px solid ${CLR_POST_BORDER}`, background: CLR_INPUT_BG, color: CLR_TEXT, padding: '10px 12px', fontFamily: 'inherit', fontSize: '0.82rem', boxSizing: 'border-box' }}
               />
               <button type="button" onClick={saveMediaText} disabled={savingMediaText} style={{ alignSelf: 'flex-end', border: 'none', borderRadius: 10, background: CLR_PRIMARY, color: 'hsl(var(--primary-foreground))', padding: '8px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: savingMediaText ? 'wait' : 'pointer' }}>
-                {savingMediaText ? 'Ø¬Ø§Ø±Ù Ø§Ù„Ø­ÙØ¸...' : 'Ù†Ø´Ø± Ø§Ù„Ù†Øµ'}
+                {savingMediaText ? 'ÌÇÑò ÇáÍİÙ...' : 'äÔÑ ÇáäÕ'}
               </button>
             </div>
           )}
-          {/* Ù†Øµ Ø§Ù„Ø¨ÙˆØ³Øª ÙŠØ¸Ù‡Ø± Ø¯Ø§Ø¦Ù…Ø§Ù‹ Ø¥Ù† ÙˆÙØ¬Ø¯ */}
+          {/* äÕ ÇáÈæÓÊ íÙåÑ ÏÇÆãÇğ Åä æõÌÏ */}
           {!!post.text && (
             <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: '16px 16px', margin: '14px 14px 0' }}>
               <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold embedMediaLinks />
@@ -6206,17 +6206,17 @@ function PostDetailPage({
               color: post.likedByMe ? '#ef4444' : CLR_TEXT_DIM,
             }}>
               <Heart size={17} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
-              <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>{post.likesCount > 0 ? post.likesCount : 'Ø¥Ø¹Ø¬Ø§Ø¨'}</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>{post.likesCount > 0 ? post.likesCount : 'ÅÚÌÇÈ'}</span>
             </motion.button>
           </div>
 
           <div style={{ padding: '14px 14px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <p style={{ color: '#000000', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '4px 0' }}>
-              Ø§Ù„Ø±Ø¯ÙˆØ¯ {comments.length > 0 ? `(${comments.length})` : ''}
+              ÇáÑÏæÏ {comments.length > 0 ? `(${comments.length})` : ''}
             </p>
             {comments.length === 0 && (
               <p style={{ color: '#000000', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center', padding: '24px 0' }}>
-                Ù„Ø§ ØªÙˆØ¬Ø¯ Ø±Ø¯ÙˆØ¯ Ø¨Ø¹Ø¯ â€” ÙƒÙ† Ø£ÙˆÙ„ Ù…Ù† ÙŠØ¹Ù„Ù‘Ù‚
+                áÇ ÊæÌÏ ÑÏæÏ ÈÚÏ — ßä Ãæá ãä íÚáøŞ
               </p>
             )}
               {comments.map(c => (
@@ -6227,7 +6227,7 @@ function PostDetailPage({
                     <p style={{ color: '#000000', fontSize: '0.8rem', fontWeight: 700, margin: '2px 0 0', lineHeight: 1.5, wordBreak: 'break-word' }}>{c.text}</p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
                       <time dateTime={c.createdAt} style={{ color: '#000000', fontSize: '0.62rem', fontWeight: 700 }}>{formatCommentDate(c.createdAt)}</time>
-                      <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: CLR_PRIMARY, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>Ø±Ø¯</button>
+                      <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: CLR_PRIMARY, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>ÑÏ</button>
                     </div>
                   </div>
                 </div>
@@ -6237,7 +6237,7 @@ function PostDetailPage({
         </>
       )}
 
-      {/* Comment composer â€” fixed at bottom for everyone */}
+      {/* Comment composer — fixed at bottom for everyone */}
       {(
         <div style={{
           position: 'relative',
@@ -6248,15 +6248,15 @@ function PostDetailPage({
         }}>
           {replyingTo && (
             <div style={{ position: 'absolute', bottom: 58, left: 14, right: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 10, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}` }}>
-              <span style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>Ø±Ø¯ Ø¹Ù„Ù‰ {replyingTo.authorName}</span>
-              <button onClick={() => setReplyingTo(null)} aria-label="Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ø±Ø¯" style={{ background: 'none', border: 'none', color: CLR_TEXT_DIM, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
+              <span style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>ÑÏ Úáì {replyingTo.authorName}</span>
+              <button onClick={() => setReplyingTo(null)} aria-label="ÅáÛÇÁ ÇáÑÏ" style={{ background: 'none', border: 'none', color: CLR_TEXT_DIM, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
             </div>
           )}
           <input
             value={commentText}
             onChange={e => onChangeCommentText(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !commentSending) submitWithReply(); }}
-            placeholder="Ø§ÙƒØªØ¨ Ø±Ø¯Ù‘Ø§Ù‹ Ø¹Ù„Ù‰ Ù‡Ø°Ø§ Ø§Ù„Ù…Ù†Ø´ÙˆØ±..."
+            placeholder="ÇßÊÈ ÑÏøÇğ Úáì åĞÇ ÇáãäÔæÑ..."
             style={hasMedia ? {
               flex: 1, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
               borderRadius: 20, padding: '10px 14px', color: CLR_TEXT, fontSize: '0.82rem', outline: 'none',
@@ -6292,7 +6292,7 @@ function PostDetailPage({
 }
 
 
-// â”€â”€ GlobeVoiceControl â€” public Agora room beside the story creator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? GlobeVoiceControl — public Agora room beside the story creator ????????????
 interface GlobeVoiceMember {
   userId: string;
   name: string | null;
@@ -6306,7 +6306,7 @@ interface GlobeVoiceControlProps {
   avatarUrl: string | null;
   /** 'row' (default) keeps the three controls side by side; 'column' stacks them one under another;
    * 'split' renders just the dots-button and the mic-button (no toggle switch, no bordered wrapper)
-   * so the caller can interleave them with its own UI â€” see renderSplit below. */
+   * so the caller can interleave them with its own UI — see renderSplit below. */
   layout?: 'row' | 'column' | 'split';
   /** Only used when layout === 'split'. Receives the dots-button and mic-button as ready-made
    * elements so the caller can place them wherever it needs (e.g. on opposite ends of a row with
@@ -6314,16 +6314,16 @@ interface GlobeVoiceControlProps {
    * next to each other in a fragment. */
   renderSplit?: (parts: { dotsButton: React.ReactNode; micButton: React.ReactNode }) => React.ReactNode;
   /** When provided, the control becomes a PRIVATE 1:1 call with this specific person instead of
-   * the public shared room â€” the two users' ids are combined into a unique, deterministic
+   * the public shared room — the two users' ids are combined into a unique, deterministic
    * channel so only the two of them can ever land in that room together. */
   peerId?: string;
   /** True when someone is currently viewing this person's profile (see useProfileVisitPresence
-   * below). Turns all three dots solid yellow as a "someone's here" signal â€” but only when no
+   * below). Turns all three dots solid yellow as a "someone's here" signal — but only when no
    * one is actually live in the voice room; an active room keeps its normal rainbow indicator,
    * which is never overridden by a plain profile visit. */
   hasProfileVisitor?: boolean;
   /** People currently viewing this profile (from useProfileVisitPresence), listed in the panel
-   * under a second "Ø§Ù„Ù…ÙˆØ¬ÙˆØ¯ÙˆÙ† ÙÙŠ Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ù‚ØµØªÙƒ" section, below the voice-room members. */
+   * under a second "ÇáãæÌæÏæä İí ÈÑæİÇíá ŞÕÊß" section, below the voice-room members. */
   profileVisitors?: GlobeVoiceMember[];
 }
 
@@ -6333,7 +6333,7 @@ const AGORA_APP_ID = '149ef04e839c4132a08efb49d717c436';
 // Agora channel names must stay within 64 bytes and only use
 // [a-zA-Z0-9 !#$%&()+-:;<=.>?@[]^_{}|~,]. Our real user ids (e.g. long auth
 // ids/emails) can easily blow past 64 bytes once combined into a private
-// "<idA>_<idB>" pair name â€” that's exactly the INVALID_PARAMS error. Instead
+// "<idA>_<idB>" pair name — that's exactly the INVALID_PARAMS error. Instead
 // we hash the sorted pair down to a short, fixed-length hex string so the
 // channel name is always short and always in the allowed character set,
 // while staying deterministic and order-independent for the same two users.
@@ -6350,7 +6350,7 @@ function shortChannelHash(input: string): string {
   return (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
 }
 
-// â”€â”€ Profile-visit presence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? Profile-visit presence ?????????????????????????????????????????????????
 // Lightweight polling presence: whoever has someone else's profile open sends a heartbeat
 // every 4s; the profile owner polls for who's currently there every 4s. A visitor "expires"
 // if no heartbeat arrives for ~12s (tab closed, navigated away, connection dropped, etc).
@@ -6421,10 +6421,10 @@ const globeVoiceClientRef: { current: IAgoraRTCClient | null } = { current: null
 const globeVoiceMicTrackRef: { current: IMicrophoneAudioTrack | null } = { current: null };
 const globeVoiceJoinedRef: { current: boolean } = { current: false };
 
-// â”€â”€ Global "in-call" banner state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? Global "in-call" banner state ???????????????????????????????????????????
 // A GlobeVoiceControl instance only exists while its screen (a friend's profile,
 // the story header, ...) is mounted. The call itself lives in the module refs above
-// and keeps running after that screen closes â€” but with nothing mounted, there was
+// and keeps running after that screen closes — but with nothing mounted, there was
 // no way to see/mute/hang up the call from elsewhere in the app. This tiny store lets
 // a single always-mounted <GlobalCallBanner /> reflect and control that call from
 // anywhere, decoupled from whichever GlobeVoiceControl instance (if any) is mounted.
@@ -6450,14 +6450,14 @@ function subscribeActiveCall(listener: () => void) {
   activeCallListeners.add(listener);
   return () => { activeCallListeners.delete(listener); };
 }
-// Mutes/unmutes MY own outgoing mic â€” works purely off the module-scope track ref,
+// Mutes/unmutes MY own outgoing mic — works purely off the module-scope track ref,
 // so it's callable from the banner even with no GlobeVoiceControl mounted.
 function toggleActiveCallMute() {
   const nextMuted = !activeCallState.muted;
   try { void globeVoiceMicTrackRef.current?.setMuted(nextMuted); } catch {}
   setActiveCallState({ muted: nextMuted });
 }
-// Hangs up the call from anywhere â€” same cleanup as GlobeVoiceControl's own leaveRoom,
+// Hangs up the call from anywhere — same cleanup as GlobeVoiceControl's own leaveRoom,
 // just operating on the module refs directly instead of through a mounted instance.
 async function endActiveCallGlobally() {
   const { channel, userId } = activeCallState;
@@ -6482,11 +6482,11 @@ async function endActiveCallGlobally() {
   setActiveCallState({ joined: false, answered: false, muted: false, channel: null, userId: null, peerLabel: null });
 }
 
-// â”€â”€ Incoming-call ("ringing") global state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ?? Incoming-call ("ringing") global state ??????????????????????????????????
 // Separate from ActiveCallState above: this represents a call someone else has started
 // with ME, before I've answered it. It's populated by <GlobalIncomingCallWatcher/>
 // (mounted once at the page root, see AddFriendPage's return), which polls for it on its
-// own â€” independent of whichever screen/tab of the page happens to be open. That's what
+// own — independent of whichever screen/tab of the page happens to be open. That's what
 // makes the ring/banner show up without needing to be sitting on the caller's profile.
 type IncomingCallState = {
   ringing: boolean;
@@ -6494,7 +6494,7 @@ type IncomingCallState = {
   callerId: string | null;
   callerLabel: string | null;
   isPrivate: boolean;
-  ringSilenced: boolean; // "Ù…ÙŠÙˆØª" â€” ÙŠÙˆÙ‚Ù ØµÙˆØª/Ø±Ø¬ÙØ© Ø§Ù„Ø±Ù†Ø© Ø¨Ø³ ÙŠØ®Ù„ÙŠ Ø§Ù„Ø¨Ø§Ù†Ø± Ø§Ù„Ø£Ø®Ø¶Ø± Ø¸Ø§Ù‡Ø±
+  ringSilenced: boolean; // "ãíæÊ" — íæŞİ ÕæÊ/ÑÌİÉ ÇáÑäÉ ÈÓ íÎáí ÇáÈÇäÑ ÇáÃÎÖÑ ÙÇåÑ
 };
 let incomingCallState: IncomingCallState = {
   ringing: false, channel: null, callerId: null, callerLabel: null, isPrivate: true, ringSilenced: false,
@@ -6510,9 +6510,9 @@ function subscribeIncomingCall(listener: () => void) {
   return () => { incomingCallListeners.delete(listener); };
 }
 
-// Ø­Ù„Ù‚Ø© Ø±Ù†ÙŠÙ† Ù…Ø³ØªÙ‚Ù„Ø© Ø¹Ù„Ù‰ Ù…Ø³ØªÙˆÙ‰ Ø§Ù„Ù…ÙˆØ¯ÙŠÙˆÙ„ (Ù…Ù†ÙØµÙ„Ø© Ø¹Ù† ringIntervalRef Ø§Ù„Ù„ÙŠ Ø¬ÙˆÙ‡ GlobeVoiceControlØŒ
-// Ù„Ø£Ù† Ø°Ø§Ùƒ ÙŠØ´ØªØºÙ„ Ø¨Ø³ Ø¥Ø°Ø§ ÙƒØ§Ù† ÙÙŠ instance Ù…Ù† GlobeVoiceControl Ù…ØªØ±ÙƒÙ‘Ø¨ Ø¨Ø§Ù„Ø´Ø§Ø´Ø©). Ù‡Ø°ÙŠ ØªØ´ØªØºÙ„ Ø·ÙˆÙ„
-// Ù…Ø§ Ø§Ù„ØµÙØ­Ø© Ù…ÙØªÙˆØ­Ø©ØŒ Ø¨ØºØ¶ Ø§Ù„Ù†Ø¸Ø± Ø¹Ù† Ø£ÙŠ ØªØ¨ÙˆÙŠØ¨/Ø´Ø§Ø´Ø© Ø¯Ø§Ø®Ù„ÙŠØ© Ø£Ù†Øª ÙÙŠÙ‡Ø§.
+// ÍáŞÉ Ñäíä ãÓÊŞáÉ Úáì ãÓÊæì ÇáãæÏíæá (ãäİÕáÉ Úä ringIntervalRef Çááí Ìæå GlobeVoiceControl¡
+// áÃä ĞÇß íÔÊÛá ÈÓ ÅĞÇ ßÇä İí instance ãä GlobeVoiceControl ãÊÑßøÈ ÈÇáÔÇÔÉ). åĞí ÊÔÊÛá Øæá
+// ãÇ ÇáÕİÍÉ ãİÊæÍÉ¡ ÈÛÖ ÇáäÙÑ Úä Ãí ÊÈæíÈ/ÔÇÔÉ ÏÇÎáíÉ ÃäÊ İíåÇ.
 let globalRingIntervalRef: number | null = null;
 function stopGlobalIncomingRing() {
   if (globalRingIntervalRef != null) {
@@ -6527,23 +6527,23 @@ function startGlobalIncomingRing() {
     try { navigator.vibrate?.([300, 200, 300, 200]); } catch {}
   }
   globalRingIntervalRef = window.setInterval(() => {
-    if (incomingCallState.ringSilenced) return; // Ù…ÙŠÙˆØª: Ù†ÙˆÙ‚Ù Ø§Ù„ØµÙˆØª ÙˆØ§Ù„Ø±Ø¬ÙØ© Ø¨Ø³ Ù†Ø®Ù„ÙŠ Ø§Ù„Ø¨Ø§Ù†Ø± Ø´ØºØ§Ù„
+    if (incomingCallState.ringSilenced) return; // ãíæÊ: äæŞİ ÇáÕæÊ æÇáÑÌİÉ ÈÓ äÎáí ÇáÈÇäÑ ÔÛÇá
     playIncomingCallRing();
     try { navigator.vibrate?.([300, 200, 300, 200]); } catch {}
   }, 2600);
 }
 
-// Ø¥Ø´Ø¹Ø§Ø± Ù†Ø¸Ø§Ù… Ø­Ù‚ÙŠÙ‚ÙŠ (Notification API) â€” ÙŠÙˆØµÙ„ Ø·ÙˆÙ„ Ù…Ø§ Ø§Ù„Ù…ØªØµÙØ­/Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ Ø´ØºØ§Ù„ Ø¨Ø§Ù„Ø®Ù„ÙÙŠØ© (ØªØ¨ÙˆÙŠØ¨
-// Ø«Ø§Ù†ÙŠØŒ Ø§Ù„Ø´Ø§Ø´Ø© Ù…ÙØªÙˆØ­Ø© Ø¨Ø³ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ Ù…Ùˆ ÙÙˆÙ‚)ØŒ Ø­ØªÙ‰ Ù„Ùˆ Ù…Ø§ ÙƒÙ†Øª Ø¨ØµÙØ­Ø© Ø§Ù„Ø´Ø§Øª. Ù…Ù„Ø§Ø­Ø¸Ø© Ù…Ù‡Ù…Ø©: Ù‡Ø°Ø§
-// Ù…Ø®ØªÙ„Ù Ø¹Ù† Push Ø­Ù‚ÙŠÙ‚ÙŠ â€” Ù„Ùˆ Ø§Ù„Ù…ØªØµÙØ­/Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ Ù…Ù‚ÙÙˆÙ„ Ø¨Ø§Ù„ÙƒØ§Ù…Ù„ Ù…Ø§ ØªÙˆØµÙ„ØŒ Ù„Ø£Ù† Ù‡Ø°Ø§ ÙŠØ­ØªØ§Ø¬ Service
-// Worker + Ø§Ø´ØªØ±Ø§Ùƒ Push + Ø³ÙŠØ±ÙØ± ÙŠØ±Ø³Ù„ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±ØŒ ÙˆÙ‡Ø°Ø§ Ø§Ù„Ù…Ù„Ù Ù…Ø§ ÙÙŠÙ‡ Ù‡Ø°ÙŠ Ø§Ù„Ø¨Ù†ÙŠØ©.
+// ÅÔÚÇÑ äÙÇã ÍŞíŞí (Notification API) — íæÕá Øæá ãÇ ÇáãÊÕİÍ/ÇáÊØÈíŞ ÔÛÇá ÈÇáÎáİíÉ (ÊÈæíÈ
+// ËÇäí¡ ÇáÔÇÔÉ ãİÊæÍÉ ÈÓ ÇáÊØÈíŞ ãæ İæŞ)¡ ÍÊì áæ ãÇ ßäÊ ÈÕİÍÉ ÇáÔÇÊ. ãáÇÍÙÉ ãåãÉ: åĞÇ
+// ãÎÊáİ Úä Push ÍŞíŞí — áæ ÇáãÊÕİÍ/ÇáÊØÈíŞ ãŞİæá ÈÇáßÇãá ãÇ ÊæÕá¡ áÃä åĞÇ íÍÊÇÌ Service
+// Worker + ÇÔÊÑÇß Push + ÓíÑİÑ íÑÓá ÇáÅÔÚÇÑ¡ æåĞÇ Çáãáİ ãÇ İíå åĞí ÇáÈäíÉ.
 function notifyIncomingCallSystem(callerLabel: string) {
   try {
     if (typeof Notification === 'undefined') return;
     const show = () => {
       if (Notification.permission !== 'granted') return;
-      const n = new Notification('Ù…ÙƒØ§Ù„Ù…Ø© ÙˆØ§Ø±Ø¯Ø©', {
-        body: `${callerLabel} ÙŠØªØµÙ„ Ø¨Ùƒ Ø§Ù„Ø¢Ù†`,
+      const n = new Notification('ãßÇáãÉ æÇÑÏÉ', {
+        body: `${callerLabel} íÊÕá Èß ÇáÂä`,
         tag: 'stooorna-incoming-call',
         requireInteraction: true,
       });
@@ -6556,9 +6556,9 @@ function notifyIncomingCallSystem(callerLabel: string) {
   } catch {}
 }
 
-// Ø§Ù„Ø±Ø¯ Ø¹Ù„Ù‰ Ù…ÙƒØ§Ù„Ù…Ø© ÙˆØ§Ø±Ø¯Ø© Ù…Ù† Ø£ÙŠ Ù…ÙƒØ§Ù† Ø¨Ø§Ù„ØµÙØ­Ø© â€” Ù†ÙØ³ Ù…Ù†Ø·Ù‚ joinRoom Ø¨Ø§Ù„Ø¶Ø¨Ø· Ù„ÙƒÙ†Ù‡ ÙŠØ´ØªØºÙ„ Ø¹Ù„Ù‰
-// Ù†ÙØ³ Ø§Ù„Ù€ refs Ø§Ù„Ø¹Ø§Ù…Ø© Ø§Ù„Ù„ÙŠ ÙŠØ³ØªØ®Ø¯Ù…Ù‡Ø§ endActiveCallGlobally/toggleActiveCallMute ÙÙˆÙ‚ØŒ
-// Ø¨Ø¯Ù„ Ù…Ø§ ÙŠØ­ØªØ§Ø¬ instance Ù…Ù† GlobeVoiceControl ÙŠÙƒÙˆÙ† Ù…ØªØ±ÙƒÙ‘Ø¨ Ø¨Ø§Ù„Ø´Ø§Ø´Ø© Ø¹Ø´Ø§Ù† ÙŠØ±Ø¯.
+// ÇáÑÏ Úáì ãßÇáãÉ æÇÑÏÉ ãä Ãí ãßÇä ÈÇáÕİÍÉ — äİÓ ãäØŞ joinRoom ÈÇáÖÈØ áßäå íÔÊÛá Úáì
+// äİÓ ÇáÜ refs ÇáÚÇãÉ Çááí íÓÊÎÏãåÇ endActiveCallGlobally/toggleActiveCallMute İæŞ¡
+// ÈÏá ãÇ íÍÊÇÌ instance ãä GlobeVoiceControl íßæä ãÊÑßøÈ ÈÇáÔÇÔÉ ÚÔÇä íÑÏ.
 async function answerIncomingCallGlobally(myUserId: string, myUserName: string | null) {
   const { channel, callerLabel, isPrivate } = incomingCallState;
   if (!channel) return;
@@ -6608,14 +6608,14 @@ async function answerIncomingCallGlobally(myUserId: string, myUserName: string |
     try { navigator.vibrate?.(35); } catch {}
   } catch (answerError) {
     console.error('[GlobalIncomingCall] answer error', answerError);
-    // ÙØ´Ù„ Ø§Ù„Ø±Ø¯ â€” Ù†Ø±Ø¬Ù‘Ø¹ Ø­Ø§Ù„Ø© Ø§Ù„Ø§ØªØµØ§Ù„ Ø§Ù„Ù†Ø´Ø· Ù„ØµÙØ±Ù‡Ø§ Ø¹Ø´Ø§Ù† Ø²Ø± "Ø¥Ù†Ù‡Ø§Ø¡" Ù…Ø§ ÙŠØ¹Ù„Ù‚ Ø¸Ø§Ù‡Ø± Ø¹Ù„Ù‰ Ù…ÙƒØ§Ù„Ù…Ø© ÙØ§Ø¶ÙŠØ©
+    // İÔá ÇáÑÏ — äÑÌøÚ ÍÇáÉ ÇáÇÊÕÇá ÇáäÔØ áÕİÑåÇ ÚÔÇä ÒÑ "ÅäåÇÁ" ãÇ íÚáŞ ÙÇåÑ Úáì ãßÇáãÉ İÇÖíÉ
     globeVoiceJoinedRef.current = false;
     setActiveCallState({ joined: false, answered: false, muted: false, channel: null, userId: null, peerLabel: null });
   }
 }
 
-// Ø¨Ø§Ù†Ø± Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø© Ø§Ù„ÙˆØ§Ø±Ø¯Ø© â€” Ù†ÙØ³ Ø´ÙƒÙ„ ÙˆÙ…ÙƒØ§Ù† GlobalCallBanner Ø¨Ø§Ù„Ø¶Ø¨Ø· (Ù†ÙØ³ Ø§Ù„Ù…Ø³ØªØ·ÙŠÙ„)ØŒ Ù„ÙƒÙ†
-// Ø¨Ø§Ù„Ø£Ø®Ø¶Ø± ÙˆØ¨Ø¯ÙˆÙ† Ø²Ø± Ø¥Ù†Ù‡Ø§Ø¡: Ø¨Ø³ "Ø±Ø¯" + "Ù…ÙŠÙˆØª". ÙŠØ¸Ù‡Ø± ÙÙ‚Ø· Ø¥Ø°Ø§ ÙƒØ§Ù† ÙÙŠ Ø±Ù†ÙŠÙ† ÙˆÙ„Ø³Ø§ Ù…Ø§ Ø¯Ø®Ù„Øª Ù…ÙƒØ§Ù„Ù…Ø©.
+// ÈÇäÑ ÇáãßÇáãÉ ÇáæÇÑÏÉ — äİÓ Ôßá æãßÇä GlobalCallBanner ÈÇáÖÈØ (äİÓ ÇáãÓÊØíá)¡ áßä
+// ÈÇáÃÎÖÑ æÈÏæä ÒÑ ÅäåÇÁ: ÈÓ "ÑÏ" + "ãíæÊ". íÙåÑ İŞØ ÅĞÇ ßÇä İí Ñäíä æáÓÇ ãÇ ÏÎáÊ ãßÇáãÉ.
 function GlobalIncomingCallBanner({ myUserId, myUserName }: { myUserId: string | null; myUserName: string | null }) {
   const incoming = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
   const activeState = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
@@ -6638,12 +6638,12 @@ function GlobalIncomingCallBanner({ myUserId, myUserName }: { myUserId: string |
         ))}
       </div>
       <span style={{ color: '#fff', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-        {incoming.callerLabel || 'Ù…ÙƒØ§Ù„Ù…Ø© ÙˆØ§Ø±Ø¯Ø©'}
+        {incoming.callerLabel || 'ãßÇáãÉ æÇÑÏÉ'}
       </span>
       <button
         onClick={() => { void answerIncomingCallGlobally(myUserId, myUserName); }}
-        aria-label="Ø±Ø¯"
-        title="Ø±Ø¯"
+        aria-label="ÑÏ"
+        title="ÑÏ"
         style={{
           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
           background: '#22c55e', color: '#06171a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -6653,8 +6653,8 @@ function GlobalIncomingCallBanner({ myUserId, myUserName }: { myUserId: string |
       </button>
       <button
         onClick={() => setIncomingCallState({ ringSilenced: !incoming.ringSilenced })}
-        aria-label={incoming.ringSilenced ? 'Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ù…ÙŠÙˆØª' : 'Ù…ÙŠÙˆØª Ø§Ù„Ø±Ù†Ø©'}
-        title={incoming.ringSilenced ? 'Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ù…ÙŠÙˆØª' : 'Ù…ÙŠÙˆØª Ø§Ù„Ø±Ù†Ø©'}
+        aria-label={incoming.ringSilenced ? 'ÅáÛÇÁ ÇáãíæÊ' : 'ãíæÊ ÇáÑäÉ'}
+        title={incoming.ringSilenced ? 'ÅáÛÇÁ ÇáãíæÊ' : 'ãíæÊ ÇáÑäÉ'}
         style={{
           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
           background: incoming.ringSilenced ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.1)',
@@ -6667,17 +6667,17 @@ function GlobalIncomingCallBanner({ myUserId, myUserName }: { myUserId: string |
   );
 }
 
-// Ø§Ù„Ø±Ø§ØµØ¯ Ø§Ù„Ø¹Ø§Ù… Ù„Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª Ø§Ù„ÙˆØ§Ø±Ø¯Ø© â€” Ù…ÙƒÙˆÙ‘Ù† ØºÙŠØ± Ù…Ø±Ø¦ÙŠ (ÙŠØ±Ø¬Ù‘Ø¹ null Ø¯Ø§ÙŠÙ…Ù‹Ø§)ØŒ ÙŠØªØ±ÙƒÙ‘Ø¨ Ù…Ø±Ø© ÙˆØ­Ø¯Ø©
-// Ø¨Ø¬Ø°Ø± Ø§Ù„ØµÙØ­Ø© (AddFriendPage) ÙˆÙŠÙØ­Øµ ÙƒÙ„ Ù£ Ø«ÙˆØ§Ù†ÙŠ Ù‡Ù„ ÙÙŠ Ø£Ø­Ø¯ ÙŠØªØµÙ„ ÙÙŠÙ†ÙŠØŒ Ø¨Ø¯ÙˆÙ† Ù…Ø§ ÙŠØ­ØªØ§Ø¬ Ø£ÙƒÙˆÙ†
-// Ø¯Ø§Ø®Ù„ Ø´Ø§Ø´Ø© Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ù…Ø¹ÙŠÙ†Ø©. ÙŠØ¹ØªÙ…Ø¯ Ø¨Ø§Ù„ÙƒØ§Ù…Ù„ Ø¹Ù„Ù‰ Ø§Ù„Ù€ APIs Ø§Ù„Ù…ÙˆØ¬ÙˆØ¯Ø© ÙØ¹Ù„Ø§Ù‹ (profile-visit + room)
-// ÙÙ…Ø§ ÙŠØ­ØªØ§Ø¬ Ø£ÙŠ ØªØ¹Ø¯ÙŠÙ„ Ø¨Ø§Ù„Ø¨Ø§Ùƒ-Ø¥Ù†Ø¯.
+// ÇáÑÇÕÏ ÇáÚÇã ááãßÇáãÇÊ ÇáæÇÑÏÉ — ãßæøä ÛíÑ ãÑÆí (íÑÌøÚ null ÏÇíãğÇ)¡ íÊÑßøÈ ãÑÉ æÍÏÉ
+// ÈÌĞÑ ÇáÕİÍÉ (AddFriendPage) æíİÍÕ ßá 3 ËæÇäí åá İí ÃÍÏ íÊÕá İíäí¡ ÈÏæä ãÇ íÍÊÇÌ Ãßæä
+// ÏÇÎá ÔÇÔÉ ÈÑæİÇíá ãÚíäÉ. íÚÊãÏ ÈÇáßÇãá Úáì ÇáÜ APIs ÇáãæÌæÏÉ İÚáÇğ (profile-visit + room)
+// İãÇ íÍÊÇÌ Ãí ÊÚÏíá ÈÇáÈÇß-ÅäÏ.
 function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string | null; myUserName: string | null }) {
   void myUserName;
   useEffect(() => {
     if (!myUserId) return;
     let cancelled = false;
     const poll = async () => {
-      // Ø£Ù†Ø§ Ø£ØµÙ„Ø§Ù‹ Ø¨Ù…ÙƒØ§Ù„Ù…Ø© (Ø±Ø¯ÙŠØª Ø£Ùˆ Ø£Ù†Ø§ Ø§Ù„Ø¨Ø§Ø¯Ø¦) â€” Ù…Ø§ ÙÙŠÙ‡ Ø¯Ø§Ø¹ÙŠ Ø£Ø¯ÙˆÙ‘Ø± Ø¹Ù„Ù‰ Ø±Ù†ÙŠÙ† Ø¬Ø¯ÙŠØ¯
+      // ÃäÇ ÃÕáÇğ ÈãßÇáãÉ (ÑÏíÊ Ãæ ÃäÇ ÇáÈÇÏÆ) — ãÇ İíå ÏÇÚí ÃÏæøÑ Úáì Ñäíä ÌÏíÏ
       if (activeCallState.joined) return;
       try {
         const r = await fetch(`/api/profile-visit/visitors?ownerId=${encodeURIComponent(myUserId)}`, { credentials: 'include' });
@@ -6701,7 +6701,7 @@ function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string 
           const label = visitor.name || visitor.username || null;
           setIncomingCallState({ ringing: true, channel, callerId: visitor.userId, callerLabel: label, isPrivate: true, ringSilenced: false });
           startGlobalIncomingRing();
-          notifyIncomingCallSystem(label || 'ØµØ¯ÙŠÙ‚');
+          notifyIncomingCallSystem(label || 'ÕÏíŞ');
         } else if (!callerActive && incomingCallState.ringing && incomingCallState.channel === channel) {
           stopGlobalIncomingRing();
           setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
@@ -6716,7 +6716,7 @@ function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string 
 }
 
 // Fixed pill at the top of the screen showing the live call's audio waveform, a mute
-// toggle, and a hang-up button â€” mounted once at the page root so it stays visible (and
+// toggle, and a hang-up button — mounted once at the page root so it stays visible (and
 // controllable) no matter which screen the user is browsing while the call is active.
 function GlobalCallBanner() {
   const state = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
@@ -6738,7 +6738,7 @@ function GlobalCallBanner() {
       borderRadius: 999, padding: '6px 8px 6px 12px', boxShadow: '0 4px 18px rgba(0,0,0,0.35)',
       backdropFilter: 'blur(6px)',
     }}>
-      {/* Ø°Ø¨Ø°Ø¨Ø§Øª Ø§Ù„ØµÙˆØª â€” Ù†Ø´Ø·Ø© ÙÙ‚Ø· Ù„Ù…Ø§ Ø§Ù„Ø·Ø±Ù Ø§Ù„Ø«Ø§Ù†ÙŠ ÙŠÙƒÙˆÙ† Ù…Ù†Ø¶Ù… ÙØ¹Ù„ÙŠÙ‹Ø§ */}
+      {/* ĞÈĞÈÇÊ ÇáÕæÊ — äÔØÉ İŞØ áãÇ ÇáØÑİ ÇáËÇäí íßæä ãäÖã İÚáíğÇ */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 16 }} aria-hidden="true">
         {[0, 1, 2, 3, 4].map(i => (
           <span key={i} style={{
@@ -6750,15 +6750,15 @@ function GlobalCallBanner() {
         ))}
       </div>
       <span style={{ color: '#fff', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-        {state.peerLabel || (state.isPrivate ? 'Ù…ÙƒØ§Ù„Ù…Ø© ØµÙˆØªÙŠØ©' : 'ØµÙˆØª Ù…Ø¨Ø§Ø´Ø±')}
+        {state.peerLabel || (state.isPrivate ? 'ãßÇáãÉ ÕæÊíÉ' : 'ÕæÊ ãÈÇÔÑ')}
         {state.answered && (
           <span style={{ marginInlineStart: 6, fontVariantNumeric: 'tabular-nums', opacity: 0.8 }}>{durationLabel}</span>
         )}
       </span>
       <button
         onClick={toggleActiveCallMute}
-        aria-label={state.muted ? 'Ø¥Ù„ØºØ§Ø¡ ÙƒØªÙ… Ø§Ù„Ù…Ø§ÙŠÙƒ' : 'ÙƒØªÙ… Ø§Ù„Ù…Ø§ÙŠÙƒ'}
-        title={state.muted ? 'Ø¥Ù„ØºØ§Ø¡ ÙƒØªÙ… Ø§Ù„Ù…Ø§ÙŠÙƒ' : 'ÙƒØªÙ… Ø§Ù„Ù…Ø§ÙŠÙƒ'}
+        aria-label={state.muted ? 'ÅáÛÇÁ ßÊã ÇáãÇíß' : 'ßÊã ÇáãÇíß'}
+        title={state.muted ? 'ÅáÛÇÁ ßÊã ÇáãÇíß' : 'ßÊã ÇáãÇíß'}
         style={{
           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
           background: state.muted ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.1)',
@@ -6769,8 +6769,8 @@ function GlobalCallBanner() {
       </button>
       <button
         onClick={() => void endActiveCallGlobally()}
-        aria-label="Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø©"
-        title="Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø©"
+        aria-label="ÅäåÇÁ ÇáãßÇáãÉ"
+        title="ÅäåÇÁ ÇáãßÇáãÉ"
         style={{
           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
           background: 'rgba(239,68,68,0.9)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
@@ -6785,8 +6785,8 @@ function GlobalCallBanner() {
 function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', renderSplit, peerId, hasProfileVisitor = false, profileVisitors = [] }: GlobeVoiceControlProps) {
   void avatarUrl;
   const isColumn = layout === 'column';
-  // Private call â†’ a channel unique to this pair of users (order-independent), so the room can
-  // never contain anyone but the two of them. No peerId â†’ falls back to the old public channel.
+  // Private call ? a channel unique to this pair of users (order-independent), so the room can
+  // never contain anyone but the two of them. No peerId ? falls back to the old public channel.
   // The pair is hashed (see shortChannelHash) so long/real user ids never push the channel name
   // past Agora's 64-byte limit or outside its allowed character set.
   const channel = peerId ? `private_${shortChannelHash([userId, peerId].sort().join('_'))}` : GLOBE_VOICE_CHANNEL;
@@ -6797,15 +6797,15 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
   const [joining, setJoining] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [error, setError] = useState('');
-  // â”€â”€ Call duration timer â€” starts counting only once the peer has actually joined
-  // too (the call was "answered"), not the moment I tap the phone myself. â”€â”€
+  // ?? Call duration timer — starts counting only once the peer has actually joined
+  // too (the call was "answered"), not the moment I tap the phone myself. ??
   const [callSeconds, setCallSeconds] = useState(0);
   const clientRef = globeVoiceClientRef;
   const micTrackRef = globeVoiceMicTrackRef;
   const joinedRef = globeVoiceJoinedRef;
   const alertedRef = useRef(false);
-  // â”€â”€ Ø­Ù„Ù‚Ø© Ø±Ù†ÙŠÙ† Ø§Ù„Ø§ØªØµØ§Ù„ Ø§Ù„ÙˆØ§Ø±Ø¯ â€” ØªØ¯Ù‚ Ø¨Ø´ÙƒÙ„ Ù…ØªÙƒØ±Ø± Ù„ÙŠÙ† ÙŠØ±Ø¯ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… (joined) Ø£Ùˆ
-  //    ÙŠÙ†Ù‚Ø·Ø¹ Ø§Ù„Ø§ØªØµØ§Ù„ (Ø§Ù„Ø£Ø¹Ø¶Ø§Ø¡ ÙŠØ±Ø¬Ø¹ÙˆÙ† ØµÙØ±)Ø› ØªÙÙ„ØºÙ‰ Ø¨Ø£ÙŠ Ù…Ù† Ø§Ù„Ø­Ø§Ù„ØªÙŠÙ†. â”€â”€
+  // ?? ÍáŞÉ Ñäíä ÇáÇÊÕÇá ÇáæÇÑÏ — ÊÏŞ ÈÔßá ãÊßÑÑ áíä íÑÏ ÇáãÓÊÎÏã (joined) Ãæ
+  //    íäŞØÚ ÇáÇÊÕÇá (ÇáÃÚÖÇÁ íÑÌÚæä ÕİÑ)º ÊõáÛì ÈÃí ãä ÇáÍÇáÊíä. ??
   const ringIntervalRef = useRef<number | null>(null);
   const stopIncomingRing = useCallback(() => {
     if (ringIntervalRef.current != null) {
@@ -6814,7 +6814,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
     }
   }, []);
   const startIncomingRing = useCallback(() => {
-    if (ringIntervalRef.current != null) return; // ØªØ¯Ù‚ Ø£ØµÙ„Ù‹Ø§
+    if (ringIntervalRef.current != null) return; // ÊÏŞ ÃÕáğÇ
     playIncomingCallRing();
     try { navigator.vibrate?.([300, 200, 300, 200]); } catch {}
     ringIntervalRef.current = window.setInterval(() => {
@@ -6822,9 +6822,9 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
       try { navigator.vibrate?.([300, 200, 300, 200]); } catch {}
     }, 2600);
   }, []);
-  useEffect(() => stopIncomingRing, [stopIncomingRing]); // ØªÙ†Ø¸ÙŠÙ Ø¹Ù†Ø¯ Ø¥Ø²Ø§Ù„Ø© Ø§Ù„Ù…ÙƒÙˆÙ‘Ù†
+  useEffect(() => stopIncomingRing, [stopIncomingRing]); // ÊäÙíİ ÚäÏ ÅÒÇáÉ Çáãßæøä
 
-  // â”€â”€ Per-member actions: mute (local only), block, remove from friends â”€â”€â”€â”€â”€â”€
+  // ?? Per-member actions: mute (local only), block, remove from friends ??????
   const [mutedUserIds, setMutedUserIds] = useState<Set<string>>(new Set());
   const mutedUserIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => { mutedUserIdsRef.current = mutedUserIds; }, [mutedUserIds]);
@@ -6911,7 +6911,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
     void fetchRoom();
   }, [fetchRoom, userId, channel]);
 
-  // Do NOT leave the room when this component unmounts â€” navigating between pages
+  // Do NOT leave the room when this component unmounts — navigating between pages
   // inside the app unmounts/remounts this control, and the call must keep running
   // while the user browses. The room is only left when the user actually exits the
   // app/tab (below) or explicitly taps the mic to hang up.
@@ -6935,7 +6935,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
 
   async function joinRoom() {
     if (joinedRef.current || joining) return;
-    stopIncomingRing(); // Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø±Ø¯ Ø¹Ù„Ù‰ Ø§Ù„Ø§ØªØµØ§Ù„ â€” Ø£ÙˆÙ‚Ù Ø§Ù„Ø±Ù†Ø© ÙÙˆØ±Ù‹Ø§
+    stopIncomingRing(); // ÇáãÓÊÎÏã ÑÏ Úáì ÇáÇÊÕÇá — ÃæŞİ ÇáÑäÉ İæÑğÇ
     setJoining(true);
     setError('');
     try {
@@ -6977,9 +6977,9 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
       setActiveCallState({ joined: true, answered: false, muted: false, channel, userId, isPrivate, peerLabel: null });
       void fetchRoom();
 
-      // ØªØ­Ù‚Ù‚ Ù…Ø¨ÙƒØ±: Ø¨Ø¹Ø¶ Ø§Ù„Ù€ WebViews (ØªØ·Ø¨ÙŠÙ‚Ø§Øª Ø§Ù„Ù…ÙˆØ¨Ø§ÙŠÙ„ Ø§Ù„Ù…ØºÙ„Ù‘ÙØ©) Ù…Ø§ ØªØ¹Ø±Ù‘Ù
-      // navigator.mediaDevices Ø¥Ø·Ù„Ø§Ù‚Ù‹Ø§ Ø¥Ø°Ø§ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ Ø§Ù„Ø£ØµÙ„ÙŠ Ù…Ø§ Ù…Ù†Ø­ ØµÙ„Ø§Ø­ÙŠØ© Ø§Ù„Ù…Ø§ÙŠÙƒ
-      // Ø¹Ù„Ù‰ Ù…Ø³ØªÙˆÙ‰ Ø§Ù„Ù†Ø¸Ø§Ù… (Android/iOS) â€” Ù‡Ø°Ø§ Ù…Ø®ØªÙ„Ù ØªÙ…Ø§Ù…Ù‹Ø§ Ø¹Ù† "Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø±ÙØ¶ Ø§Ù„Ø¥Ø°Ù†".
+      // ÊÍŞŞ ãÈßÑ: ÈÚÖ ÇáÜ WebViews (ÊØÈíŞÇÊ ÇáãæÈÇíá ÇáãÛáøİÉ) ãÇ ÊÚÑøİ
+      // navigator.mediaDevices ÅØáÇŞğÇ ÅĞÇ ÇáÊØÈíŞ ÇáÃÕáí ãÇ ãäÍ ÕáÇÍíÉ ÇáãÇíß
+      // Úáì ãÓÊæì ÇáäÙÇã (Android/iOS) — åĞÇ ãÎÊáİ ÊãÇãğÇ Úä "ÇáãÓÊÎÏã ÑİÖ ÇáÅĞä".
       if (!window.isSecureContext) {
         throw new Error('MIC_INSECURE_CONTEXT');
       }
@@ -6987,7 +6987,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
         throw new Error('MIC_UNSUPPORTED_CONTEXT');
       }
       const micTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' }).catch((micError: any) => {
-        // Ù†Ø·Ø¨Ø¹ ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø®Ø·Ø£ Ø§Ù„Ø­Ù‚ÙŠÙ‚ÙŠ Ø¨Ø§Ù„ÙƒÙˆÙ†Ø³ÙˆÙ„ Ø¹Ø´Ø§Ù† ÙŠØµÙŠØ± Ø§Ù„ØªØ´Ø®ÙŠØµ Ø£Ø¯Ù‚ Ù…Ù† Ø§Ù„Ø±Ø³Ø§Ù„Ø© Ø§Ù„Ø¹Ø§Ù…Ø© ÙˆØ­Ø¯Ù‡Ø§.
+        // äØÈÚ ÊİÇÕíá ÇáÎØÃ ÇáÍŞíŞí ÈÇáßæäÓæá ÚÔÇä íÕíÑ ÇáÊÔÎíÕ ÃÏŞ ãä ÇáÑÓÇáÉ ÇáÚÇãÉ æÍÏåÇ.
         console.error('[GlobeVoiceControl] raw mic error', { name: micError?.name, code: micError?.code, message: micError?.message });
         const name = (micError?.name || micError?.code || '').toString().toUpperCase();
         if (name.includes('NOTALLOWED') || name.includes('PERMISSIONDENIED') || name.includes('PERMISSION_DENIED') || name.includes('SECURITYERROR')) {
@@ -6999,8 +6999,8 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
         if (name.includes('NOTREADABLE') || name.includes('TRACKSTARTERROR') || name.includes('NOT_READABLE')) {
           throw new Error('MIC_IN_USE');
         }
-        // Ø³Ø¨Ø¨ ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ â€” Ù†Ø±ÙÙ‚ Ø§Ù„ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø®Ø§Ù… Ø¨Ù†ÙØ³ Ø±Ø³Ø§Ù„Ø© Ø§Ù„Ø®Ø·Ø£ Ø¹Ø´Ø§Ù† ØªØ¨ÙŠÙ† Ù„Ù„Ù…Ø³ØªØ®Ø¯Ù… Ù…Ø¨Ø§Ø´Ø±Ø©
-        // Ø¨Ø¯ÙˆÙ† ÙØªØ­ Ø§Ù„Ù€ consoleØŒ ÙˆÙ†Ù‚Ø¯Ø± Ù†Ø´Ø®ØµÙ‡Ø§ Ù…Ù† Ø£ÙˆÙ„ Ø±Ø³Ø§Ù„Ø© ÙŠØ±Ø³Ù„Ù‡Ø§.
+        // ÓÈÈ ÛíÑ ãÚÑæİ — äÑİŞ ÇáÊİÇÕíá ÇáÎÇã ÈäİÓ ÑÓÇáÉ ÇáÎØÃ ÚÔÇä ÊÈíä ááãÓÊÎÏã ãÈÇÔÑÉ
+        // ÈÏæä İÊÍ ÇáÜ console¡ æäŞÏÑ äÔÎÕåÇ ãä Ãæá ÑÓÇáÉ íÑÓáåÇ.
         const rawDetail = micError?.name || micError?.code || micError?.message || 'unknown';
         throw new Error(`MIC_UNKNOWN::${rawDetail}`);
       });
@@ -7027,19 +7027,19 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
       console.error('[GlobeVoiceControl] join error', joinError);
       const reason = (joinError as Error)?.message ?? '';
       const messages: Record<string, string> = {
-        MIC_PERMISSION_DENIED: 'ØªÙ… Ø±ÙØ¶ Ø¥Ø°Ù† Ø§Ù„Ù…Ø§ÙŠÙƒØ±ÙˆÙÙˆÙ†. Ø§ÙØªØ­ Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª Ø§Ù„Ù…ØªØµÙØ­/Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ ÙˆØ§Ø³Ù…Ø­ Ø¨Ø§Ù„ÙˆØµÙˆÙ„ Ù„Ù„Ù…Ø§ÙŠÙƒØ±ÙˆÙÙˆÙ† Ù„Ù‡Ø°Ø§ Ø§Ù„Ù…ÙˆÙ‚Ø¹ØŒ Ø«Ù… Ø£Ø¹Ø¯ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø©.',
-        MIC_NOT_FOUND: 'Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø¹Ø«ÙˆØ± Ø¹Ù„Ù‰ Ù…Ø§ÙŠÙƒØ±ÙˆÙÙˆÙ† Ù…ØªØµÙ„ Ø¨Ø¬Ù‡Ø§Ø²Ùƒ. ØªØ£ÙƒØ¯ Ù…Ù† ØªÙˆØµÙŠÙ„ Ø§Ù„Ù…Ø§ÙŠÙƒØ±ÙˆÙÙˆÙ† ÙˆØ­Ø§ÙˆÙ„ Ù…Ø¬Ø¯Ø¯Ù‹Ø§.',
-        MIC_IN_USE: 'Ø§Ù„Ù…Ø§ÙŠÙƒØ±ÙˆÙÙˆÙ† Ù…Ø³ØªØ®Ø¯Ù… Ø­Ø§Ù„ÙŠÙ‹Ø§ Ù…Ù† ØªØ·Ø¨ÙŠÙ‚ Ø¢Ø®Ø±. Ø£ØºÙ„Ù‚ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚Ø§Øª Ø§Ù„Ø£Ø®Ø±Ù‰ Ø§Ù„ØªÙŠ ØªØ³ØªØ®Ø¯Ù… Ø§Ù„Ù…Ø§ÙŠÙƒØ±ÙˆÙÙˆÙ† ÙˆØ­Ø§ÙˆÙ„ Ù…Ø¬Ø¯Ø¯Ù‹Ø§.',
-        MIC_INSECURE_CONTEXT: 'Ø§Ù„Ø§ØªØµØ§Ù„ Ø¨Ø§Ù„Ù…Ø§ÙŠÙƒØ±ÙˆÙÙˆÙ† ÙŠØªØ·Ù„Ø¨ Ø§ØªØµØ§Ù„Ù‹Ø§ Ø¢Ù…Ù†Ù‹Ø§ (HTTPS). ØªØ£ÙƒØ¯ Ø£Ù†Ùƒ ØªÙØªØ­ Ø§Ù„Ù…ÙˆÙ‚Ø¹ Ø¹Ø¨Ø± Ø±Ø§Ø¨Ø· Ø¢Ù…Ù†.',
-        MIC_UNSUPPORTED_CONTEXT: 'Ù‡Ø°Ø§ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚/Ø§Ù„Ù…ØªØµÙØ­ Ù„Ø§ ÙŠÙˆÙÙ‘Ø± ÙˆØµÙˆÙ„Ù‹Ø§ Ù„Ù„Ù…Ø§ÙŠÙƒØ±ÙˆÙÙˆÙ† Ø¨Ù‡Ø°Ø§ Ø§Ù„Ø³ÙŠØ§Ù‚ â€” Ø¥Ø°Ø§ ÙƒÙ†Øª ØªØ³ØªØ®Ø¯Ù… Ù†Ø³Ø®Ø© Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ Ø§Ù„Ù…ÙØºÙ„Ù‘ÙØ© (WebView)ØŒ ØªØ£ÙƒØ¯ Ø¥Ù† Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ Ù†ÙØ³Ù‡ Ù…Ù†Ø­ØªÙ‡ ØµÙ„Ø§Ø­ÙŠØ© Ø§Ù„Ù…Ø§ÙŠÙƒØ±ÙˆÙÙˆÙ† Ù…Ù† Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª Ø§Ù„Ù†Ø¸Ø§Ù… (Android/iOS)ØŒ Ù…Ùˆ Ø¨Ø³ Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª Ø§Ù„Ù…ØªØµÙØ­.',
-        'Unable to start the voice room.': 'ØªØ¹Ø°Ø± Ø¨Ø¯Ø¡ Ø§Ù„ØºØ±ÙØ© Ø§Ù„ØµÙˆØªÙŠØ© Ù…Ù† Ø§Ù„Ø³ÙŠØ±ÙØ± â€” ØªØ­Ù‚Ù‚ Ù…Ù† Ø§ØªØµØ§Ù„ Ø§Ù„Ø¥Ù†ØªØ±Ù†Øª ÙˆØ­Ø§ÙˆÙ„ Ù…Ø¬Ø¯Ø¯Ù‹Ø§.',
-        'Voice connection is unavailable.': 'ØªØ¹Ø°Ø± Ø§Ù„Ø­ØµÙˆÙ„ Ø¹Ù„Ù‰ ØªÙˆÙƒÙ† Ø§Ù„Ø§ØªØµØ§Ù„ Ø§Ù„ØµÙˆØªÙŠ Ù…Ù† Ø§Ù„Ø³ÙŠØ±ÙØ± â€” ØªØ­Ù‚Ù‚ Ù…Ù† Ø§ØªØµØ§Ù„ Ø§Ù„Ø¥Ù†ØªØ±Ù†Øª ÙˆØ­Ø§ÙˆÙ„ Ù…Ø¬Ø¯Ø¯Ù‹Ø§.',
+        MIC_PERMISSION_DENIED: 'Êã ÑİÖ ÅĞä ÇáãÇíßÑæİæä. ÇİÊÍ ÅÚÏÇÏÇÊ ÇáãÊÕİÍ/ÇáÊØÈíŞ æÇÓãÍ ÈÇáæÕæá ááãÇíßÑæİæä áåĞÇ ÇáãæŞÚ¡ Ëã ÃÚÏ ÇáãÍÇæáÉ.',
+        MIC_NOT_FOUND: 'áã íÊã ÇáÚËæÑ Úáì ãÇíßÑæİæä ãÊÕá ÈÌåÇÒß. ÊÃßÏ ãä ÊæÕíá ÇáãÇíßÑæİæä æÍÇæá ãÌÏÏğÇ.',
+        MIC_IN_USE: 'ÇáãÇíßÑæİæä ãÓÊÎÏã ÍÇáíğÇ ãä ÊØÈíŞ ÂÎÑ. ÃÛáŞ ÇáÊØÈíŞÇÊ ÇáÃÎÑì ÇáÊí ÊÓÊÎÏã ÇáãÇíßÑæİæä æÍÇæá ãÌÏÏğÇ.',
+        MIC_INSECURE_CONTEXT: 'ÇáÇÊÕÇá ÈÇáãÇíßÑæİæä íÊØáÈ ÇÊÕÇáğÇ ÂãäğÇ (HTTPS). ÊÃßÏ Ãäß ÊİÊÍ ÇáãæŞÚ ÚÈÑ ÑÇÈØ Âãä.',
+        MIC_UNSUPPORTED_CONTEXT: 'åĞÇ ÇáÊØÈíŞ/ÇáãÊÕİÍ áÇ íæİøÑ æÕæáğÇ ááãÇíßÑæİæä ÈåĞÇ ÇáÓíÇŞ — ÅĞÇ ßäÊ ÊÓÊÎÏã äÓÎÉ ÇáÊØÈíŞ ÇáãõÛáøİÉ (WebView)¡ ÊÃßÏ Åä ÇáÊØÈíŞ äİÓå ãäÍÊå ÕáÇÍíÉ ÇáãÇíßÑæİæä ãä ÅÚÏÇÏÇÊ ÇáäÙÇã (Android/iOS)¡ ãæ ÈÓ ÅÚÏÇÏÇÊ ÇáãÊÕİÍ.',
+        'Unable to start the voice room.': 'ÊÚĞÑ ÈÏÁ ÇáÛÑİÉ ÇáÕæÊíÉ ãä ÇáÓíÑİÑ — ÊÍŞŞ ãä ÇÊÕÇá ÇáÅäÊÑäÊ æÍÇæá ãÌÏÏğÇ.',
+        'Voice connection is unavailable.': 'ÊÚĞÑ ÇáÍÕæá Úáì Êæßä ÇáÇÊÕÇá ÇáÕæÊí ãä ÇáÓíÑİÑ — ÊÍŞŞ ãä ÇÊÕÇá ÇáÅäÊÑäÊ æÍÇæá ãÌÏÏğÇ.',
       };
       if (reason.startsWith('MIC_UNKNOWN::')) {
         const rawDetail = reason.slice('MIC_UNKNOWN::'.length);
-        setError(`ØªØ¹Ø°Ø± ØªØ´ØºÙŠÙ„ Ø§Ù„Ù…Ø§ÙŠÙƒ. ØªØ£ÙƒØ¯ Ù…Ù† Ø§Ù„Ø³Ù…Ø§Ø­ Ø¨Ø§Ù„ÙˆØµÙˆÙ„ Ù„Ù„Ù…Ø§ÙŠÙƒØ±ÙˆÙÙˆÙ†. (Ø§Ù„Ø³Ø¨Ø¨: ${rawDetail})`);
+        setError(`ÊÚĞÑ ÊÔÛíá ÇáãÇíß. ÊÃßÏ ãä ÇáÓãÇÍ ÈÇáæÕæá ááãÇíßÑæİæä. (ÇáÓÈÈ: ${rawDetail})`);
       } else {
-        setError(messages[reason] ?? `ØªØ¹Ø°Ø± ØªØ´ØºÙŠÙ„ Ø§Ù„Ù…Ø§ÙŠÙƒ. ØªØ£ÙƒØ¯ Ù…Ù† Ø§Ù„Ø³Ù…Ø§Ø­ Ø¨Ø§Ù„ÙˆØµÙˆÙ„ Ù„Ù„Ù…Ø§ÙŠÙƒØ±ÙˆÙÙˆÙ†. (Ø§Ù„Ø³Ø¨Ø¨: ${reason || 'ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ'})`);
+        setError(messages[reason] ?? `ÊÚĞÑ ÊÔÛíá ÇáãÇíß. ÊÃßÏ ãä ÇáÓãÇÍ ÈÇáæÕæá ááãÇíßÑæİæä. (ÇáÓÈÈ: ${reason || 'ÛíÑ ãÚÑæİ'})`);
       }
       await leaveRoom();
     } finally {
@@ -7048,7 +7048,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
   }
 
   const roomActive = members.length > 0;
-  // "Answered" = I'm joined AND at least one other person is actually in the channel with me â€”
+  // "Answered" = I'm joined AND at least one other person is actually in the channel with me —
   // not just me sitting alone in an empty room.
   const callAnswered = joined && members.some(m => m.userId !== userId);
   const micColor = callAnswered ? '#22c55e' : joined ? 'hsl(var(--primary))' : roomActive ? 'hsl(var(--accent))' : 'hsl(var(--destructive))';
@@ -7073,14 +7073,14 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
   useEffect(() => {
     if (!joined) return;
     const peer = members.find(m => m.userId !== userId);
-    setActiveCallState({ answered: callAnswered, peerLabel: isPrivate ? (peer?.name || peer?.username || null) : 'ØµÙˆØª Ù…Ø¨Ø§Ø´Ø±' });
+    setActiveCallState({ answered: callAnswered, peerLabel: isPrivate ? (peer?.name || peer?.username || null) : 'ÕæÊ ãÈÇÔÑ' });
   }, [joined, callAnswered, members, userId, isPrivate]);
 
   const micLabel = joined
-    ? (isPrivate ? 'Ø£Ù†Øª Ù…ØªØµÙ„ Ø¨Ù…ÙƒØ§Ù„Ù…Ø© ØµÙˆØªÙŠØ© Ø®Ø§ØµØ©' : 'Ø£Ù†Øª Ù…ØªØµÙ„ Ø¨Ø§Ù„ØµÙˆØª Ø§Ù„Ù…Ø¨Ø§Ø´Ø±')
+    ? (isPrivate ? 'ÃäÊ ãÊÕá ÈãßÇáãÉ ÕæÊíÉ ÎÇÕÉ' : 'ÃäÊ ãÊÕá ÈÇáÕæÊ ÇáãÈÇÔÑ')
     : roomActive
-      ? (isPrivate ? 'Ø§Ù„Ø´Ø®Øµ Ø¨Ø§Ù†ØªØ¸Ø§Ø±Ùƒ â€” Ø§Ø¶ØºØ· Ù„Ù„Ø§Ù†Ø¶Ù…Ø§Ù…' : 'ÙŠÙˆØ¬Ø¯ Ø´Ø®Øµ ÙÙŠ Ø§Ù„ØµÙˆØª Ø§Ù„Ù…Ø¨Ø§Ø´Ø± â€” Ø§Ø¶ØºØ· Ù„Ù„Ø§Ù†Ø¶Ù…Ø§Ù…')
-      : (isPrivate ? 'Ø§Ø¨Ø¯Ø£ Ù…ÙƒØ§Ù„Ù…Ø© ØµÙˆØªÙŠØ© Ø®Ø§ØµØ©' : 'Ø§Ø¨Ø¯Ø£ Ù…Ø­Ø§Ø¯Ø«Ø© ØµÙˆØªÙŠØ© Ø¹Ø§Ù…Ø©');
+      ? (isPrivate ? 'ÇáÔÎÕ ÈÇäÊÙÇÑß — ÇÖÛØ ááÇäÖãÇã' : 'íæÌÏ ÔÎÕ İí ÇáÕæÊ ÇáãÈÇÔÑ — ÇÖÛØ ááÇäÖãÇã')
+      : (isPrivate ? 'ÇÈÏÃ ãßÇáãÉ ÕæÊíÉ ÎÇÕÉ' : 'ÇÈÏÃ ãÍÇÏËÉ ÕæÊíÉ ÚÇãÉ');
 
   const toggleVoice = () => {
     if (joined) {
@@ -7090,7 +7090,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
     void joinRoom();
   };
 
-  // Mute is local-only â€” it stops playback of that member's remote audio track for me,
+  // Mute is local-only — it stops playback of that member's remote audio track for me,
   // it does not affect what other people in the room hear.
   async function toggleMuteMember(member: GlobeVoiceMember) {
     const next = new Set(mutedUserIds);
@@ -7133,13 +7133,13 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
   }
 
   // 'split' renders the dots-button and the mic-button as two standalone circular buttons
-  // (same borderless "â‹®"-style look as the block/"more" button elsewhere on the friend's profile)
+  // (same borderless "?"-style look as the block/"more" button elsewhere on the friend's profile)
   // so a caller can drop them on opposite ends of its own row, with the mic sitting in the middle.
   const isSplit = layout === 'split';
 
   const micButtonEl = (
     <span style={{ position: 'relative', display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
-      {/* Call-duration timer â€” only ticks, and only shows, once the call is actually answered.
+      {/* Call-duration timer — only ticks, and only shows, once the call is actually answered.
           Sits beside the mic button on its left, vertically centered, instead of above it. */}
       {callAnswered && (
         <span style={{
@@ -7181,7 +7181,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
     <motion.button
       whileTap={{ scale: 0.9 }}
       onClick={() => setPanelOpen(open => !open)}
-      aria-label="Ø§Ù„Ù…Ø´Ø§Ø±ÙƒÙˆÙ† ÙÙŠ Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø© Ø§Ù„ØµÙˆØªÙŠØ©"
+      aria-label="ÇáãÔÇÑßæä İí ÇáãÍÇÏËÉ ÇáÕæÊíÉ"
       aria-expanded={panelOpen}
       style={isSplit ? {
         width: 30, height: 30, padding: 0, margin: 0, appearance: 'none', WebkitAppearance: 'none',
@@ -7191,8 +7191,8 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
       } : { width: 22, height: 14, padding: 0, margin: 0, appearance: 'none', WebkitAppearance: 'none', border: 0, outline: 'none', boxShadow: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, flexShrink: 0 }}
     >
       {isSplit ? (
-        // Ù†ÙØ³ Ø­Ø¬Ù… Ø²Ø± "â‹®" Ø§Ù„Ù‚Ø¯ÙŠÙ… Ø¨Ø§Ù„Ø¶Ø¨Ø· â€” Ø¨Ø³ Ø¨Ø¯Ù„ Ù…Ø§ ØªÙƒÙˆÙ† Ø§Ù„Ù†Ù‚Ø§Ø· Ø§Ù„Ø«Ù„Ø§Ø« Ù„ÙˆÙ† ÙˆØ§Ø­Ø¯ (Ø£Ø­Ù…Ø±)ØŒ
-        // ÙƒÙ„ Ù†Ù‚Ø·Ø© Ø§Ù„Ø­ÙŠÙ† Ø¥Ù„Ù‡Ø§ Ù„ÙˆÙ†Ù‡Ø§ Ø§Ù„Ø®Ø§Øµ Ù…Ø¹ Ù†Ø¨Ø¶Ø© Ø£Ù†ÙŠÙ…ÙŠØ´Ù†ØŒ Ù…Ù† ÙÙˆÙ‚ Ù„ØªØ­Øª: Ø£ØµÙØ±ØŒ Ø£Ø®Ø¶Ø±ØŒ Ø¨Ù†ÙØ³Ø¬ÙŠ.
+        // äİÓ ÍÌã ÒÑ "?" ÇáŞÏíã ÈÇáÖÈØ — ÈÓ ÈÏá ãÇ Êßæä ÇáäŞÇØ ÇáËáÇË áæä æÇÍÏ (ÃÍãÑ)¡
+        // ßá äŞØÉ ÇáÍíä ÅáåÇ áæäåÇ ÇáÎÇÕ ãÚ äÈÖÉ ÃäíãíÔä¡ ãä İæŞ áÊÍÊ: ÃÕİÑ¡ ÃÎÖÑ¡ ÈäİÓÌí.
         (["#FACC15", "#22c55e", "#A855F7"].map((color, index) => {
           const dotLit = roomActive || hasProfileVisitor;
           const dotColor = dotLit ? color : 'hsl(var(--muted-foreground))';
@@ -7213,7 +7213,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
           );
         }))
       ) : ["#FACC15", "#38BDF8", "#A855F7"].map((color, index) => {
-        // An active voice room keeps its normal rainbow indicator â€” never overridden.
+        // An active voice room keeps its normal rainbow indicator — never overridden.
         // Otherwise, a plain profile visit (no call happening) turns all three dots solid yellow.
         const dotColor = roomActive ? color : hasProfileVisitor ? '#FACC15' : 'hsl(var(--muted-foreground))';
         const dotLit = roomActive || hasProfileVisitor;
@@ -7257,11 +7257,11 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
               transition={{ type: 'spring', stiffness: 320, damping: 30 }}
               style={{ position: 'relative', width: 'min(320px, calc(100vw - 40px))' }}
             >
-              {/* Ø²Ø± Ø¥ØºÙ„Ø§Ù‚ Ø¨Ø­Ø§ÙØ© Ø§Ù„Ù…Ø³ØªØ·ÙŠÙ„ â€” Ø®Ø§Ø±Ø¬ ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„Ø³ÙƒØ±ÙˆÙ„ Ø¹Ø´Ø§Ù† Ù…Ø§ ÙŠÙ†Ù‚Øµ Ù…Ù†Ù‡ØŒ Ø¨Ø¯ÙˆÙ† Ø§Ù„ØªØ£Ø«ÙŠØ± Ø¹Ù„Ù‰ Ø±Ù‚Ù… Ø¹Ø¯Ø¯ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† Ø¨Ø§Ù„Ù‡ÙŠØ¯Ø± */}
+              {/* ÒÑ ÅÛáÇŞ ÈÍÇİÉ ÇáãÓÊØíá — ÎÇÑÌ ÕäÏæŞ ÇáÓßÑæá ÚÔÇä ãÇ íäŞÕ ãäå¡ ÈÏæä ÇáÊÃËíÑ Úáì ÑŞã ÚÏÏ ÇáãÓÊÎÏãíä ÈÇáåíÏÑ */}
               <button
                 type="button"
                 onClick={() => setPanelOpen(false)}
-                aria-label="Ø¥ØºÙ„Ø§Ù‚"
+                aria-label="ÅÛáÇŞ"
                 style={{
                   position: 'absolute', top: -8, right: -8, width: 24, height: 24, borderRadius: '50%',
                   background: '#ef4444', border: '2px solid hsl(var(--card))', color: '#fff',
@@ -7273,11 +7273,11 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
               </button>
               <div style={{ maxHeight: '64dvh', overflowY: 'auto', padding: 16, borderRadius: 18, background: 'hsl(var(--card))', border: `1px solid ${micColor}`, boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 3px 12px', color: 'hsl(var(--foreground))', fontSize: '0.85rem', fontWeight: 800 }}>
-                <Users size={17} color={micColor} /> Ø§Ù„Ù…ÙˆØ¬ÙˆØ¯ÙˆÙ† ÙÙŠ Ø§Ù„ØµÙˆØª Ø§Ù„Ù…Ø¨Ø§Ø´Ø±
+                <Users size={17} color={micColor} /> ÇáãæÌæÏæä İí ÇáÕæÊ ÇáãÈÇÔÑ
                 <span style={{ marginInlineStart: 'auto', color: micColor, fontSize: '0.72rem', fontWeight: 700 }}>{members.length}</span>
               </div>
               {members.length === 0 ? (
-                <p style={{ margin: 0, padding: '10px 3px', color: 'hsl(var(--muted-foreground))', fontSize: '0.76rem', textAlign: 'center' }}>Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ø£Ø­Ø¯ ÙÙŠ Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø© Ø§Ù„Ø¢Ù†.</p>
+                <p style={{ margin: 0, padding: '10px 3px', color: 'hsl(var(--muted-foreground))', fontSize: '0.76rem', textAlign: 'center' }}>áÇ íæÌÏ ÃÍÏ İí ÇáãÍÇÏËÉ ÇáÂä.</p>
               ) : members.map(member => {
                 const isSelf = member.userId === userId;
                 const isMemberMuted = mutedUserIds.has(member.userId);
@@ -7296,14 +7296,14 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
                     <UserAvatar name={member.name ?? member.username ?? 'User'} avatarUrl={member.avatarUrl} size={36} />
                     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
                       <span style={{ color: 'hsl(var(--foreground))', fontSize: '0.82rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {member.name ?? member.username ?? 'Ù…Ø³ØªØ®Ø¯Ù…'}
+                        {member.name ?? member.username ?? 'ãÓÊÎÏã'}
                       </span>
                       {member.username && (
                         <span style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.68rem' }}>@{member.username}</span>
                       )}
                     </div>
                     {isSelf ? (
-                      <span style={{ color: micColor, fontSize: '0.68rem', fontWeight: 700 }}>Ø£Ù†Øª</span>
+                      <span style={{ color: micColor, fontSize: '0.68rem', fontWeight: 700 }}>ÃäÊ</span>
                     ) : isMemberMuted ? (
                       <MicOff size={15} color="hsl(var(--destructive))" />
                     ) : (
@@ -7313,12 +7313,12 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
                 );
               })}
 
-              {/* â”€â”€ Ø§Ù„Ù…ÙˆØ¬ÙˆØ¯ÙˆÙ† ÙÙŠ Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ù‚ØµØªÙƒ â€” Ù…Ù† ÙØªØ­ Ø¨Ø±ÙˆÙØ§ÙŠÙ„Ùƒ Ø§Ù„Ø¢Ù† (Ø¨Ø¯ÙˆÙ† Ù…Ø§ ÙŠÙƒÙˆÙ† Ø¨Ø§Ù„Ø¶Ø±ÙˆØ±Ø© Ø¨Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø©) â”€â”€ */}
+              {/* ?? ÇáãæÌæÏæä İí ÈÑæİÇíá ŞÕÊß — ãä İÊÍ ÈÑæİÇíáß ÇáÂä (ÈÏæä ãÇ íßæä ÈÇáÖÑæÑÉ ÈÇáãßÇáãÉ) ?? */}
               {profileVisitors.length > 0 && (
                 <>
                   <div style={{ height: 1, background: 'hsl(var(--border))', margin: '10px 0 8px' }} />
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 3px 10px', color: 'hsl(var(--foreground))', fontSize: '0.85rem', fontWeight: 800 }}>
-                    <Eye size={16} color="#FACC15" /> Ø§Ù„Ù…ÙˆØ¬ÙˆØ¯ÙˆÙ† ÙÙŠ Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ù‚ØµØªÙƒ
+                    <Eye size={16} color="#FACC15" /> ÇáãæÌæÏæä İí ÈÑæİÇíá ŞÕÊß
                     <span style={{ marginInlineStart: 'auto', color: '#FACC15', fontSize: '0.72rem', fontWeight: 700 }}>{profileVisitors.length}</span>
                   </div>
                   {profileVisitors.map(visitor => (
@@ -7326,7 +7326,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
                       <UserAvatar name={visitor.name ?? visitor.username ?? 'User'} avatarUrl={visitor.avatarUrl} size={36} />
                       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
                         <span style={{ color: 'hsl(var(--foreground))', fontSize: '0.82rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {visitor.name ?? visitor.username ?? 'Ù…Ø³ØªØ®Ø¯Ù…'}
+                          {visitor.name ?? visitor.username ?? 'ãÓÊÎÏã'}
                         </span>
                         {visitor.username && (
                           <span style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.68rem' }}>@{visitor.username}</span>
@@ -7343,7 +7343,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Voice-room member action menu (Ø­Ø°Ù / Ø­Ø¸Ø± / ÙƒØªÙ… Ø§Ù„ØµÙˆØª) â€” ÙŠÙØªØ­ Ø¨Ù…Ù†ØªØµÙ Ø§Ù„Ø´Ø§Ø´Ø© â”€â”€ */}
+      {/* ?? Voice-room member action menu (ÍĞİ / ÍÙÑ / ßÊã ÇáÕæÊ) — íİÊÍ ÈãäÊÕİ ÇáÔÇÔÉ ?? */}
       <AnimatePresence>
         {memberMenuFor && (
           <motion.div
@@ -7361,25 +7361,25 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px 10px' }}>
                 <UserAvatar name={memberMenuFor.name ?? memberMenuFor.username ?? 'User'} avatarUrl={memberMenuFor.avatarUrl} size={30} />
                 <span style={{ color: 'hsl(var(--foreground))', fontSize: '0.78rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {memberMenuFor.username ? `@${memberMenuFor.username}` : memberMenuFor.name ?? 'Ù…Ø³ØªØ®Ø¯Ù…'}
+                  {memberMenuFor.username ? `@${memberMenuFor.username}` : memberMenuFor.name ?? 'ãÓÊÎÏã'}
                 </span>
               </div>
               <div style={{ height: 1, background: 'rgba(239,68,68,0.15)', margin: '0 6px' }} />
 
               <motion.button whileTap={{ scale: 0.96 }} onClick={() => { const m = memberMenuFor; setMemberMenuFor(null); void toggleMuteMember(m); }} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', background: 'transparent', border: 'none', borderRadius: 9, color: CLR_TEXT, fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', width: '100%', textAlign: 'right', justifyContent: 'flex-end' }}>
-                {mutedUserIds.has(memberMenuFor.userId) ? 'Ø¥Ù„ØºØ§Ø¡ ÙƒØªÙ… Ø§Ù„ØµÙˆØª' : 'ÙƒØªÙ… Ø§Ù„ØµÙˆØª'}
+                {mutedUserIds.has(memberMenuFor.userId) ? 'ÅáÛÇÁ ßÊã ÇáÕæÊ' : 'ßÊã ÇáÕæÊ'}
                 {mutedUserIds.has(memberMenuFor.userId) ? <Mic size={16} strokeWidth={2} /> : <MicOff size={16} strokeWidth={2} />}
               </motion.button>
               <div style={{ height: 1, background: 'rgba(239,68,68,0.15)', margin: '0 6px' }} />
 
               <motion.button whileTap={{ scale: 0.96 }} onClick={() => { setConfirmBlockMember(memberMenuFor); setMemberMenuFor(null); }} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', background: 'transparent', border: 'none', borderRadius: 9, color: '#ef4444', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', width: '100%', textAlign: 'right', justifyContent: 'flex-end' }}>
-                Ø­Ø¸Ø±
+                ÍÙÑ
                 <ShieldOff size={16} strokeWidth={2} />
               </motion.button>
               <div style={{ height: 1, background: 'rgba(239,68,68,0.15)', margin: '0 6px' }} />
 
               <motion.button whileTap={{ scale: 0.96 }} onClick={() => { setConfirmDeleteMember(memberMenuFor); setMemberMenuFor(null); }} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', background: 'transparent', border: 'none', borderRadius: 9, color: '#ef4444', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', width: '100%', textAlign: 'right', justifyContent: 'flex-end' }}>
-                Ø­Ø°Ù
+                ÍĞİ
                 <Trash2 size={16} strokeWidth={2} />
               </motion.button>
             </motion.div>
@@ -7387,7 +7387,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Confirm delete (remove from my friends list permanently) â”€â”€ */}
+      {/* ?? Confirm delete (remove from my friends list permanently) ?? */}
       <AnimatePresence>
         {confirmDeleteMember && (
           <motion.div
@@ -7404,19 +7404,19 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
                 <div style={{ width: 46, height: 46, borderRadius: '50%', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Trash2 size={19} strokeWidth={2} color="#ef4444" />
                 </div>
-                <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>Ø­Ø°Ù {confirmDeleteMember.username ? `@${confirmDeleteMember.username}` : confirmDeleteMember.name ?? 'Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…'}</p>
+                <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>ÍĞİ {confirmDeleteMember.username ? `@${confirmDeleteMember.username}` : confirmDeleteMember.name ?? 'ÇáãÓÊÎÏã'}</p>
               </div>
               <p style={{ color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center', margin: 0 }}>
-                Ø³ÙŠØªÙ… Ø­Ø°ÙÙ‡ Ù…Ù† Ù‚Ø§Ø¦Ù…Ø© Ø¥Ø¶Ø§ÙØ§ØªÙƒ Ø¨Ø´ÙƒÙ„ Ù†Ù‡Ø§Ø¦ÙŠ. Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø§Ù„ØªØ±Ø§Ø¬Ø¹ Ø¹Ù† Ù‡Ø°Ø§ Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡.
+                ÓíÊã ÍĞİå ãä ŞÇÆãÉ ÅÖÇİÇÊß ÈÔßá äåÇÆí. áÇ íãßä ÇáÊÑÇÌÚ Úä åĞÇ ÇáÅÌÑÇÁ.
               </p>
               <div style={{ display: 'flex', gap: 10 }}>
                 <motion.button whileTap={{ scale: 0.95 }} onClick={() => setConfirmDeleteMember(null)} disabled={memberActionBusy} style={{ flex: 1, padding: '10px', background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, borderRadius: 10, color: CLR_TEXT, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
-                  Ø¥Ù„ØºØ§Ø¡
+                  ÅáÛÇÁ
                 </motion.button>
                 <motion.button whileTap={{ scale: 0.95 }} onClick={() => deleteMemberFromFriends(confirmDeleteMember)} disabled={memberActionBusy} style={{ flex: 1, padding: '10px', background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 10, color: '#ef4444', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                   {memberActionBusy ? (
                     <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }} style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid rgba(239,68,68,0.3)', borderTopColor: '#ef4444' }} />
-                  ) : <><Trash2 size={13} strokeWidth={2} /> Ø­Ø°Ù</>}
+                  ) : <><Trash2 size={13} strokeWidth={2} /> ÍĞİ</>}
                 </motion.button>
               </div>
             </motion.div>
@@ -7424,7 +7424,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Confirm block (full block â€” they won't find your username until you unblock) â”€â”€ */}
+      {/* ?? Confirm block (full block — they won't find your username until you unblock) ?? */}
       <AnimatePresence>
         {confirmBlockMember && (
           <motion.div
@@ -7439,20 +7439,20 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                 <UserAvatar name={confirmBlockMember.name ?? confirmBlockMember.username ?? '?'} avatarUrl={confirmBlockMember.avatarUrl} size={52} />
-                <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>{confirmBlockMember.name ?? confirmBlockMember.username ?? 'â€”'}</p>
+                <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>{confirmBlockMember.name ?? confirmBlockMember.username ?? '—'}</p>
                 {confirmBlockMember.username && <p style={{ color: CLR_TEXT_DIM, fontSize: '0.72rem', margin: 0 }}>@{confirmBlockMember.username}</p>}
               </div>
               <p style={{ color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center', margin: 0 }}>
-                Ù‡Ù„ ØªØ±ÙŠØ¯ Ø­Ø¸Ø± Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ØŸ Ù„Ù† ÙŠØªÙ…ÙƒÙ† Ù…Ù† Ø¥ÙŠØ¬Ø§Ø¯ ÙŠÙˆØ²Ø±Ùƒ Ø­ØªÙ‰ Ù„Ùˆ Ø¨Ø­Ø« Ø¹Ù†Ù‡ØŒ ÙˆÙŠÙØ²Ø§Ù„ Ù…Ù† Ù‚Ø§Ø¦Ù…Ø© Ø£ØµØ¯Ù‚Ø§Ø¦ÙƒØŒ Ø¥Ù„Ù‰ Ø£Ù† ØªØ±ÙØ¹ Ø§Ù„Ø­Ø¸Ø± Ø¨Ù†ÙØ³Ùƒ.
+                åá ÊÑíÏ ÍÙÑ åĞÇ ÇáãÓÊÎÏã¿ áä íÊãßä ãä ÅíÌÇÏ íæÒÑß ÍÊì áæ ÈÍË Úäå¡ æíõÒÇá ãä ŞÇÆãÉ ÃÕÏŞÇÆß¡ Åáì Ãä ÊÑİÚ ÇáÍÙÑ ÈäİÓß.
               </p>
               <div style={{ display: 'flex', gap: 10 }}>
                 <motion.button whileTap={{ scale: 0.95 }} onClick={() => setConfirmBlockMember(null)} disabled={memberActionBusy} style={{ flex: 1, padding: '10px', background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, borderRadius: 10, color: CLR_TEXT, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
-                  Ø¥Ù„ØºØ§Ø¡
+                  ÅáÛÇÁ
                 </motion.button>
                 <motion.button whileTap={{ scale: 0.95 }} onClick={() => blockMember(confirmBlockMember)} disabled={memberActionBusy} style={{ flex: 1, padding: '10px', background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 10, color: '#ef4444', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                   {memberActionBusy ? (
                     <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }} style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid rgba(239,68,68,0.3)', borderTopColor: '#ef4444' }} />
-                  ) : <><ShieldOff size={13} strokeWidth={2} /> Ø­Ø¸Ø±</>}
+                  ) : <><ShieldOff size={13} strokeWidth={2} /> ÍÙÑ</>}
                 </motion.button>
               </div>
             </motion.div>
@@ -7466,10 +7466,10 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
   );
 }
 
-// â”€â”€ SharedInboxDrawer â€” list of posts other users sent me via the share sheet â”€â”€
-// Redesigned as a big full-screen box: opens on a 2Ã—2 grid of square tiles (Story /
+// ?? SharedInboxDrawer — list of posts other users sent me via the share sheet ??
+// Redesigned as a big full-screen box: opens on a 2×2 grid of square tiles (Story /
 // Repost / Share / Favorites), each with its own icon. Tapping a tile opens that
-// section as its own full page with an independent scroll container â€” so a long
+// section as its own full page with an independent scroll container — so a long
 // Favorites list scrolls on its own instead of being crammed under three other
 // sections in one shared scroll area (which is what made it feel "stuck").
 type SharedInboxSection = 'story' | 'favorites';
@@ -7524,7 +7524,7 @@ function SharedInboxDrawer({
   const storyUnread = storyThreads.filter(t => !t.read).length;
   const chatUnread = (userShareInbox || []).filter(t => !t.read).length;
   const tiles: { key: Exclude<SharedInboxSection, 'grid'>; label: string; caption: string; Icon: typeof Camera; count: number; unread: number }[] = [
-    { key: 'story', label: 'Story', caption: 'ØªØ¹Ù„ÙŠÙ‚Ø§Øª Ø¹Ù„Ù‰ Ù‚ØµØªÙƒ', Icon: Camera, count: storyThreads.length, unread: storyUnread },
+    { key: 'story', label: 'Story', caption: 'ÊÚáíŞÇÊ Úáì ŞÕÊß', Icon: Camera, count: storyThreads.length, unread: storyUnread },
   ];
   const activeTile = tiles.find(t => t.key === activeSection) ?? null;
 
@@ -7560,7 +7560,7 @@ function SharedInboxDrawer({
         borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         background: CLR_HEADER_BG, backdropFilter: 'blur(14px)',
       }}>
-        <button onClick={onClose} aria-label="Ø¥ØºÙ„Ø§Ù‚" style={{
+        <button onClick={onClose} aria-label="ÅÛáÇŞ" style={{
           background: 'none', border: 'none', color: CLR_TEXT, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4,
         }}>
@@ -7598,14 +7598,14 @@ function SharedInboxDrawer({
         ))}
       </div>
 
-      {/* â”€â”€ Story: full page, own scroll â”€â”€ */}
+      {/* ?? Story: full page, own scroll ?? */}
       {activeSection === 'story' && (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', padding: '14px 14px 20px' }}>
           {storyThreadsLoading && storyThreads.length === 0 && (
-            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>Ø¬Ø§Ø±Ù Ø§Ù„ØªØ­Ù…ÙŠÙ„...</p>
+            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>ÌÇÑò ÇáÊÍãíá...</p>
           )}
           {!storyThreadsLoading && storyThreads.length === 0 && (
-            <EmptyState icon={<Inbox size={20} strokeWidth={1.5} />} text="Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ù†Ø´ÙˆØ±Ø§Øª Ù…ÙØ±Ø³Ù„Ø© Ø¥Ù„ÙŠÙƒ Ù…Ù† Ù‚ØµØªÙƒ Ø¨Ø¹Ø¯" />
+            <EmptyState icon={<Inbox size={20} strokeWidth={1.5} />} text="áÇ ÊæÌÏ ãäÔæÑÇÊ ãõÑÓáÉ Åáíß ãä ŞÕÊß ÈÚÏ" />
           )}
           {storyThreads.map(thread => (
             <div key={thread.storyId} style={{ position: 'relative', marginBottom: 10 }}>
@@ -7630,7 +7630,7 @@ function SharedInboxDrawer({
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ color: thread.read ? 'hsl(var(--foreground))' : 'hsl(var(--destructive-foreground))', fontSize: '0.8rem', fontWeight: 700, margin: 0 }}>
-                    ØªØ¹Ù„ÙŠÙ‚Ø§Øª Ø¹Ù„Ù‰ Ù‚ØµØªÙƒ
+                    ÊÚáíŞÇÊ Úáì ŞÕÊß
 
                   <span style={{ color: CLR_TEXT_DIM, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>
                     {formatDate(thread.createdAt)}
@@ -7640,7 +7640,7 @@ function SharedInboxDrawer({
                   color: thread.read ? CLR_TEXT_DIM : 'hsl(var(--destructive-foreground))', fontSize: '0.74rem', margin: '3px 0 0',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
-                  {thread.lastComment ? `${thread.lastComment.authorName}: ${thread.lastComment.text}` : `${thread.commentsCount} ØªØ¹Ù„ÙŠÙ‚`}
+                  {thread.lastComment ? `${thread.lastComment.authorName}: ${thread.lastComment.text}` : `${thread.commentsCount} ÊÚáíŞ`}
                 </p>
               </div>
               {!thread.read && (
@@ -7669,20 +7669,20 @@ function SharedInboxDrawer({
           ))}
           {storyThreads.length > 0 && (
             <p style={{ color: CLR_TEXT_DIM, fontSize: '0.66rem', textAlign: 'center', margin: '10px 0 0', lineHeight: 1.6 }}>
-              ØªØ®ØªÙÙŠ Ø§Ù„ØªØ¹Ù„ÙŠÙ‚Ø§Øª ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹ Ø¨Ø¹Ø¯ 24 Ø³Ø§Ø¹Ø© Ù…Ù† Ù†Ø´Ø± Ø§Ù„Ù‚ØµØ©
+              ÊÎÊİí ÇáÊÚáíŞÇÊ ÊáŞÇÆíÇğ ÈÚÏ 24 ÓÇÚÉ ãä äÔÑ ÇáŞÕÉ
             </p>
           )}
         </div>
       )}
 
-      {/* â”€â”€ Repost: comments on your posts â€” retained for compatibility, not shown in the two-section inbox. â”€â”€ */}
+      {/* ?? Repost: comments on your posts — retained for compatibility, not shown in the two-section inbox. ?? */}
       {false && (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', padding: '14px 14px 20px' }}>
           {postThreadsLoading && postThreads.length === 0 && (
-            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>Ø¬Ø§Ø±Ù Ø§Ù„ØªØ­Ù…ÙŠÙ„...</p>
+            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>ÌÇÑò ÇáÊÍãíá...</p>
           )}
           {!postThreadsLoading && postThreads.length === 0 && (
-            <EmptyState icon={<Inbox size={20} strokeWidth={1.5} />} text="Ù„Ø§ ØªÙˆØ¬Ø¯ ØªØ¹Ù„ÙŠÙ‚Ø§Øª Ø¹Ù„Ù‰ Ù…Ù†Ø´ÙˆØ±Ø§ØªÙƒ Ø¨Ø¹Ø¯" />
+            <EmptyState icon={<Inbox size={20} strokeWidth={1.5} />} text="áÇ ÊæÌÏ ÊÚáíŞÇÊ Úáì ãäÔæÑÇÊß ÈÚÏ" />
           )}
           {postThreads.map(thread => {
             const thumbUrl = thread.post.mediaUrls && thread.post.mediaUrls.length > 0 ? thread.post.mediaUrls[0] : thread.post.mediaUrl;
@@ -7707,7 +7707,7 @@ function SharedInboxDrawer({
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.8rem', fontWeight: 700, margin: 0 }}>
-                    ØªØ¹Ù„ÙŠÙ‚Ø§Øª Ø¹Ù„Ù‰ Ù…Ù†Ø´ÙˆØ±Ùƒ
+                    ÊÚáíŞÇÊ Úáì ãäÔæÑß
                     <span style={{ color: CLR_TEXT_DIM, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>
                       {formatDate(thread.post.createdAt)}
                     </span>
@@ -7716,7 +7716,7 @@ function SharedInboxDrawer({
                     color: CLR_TEXT_DIM, fontSize: '0.74rem', margin: '3px 0 0',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
-                    {thread.lastComment ? `${thread.lastComment.authorName}: ${thread.lastComment.text}` : `${thread.commentsCount} ØªØ¹Ù„ÙŠÙ‚`}
+                    {thread.lastComment ? `${thread.lastComment.authorName}: ${thread.lastComment.text}` : `${thread.commentsCount} ÊÚáíŞ`}
                   </p>
                 </div>
                 {!thread.read && (
@@ -7737,20 +7737,20 @@ function SharedInboxDrawer({
           ))}
           {(postThreads.length > 0 || postInteractions.some(item => item.type === 'repost')) && (
             <p style={{ color: CLR_TEXT_DIM, fontSize: '0.66rem', textAlign: 'center', margin: '10px 0 0', lineHeight: 1.6 }}>
-              ØªØ®ØªÙÙŠ Ø§Ù„ØªØ¹Ù„ÙŠÙ‚Ø§Øª ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹ Ø¨Ø¹Ø¯ 24 Ø³Ø§Ø¹Ø© Ù…Ù† Ù†Ø´Ø± Ø§Ù„Ù…Ù†Ø´ÙˆØ±
+              ÊÎÊİí ÇáÊÚáíŞÇÊ ÊáŞÇÆíÇğ ÈÚÏ 24 ÓÇÚÉ ãä äÔÑ ÇáãäÔæÑ
             </p>
           )}
         </div>
       )}
 
-      {/* â”€â”€ Share: retained for compatibility, not shown in the two-section inbox. â”€â”€ */}
+      {/* ?? Share: retained for compatibility, not shown in the two-section inbox. ?? */}
       {false && (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', padding: '14px 14px 20px' }}>
           {loading && shares.length === 0 && (
-            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>Ø¬Ø§Ø±Ù Ø§Ù„ØªØ­Ù…ÙŠÙ„...</p>
+            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>ÌÇÑò ÇáÊÍãíá...</p>
           )}
           {!loading && shares.length === 0 && postInteractions.filter(item => item.type === 'share').length === 0 && (
-            <EmptyState icon={<Inbox size={20} strokeWidth={1.5} />} text="Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ù†Ø´ÙˆØ±Ø§Øª Ù…ÙØ±Ø³Ù„Ø© Ø¥Ù„ÙŠÙƒ Ø¨Ø¹Ø¯" />
+            <EmptyState icon={<Inbox size={20} strokeWidth={1.5} />} text="áÇ ÊæÌÏ ãäÔæÑÇÊ ãõÑÓáÉ Åáíß ÈÚÏ" />
           )}
           {postInteractions.filter(item => item.type === 'share').map(item => (
             <div key={`share-${item.id}`} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, border: `2px solid ${item.read ? CLR_POST_BORDER : CLR_PRIMARY}`, background: item.read ? 'hsl(var(--muted))' : CLR_PRIMARY_FAINT, borderRadius: 14, padding: 10, marginBottom: 10 }}>
@@ -7777,7 +7777,7 @@ function SharedInboxDrawer({
               <UserAvatar name={share.senderName} avatarUrl={share.senderAvatarUrl} size={40} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.8rem', fontWeight: 700, margin: 0 }}>
-                  {share.senderName || share.senderUsername || 'â€”'}
+                  {share.senderName || share.senderUsername || '—'}
                   <span style={{ color: CLR_TEXT_DIM, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>
                     {formatDate(share.createdAt)}
                   </span>
@@ -7786,7 +7786,7 @@ function SharedInboxDrawer({
                   color: CLR_TEXT_DIM, fontSize: '0.74rem', margin: '3px 0 0',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
-                  {share.post.text || (share.post.mediaType === 'video' ? 'Ø£Ø±Ø³Ù„ Ù„Ùƒ Ù…Ù‚Ø·Ø¹ ÙÙŠØ¯ÙŠÙˆ' : share.post.mediaType === 'image' ? 'Ø£Ø±Ø³Ù„ Ù„Ùƒ ØµÙˆØ±Ø©' : 'Ø£Ø±Ø³Ù„ Ù„Ùƒ Ù…Ù†Ø´ÙˆØ±Ø§Ù‹')}
+                  {share.post.text || (share.post.mediaType === 'video' ? 'ÃÑÓá áß ãŞØÚ İíÏíæ' : share.post.mediaType === 'image' ? 'ÃÑÓá áß ÕæÑÉ' : 'ÃÑÓá áß ãäÔæÑÇğ')}
                 </p>
               </div>
               {!share.read && (
@@ -7797,12 +7797,12 @@ function SharedInboxDrawer({
         </div>
       )}
 
-      {/* â”€â”€ Favorites: posts pinned via the â­ icon â€” full page, own scroll (this is the
-          section that used to be unreachable once the list above it grew long) â”€â”€ */}
+      {/* ?? Favorites: posts pinned via the ? icon — full page, own scroll (this is the
+          section that used to be unreachable once the list above it grew long) ?? */}
       {false && activeSection === 'favorites' && (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', padding: '14px 14px 20px' }}>
           {favoritedPosts.length === 0 && (
-            <EmptyState icon={<Bookmark size={20} strokeWidth={1.5} />} text="Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ù†Ø´ÙˆØ±Ø§Øª Ù…ÙØ¶Ù‘Ù„Ø© Ø¨Ø¹Ø¯" />
+            <EmptyState icon={<Bookmark size={20} strokeWidth={1.5} />} text="áÇ ÊæÌÏ ãäÔæÑÇÊ ãİÖøáÉ ÈÚÏ" />
           )}
           {favoritedPosts.map(post => {
             const media = PostMediaItems(post)[0];
@@ -7832,7 +7832,7 @@ function SharedInboxDrawer({
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.8rem', fontWeight: 700, margin: 0 }}>
-                    {post.authorName || post.authorUsername || 'â€”'}
+                    {post.authorName || post.authorUsername || '—'}
                     <span style={{ color: CLR_TEXT_DIM, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>
                       {formatDate(post.createdAt)}
                     </span>
@@ -7841,7 +7841,7 @@ function SharedInboxDrawer({
                     color: CLR_TEXT_DIM, fontSize: '0.74rem', margin: '3px 0 0',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
-                    {post.text || (media?.type === 'video' ? 'ÙÙŠØ¯ÙŠÙˆ' : media ? 'ØµÙˆØ±Ø©' : '')}
+                    {post.text || (media?.type === 'video' ? 'İíÏíæ' : media ? 'ÕæÑÉ' : '')}
                   </p>
                 </div>
                 <Bookmark size={15} strokeWidth={2} color={CLR_PRIMARY} fill={CLR_PRIMARY} style={{ flexShrink: 0 }} />
@@ -7855,7 +7855,7 @@ function SharedInboxDrawer({
   );
 }
 
-// â”€â”€ SharedPostThread â€” full post + private reply thread with the person who shared it â”€â”€
+// ?? SharedPostThread — full post + private reply thread with the person who shared it ??
 function SharedPostThread({
   share,
   comments,
@@ -7902,15 +7902,15 @@ function SharedPostThread({
         borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         background: CLR_HEADER_BG, backdropFilter: 'blur(14px)',
       }}>
-        <button onClick={onClose} aria-label="Ø±Ø¬ÙˆØ¹" style={{
+        <button onClick={onClose} aria-label="ÑÌæÚ" style={{
           background: 'none', border: 'none', color: CLR_TEXT, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4,
         }}>
           <ArrowLeft size={20} strokeWidth={2.2} />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ color: CLR_TEXT, fontSize: '0.86rem', fontWeight: 700, margin: 0 }}>Ù…Ù†Ø´ÙˆØ± Ù…ÙØ±Ø³Ù„</p>
-          <p style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem', margin: 0 }}>Ù…Ø¹ {share.senderName || share.senderUsername || 'â€”'}</p>
+          <p style={{ color: CLR_TEXT, fontSize: '0.86rem', fontWeight: 700, margin: 0 }}>ãäÔæÑ ãõÑÓá</p>
+          <p style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem', margin: 0 }}>ãÚ {share.senderName || share.senderUsername || '—'}</p>
         </div>
       </div>
       {/* Scrollable content: the post itself + the private thread with the sender */}
@@ -7929,7 +7929,7 @@ function SharedPostThread({
             <UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={40} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.84rem', fontWeight: 700, margin: 0 }}>
-                {post.authorName || post.authorUsername || 'â€”'}
+                {post.authorName || post.authorUsername || '—'}
               </p>
               {post.authorUsername && <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.68rem', margin: 0 }}>@{post.authorUsername}</p>}
             </div>
@@ -7945,7 +7945,7 @@ function SharedPostThread({
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignSelf: 'flex-start' }}>
               {PostMediaItems(post).map((media, index) => (
                 media.type === 'video' ? (
-                  // Video plays right here, inline, as soon as the page opens â€” no extra tap needed,
+                  // Video plays right here, inline, as soon as the page opens — no extra tap needed,
                   // and the comments thread sits directly below it.
                   (<video
                     key={`${media.type}-${index}`}
@@ -7959,7 +7959,7 @@ function SharedPostThread({
                     }}
                   />)
                 ) : (
-                  <motion.button key={`${media.type}-${index}`} whileTap={{ scale: 0.97 }} onClick={() => setExpanded(true)} aria-label="ØªÙƒØ¨ÙŠØ± Ø§Ù„ÙˆØ³Ø§Ø¦Ø·" style={{
+                  <motion.button key={`${media.type}-${index}`} whileTap={{ scale: 0.97 }} onClick={() => setExpanded(true)} aria-label="ÊßÈíÑ ÇáæÓÇÆØ" style={{
                     position: 'relative', width: 160, height: 160, borderRadius: 10, overflow: 'hidden',
                     border: `1px solid ${CLR_POST_BORDER}`, padding: 0, background: '#000', cursor: 'pointer', display: 'block',
                   }}>
@@ -7984,14 +7984,14 @@ function SharedPostThread({
           </div>
         </div>
 
-        {/* Private reply thread â€” only between me and the sender */}
+        {/* Private reply thread — only between me and the sender */}
         <div style={{ padding: '10px 14px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <p style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '4px 0' }}>
-            Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø© Ù…Ø¹ {share.senderName || share.senderUsername || 'â€”'} {comments.length > 0 ? `(${comments.length})` : ''}
+            ÇáãÍÇÏËÉ ãÚ {share.senderName || share.senderUsername || '—'} {comments.length > 0 ? `(${comments.length})` : ''}
           </p>
           {comments.length === 0 && (
             <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>
-              Ù„Ø§ ØªÙˆØ¬Ø¯ Ø±Ø¯ÙˆØ¯ Ø¨Ø¹Ø¯ â€” Ø¹Ù„Ù‘Ù‚ Ø¹Ù„Ù‰ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø§Ù„Ù…ÙØ±Ø³Ù„ Ø¥Ù„ÙŠÙƒ
+              áÇ ÊæÌÏ ÑÏæÏ ÈÚÏ — ÚáøŞ Úáì ÇáãäÔæÑ ÇáãõÑÓá Åáíß
             </p>
           )}
           {comments.map(c => (
@@ -8002,14 +8002,14 @@ function SharedPostThread({
                 <p style={{ color: CLR_TEXT, fontSize: '0.8rem', margin: '2px 0 0', lineHeight: 1.5, wordBreak: 'break-word' }}>{c.text}</p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
                   <time dateTime={c.createdAt} style={{ color: CLR_TEXT_DIM, fontSize: '0.62rem' }}>{formatCommentDate(c.createdAt)}</time>
-                  <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: CLR_PRIMARY, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>Ø±Ø¯</button>
+                  <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: CLR_PRIMARY, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>ÑÏ</button>
                 </div>
               </div>
             </div>
           ))}
         </div>
       </div>
-      {/* Comment composer â€” fixed at bottom */}
+      {/* Comment composer — fixed at bottom */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '10px 14px calc(10px + env(safe-area-inset-bottom))',
@@ -8019,15 +8019,15 @@ function SharedPostThread({
       }}>
         {replyingTo && (
           <div style={{ position: 'absolute', bottom: 58, left: 14, right: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 10, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}` }}>
-            <span style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>Ø±Ø¯ Ø¹Ù„Ù‰ {replyingTo.authorName}</span>
-            <button onClick={() => setReplyingTo(null)} aria-label="Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ø±Ø¯" style={{ background: 'none', border: 'none', color: CLR_TEXT_DIM, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
+            <span style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>ÑÏ Úáì {replyingTo.authorName}</span>
+            <button onClick={() => setReplyingTo(null)} aria-label="ÅáÛÇÁ ÇáÑÏ" style={{ background: 'none', border: 'none', color: CLR_TEXT_DIM, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
           </div>
         )}
         <input
           value={commentText}
           onChange={e => onChangeCommentText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !commentSending) submitWithReply(); }}
-          placeholder="Ø§ÙƒØªØ¨ Ø±Ø¯Ù‘Ø§Ù‹..."
+          placeholder="ÇßÊÈ ÑÏøÇğ..."
           style={{
             flex: 1, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
             borderRadius: 20, padding: '10px 14px', color: CLR_TEXT, fontSize: '0.82rem', outline: 'none',
@@ -8061,7 +8061,7 @@ function SharedPostThread({
             <motion.button
               onClick={() => setExpanded(false)}
               whileTap={{ scale: 0.88 }}
-              aria-label="Ø¥ØºÙ„Ø§Ù‚"
+              aria-label="ÅÛáÇŞ"
               style={{
                 position: 'absolute', top: 20, right: 20, width: 38, height: 38, borderRadius: '50%',
                 background: 'rgba(255,255,255,0.12)', border: 'none', color: '#fff', cursor: 'pointer',
@@ -8088,7 +8088,7 @@ function SharedPostThread({
   );
 }
 
-// â”€â”€ StoryCommentThreadPage â€” comments left by friends on one of my stories â”€â”€â”€â”€
+// ?? StoryCommentThreadPage — comments left by friends on one of my stories ????
 function StoryCommentThreadPage({
   thread,
   comments,
@@ -8108,7 +8108,7 @@ function StoryCommentThreadPage({
   onSubmitComment: (parentCommentId?: number | null) => void;
   onToggleLike: (comment: StoryComment) => void;
   onClose: () => void;
-  /** ÙØªØ­ Ø§Ù„Ø´Ø§Øª Ø§Ù„Ø®Ø§Øµ Ù…Ø¹ ØµØ§Ø­Ø¨ Ø§Ù„ØªØ¹Ù„ÙŠÙ‚ Ù„Ù„Ø±Ø¯ ÙˆØ§Ù„Ø¯Ø±Ø¯Ø´Ø© */
+  /** İÊÍ ÇáÔÇÊ ÇáÎÇÕ ãÚ ÕÇÍÈ ÇáÊÚáíŞ ááÑÏ æÇáÏÑÏÔÉ */
   onChatWithAuthor?: (comment: StoryComment) => void;
 }) {
   const [replyingTo, setReplyingTo] = useState<StoryComment | null>(null);
@@ -8137,15 +8137,15 @@ function StoryCommentThreadPage({
         borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         background: CLR_HEADER_BG, backdropFilter: 'blur(14px)',
       }}>
-        <button onClick={onClose} aria-label="Ø±Ø¬ÙˆØ¹" style={{
+        <button onClick={onClose} aria-label="ÑÌæÚ" style={{
           background: 'none', border: 'none', color: CLR_TEXT, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4,
         }}>
           <ArrowLeft size={20} strokeWidth={2.2} />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ color: CLR_TEXT, fontSize: '0.86rem', fontWeight: 700, margin: 0 }}>ØªØ¹Ù„ÙŠÙ‚Ø§Øª Ø¹Ù„Ù‰ Ù‚ØµØªÙƒ</p>
-          <p style={{ color: CLR_TEXT_DIM, fontSize: '0.66rem', margin: '2px 0 0' }}>ØªØ®ØªÙÙŠ Ù‡Ø°Ù‡ Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø© ÙÙŠ {expiresLabel}</p>
+          <p style={{ color: CLR_TEXT, fontSize: '0.86rem', fontWeight: 700, margin: 0 }}>ÊÚáíŞÇÊ Úáì ŞÕÊß</p>
+          <p style={{ color: CLR_TEXT_DIM, fontSize: '0.66rem', margin: '2px 0 0' }}>ÊÎÊİí åĞå ÇáãÍÇÏËÉ İí {expiresLabel}</p>
         </div>
       </div>
 
@@ -8164,11 +8164,11 @@ function StoryCommentThreadPage({
         {/* Comments */}
         <div style={{ padding: '0 14px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <p style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '4px 0' }}>
-            Ø§Ù„ØªØ¹Ù„ÙŠÙ‚Ø§Øª {comments.length > 0 ? `(${comments.length})` : ''}
+            ÇáÊÚáíŞÇÊ {comments.length > 0 ? `(${comments.length})` : ''}
           </p>
           {comments.length === 0 && (
             <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>
-              Ù„Ø§ ØªÙˆØ¬Ø¯ ØªØ¹Ù„ÙŠÙ‚Ø§Øª Ø¨Ø¹Ø¯
+              áÇ ÊæÌÏ ÊÚáíŞÇÊ ÈÚÏ
             </p>
           )}
           {comments.map(c => (
@@ -8191,7 +8191,7 @@ function StoryCommentThreadPage({
                 <p style={{ color: CLR_TEXT, fontSize: '0.8rem', margin: '2px 0 0', lineHeight: 1.5, wordBreak: 'break-word' }}>{c.text}</p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 4 }} onClick={e => e.stopPropagation()}>
                   <time dateTime={c.createdAt} style={{ color: CLR_TEXT_DIM, fontSize: '0.62rem' }}>{formatCommentDate(c.createdAt)}</time>
-                  <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: CLR_PRIMARY, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>Ø±Ø¯</button>
+                  <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: CLR_PRIMARY, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>ÑÏ</button>
                   <motion.button whileTap={{ scale: 0.88 }} onClick={() => onToggleLike(c)} style={{
                     display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                     color: c.likedByMe ? '#ef4444' : CLR_TEXT_DIM,
@@ -8210,7 +8210,7 @@ function StoryCommentThreadPage({
                       }}
                     >
                       <MessageCircle size={12} strokeWidth={2.2} />
-                      Ø´Ø§Øª
+                      ÔÇÊ
                     </button>
                   )}
                 </div>
@@ -8220,7 +8220,7 @@ function StoryCommentThreadPage({
         </div>
       </div>
 
-      {/* Comment composer â€” fixed at bottom */}
+      {/* Comment composer — fixed at bottom */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '10px 14px calc(10px + env(safe-area-inset-bottom))',
@@ -8230,15 +8230,15 @@ function StoryCommentThreadPage({
       }}>
         {replyingTo && (
           <div style={{ position: 'absolute', bottom: 58, left: 14, right: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 10, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}` }}>
-            <span style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>Ø±Ø¯ Ø¹Ù„Ù‰ {replyingTo.authorName}</span>
-            <button onClick={() => setReplyingTo(null)} aria-label="Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ø±Ø¯" style={{ background: 'none', border: 'none', color: CLR_TEXT_DIM, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
+            <span style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>ÑÏ Úáì {replyingTo.authorName}</span>
+            <button onClick={() => setReplyingTo(null)} aria-label="ÅáÛÇÁ ÇáÑÏ" style={{ background: 'none', border: 'none', color: CLR_TEXT_DIM, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
           </div>
         )}
         <input
           value={commentText}
           onChange={e => onChangeCommentText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !commentSending) submitWithReply(); }}
-          placeholder="Ø§ÙƒØªØ¨ Ø±Ø¯Ù‘Ø§Ù‹..."
+          placeholder="ÇßÊÈ ÑÏøÇğ..."
           style={{
             flex: 1, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
             borderRadius: 20, padding: '10px 14px', color: CLR_TEXT, fontSize: '0.82rem', outline: 'none',
@@ -8266,18 +8266,23 @@ export default function AddFriendPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isPending } = useSession();
+  // Keeps the latest user/companies values reachable from event listeners that are
+  // attached once on mount, so those listeners never act on a stale (pre-login-load) user.
+  const latestUserRef = useRef(user);
+  useEffect(() => { latestUserRef.current = user; }, [user]);
+  const latestCompaniesRef = useRef<CompanyAccount[]>([]);
   const { startCall } = useGlobalCall();
   const tick = useAutoRefresh();
   const { guard: guestGuard, GuestModal } = useGuestGuard(user);
 
-  // â”€â”€ Music player â€” driven by the module-level musicPlayerStore (outside the React
+  // ?? Music player — driven by the module-level musicPlayerStore (outside the React
   // tree) instead of local state, so the song keeps playing across navigation even
-  // after this page unmounts. See musicPlayerStore above for details. â”€â”€
+  // after this page unmounts. See musicPlayerStore above for details. ??
   const [musicModalOpen, setMusicModalOpen] = useState(false);
-  // â”€â”€ Top hamburger menu â€” sits at the very top of the page above everything else.
+  // ?? Top hamburger menu — sits at the very top of the page above everything else.
   // Groups the Music and Posts-box (shared inbox) features into one small menu, so
-  // they're tucked away instead of taking up their own row of icons. â”€â”€
-  // Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ø«Ù„Ø§Ø« Ø®Ø·ÙˆØ· Ø£ÙØ²ÙŠÙ„Øª Ø¨Ø§Ù„ÙƒØ§Ù…Ù„ â€” Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰ ÙÙŠ Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª ÙÙ‚Ø·
+  // they're tucked away instead of taking up their own row of icons. ??
+  // ŞÇÆãÉ ÇáËáÇË ÎØæØ ÃõÒíáÊ ÈÇáßÇãá — ÇáãæÓíŞì İí ÇáÅÚÏÇÏÇÊ İŞØ
   const musicSnapshot = useSyncExternalStore(musicPlayerStore.subscribe, musicPlayerStore.getSnapshot);
   const musicCurrentTrack = musicSnapshot.currentTrack;
   const musicIsPlaying = musicSnapshot.isPlaying;
@@ -8303,13 +8308,13 @@ export default function AddFriendPage() {
     musicPlayerStore.setupMediaSessionHandlers();
   }, []);
 
-  // â”€â”€ Pinned profile track â€” set from the "Get" button inside the music search modal.
+  // ?? Pinned profile track — set from the "Get" button inside the music search modal.
   // Shown above my name/username here, and above my avatar on the profile anyone else
   // sees when they visit me (see FriendStoryProfile). Kept in localStorage so it survives
   // a refresh immediately, and best-effort synced to the backend the same way
-  // followersVisible is above â€” until /api/users/me and /api/users/by-username/:username
+  // followersVisible is above — until /api/users/me and /api/users/by-username/:username
   // actually store/return these columns, the pin still works for me on this device but
-  // other visitors won't see it yet. â”€â”€
+  // other visitors won't see it yet. ??
   const [pinnedTrack, setPinnedTrack] = useState<MusicTrack | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
@@ -8331,7 +8336,7 @@ export default function AddFriendPage() {
         pinnedTrackArtwork: track.artwork,
         pinnedTrackPreviewUrl: track.previewUrl,
       }),
-    }).catch(() => { /* best-effort â€” the local pin above still governs this device */ });
+    }).catch(() => { /* best-effort — the local pin above still governs this device */ });
   }, []);
   const handleUnpinTrack = useCallback(() => {
     setPinnedTrack(null);
@@ -8347,10 +8352,10 @@ export default function AddFriendPage() {
     }).catch(() => { /* best-effort */ });
   }, []);
 
-  // â”€â”€ Who's currently viewing MY profile â€” only ever appears to me when someone's actually there â”€â”€
+  // ?? Who's currently viewing MY profile — only ever appears to me when someone's actually there ??
   const profileVisitors = useProfileVisitors(user?.id ?? null);
 
-  // â”€â”€ My own username + bio, shown under the story circle on the profile header â”€â”€
+  // ?? My own username + bio, shown under the story circle on the profile header ??
   const myUsername = (user as any)?.username ?? null;
   const [myBio, setMyBio] = useState<string | null>(null);
   useEffect(() => {
@@ -8363,7 +8368,7 @@ export default function AddFriendPage() {
         const d = await r.json() as MiniProfileData;
         if (cancelled) return;
         setMyBio(d.bio ?? null);
-        // Only hydrate from the backend if nothing is pinned locally yet â€” avoids
+        // Only hydrate from the backend if nothing is pinned locally yet — avoids
         // clobbering a pin/unpin the user just made on this device before this fetch resolved.
         setPinnedTrack(prev => (prev ? prev : pinnedTrackFromProfile(d)));
       } catch {}
@@ -8371,21 +8376,21 @@ export default function AddFriendPage() {
     return () => { cancelled = true; };
   }, [myUsername]);
 
-  // â”€â”€ Stories state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ?? Stories state ????????????????????????????????????????????????????????????
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
   const [viewerGroupIdx, setViewerGroupIdx] = useState<number | null>(null);
   const [storyUploading, setStoryUploading] = useState(false);
   const storyFileRef = useRef<HTMLInputElement>(null);
   // ref for adding extra media from inside the viewer
   const storyAddFileRef = useRef<HTMLInputElement>(null);
-  // Ø§Ø®ØªÙŠØ§Ø± ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ Ù„Ù„Ø³ØªÙˆØ±ÙŠ: Ù…Ø±Ø¨Ù‘Ø¹Ø§Ù† ÙÙ‚Ø· Ø¨Ø¯ÙˆÙ† Ø®ÙŠØ§Ø± "Ù…Ù„ÙØ§Øª" Ø«Ø§Ù„Ø« â€”
-  // Ù†Ø­Ø¯Ù‘Ø¯ Ù†ÙˆØ¹ Ø§Ù„Ù…Ù„Ù Ø§Ù„Ù…Ø³Ù…ÙˆØ­ Ø¹Ù„Ù‰ Ø§Ù„Ù€ input Ù‚Ø¨Ù„ ÙØªØ­Ù‡ Ø¨Ø¯Ù„ Ù‚Ø¨ÙˆÙ„ Ø§Ù„Ù†ÙˆØ¹ÙŠÙ† Ù…Ø¹Ø§Ù‹.
+  // ÇÎÊíÇÑ ÕæÑÉ/İíÏíæ ááÓÊæÑí: ãÑÈøÚÇä İŞØ ÈÏæä ÎíÇÑ "ãáİÇÊ" ËÇáË —
+  // äÍÏøÏ äæÚ Çáãáİ ÇáãÓãæÍ Úáì ÇáÜ input ŞÈá İÊÍå ÈÏá ŞÈæá ÇáäæÚíä ãÚÇğ.
   const [storyPickerOpen, setStoryPickerOpen] = useState<null | 'main' | 'add'>(null);
-  // 4-option menu opened from the "+" badge on my story avatar: Ù†Ø´Ø± Ø¥Ø¹Ù„Ø§Ù† Ù„Ù„Ù‚ØµØ© / Ù†Ø´Ø± ØµÙˆØ±Ø© / Ù†Ø´Ø± ÙÙŠØ¯ÙŠÙˆ / Ù†Ø´Ø± Ø¥Ø¹Ù„Ø§Ù† Ù„Ù„Ù‚ØµØ© Ø¹Ø¨Ø± Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§
+  // 4-option menu opened from the "+" badge on my story avatar: äÔÑ ÅÚáÇä ááŞÕÉ / äÔÑ ÕæÑÉ / äÔÑ İíÏíæ / äÔÑ ÅÚáÇä ááŞÕÉ ÚÈÑ ÇáßÇãíÑÇ
   const [publishMenuOpen, setPublishMenuOpen] = useState(false);
-  // ÙØªØ­ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ Ø§Ù„Ù…Ø¯Ù…Ø¬Ø© Ù„Ø§Ù„ØªÙ‚Ø§Ø· ÙˆÙ†Ø´Ø± Ø§Ù„Ù‚ØµØ© Ù…Ø¨Ø§Ø´Ø±Ø©
+  // İÊÍ ÇáßÇãíÑÇ ÇáãÏãÌÉ áÇáÊŞÇØ æäÔÑ ÇáŞÕÉ ãÈÇÔÑÉ
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
-  // Ø¥Ø®ÙØ§Ø¡ Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ Ø£Ø«Ù†Ø§Ø¡ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§
+  // ÅÎİÇÁ ÇáÔÑíØ ÇáÓİáí ÃËäÇÁ ÇáßÇãíÑÇ
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('stooorna:story-camera-state', { detail: { open: cameraCaptureOpen } }));
     return () => {
@@ -8396,7 +8401,7 @@ export default function AddFriendPage() {
     const ref = target === 'main' ? storyFileRef : storyAddFileRef;
     const input = ref.current;
     if (!input) {
-      setQuickPublishError('ØªØ¹Ø°Ù‘Ø± ÙØªØ­ Ù…ÙƒØªØ¨Ø© Ø§Ù„ÙˆØ³Ø§Ø¦Ø·. Ø£Ø¹Ø¯ Ø§Ù„Ù…Ø­Ø§ÙˆÙ„Ø©.');
+      setQuickPublishError('ÊÚĞøÑ İÊÍ ãßÊÈÉ ÇáæÓÇÆØ. ÃÚÏ ÇáãÍÇæáÉ.');
       return;
     }
 
@@ -8417,19 +8422,19 @@ export default function AddFriendPage() {
 
   // Fetch stories
   const knownStoryItemIdsRef = useRef<Set<number> | null>(null);
-  // â”€â”€ Ù…Ø¹Ø±Ù‘ÙØ§Øª Ø§Ù„Ø³ØªÙˆØ±ÙŠØ§Øª Ø§Ù„Ù…Ø­Ø°ÙˆÙØ© Ù…Ø­Ù„ÙŠØ§Ù‹: Ø§Ù„Ø±ÙŠÙØ±Ø´ Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ ÙƒÙ„ Ø«Ø§Ù†ÙŠØªÙŠÙ† Ù‚Ø¯ ÙŠÙƒÙˆÙ†
-  // Ø·Ù„Ø¨Ù‡ Ø¨Ø¯Ø£ Ù‚Ø¨Ù„ Ø§ÙƒØªÙ…Ø§Ù„ Ø·Ù„Ø¨ Ø§Ù„Ø­Ø°Ù Ø¹Ù„Ù‰ Ø§Ù„Ø³ÙŠØ±ÙØ± (race condition)ØŒ ÙÙŠØ±Ø¬Ø¹ Ø¨Ù†Ø³Ø®Ø©
-  // Ù‚Ø¯ÙŠÙ…Ø© ØªØªØ¶Ù…Ù‘Ù† Ø§Ù„Ø¹Ù†ØµØ± Ø§Ù„Ù…Ø­Ø°ÙˆÙ ÙˆÙŠÙØ¹ÙŠØ¯ Ø¸Ù‡ÙˆØ±Ù‡ ÙÙˆØ±Ø§Ù‹ Ø¨Ø¹Ø¯ Ø§Ø®ØªÙØ§Ø¦Ù‡. Ù†Ø­ØªÙØ¸ Ø¨Ù‚Ø§Ø¦Ù…Ø©
-  // Ø§Ù„Ù…Ø¹Ø±Ù‘ÙØ§Øª Ø§Ù„Ù…Ø­Ø°ÙˆÙØ© ÙˆÙ†Ø³ØªØ¨Ø¹Ø¯Ù‡Ø§ Ù…Ù† Ø£ÙŠ Ù†ØªÙŠØ¬Ø© fetch Ù„Ø§Ø­Ù‚Ø© Ø­ØªÙ‰ Ù„Ùˆ Ø±Ø¬Ø¹Øª Ù…ØªØ£Ø®Ø±Ø©. â”€â”€
+  // ?? ãÚÑøİÇÊ ÇáÓÊæÑíÇÊ ÇáãÍĞæİÉ ãÍáíÇğ: ÇáÑíİÑÔ ÇáÊáŞÇÆí ßá ËÇäíÊíä ŞÏ íßæä
+  // ØáÈå ÈÏÃ ŞÈá ÇßÊãÇá ØáÈ ÇáÍĞİ Úáì ÇáÓíÑİÑ (race condition)¡ İíÑÌÚ ÈäÓÎÉ
+  // ŞÏíãÉ ÊÊÖãøä ÇáÚäÕÑ ÇáãÍĞæİ æíõÚíÏ ÙåæÑå İæÑÇğ ÈÚÏ ÇÎÊİÇÆå. äÍÊİÙ ÈŞÇÆãÉ
+  // ÇáãÚÑøİÇÊ ÇáãÍĞæİÉ æäÓÊÈÚÏåÇ ãä Ãí äÊíÌÉ fetch áÇÍŞÉ ÍÊì áæ ÑÌÚÊ ãÊÃÎÑÉ. ??
   const deletedStoryIdsRef = useRef<Set<number>>(new Set());
   const fetchStories = useCallback(async () => {
     try {
       const r = await fetch('/api/status', { credentials: 'include' });
       if (!r.ok) return;
       const data = await r.json() as { statuses: StoryGroup[]; myId: string };
-      // Ø§Ù„Ø£Ø­Ø¯Ø« Ø£ÙˆÙ„Ø§Ù‹: Ø£ÙŠ Ø³ØªÙˆØ±ÙŠ Ø¬Ø¯ÙŠØ¯Ø© ØªÙØ¹ØªØ¨Ø± "Ø§Ù„Ø£ÙˆÙ„Ù‰ Ù„Ù„Ù…Ø´Ø§Ù‡Ø¯Ø©" ÙˆØªÙØ¯ÙØ¹ Ø§Ù„Ù‚Ø¯ÙŠÙ…Ø©
-      // Ø¨Ø¹Ø¯Ù‡Ø§ â€” Ø¨Ø¯Ù„ ØªØ±ØªÙŠØ¨ Ø§Ù„Ø³ÙŠØ±ÙØ± Ø§Ù„Ø§ÙØªØ±Ø§Ø¶ÙŠ (Ø§Ù„Ø£Ù‚Ø¯Ù… Ø£ÙˆÙ„Ø§Ù‹) Ø§Ù„Ù„ÙŠ ÙƒØ§Ù† ÙŠØ®Ù„ÙŠ Ø£ÙˆÙ„
-      // ÙÙŠØ¯ÙŠÙˆ ÙŠÙØ¹Ø±Ø¶ Ø¹Ù†Ø¯ ÙØªØ­ Ø§Ù„Ø³ØªÙˆØ±ÙŠ Ù‡Ùˆ Ø§Ù„Ø£Ù‚Ø¯Ù… Ø¨Ø¯Ù„ Ø§Ù„Ù„ÙŠ Ù†Ø²Ù„ Ù„Ù„ØªÙˆ.
+      // ÇáÃÍÏË ÃæáÇğ: Ãí ÓÊæÑí ÌÏíÏÉ ÊõÚÊÈÑ "ÇáÃæáì ááãÔÇåÏÉ" æÊõÏİÚ ÇáŞÏíãÉ
+      // ÈÚÏåÇ — ÈÏá ÊÑÊíÈ ÇáÓíÑİÑ ÇáÇİÊÑÇÖí (ÇáÃŞÏã ÃæáÇğ) Çááí ßÇä íÎáí Ãæá
+      // İíÏíæ íõÚÑÖ ÚäÏ İÊÍ ÇáÓÊæÑí åæ ÇáÃŞÏã ÈÏá Çááí äÒá ááÊæ.
       const fresh = (data.statuses ?? [])
         .map(g => ({
           ...g,
@@ -8438,9 +8443,9 @@ export default function AddFriendPage() {
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
         }))
         .filter(g => g.items.length > 0);
-      // Ù†ØºÙ…Ø© Ø¥Ø´Ø¹Ø§Ø± Ø¹Ù†Ø¯ Ù†Ø´Ø± Ø³ØªÙˆØ±ÙŠ Ø¬Ø¯ÙŠØ¯Ø© â€” ÙÙ‚Ø· Ù„Ùˆ ÙƒØ§Ù†Øª Ù…Ù† Ù…Ø³ØªØ®Ø¯Ù… Ø¢Ø®Ø± ØºÙŠØ± ØµØ§Ø­Ø¨
-      // Ø§Ù„Ø¬Ù‡Ø§Ø²Ø› Ù†Ø³ØªØ«Ù†ÙŠ Ù…Ø¬Ù…ÙˆØ¹Ø© ØµØ§Ø­Ø¨ Ø§Ù„Ù†Ø´Ø± Ù†ÙØ³Ù‡ Ø¨Ø§Ù„ÙƒØ§Ù…Ù„ (data.myId) Ø­ØªÙ‰ Ù…Ø§ ØªÙØ´ØºÙÙ‘Ù„
-      // Ù„Ù‡ Ø§Ù„Ù†ØºÙ…Ø© Ø¹Ù† Ø³ØªÙˆØ±ÙŠÙ‡ Ø§Ù„Ù„ÙŠ Ù‡Ùˆ Ù†Ø´Ø±Ù‡Ø§ Ù„Ù„ØªÙˆ (uploadStory ÙŠØ³ØªØ¯Ø¹ÙŠ fetchStories Ø£ÙŠØ¶Ø§Ù‹).
+      // äÛãÉ ÅÔÚÇÑ ÚäÏ äÔÑ ÓÊæÑí ÌÏíÏÉ — İŞØ áæ ßÇäÊ ãä ãÓÊÎÏã ÂÎÑ ÛíÑ ÕÇÍÈ
+      // ÇáÌåÇÒº äÓÊËäí ãÌãæÚÉ ÕÇÍÈ ÇáäÔÑ äİÓå ÈÇáßÇãá (data.myId) ÍÊì ãÇ ÊõÔÛóøá
+      // áå ÇáäÛãÉ Úä ÓÊæÑíå Çááí åæ äÔÑåÇ ááÊæ (uploadStory íÓÊÏÚí fetchStories ÃíÖÇğ).
       if (knownStoryItemIdsRef.current) {
         const hasNewFromOthers = fresh.some(g =>
           g.userId !== data.myId && g.items.some(it => !knownStoryItemIdsRef.current!.has(it.id))
@@ -8454,13 +8459,13 @@ export default function AddFriendPage() {
 
   useEffect(() => { fetchStories(); }, [fetchStories]);
 
-  // â”€â”€ Ø±ÙŠÙØ±Ø´ ØªÙ„Ù‚Ø§Ø¦ÙŠ Ù„Ù„Ù‚ØµØµ/Ø§Ù„Ø³ØªÙˆØ±ÙŠØ§Øª ÙƒÙ„ Ø«Ø§Ù†ÙŠØªÙŠÙ† â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Ù…Ø¤Ù‚Ù‘Øª Ù…Ø³ØªÙ‚Ù„ ØªÙ…Ø§Ù…Ø§Ù‹ Ø¹Ù† useAutoRefresh (tick) Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… ÙÙŠ Ø¨Ù‚ÙŠØ© Ø§Ù„ØµÙØ­Ø©ØŒ Ø­ØªÙ‰ Ù„Ø§
-  // ÙŠØªØ£Ø«Ø± Ø§Ù„Ù…Ø§ÙŠÙƒ Ø£Ùˆ Ø£ÙŠ Ù…Ù†Ø·Ù‚ Ø¢Ø®Ø± Ù…Ø±ØªØ¨Ø· Ø¨Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø§Øª ÙˆØ§Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª Ø¨Ù‡Ø°Ø§ Ø§Ù„ØªØ­Ø¯ÙŠØ«.
-  // Ù†ØªØ¬Ù†Ù‘Ø¨ Ø§Ù„ØªØ­Ø¯ÙŠØ« ÙˆÙ‚Øª Ø¬Ù„Ø¨/Ø±ÙØ¹ Ø³ØªÙˆØ±ÙŠ Ø¬Ø¯ÙŠØ¯ Ù„ØªÙØ§Ø¯ÙŠ ØªØ¹Ø§Ø±Ø¶ Ø¹Ø±Ø¶ÙŠ Ø¨Ø³ÙŠØ·ØŒ ÙˆØ¹Ù†Ø¯ Ø¥Ø®ÙØ§Ø¡
-  // Ø§Ù„ØªØ¨ÙˆÙŠØ¨ Ù„ØªÙˆÙÙŠØ± Ø§Ù„Ø·Ù„Ø¨Ø§ØªØ› ÙˆÙ…Ø´Ø§Ù‡Ø¯Ø© Ø§Ù„Ø³ØªÙˆØ±ÙŠ Ù†ÙØ³Ù‡Ø§ Ù„Ø§ ØªØªØ£Ø«Ø± Ø¥Ø·Ù„Ø§Ù‚Ø§Ù‹ Ù„Ø£Ù†
-  // StoryViewer ÙŠØ¹ÙŠØ¯ ØªÙ…ÙˆØ¶Ø¹Ù‡ Ø¨Ø§Ù„Ù…Ø¹Ø±Ù‘Ù (id) Ù„Ø§ Ø¨Ø§Ù„ÙÙ‡Ø±Ø³ØŒ ÙØªØ­Ø¯ÙŠØ« Ø§Ù„Ù‚Ø§Ø¦Ù…Ø© ÙÙŠ Ø§Ù„Ø®Ù„ÙÙŠØ©
-  // Ù„Ø§ ÙŠÙ‚Ø§Ø·Ø¹ Ø§Ù„ØªÙ‚Ø¯Ù‘Ù… Ø§Ù„Ø²Ù…Ù†ÙŠ ÙˆÙ„Ø§ ÙŠÙ‚ÙÙ„ Ø§Ù„Ø³ØªÙˆØ±ÙŠ Ø§Ù„Ù…ÙØªÙˆØ­Ø© Ø·Ø§Ù„Ù…Ø§ Ù…Ø§ Ø²Ø§Ù„Øª Ù…ÙˆØ¬ÙˆØ¯Ø©.
+  // ?? ÑíİÑÔ ÊáŞÇÆí ááŞÕÕ/ÇáÓÊæÑíÇÊ ßá ËÇäíÊíä ?????????????????????????????????
+  // ãÄŞøÊ ãÓÊŞá ÊãÇãÇğ Úä useAutoRefresh (tick) ÇáãÓÊÎÏã İí ÈŞíÉ ÇáÕİÍÉ¡ ÍÊì áÇ
+  // íÊÃËÑ ÇáãÇíß Ãæ Ãí ãäØŞ ÂÎÑ ãÑÊÈØ ÈÇáãÍÇÏËÇÊ æÇáãßÇáãÇÊ ÈåĞÇ ÇáÊÍÏíË.
+  // äÊÌäøÈ ÇáÊÍÏíË æŞÊ ÌáÈ/ÑİÚ ÓÊæÑí ÌÏíÏ áÊİÇÏí ÊÚÇÑÖ ÚÑÖí ÈÓíØ¡ æÚäÏ ÅÎİÇÁ
+  // ÇáÊÈæíÈ áÊæİíÑ ÇáØáÈÇÊº æãÔÇåÏÉ ÇáÓÊæÑí äİÓåÇ áÇ ÊÊÃËÑ ÅØáÇŞÇğ áÃä
+  // StoryViewer íÚíÏ ÊãæÖÚå ÈÇáãÚÑøİ (id) áÇ ÈÇáİåÑÓ¡ İÊÍÏíË ÇáŞÇÆãÉ İí ÇáÎáİíÉ
+  // áÇ íŞÇØÚ ÇáÊŞÏøã ÇáÒãäí æáÇ íŞİá ÇáÓÊæÑí ÇáãİÊæÍÉ ØÇáãÇ ãÇ ÒÇáÊ ãæÌæÏÉ.
   useEffect(() => {
     const interval = setInterval(() => {
       if (document.hidden || storyUploading) return;
@@ -8511,7 +8516,7 @@ export default function AddFriendPage() {
       })));
     } catch {/* silent */}
   }
-  // â”€â”€ Posts (feed) state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ?? Posts (feed) state ??????????????????????????????????????????????????????
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [favoritedPosts, setFavoritedPosts] = useState<PostItem[]>(() => {
     if (typeof window === 'undefined') return [];
@@ -8532,9 +8537,9 @@ export default function AddFriendPage() {
       return next;
     });
   }, []);
-  // â”€â”€ Download a post â€” media posts save each image/video file; text-only posts
+  // ?? Download a post — media posts save each image/video file; text-only posts
   // save a .txt file of the post text. Falls back to opening the media in a new
-  // tab if the fetch/blob download is blocked (e.g. cross-origin restrictions). â”€â”€
+  // tab if the fetch/blob download is blocked (e.g. cross-origin restrictions). ??
   const handleDownloadPost = useCallback(async (post: PostItem) => {
     const mediaItems = PostMediaItems(post);
     const triggerBlobDownload = (blobUrl: string, filename: string) => {
@@ -8566,28 +8571,28 @@ export default function AddFriendPage() {
     }
   }, []);
   const [showComposer, setShowComposer] = useState(false);
-  // ÙˆØ¶Ø¹ Ø§Ù„Ù†Ø´Ø±: Ø§Ø®ØªÙŠØ§Ø± ÙÙ‚Ø· (Ù„Ø§ ÙŠÙØªØ­ Ø§Ù„Ù…Ø¹Ø±Ø¶) â€” Text | Photo | Video
+  // æÖÚ ÇáäÔÑ: ÇÎÊíÇÑ İŞØ (áÇ íİÊÍ ÇáãÚÑÖ) — Text | Photo | Video
   const [composerDestination, setComposerDestination] = useState<'text' | 'photos' | 'videos'>('text');
   const [composerText, setComposerText] = useState('');
-  // â”€â”€ Product ad composer fields (title bold + details + price + dynamic + boxes) â”€â”€
+  // ?? Product ad composer fields (title bold + details + price + dynamic + boxes) ??
   const [composerProductTitle, setComposerProductTitle] = useState('');
   const [composerProductDetails, setComposerProductDetails] = useState('');
   const [composerProductPrice, setComposerProductPrice] = useState('');
   const [composerProductExtras, setComposerProductExtras] = useState<string[]>([]);
   const [composerMediaFiles, setComposerMediaFiles] = useState<{ file: File; type: 'image' | 'video' | 'pdf'; preview: string }[]>([]);
-  // Ø§Ù„Ø­Ø¯ Ø§Ù„Ø£Ù‚ØµÙ‰ Ù„Ø¹Ø¯Ø¯ Ø§Ù„ØµÙˆØ± Ø§Ù„ØªÙŠ ÙŠÙ…ÙƒÙ† Ø¥Ø±ÙØ§Ù‚Ù‡Ø§ Ø¨Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø§Ù„ÙˆØ§Ø­Ø¯ (ØªÙØ¹Ø±Ø¶ Ø¨Ø¹Ø¯Ù‡Ø§ ÙƒÙ…Ø¹Ø±Ø¶ Ù‚Ø§Ø¨Ù„ Ù„Ù„ØªØµÙØ­ ÙŠÙ…ÙŠÙ†/ÙŠØ³Ø§Ø±)
+  // ÇáÍÏ ÇáÃŞÕì áÚÏÏ ÇáÕæÑ ÇáÊí íãßä ÅÑİÇŞåÇ ÈÇáãäÔæÑ ÇáæÇÍÏ (ÊõÚÑÖ ÈÚÏåÇ ßãÚÑÖ ŞÇÈá ááÊÕİÍ íãíä/íÓÇÑ)
   const MAX_COMPOSER_IMAGES = 10;
   const [composerPosting, setComposerPosting] = useState(false);
   const [composerError, setComposerError] = useState('');
-  // setters used in clearPostMedia â€” values not read directly
+  // setters used in clearPostMedia — values not read directly
   const [, setComposerAwaitingMedia] = useState(false);
-  // composerLinkStep: ÙŠØªØ­ÙƒÙ… Ø¨Ø¥Ø¸Ù‡Ø§Ø±/Ø¥Ø®ÙØ§Ø¡ Ù…Ø³ØªØ·ÙŠÙ„ Â«Ø±Ø§Ø¨Ø· ØµÙˆØ±Ø© Ø£Ùˆ ÙÙŠØ¯ÙŠÙˆÂ» Ø¯Ø§Ø®Ù„ ØµÙØ­Ø© ÙƒØªØ§Ø¨Ø© Ø§Ù„Ø¨ÙˆØ³Øª
+  // composerLinkStep: íÊÍßã ÈÅÙåÇÑ/ÅÎİÇÁ ãÓÊØíá «ÑÇÈØ ÕæÑÉ Ãæ İíÏíæ» ÏÇÎá ÕİÍÉ ßÊÇÈÉ ÇáÈæÓÊ
   const [composerLinkStep, setComposerLinkStep] = useState(false);
   const [composerLinkInput, setComposerLinkInput] = useState('');
   const [composerLinkShortening, setComposerLinkShortening] = useState(false);
-  // â”€â”€ Ø±ÙˆØ§Ø¨Ø· X Ø¯Ø§Ø®Ù„ Ù…Ø±Ø¨Ø¹ Ø§Ù„ÙƒØªØ§Ø¨Ø© (Ø§Ù„Ø¹Ù†ÙˆØ§Ù† + Ø§Ù„ØªÙØ§ØµÙŠÙ„ + Ø§Ù„Ø­Ù‚ÙˆÙ„ Ø§Ù„Ø¥Ø¶Ø§ÙÙŠØ©) â”€â”€
-  // Ø¨Ù…Ø¬Ø±Ø¯ Ù„ØµÙ‚/ÙƒØªØ§Ø¨Ø© Ø§Ù„Ø±Ø§Ø¨Ø· ØªØ¸Ù‡Ø± Ø§Ù„ØµÙˆØ±Ø© Ø£Ùˆ Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ÙƒØ§Ù…Ù„Ø© Ø£Ø³ÙÙ„ Ø§Ù„Ù…Ø±Ø¨Ø¹ (Ù…Ø³ØªØ®Ø¯Ù… + Ø´Ø±ÙƒØ© â€” Ù†ÙØ³ Ø§Ù„Ù€ composer).
-  // debounce Ù‚ØµÙŠØ± Ø­ØªÙ‰ Ù„Ø§ Ù†Ø¬Ù„Ø¨ Ø£Ø«Ù†Ø§Ø¡ ÙƒØªØ§Ø¨Ø© Ø±Ù‚Ù… Ø§Ù„ØªØºØ±ÙŠØ¯Ø©. Ø§Ù„Ø±Ø§Ø¨Ø· ÙŠØ¨Ù‚Ù‰ Ø¯Ø§Ø®Ù„ Ø§Ù„Ù†Øµ ÙƒÙ…Ø§ Ù‡Ùˆ.
+  // ?? ÑæÇÈØ X ÏÇÎá ãÑÈÚ ÇáßÊÇÈÉ (ÇáÚäæÇä + ÇáÊİÇÕíá + ÇáÍŞæá ÇáÅÖÇİíÉ) ??
+  // ÈãÌÑÏ áÕŞ/ßÊÇÈÉ ÇáÑÇÈØ ÊÙåÑ ÇáÕæÑÉ Ãæ ÇáİíÏíæ ßÇãáÉ ÃÓİá ÇáãÑÈÚ (ãÓÊÎÏã + ÔÑßÉ — äİÓ ÇáÜ composer).
+  // debounce ŞÕíÑ ÍÊì áÇ äÌáÈ ÃËäÇÁ ßÊÇÈÉ ÑŞã ÇáÊÛÑíÏÉ. ÇáÑÇÈØ íÈŞì ÏÇÎá ÇáäÕ ßãÇ åæ.
   const [composerXText, setComposerXText] = useState('');
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -8595,31 +8600,31 @@ export default function AddFriendPage() {
     }, 250);
     return () => window.clearTimeout(t);
   }, [composerProductTitle, composerProductDetails, composerProductExtras]);
-  // â”€â”€ Ù…Ø³ØªØ·ÙŠÙ„ Â«PasteÂ»: Ø§Ù„Ø±Ø§Ø¨Ø· Ø§Ù„Ù…ÙÙ„ØµÙ‚ (composerLinkInput) ÙŠÙØ¹Ø±Ø¶ ÙƒØ§Ù…Ù„Ù‹Ø§ ÙÙˆØ±Ù‹Ø§ Ù…Ø¹ Ø§Ù„Ù†Øµ â”€â”€
+  // ?? ãÓÊØíá «Paste»: ÇáÑÇÈØ ÇáãõáÕŞ (composerLinkInput) íõÚÑÖ ßÇãáğÇ İæÑğÇ ãÚ ÇáäÕ ??
   const [composerLinkPreviewUrl, setComposerLinkPreviewUrl] = useState('');
   useEffect(() => {
     const t = window.setTimeout(() => setComposerLinkPreviewUrl(composerLinkInput.trim()), 250);
     return () => window.clearTimeout(t);
   }, [composerLinkInput]);
-  // Ø±ÙˆØ§Ø¨Ø· Ø§Ù„ÙˆØ³Ø§Ø¦Ø· Ø¯Ø§Ø®Ù„ Ø§Ù„Ù†Øµ Ù†ÙØ³Ù‡ (Ø¨Ø¯ÙˆÙ† ØªÙƒØ±Ø§Ø± Ù…Ø§ ÙÙŠ Ø§Ù„Ù…Ø³ØªØ·ÙŠÙ„)
+  // ÑæÇÈØ ÇáæÓÇÆØ ÏÇÎá ÇáäÕ äİÓå (ÈÏæä ÊßÑÇÑ ãÇ İí ÇáãÓÊØíá)
   const composerXUrls = useMemo(() => {
     const own = composerLinkPreviewUrl ? extractLinkMediaUrls(composerLinkPreviewUrl) : [];
     return extractLinkMediaUrls(composerXText).filter(u => !own.includes(u)).slice(0, 4);
   }, [composerXText, composerLinkPreviewUrl]);
-  /** Ø²Ø± Paste: ÙŠÙ‚Ø±Ø£ Ø§Ù„Ø­Ø§ÙØ¸Ø© ÙˆÙŠÙ†Ø²Ù‘Ù„ Ø§Ù„Ø±Ø§Ø¨Ø· Ù…Ø¨Ø§Ø´Ø±Ø© ÙÙŠ Ø§Ù„Ù…Ø³ØªØ·ÙŠÙ„ */
+  /** ÒÑ Paste: íŞÑÃ ÇáÍÇİÙÉ æíäÒøá ÇáÑÇÈØ ãÈÇÔÑÉ İí ÇáãÓÊØíá */
   async function pasteLinkFromClipboard() {
     setComposerError('');
     try {
       const clip = await navigator.clipboard.readText();
       const link = pickLinkFromText(clip);
       if (!link) {
-        setComposerError(clip?.trim() ? 'Ø§Ù„Ø­Ø§ÙØ¸Ø© Ù„Ø§ ØªØ­ØªÙˆÙŠ Ø±Ø§Ø¨Ø·Ù‹Ø§ ØµØ§Ù„Ø­Ù‹Ø§' : 'Ø§Ù„Ø­Ø§ÙØ¸Ø© ÙØ§Ø±ØºØ©');
+        setComposerError(clip?.trim() ? 'ÇáÍÇİÙÉ áÇ ÊÍÊæí ÑÇÈØğÇ ÕÇáÍğÇ' : 'ÇáÍÇİÙÉ İÇÑÛÉ');
         return;
       }
       setComposerLinkInput(link);
       setComposerLinkPreviewUrl(link);
     } catch {
-      setComposerError('ØªØ¹Ø°Ø± Ø§Ù„Ù‚Ø±Ø§Ø¡Ø© Ù…Ù† Ø§Ù„Ø­Ø§ÙØ¸Ø© â€” Ø§Ø¶ØºØ· Ù…Ø·ÙˆÙ„Ù‹Ø§ Ø¯Ø§Ø®Ù„ Ø§Ù„Ù…Ø³ØªØ·ÙŠÙ„ ÙˆØ§Ù„ØµÙ‚ Ø§Ù„Ø±Ø§Ø¨Ø·');
+      setComposerError('ÊÚĞÑ ÇáŞÑÇÁÉ ãä ÇáÍÇİÙÉ — ÇÖÛØ ãØæáğÇ ÏÇÎá ÇáãÓÊØíá æÇáÕŞ ÇáÑÇÈØ');
     }
   }
   const [openComments, setOpenComments] = useState<PostItem | null>(null);
@@ -8635,10 +8640,10 @@ export default function AddFriendPage() {
   function closePostDetail() {
     setOpenComments(null);
   }
-  // â”€â”€ Single post view â€” full-screen product ad page (media fills screen; bottom bar:
-  // like+share | details sheet | comments chat sheet). No repost / favorites. â”€â”€
+  // ?? Single post view — full-screen product ad page (media fills screen; bottom bar:
+  // like+share | details sheet | comments chat sheet). No repost / favorites. ??
   const [singlePostView, setSinglePostView] = useState<PostItem | null>(null);
-  /** Ø¹Ù†Ø¯ ÙØªØ­ Ø¨ÙˆØ³Øª Ù…Ù† Ø¯Ø§Ø®Ù„ Ø§Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„ â€” Ø§Ù„Ø¨ÙˆØ³Øª ÙÙˆÙ‚ Ø§Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„Ø› Ø¹Ù†Ø¯ ÙØªØ­ Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ù…Ù† Ø§Ù„Ø¨ÙˆØ³Øª â€” Ø§Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„ ÙÙˆÙ‚ Ø§Ù„Ø¨ÙˆØ³Øª */
+  /** ÚäÏ İÊÍ ÈæÓÊ ãä ÏÇÎá ÇáÈÑæİÇíá — ÇáÈæÓÊ İæŞ ÇáÈÑæİÇíáº ÚäÏ İÊÍ ÈÑæİÇíá ãä ÇáÈæÓÊ — ÇáÈÑæİÇíá İæŞ ÇáÈæÓÊ */
   const [singlePostFromProfile, setSinglePostFromProfile] = useState(false);
   const [adDetailsOpen, setAdDetailsOpen] = useState(false);
   const [adVideoPaused, setAdVideoPaused] = useState(false);
@@ -8662,7 +8667,7 @@ export default function AddFriendPage() {
   const [deletingPostId, setDeletingPostId] = useState<number | null>(null);
   const [hashtagView, setHashtagView] = useState<{ tag: string; posts: PostItem[] } | null>(null);
   const [sharePost, setSharePost] = useState<PostItem | null>(null);
-  /** Ù‚Ø§Ø¦Ù…Ø© Ø´ÙŠØ± Ø§Ù„Ù…Ù†ØªØ¬: Ø®Ø§Ø±Ø¬ÙŠ | Ø§Ø³ØªÙØ³Ø§Ø± */
+  /** ŞÇÆãÉ ÔíÑ ÇáãäÊÌ: ÎÇÑÌí | ÇÓÊİÓÇÑ */
   const [productShareMenuPost, setProductShareMenuPost] = useState<PostItem | null>(null);
   const [productInquiryPost, setProductInquiryPost] = useState<PostItem | null>(null);
   const [productInquiryText, setProductInquiryText] = useState('');
@@ -8731,12 +8736,12 @@ export default function AddFriendPage() {
       imageUrl,
       question: question.trim(),
       companyId: post.authorId,
-      companyName: post.authorName || post.authorUsername || 'Ø§Ù„Ø´Ø±ÙƒØ©',
+      companyName: post.authorName || post.authorUsername || 'ÇáÔÑßÉ',
       companyUsername: post.authorUsername,
       companyAvatar: post.authorAvatarUrl,
     };
     const body = buildProductInquiryBody(payload);
-    // Ø§Ù„Ø´Ø§Øª Ø§Ù„Ø³Ø±ÙŠ Ø§Ù„Ù‚Ø¯ÙŠÙ… Ù„Ù… ÙŠØ¹Ø¯ Ù…Ø³ØªØ®Ø¯Ù…Ø§Ù‹ â€” Ø§Ù„Ù…ÙŠÙ†ÙŠ Ø´Ø§Øª Ø§Ù„Ù…Ø­Ù„ÙŠ ÙÙ‚Ø·
+    // ÇáÔÇÊ ÇáÓÑí ÇáŞÏíã áã íÚÏ ãÓÊÎÏãÇğ — Çáãíäí ÔÇÊ ÇáãÍáí İŞØ
     try {
       const dm = await fetch('/api/secret-chat/dm', {
         method: 'POST',
@@ -8756,12 +8761,12 @@ export default function AddFriendPage() {
           }).catch(() => {});
         }
       }
-    } catch { /* ØªØ¬Ø§Ù‡Ù„ Ø§Ù„Ø´Ø§Øª Ø§Ù„Ù‚Ø¯ÙŠÙ… */ }
-    const previewText = `ğŸ›’ ${payload.title}${payload.price ? ` Â· ${payload.price}` : ''}: ${question.trim()}`;
+    } catch { /* ÊÌÇåá ÇáÔÇÊ ÇáŞÏíã */ }
+    const previewText = `?? ${payload.title}${payload.price ? ` · ${payload.price}` : ''}: ${question.trim()}`;
     try {
       pushShareThreadMsg(user.id, post.authorId, post.id, { fromId: user.id, type: 'text', body: question.trim() });
     } catch { /* */ }
-    // ØµÙ†Ø¯ÙˆÙ‚ Ø´Ø§Øª Ø§Ù„Ø´Ø±ÙƒØ§Øª (RootLayout ÙŠÙ‚Ø±Ø£ stooorna_company_inbox_*)
+    // ÕäÏæŞ ÔÇÊ ÇáÔÑßÇÊ (RootLayout íŞÑÃ stooorna_company_inbox_*)
     try {
       if (String(user.id) === String(post.authorId)) throw new Error('self');
       const key = `stooorna_company_inbox_${post.authorId}`;
@@ -8783,7 +8788,7 @@ export default function AddFriendPage() {
       localStorage.setItem(key, JSON.stringify(merged));
       window.dispatchEvent(new CustomEvent('stooorna:company-inbox', { detail: { userId: post.authorId, list: merged } }));
     } catch { /* non-blocking */ }
-    // ØµÙ†Ø¯ÙˆÙ‚ Ø´Ø§Øª Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ù…Ø¹ Ø§Ù„Ø´Ø±ÙƒØ§Øª (Ø£ÙŠÙ‚ÙˆÙ†Ø© Ø¨ÙŠÙ† Ø§Ù„Ù‡ÙˆÙ… ÙˆØ§Ù„Ù…Ø§ÙŠÙƒ)
+    // ÕäÏæŞ ÔÇÊ ÇáãÓÊÎÏã ãÚ ÇáÔÑßÇÊ (ÃíŞæäÉ Èíä Çáåæã æÇáãÇíß)
     try {
       const ukey = `stooorna_user_product_chats_${user.id}`;
       const uprev = JSON.parse(localStorage.getItem(ukey) || '[]');
@@ -8807,7 +8812,7 @@ export default function AddFriendPage() {
     } catch { /* non-blocking */ }
     saveProductInquiryThread(post.id, post.authorId, false);
     clearProductInquiryReplyFlag(post.id);
-    // Ø¥Ø´Ø¹Ø§Ø± ÙÙˆØ±ÙŠ Ù„Ø£ÙŠÙ‚ÙˆÙ†Ø© Ø´Ø§Øª Ø§Ù„Ø´Ø±ÙƒØ§Øª ÙÙŠ Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ (ÙˆÙ…ÙŠØ¶ Ø£ØµÙØ±)
+    // ÅÔÚÇÑ İæÑí áÃíŞæäÉ ÔÇÊ ÇáÔÑßÇÊ İí ÇáÔÑíØ ÇáÓİáí (æãíÖ ÃÕİÑ)
     try {
       localStorage.setItem(`stooorna_company_chat_blink_${post.authorId}`, String(Date.now()));
       localStorage.setItem('stooorna_company_inbox_unread', '1');
@@ -8828,12 +8833,12 @@ export default function AddFriendPage() {
     });
   }
 
-  /** Ù…Ø´Ø§Ø±ÙƒØ© Ø®Ø§Ø±Ø¬ÙŠØ© ÙÙ‚Ø· â€” Ø¨Ø¯ÙˆÙ† Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ø£ØµØ¯Ù‚Ø§Ø¡ / Ø§Ù„Ø´Ø§Øª */
+  /** ãÔÇÑßÉ ÎÇÑÌíÉ İŞØ — ÈÏæä ŞÇÆãÉ ÇáÃÕÏŞÇÁ / ÇáÔÇÊ */
   function externalSharePost(post: PostItem) {
     const ad = parseProductAd(post.text);
-    const title = ad?.title || productAdDisplayTitle(post) || 'Ù…Ù†Ø´ÙˆØ±';
+    const title = ad?.title || productAdDisplayTitle(post) || 'ãäÔæÑ';
     const textBody = ad
-      ? [ad.title, ad.price ? `Ø§Ù„Ø³Ø¹Ø±: ${ad.price}` : '', ad.details].filter(Boolean).join('\n')
+      ? [ad.title, ad.price ? `ÇáÓÚÑ: ${ad.price}` : '', ad.details].filter(Boolean).join('\n')
       : (post.text || title);
     const url = typeof window !== 'undefined' ? window.location.href : '';
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
@@ -8849,15 +8854,15 @@ export default function AddFriendPage() {
     } catch { /* ignore */ }
   }
 
-  // Ù…ÙØªØ§Ø­ Ø£Ù†ÙŠÙ…ÙŠØ´Ù† ÙÙ‚Ø§Ø¹Ø© Ø§Ù„Ù„Ø§ÙŠÙƒ â€” ÙŠØ²ÙŠØ¯ Ø¹Ù†Ø¯ ÙƒÙ„ Ø¶ØºØ· Ù„Ø§ÙŠÙƒ Ù„ÙŠÙØ´ØºÙ‘Ù„ Ø§Ù„ÙÙ‚Ø§Ø¹Ø©
+  // ãİÊÇÍ ÃäíãíÔä İŞÇÚÉ ÇááÇíß — íÒíÏ ÚäÏ ßá ÖÛØ áÇíß áíõÔÛøá ÇáİŞÇÚÉ
   const [likeBubbleKey, setLikeBubbleKey] = useState<Record<number, number>>({});
 
-  // Ø¥Ø®ÙØ§Ø¡ Ø´Ø±ÙŠØ· Ø§Ù„ØªÙ†Ù‚Ù„ Ø§Ù„Ø³ÙÙ„ÙŠ (Ø§Ù„Ø¹Ø§Ù…) Ø£Ø«Ù†Ø§Ø¡ ÙØªØ­ Ø´ÙŠØª "Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ù†Ø´ÙˆØ±"ØŒ ÙˆØ±Ø¬ÙˆØ¹Ù‡ ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§ Ø¹Ù†Ø¯ Ø§Ù„Ø¥ØºÙ„Ø§Ù‚
+  // ÅÎİÇÁ ÔÑíØ ÇáÊäŞá ÇáÓİáí (ÇáÚÇã) ÃËäÇÁ İÊÍ ÔíÊ "ÅÑÓÇá ÇáãäÔæÑ"¡ æÑÌæÚå ÊáŞÇÆíğÇ ÚäÏ ÇáÅÛáÇŞ
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('stooorna:share-sheet-state', { detail: { open: !!sharePost } }));
-    // Ø¹Ù†Ø¯ ÙØªØ­ Ø§Ù„Ø´ÙŠØª Ù†Ø­Ø¯Ù‘Ø« Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ø£ØµØ¯Ù‚Ø§Ø¡ ÙÙˆØ±Ø§Ù‹ Ø­ØªÙ‰ ØªØ¸Ù‡Ø± Ù…Ø¨Ø§Ø´Ø±Ø© (Ù„Ø§ Ø¨Ø¹Ø¯ Ø§Ù„Ø±Ø¬ÙˆØ¹/Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„ØµÙØ­Ø©)
+    // ÚäÏ İÊÍ ÇáÔíÊ äÍÏøË ŞÇÆãÉ ÇáÃÕÏŞÇÁ İæÑÇğ ÍÊì ÊÙåÑ ãÈÇÔÑÉ (áÇ ÈÚÏ ÇáÑÌæÚ/ÅÛáÇŞ ÇáÕİÍÉ)
     if (sharePost) void loadFriends();
-    // ØªØ£Ù…ÙŠÙ† Ø¥Ø¶Ø§ÙÙŠ: Ø¥Ø±Ø¬Ø§Ø¹ Ø§Ù„Ø´Ø±ÙŠØ· Ù„Ùˆ Ø®Ø±Ø¬Ù†Ø§ Ù…Ù† Ø§Ù„ØµÙØ­Ø© ÙˆØ§Ù„Ø´ÙŠØª Ù„Ø³Ø§ Ù…ÙØªÙˆØ­
+    // ÊÃãíä ÅÖÇİí: ÅÑÌÇÚ ÇáÔÑíØ áæ ÎÑÌäÇ ãä ÇáÕİÍÉ æÇáÔíÊ áÓÇ ãİÊæÍ
     return () => {
       window.dispatchEvent(new CustomEvent('stooorna:share-sheet-state', { detail: { open: false } }));
     };
@@ -8866,7 +8871,7 @@ export default function AddFriendPage() {
   const [sharingPost, setSharingPost] = useState(false);
   const [shareError, setShareError] = useState('');
 
-  // â”€â”€ Shared-posts inbox â€” posts other users sent me via the share sheet â”€â”€â”€â”€â”€â”€
+  // ?? Shared-posts inbox — posts other users sent me via the share sheet ??????
   const [sharedInbox, setSharedInbox] = useState<SharedPostItem[]>([]);
   const [postInteractions, setPostInteractions] = useState<PostInteractionItem[]>([]);
   const [sharedInboxLoading, setSharedInboxLoading] = useState(false);
@@ -8878,7 +8883,7 @@ export default function AddFriendPage() {
   const [sharedCommentSending, setSharedCommentSending] = useState(false);
   const knownShareIdsRef = useRef<Set<number> | null>(null);
 
-  // â”€â”€ Story-comment inbox â€” comments friends left on my stories (section 2 of the FEED-row box) â”€â”€
+  // ?? Story-comment inbox — comments friends left on my stories (section 2 of the FEED-row box) ??
   const [storyCommentThreads, setStoryCommentThreads] = useState<StoryCommentThread[]>([]);
   const [storyCommentThreadsLoading, setStoryCommentThreadsLoading] = useState(false);
   const [openStoryCommentThread, setOpenStoryCommentThread] = useState<StoryCommentThread | null>(null);
@@ -8887,17 +8892,17 @@ export default function AddFriendPage() {
   const [storyThreadCommentSending, setStoryThreadCommentSending] = useState(false);
   const knownStoryThreadIdsRef = useRef<Set<number> | null>(null);
 
-  // â”€â”€ Post-comment inbox â€” comments friends left on my video/photo posts (section 2 of the
-  //    inbox box, right under the story-comment threads, same 24h auto-expiry) â”€â”€
+  // ?? Post-comment inbox — comments friends left on my video/photo posts (section 2 of the
+  //    inbox box, right under the story-comment threads, same 24h auto-expiry) ??
   const [postCommentThreads, setPostCommentThreads] = useState<PostCommentThread[]>([]);
   const [postCommentThreadsLoading, setPostCommentThreadsLoading] = useState(false);
   const knownPostThreadIdsRef = useRef<Set<number> | null>(null);
 
   // Hide the app's bottom nav bar while the composer sheet, post comments, the
-  // shared inbox panel (Ø§Ù„Ù‚ØµØµ ÙˆØ§Ù„Ù…ÙØ¶Ù„Ø©), or a story-comment thread page is open.
-  // (Ù†ÙØ³ Ø¢Ù„ÙŠØ© Ø§Ù„Ø­Ø¯Ø« Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…Ø© Ù…Ø¹ Ø§Ù„Ø¯Ø±Ø¯Ø´Ø© Ø§Ù„Ø³Ø±ÙŠØ© ÙÙŠ RootLayout) â€” ÙƒØ§Ù†Øª Ù‡Ø°ÙŠ Ø§Ù„Ø­Ø§Ù„Ø§Øª
-  // Ø§Ù„Ø£Ø®ÙŠØ±Ø© Ù†Ø§Ù‚ØµØ© Ù…Ù† Ø§Ù„Ø´Ø±Ø·ØŒ ÙÙŠØ¶Ù„ Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ Ø¸Ø§Ù‡Ø± ÙÙˆÙ‚ Ø´Ø§Ø´Ø© ØªØ¹Ù„ÙŠÙ‚Ø§Øª Ø§Ù„Ø³ØªÙˆØ±ÙŠ
-  // ÙˆÙŠØ¹ØªØ±Ø¶ Ø§Ù„Ù„Ù…Ø³ Ø¨Ø¯Ù„ Ù…Ø§ ÙŠØ®ØªÙÙŠ.
+  // shared inbox panel (ÇáŞÕÕ æÇáãİÖáÉ), or a story-comment thread page is open.
+  // (äİÓ ÂáíÉ ÇáÍÏË ÇáãÓÊÎÏãÉ ãÚ ÇáÏÑÏÔÉ ÇáÓÑíÉ İí RootLayout) — ßÇäÊ åĞí ÇáÍÇáÇÊ
+  // ÇáÃÎíÑÉ äÇŞÕÉ ãä ÇáÔÑØ¡ İíÖá ÇáÔÑíØ ÇáÓİáí ÙÇåÑ İæŞ ÔÇÔÉ ÊÚáíŞÇÊ ÇáÓÊæÑí
+  // æíÚÊÑÖ ÇááãÓ ÈÏá ãÇ íÎÊİí.
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('stooorna:post-composer-state', {
       detail: { open: showComposer || !!openComments || sharedInboxOpen || !!openStoryCommentThread || !!openSharedThread },
@@ -8911,9 +8916,9 @@ export default function AddFriendPage() {
 
   const fetchPosts = useCallback(async () => {
     try {
-      // Ø§Ù„ØªØºØ°ÙŠØ© Ø§Ù„Ø¹Ø§Ù…Ø© Ù„Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª/Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª: ÙƒÙ„ Ø§Ù„Ù…Ø³Ø¬Ù‘Ù„ÙŠÙ† ÙŠØ±ÙˆÙ†Ù‡Ø§.
-      // Ù†Ø¯Ù…Ø¬ audience=text Ù…Ø¹ Ù…Ù†Ø´ÙˆØ±Ø§Øª public Ø§Ù„ØªÙŠ ØªØ­Ù…Ù„ Ù†Øµ Ù…Ù†ØªØ¬ Ø£Ùˆ Ù…Ø­ØªÙˆÙ‰ Ù†ØµÙŠ
-      // (Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø§Ù„Ø´Ø±ÙƒØ§Øª ÙƒØ§Ù†Øª ØªÙØ­ÙØ¸ Ø£Ø­ÙŠØ§Ù†Ù‹Ø§ audience=public Ù…Ø¹ ÙˆØ³Ø§Ø¦Ø· ÙÙ„Ø§ ØªØ¸Ù‡Ø± ÙÙŠ audience=text ÙÙ‚Ø·).
+      // ÇáÊÛĞíÉ ÇáÚÇãÉ ááãäÔæÑÇÊ/ÇáãäÊÌÇÊ: ßá ÇáãÓÌøáíä íÑæäåÇ.
+      // äÏãÌ audience=text ãÚ ãäÔæÑÇÊ public ÇáÊí ÊÍãá äÕ ãäÊÌ Ãæ ãÍÊæì äÕí
+      // (ãäÔæÑÇÊ ÇáÔÑßÇÊ ßÇäÊ ÊõÍİÙ ÃÍíÇäğÇ audience=public ãÚ æÓÇÆØ İáÇ ÊÙåÑ İí audience=text İŞØ).
       const collected: PostItem[] = [];
       const textR = await fetch('/api/posts?audience=text', { credentials: 'include' });
       if (textR.ok) {
@@ -8936,7 +8941,7 @@ export default function AddFriendPage() {
         for (const p of pubPosts) {
           const body = (p.text && String(p.text).trim()) || '';
           if (!body) continue;
-          // Ù…Ù†ØªØ¬ / Ø¥Ø¹Ù„Ø§Ù† Ø£Ùˆ Ø£ÙŠ Ù…Ù†Ø´ÙˆØ± Ù†ØµÙŠ Ø¹Ø§Ù… â€” ÙŠØ¸Ù‡Ø± Ù„Ù„Ø¬Ù…ÙŠØ¹ ÙÙŠ ØµÙØ­Ø© Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª
+          // ãäÊÌ / ÅÚáÇä Ãæ Ãí ãäÔæÑ äÕí ÚÇã — íÙåÑ ááÌãíÚ İí ÕİÍÉ ÇáãäÔæÑÇÊ
           if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0) {
             collected.push(p);
           }
@@ -8948,28 +8953,28 @@ export default function AddFriendPage() {
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       setPosts(prev => mergePostsPreservingMedia(prev, merged));
-    } catch {/* silent â€” feed simply stays empty/local */}
+    } catch {/* silent — feed simply stays empty/local */}
   }, []);
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
-  // â”€â”€ My media posts (video/photo) â€” recorded via the camera and now shown in my profile's
-  //    Post grid instead of the old ephemeral home feed. Own posts only, media ones only. â”€â”€
+  // ?? My media posts (video/photo) — recorded via the camera and now shown in my profile's
+  //    Post grid instead of the old ephemeral home feed. Own posts only, media ones only. ??
   const [myMediaPosts, setMyMediaPosts] = useState<PostItem[]>([]);
   const fetchMyMediaPosts = useCallback(async () => {
     if (!user) return;
     try {
-      // Ø£Ù‚Ø³Ø§Ù… Ø§Ù„ØµÙˆØ±/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ Ù…Ø³ØªÙ‚Ù„Ø© Ø¹Ù† Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø§Ù„Ù†ØµÙŠØ©: Ù„Ø§ Ù†Ø¬Ù„Ø¨ Ù…Ù†Ø´ÙˆØ±Ø§Øª audience=text
-      // Ø­ØªÙ‰ Ù„Ùˆ ÙƒØ§Ù†Øª ØªØ­Ù…Ù„ ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ Ù…Ø±ÙÙ‚Ù‹Ø§ Ù…Ø¹ Ø§Ù„Ù†Øµ.
+      // ÃŞÓÇã ÇáÕæÑ/ÇáİíÏíæ ãÓÊŞáÉ Úä ÇáãäÔæÑÇÊ ÇáäÕíÉ: áÇ äÌáÈ ãäÔæÑÇÊ audience=text
+      // ÍÊì áæ ßÇäÊ ÊÍãá ÕæÑÉ/İíÏíæ ãÑİŞğÇ ãÚ ÇáäÕ.
       const r = await fetch('/api/posts?audience=public', { credentials: 'include' });
       if (!r.ok) {
-        // ØªÙˆØ§ÙÙ‚ Ù…Ø¹ Ø§Ù„Ø³ÙŠØ±ÙØ± Ø§Ù„Ù‚Ø¯ÙŠÙ… Ø¥Ù† Ù„Ù… ÙŠØ¯Ø¹Ù… audience=public
+        // ÊæÇİŞ ãÚ ÇáÓíÑİÑ ÇáŞÏíã Åä áã íÏÚã audience=public
         const fallback = await fetch('/api/posts', { credentials: 'include' });
         if (!fallback.ok) return;
         const data = await fallback.json() as { posts: PostItem[] };
         const mine = (data.posts ?? []).filter(p => {
           if (String(p.authorId) !== String(user.id)) return false;
           if (!(p.mediaType === 'image' || p.mediaType === 'video')) return false;
-          // Ø§Ø³ØªØ¨Ø¹Ø§Ø¯ Ø£ÙŠ Ù…Ù†Ø´ÙˆØ± ØªØ§Ø¨Ø¹ Ù„Ù‚Ø³Ù… Ø§Ù„ÙƒØªØ§Ø¨Ø©
+          // ÇÓÊÈÚÇÏ Ãí ãäÔæÑ ÊÇÈÚ áŞÓã ÇáßÊÇÈÉ
           if (p.audience === 'text' || p.destination === 'text') return false;
           return true;
         });
@@ -8984,7 +8989,7 @@ export default function AddFriendPage() {
         return true;
       });
       setMyMediaPosts(mine);
-    } catch {/* silent â€” grid simply stays empty */}
+    } catch {/* silent — grid simply stays empty */}
   }, [user]);
   useEffect(() => { fetchMyMediaPosts(); }, [fetchMyMediaPosts]);
   useEffect(() => {
@@ -8995,17 +9000,17 @@ export default function AddFriendPage() {
   const myMediaLikesTotal = myMediaPosts.reduce((sum, p) => sum + (p.likesCount ?? 0), 0);
   // Repost stat = how many posts I've reposted (repostedByMe), not reposts received on my own posts.
   const myMediaRepostsTotal = posts.filter(p => p.repostedByMe).length;
-  // Split my media grid by type so a photo always lands in "ØµÙˆØ±" and a video always lands in
-  // "ÙÙŠØ¯ÙŠÙˆÙ‡Ø§Øª" â€” never the other section. Mirrors the same type-detection the grid itself uses.
+  // Split my media grid by type so a photo always lands in "ÕæÑ" and a video always lands in
+  // "İíÏíæåÇÊ" — never the other section. Mirrors the same type-detection the grid itself uses.
   const getPostThumbType = (post: PostItem) =>
     post.mediaTypes && post.mediaTypes.length > 0 ? post.mediaTypes[0] : post.mediaType;
   const myVideoPosts = useMemo(() => myMediaPosts.filter(p => getPostThumbType(p) === 'video' && p.audience !== 'text' && p.destination !== 'text'), [myMediaPosts]);
   const myPhotoPosts = useMemo(() => myMediaPosts.filter(p => getPostThumbType(p) === 'image' && p.audience !== 'text' && p.destination !== 'text'), [myMediaPosts]);
 
-  // â”€â”€ Ø¯Ù…Ø¬ Ù…Ù†Ø´ÙˆØ±Ø§ØªÙŠ Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø© ÙƒÙ€"Ø¹Ø§Ù…" (ØµÙˆØ±/ÙÙŠØ¯ÙŠÙˆ Ø¹Ø¨Ø± Ø²Ø± "+" ÙÙŠ Ù‚ØµØªÙŠ) Ù…Ø¹ ØªØºØ°ÙŠØ©
-  // Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø§Ù„Ù†ØµÙŠØ©: Ù‡Ø°Ù‡ Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª ÙƒØ§Ù†Øª ØªÙØ­Ø³Ø¨ ÙÙ‚Ø· Ø¶Ù…Ù† myMediaPosts (Ù„Ù„Ø¥Ø­ØµØ§Ø¦ÙŠØ© Ø£Ø¹Ù„Ù‰
-  // Ø§Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„) ÙˆÙ„Ø§ ØªØ¸Ù‡Ø± Ø£Ø¨Ø¯Ù‹Ø§ Ø¯Ø§Ø®Ù„ Ù‚Ø³Ù… "Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª" ÙˆÙ„Ø§ Ø¯Ø§Ø®Ù„ ØµÙØ­Ø© Ø§Ù„Ù‚ØµØµØŒ Ø±ØºÙ… ÙƒÙˆÙ†Ù‡Ø§
-  // Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø¹Ø§Ù…Ø© ÙØ¹Ù„ÙŠØ©. Ù‡Ù†Ø§ Ù†ÙÙ„Ø­Ù‚Ù‡Ø§ Ø¨Ù‚Ø§Ø¦Ù…Ø© posts (Ø¨Ø¯ÙˆÙ† ØªÙƒØ±Ø§Ø±) Ù„ØªØ¸Ù‡Ø± Ù…Ø¹ Ø¨Ù‚ÙŠØ© Ù…Ù†Ø´ÙˆØ±Ø§ØªÙŠ. â”€â”€
+  // ?? ÏãÌ ãäÔæÑÇÊí ÇáãäÔæÑÉ ßÜ"ÚÇã" (ÕæÑ/İíÏíæ ÚÈÑ ÒÑ "+" İí ŞÕÊí) ãÚ ÊÛĞíÉ
+  // ÇáãäÔæÑÇÊ ÇáäÕíÉ: åĞå ÇáãäÔæÑÇÊ ßÇäÊ ÊõÍÓÈ İŞØ Öãä myMediaPosts (ááÅÍÕÇÆíÉ ÃÚáì
+  // ÇáÈÑæİÇíá) æáÇ ÊÙåÑ ÃÈÏğÇ ÏÇÎá ŞÓã "ÇáãäÔæÑÇÊ" æáÇ ÏÇÎá ÕİÍÉ ÇáŞÕÕ¡ ÑÛã ßæäåÇ
+  // ãäÔæÑÇÊ ÚÇãÉ İÚáíÉ. åäÇ äõáÍŞåÇ ÈŞÇÆãÉ posts (ÈÏæä ÊßÑÇÑ) áÊÙåÑ ãÚ ÈŞíÉ ãäÔæÑÇÊí. ??
   const combinedFeedPosts = useMemo(() => {
     const seenIds = new Set(posts.map(p => p.id));
     // Keep Photo/Video (story page grid) out of the text/public feed
@@ -9022,9 +9027,9 @@ export default function AddFriendPage() {
     );
   }, [posts, myMediaPosts]);
 
-  // â”€â”€ ØªØ«Ø¨ÙŠØª Ù…Ù†Ø´ÙˆØ± ÙˆØ§Ø­Ø¯ Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„ ÙÙŠ ØµÙØ­ØªÙŠ â€” Ù…Ø­ÙÙˆØ¸ Ù…Ø­Ù„ÙŠÙ‹Ø§ (localStorage) ÙˆÙ…ÙØ²Ø§Ù…ÙÙ†
-  // best-effort Ø¥Ù„Ù‰ /api/users/me Ø¨Ù†ÙØ³ Ø£Ø³Ù„ÙˆØ¨ pinnedTrack Ø£Ø¹Ù„Ø§Ù‡Ø› ÙŠØ¹Ù…Ù„ ÙÙˆØ±Ù‹Ø§ Ø¹Ù„Ù‰ Ù‡Ø°Ø§
-  // Ø§Ù„Ø¬Ù‡Ø§Ø²ØŒ ÙˆÙŠØ¸Ù‡Ø± Ù„Ø¨Ù‚ÙŠØ© Ø§Ù„Ø²ÙˆØ§Ø± Ø¨Ù…Ø¬Ø±Ø¯ Ø£Ù† ÙŠØ¯Ø¹Ù… Ø§Ù„Ù€ API Ù‡Ø°Ø§ Ø§Ù„Ø­Ù‚Ù„. â”€â”€
+  // ?? ÊËÈíÊ ãäÔæÑ æÇÍÏ Úáì ÇáÃŞá İí ÕİÍÊí — ãÍİæÙ ãÍáíğÇ (localStorage) æãõÒÇãóä
+  // best-effort Åáì /api/users/me ÈäİÓ ÃÓáæÈ pinnedTrack ÃÚáÇåº íÚãá İæÑğÇ Úáì åĞÇ
+  // ÇáÌåÇÒ¡ æíÙåÑ áÈŞíÉ ÇáÒæÇÑ ÈãÌÑÏ Ãä íÏÚã ÇáÜ API åĞÇ ÇáÍŞá. ??
   const [pinnedPostId, setPinnedPostId] = useState<number | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
@@ -9044,7 +9049,7 @@ export default function AddFriendPage() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ pinnedPostId: next }),
-      }).catch(() => { /* best-effort â€” the local pin above still governs this device */ });
+      }).catch(() => { /* best-effort — the local pin above still governs this device */ });
       return next;
     });
   }, []);
@@ -9055,7 +9060,7 @@ export default function AddFriendPage() {
     return () => window.removeEventListener('stooorna:refresh-text-feed', refresh);
   }, [fetchPosts]);
 
-  // â”€â”€ "New Post" banner â€” detects posts published by others since the feed was last loaded â”€â”€
+  // ?? "New Post" banner — detects posts published by others since the feed was last loaded ??
   const knownPostIdsRef = useRef<Set<number>>(new Set());
   const pendingNewPostsRef = useRef<PostItem[]>([]);
   const newPostsSoundPlayedRef = useRef(false);
@@ -9108,7 +9113,7 @@ export default function AddFriendPage() {
             playNotificationSound();
           }
         }
-      } catch {/* silent â€” banner simply won't show this round */}
+      } catch {/* silent — banner simply won't show this round */}
     })();
   }, [user, tick]);
   function loadPendingNewPosts() {
@@ -9127,9 +9132,9 @@ export default function AddFriendPage() {
     setComposerLinkInput('');
   }
 
-  // â”€â”€ Quick publish â€” "Ù†Ø´Ø± ØµÙˆØ±Ø©" / "Ù†Ø´Ø± ÙÙŠØ¯ÙŠÙˆ": one-tap post with a single photo or video and no
+  // ?? Quick publish — "äÔÑ ÕæÑÉ" / "äÔÑ İíÏíæ": one-tap post with a single photo or video and no
   //    text, triggered from the "+" on my story avatar or from the story viewer's own-story menu.
-  //    Publishes a normal post (not a story) so it lands directly in the Photo/Video grid below. â”€â”€
+  //    Publishes a normal post (not a story) so it lands directly in the Photo/Video grid below. ??
   const quickImageInputRef = useRef<HTMLInputElement>(null);
   const quickVideoInputRef = useRef<HTMLInputElement>(null);
   const [quickPublishing, setQuickPublishing] = useState(false);
@@ -9162,7 +9167,7 @@ export default function AddFriendPage() {
       playNewPostSound();
     } catch (error) {
       console.error('[Quick media publish]', error);
-      setQuickPublishError(type === 'video' ? 'ØªØ¹Ø°Ø± Ù†Ø´Ø± Ø§Ù„ÙÙŠØ¯ÙŠÙˆ â€” Ø­Ø§ÙˆÙ„ Ù…Ø±Ø© Ø«Ø§Ù†ÙŠØ©' : 'ØªØ¹Ø°Ø± Ù†Ø´Ø± Ø§Ù„ØµÙˆØ±Ø© â€” Ø­Ø§ÙˆÙ„ Ù…Ø±Ø© Ø«Ø§Ù†ÙŠØ©');
+      setQuickPublishError(type === 'video' ? 'ÊÚĞÑ äÔÑ ÇáİíÏíæ — ÍÇæá ãÑÉ ËÇäíÉ' : 'ÊÚĞÑ äÔÑ ÇáÕæÑÉ — ÍÇæá ãÑÉ ËÇäíÉ');
     } finally {
       setQuickPublishing(false);
     }
@@ -9174,17 +9179,17 @@ export default function AddFriendPage() {
     setComposerLinkShortening(true);
     setComposerError('');
     try {
-      // Ø±ÙˆØ§Ø¨Ø· X: Ø§Ø³ØªØ®Ø±Ø¬ Ø§Ù„ØµÙˆØ±Ø©/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ Ø§Ù„Ù…Ø¨Ø§Ø´Ø± Ù„ÙŠØ¹Ø±Ø¶ ÙƒØ§Ù…Ù„Ù‹Ø§ Ø¯Ø§Ø®Ù„ Ø§Ù„Ø¨ÙˆØ³Øª
+      // ÑæÇÈØ X: ÇÓÊÎÑÌ ÇáÕæÑÉ/ÇáİíÏíæ ÇáãÈÇÔÑ áíÚÑÖ ßÇãáğÇ ÏÇÎá ÇáÈæÓÊ
       const media = await resolveLinkToDirectMedia(raw);
       if (media && media.length) {
-        // Ø£ÙˆÙ„ ÙˆØ³ÙŠØ· (Ø£Ùˆ Ø§Ø¬Ù…Ø¹ Ø§Ù„Ø±ÙˆØ§Ø¨Ø·) â€” Ù†Ø¶Ø¹ Ø§Ù„Ø±ÙˆØ§Ø¨Ø· Ø§Ù„Ù…Ø¨Ø§Ø´Ø±Ø©
+        // Ãæá æÓíØ (Ãæ ÇÌãÚ ÇáÑæÇÈØ) — äÖÚ ÇáÑæÇÈØ ÇáãÈÇÔÑÉ
         const joined = media.map(m => m.url).join('\n');
         setComposerLinkInput(joined);
         return joined;
       }
       const short = await composerCreateShortLink(raw);
       if (!short) {
-        setComposerError('Ø§Ù„Ø±Ø§Ø¨Ø· ØºÙŠØ± ØµØ§Ù„Ø­ Ø£Ùˆ Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø§Ø³ØªØ®Ø±Ø§Ø¬ ÙˆØ³Ø§Ø¦Ø· Ù…Ù†Ù‡');
+        setComposerError('ÇáÑÇÈØ ÛíÑ ÕÇáÍ Ãæ áÇ íãßä ÇÓÊÎÑÇÌ æÓÇÆØ ãäå');
         return null;
       }
       setComposerLinkInput(short);
@@ -9199,18 +9204,18 @@ export default function AddFriendPage() {
     try {
       const clip = await navigator.clipboard.readText();
       if (!clip?.trim()) {
-        setComposerError('Ø§Ù„Ø­Ø§ÙØ¸Ø© ÙØ§Ø±ØºØ©');
+        setComposerError('ÇáÍÇİÙÉ İÇÑÛÉ');
         return;
       }
-      // Ø§ÙØªØ­ Ø®Ø·ÙˆØ© Ø§Ù„Ø±Ø§Ø¨Ø· Ø¥Ù† Ù„Ù… ØªÙƒÙ† Ù…ÙØªÙˆØ­Ø©
+      // ÇİÊÍ ÎØæÉ ÇáÑÇÈØ Åä áã Êßä ãİÊæÍÉ
       setComposerLinkStep(true);
       const short = await shortenComposerLink(clip.trim());
-      // Ø¨Ø¹Ø¯ Ø§Ù„ØªØ­ÙˆÙŠÙ„ Ù…Ø¨Ø§Ø´Ø±Ø© Ø¬Ø§Ù‡Ø² Ù„Ù„Ù†Ø´Ø±
+      // ÈÚÏ ÇáÊÍæíá ãÈÇÔÑÉ ÌÇåÒ ááäÔÑ
       if (short) {
-        // Ù„Ø§ Ù†Ù†Ø´Ø± ØªÙ„Ù‚Ø§Ø¦ÙŠÙ‹Ø§ Ø¥Ù„Ø§ Ø¥Ø°Ø§ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø¶ØºØ· Ù†Ø´Ø± â€” Ù„ÙƒÙ† Ø§Ù„Ø±Ø§Ø¨Ø· ØµØ§Ø± Ø¬Ø§Ù‡Ø²Ù‹Ø§
+        // áÇ ääÔÑ ÊáŞÇÆíğÇ ÅáÇ ÅĞÇ ÇáãÓÊÎÏã ÖÛØ äÔÑ — áßä ÇáÑÇÈØ ÕÇÑ ÌÇåÒğÇ
       }
     } catch {
-      setComposerError('ØªØ¹Ø°Ø± Ø§Ù„Ù‚Ø±Ø§Ø¡Ø© Ù…Ù† Ø§Ù„Ø­Ø§ÙØ¸Ø© â€” Ø§Ù„ØµÙ‚ ÙŠØ¯ÙˆÙŠÙ‹Ø§');
+      setComposerError('ÊÚĞÑ ÇáŞÑÇÁÉ ãä ÇáÍÇİÙÉ — ÇáÕŞ íÏæíğÇ');
     }
   }
 
@@ -9218,7 +9223,7 @@ export default function AddFriendPage() {
     if (composerDestination !== 'text') return;
     const pasted = e.clipboardData?.getData('text')?.trim() || '';
     if (!pasted) return;
-    // Ø¥Ø°Ø§ ÙƒØ§Ù† Ø§Ù„Ù…Ù„ØµÙ‚ Ø±Ø§Ø¨Ø·Ù‹Ø§ ÙÙ‚Ø· (Ø£Ùˆ ÙŠØ¨Ø¯Ø£ Ø¨Ø±Ø§Ø¨Ø·) â†’ Ø­ÙˆÙ‘Ù„Ù‡ Ù„Ø±Ø§Ø¨Ø· Ù‚ØµÙŠØ± ÙÙŠ Ø®Ø§Ù†Ø© Ø§Ù„Ø±Ø§Ø¨Ø·
+    // ÅĞÇ ßÇä ÇáãáÕŞ ÑÇÈØğÇ İŞØ (Ãæ íÈÏÃ ÈÑÇÈØ) ? Íæøáå áÑÇÈØ ŞÕíÑ İí ÎÇäÉ ÇáÑÇÈØ
     const looksLikeUrl = /^(https?:\/\/\S+)$/i.test(pasted) || /^(www\.\S+)$/i.test(pasted);
     if (!looksLikeUrl) return;
     e.preventDefault();
@@ -9228,11 +9233,11 @@ export default function AddFriendPage() {
 
   async function submitPost(destination: 'text' | 'photos' | 'videos' = 'text') {
     /**
-     * Ø¥ØµÙ„Ø§Ø­ "Failed to create post":
-     * Ù…Ø³Ø§Ø± Ù…ÙˆØ«ÙˆÙ‚ Ø¨Ø®Ø·ÙˆØªÙŠÙ† Ø¹Ù†Ø¯ ÙˆØ¬ÙˆØ¯ ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ:
-     *   1) Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø¨Ù†ÙØ³ Ø·Ù„Ø¨ quickPublishMedia Ø§Ù„Ù†Ø§Ø¬Ø­ (Ù†Øµ ÙØ§Ø±Øº + ÙˆØ³Ø§Ø¦Ø·)
-     *   2) ØªØ­Ø¯ÙŠØ« Ø§Ù„Ù†Øµ Ø¹Ø¨Ø± PATCH /api/posts/:id/caption
-     * Ø¨Ø¯ÙˆÙ† ÙˆØ³Ø§Ø¦Ø·: Ø¥Ù†Ø´Ø§Ø¡ Ù…Ù†Ø´ÙˆØ± Ù†ØµÙŠ Ù…Ø¨Ø§Ø´Ø±Ø©.
+     * ÅÕáÇÍ "Failed to create post":
+     * ãÓÇÑ ãæËæŞ ÈÎØæÊíä ÚäÏ æÌæÏ ÕæÑÉ/İíÏíæ:
+     *   1) ÅäÔÇÁ ÇáãäÔæÑ ÈäİÓ ØáÈ quickPublishMedia ÇáäÇÌÍ (äÕ İÇÑÛ + æÓÇÆØ)
+     *   2) ÊÍÏíË ÇáäÕ ÚÈÑ PATCH /api/posts/:id/caption
+     * ÈÏæä æÓÇÆØ: ÅäÔÇÁ ãäÔæÑ äÕí ãÈÇÔÑÉ.
      */
     destination = 'text';
     const title = (composerProductTitle || '').trim();
@@ -9253,7 +9258,7 @@ export default function AddFriendPage() {
     const linkNormalized = linkCandidates[0] || '';
 
     if (!title && !details && !price && extras.length === 0 && !linkNormalized && composerMediaFiles.length === 0) {
-      setComposerError('Ø£Ø¶Ù Ø¹Ù†ÙˆØ§Ù† Ø§Ù„Ù…Ù†ØªØ¬ Ø£Ùˆ ØªÙØ§ØµÙŠÙ„ Ø£Ùˆ ÙˆØ³Ø§Ø¦Ø· Ù‚Ø¨Ù„ Ø§Ù„Ù†Ø´Ø±');
+      setComposerError('ÃÖİ ÚäæÇä ÇáãäÊÌ Ãæ ÊİÇÕíá Ãæ æÓÇÆØ ŞÈá ÇáäÔÑ');
       return;
     }
 
@@ -9272,13 +9277,13 @@ export default function AddFriendPage() {
       }
       const detailsWithLink = [details, ...nonMediaLinks].filter(Boolean).join('\n');
       const finalText = buildProductPostText({
-        title: title || 'Ù…Ù†ØªØ¬',
+        title: title || 'ãäÊÌ',
         details: detailsWithLink,
         price,
         extras,
       });
 
-      // â”€â”€ Ø±ÙØ¹ Ø§Ù„ÙˆØ³Ø§Ø¦Ø· (ØµÙˆØ± / ÙÙŠØ¯ÙŠÙˆ / PDF) â”€â”€
+      // ?? ÑİÚ ÇáæÓÇÆØ (ÕæÑ / İíÏíæ / PDF) ??
       const uploadedMedia: { url: string; type: 'image' | 'video' }[] = [];
       let lastUploadError = '';
 
@@ -9292,7 +9297,7 @@ export default function AddFriendPage() {
         }
       };
 
-      /** Ø±ÙØ¹ PDF: 1) Ù…Ø³Ø§Ø±Ø§Øª Ù…Ù„ÙØ§Øª  2) ØªØ­ÙˆÙŠÙ„ Ø§Ù„ØµÙØ­Ø© Ø§Ù„Ø£ÙˆÙ„Ù‰ Ù„ØµÙˆØ±Ø© JPEG ÙˆØ±ÙØ¹Ù‡Ø§ ÙƒØµÙˆØ±Ø© (ÙŠØ¹Ù…Ù„ Ù…Ø¹ Ù‚ÙŠÙˆØ¯ Ø§Ù„Ø³ÙŠØ±ÙØ±) */
+      /** ÑİÚ PDF: 1) ãÓÇÑÇÊ ãáİÇÊ  2) ÊÍæíá ÇáÕİÍÉ ÇáÃæáì áÕæÑÉ JPEG æÑİÚåÇ ßÕæÑÉ (íÚãá ãÚ ŞíæÏ ÇáÓíÑİÑ) */
       const loadPdfJs = async (): Promise<any> => {
         const w = window as any;
         if (w.pdfjsLib) return w.pdfjsLib;
@@ -9331,7 +9336,7 @@ export default function AddFriendPage() {
             canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.88);
           });
         } catch (e) {
-          console.warn('[PDFâ†’JPEG]', e);
+          console.warn('[PDF?JPEG]', e);
           return null;
         }
       };
@@ -9394,7 +9399,7 @@ export default function AddFriendPage() {
       };
 
       const uploadPdfFile = async (file: File): Promise<string | null> => {
-        // Ø£) Ù…Ø­Ø§ÙˆÙ„Ø© Ø±ÙØ¹ Ø§Ù„Ù…Ù„Ù Ø§Ù„Ø£ØµÙ„ÙŠ ÙƒÙ…Ø³ØªÙ†Ø¯
+        // Ã) ãÍÇæáÉ ÑİÚ Çáãáİ ÇáÃÕáí ßãÓÊäÏ
         const attempts: Array<() => Promise<Response>> = [
           async () => fetch('/api/support/upload', {
             method: 'POST', credentials: 'include',
@@ -9426,19 +9431,19 @@ export default function AddFriendPage() {
           } catch { /* next */ }
         }
 
-        // Ø¨) ØªØ­ÙˆÙŠÙ„ Ø§Ù„ØµÙØ­Ø© Ø§Ù„Ø£ÙˆÙ„Ù‰ Ø¥Ù„Ù‰ ØµÙˆØ±Ø© JPEG ÙˆØ±ÙØ¹Ù‡Ø§ ÙƒØµÙˆØ±Ø© (ÙŠØªÙˆØ§ÙÙ‚ Ù…Ø¹ "Only images and videos")
+        // È) ÊÍæíá ÇáÕİÍÉ ÇáÃæáì Åáì ÕæÑÉ JPEG æÑİÚåÇ ßÕæÑÉ (íÊæÇİŞ ãÚ "Only images and videos")
         const pageJpeg = await pdfFirstPageToJpeg(file);
         if (pageJpeg) {
           const url = await uploadImageBlob(pageJpeg, `${(file.name || 'doc').replace(/\.pdf$/i, '')}-p1.jpg`);
           if (url) return url;
         }
 
-        // Ø¬) ØºÙ„Ø§Ù PDF Ø¨Ø³ÙŠØ· ÙƒØµÙˆØ±Ø©
+        // Ì) ÛáÇİ PDF ÈÓíØ ßÕæÑÉ
         const cover = await pdfCoverPlaceholder(file);
         const coverUrl = await uploadImageBlob(cover, `${(file.name || 'doc').replace(/\.pdf$/i, '')}-cover.jpg`);
         if (coverUrl) return coverUrl;
 
-        throw new Error('ØªØ¹Ø°Ø± Ø±ÙØ¹ PDF ÙˆÙ„Ø§ ØªØ­ÙˆÙŠÙ„Ù‡ Ø¥Ù„Ù‰ ØµÙˆØ±Ø©');
+        throw new Error('ÊÚĞÑ ÑİÚ PDF æáÇ ÊÍæíáå Åáì ÕæÑÉ');
       };
 
       for (const item of composerMediaFiles) {
@@ -9453,18 +9458,18 @@ export default function AddFriendPage() {
             (file.type || '').startsWith('video/') ||
             /\.(mp4|mov|webm|m4v|mkv|3gp)$/i.test(file.name);
 
-          // PDF: Ù…Ø³Ø§Ø± Ø±ÙØ¹ Ù…Ù†ÙØµÙ„ (Ø§Ù„Ø³ÙŠØ±ÙØ± ÙŠØ±ÙØ¶ PDF Ø¹Ù„Ù‰ posts/media ÙƒØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ)
+          // PDF: ãÓÇÑ ÑİÚ ãäİÕá (ÇáÓíÑİÑ íÑİÖ PDF Úáì posts/media ßÕæÑÉ/İíÏíæ)
           if (isPdf) {
             try {
               const pdfUrl = await uploadPdfFile(file);
               if (pdfUrl) {
-                // ØµÙˆØ±Ø© ØºÙ„Ø§Ù / ØµÙØ­Ø© PDF Ø£Ùˆ Ø±Ø§Ø¨Ø· Ø§Ù„Ù…Ù„Ù â€” ÙŠÙÙ†Ø´Ø± ÙƒÙ€ image Ù„Ù‚Ø¨ÙˆÙ„ Ø§Ù„Ø³ÙŠØ±ÙØ±
+                // ÕæÑÉ ÛáÇİ / ÕİÍÉ PDF Ãæ ÑÇÈØ Çáãáİ — íõäÔÑ ßÜ image áŞÈæá ÇáÓíÑİÑ
                 uploadedMedia.push({ url: String(pdfUrl), type: 'image' });
               } else {
-                lastUploadError = 'Ø±ÙØ¹ PDF Ù†Ø¬Ø­ Ø¨Ø¯ÙˆÙ† Ø±Ø§Ø¨Ø·';
+                lastUploadError = 'ÑİÚ PDF äÌÍ ÈÏæä ÑÇÈØ';
               }
             } catch (e) {
-              lastUploadError = `ÙØ´Ù„ Ø±ÙØ¹ PDF: ${e instanceof Error ? e.message : String(e)}`;
+              lastUploadError = `İÔá ÑİÚ PDF: ${e instanceof Error ? e.message : String(e)}`;
               console.error('[Post PDF upload]', lastUploadError);
             }
             continue;
@@ -9520,7 +9525,7 @@ export default function AddFriendPage() {
           }
 
           if (!uploadRes || !uploadRes.ok) {
-            lastUploadError = `Ø±ÙØ¹ ${isVideo ? 'Ø§Ù„ÙÙŠØ¯ÙŠÙˆ' : 'Ø§Ù„Ù…Ù„Ù'} ÙØ´Ù„${uploadRes ? ` (${uploadRes.status})` : ''} ${lastBody.slice(0, 100)}`;
+            lastUploadError = `ÑİÚ ${isVideo ? 'ÇáİíÏíæ' : 'Çáãáİ'} İÔá${uploadRes ? ` (${uploadRes.status})` : ''} ${lastBody.slice(0, 100)}`;
             console.error('[Post media upload]', lastUploadError);
             continue;
           }
@@ -9528,15 +9533,15 @@ export default function AddFriendPage() {
           if (url) {
             uploadedMedia.push({ url: String(url), type: mediaType });
           } else {
-            lastUploadError = 'Ø§Ù„Ø±ÙØ¹ Ù†Ø¬Ø­ Ø¨Ø¯ÙˆÙ† Ø±Ø§Ø¨Ø·';
+            lastUploadError = 'ÇáÑİÚ äÌÍ ÈÏæä ÑÇÈØ';
           }
         } catch (err) {
-          lastUploadError = err instanceof Error ? err.message : 'Ø®Ø·Ø£ Ø±ÙØ¹';
+          lastUploadError = err instanceof Error ? err.message : 'ÎØÃ ÑİÚ';
           console.error('[Post media upload]', err);
         }
       }
       if (composerMediaFiles.length > 0 && uploadedMedia.length === 0) {
-        setComposerError(lastUploadError || 'ØªØ¹Ø°Ø± Ø±ÙØ¹ Ø§Ù„Ù…Ù„Ù (ØµÙˆØ±Ø© / ÙÙŠØ¯ÙŠÙˆ / PDF)');
+        setComposerError(lastUploadError || 'ÊÚĞÑ ÑİÚ Çáãáİ (ÕæÑÉ / İíÏíæ / PDF)');
         setComposerPosting(false);
         return;
       }
@@ -9618,10 +9623,10 @@ export default function AddFriendPage() {
           const errBody = await createRes.text().catch(() => '');
           let msg = '';
           try { msg = (JSON.parse(errBody) as { error?: string }).error || ''; } catch { msg = errBody.slice(0, 120); }
-          throw new Error(msg || `ÙØ´Ù„ Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„Ù…Ù†Ø´ÙˆØ± (${createRes.status})`);
+          throw new Error(msg || `İÔá ÅäÔÇÁ ÇáãäÔæÑ (${createRes.status})`);
         }
         const createData = await createRes.json();
-        if (!createData?.post?.id) throw new Error('Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ù„Ù… ÙŠÙØ­ÙØ¸ Ø¹Ù„Ù‰ Ø§Ù„Ø³ÙŠØ±ÙØ±');
+        if (!createData?.post?.id) throw new Error('ÇáãäÔæÑ áã íõÍİÙ Úáì ÇáÓíÑİÑ');
 
         saved = {
           ...createData.post,
@@ -9660,7 +9665,7 @@ export default function AddFriendPage() {
           saved = { ...saved, text: finalText, mediaUrl, mediaType, mediaUrls, mediaTypes };
         }
       } else {
-        // â”€â”€ Ø¨Ø¯ÙˆÙ† ÙˆØ³Ø§Ø¦Ø·: Ù…Ù†Ø´ÙˆØ± Ù†ØµÙŠ Ù…Ø¨Ø§Ø´Ø± â”€â”€
+        // ?? ÈÏæä æÓÇÆØ: ãäÔæÑ äÕí ãÈÇÔÑ ??
         const createRes = await fetch('/api/posts', {
           method: 'POST',
           credentials: 'include',
@@ -9683,10 +9688,10 @@ export default function AddFriendPage() {
           const errBody = await createRes.text().catch(() => '');
           let msg = '';
           try { msg = (JSON.parse(errBody) as { error?: string }).error || ''; } catch { msg = errBody.slice(0, 120); }
-          throw new Error(msg || `ÙØ´Ù„ Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„Ù…Ù†Ø´ÙˆØ± (${createRes.status})`);
+          throw new Error(msg || `İÔá ÅäÔÇÁ ÇáãäÔæÑ (${createRes.status})`);
         }
         const createData = await createRes.json();
-        if (!createData?.post?.id) throw new Error('Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ù„Ù… ÙŠÙØ­ÙØ¸ Ø¹Ù„Ù‰ Ø§Ù„Ø³ÙŠØ±ÙØ±');
+        if (!createData?.post?.id) throw new Error('ÇáãäÔæÑ áã íõÍİÙ Úáì ÇáÓíÑİÑ');
         saved = {
           ...createData.post,
           audience: 'text',
@@ -9698,9 +9703,9 @@ export default function AddFriendPage() {
         } as PostItem;
       }
 
-      if (!saved?.id) throw new Error('Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ù„Ù… ÙŠÙØ­ÙØ¸');
+      if (!saved?.id) throw new Error('ÇáãäÔæÑ áã íõÍİÙ');
 
-      // ÙˆØ³Ù… Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø­Ø³Ø¨ Ù†ÙˆØ¹ Ø§Ù„Ù†Ø§Ø´Ø± Ø­ØªÙ‰ ÙŠØ¸Ù‡Ø± ÙÙŠ Ø§Ù„ØªØ¨ÙˆÙŠØ¨ Ø§Ù„ØµØ­ÙŠØ­ (Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† â‰  Ø´Ø±ÙƒØ§Øª)
+      // æÓã ÇáãäÔæÑ ÍÓÈ äæÚ ÇáäÇÔÑ ÍÊì íÙåÑ İí ÇáÊÈæíÈ ÇáÕÍíÍ (ãÓÊÎÏãíä ? ÔÑßÇÊ)
       const tagged = {
         ...saved!,
         publisherType: isCompanyPublisher ? 'company' as const : 'user' as const,
@@ -9708,11 +9713,11 @@ export default function AddFriendPage() {
         authorIsCompany: !!isCompanyPublisher,
       };
       setPosts(prev => [tagged, ...prev]);
-      // ØµÙˆØ±/ÙÙŠØ¯ÙŠÙˆ Ø§Ù„Ø´Ø¨ÙƒØ© ÙÙ‚Ø· (destination photos/videos) â€” Ù…Ù†ØªØ¬Ø§Øª Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø§Ù„Ù†ØµÙŠØ© ØªØ¨Ù‚Ù‰ ÙÙŠ Ø§Ù„ØªØºØ°ÙŠØ© Ø§Ù„Ø¹Ø§Ù…Ø©
+      // ÕæÑ/İíÏíæ ÇáÔÈßÉ İŞØ (destination photos/videos) — ãäÊÌÇÊ ÇáãäÔæÑÇÊ ÇáäÕíÉ ÊÈŞì İí ÇáÊÛĞíÉ ÇáÚÇãÉ
       if (tagged.mediaUrl && tagged.audience !== 'text' && tagged.destination !== 'text') {
         setMyMediaPosts(prev => [tagged, ...prev]);
       }
-      // Ø§ÙØªØ­ ØªØ¨ÙˆÙŠØ¨ Ø§Ù„ØªØºØ°ÙŠØ© Ø§Ù„Ù…Ù†Ø§Ø³Ø¨ ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹
+      // ÇİÊÍ ÊÈæíÈ ÇáÊÛĞíÉ ÇáãäÇÓÈ ÊáŞÇÆíÇğ
       setTextFeedTab(isCompanyPublisher ? 'companies' : 'app');
       playNewPostSound();
       setComposerText('');
@@ -9725,7 +9730,7 @@ export default function AddFriendPage() {
       setShowComposer(false);
     } catch (error) {
       console.error('[Post publish]', error);
-      setComposerError(error instanceof Error && error.message ? error.message : 'ØªØ¹Ø°Ø± Ù†Ø´Ø± Ø§Ù„Ù…Ù†Ø´ÙˆØ± â€” Ø­Ø§ÙˆÙ„ Ù…Ø±Ø© Ø«Ø§Ù†ÙŠØ©');
+      setComposerError(error instanceof Error && error.message ? error.message : 'ÊÚĞÑ äÔÑ ÇáãäÔæÑ — ÍÇæá ãÑÉ ËÇäíÉ');
     } finally {
       setComposerPosting(false);
     }
@@ -9733,7 +9738,7 @@ export default function AddFriendPage() {
 
   async function toggleLike(post: PostItem) {
     if (guestGuard()) return;
-    // Ø£Ù†ÙŠÙ…ÙŠØ´Ù† ÙÙ‚Ø§Ø¹Ø© Ø¹Ù†Ø¯ Ø§Ù„Ù„Ø§ÙŠÙƒ (Ø®Ø§ØµØ© Ø¹Ù†Ø¯ Ø§Ù„Ø¥Ø¶Ø§ÙØ©)
+    // ÃäíãíÔä İŞÇÚÉ ÚäÏ ÇááÇíß (ÎÇÕÉ ÚäÏ ÇáÅÖÇİÉ)
     if (!post.likedByMe) {
       setLikeBubbleKey(prev => ({ ...prev, [post.id]: (prev[post.id] ?? 0) + 1 }));
     }
@@ -9798,7 +9803,7 @@ export default function AddFriendPage() {
     }
   }
 
-  /** ÙŠØ¨Ù†ÙŠ Ø­Ù…ÙˆÙ„Ø© Ø§Ù„Ø´ÙŠØ± ÙƒØ±Ø³Ø§Ù„Ø© Ø´Ø§Øª ÙˆØ§Ø­Ø¯Ø©: ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ + Ù†Øµ ÙÙŠ Ù†ÙØ³ Ø§Ù„Ù…Ø±Ø¨Ø¹ */
+  /** íÈäí ÍãæáÉ ÇáÔíÑ ßÑÓÇáÉ ÔÇÊ æÇÍÏÉ: ÕæÑÉ/İíÏíæ + äÕ İí äİÓ ÇáãÑÈÚ */
   function buildPostShareBody(post: PostItem): string {
     const mediaUrl = (post.mediaUrls && post.mediaUrls[0]) || post.mediaUrl || '';
     const mediaType = (post.mediaTypes && post.mediaTypes[0]) || post.mediaType || (mediaUrl ? 'image' : 'text');
@@ -9813,25 +9818,25 @@ export default function AddFriendPage() {
     return '__POST_SHARE__' + JSON.stringify(payload);
   }
 
-  /** Ø¹Ù†Ø¯ Ø§Ø®ØªÙŠØ§Ø± ØµØ¯ÙŠÙ‚: ÙŠØ±Ø³Ù„ Ø§Ù„Ù…Ù†Ø´ÙˆØ± ÙÙˆØ±Ø§Ù‹ Ø¥Ù„Ù‰ Ø´Ø§Øª Ø§Ù„Ø¯Ø±Ø¯Ø´Ø© Ù…Ø¹Ù‡ (Ù…Ø±Ø¨Ø¹ ÙˆØ§Ø­Ø¯ ØµÙˆØ±Ø©+ØªØ¹Ù„ÙŠÙ‚) */
+  /** ÚäÏ ÇÎÊíÇÑ ÕÏíŞ: íÑÓá ÇáãäÔæÑ İæÑÇğ Åáì ÔÇÊ ÇáÏÑÏÔÉ ãÚå (ãÑÈÚ æÇÍÏ ÕæÑÉ+ÊÚáíŞ) */
   async function sharePostToFriend(friendId: string) {
     if (guestGuard()) return;
     if (!sharePost || sharingPost) return;
     setSharingPost(true);
     setShareError('');
     try {
-      // 1) Ø§ÙØªØ­/Ø£Ù†Ø´Ø¦ Ù…Ø­Ø§Ø¯Ø«Ø© Ø³Ø±ÙŠØ© Ù…Ø¹ Ø§Ù„ØµØ¯ÙŠÙ‚
+      // 1) ÇİÊÍ/ÃäÔÆ ãÍÇÏËÉ ÓÑíÉ ãÚ ÇáÕÏíŞ
       const dmRes = await fetch('/api/secret-chat/dm', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ peerId: friendId }),
       });
-      if (!dmRes.ok) throw new Error('ØªØ¹Ø°Ø± ÙØªØ­ Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø©');
+      if (!dmRes.ok) throw new Error('ÊÚĞÑ İÊÍ ÇáãÍÇÏËÉ');
       const dmData = await dmRes.json() as { chatId?: number };
-      if (!dmData.chatId) throw new Error('ØªØ¹Ø°Ø± ÙØªØ­ Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø©');
+      if (!dmData.chatId) throw new Error('ÊÚĞÑ İÊÍ ÇáãÍÇÏËÉ');
 
-      // 2) Ø£Ø±Ø³Ù„ Ø§Ù„Ù…Ù†Ø´ÙˆØ± ÙƒØ±Ø³Ø§Ù„Ø© ÙˆØ§Ø­Ø¯Ø© (ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ + Ù†Øµ Ù…Ø¹Ø§Ù‹)
+      // 2) ÃÑÓá ÇáãäÔæÑ ßÑÓÇáÉ æÇÍÏÉ (ÕæÑÉ/İíÏíæ + äÕ ãÚÇğ)
       const body = buildPostShareBody(sharePost);
       const msgRes = await fetch('/api/secret-chat/messages', {
         method: 'POST',
@@ -9839,20 +9844,20 @@ export default function AddFriendPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chatId: dmData.chatId, body }),
       });
-      if (!msgRes.ok) throw new Error('ØªØ¹Ø°Ø± Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ù„Ù„Ø´Ø§Øª');
+      if (!msgRes.ok) throw new Error('ÊÚĞÑ ÅÑÓÇá ÇáãäÔæÑ ááÔÇÊ');
 
-      // 3) Ø§Ø­ØªÙØ¸ Ø¨Ù€ API Ø§Ù„Ø´ÙŠØ± Ø§Ù„Ù‚Ø¯ÙŠÙ… Ù„ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„ÙˆØ§Ø±Ø¯ (Ø¥Ù† ÙˆÙØ¬Ø¯)
+      // 3) ÇÍÊİÙ ÈÜ API ÇáÔíÑ ÇáŞÏíã áÕäÏæŞ ÇáæÇÑÏ (Åä æõÌÏ)
       try {
         await fetch(`/api/posts/${sharePost.id}/share`, {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ recipientIds: [friendId] }),
         });
-      } catch { /* Ø§Ø®ØªÙŠØ§Ø±ÙŠ */ }
+      } catch { /* ÇÎÊíÇÑí */ }
 
       setSharePost(null);
       setShareRecipients([]);
     } catch (error) {
-      setShareError(error instanceof Error ? error.message : 'ØªØ¹Ø°Ø± Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ù†Ø´ÙˆØ±');
+      setShareError(error instanceof Error ? error.message : 'ÊÚĞÑ ÅÑÓÇá ÇáãäÔæÑ');
     } finally {
       setSharingPost(false);
     }
@@ -9868,7 +9873,7 @@ export default function AddFriendPage() {
         await sharePostToFriend(friendId);
       }
     } catch (error) {
-      setShareError(error instanceof Error ? error.message : 'ØªØ¹Ø°Ø± Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ù†Ø´ÙˆØ±');
+      setShareError(error instanceof Error ? error.message : 'ÊÚĞÑ ÅÑÓÇá ÇáãäÔæÑ');
     } finally {
       setSharingPost(false);
     }
@@ -9880,7 +9885,7 @@ export default function AddFriendPage() {
       if (!r.ok) return;
       const data = await r.json() as { interactions: PostInteractionItem[] };
       setPostInteractions(data.interactions ?? []);
-    } catch {/* silent â€” the inbox keeps its existing state */}
+    } catch {/* silent — the inbox keeps its existing state */}
   }, []);
 
   useEffect(() => {
@@ -9888,7 +9893,7 @@ export default function AddFriendPage() {
     void fetchPostInteractions();
   }, [user, fetchPostInteractions, tick]);
 
-  // ØªØ­Ù…ÙŠÙ„ Ù…Ø´Ø§Ø±ÙƒØ§Øª Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† Ø§Ù„ÙˆØ§Ø±Ø¯Ø© (Ù‚Ø³Ù… Chat ÙÙŠ Ø§Ù„Ø¬Ø±Ø³)
+  // ÊÍãíá ãÔÇÑßÇÊ ÇáãÓÊÎÏãíä ÇáæÇÑÏÉ (ŞÓã Chat İí ÇáÌÑÓ)
   useEffect(() => {
     if (!user?.id) {
       setUserShareInbox([]);
@@ -9921,7 +9926,7 @@ export default function AddFriendPage() {
       }
       knownShareIdsRef.current = new Set(fresh.map(s => s.id));
       setSharedInbox(fresh);
-    } catch {/* silent â€” badge simply stays at its last known count */}
+    } catch {/* silent — badge simply stays at its last known count */}
   }, []);
   const sharedInboxLoadedOnceRef = useRef(false);
   useEffect(() => {
@@ -9946,7 +9951,7 @@ export default function AddFriendPage() {
       }
       knownStoryThreadIdsRef.current = new Set(fresh.map(t => t.storyId));
       setStoryCommentThreads(fresh);
-    } catch {/* silent â€” badge simply stays at its last known count */}
+    } catch {/* silent — badge simply stays at its last known count */}
   }, []);
   const storyThreadsLoadedOnceRef = useRef(false);
   useEffect(() => {
@@ -9985,7 +9990,7 @@ export default function AddFriendPage() {
       }
       knownPostThreadIdsRef.current = new Set(fresh.map(t => t.post.id));
       setPostCommentThreads(fresh);
-    } catch {/* silent â€” badge simply stays at its last known count */}
+    } catch {/* silent — badge simply stays at its last known count */}
   }, []);
   const postThreadsLoadedOnceRef = useRef(false);
   useEffect(() => {
@@ -9997,7 +10002,7 @@ export default function AddFriendPage() {
     });
   }, [user, fetchPostCommentThreads, tick]);
 
-  // Opens the exact same PostDetailPage used everywhere else (feed cards, profile grid) â€”
+  // Opens the exact same PostDetailPage used everywhere else (feed cards, profile grid) —
   // the comment simply appears there, next to the picture/video it was left on, and replying
   // uses the very same composer + /api/posts/:id/comments endpoint as any other post.
   async function handleOpenPostCommentThread(thread: PostCommentThread) {
@@ -10005,9 +10010,9 @@ export default function AddFriendPage() {
       setPostCommentThreads(prev => prev.map(t => t.post.id === thread.post.id ? { ...t, read: true } : t));
       try {
         await fetch(`/api/posts/${thread.post.id}/comments/read`, { method: 'POST', credentials: 'include' });
-      } catch {/* silent â€” will simply re-mark on next fetch */}
+      } catch {/* silent — will simply re-mark on next fetch */}
     }
-    // PostDetailPage shares the same layer as the inbox box itself â€” close the box first so the
+    // PostDetailPage shares the same layer as the inbox box itself — close the box first so the
     // post (with the comment sitting right on it) is actually the thing visible on top.
     setSharedInboxOpen(false);
     setPostDetailEnterSide(true);
@@ -10015,7 +10020,7 @@ export default function AddFriendPage() {
   }
 
   async function handleOpenStoryCommentThread(thread: StoryCommentThread) {
-    // StoryCommentThreadPage shares the same layer as the inbox box itself â€” close the box first
+    // StoryCommentThreadPage shares the same layer as the inbox box itself — close the box first
     // so the thread (with its comments) is actually the thing visible on top instead of being
     // hidden underneath the drawer's much higher z-index until the drawer is manually closed.
     setSharedInboxOpen(false);
@@ -10024,7 +10029,7 @@ export default function AddFriendPage() {
       setStoryCommentThreads(prev => prev.map(t => t.storyId === thread.storyId ? { ...t, read: true } : t));
       try {
         await fetch(`/api/status/${thread.storyId}/comments/read`, { method: 'POST', credentials: 'include' });
-      } catch {/* silent â€” will simply re-mark on next fetch */}
+      } catch {/* silent — will simply re-mark on next fetch */}
     }
     if (storyThreadComments[thread.storyId]) return;
     try {
@@ -10033,7 +10038,7 @@ export default function AddFriendPage() {
         const d = await r.json() as { comments: StoryComment[] };
         setStoryThreadComments(prev => ({ ...prev, [thread.storyId]: d.comments ?? [] }));
       }
-    } catch {/* silent â€” starts with an empty thread */}
+    } catch {/* silent — starts with an empty thread */}
   }
 
   async function submitStoryThreadComment(parentCommentId: number | null = null) {
@@ -10095,7 +10100,7 @@ export default function AddFriendPage() {
     }
   }
 
-  // Called directly from the story viewer's inline composer â€” comments on a friend's story, no page navigation
+  // Called directly from the story viewer's inline composer — comments on a friend's story, no page navigation
   async function sendStoryComment(storyId: number, text: string): Promise<boolean> {
     try {
       const response = await fetch(`/api/status/${storyId}/comments`, {
@@ -10116,7 +10121,7 @@ export default function AddFriendPage() {
       setSharedInbox(prev => prev.map(s => s.id === share.id ? { ...s, read: true } : s));
       try {
         await fetch(`/api/posts/shared/${share.id}/read`, { method: 'POST', credentials: 'include' });
-      } catch {/* silent â€” will simply re-mark on next fetch */}
+      } catch {/* silent — will simply re-mark on next fetch */}
     }
     if (sharedThreadComments[share.id]) return;
     try {
@@ -10125,7 +10130,7 @@ export default function AddFriendPage() {
         const d = await r.json() as { comments: SharedPostComment[] };
         setSharedThreadComments(prev => ({ ...prev, [share.id]: d.comments ?? [] }));
       }
-    } catch {/* silent â€” starts with an empty thread */}
+    } catch {/* silent — starts with an empty thread */}
   }
 
   async function submitSharedComment(parentCommentId: number | null = null) {
@@ -10188,13 +10193,13 @@ export default function AddFriendPage() {
 
   async function deletePost(post: PostItem) {
     setDeletingPostId(post.id);
-    // Optimistic removal â€” same graceful-degradation pattern used elsewhere in this file
+    // Optimistic removal — same graceful-degradation pattern used elsewhere in this file
     setPosts(prev => prev.filter(p => p.id !== post.id));
     setMyMediaPosts(prev => prev.filter(p => p.id !== post.id));
     setOpenComments(current => current && current.id === post.id ? null : current);
     try {
       await fetch(`/api/posts/${post.id}`, { method: 'DELETE', credentials: 'include' });
-    } catch {/* silent â€” post already removed locally */} finally {
+    } catch {/* silent — post already removed locally */} finally {
       setDeletingPostId(null);
       setConfirmDeletePost(null);
     }
@@ -10242,7 +10247,7 @@ export default function AddFriendPage() {
         const d = await r.json() as { comments: PostComment[] };
         setPostComments(prev => ({ ...prev, [post.id]: d.comments ?? [] }));
       }
-    } catch {/* silent â€” starts with an empty thread */}
+    } catch {/* silent — starts with an empty thread */}
   }
 
   async function submitComment(parentCommentId: number | null = null) {
@@ -10300,7 +10305,7 @@ export default function AddFriendPage() {
   // Read ?tab= from URL to open the right tab directly (e.g. from bottom nav)
   const urlTab = searchParams.get('tab') as 'friends' | 'search' | 'requests' | null;
 
-  // Top-level page tab: Add (friend search/requests) | Profile (everything else â€” stories, text
+  // Top-level page tab: Add (friend search/requests) | Profile (everything else — stories, text
   // posts and the media grid all live together on this one page now; the separate FEED tab was
   // merged into it, directly under the stories strip).
   const [pageTab] = useState<'add' | 'profile'>(
@@ -10308,20 +10313,20 @@ export default function AddFriendPage() {
   );
   const isFriendManagement = pageTab === 'add';
 
-  // â”€â”€ Header show/hide toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ?? Header show/hide toggle ????????????????????????????????????????????????
   // A small grabber bar sits right above the Video|Post|Photo switcher. Tapping it
   // collapses the entire header above it (avatar/stats row, stories strip, new-post
   // and inbox icons) like a shutter, so only the three sections + feed are visible
-  // and scrollable. Tapping again brings the header back down exactly as it was â€”
+  // and scrollable. Tapping again brings the header back down exactly as it was —
   // this is a manual toggle only, not tied to scrolling.
   const [headerOpen, setHeaderOpen] = useState(true);
   // Once true, the grabber's attention-drawing bounce animation stops for good.
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
   // Sub-tab inside the Profile page, replacing the old STOOORNA divider: switches the content
-  // strip below it between the text-posts feed and the video/photo grid â€” independently of
+  // strip below it between the text-posts feed and the video/photo grid — independently of
   // everything above (stories strip, header, etc. never move when this changes).
   const [profileContentTab, setProfileContentTab] = useState<'videos' | 'text' | 'photos'>('videos');
-  // Standalone fullscreen page listing text posts only â€” opened via the pen icon next
+  // Standalone fullscreen page listing text posts only — opened via the pen icon next
   // to the compose button, no header/story chrome, closes with a slide-down X.
   // Also auto-opens when returning from the chat page's back button after chatting
   // from a profile opened inside this flow (see FriendStoryProfile's chat button),
@@ -10331,11 +10336,11 @@ export default function AddFriendPage() {
   );
   // true when the panel was opened via URL navigation (no flash animation needed)
   const textPostsOpenedFromUrl = useRef(!user || searchParams.get('openTextPosts') === '1');
-  // Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ø«Ù„Ø§Ø« Ù†Ù‚Ø§Ø· ÙÙŠ Ù‡ÙŠØ¯Ø± ØµÙØ­Ø© Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø§Ù„Ù†ØµÙŠØ© (Ù†Ø´Ø± Ø¨ÙˆØ³Øª Ù†ØµÙŠ Ù…Ù† Ø¯Ø§Ø®Ù„Ù‡Ø§)
+  // ŞÇÆãÉ ÇáËáÇË äŞÇØ İí åíÏÑ ÕİÍÉ ÇáãäÔæÑÇÊ ÇáäÕíÉ (äÔÑ ÈæÓÊ äÕí ãä ÏÇÎáåÇ)
   const [_textPostsMenuOpen, setTextPostsMenuOpen] = useState(false);
-  // Ø³Ø­Ø¨ Ù„ØªØ­Ø¯ÙŠØ« â€” Stooorna Ø«Ø§Ø¨ØªØ© ÙÙŠ Ø§Ù„Ù‡ÙŠØ¯Ø± Ù…Ø¹ Ø°Ø¨Ø°Ø¨Ø© Ø®ÙÙŠÙØ© ÙÙ‚Ø·
+  // ÓÍÈ áÊÍÏíË — Stooorna ËÇÈÊÉ İí ÇáåíÏÑ ãÚ ĞÈĞÈÉ ÎİíİÉ İŞØ
   const textPostsScrollRef = useRef<HTMLDivElement | null>(null);
-  // Ø¥Ø®ÙØ§Ø¡ Ø§Ù„Ø´Ø±ÙŠØ·ÙŠÙ† Ø¨Ø¯ÙˆÙ† setState Ø¹Ù„Ù‰ ÙƒÙ„ scroll (Ø£Ø¯Ø§Ø¡ Ø£ÙØ¶Ù„ â€” ØªØ­Ø¯ÙŠØ« DOM Ù…Ø¨Ø§Ø´Ø±Ø© + rAF)
+  // ÅÎİÇÁ ÇáÔÑíØíä ÈÏæä setState Úáì ßá scroll (ÃÏÇÁ ÃİÖá — ÊÍÏíË DOM ãÈÇÔÑÉ + rAF)
   const postsChromeTopRef = useRef<HTMLDivElement | null>(null);
   const postsChromeBottomRef = useRef<HTMLDivElement | null>(null);
   const postsChromeVisibleRef = useRef(true);
@@ -10364,7 +10369,7 @@ export default function AddFriendPage() {
     const current = el.scrollTop;
     const delta = current - lastPostsScrollTopRef.current;
     lastPostsScrollTopRef.current = current;
-    // Ø¬Ø¯ÙˆÙ„Ø© Ø¥Ø·Ø§Ø± ÙˆØ§Ø­Ø¯ ÙÙ‚Ø· â€” Ù„Ø§ Ù†Ø¹ÙŠØ¯ Ø±Ø³Ù… React ÙˆÙ„Ø§ Ù†ÙƒØ¯Ù‘Ø³ rAF
+    // ÌÏæáÉ ÅØÇÑ æÇÍÏ İŞØ — áÇ äÚíÏ ÑÓã React æáÇ äßÏøÓ rAF
     if (postsChromeRafRef.current) return;
     postsChromeRafRef.current = requestAnimationFrame(() => {
       postsChromeRafRef.current = 0;
@@ -10378,7 +10383,7 @@ export default function AddFriendPage() {
     });
   }
 
-  // Ø¥Ø¹Ø§Ø¯Ø© Ø¥Ø¸Ù‡Ø§Ø± Ø§Ù„Ù‡ÙŠØ¯Ø±ÙŠÙ† ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹ ÙƒÙ„ Ù…Ø§ ØªÙÙØªØ­ ØµÙØ­Ø© Ø§Ù„Ø¨ÙˆØ³ØªØ§Øª Ø§Ù„Ù†ØµÙŠØ© Ù…Ù† Ø¬Ø¯ÙŠØ¯
+  // ÅÚÇÏÉ ÅÙåÇÑ ÇáåíÏÑíä ÊáŞÇÆíÇğ ßá ãÇ ÊõİÊÍ ÕİÍÉ ÇáÈæÓÊÇÊ ÇáäÕíÉ ãä ÌÏíÏ
   useEffect(() => {
     if (textPostsPageOpen) {
       lastPostsScrollTopRef.current = 0;
@@ -10411,8 +10416,8 @@ export default function AddFriendPage() {
     return () => window.clearInterval(intervalId);
   }, [textPostsPageOpen, fetchPosts]);
 
-  // Ù…Ø²Ø§Ù…Ù†Ø© Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ: Ø­Ø¯Ø« + class Ø¹Ù„Ù‰ body (Ø£ÙˆØ«Ù‚ Ø¹Ù†Ø¯ Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„Ø¯Ø®ÙˆÙ„ Ù„Ù„ØªØ·Ø¨ÙŠÙ‚)
-  // Ù„Ø§ Ù†Ø±Ø³Ù„ open:false ÙÙŠ cleanup â€” ÙŠØ³Ø¨Ø¨ Ø³Ø¨Ø§Ù‚ StrictMode ÙÙŠÙØ¸Ù‡Ø± Ø§Ù„Ø´Ø±ÙŠØ· ÙÙˆÙ‚ ØµÙØ­Ø© Ø§Ù„Ø¨ÙˆØ³ØªØ§Øª
+  // ãÒÇãäÉ ÇáÔÑíØ ÇáÓİáí: ÍÏË + class Úáì body (ÃæËŞ ÚäÏ ÅÚÇÏÉ ÇáÏÎæá ááÊØÈíŞ)
+  // áÇ äÑÓá open:false İí cleanup — íÓÈÈ ÓÈÇŞ StrictMode İíõÙåÑ ÇáÔÑíØ İæŞ ÕİÍÉ ÇáÈæÓÊÇÊ
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('stooorna:text-posts-state', { detail: { open: textPostsPageOpen } }));
     try {
@@ -10423,20 +10428,20 @@ export default function AddFriendPage() {
     };
   }, [textPostsPageOpen]);
 
-  // ÙØªØ­ Ù…Ù† Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ (Ø£ÙŠÙ‚ÙˆÙ†Ø© Ø§Ù„Ø¨ÙˆØ³Øª) Ø¨Ø¯ÙˆÙ† Ø£Ø®Ø·Ø§Ø¡ ØªÙ†Ù‚Ù‘Ù„
+  // İÊÍ ãä ÇáÔÑíØ ÇáÓİáí (ÃíŞæäÉ ÇáÈæÓÊ) ÈÏæä ÃÎØÇÁ ÊäŞøá
   useEffect(() => {
     if (searchParams.get('openTextPosts') === '1') {
       setTextPostsPageOpen(true);
       textPostsOpenedFromUrl.current = true;
     }
-    // Ø¶ØºØ· Ù…Ø·ÙˆÙ‘Ù„ Ù…Ù† Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ â†’ ÙØªØ­ Ø¨ÙƒØ³ Ù†Ø´Ø± Ø¨ÙˆØ³Øª Ù†ØµÙŠ
-    // openTextComposer=1 (Ø§Ù„Ø±Ø³Ù…ÙŠ) Ø£Ùˆ compose=1 (ØªÙˆØ§ÙÙ‚ Ù‚Ø¯ÙŠÙ…)
+    // ÖÛØ ãØæøá ãä ÇáÔÑíØ ÇáÓİáí ? İÊÍ ÈßÓ äÔÑ ÈæÓÊ äÕí
+    // openTextComposer=1 (ÇáÑÓãí) Ãæ compose=1 (ÊæÇİŞ ŞÏíã)
     if (searchParams.get('openTextComposer') === '1' || searchParams.get('compose') === '1') {
       if (!user) {
         navigate('/settings');
         return;
       }
-      // Ø§Ù„Ø£ÙØ±Ø§Ø¯ Ù„Ø§ ÙŠÙ…Ù„ÙƒÙˆÙ† ØµÙ„Ø§Ø­ÙŠØ© Ù†Ø´Ø± Ø¨ÙˆØ³Øª â€” Ù„Ù„Ø´Ø±ÙƒØ§Øª ÙÙ‚Ø·
+      // ÇáÃİÑÇÏ áÇ íãáßæä ÕáÇÍíÉ äÔÑ ÈæÓÊ — ááÔÑßÇÊ İŞØ
       if (!isCompanyUserAccount(user, companies)) {
         setTextPostsPageOpen(true);
         return;
@@ -10450,26 +10455,27 @@ export default function AddFriendPage() {
     }
   }, [searchParams]);
   useEffect(() => {
-    // Ù…Ù† Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ: ÙØªØ­ ØµÙØ­Ø© Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø§Ù„Ù†ØµÙŠØ© ÙÙ‚Ø· (Ù„Ø§ ØªÙØºÙ„Ù‚ Ø¨Ø§Ù„Ù†Ù‚Ø± Ù…Ø±Ø© Ø«Ø§Ù†ÙŠØ© Ø¹Ù„Ù‰ Ù†ÙØ³ Ø§Ù„Ø£ÙŠÙ‚ÙˆÙ†Ø©)
+    // ãä ÇáÔÑíØ ÇáÓİáí: İÊÍ ÕİÍÉ ÇáãäÔæÑÇÊ ÇáäÕíÉ İŞØ (áÇ ÊõÛáŞ ÈÇáäŞÑ ãÑÉ ËÇäíÉ Úáì äİÓ ÇáÃíŞæäÉ)
     const openFromNav = () => {
       textPostsOpenedFromUrl.current = false;
       setTextPostsPageOpen(true);
     };
     // Close text posts panel when tapping the story/feed icon in the bottom bar
-    // Guests stay locked in text posts â€” they have no story page to go back to
+    // Guests stay locked in text posts — they have no story page to go back to
     const closeFromNav = () => {
       if (!user) return;
       setTextPostsPageOpen(false);
       setTextPostsMenuOpen(false);
     };
-    // Ø¶ØºØ· Ù…Ø·ÙˆÙ‘Ù„ Ø¹Ù„Ù‰ Ø£ÙŠÙ‚ÙˆÙ†Ø© Ø§Ù„Ø¨ÙˆØ³ØªØ§Øª ÙÙŠ Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ â†’ Ù†ÙØ³ Ø¨ÙƒØ³ Â«Ù†Ø´Ø± Ø¨ÙˆØ³Øª Ù†ØµÙŠÂ»
+    // ÖÛØ ãØæøá Úáì ÃíŞæäÉ ÇáÈæÓÊÇÊ İí ÇáÔÑíØ ÇáÓİáí ? äİÓ ÈßÓ «äÔÑ ÈæÓÊ äÕí»
     const openComposerFromNav = () => {
-      if (!user) {
+      const currentUser = latestUserRef.current;
+      if (!currentUser) {
         navigate('/settings');
         return;
       }
-      // Ø§Ù„Ø£ÙØ±Ø§Ø¯: Ø¨Ø¯ÙˆÙ† New Post â€” ÙØªØ­ Ø§Ù„ÙÙŠØ¯ ÙÙ‚Ø·
-      if (!isCompanyUserAccount(user, companies)) {
+      // Individuals: no New Post — open the feed only
+      if (!isCompanyUserAccount(currentUser, latestCompaniesRef.current)) {
         setTextPostsPageOpen(true);
         setTextPostsMenuOpen(false);
         return;
@@ -10484,7 +10490,7 @@ export default function AddFriendPage() {
     window.addEventListener('stooorna:open-text-posts', openFromNav);
     window.addEventListener('stooorna:close-text-posts', closeFromNav);
     window.addEventListener('stooorna:open-text-composer', openComposerFromNav);
-    // ØªÙˆØ§ÙÙ‚ Ù…Ø¹ Ø£Ø³Ù…Ø§Ø¡ Ø£Ø­Ø¯Ø§Ø« Ø£Ø®Ø±Ù‰ Ù…Ù† Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ
+    // ÊæÇİŞ ãÚ ÃÓãÇÁ ÃÍÏÇË ÃÎÑì ãä ÇáÔÑíØ ÇáÓİáí
     window.addEventListener('stooorna:open-post-composer', openComposerFromNav);
     window.addEventListener('stooorna:compose-text-post', openComposerFromNav);
 
@@ -10519,9 +10525,9 @@ export default function AddFriendPage() {
   const [sending, setSending] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
-  // â”€â”€ Followers list (my own accepted friends) + the "hide my followers from others"
+  // ?? Followers list (my own accepted friends) + the "hide my followers from others"
   // switch shown inside that modal. Persisted locally and best-effort synced to the
-  // backend; degrades gracefully if the backend field doesn't exist yet. â”€â”€
+  // backend; degrades gracefully if the backend field doesn't exist yet. ??
   const [followersModalOpen, setFollowersModalOpen] = useState(false);
   const [followersVisible, setFollowersVisible] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
@@ -10540,14 +10546,14 @@ export default function AddFriendPage() {
         credentials: 'include',
         body: JSON.stringify({ followersVisible: next }),
       });
-    } catch { /* silent â€” the local toggle above still governs this device */ }
+    } catch { /* silent — the local toggle above still governs this device */ }
   }, []);
-  // Ù…Ø¹Ø±Ù‘ÙØ§Øª Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† Ø§Ù„Ù„ÙŠ Ø£Ø±Ø³Ù„Øª Ù„Ù‡Ù… Ø·Ù„Ø¨ ØµØ¯Ø§Ù‚Ø© ÙˆÙ†Ù†ØªØ¸Ø± Ù‚Ø¨ÙˆÙ„Ù‡Ù… â€” ØªÙØ³ØªØ®Ø¯Ù… Ù„Ø¹Ø±Ø¶ Ø­Ø§Ù„Ø©
-  // Ø²Ø± "Follow" (Ø¨Ø§Ù†ØªØ¸Ø§Ø± Ø§Ù„Ù‚Ø¨ÙˆÙ„) Ø¹Ù„Ù‰ Ù…Ù†Ø´ÙˆØ±Ø§ØªÙ‡Ù… ÙÙŠ Ø§Ù„ÙÙŠÙŠØ¯ Ø­ØªÙ‰ Ù„Ùˆ Ù…Ø§ ÙØªØ­Øª ØªØ¨ÙˆÙŠØ¨ Ø§Ù„Ø¨Ø­Ø«.
+  // ãÚÑøİÇÊ ÇáãÓÊÎÏãíä Çááí ÃÑÓáÊ áåã ØáÈ ÕÏÇŞÉ æääÊÙÑ ŞÈæáåã — ÊõÓÊÎÏã áÚÑÖ ÍÇáÉ
+  // ÒÑ "Follow" (ÈÇäÊÙÇÑ ÇáŞÈæá) Úáì ãäÔæÑÇÊåã İí ÇáİííÏ ÍÊì áæ ãÇ İÊÍÊ ÊÈæíÈ ÇáÈÍË.
   const [outgoingRequestedIds, setOutgoingRequestedIds] = useState<Set<string>>(new Set());
-  // â”€â”€ Globe-triggered names bar â€” moved here from RecorderScreen. Tapping the animated globe
+  // ?? Globe-triggered names bar — moved here from RecorderScreen. Tapping the animated globe
   //    next to "Likes" in the profile stats row opens a floating, horizontally-scrollable strip
-  //    of friends at the top of the screen; tapping a friend opens their mini profile. â”€â”€
+  //    of friends at the top of the screen; tapping a friend opens their mini profile. ??
   const [namesBarOpen, setNamesBarOpen] = useState(false);
   const [storyMoreOpen, setStoryMoreOpen] = useState(false);
   const [friendsPanelTab, setFriendsPanelTab] = useState<'friends' | 'company'>('friends');
@@ -10560,7 +10566,7 @@ export default function AddFriendPage() {
   const [storyMediaError, setStoryMediaError] = useState('');
   const storyMediaImageRef = useRef<HTMLInputElement>(null);
   const storyMediaVideoRef = useRef<HTMLInputElement>(null);
-  // â”€â”€ Company accounts directory (registered company profiles only) â”€â”€
+  // ?? Company accounts directory (registered company profiles only) ??
   interface CompanyAccount {
     id: string;
     name: string | null;
@@ -10571,7 +10577,8 @@ export default function AddFriendPage() {
     ownerName?: string | null;
   }
   const [companies, setCompanies] = useState<CompanyAccount[]>([]);
-  /** Ø´Ø±ÙƒØ© = New Post + Ø¥Ø¹Ù„Ø§Ù† Ù‚ØµØ©Ø› ÙØ±Ø¯ = Ù‚ØµØ© ÙÙ‚Ø· (Ø¨Ø¯ÙˆÙ† Ø¨ÙˆØ³Øª) */
+  useEffect(() => { latestCompaniesRef.current = companies; }, [companies]);
+  /** ÔÑßÉ = New Post + ÅÚáÇä ŞÕÉº İÑÏ = ŞÕÉ İŞØ (ÈÏæä ÈæÓÊ) */
 
   const businessApproved = useBusinessApproved(user?.id ? String(user.id) : null);
   const isCompanyPublisher = useMemo(
@@ -10580,12 +10587,12 @@ export default function AddFriendPage() {
     [user, user?.id, (user as any)?.accountType, (user as any)?.email, companies, businessApproved],
   );
 
-  /** ÙÙŠØ¯ Ø§Ù„Ø¨ÙˆØ³Øª Ø§Ù„Ù†ØµÙŠ: Ù‚Ø³Ù… Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ (Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ†) | Ù‚Ø³Ù… Ø§Ù„Ø´Ø±ÙƒØ§Øª */
+  /** İíÏ ÇáÈæÓÊ ÇáäÕí: ŞÓã ÇáÊØÈíŞ (ãÓÊÎÏãíä) | ŞÓã ÇáÔÑßÇÊ */
   const [textFeedTab, setTextFeedTab] = useState<'app' | 'companies'>('app');
-  /** Ù…Ø´Ø§Ø±ÙƒØ© Ø¨ÙˆØ³Øª Ù…Ø³ØªØ®Ø¯Ù… â†’ Ø§Ø®ØªÙŠØ§Ø± Ù…Ø³ØªÙ„Ù… */
+  /** ãÔÇÑßÉ ÈæÓÊ ãÓÊÎÏã ? ÇÎÊíÇÑ ãÓÊáã */
   const [userSharePickPost, setUserSharePickPost] = useState<PostItem | null>(null);
   const [userShareNote, setUserShareNote] = useState('');
-  /** Ù…Ø´Ø§Ø±ÙƒØ§Øª ÙˆØ§Ø±Ø¯Ø© Ù…Ù† Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† (Ù…ÙŠÙ†ÙŠ Ø´Ø§Øª ÙÙŠ Ø§Ù„Ø¬Ø±Ø³) */
+  /** ãÔÇÑßÇÊ æÇÑÏÉ ãä ãÓÊÎÏãíä (ãíäí ÔÇÊ İí ÇáÌÑÓ) */
   const [userShareInbox, setUserShareInbox] = useState<Array<{
     id: string; fromId: string; fromName: string | null; fromUsername: string | null;
     fromAvatar: string | null; post: PostItem; note: string; at: number; read: boolean;
@@ -10634,7 +10641,7 @@ export default function AddFriendPage() {
     if (peerIsCompany && user && String(peer.id) !== String(user.id)) {
       setViewingProfile({
         id: peer.id,
-        name: peer.name || peer.username || 'Ø´Ø±ÙƒØ©',
+        name: peer.name || peer.username || 'ÔÑßÉ',
         username: peer.username,
         avatarUrl: peer.avatarUrl,
         isCompany: true,
@@ -10653,7 +10660,7 @@ export default function AddFriendPage() {
   // Also auto-reopens when returning from the chat page's back button after chatting
   // from a friend's profile (see FriendStoryProfile's chat button), via the
   // ?openProfile=<id> marker (+ name/username/avatar) left in the URL before
-  // navigating to /chat â€” mirrors the ?openTextPosts=1 pattern above.
+  // navigating to /chat — mirrors the ?openTextPosts=1 pattern above.
   const [viewingProfile, setViewingProfile] = useState<{
     id: string; name: string | null; username: string | null; avatarUrl: string | null; isCompany?: boolean;
   } | null>(() => {
@@ -10719,18 +10726,18 @@ export default function AddFriendPage() {
     };
   }, [user]);
 
-  // ØªØ­Ù…ÙŠÙ„ Ø¯Ù„ÙŠÙ„ Ø§Ù„Ø´Ø±ÙƒØ§Øª Ù…Ø¨ÙƒØ±Ø§Ù‹ Ù„ØªØµÙ†ÙŠÙ Ø§Ù„Ø³ØªÙˆØ±ÙŠØ§Øª ÙˆØ§Ù„Ø´ÙŠØ± (ÙˆÙ„ÙŠØ³ ÙÙ‚Ø· Ø¹Ù†Ø¯ ÙØªØ­ Ø§Ù„Ù„ÙˆØ­Ø©)
+  // ÊÍãíá Ïáíá ÇáÔÑßÇÊ ãÈßÑÇğ áÊÕäíİ ÇáÓÊæÑíÇÊ æÇáÔíÑ (æáíÓ İŞØ ÚäÏ İÊÍ ÇááæÍÉ)
   useEffect(() => {
     void loadCompanies();
   }, []);
-  // Public company directory â€” reload when the panel opens
+  // Public company directory — reload when the panel opens
   useEffect(() => {
     if (namesBarOpen) {
       void loadCompanies();
     }
   }, [namesBarOpen]);
 
-  // Ø¥Ø¹Ø§Ø¯Ø© ØªØ­Ù…ÙŠÙ„ Ø¯Ù„ÙŠÙ„ Ø§Ù„Ø´Ø±ÙƒØ§Øª Ø¹Ù†Ø¯ ÙØªØ­ ØªØ¨ÙˆÙŠØ¨ Company (Ù…ØªØ§Ø­ Ù„Ù„Ø¬Ù…ÙŠØ¹ â€” Ø¶ÙŠÙ ÙˆÙ…Ø³Ø¬Ù‘Ù„)
+  // ÅÚÇÏÉ ÊÍãíá Ïáíá ÇáÔÑßÇÊ ÚäÏ İÊÍ ÊÈæíÈ Company (ãÊÇÍ ááÌãíÚ — Öíİ æãÓÌøá)
   useEffect(() => {
     if (namesBarOpen && friendsPanelTab === 'company') {
       void loadCompanies();
@@ -10740,11 +10747,11 @@ export default function AddFriendPage() {
   const [responding, setResponding] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // â”€â”€ ØªÙ†Ø¸ÙŠÙ Ø¹Ù„Ø§Ù…Ø§Øª "Ø§Ø±Ø¬Ø¹ Ù„Ù†ÙØ³ Ø§Ù„Ù…ÙƒØ§Ù†" (?openProfile=... Ùˆ ?openTextPosts=1) Ù…Ù† Ø§Ù„Ø±Ø§Ø¨Ø·
-  // ÙÙˆØ± Ø§Ø³ØªÙ‡Ù„Ø§ÙƒÙ‡Ø§ Ø¨Ø§Ù„Ù€ useState Ø§Ù„Ù„ÙŠ ÙÙˆÙ‚. Ù‡Ø°ÙŠ Ø§Ù„Ø¹Ù„Ø§Ù…Ø§Øª Ø§Ù„Ù…ÙØ±ÙˆØ¶ ØªØ´ØªØºÙ„ Ù…Ø±Ø© ÙˆØ­Ø¯Ø© Ø¨Ø³ØŒ Ù„Ù…Ø§
-  // ØªØ±Ø¬Ø¹ Ù…Ù† Ø´Ø§Øª ÙÙØªØ­ Ù…Ù† Ø¨Ø±ÙˆÙØ§ÙŠÙ„/Ø§Ù„Ø¨ÙˆØ³ØªØ§Øª Ø§Ù„Ù†ØµÙŠØ© Ø¹Ù† Ø·Ø±ÙŠÙ‚ Ø²Ø± Ø§Ù„Ø±Ø¬ÙˆØ¹. Ù„Ùˆ ØªØ±ÙƒÙ†Ø§Ù‡Ø§ Ø¨Ø§Ù„Ø±Ø§Ø¨Ø·ØŒ
-  // ØªØµÙŠØ± Ù‡ÙŠ Ø¢Ø®Ø± Ø±Ø§Ø¨Ø· Ø²Ø§Ø±Ù‡ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… â€” ÙÙ„Ùˆ Ù‚ÙÙ„ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ ÙƒØ§Ù…Ù„ ÙˆØ±Ø¬Ø¹ ÙØªØ­Ù‡ Ù…Ù† Ø¬Ø¯ÙŠØ¯ØŒ ÙŠØ±Ø¬Ø¹Ù‡
-  // Ù…Ø¨Ø§Ø´Ø±Ø© Ù„Ù†ÙØ³ Ø§Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ø¨Ø¯Ù„ ØµÙØ­Ø© Ø§Ù„Ø³ØªÙˆØ±ÙŠ Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©. ØªÙ†Ø¸ÙŠÙÙ‡Ø§ Ù‡Ù†Ø§ ÙŠÙ…Ù†Ø¹ Ù‡Ø§Ù„Ù…Ø´ÙƒÙ„Ø©. â”€â”€
+  // ?? ÊäÙíİ ÚáÇãÇÊ "ÇÑÌÚ áäİÓ ÇáãßÇä" (?openProfile=... æ ?openTextPosts=1) ãä ÇáÑÇÈØ
+  // İæÑ ÇÓÊåáÇßåÇ ÈÇáÜ useState Çááí İæŞ. åĞí ÇáÚáÇãÇÊ ÇáãİÑæÖ ÊÔÊÛá ãÑÉ æÍÏÉ ÈÓ¡ áãÇ
+  // ÊÑÌÚ ãä ÔÇÊ İõÊÍ ãä ÈÑæİÇíá/ÇáÈæÓÊÇÊ ÇáäÕíÉ Úä ØÑíŞ ÒÑ ÇáÑÌæÚ. áæ ÊÑßäÇåÇ ÈÇáÑÇÈØ¡
+  // ÊÕíÑ åí ÂÎÑ ÑÇÈØ ÒÇÑå ÇáãÓÊÎÏã — İáæ Şİá ÇáÊØÈíŞ ßÇãá æÑÌÚ İÊÍå ãä ÌÏíÏ¡ íÑÌÚå
+  // ãÈÇÔÑÉ áäİÓ ÇáÈÑæİÇíá ÈÏá ÕİÍÉ ÇáÓÊæÑí ÇáÑÆíÓíÉ. ÊäÙíİåÇ åäÇ íãäÚ åÇáãÔßáÉ. ??
   useEffect(() => {
     if (!searchParams.get('openProfile') && !searchParams.get('openTextPosts') && !searchParams.get('openTextComposer')) return;
     const next = new URLSearchParams(searchParams);
@@ -10758,7 +10765,7 @@ export default function AddFriendPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Highlighted (red) user IDs â€” fetched from server, live for all users
+  // Highlighted (red) user IDs — fetched from server, live for all users
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
 
   // Secret Chat modal state
@@ -10770,7 +10777,7 @@ export default function AddFriendPage() {
   const [scCreating, setScCreating] = useState(false);
   const [scError, setScError] = useState('');
 
-  // Secret Chat open â€” PIN gate
+  // Secret Chat open — PIN gate
   const [openingChat, setOpeningChat] = useState<SecretChat | null>(null);
   const [openPin, setOpenPin] = useState('');
   const [openPinVisible, setOpenPinVisible] = useState(false);
@@ -10815,7 +10822,7 @@ export default function AddFriendPage() {
   const scTypingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [scTypingNames, setScTypingNames] = useState<string[]>([]);
 
-  // â”€â”€ In-app notification banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ?? In-app notification banner ?????????????????????????????????????????????
   interface ScNotif {
     id: number;
     chatName: string;
@@ -10835,7 +10842,7 @@ export default function AddFriendPage() {
     try {
       const ctx = new AudioContext();
       const now = ctx.currentTime;
-      // Two-tone "ding" â€” soft and pleasant
+      // Two-tone "ding" — soft and pleasant
       const osc1 = ctx.createOscillator();
       const osc2 = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -10882,7 +10889,7 @@ export default function AddFriendPage() {
   const [confirmBlockFriend, setConfirmBlockFriend] = useState<Friend | null>(null);
   const [blockingFriendId, setBlockingFriendId] = useState<string | null>(null);
 
-  // Per-friend action menu (â‹® block / remove)
+  // Per-friend action menu (? block / remove)
   const [openActionMenu, setOpenActionMenu] = useState<number | null>(null);
 
   // Collect all user IDs visible in the current page for presence polling
@@ -10922,7 +10929,7 @@ export default function AddFriendPage() {
     } catch {/* silent */}
   };
 
-  /** ÙØªØ­ Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ø§Ù„Ø´Ø±ÙƒØ© â€” ÙŠØ¹Ù…Ù„ Ø­ØªÙ‰ Ù„Ùˆ Ø§Ù„Ù…ØµØ¯Ø± Ù…Ø­Ù„ÙŠØ› ÙŠØ­Ø§ÙˆÙ„ Ø­Ù„ Ù…Ø¹Ø±Ù‘Ù Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø§Ù„Ø­Ù‚ÙŠÙ‚ÙŠ */
+  /** İÊÍ ÈÑæİÇíá ÇáÔÑßÉ — íÚãá ÍÊì áæ ÇáãÕÏÑ ãÍáíº íÍÇæá Íá ãÚÑøİ ÇáãÓÊÎÏã ÇáÍŞíŞí */
   const openCompanyProfile = async (c: CompanyAccount) => {
     setNamesBarOpen(false);
 
@@ -10933,8 +10940,8 @@ export default function AddFriendPage() {
     let name = displayName;
     let avatarUrl = c.avatarUrl ?? null;
 
-    // Ø´Ø±ÙƒØ© Ù„ÙŠØ¨Ø±Ø§ Ø§Ù„Ø¹Ù‚Ø§Ø±ÙŠØ© â†’ Ø¨Ø±ÙˆÙØ§ÙŠÙ„ @Libra (English account)
-    if (/Ù„ÙŠØ¨Ø±/.test(String(c.name || c.tradeName || '')) && !username) {
+    // ÔÑßÉ áíÈÑÇ ÇáÚŞÇÑíÉ ? ÈÑæİÇíá @Libra (English account)
+    if (/áíÈÑ/.test(String(c.name || c.tradeName || '')) && !username) {
       username = 'Libra';
     }
     if (/libra/i.test(String(c.name || c.tradeName || c.username || '')) && !username) {
@@ -10952,7 +10959,7 @@ export default function AddFriendPage() {
           id = String(d.id || d.userId || d.user?.id || id);
           username = (d.username || un || '').replace(/^@/, '') || username;
           // Keep Arabic display name if we already have it
-          if (!name || !/[Ø€-Û¿]/.test(name)) {
+          if (!name || !/[?-?]/.test(name)) {
             name = d.companyName || d.name || name;
           }
           avatarUrl = d.avatarUrl || d.image || avatarUrl;
@@ -10973,7 +10980,7 @@ export default function AddFriendPage() {
             if (u && (u.id || u.userId)) {
               id = String(u.id || u.userId);
               username = (u.username || username || '').replace(/^@/, '') || username;
-              if (!name || !/[Ø€-Û¿]/.test(name)) {
+              if (!name || !/[?-?]/.test(name)) {
                 name = u.companyName || u.name || name;
               }
               avatarUrl = u.avatarUrl || u.image || avatarUrl;
@@ -11008,17 +11015,17 @@ export default function AddFriendPage() {
         if (un) return `u:${un}`;
         const raw = `${c.name || ''} ${c.tradeName || ''}`
           .toLowerCase()
-          .replace(/Ø´Ø±ÙƒØ©|company|Ø§Ù„|Ù„Ù„|Ùˆ/g, ' ')
+          .replace(/ÔÑßÉ|company|Çá|áá|æ/g, ' ')
           .replace(/\s+/g, ' ')
           .trim();
-        // collapse common aliases: Ù„ÙŠØ¨Ø± / libra
-        const alias = raw.replace(/Ù„ÙŠØ¨Ø±Ø§|Ù„ÙŠØ¨Ø±/g, 'libra').replace(/[^a-z0-9\u0600-\u06ff]+/g, '');
+        // collapse common aliases: áíÈÑ / libra
+        const alias = raw.replace(/áíÈÑÇ|áíÈÑ/g, 'libra').replace(/[^a-z0-9\u0600-\u06ff]+/g, '');
         return alias ? `n:${alias}` : '';
       };
 
       // Personal accounts that must never appear under Company
       const PERSONAL_BLOCKLIST = new Set([
-        'nadoosha', 'nadooshaâ¤ï¸', 'â¤ï¸nadoosha',
+        'nadoosha', 'nadoosha??', '??nadoosha',
       ]);
 
       const isExplicitCompany = (x: any, fromCompaniesEndpoint: boolean) => {
@@ -11029,16 +11036,16 @@ export default function AddFriendPage() {
         if (x.companyName || x.tradeName || x.licenseNumber || x.commercialLicense) return true;
         if (fromCompaniesEndpoint) return true; // pure companies API
         // Arabic company name signal only when not a plain personal username list
-        if (hasArabic(x.name) && /Ø´Ø±ÙƒØ©|Ù…Ø¤Ø³Ø³Ø©/.test(String(x.name || ''))) return true;
+        if (hasArabic(x.name) && /ÔÑßÉ|ãÄÓÓÉ/.test(String(x.name || ''))) return true;
         return false;
       };
 
       const isPersonalBlocked = (x: any) => {
-        const un = String(x.username || x.name || '').replace(/^@/, '').replace(/â¤ï¸/g, '').trim().toLowerCase();
+        const un = String(x.username || x.name || '').replace(/^@/, '').replace(/??/g, '').trim().toLowerCase();
         if (PERSONAL_BLOCKLIST.has(un)) return true;
         if (PERSONAL_BLOCKLIST.has(String(x.username || '').replace(/^@/, '').trim().toLowerCase())) return true;
         // heart-prefixed personal display names without company flags
-        if (/â¤ï¸/.test(String(x.name || x.username || '')) && !x.companyName && !x.tradeName && !x.licenseNumber) {
+        if (/??/.test(String(x.name || x.username || '')) && !x.companyName && !x.tradeName && !x.licenseNumber) {
           const t = String(x.accountType || '').toLowerCase();
           if (t !== 'company' && t !== 'business') return true;
         }
@@ -11069,7 +11076,7 @@ export default function AddFriendPage() {
           ownerName: x.ownerName || x.owner || null,
         };
 
-        // Deduplicate by email / username / normalized brand (e.g. Libra Company + Ø´Ø±ÙƒØ© Ù„ÙŠØ¨Ø±Ø§)
+        // Deduplicate by email / username / normalized brand (e.g. Libra Company + ÔÑßÉ áíÈÑÇ)
         const key = normalizeKey(next) || id;
         let merged = false;
         for (const [existingId, prev] of byId.entries()) {
@@ -11103,7 +11110,7 @@ export default function AddFriendPage() {
         if (!merged) byId.set(id, next);
       };
 
-      // Public company directory â€” no friendship required
+      // Public company directory — no friendship required
       const companyEndpoints = [
         '/api/companies',
         '/api/companies/public',
@@ -11215,7 +11222,7 @@ export default function AddFriendPage() {
 
       // Hard-remove English-only Libra Company card when Arabic Libra company exists
       const list = [...finalMap.values()];
-      const hasArabicLibra = list.some(c => hasArabic(c.name) && /Ù„ÙŠØ¨Ø±/.test(String(c.name)));
+      const hasArabicLibra = list.some(c => hasArabic(c.name) && /áíÈÑ/.test(String(c.name)));
       const mapped = list
         .filter(c => {
           if (hasArabicLibra && !hasArabic(c.name) && /libra\s*company/i.test(String(c.name || ''))) return false;
@@ -11224,7 +11231,7 @@ export default function AddFriendPage() {
         })
         .map(c => {
           // Ensure Arabic Libra opens the English Libra profile (username Libra)
-          if (hasArabic(c.name) && /Ù„ÙŠØ¨Ø±/.test(String(c.name)) && !c.username) {
+          if (hasArabic(c.name) && /áíÈÑ/.test(String(c.name)) && !c.username) {
             return { ...c, username: 'Libra' };
           }
           return c;
@@ -11271,14 +11278,14 @@ export default function AddFriendPage() {
     if (!user) return;
     loadFriends();
     loadHighlights();
-    // Poll highlights every 10s â€” also re-runs on tick (every 3s from useAutoRefresh)
+    // Poll highlights every 10s — also re-runs on tick (every 3s from useAutoRefresh)
     const interval = setInterval(loadHighlights, 10_000);
     return () => {
       clearInterval(interval);
     };
   }, [user, tick]);
 
-  // â”€â”€ Background polling: detect new messages in ALL secret chats (for blinking) â”€â”€
+  // ?? Background polling: detect new messages in ALL secret chats (for blinking) ??
   const scBgPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (!user || secretChats.length === 0) return;
@@ -11306,8 +11313,8 @@ export default function AddFriendPage() {
                 return n;
               });
               // Show banner + sound
-              const preview = newest.type === 'voice' ? 'ğŸ¤ Ø±Ø³Ø§Ù„Ø© ØµÙˆØªÙŠØ©' : newest.type === 'image' ? 'ğŸ–¼ ØµÙˆØ±Ø©' : newest.type === 'video' ? 'ğŸ¬ ÙÙŠØ¯ÙŠÙˆ' : newest.type === 'file' ? 'ğŸ“ Ù…Ù„Ù' : (newest.body ?? '').slice(0, 60);
-              showScNotif(sc.id, sc.name, newest.sender_name ?? newest.sender_username ?? 'Ø´Ø®Øµ Ù…Ø§', preview);
+              const preview = newest.type === 'voice' ? '?? ÑÓÇáÉ ÕæÊíÉ' : newest.type === 'image' ? '?? ÕæÑÉ' : newest.type === 'video' ? '?? İíÏíæ' : newest.type === 'file' ? '?? ãáİ' : (newest.body ?? '').slice(0, 60);
+              showScNotif(sc.id, sc.name, newest.sender_name ?? newest.sender_username ?? 'ÔÎÕ ãÇ', preview);
             }
           }
           scLastCountRef.current[sc.id] = msgs.length;
@@ -11353,7 +11360,7 @@ export default function AddFriendPage() {
     };
   }, [query]);
 
-  // â”€â”€ Secret chat: auto-refresh polling + typing indicator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ?? Secret chat: auto-refresh polling + typing indicator ????????????????????
   useEffect(() => {
     if (!activeChat) {
       if (scPollRef.current) clearInterval(scPollRef.current);
@@ -11378,7 +11385,7 @@ export default function AddFriendPage() {
           const prevCount = prev.length;
           const newCount = msgs.length;
           if (newCount > prevCount) {
-            // New message arrived â€” scroll to bottom
+            // New message arrived — scroll to bottom
             setTimeout(() => chatBottomRef.current?.scrollIntoView({
               behavior: 'smooth'
             }), 80);
@@ -11386,8 +11393,8 @@ export default function AddFriendPage() {
             const newest = msgs[msgs.length - 1];
             const isFromMe = newest?.sender_id === user?.id;
             if (!isFromMe && newest) {
-              const preview = newest.type === 'voice' ? 'ğŸ¤ Ø±Ø³Ø§Ù„Ø© ØµÙˆØªÙŠØ©' : newest.type === 'image' ? 'ğŸ–¼ ØµÙˆØ±Ø©' : newest.type === 'video' ? 'ğŸ¬ ÙÙŠØ¯ÙŠÙˆ' : newest.type === 'file' ? 'ğŸ“ Ù…Ù„Ù' : (newest.body ?? '').slice(0, 60);
-              showScNotif(chatId, activeChat?.name ?? '', newest.sender_name ?? newest.sender_username ?? 'Ø´Ø®Øµ Ù…Ø§', preview);
+              const preview = newest.type === 'voice' ? '?? ÑÓÇáÉ ÕæÊíÉ' : newest.type === 'image' ? '?? ÕæÑÉ' : newest.type === 'video' ? '?? İíÏíæ' : newest.type === 'file' ? '?? ãáİ' : (newest.body ?? '').slice(0, 60);
+              showScNotif(chatId, activeChat?.name ?? '', newest.sender_name ?? newest.sender_username ?? 'ÔÎÕ ãÇ', preview);
             }
           }
           return newCount !== prevCount ? msgs : prev;
@@ -11431,16 +11438,16 @@ export default function AddFriendPage() {
       scTypingSignalRef.current = null;
     }, 2000);
   }
-  // â”€â”€ Ù…ØªØ§Ø¨Ø¹Ø©/Ø¥Ø¶Ø§ÙØ© Ù†Ø§Ø´Ø± Ù…Ù†Ø´ÙˆØ± Ù†ØµÙŠ Ù…Ø¨Ø§Ø´Ø±Ø© Ù…Ù† Ø§Ù„ÙÙŠÙŠØ¯ (Ø²Ø± Follow) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Ø­Ø³Ø§Ø¨ Ø¹Ø§Ù… (authorIsPrivate === false/undefined): Ø¥Ø¶Ø§ÙØ© ÙÙˆØ±ÙŠØ© Ø¨Ù„Ø§ Ø§Ù†ØªØ¸Ø§Ø±.
-  // Ø­Ø³Ø§Ø¨ Ø®Ø§Øµ (authorIsPrivate === true): ÙŠÙØ±Ø³Ù„ ÙƒØ·Ù„Ø¨ ÙˆÙŠÙ†ØªØ¸Ø± Ù‚Ø¨ÙˆÙ„ ØµØ§Ø­Ø¨ Ø§Ù„Ø­Ø³Ø§Ø¨.
+  // ?? ãÊÇÈÚÉ/ÅÖÇİÉ äÇÔÑ ãäÔæÑ äÕí ãÈÇÔÑÉ ãä ÇáİííÏ (ÒÑ Follow) ??????????????????
+  // ÍÓÇÈ ÚÇã (authorIsPrivate === false/undefined): ÅÖÇİÉ İæÑíÉ ÈáÇ ÇäÊÙÇÑ.
+  // ÍÓÇÈ ÎÇÕ (authorIsPrivate === true): íõÑÓá ßØáÈ æíäÊÙÑ ŞÈæá ÕÇÍÈ ÇáÍÓÇÈ.
   async function followAuthorFromPost(post: PostItem) {
     if (guestGuard()) return;
     if (!user || post.authorId === user.id) return;
     const alreadyFriend = friends.some(f => f.friendId === post.authorId);
     if (alreadyFriend || outgoingRequestedIds.has(post.authorId)) return;
     const willBeInstant = !post.authorIsPrivate;
-    // ØªØ­Ø¯ÙŠØ« Ù…ØªÙØ§Ø¦Ù„ ÙÙˆØ±ÙŠ Ù„Ù„ÙˆØ§Ø¬Ù‡Ø©
+    // ÊÍÏíË ãÊİÇÆá İæÑí ááæÇÌåÉ
     if (willBeInstant) {
       setFriends(prev => [...prev, {
         id: -Date.now(),
@@ -11483,7 +11490,7 @@ export default function AddFriendPage() {
         }]);
       }
     } catch {
-      // ÙØ´Ù„ Ø§Ù„Ø·Ù„Ø¨ ÙØ¹Ù„ÙŠÙ‹Ø§ â€” Ù†Ø±Ø¬Ù‘Ø¹ Ø§Ù„Ø­Ø§Ù„Ø© ÙƒÙ…Ø§ ÙƒØ§Ù†Øª
+      // İÔá ÇáØáÈ İÚáíğÇ — äÑÌøÚ ÇáÍÇáÉ ßãÇ ßÇäÊ
       if (willBeInstant) {
         setFriends(prev => prev.filter(f => f.friendId !== post.authorId));
       } else {
@@ -11579,7 +11586,7 @@ export default function AddFriendPage() {
   async function createSecretChat() {
     if (!scName.trim()) return;
     if (!/^\d{4,8}$/.test(scPin)) {
-      setScError('Ø§Ù„Ø±Ù‚Ù… Ø§Ù„Ø³Ø±ÙŠ ÙŠØ¬Ø¨ Ø£Ù† ÙŠÙƒÙˆÙ† 4-8 Ø£Ø±Ù‚Ø§Ù…');
+      setScError('ÇáÑŞã ÇáÓÑí íÌÈ Ãä íßæä 4-8 ÃÑŞÇã');
       return;
     }
     setScCreating(true);
@@ -11599,7 +11606,7 @@ export default function AddFriendPage() {
       });
       const data = await r.json();
       if (!r.ok) {
-        setScError(data?.error ?? 'ÙØ´Ù„ Ø§Ù„Ø¥Ù†Ø´Ø§Ø¡');
+        setScError(data?.error ?? 'İÔá ÇáÅäÔÇÁ');
         return;
       }
       await loadSecretChats();
@@ -11632,7 +11639,7 @@ export default function AddFriendPage() {
       });
       const data = await r.json();
       if (!r.ok || !data.ok) {
-        setOpenPinError('Ø±Ù‚Ù… Ø³Ø±ÙŠ Ø®Ø§Ø·Ø¦');
+        setOpenPinError('ÑŞã ÓÑí ÎÇØÆ');
         return;
       }
       // Load messages
@@ -11662,7 +11669,7 @@ export default function AddFriendPage() {
         behavior: 'smooth'
       }), 100);
     } catch {
-      setOpenPinError('Ø­Ø¯Ø« Ø®Ø·Ø£');
+      setOpenPinError('ÍÏË ÎØÃ');
     } finally {
       setOpenPinChecking(false);
     }
@@ -11888,12 +11895,12 @@ export default function AddFriendPage() {
     }
   }
   if (isPending) return null;
-  // Ø§Ù„Ø²ÙˆØ§Ø± ÙŠØ±ÙˆÙ† Ø§Ù„ØµÙØ­Ø© â€” Ø§Ù„ØªÙØ§Ø¹Ù„ ÙŠÙÙˆÙ‚ÙÙ‡ useGuestGuard
+  // ÇáÒæÇÑ íÑæä ÇáÕİÍÉ — ÇáÊİÇÚá íõæŞİå useGuestGuard
 
-  // â”€â”€ Determine page mode from URL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // /add-friend?tab=friends  â†’ Friends-only page
-  // /add-friend?tab=groups   â†’ Groups-only page
-  // /add-friend (no tab)     â†’ Add page: Search + Requests only
+  // ?? Determine page mode from URL ??????????????????????????????????????????
+  // /add-friend?tab=friends  ? Friends-only page
+  // /add-friend?tab=groups   ? Groups-only page
+  // /add-friend (no tab)     ? Add page: Search + Requests only
   // (pageMode + addTab are derived above near state declarations)
 
   // Page title
@@ -11905,7 +11912,7 @@ export default function AddFriendPage() {
       <GlobalIncomingCallWatcher myUserId={user?.id ?? null} myUserName={user?.name ?? user?.email ?? null} />
       <Helmet>
         <title>Chat | Stooorna</title>
-        <meta name="description" content="Find friends, send requests, and manage your contacts on Stooorna â€” the real-time voice and whisper app." />
+        <meta name="description" content="Find friends, send requests, and manage your contacts on Stooorna — the real-time voice and whisper app." />
         <link rel="canonical" href="https://stooorna.com/add-friend" />
         <meta property="og:title" content="Chat | Stooorna" />
         <meta property="og:description" content="Find friends, send requests, and manage your contacts on Stooorna." />
@@ -11915,7 +11922,7 @@ export default function AddFriendPage() {
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:image" content="https://stooorna.com/og-image.svg" />
         <meta name="robots" content="noindex, nofollow" />
-        {/* Ø®Ø· "Alexandria" â€” ÙŠØ³ØªØ®Ø¯Ù… Ù„Ù†Øµ Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø§Ù„Ù†ØµÙŠØ© Ø§Ù„Ø¹Ø±Ø¨ÙŠØ© (Ù†ÙØ³ Ø´ÙƒÙ„ Ø§Ù„Ø®Ø· Ø§Ù„Ù…Ø·Ù„ÙˆØ¨) */}
+        {/* ÎØ "Alexandria" — íÓÊÎÏã áäÕ ÇáãäÔæÑÇÊ ÇáäÕíÉ ÇáÚÑÈíÉ (äİÓ Ôßá ÇáÎØ ÇáãØáæÈ) */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alexandria:wght@400;500;600;700&display=swap" />
@@ -11929,7 +11936,7 @@ export default function AddFriendPage() {
     }}>
 
         {!isFriendManagement && <>
-        {/* â”€â”€ Header â”€â”€ */}
+        {/* ?? Header ?? */}
         <div className="sticky top-0 z-20" style={{
           position: 'relative',
           paddingTop: 40,
@@ -11937,22 +11944,22 @@ export default function AddFriendPage() {
           backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
-          {/* â”€â”€ Top hamburger menu â€” aligned with the username/bio line, and now hides along
+          {/* ?? Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
               non-interactive, matching the fog overlay's own transition). Opens a
               small menu with Music and the Posts-box (shared inbox), keeping those two features
-              tucked away instead of taking their own row. â”€â”€ */}
-          {/* Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ø«Ù„Ø§Ø« Ø®Ø·ÙˆØ· Ø£ÙØ²ÙŠÙ„Øª Ø¨Ø§Ù„ÙƒØ§Ù…Ù„ Ù…Ù† Ø§Ù„Ù‡ÙˆÙ… â€” Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰ ÙÙŠ Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª */}
+              tucked away instead of taking their own row. ?? */}
+          {/* ŞÇÆãÉ ÇáËáÇË ÎØæØ ÃõÒíáÊ ÈÇáßÇãá ãä Çáåæã — ÇáãæÓíŞì İí ÇáÅÚÏÇÏÇÊ */}
 
           {/* Animated radar (text posts) button - now in the bottom bar (RootLayout) */}
 
 
-          {/* â”€â”€ Everything above the Video|Post|Photo switcher (music button, avatar/stats
+          {/* ?? Everything above the Video|Post|Photo switcher (music button, avatar/stats
               row, stories strip, new-post + inbox icons) collapses together as one shutter,
-              toggled only by the grabber bar below â€” never by scrolling. A dark blurred fog
-              overlay covers it first, so nothing is ever seen half-cut mid-collapse â€” closing
+              toggled only by the grabber bar below — never by scrolling. A dark blurred fog
+              overlay covers it first, so nothing is ever seen half-cut mid-collapse — closing
               fogs it over immediately then the space shrinks away behind the fog; opening
-              expands the space first, then the fog lifts to reveal everything cleanly. â”€â”€ */}
+              expands the space first, then the fog lifts to reveal everything cleanly. ?? */}
           <div style={{
             display: 'grid',
             gridTemplateRows: headerOpen ? '1fr' : '0fr',
@@ -11975,12 +11982,12 @@ export default function AddFriendPage() {
           {/* Row 1 + Row 2: story circle + stats, then the friends' stories strip */}
           {pageTab === 'profile' && (
           <div>
-          {/* Row 1: story circle + Post/Followers/Following â€” restored to its original place. The Inbox
+          {/* Row 1: story circle + Post/Followers/Following — restored to its original place. The Inbox
               (shared-posts / my story posts) button now lives in the unified nav row below, always visible.
               The decorative Globe next to "Following" has been removed. */}
           {pageTab === 'profile' && (
             <div className="flex items-center px-5" style={{ paddingBottom: 8, gap: 14 }}>
-              {/* â”€â”€ My story circle â€” same place as before â”€â”€ */}
+              {/* ?? My story circle — same place as before ?? */}
               {user && (() => {
                 const myGroup = storyGroups.find(g => g.userId === user?.id);
                 const hasStory = !!myGroup && myGroup.items.length > 0;
@@ -11994,7 +12001,7 @@ export default function AddFriendPage() {
                           if (myGroup) {
                             setViewerGroupIdx(storyGroups.indexOf(myGroup));
                           } else {
-                            // Ø¨Ø¯ÙˆÙ† Ù‚Ø§Ø¦Ù…Ø© Photo/Video â€” Ø§ÙØªØ­ Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ù†Ø´Ø± (Ù‚ØµØ© / ÙƒØ§Ù…ÙŠØ±Ø§)
+                            // ÈÏæä ŞÇÆãÉ Photo/Video — ÇİÊÍ ŞÇÆãÉ ÇáäÔÑ (ŞÕÉ / ßÇãíÑÇ)
                             setPublishMenuOpen(true);
                           }
                         }}
@@ -12002,7 +12009,7 @@ export default function AddFriendPage() {
                         style={{ width: 76, height: 76, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
                       >
                         {/* One fixed circular frame: the photo is clipped inside it and can never overflow. */}
-                        {/* Ø¥Ø·Ø§Ø± Ø£Ø²Ø±Ù‚ Ø«Ø§Ø¨Øª + ØµÙˆØ±Ø© Ø«Ø§Ø¨ØªØ© */}
+                        {/* ÅØÇÑ ÃÒÑŞ ËÇÈÊ + ÕæÑÉ ËÇÈÊÉ */}
                         <div style={{
                           position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'hidden',
                           background: 'hsl(var(--card))',
@@ -12013,7 +12020,7 @@ export default function AddFriendPage() {
                           <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={68} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
                         </div>
                       </motion.button>
-                      {/* + badge â€” its own button now: always opens the Ù†Ø´Ø± Ø¥Ø¹Ù„Ø§Ù† Ù„Ù„Ù‚ØµØ©/ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ
+                      {/* + badge — its own button now: always opens the äÔÑ ÅÚáÇä ááŞÕÉ/ÕæÑÉ/İíÏíæ
                           menu, whether or not a story already exists. */}
                       <motion.button
                         whileTap={{ scale: 0.88 }}
@@ -12021,7 +12028,7 @@ export default function AddFriendPage() {
                         transition={{ duration: 2.4, repeat: Infinity, ease: 'linear' }}
                         onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); }}
                         disabled={storyUploading || quickPublishing}
-                        aria-label="Ø®ÙŠØ§Ø±Ø§Øª Ø§Ù„Ù†Ø´Ø±"
+                        aria-label="ÎíÇÑÇÊ ÇáäÔÑ"
                         style={{
                           position: 'absolute', bottom: 1, right: 1,
                           width: 22, height: 22, borderRadius: '50%',
@@ -12040,15 +12047,15 @@ export default function AddFriendPage() {
                       </motion.button>
                     </div>
                     <span style={{ fontSize: '0.58rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500 }}>
-                      Ù‚ØµØªÙŠ
+                      ŞÕÊí
                     </span>
                   </div>
                 );
               })()}
 
-              {/* â”€â”€ Username | Bio (same line, spaced apart with a divider) / Post-Followers-Following-Likes (untouched) â”€â”€ */}
+              {/* ?? Username | Bio (same line, spaced apart with a divider) / Post-Followers-Following-Likes (untouched) ?? */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 6, flex: 1 }}>
-                {/* Pinned track â€” shown right above my name/username, playable from here too. */}
+                {/* Pinned track — shown right above my name/username, playable from here too. */}
                 {pinnedTrack && <PinnedTrackBar track={pinnedTrack} />}
                 {(myUsername || myBio) && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -12108,7 +12115,7 @@ export default function AddFriendPage() {
             </div>
           )}
 
-          {/* Row 2: Friends' stories strip â€” shown under the story circle on the PROFILE tab */}
+          {/* Row 2: Friends' stories strip — shown under the story circle on the PROFILE tab */}
           {pageTab === 'profile' && (
             <>
               <style>{`
@@ -12126,7 +12133,7 @@ export default function AddFriendPage() {
                   alignItems: 'center',
                 }}
               >
-                {/* Ø³ØªÙˆØ±ÙŠØ§Øª Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† ÙÙ‚Ø· ÙÙŠ Ø´Ø±ÙŠØ· Ø§Ù„Ù‡ÙŠØ¯Ø± â€” Ø§Ù„Ø´Ø±ÙƒØ§Øª ÙÙŠ ØªØ¨ÙˆÙŠØ¨ Company */}
+                {/* ÓÊæÑíÇÊ ÇáãÓÊÎÏãíä İŞØ İí ÔÑíØ ÇáåíÏÑ — ÇáÔÑßÇÊ İí ÊÈæíÈ Company */}
                 {storyGroups.filter(g => {
                   if (g.userId === user?.id) return false;
                   return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
@@ -12140,16 +12147,16 @@ export default function AddFriendPage() {
                         onClick={() => setViewerGroupIdx(realIdx)}
                         style={{ width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
                       >
-                        {/* Ø­Ù„Ù‚Ø© Ø¨Ù„ÙˆÙ†ÙŠÙ† ÙÙ‚Ø·: Ø£ØµÙØ± ÙƒØ§Ù…Ù„ Ù…Ø§ Ø¯Ø§Ù… ÙÙŠ Ø¹Ù†ØµØ± ØºÙŠØ± Ù…ÙØ´Ø§Ù‡ÙØ¯ØŒ
-                            ÙˆØ£Ø²Ø±Ù‚ ÙƒØ§Ù…Ù„ (Ù†ÙØ³ Ø£Ø²Ø±Ù‚ Ø¯Ø§Ø¦Ø±Ø© "Ù‚ØµØªÙŠ") Ø¨Ø¹Ø¯ Ù…Ø´Ø§Ù‡Ø¯Ø© ÙƒÙ„ Ø§Ù„Ø¹Ù†Ø§ØµØ± */}
+                        {/* ÍáŞÉ Èáæäíä İŞØ: ÃÕİÑ ßÇãá ãÇ ÏÇã İí ÚäÕÑ ÛíÑ ãõÔÇåóÏ¡
+                            æÃÒÑŞ ßÇãá (äİÓ ÃÒÑŞ ÏÇÆÑÉ "ŞÕÊí") ÈÚÏ ãÔÇåÏÉ ßá ÇáÚäÇÕÑ */}
                         <div style={{
                           position: 'absolute', inset: 0, borderRadius: '50%',
                           background: storyRingColor(g.items, '#facc15', '#0ea5e9'),
                           padding: 3, boxSizing: 'border-box',
                           boxShadow: hasUnseen ? '0 0 8px rgba(250,204,21,0.45)' : 'none',
                         }}>
-                          {/* ÙˆÙ…ÙŠØ¶ Ø¯ÙˆÙ‘Ø§Ø± ÙŠØ¸Ù‡Ø± ÙÙ‚Ø· Ø¯Ø§Ø®Ù„ Ø´Ø±ÙŠØ· Ø§Ù„Ø­Ù„Ù‚Ø© Ø§Ù„Ø²Ø±Ù‚Ø§Ø¡ (Ø¨Ø¹Ø¯ Ø§Ù„Ù…Ø´Ø§Ù‡Ø¯Ø©)
-                              Ù„ÙŠØ«Ø¨Øª Ø¥Ù† ÙÙŠÙ‡ Ø³ØªÙˆØ±ÙŠ Ø­Ø§Ù„ÙŠ â€” Ø§Ù„Ø­Ù„Ù‚Ø© Ø§Ù„ØµÙØ±Ø§Ø¡ ØªØ¨Ù‚Ù‰ Ø«Ø§Ø¨ØªØ© Ø¨Ø¯ÙˆÙ† Ø­Ø±ÙƒØ© */}
+                          {/* æãíÖ ÏæøÇÑ íÙåÑ İŞØ ÏÇÎá ÔÑíØ ÇáÍáŞÉ ÇáÒÑŞÇÁ (ÈÚÏ ÇáãÔÇåÏÉ)
+                              áíËÈÊ Åä İíå ÓÊæÑí ÍÇáí — ÇáÍáŞÉ ÇáÕİÑÇÁ ÊÈŞì ËÇÈÊÉ ÈÏæä ÍÑßÉ */}
                           {!hasUnseen && g.items.length > 0 && (
                             <div
                               className="story-ring-shimmer"
@@ -12176,19 +12183,19 @@ export default function AddFriendPage() {
           </div>
           )}
 
-          {/* Actions row removed â€” text-posts button now lives in the header next to the globe. */}
+          {/* Actions row removed — text-posts button now lives in the header next to the globe. */}
             </div>
           </div>
 
-          {/* â”€â”€ Header show/hide grabber â€” sits exactly above the Video|Post|Photo switcher.
+          {/* ?? Header show/hide grabber — sits exactly above the Video|Post|Photo switcher.
               Tapping it toggles the whole header above it open/closed like a shutter.
               It bounces gently up/down on a loop until the user taps it once, to draw the
-              eye toward the feature â€” then it settles down and stays still. â”€â”€ */}
+              eye toward the feature — then it settles down and stays still. ?? */}
           <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={() => { setHeaderOpen(o => !o); setHeaderHintSeen(true); }}
-              aria-label={headerOpen ? 'Ø¥Ø®ÙØ§Ø¡ Ø§Ù„Ù‡ÙŠØ¯Ø±' : 'Ø¥Ø¸Ù‡Ø§Ø± Ø§Ù„Ù‡ÙŠØ¯Ø±'}
+              aria-label={headerOpen ? 'ÅÎİÇÁ ÇáåíÏÑ' : 'ÅÙåÇÑ ÇáåíÏÑ'}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
                 padding: '8px 30px',
@@ -12210,48 +12217,18 @@ export default function AddFriendPage() {
           </div>
 
 
-          {/* Content header â€” single Post section */}
+          {/* Content header — single Post section */}
           {pageTab === 'profile' && (
             <div style={{ padding: '0 0 8px' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                position: 'relative',
                 padding: '9px 4px', marginBottom: 8,
                 borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}`,
                 color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800,
                 background: CLR_TAB_ACTIVE,
               }}>
                 <FileText size={14} strokeWidth={2} />
-                {isCompanyPublisher ? 'Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª' : 'Post'}
-                {/* New Post â€” same action as the button in the general text-posts section,
-                    added here so it's reachable directly from this profile/story page too. */}
-                {user && (
-                  <motion.button
-                    type="button"
-                    whileTap={{ scale: 0.96 }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setComposerDestination('text');
-                      setComposerError('');
-                      try { clearPostMedia(); } catch { /* */ }
-                      window.setTimeout(() => setShowComposer(true), 0);
-                    }}
-                    aria-label="Create a text post"
-                    style={{
-                      position: 'absolute', insetInlineEnd: 10, top: '50%', transform: 'translateY(-50%)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      height: 28, padding: '0 12px', borderRadius: 16,
-                      border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                      background: CLR_PRIMARY_FAINT,
-                      color: CLR_PRIMARY,
-                      cursor: 'pointer',
-                      touchAction: 'manipulation',
-                    }}
-                  >
-                    <PenLine size={13} strokeWidth={2.2} />
-                    <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.02em' }}>New Post</span>
-                  </motion.button>
-                )}
+                {isCompanyPublisher ? 'ÇáãäÊÌÇÊ' : 'Post'}
               </div>
               <div style={{ height: 1, background: CLR_NAV_BORDER }} />
             </div>
@@ -12259,7 +12236,7 @@ export default function AddFriendPage() {
         </div>
         </>}
 
-        {/* â”€â”€ Content â”€â”€ */}
+        {/* ?? Content ?? */}
         <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
         <div className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{
           WebkitOverflowScrolling: 'touch',
@@ -12269,9 +12246,9 @@ export default function AddFriendPage() {
         }}>
           <AnimatePresence mode="wait">
 
-            {/* â•â• Post page â€” stories live in the header above; text posts sit directly under the
+            {/* ?? Post page — stories live in the header above; text posts sit directly under the
                 stories strip behind the STOOORNA divider, and the personal media grid follows further
-                down. The separate FEED tab has been merged into this single page. â•â• */}
+                down. The separate FEED tab has been merged into this single page. ?? */}
             {pageTab === 'profile' && <motion.div key="profile-tab" initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} className="flex flex-col">
 
                 {/* Hidden file input for story upload */}
@@ -12299,14 +12276,14 @@ export default function AddFriendPage() {
                   }}
                 />
 
-                {/* â•â• Call rectangle â€” hidden by default on your own profile; appears here, right
+                {/* ?? Call rectangle — hidden by default on your own profile; appears here, right
                     above the tab switcher, the moment someone actually opens your profile, and
-                    disappears again once they leave. Never shown otherwise. â•â• */}
+                    disappears again once they leave. Never shown otherwise. ?? */}
                 {profileVisitors.length > 0 && user && (
                   <div style={{ display: 'flex', justifyContent: 'flex-end', direction: 'ltr', padding: '6px 16px 2px' }}>
                     <GlobeVoiceControl
                       userId={user.id}
-                      userName={user.name ?? user.email ?? 'Ù…Ø³ØªØ®Ø¯Ù…'}
+                      userName={user.name ?? user.email ?? 'ãÓÊÎÏã'}
                       avatarUrl={(user as any)?.avatarUrl ?? null}
                       peerId={profileVisitors[0].userId}
                       hasProfileVisitor
@@ -12316,18 +12293,18 @@ export default function AddFriendPage() {
                 )}
 
 
-                {/* â”€â”€ My posts (text posts + publicly-published photos/videos, Video/Photo
-                    grids removed â€” everything I publish lands here). Same as the story/friend
+                {/* ?? My posts (text posts + publicly-published photos/videos, Video/Photo
+                    grids removed — everything I publish lands here). Same as the story/friend
                     profile page: shown three-per-row regardless of type (text+video, text
                     alone, or text+image), pinned post first. Tapping any tile opens the full
-                    post page the same way a text post opens (openTextPostDetail). â”€â”€ */}
+                    post page the same way a text post opens (openTextPostDetail). ?? */}
                 {(() => {
                   let myTextPosts = combinedFeedPosts.filter(p =>
                     !!user && String(p.authorId) === String(user.id)
                   );
-                  // Single Post section â€” show all posts (no Video/Photo split)
+                  // Single Post section — show all posts (no Video/Photo split)
                   ;
-                  // Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø§Ù„Ù…Ø«Ø¨Ù‘Øª (Ø¥Ù† ÙˆÙØ¬Ø¯) ÙŠØ¸Ù‡Ø± Ø£ÙˆÙ„Ù‹Ø§ØŒ ÙˆØ§Ù„Ø¨Ø§Ù‚ÙŠ ÙŠØªØ¨Ø¹Ù‡ Ø¨ØªØ±ØªÙŠØ¨Ù‡ Ø§Ù„Ø·Ø¨ÙŠØ¹ÙŠ
+                  // ÇáãäÔæÑ ÇáãËÈøÊ (Åä æõÌÏ) íÙåÑ ÃæáğÇ¡ æÇáÈÇŞí íÊÈÚå ÈÊÑÊíÈå ÇáØÈíÚí
                   if (pinnedPostId !== null) {
                     const pinnedIndex = myTextPosts.findIndex(p => p.id === pinnedPostId);
                     if (pinnedIndex > 0) {
@@ -12346,7 +12323,7 @@ export default function AddFriendPage() {
                           <FileText size={20} strokeWidth={1.5} />
                         </div>
                         <p style={{ color: CLR_TEXT_DIM, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
-                          Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ù†Ø´ÙˆØ±Ø§Øª Ù†ØµÙŠØ© Ø¨Ø¹Ø¯
+                          áÇ ÊæÌÏ ãäÔæÑÇÊ äÕíÉ ÈÚÏ
                         </p>
                       </div>
                     );
@@ -12354,15 +12331,15 @@ export default function AddFriendPage() {
                   const enrichedMyPosts = myTextPosts.map(post => {
                     const rawThumbUrl = post.mediaUrls?.[0] ?? post.mediaUrl;
                     const rawIsVideo = (post.mediaTypes?.[0] ?? post.mediaType) === 'video';
-                    // Ø¥Ø°Ø§ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø¨Ø¯ÙˆÙ† ÙˆØ³Ø§Ø¦Ø· Ù…Ø±ÙÙ‚Ø© Ù„ÙƒÙ† Ù†ØµÙ‘Ù‡ ÙŠØ­ØªÙˆÙŠ Ø±Ø§Ø¨Ø· ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ Ù…Ø¨Ø§Ø´Ø± â€”
-                    // Ù†Ø³ØªØ®Ø±Ø¬Ù‡ ÙˆÙ†Ø¹Ø±Ø¶Ù‡ ÙƒØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ Ù…ØµØºÙ‘Ø± Ø¨Ø¯Ù„ ØªØ±Ùƒ Ø§Ù„Ø±Ø§Ø¨Ø· Ø§Ù„Ø®Ø§Ù… ÙŠØ¸Ù‡Ø± ÙƒÙ†Øµ Ø¹Ø§Ø¯ÙŠ.
+                    // ÅĞÇ ÇáãäÔæÑ ÈÏæä æÓÇÆØ ãÑİŞÉ áßä äÕøå íÍÊæí ÑÇÈØ ÕæÑÉ/İíÏíæ ãÈÇÔÑ —
+                    // äÓÊÎÑÌå æäÚÑÖå ßÕæÑÉ/İíÏíæ ãÕÛøÑ ÈÏá ÊÑß ÇáÑÇÈØ ÇáÎÇã íÙåÑ ßäÕ ÚÇÏí.
                     const productAd = parseProductAd(post.text);
                     const textEmbed = !rawThumbUrl && post.text && !productAd ? extractTextMediaEmbeds(post.text) : null;
                     const embeddedMedia = textEmbed?.embeds?.[0] ?? null;
                     const thumbUrl = rawThumbUrl ?? embeddedMedia?.url;
                     const isVideo = rawThumbUrl ? rawIsVideo : embeddedMedia?.type === 'video';
                     const displayText = productAd
-                      ? [productAd.title, productAd.price].filter(Boolean).join(' Â· ')
+                      ? [productAd.title, productAd.price].filter(Boolean).join(' · ')
                       : textEmbed ? textEmbed.cleanText : post.text;
                     const isPinnedPost = pinnedPostId === post.id;
                     return { post, thumbUrl, isVideo, displayText, isPinnedPost };
@@ -12374,7 +12351,7 @@ export default function AddFriendPage() {
                           key={post.repostKey ?? post.id}
                           type="button"
                           onClick={() => openSinglePostView(post)}
-                          aria-label={thumbUrl ? (isVideo ? 'ÙØªØ­ Ø§Ù„ÙÙŠØ¯ÙŠÙˆ' : 'ÙØªØ­ Ø§Ù„ØµÙˆØ±Ø©') : 'ÙØªØ­ Ø§Ù„Ù…Ù†Ø´ÙˆØ±'}
+                          aria-label={thumbUrl ? (isVideo ? 'İÊÍ ÇáİíÏíæ' : 'İÊÍ ÇáÕæÑÉ') : 'İÊÍ ÇáãäÔæÑ'}
                           style={{
                             position: 'relative', width: '100%', aspectRatio: '1 / 1', overflow: 'hidden',
                             border: isPinnedPost ? '3px solid #ef4444' : 'none', boxSizing: 'border-box', padding: 0,
@@ -12410,7 +12387,7 @@ export default function AddFriendPage() {
                               </p>
                             </div>
                           )}
-                          {/* Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø§Ù„Ù…Ø«Ø¨Ù‘Øª ÙŠØ¨ÙŠÙ† Ø¨Ø§Ù„Ø£Ø­Ù…Ø± */}
+                          {/* ÇáãäÔæÑ ÇáãËÈøÊ íÈíä ÈÇáÃÍãÑ */}
                           {isPinnedPost && (
                             <div style={{
                               position: 'absolute', top: 6, insetInlineStart: 6,
@@ -12428,7 +12405,7 @@ export default function AddFriendPage() {
                 })()}
               </motion.div>}
 
-            {/* â•â• ADD TAB: Search + Requests â•â• */}
+            {/* ?? ADD TAB: Search + Requests ?? */}
             {pageTab === 'add' && <motion.div key="add-tab" initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} className="flex flex-col gap-4">
 
                 {/* Inner sub-tabs: Search | Requests */}
@@ -12483,7 +12460,7 @@ export default function AddFriendPage() {
                 }}>
                         <Search size={16} strokeWidth={2} />
                       </div>
-                      <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by username or nameâ€¦" autoFocus style={{
+                      <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by username or name…" autoFocus style={{
                   width: '100%',
                   background: CLR_INPUT_BG,
                   border: `1px solid ${CLR_PRIMARY_BORDER}`,
@@ -12546,7 +12523,7 @@ export default function AddFriendPage() {
                             color: CLR_TEXT,
                             fontSize: '0.88rem',
                             fontWeight: 500
-                          }}>{u.name ?? 'â€”'}</p>
+                          }}>{u.name ?? '—'}</p>
                                     <p style={{
                             color: CLR_TEXT_DIM,
                             fontSize: '0.72rem',
@@ -12692,7 +12669,7 @@ export default function AddFriendPage() {
                         color: CLR_TEXT,
                         fontSize: '0.88rem',
                         fontWeight: 500
-                      }}>{req.name ?? 'â€”'}</p>
+                      }}>{req.name ?? '—'}</p>
                                 <p style={{
                         color: CLR_TEXT_DIM,
                         fontSize: '0.72rem'
@@ -12747,7 +12724,7 @@ export default function AddFriendPage() {
           {hashtagView && (
             <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 10195, background: 'hsl(var(--background))', overflowY: 'auto', paddingBottom: 28 }}>
               <div style={{ position: 'sticky', top: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 10, padding: '16px 14px', background: 'hsl(var(--background))', borderBottom: '1px solid hsl(var(--border))' }}>
-                <button onClick={() => setHashtagView(null)} aria-label="Ø±Ø¬ÙˆØ¹" style={{ background: 'none', border: 'none', color: 'hsl(var(--foreground))', cursor: 'pointer', display: 'flex' }}><ArrowLeft size={22} /></button>
+                <button onClick={() => setHashtagView(null)} aria-label="ÑÌæÚ" style={{ background: 'none', border: 'none', color: 'hsl(var(--foreground))', cursor: 'pointer', display: 'flex' }}><ArrowLeft size={22} /></button>
                 <Hash size={19} color="hsl(var(--primary))" />
                 <strong style={{ color: 'hsl(var(--foreground))', fontSize: '1rem' }}>{hashtagView.tag}</strong>
               </div>
@@ -12768,7 +12745,7 @@ export default function AddFriendPage() {
                   </div>
                   <PostText text={post.text} color="hsl(var(--primary))" textColor={CLR_TEXT_DIM} onHashtag={openHashtag} />
                 </div>
-              )) : <p style={{ color: 'hsl(var(--muted-foreground))', textAlign: 'center', padding: 32 }}>Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…Ù†Ø´ÙˆØ±Ø§Øª Ù„Ù‡Ø°Ø§ Ø§Ù„Ù‡Ø§Ø´ØªØ§Ù‚ Ø¨Ø¹Ø¯</p>}
+              )) : <p style={{ color: 'hsl(var(--muted-foreground))', textAlign: 'center', padding: 32 }}>áÇ ÊæÌÏ ãäÔæÑÇÊ áåĞÇ ÇáåÇÔÊÇŞ ÈÚÏ</p>}
             </motion.div>
           )}
         </AnimatePresence>
@@ -12779,7 +12756,7 @@ export default function AddFriendPage() {
               <motion.div initial={{ y: 80 }} animate={{ y: 0 }} exit={{ y: 80 }} onClick={event => event.stopPropagation()} style={{ width: '100%', maxHeight: '78dvh', overflowY: 'auto', borderRadius: '22px 22px 0 0', background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', padding: '18px 16px 28px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}><strong style={{ color: 'hsl(var(--foreground))' }}>Send post to friends</strong><button onClick={() => setSharePost(null)} style={{ background: 'none', border: 'none', color: 'hsl(var(--foreground))', cursor: 'pointer' }}><X size={20} /></button></div>
                 <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.74rem', margin: '0 0 12px' }}>Choose friends to send this post in a private chat.</p>
-                <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.72rem', margin: '0 0 10px' }}>Ø§Ø¶ØºØ· Ø¹Ù„Ù‰ ØµØ¯ÙŠÙ‚ Ù„Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ù…Ø¨Ø§Ø´Ø±Ø© Ø¥Ù„Ù‰ Ø¯Ø±Ø¯Ø´ØªÙ‡ (ØµÙˆØ±Ø©/ÙÙŠØ¯ÙŠÙˆ + Ø§Ù„Ù†Øµ ÙÙŠ Ù…Ø±Ø¨Ø¹ ÙˆØ§Ø­Ø¯).</p>
+                <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.72rem', margin: '0 0 10px' }}>ÇÖÛØ Úáì ÕÏíŞ áÅÑÓÇá ÇáãäÔæÑ ãÈÇÔÑÉ Åáì ÏÑÏÔÊå (ÕæÑÉ/İíÏíæ + ÇáäÕ İí ãÑÈÚ æÇÍÏ).</p>
                 {friends.length ? friends.map(friend => {
                   return <button key={friend.friendId} disabled={sharingPost} onClick={() => void sharePostToFriend(friend.friendId)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 4px', background: 'none', border: 'none', color: 'hsl(var(--foreground))', cursor: sharingPost ? 'wait' : 'pointer', textAlign: 'start', opacity: sharingPost ? 0.6 : 1 }}>
                     <UserAvatar name={friend.name ?? friend.username ?? 'User'} avatarUrl={friend.avatarUrl} size={38} />
@@ -12788,14 +12765,14 @@ export default function AddFriendPage() {
                   </button>;
                 }) : <p style={{ color: 'hsl(var(--muted-foreground))', textAlign: 'center', padding: 20 }}>Add friends first to share posts with them</p>}
                 {shareError && <p style={{ color: 'hsl(var(--destructive))', fontSize: '0.75rem' }}>{shareError}</p>}
-                {sharingPost && <p style={{ color: 'hsl(var(--primary))', fontSize: '0.75rem', textAlign: 'center', marginTop: 8 }}>Ø¬Ø§Ø±ÙŠ Ø§Ù„Ø¥Ø±Ø³Ø§Ù„â€¦</p>}
+                {sharingPost && <p style={{ color: 'hsl(var(--primary))', fontSize: '0.75rem', textAlign: 'center', marginTop: 8 }}>ÌÇÑí ÇáÅÑÓÇá…</p>}
               </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* â”€â”€ Friend Action Menu (Ø­Ø¸Ø± / Ø­Ø°Ù) â€” ÙŠÙØªØ­ ÙÙŠ Ù…Ù†ØªØµÙ Ø§Ù„Ø´Ø§Ø´Ø© â”€â”€ */}
+      {/* ?? Friend Action Menu (ÍÙÑ / ÍĞİ) — íİÊÍ İí ãäÊÕİ ÇáÔÇÔÉ ?? */}
       <AnimatePresence>
         {openActionMenu !== null && (() => {
         const menuFriend = friends.find(fr => fr.id === openActionMenu);
@@ -12853,7 +12830,7 @@ export default function AddFriendPage() {
               textAlign: 'right',
               justifyContent: 'flex-end'
             }}>
-                  Ø­Ø¸Ø±
+                  ÍÙÑ
                   <ShieldOff size={16} strokeWidth={2} />
                 </motion.button>
                 <div style={{
@@ -12882,7 +12859,7 @@ export default function AddFriendPage() {
               textAlign: 'right',
               justifyContent: 'flex-end'
             }}>
-                  Ø­Ø°Ù
+                  ÍĞİ
                   <Trash2 size={16} strokeWidth={2} />
                 </motion.button>
               </motion.div>
@@ -12890,7 +12867,7 @@ export default function AddFriendPage() {
       })()}
       </AnimatePresence>
 
-      {/* â”€â”€ New Secret Chat Modal â”€â”€ */}
+      {/* ?? New Secret Chat Modal ?? */}
       <AnimatePresence>
         {false && showNewSecret && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
@@ -12945,7 +12922,7 @@ export default function AddFriendPage() {
                 fontWeight: 700,
                 letterSpacing: '0.2em',
                 textTransform: 'uppercase'
-              }}>Ø¯Ø±Ø¯Ø´Ø© Ø³Ø±ÙŠØ© Ø¬Ø¯ÙŠØ¯Ø©</p>
+              }}>ÏÑÏÔÉ ÓÑíÉ ÌÏíÏÉ</p>
                 </div>
                 <motion.button whileTap={{
               scale: 0.9
@@ -12958,7 +12935,7 @@ export default function AddFriendPage() {
                   <X size={18} />
                 </motion.button>
               </div>
-              <input type="text" value={scName} onChange={e => setScName(e.target.value)} placeholder="Ø§Ø³Ù… Ø§Ù„Ø¯Ø±Ø¯Ø´Ø© Ø§Ù„Ø³Ø±ÙŠØ©â€¦" style={{
+              <input type="text" value={scName} onChange={e => setScName(e.target.value)} placeholder="ÇÓã ÇáÏÑÏÔÉ ÇáÓÑíÉ…" style={{
             width: '100%',
             background: CLR_INPUT_BG,
             border: `1px solid ${CLR_PRIMARY_BORDER}`,
@@ -12980,7 +12957,7 @@ export default function AddFriendPage() {
               transform: 'translateY(-50%)',
               color: CLR_PRIMARY_DIM
             }} />
-                <input type={scPinVisible ? 'text' : 'password'} inputMode="numeric" maxLength={8} value={scPin} onChange={e => setScPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="Ø§Ù„Ø±Ù‚Ù… Ø§Ù„Ø³Ø±ÙŠ (4-8 Ø£Ø±Ù‚Ø§Ù…)" style={{
+                <input type={scPinVisible ? 'text' : 'password'} inputMode="numeric" maxLength={8} value={scPin} onChange={e => setScPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="ÇáÑŞã ÇáÓÑí (4-8 ÃÑŞÇã)" style={{
               width: '100%',
               boxSizing: 'border-box',
               background: CLR_INPUT_BG,
@@ -13013,7 +12990,7 @@ export default function AddFriendPage() {
               letterSpacing: '0.2em',
               textTransform: 'uppercase',
               marginBottom: 8
-            }}>Ø£Ø¶Ù Ø£ØµØ¯Ù‚Ø§Ø¡</p>
+            }}>ÃÖİ ÃÕÏŞÇÁ</p>
                 <div style={{
               display: 'flex',
               flexDirection: 'column',
@@ -13045,7 +13022,7 @@ export default function AddFriendPage() {
                       color: CLR_TEXT,
                       fontSize: '0.85rem',
                       fontWeight: 500
-                    }}>{f.name ?? 'â€”'}</p>
+                    }}>{f.name ?? '—'}</p>
                           {f.username && <p style={{
                       color: CLR_TEXT_DIM,
                       fontSize: '0.7rem'
@@ -13062,7 +13039,7 @@ export default function AddFriendPage() {
                 fontSize: '0.8rem',
                 textAlign: 'center',
                 padding: '16px 0'
-              }}>Ø£Ø¶Ù Ø£ØµØ¯Ù‚Ø§Ø¡ Ø£ÙˆÙ„Ø§Ù‹</p>}
+              }}>ÃÖİ ÃÕÏŞÇÁ ÃæáÇğ</p>}
                 </div>
               </div>
               <motion.button whileTap={{
@@ -13082,7 +13059,7 @@ export default function AddFriendPage() {
             gap: 6
           }}>
                 <Lock size={14} strokeWidth={2} />
-                {scCreating ? 'Ø¬Ø§Ø±ÙŠ Ø§Ù„Ø¥Ù†Ø´Ø§Ø¡â€¦' : 'Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„Ø¯Ø±Ø¯Ø´Ø© Ø§Ù„Ø³Ø±ÙŠØ©'}
+                {scCreating ? 'ÌÇÑí ÇáÅäÔÇÁ…' : 'ÅäÔÇÁ ÇáÏÑÏÔÉ ÇáÓÑíÉ'}
               </motion.button>
               {scError && <p style={{
             color: 'hsl(var(--destructive))',
@@ -13094,7 +13071,7 @@ export default function AddFriendPage() {
           </motion.div>}
       </AnimatePresence>
 
-      {/* â”€â”€ PIN Gate Modal â”€â”€ */}
+      {/* ?? PIN Gate Modal ?? */}
       <AnimatePresence>
         {false && openingChat && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
@@ -13152,7 +13129,7 @@ export default function AddFriendPage() {
             color: CLR_TEXT_DIM,
             fontSize: '0.8rem',
             textAlign: 'center'
-          }}>Ø£Ø¯Ø®Ù„ Ø§Ù„Ø±Ù‚Ù… Ø§Ù„Ø³Ø±ÙŠ Ù„Ù„Ø¯Ø®ÙˆÙ„</p>
+          }}>ÃÏÎá ÇáÑŞã ÇáÓÑí ááÏÎæá</p>
               <div style={{
             position: 'relative',
             width: '100%'
@@ -13160,7 +13137,7 @@ export default function AddFriendPage() {
                 <input type={openPinVisible ? 'text' : 'password'} inputMode="numeric" maxLength={8} value={openPin} onChange={e => {
               setOpenPin(e.target.value.replace(/\D/g, '').slice(0, 8));
               setOpenPinError('');
-            }} placeholder="Ø§Ù„Ø±Ù‚Ù… Ø§Ù„Ø³Ø±ÙŠ" autoFocus style={{
+            }} placeholder="ÇáÑŞã ÇáÓÑí" autoFocus style={{
               width: '100%',
               boxSizing: 'border-box',
               background: CLR_INPUT_BG,
@@ -13211,7 +13188,7 @@ export default function AddFriendPage() {
               fontWeight: 600,
               cursor: 'pointer'
             }}>
-                  Ø¥Ù„ØºØ§Ø¡
+                  ÅáÛÇÁ
                 </motion.button>
                 <motion.button whileTap={{
               scale: 0.95
@@ -13227,14 +13204,14 @@ export default function AddFriendPage() {
               cursor: 'pointer',
               opacity: !openPin || openPinChecking ? 0.5 : 1
             }}>
-                  {openPinChecking ? 'â€¦' : 'Ø¯Ø®ÙˆÙ„'}
+                  {openPinChecking ? '…' : 'ÏÎæá'}
                 </motion.button>
               </div>
             </motion.div>
           </motion.div>}
       </AnimatePresence>
 
-      {/* â”€â”€ Active Secret Chat â”€â”€ */}
+      {/* ?? Active Secret Chat ?? */}
       <AnimatePresence>
         {false && activeChat && <motion.div initial={{
         opacity: 0,
@@ -13286,7 +13263,7 @@ export default function AddFriendPage() {
           }}>{activeChat.name}</p>
               <motion.button whileTap={{
             scale: 0.88
-          }} onClick={() => void callActiveSecretChat()} aria-label="Call secret chat participants" title="Ø§ØªØµØ§Ù„ Ø¨Ø£Ø¹Ø¶Ø§Ø¡ Ø§Ù„Ø¯Ø±Ø¯Ø´Ø© Ø§Ù„Ø³Ø±ÙŠØ©" style={{
+          }} onClick={() => void callActiveSecretChat()} aria-label="Call secret chat participants" title="ÇÊÕÇá ÈÃÚÖÇÁ ÇáÏÑÏÔÉ ÇáÓÑíÉ" style={{
             background: CLR_PRIMARY_FAINT,
             border: `1px solid ${CLR_PRIMARY_BORDER}`,
             borderRadius: 10,
@@ -13327,7 +13304,7 @@ export default function AddFriendPage() {
             color: CLR_TEXT_DIM,
             fontSize: '0.82rem',
             marginTop: 40
-          }}>Ù„Ø§ ØªÙˆØ¬Ø¯ Ø±Ø³Ø§Ø¦Ù„ Ø¨Ø¹Ø¯</div>}
+          }}>áÇ ÊæÌÏ ÑÓÇÆá ÈÚÏ</div>}
               {chatMessages.map(m => {
             if (m.is_system) {
               return <div key={m.id} style={{
@@ -13373,16 +13350,16 @@ export default function AddFriendPage() {
               hour12: true
             }) : '';
             const FILE_ICONS_SC: Record<string, string> = {
-              pdf: 'ğŸ“„',
-              doc: 'ğŸ“',
-              docx: 'ğŸ“',
-              xls: 'ğŸ“Š',
-              xlsx: 'ğŸ“Š',
-              ppt: 'ğŸ“‘',
-              pptx: 'ğŸ“‘',
-              zip: 'ğŸ—œ',
-              txt: 'ğŸ“ƒ',
-              bin: 'ğŸ“¦'
+              pdf: '??',
+              doc: '??',
+              docx: '??',
+              xls: '??',
+              xlsx: '??',
+              ppt: '??',
+              pptx: '??',
+              zip: '??',
+              txt: '??',
+              bin: '??'
             };
             return <div key={m.id} style={{
               display: 'flex',
@@ -13477,11 +13454,11 @@ export default function AddFriendPage() {
                                 WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
                                 overflow: 'hidden',
                               }}>
-                                {ps.text || 'â€”'}
+                                {ps.text || '—'}
                               </p>
                               <span style={{
                                 color: CLR_PRIMARY, fontSize: '0.68rem', fontWeight: 700,
-                              }}>View post â†’</span>
+                              }}>View post ?</span>
                             </motion.button>
                           );
                         })()}
@@ -13491,7 +13468,7 @@ export default function AddFriendPage() {
                     lineHeight: 1.5,
                     margin: 0
                   }}>{m.body}</p>}
-                        {msgType === 'image' && <img src={m.body} alt="ØµÙˆØ±Ø©" style={{
+                        {msgType === 'image' && <img src={m.body} alt="ÕæÑÉ" style={{
                     maxWidth: 200,
                     maxHeight: 200,
                     borderRadius: 10,
@@ -13516,7 +13493,7 @@ export default function AddFriendPage() {
                   }}>
                             <span style={{
                       fontSize: '1.4rem'
-                    }}>{FILE_ICONS_SC[filePayload.ext] ?? 'ğŸ“'}</span>
+                    }}>{FILE_ICONS_SC[filePayload.ext] ?? '??'}</span>
                             <div style={{
                       overflow: 'hidden'
                     }}>
@@ -13560,7 +13537,7 @@ export default function AddFriendPage() {
           background: 'hsl(var(--background))'
         }}>
 
-              {/* â”€â”€ Typing indicator â”€â”€ */}
+              {/* ?? Typing indicator ?? */}
               <AnimatePresence>
                 {scTypingNames.length > 0 && <motion.div key="typing" initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
               display: 'flex',
@@ -13595,7 +13572,7 @@ export default function AddFriendPage() {
                 color: CLR_TEXT_DIM,
                 fontSize: '0.72rem'
               }}>
-                      {scTypingNames.join('ØŒ ')} ÙŠÙƒØªØ¨...
+                      {scTypingNames.join('¡ ')} íßÊÈ...
                     </span>
                   </motion.div>}
               </AnimatePresence>
@@ -13701,7 +13678,7 @@ export default function AddFriendPage() {
             position: 'relative'
           }}>
 
-                {/* Ø²Ø± + */}
+                {/* ÒÑ + */}
                 <div style={{
               position: 'relative',
               flexShrink: 0
@@ -13762,21 +13739,21 @@ export default function AddFriendPage() {
                 }}>
                         {([{
                     icon: <ImageIcon size={16} />,
-                    label: 'ØµÙˆØ±Ø©',
+                    label: 'ÕæÑÉ',
                     action: () => {
                       scFileInputRef.current?.click();
                       setScShowAttach(false);
                     }
                   }, {
                     icon: <Video size={16} />,
-                    label: 'ÙÙŠØ¯ÙŠÙˆ',
+                    label: 'İíÏíæ',
                     action: () => {
                       scVideoInputRef.current?.click();
                       setScShowAttach(false);
                     }
                   }, {
                     icon: <FileText size={16} />,
-                    label: 'Ù…Ù„Ù',
+                    label: 'ãáİ',
                     action: () => {
                       scDocInputRef.current?.click();
                       setScShowAttach(false);
@@ -13809,7 +13786,7 @@ export default function AddFriendPage() {
                 </div>
 
                 {/* Input */}
-                <input value={chatInput} onChange={e => handleScInputChange(e.target.value)} placeholder="Ø§ÙƒØªØ¨ Ø±Ø³Ø§Ù„Ø©â€¦" onKeyDown={e => {
+                <input value={chatInput} onChange={e => handleScInputChange(e.target.value)} placeholder="ÇßÊÈ ÑÓÇáÉ…" onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 void sendChatMessage();
@@ -13885,7 +13862,7 @@ export default function AddFriendPage() {
           </motion.div>}
       </AnimatePresence>
 
-      {/* â”€â”€ Confirm Remove Friend Dialog â”€â”€ */}
+      {/* ?? Confirm Remove Friend Dialog ?? */}
       <AnimatePresence>
         {confirmRemoveFriend !== null && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
@@ -13933,7 +13910,7 @@ export default function AddFriendPage() {
               fontWeight: 700,
               margin: 0
             }}>
-                  {confirmRemoveFriend.name ?? confirmRemoveFriend.username ?? 'â€”'}
+                  {confirmRemoveFriend.name ?? confirmRemoveFriend.username ?? '—'}
                 </p>
                 {confirmRemoveFriend.username && <p style={{
               color: CLR_TEXT_DIM,
@@ -13948,7 +13925,7 @@ export default function AddFriendPage() {
             textAlign: 'center',
             margin: 0
           }}>
-                Ù‡Ù„ ØªØ±ÙŠØ¯ Ø­Ø°Ù Ù‡Ø°Ø§ Ø§Ù„ØµØ¯ÙŠÙ‚ØŸ Ø³ÙŠÙØ²Ø§Ù„ Ù…Ù† Ù‚Ø§Ø¦Ù…ØªÙƒ ÙˆÙ„Ù† ØªØªÙ…ÙƒÙ† Ù…Ù† Ù…Ø±Ø§Ø³Ù„ØªÙ‡.
+                åá ÊÑíÏ ÍĞİ åĞÇ ÇáÕÏíŞ¿ ÓíõÒÇá ãä ŞÇÆãÊß æáä ÊÊãßä ãä ãÑÇÓáÊå.
               </p>
               <div style={{
             display: 'flex',
@@ -13967,7 +13944,7 @@ export default function AddFriendPage() {
               fontWeight: 600,
               cursor: 'pointer'
             }}>
-                  Ø¥Ù„ØºØ§Ø¡
+                  ÅáÛÇÁ
                 </motion.button>
                 <motion.button whileTap={{
               scale: 0.95
@@ -13998,14 +13975,14 @@ export default function AddFriendPage() {
                 borderRadius: '50%',
                 border: '2px solid rgba(239,68,68,0.3)',
                 borderTopColor: '#ef4444'
-              }} /> : <><Trash2 size={13} strokeWidth={2} /> Ø­Ø°Ù</>}
+              }} /> : <><Trash2 size={13} strokeWidth={2} /> ÍĞİ</>}
                 </motion.button>
               </div>
             </motion.div>
           </motion.div>}
       </AnimatePresence>
 
-      {/* â”€â”€ Confirm Delete Secret Chat (creator only) â”€â”€ */}
+      {/* ?? Confirm Delete Secret Chat (creator only) ?? */}
       <AnimatePresence>
         {confirmDeleteChat && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
@@ -14060,7 +14037,7 @@ export default function AddFriendPage() {
             textAlign: 'center',
             margin: 0
           }}>
-                Ø­Ø°Ù Ø§Ù„Ø¯Ø±Ø¯Ø´Ø© Ø§Ù„Ø³Ø±ÙŠØ©
+                ÍĞİ ÇáÏÑÏÔÉ ÇáÓÑíÉ
               </p>
               <p style={{
             color: CLR_TEXT_DIM,
@@ -14069,7 +14046,7 @@ export default function AddFriendPage() {
             textAlign: 'center',
             margin: 0
           }}>
-                Ù‡Ù„ ØªØ±ÙŠØ¯ Ø­Ø°Ù "{confirmDeleteChat.name}" Ù†Ù‡Ø§Ø¦ÙŠØ§Ù‹ØŸ Ø³ØªÙØ­Ø°Ù Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø±Ø³Ø§Ø¦Ù„ ÙˆØ§Ù„Ø£Ø¹Ø¶Ø§Ø¡ ÙˆÙ„Ø§ ÙŠÙ…ÙƒÙ† Ø§Ù„ØªØ±Ø§Ø¬Ø¹.
+                åá ÊÑíÏ ÍĞİ "{confirmDeleteChat.name}" äåÇÆíÇğ¿ ÓÊõÍĞİ ÌãíÚ ÇáÑÓÇÆá æÇáÃÚÖÇÁ æáÇ íãßä ÇáÊÑÇÌÚ.
               </p>
               <div style={{
             display: 'flex',
@@ -14089,7 +14066,7 @@ export default function AddFriendPage() {
               fontWeight: 600,
               cursor: 'pointer'
             }}>
-                  Ø¥Ù„ØºØ§Ø¡
+                  ÅáÛÇÁ
                 </motion.button>
                 <motion.button whileTap={{
               scale: 0.95
@@ -14105,14 +14082,14 @@ export default function AddFriendPage() {
               cursor: 'pointer',
               opacity: deletingChatId === confirmDeleteChat.id ? 0.5 : 1
             }}>
-                  {deletingChatId === confirmDeleteChat.id ? 'â€¦' : 'Ø­Ø°Ù Ù†Ù‡Ø§Ø¦ÙŠ'}
+                  {deletingChatId === confirmDeleteChat.id ? '…' : 'ÍĞİ äåÇÆí'}
                 </motion.button>
               </div>
             </motion.div>
           </motion.div>}
       </AnimatePresence>
 
-      {/* â”€â”€ Confirm Leave Secret Chat â”€â”€ */}
+      {/* ?? Confirm Leave Secret Chat ?? */}
       <AnimatePresence>
         {confirmLeaveChat && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
@@ -14167,7 +14144,7 @@ export default function AddFriendPage() {
             textAlign: 'center',
             margin: 0
           }}>
-                Ù…ØºØ§Ø¯Ø±Ø© Ø§Ù„ØºØ±ÙØ© Ø§Ù„Ø³Ø±ÙŠØ©
+                ãÛÇÏÑÉ ÇáÛÑİÉ ÇáÓÑíÉ
               </p>
               <p style={{
             color: CLR_TEXT_DIM,
@@ -14176,7 +14153,7 @@ export default function AddFriendPage() {
             textAlign: 'center',
             margin: 0
           }}>
-                Ù‡Ù„ ØªØ±ÙŠØ¯ Ù…ØºØ§Ø¯Ø±Ø© "{confirmLeaveChat.name}"ØŸ Ø³ÙŠØªÙ… Ø¥Ø²Ø§Ù„ØªÙƒ Ù…Ù† Ø§Ù„ØºØ±ÙØ© Ù†Ù‡Ø§Ø¦ÙŠØ§Ù‹.
+                åá ÊÑíÏ ãÛÇÏÑÉ "{confirmLeaveChat.name}"¿ ÓíÊã ÅÒÇáÊß ãä ÇáÛÑİÉ äåÇÆíÇğ.
               </p>
               <div style={{
             display: 'flex',
@@ -14196,7 +14173,7 @@ export default function AddFriendPage() {
               fontWeight: 600,
               cursor: 'pointer'
             }}>
-                  Ø¥Ù„ØºØ§Ø¡
+                  ÅáÛÇÁ
                 </motion.button>
                 <motion.button whileTap={{
               scale: 0.95
@@ -14212,14 +14189,14 @@ export default function AddFriendPage() {
               cursor: 'pointer',
               opacity: leavingChatId === confirmLeaveChat.id ? 0.5 : 1
             }}>
-                  {leavingChatId === confirmLeaveChat.id ? 'â€¦' : 'Ù…ØºØ§Ø¯Ø±Ø©'}
+                  {leavingChatId === confirmLeaveChat.id ? '…' : 'ãÛÇÏÑÉ'}
                 </motion.button>
               </div>
             </motion.div>
           </motion.div>}
       </AnimatePresence>
 
-      {/* â”€â”€ Confirm Block User Dialog â”€â”€ */}
+      {/* ?? Confirm Block User Dialog ?? */}
       <AnimatePresence>
         {confirmBlockFriend !== null && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
@@ -14286,7 +14263,7 @@ export default function AddFriendPage() {
               fontWeight: 700,
               margin: 0
             }}>
-                  {confirmBlockFriend.name ?? confirmBlockFriend.username ?? 'â€”'}
+                  {confirmBlockFriend.name ?? confirmBlockFriend.username ?? '—'}
                 </p>
                 {confirmBlockFriend.username && <p style={{
               color: CLR_TEXT_DIM,
@@ -14301,7 +14278,7 @@ export default function AddFriendPage() {
             textAlign: 'center',
             margin: 0
           }}>
-                Ù‡Ù„ ØªØ±ÙŠØ¯ Ø­Ø¸Ø± Ù‡Ø°Ø§ Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ØŸ Ø³ÙŠÙØ²Ø§Ù„ Ù…Ù† Ù‚Ø§Ø¦Ù…Ø© Ø£ØµØ¯Ù‚Ø§Ø¦Ùƒ ÙˆÙ„Ù† ÙŠØªÙ…ÙƒÙ† Ù…Ù† Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹Ùƒ.
+                åá ÊÑíÏ ÍÙÑ åĞÇ ÇáãÓÊÎÏã¿ ÓíõÒÇá ãä ŞÇÆãÉ ÃÕÏŞÇÆß æáä íÊãßä ãä ÇáÊæÇÕá ãÚß.
               </p>
               <p style={{
             color: 'rgba(239,68,68,0.6)',
@@ -14309,7 +14286,7 @@ export default function AddFriendPage() {
             textAlign: 'center',
             margin: 0
           }}>
-                ÙŠÙ…ÙƒÙ†Ùƒ Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ø­Ø¸Ø± Ù„Ø§Ø­Ù‚Ø§Ù‹ Ù…Ù† Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª Ø§Ù„Ø®ØµÙˆØµÙŠØ©.
+                íãßäß ÅáÛÇÁ ÇáÍÙÑ áÇÍŞÇğ ãä ÅÚÏÇÏÇÊ ÇáÎÕæÕíÉ.
               </p>
               <div style={{
             display: 'flex',
@@ -14328,7 +14305,7 @@ export default function AddFriendPage() {
               fontWeight: 600,
               cursor: 'pointer'
             }}>
-                  Ø¥Ù„ØºØ§Ø¡
+                  ÅáÛÇÁ
                 </motion.button>
                 <motion.button whileTap={{
               scale: 0.95
@@ -14359,14 +14336,14 @@ export default function AddFriendPage() {
                 borderRadius: '50%',
                 border: '2px solid rgba(239,68,68,0.3)',
                 borderTopColor: '#ef4444'
-              }} /> : <><ShieldOff size={13} strokeWidth={2} /> Ø­Ø¸Ø±</>}
+              }} /> : <><ShieldOff size={13} strokeWidth={2} /> ÍÙÑ</>}
                 </motion.button>
               </div>
             </motion.div>
           </motion.div>}
       </AnimatePresence>
 
-      {/* â”€â”€ Secret Chat In-App Notification Banner â”€â”€ */}
+      {/* ?? Secret Chat In-App Notification Banner ?? */}
       <AnimatePresence>
         {scNotif && <motion.div key={scNotif.id + scNotif.preview} initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }} onClick={() => {
         setScNotif(null);
@@ -14423,7 +14400,7 @@ export default function AddFriendPage() {
                 <span style={{
               color: CLR_TEXT_DIM,
               fontSize: '0.62rem'
-            }}>â€¢</span>
+            }}>•</span>
                 <span style={{
               color: CLR_TEXT_DIM,
               fontSize: '0.62rem'
@@ -14462,7 +14439,7 @@ export default function AddFriendPage() {
       </AnimatePresence>
 
 
-      {/* â”€â”€ New Post Composer â€” X/Twitter style (white fullscreen) â”€â”€ */}
+      {/* ?? New Post Composer — X/Twitter style (white fullscreen) ?? */}
       <AnimatePresence>
         {showComposer && (
           <motion.div
@@ -14508,7 +14485,7 @@ export default function AddFriendPage() {
                   opacity: composerPosting ? 0.7 : 1,
                 }}
               >
-                {composerPosting ? 'â€¦' : 'Ù†Ø´Ø±'}
+                {composerPosting ? '…' : 'äÔÑ'}
               </motion.button>
             </div>
 
@@ -14516,11 +14493,11 @@ export default function AddFriendPage() {
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 16px 8px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div>
-                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>{isCompanyPublisher ? 'Ø¹Ù†ÙˆØ§Ù† Ø§Ù„Ù…Ù†ØªØ¬ / Ø§Ù„Ù…ÙˆØ¶ÙˆØ¹' : 'Ø±Ø£Ø³ Ø§Ù„Ù…ÙˆØ¶ÙˆØ¹'}</label>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>{isCompanyPublisher ? 'ÚäæÇä ÇáãäÊÌ / ÇáãæÖæÚ' : 'ÑÃÓ ÇáãæÖæÚ'}</label>
                   <input
                     value={composerProductTitle}
                     onChange={e => setComposerProductTitle(e.target.value)}
-                    placeholder={isCompanyPublisher ? 'Ø±Ø£Ø³ Ø§Ù„Ù…ÙˆØ¶ÙˆØ¹ â€” Ø®Ø· Ø¹Ø±ÙŠØ¶' : 'Ø±Ø£Ø³ Ø§Ù„Ù…ÙˆØ¶ÙˆØ¹'}
+                    placeholder={isCompanyPublisher ? 'ÑÃÓ ÇáãæÖæÚ — ÎØ ÚÑíÖ' : 'ÑÃÓ ÇáãæÖæÚ'}
                     style={{
                       width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
                       padding: '12px 14px', fontSize: '1.05rem', fontWeight: 800, color: '#0a0a0a',
@@ -14529,11 +14506,11 @@ export default function AddFriendPage() {
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>{isCompanyPublisher ? 'ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ù…Ù†ØªØ¬' : 'ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ù…ÙˆØ¶ÙˆØ¹'}</label>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>{isCompanyPublisher ? 'ÊİÇÕíá ÇáãäÊÌ' : 'ÊİÇÕíá ÇáãæÖæÚ'}</label>
                   <textarea
                     value={composerProductDetails}
                     onChange={e => setComposerProductDetails(e.target.value)}
-                    placeholder={isCompanyPublisher ? 'ÙˆØµÙ Ø§Ù„Ø¥Ø¹Ù„Ø§Ù† ÙˆØ§Ù„ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ø­Ù‚ÙŠÙ‚ÙŠØ© Ù„Ù„Ù…Ù†ØªØ¬â€¦' : 'ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ù…ÙˆØ¶ÙˆØ¹â€¦'}
+                    placeholder={isCompanyPublisher ? 'æÕİ ÇáÅÚáÇä æÇáÊİÇÕíá ÇáÍŞíŞíÉ ááãäÊÌ…' : 'ÊİÇÕíá ÇáãæÖæÚ…'}
                     rows={5}
                     style={{
                       width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
@@ -14542,10 +14519,10 @@ export default function AddFriendPage() {
                     }}
                   />
                 </div>
-{/* â”€â”€ Ù…Ø³ØªØ·ÙŠÙ„ Paste: Ø±Ø§Ø¨Ø· ØµÙˆØ±Ø© Ø£Ùˆ ÙÙŠØ¯ÙŠÙˆ (X Ø£Ùˆ Ø±Ø§Ø¨Ø· Ù…Ø¨Ø§Ø´Ø±) â€” Ù„Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† ÙˆØ§Ù„Ø´Ø±ÙƒØ§Øª â”€â”€ */}
+{/* ?? ãÓÊØíá Paste: ÑÇÈØ ÕæÑÉ Ãæ İíÏíæ (X Ãæ ÑÇÈØ ãÈÇÔÑ) — ááãÓÊÎÏãíä æÇáÔÑßÇÊ ?? */}
                 <div>
                   <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>
-                    {isCompanyPublisher ? 'Ø±Ø§Ø¨Ø· Ø¥Ø¹Ù„Ø§Ù† (ØµÙˆØ±Ø© Ø£Ùˆ ÙÙŠØ¯ÙŠÙˆ)' : 'Ø±Ø§Ø¨Ø· ØµÙˆØ±Ø© Ø£Ùˆ ÙÙŠØ¯ÙŠÙˆ'}
+                    {isCompanyPublisher ? 'ÑÇÈØ ÅÚáÇä (ÕæÑÉ Ãæ İíÏíæ)' : 'ÑÇÈØ ÕæÑÉ Ãæ İíÏíæ'}
                   </label>
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 8, minHeight: 48, boxSizing: 'border-box',
@@ -14581,7 +14558,7 @@ export default function AddFriendPage() {
                         setComposerLinkInput(link);
                         setComposerLinkPreviewUrl(link);
                       }}
-                      placeholder={isCompanyPublisher ? 'Ø§Ù„ØµÙ‚ Ø±Ø§Ø¨Ø· Ø§Ù„Ø¥Ø¹Ù„Ø§Ù† (ØµÙˆØ±Ø© Ø£Ùˆ ÙÙŠØ¯ÙŠÙˆ)' : 'Ø§Ù„ØµÙ‚ Ø±Ø§Ø¨Ø· ØµÙˆØ±Ø© Ø£Ùˆ ÙÙŠØ¯ÙŠÙˆ'}
+                      placeholder={isCompanyPublisher ? 'ÇáÕŞ ÑÇÈØ ÇáÅÚáÇä (ÕæÑÉ Ãæ İíÏíæ)' : 'ÇáÕŞ ÑÇÈØ ÕæÑÉ Ãæ İíÏíæ'}
                       style={{
                         flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
                         fontSize: '0.85rem', color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left',
@@ -14591,7 +14568,7 @@ export default function AddFriendPage() {
                       <button
                         type="button"
                         onClick={() => { setComposerLinkInput(''); setComposerLinkPreviewUrl(''); setComposerError(''); }}
-                        aria-label="Ù…Ø³Ø­ Ø§Ù„Ø±Ø§Ø¨Ø·"
+                        aria-label="ãÓÍ ÇáÑÇÈØ"
                         style={{
                           width: 30, height: 30, borderRadius: '50%', border: 'none', flexShrink: 0,
                           background: 'rgba(15,20,25,0.08)', color: '#0f1419', cursor: 'pointer',
@@ -14605,25 +14582,25 @@ export default function AddFriendPage() {
                   {composerLinkPreviewUrl.includes('.') && (
                     <LinkMediaPreview
                       url={composerLinkPreviewUrl}
-                      failedNote="Ø§Ù„Ø±Ø§Ø¨Ø· Ù„Ø§ ÙŠØ¨Ø¯Ùˆ ØµÙˆØ±Ø© Ø£Ùˆ ÙÙŠØ¯ÙŠÙˆ â€” Ø§Ù„ØµÙ‚ Ø±Ø§Ø¨Ø· X Ø£Ùˆ Ø±Ø§Ø¨Ø· Ù…Ù„Ù Ù…Ø¨Ø§Ø´Ø± (jpg / png / mp4)"
+                      failedNote="ÇáÑÇÈØ áÇ íÈÏæ ÕæÑÉ Ãæ İíÏíæ — ÇáÕŞ ÑÇÈØ X Ãæ ÑÇÈØ ãáİ ãÈÇÔÑ (jpg / png / mp4)"
                     />
                   )}
                 </div>
-                {/* Ù…Ø¹Ø§ÙŠÙ†Ø© ÙÙˆØ±ÙŠØ© Ù„Ø±ÙˆØ§Ø¨Ø· X: Ø§Ù„ØµÙˆØ±Ø©/Ø§Ù„ÙÙŠØ¯ÙŠÙˆ ØªØ¸Ù‡Ø± ÙƒØ§Ù…Ù„Ø© Ø¨Ù…Ø¬Ø±Ø¯ ÙˆØ¶Ø¹ Ø§Ù„Ø±Ø§Ø¨Ø· (Ù…Ø³ØªØ®Ø¯Ù… Ø£Ùˆ Ø´Ø±ÙƒØ©) */}
+                {/* ãÚÇíäÉ İæÑíÉ áÑæÇÈØ X: ÇáÕæÑÉ/ÇáİíÏíæ ÊÙåÑ ßÇãáÉ ÈãÌÑÏ æÖÚ ÇáÑÇÈØ (ãÓÊÎÏã Ãæ ÔÑßÉ) */}
                 {composerXUrls.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {composerXUrls.map(u => (
-                      <LinkMediaPreview key={u} url={u} failedNote="Ù„Ø§ ØªÙˆØ¬Ø¯ ØµÙˆØ±Ø© Ø£Ùˆ ÙÙŠØ¯ÙŠÙˆ ÙÙŠ Ù‡Ø°Ø§ Ø§Ù„Ø±Ø§Ø¨Ø·" />
+                      <LinkMediaPreview key={u} url={u} failedNote="áÇ ÊæÌÏ ÕæÑÉ Ãæ İíÏíæ İí åĞÇ ÇáÑÇÈØ" />
                     ))}
                   </div>
                 )}
 {isCompanyPublisher && (
                 <div>
-                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>Ø§Ù„Ø³Ø¹Ø±</label>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>ÇáÓÚÑ</label>
                   <input
                     value={composerProductPrice}
                     onChange={e => setComposerProductPrice(e.target.value)}
-                    placeholder="Ù…Ø«Ø§Ù„: 25 Ø¯.Ùƒ Ø£Ùˆ Ù…Ø¬Ø§Ù†ÙŠ"
+                    placeholder="ãËÇá: 25 Ï.ß Ãæ ãÌÇäí"
                     style={{
                       width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
                       padding: '12px 14px', fontSize: '0.95rem', fontWeight: 700, color: '#0a0a0a',
@@ -14632,13 +14609,13 @@ export default function AddFriendPage() {
                   />
                 </div>
                 )}
-                {/* Ø­Ù‚ÙˆÙ„ Ø¥Ø¶Ø§ÙÙŠØ©: Ù„Ù„Ø´Ø±ÙƒØ§Øª ÙÙ‚Ø· â€” Ø£ÙØ²ÙŠÙ„Øª Ù…Ù† Ù†Ø´Ø± Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ø§Ù„Ù†ØµÙŠ */}
+                {/* ÍŞæá ÅÖÇİíÉ: ááÔÑßÇÊ İŞØ — ÃõÒíáÊ ãä äÔÑ ÇáãÓÊÎÏã ÇáäÕí */}
                 {isCompanyPublisher && composerProductExtras.map((extra, idx) => (
                   <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                     <textarea
                       value={extra}
                       onChange={e => setComposerProductExtras(prev => prev.map((x, i) => i === idx ? e.target.value : x))}
-                      placeholder={`Ø­Ù‚Ù„ Ø¥Ø¶Ø§ÙÙŠ ${idx + 1}`}
+                      placeholder={`ÍŞá ÅÖÇİí ${idx + 1}`}
                       rows={2}
                       style={{
                         flex: 1, boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
@@ -14649,7 +14626,7 @@ export default function AddFriendPage() {
                     <button
                       type="button"
                       onClick={() => setComposerProductExtras(prev => prev.filter((_, i) => i !== idx))}
-                      aria-label="Ø­Ø°Ù Ø§Ù„Ø­Ù‚Ù„"
+                      aria-label="ÍĞİ ÇáÍŞá"
                       style={{
                         width: 36, height: 36, borderRadius: 10, border: 'none', flexShrink: 0,
                         background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer',
@@ -14711,7 +14688,7 @@ export default function AddFriendPage() {
               )}
             </div>
 
-            {/* Bottom toolbar â€” image HQ / video ad / PDF */}
+            {/* Bottom toolbar — image HQ / video ad / PDF */}
             <div style={{
               borderTop: '1px solid rgba(0,0,0,0.08)',
               padding: '10px 14px calc(12px + env(safe-area-inset-bottom, 0px))',
@@ -14720,7 +14697,7 @@ export default function AddFriendPage() {
               <label style={{
                 width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', color: '#1d9bf0',
-              }} title="ØµÙˆØ±Ø© Ø¹Ø§Ù„ÙŠØ© Ø§Ù„Ø¬ÙˆØ¯Ø©">
+              }} title="ÕæÑÉ ÚÇáíÉ ÇáÌæÏÉ">
                 <ImageIcon size={20} strokeWidth={2} />
                 <input
                   type="file"
@@ -14734,7 +14711,7 @@ export default function AddFriendPage() {
                       const existingImageCount = prev.filter(item => item.type === 'image').length;
                       const remainingSlots = MAX_COMPOSER_IMAGES - existingImageCount;
                       if (remainingSlots <= 0) {
-                        setComposerError(`Ø§Ù„Ø­Ø¯ Ø§Ù„Ø£Ù‚ØµÙ‰ ${MAX_COMPOSER_IMAGES} ØµÙˆØ±`);
+                        setComposerError(`ÇáÍÏ ÇáÃŞÕì ${MAX_COMPOSER_IMAGES} ÕæÑ`);
                         return prev;
                       }
                       const accepted = files.slice(0, remainingSlots);
@@ -14754,7 +14731,7 @@ export default function AddFriendPage() {
               <label style={{
                 width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', color: '#1d9bf0',
-              }} title="ÙÙŠØ¯ÙŠÙˆ Ø¥Ø¹Ù„Ø§Ù†ÙŠ">
+              }} title="İíÏíæ ÅÚáÇäí">
                 <Video size={20} strokeWidth={2} />
                 <input
                   type="file"
@@ -14774,7 +14751,7 @@ export default function AddFriendPage() {
               <label style={{
                 width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', color: '#1d9bf0',
-              }} title="Ù…Ù„Ù PDF">
+              }} title="ãáİ PDF">
                 <FileText size={20} strokeWidth={2} />
                 <input
                   type="file"
@@ -14792,13 +14769,13 @@ export default function AddFriendPage() {
                 />
               </label>
               <div style={{ flex: 1 }} />
-              <span style={{ color: 'rgba(0,0,0,0.4)', fontSize: '0.72rem' }}>Ø¥Ø¹Ù„Ø§Ù† Ù…Ù†ØªØ¬</span>
+              <span style={{ color: 'rgba(0,0,0,0.4)', fontSize: '0.72rem' }}>ÅÚáÇä ãäÊÌ</span>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Comments sheet (Instagram-style white bottom sheet) â€” opens only via comment icon â”€â”€ */}
+      {/* ?? Comments sheet (Instagram-style white bottom sheet) — opens only via comment icon ?? */}
       <AnimatePresence>
         {openComments && (
           <InstagramCommentsSheet
@@ -14814,9 +14791,9 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Full-screen product ad â€” tap any profile grid post opens this exact-screen page.
+      {/* ?? Full-screen product ad — tap any profile grid post opens this exact-screen page.
           Bottom: Like + external share | Details (three lines) | Comments chat.
-          No repost / favorites. Video: autoplay only; tap pauses; leave page stops. â”€â”€ */}
+          No repost / favorites. Video: autoplay only; tap pauses; leave page stops. ?? */}
       <AnimatePresence>
         {singlePostView && (() => {
           const ad = parseProductAd(singlePostView.text);
@@ -14834,7 +14811,7 @@ export default function AddFriendPage() {
               transition={{ duration: 0.22 }}
               style={{
                 position: 'fixed', inset: 0,
-                // Ù…Ù† Ø§Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„: ÙÙˆÙ‚ Ø§Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„ (10420) â€” Ù…Ù† Ø§Ù„ÙÙŠØ¯: ØªØ­Øª Ø§Ù„Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ù„Ùˆ ÙÙØªØ­ Ø¨Ø±ÙˆÙØ§ÙŠÙ„ ÙÙˆÙ‚Ù‡
+                // ãä ÇáÈÑæİÇíá: İæŞ ÇáÈÑæİÇíá (10420) — ãä ÇáİíÏ: ÊÍÊ ÇáÈÑæİÇíá áæ İõÊÍ ÈÑæİÇíá İæŞå
                 zIndex: singlePostFromProfile ? 10450 : 10380,
                 background: '#000', display: 'flex', flexDirection: 'column', overflow: 'hidden',
               }}
@@ -14842,7 +14819,7 @@ export default function AddFriendPage() {
               <button
                 type="button"
                 onClick={closeSinglePostView}
-                aria-label="Ø¥ØºÙ„Ø§Ù‚"
+                aria-label="ÅÛáÇŞ"
                 style={{
                   position: 'absolute', top: 'max(12px, env(safe-area-inset-top, 0px))', insetInlineStart: 12, zIndex: 6,
                   width: 36, height: 36, borderRadius: '50%', border: 'none',
@@ -14904,7 +14881,7 @@ export default function AddFriendPage() {
                 background: 'linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0.55))',
                 borderTop: '1px solid rgba(255,255,255,0.08)',
               }}>
-                {/* Ø§Ù„ØªØ±ØªÙŠØ¨: Ù„Ø§ÙŠÙƒ â†’ ØªØ¹Ù„ÙŠÙ‚Ø§Øª â†’ Ø´ÙŠØ± | ØªÙØ§ØµÙŠÙ„ | Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ø§Ù„Ø´Ø±ÙƒØ© */}
+                {/* ÇáÊÑÊíÈ: áÇíß ? ÊÚáíŞÇÊ ? ÔíÑ | ÊİÇÕíá | ÈÑæİÇíá ÇáÔÑßÉ */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 88 }}>
                   <motion.button
                     whileTap={{ scale: 0.9 }}
@@ -14933,7 +14910,7 @@ export default function AddFriendPage() {
                       }
                       setProductShareMenuPost(livePost);
                     }}
-                    aria-label="Ù…Ø´Ø§Ø±ÙƒØ© Ø§Ù„Ø¥Ø¹Ù„Ø§Ù†"
+                    aria-label="ãÔÇÑßÉ ÇáÅÚáÇä"
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer', display: 'flex', padding: 4,
                       color: productInquiryShareAlert(livePost.id) ? '#eab308' : '#fff',
@@ -14946,7 +14923,7 @@ export default function AddFriendPage() {
                 <motion.button
                   whileTap={{ scale: 0.92 }}
                   onClick={() => setAdDetailsOpen(true)}
-                  aria-label="ØªÙØ§ØµÙŠÙ„ Ø§Ù„Ù…Ù†ØªØ¬"
+                  aria-label="ÊİÇÕíá ÇáãäÊÌ"
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
                     background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
@@ -14972,8 +14949,8 @@ export default function AddFriendPage() {
                         isCompany: true,
                       });
                     }}
-                    aria-label="Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ø§Ù„Ø´Ø±ÙƒØ©"
-                    title="Ø¨Ø±ÙˆÙØ§ÙŠÙ„ Ø§Ù„Ø´Ø±ÙƒØ©"
+                    aria-label="ÈÑæİÇíá ÇáÔÑßÉ"
+                    title="ÈÑæİÇíá ÇáÔÑßÉ"
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       width: 36, height: 36, borderRadius: 10,
@@ -15033,7 +15010,7 @@ export default function AddFriendPage() {
                           background: '#0f1419', color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
                         }}
                       >
-                        Ø¥ØºÙ„Ø§Ù‚
+                        ÅÛáÇŞ
                       </button>
                     </motion.div>
                   </motion.div>
@@ -15044,7 +15021,7 @@ export default function AddFriendPage() {
         })()}
       </AnimatePresence>
 
-      {/* â”€â”€ Text Posts Page â€” X Ø£Ø­Ù…Ø± Ù…ØªØ­Ø±Ùƒ Ø¨Ø§Ù„Ø£Ø¹Ù„Ù‰ + New Post ØªØ­ØªÙ‡Ø§ Ø¨Ø§Ù„Ù…Ù†ØªØµÙØ› Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ Ù…Ø®ÙÙŠ â”€â”€ */}
+      {/* ?? Text Posts Page — X ÃÍãÑ ãÊÍÑß ÈÇáÃÚáì + New Post ÊÍÊåÇ ÈÇáãäÊÕİº ÇáÔÑíØ ÇáÓİáí ãÎİí ?? */}
       <AnimatePresence>
       {textPostsPageOpen && (
           <motion.div
@@ -15062,7 +15039,7 @@ export default function AddFriendPage() {
               transformOrigin: 'center center',
             }}
           >
-            {/* Ù‡ÙŠØ¯Ø± Ø¹Ù„ÙˆÙŠ: Ø£ÙŠÙ‚ÙˆÙ†Ø© Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ | Ø§Ù„Ø´Ø±ÙƒØ§Øª â€” ÙŠØ®ØªÙÙŠ Ø¨Ø§Ù„ØªÙ…Ø±ÙŠØ± Ù…Ø«Ù„ Ø§Ù„Ø´Ø±ÙŠØ· Ø§Ù„Ø³ÙÙ„ÙŠ (DOM Ù…Ø¨Ø§Ø´Ø±) */}
+            {/* åíÏÑ Úáæí: ÃíŞæäÉ ÇáÊØÈíŞ | ÇáÔÑßÇÊ — íÎÊİí ÈÇáÊãÑíÑ ãËá ÇáÔÑíØ ÇáÓİáí (DOM ãÈÇÔÑ) */}
             <div
               ref={postsChromeTopRef}
               style={{
@@ -15086,7 +15063,7 @@ export default function AddFriendPage() {
               <button
                 type="button"
                 onClick={() => setTextFeedTab('app')}
-                aria-label="Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ â€” Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ†"
+                aria-label="ÇáÊØÈíŞ — ãäÔæÑÇÊ ÇáãÓÊÎÏãíä"
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: 4, borderRadius: '50%', cursor: 'pointer',
@@ -15144,7 +15121,7 @@ export default function AddFriendPage() {
               <button
                 type="button"
                 onClick={() => setTextFeedTab('companies')}
-                aria-label="Ø§Ù„Ø´Ø±ÙƒØ§Øª â€” Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø§Ù„Ø´Ø±ÙƒØ§Øª"
+                aria-label="ÇáÔÑßÇÊ — ãäÔæÑÇÊ ÇáÔÑßÇÊ"
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: 4, borderRadius: '50%', cursor: 'pointer',
@@ -15193,16 +15170,16 @@ export default function AddFriendPage() {
                 )}
               </AnimatePresence>
               {(() => {
-                // ÙØµÙ„ ØµØ§Ø±Ù…: Ø´Ø±ÙƒØ§Øª ÙÙ‚Ø· ÙÙŠ ØªØ¨ÙˆÙŠØ¨ Ø§Ù„Ø´Ø±ÙƒØ§Øª â€” Ø£ÙØ±Ø§Ø¯ ÙÙŠ ØªØ¨ÙˆÙŠØ¨ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚
-                // Ù„Ø§ Ù†Ø¹ØªÙ…Ø¯ Ø¹Ù„Ù‰ parseProductAd ÙˆØ­Ø¯Ù‡ (Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙˆÙ† Ø§Ù„Ø£ÙØ±Ø§Ø¯ ÙŠÙ†Ø´Ø±ÙˆÙ† Ø¨Ù†ÙØ³ ØµÙŠØºØ© Ø§Ù„Ø¹Ù†ÙˆØ§Ù†/Ø§Ù„ØªÙØ§ØµÙŠÙ„)
+                // İÕá ÕÇÑã: ÔÑßÇÊ İŞØ İí ÊÈæíÈ ÇáÔÑßÇÊ — ÃİÑÇÏ İí ÊÈæíÈ ÇáÊØÈíŞ
+                // áÇ äÚÊãÏ Úáì parseProductAd æÍÏå (ÇáãÓÊÎÏãæä ÇáÃİÑÇÏ íäÔÑæä ÈäİÓ ÕíÛÉ ÇáÚäæÇä/ÇáÊİÇÕíá)
                 const isCompanyPost = (p: PostItem) => {
                   const anyP = p as PostItem & { publisherType?: string; isCompanyPost?: boolean; authorIsCompany?: boolean };
                   if (anyP.publisherType === 'company' || anyP.isCompanyPost === true || anyP.authorIsCompany === true) return true;
                   if (anyP.publisherType === 'user' || anyP.isCompanyPost === false || anyP.authorIsCompany === false) return false;
                   if (companies.some(c => String(c.id) === String(p.authorId))) return true;
-                  // Ø­Ø³Ø§Ø¨ Ø§Ù„Ø´Ø±ÙƒØ© Ø§Ù„Ø­Ø§Ù„ÙŠ: Ù…Ù†Ø´ÙˆØ±Ø§ØªÙ‡ ÙÙŠ Ù‚Ø³Ù… Ø§Ù„Ø´Ø±ÙƒØ§Øª
+                  // ÍÓÇÈ ÇáÔÑßÉ ÇáÍÇáí: ãäÔæÑÇÊå İí ŞÓã ÇáÔÑßÇÊ
                   if (user && String(p.authorId) === String(user.id) && isCompanyPublisher) return true;
-                  // Ø­Ø³Ø§Ø¨ ÙØ±Ø¯ÙŠ Ø­Ø§Ù„ÙŠ: Ù…Ù†Ø´ÙˆØ±Ø§ØªÙ‡ ÙÙŠ Ù‚Ø³Ù… Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ†
+                  // ÍÓÇÈ İÑÏí ÍÇáí: ãäÔæÑÇÊå İí ŞÓã ÇáãÓÊÎÏãíä
                   if (user && String(p.authorId) === String(user.id) && !isCompanyPublisher) return false;
                   return isCompanyUserAccount({ id: p.authorId, username: p.authorUsername, name: p.authorName }, companies);
                 };
@@ -15293,14 +15270,14 @@ export default function AddFriendPage() {
                     <FileText size={20} strokeWidth={1.5} />
                   </div>
                   <p style={{ color: CLR_TEXT_DIM, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
-                    {textFeedTab === 'companies' ? 'Ù„Ø§ Ù…Ù†Ø´ÙˆØ±Ø§Øª Ø´Ø±ÙƒØ§Øª Ø¨Ø¹Ø¯' : 'Ù„Ø§ Ù…Ù†Ø´ÙˆØ±Ø§Øª Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† Ø¨Ø¹Ø¯'}
+                    {textFeedTab === 'companies' ? 'áÇ ãäÔæÑÇÊ ÔÑßÇÊ ÈÚÏ' : 'áÇ ãäÔæÑÇÊ ãÓÊÎÏãíä ÈÚÏ'}
                   </p>
                 </div>
               );
               })()}
             </div>
 
-            {/* Ù‡ÙŠØ¯Ø± Ø³ÙÙ„ÙŠ: Ø´Ø±ÙƒØ§Øª = New Post Ø¨Ø§Ù„Ù…Ù†ØªØµÙ | Ø£ÙØ±Ø§Ø¯ = Ã— Ù„Ù„Ø¥ØºÙ„Ø§Ù‚ Ø¨Ø§Ù„Ù…Ù†ØªØµÙ ÙÙ‚Ø· */}
+            {/* åíÏÑ Óİáí: ÔÑßÇÊ = New Post ÈÇáãäÊÕİ | ÃİÑÇÏ = × ááÅÛáÇŞ ÈÇáãäÊÕİ İŞØ */}
             <div
               ref={postsChromeBottomRef}
               style={{
@@ -15337,7 +15314,7 @@ export default function AddFriendPage() {
                     try { clearPostMedia(); } catch { /* */ }
                     window.setTimeout(() => setShowComposer(true), 0);
                   }}
-                  aria-label={!user ? 'ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„' : 'Create a text post'}
+                  aria-label={!user ? 'ÊÓÌíá ÇáÏÎæá' : 'Create a text post'}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                     height: 40, minWidth: 120, padding: '0 18px', borderRadius: 20,
@@ -15350,7 +15327,7 @@ export default function AddFriendPage() {
                   }}
                 >
                   {!user ? <LogIn size={16} strokeWidth={2.4} /> : <PenLine size={16} strokeWidth={2.4} />}
-                  <span style={{ fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>{!user ? 'ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„' : 'New Post'}</span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>{!user ? 'ÊÓÌíá ÇáÏÎæá' : 'New Post'}</span>
                 </motion.button>
                 <style>{`@keyframes stooornaRedXSpin { from { transform: translateY(-50%) rotate(0deg); } to { transform: translateY(-50%) rotate(360deg); } }`}</style>
                 <button
@@ -15360,7 +15337,7 @@ export default function AddFriendPage() {
                     setTextPostsMenuOpen(false);
                     setTextPostsPageOpen(false);
                   }}
-                  aria-label="Ø¥ØºÙ„Ø§Ù‚"
+                  aria-label="ÅÛáÇŞ"
                   style={{
                     position: 'absolute',
                     right: 12,
@@ -15381,7 +15358,7 @@ export default function AddFriendPage() {
       )}
       </AnimatePresence>
 
-      {/* â”€â”€ Shared-Posts Inbox â€” posts other users sent me via the share sheet â”€â”€ */}
+      {/* ?? Shared-Posts Inbox — posts other users sent me via the share sheet ?? */}
       <AnimatePresence>
         {sharedInboxOpen && (
           <SharedInboxDrawer
@@ -15426,7 +15403,7 @@ export default function AddFriendPage() {
             }}
             onDeleteUserShare={(id) => {
               if (!user?.id) return;
-              if (!window.confirm('Ø­Ø°Ù Ù‡Ø°Ù‡ Ø§Ù„Ù…Ø´Ø§Ø±ÙƒØ© Ù…Ù† Ù‚Ø§Ø¦Ù…Ø© ChatØŸ')) return;
+              if (!window.confirm('ÍĞİ åĞå ÇáãÔÇÑßÉ ãä ŞÇÆãÉ Chat¿')) return;
               const list = loadUserShareInbox(user.id).filter(x => x.id !== id);
               saveUserShareInbox(user.id, list);
               setUserShareInbox(list);
@@ -15436,7 +15413,7 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Story Comment Thread â€” opened from inside the inbox box above (section 2) â”€â”€ */}
+      {/* ?? Story Comment Thread — opened from inside the inbox box above (section 2) ?? */}
       <AnimatePresence>
         {openStoryCommentThread && (
           <StoryCommentThreadPage
@@ -15449,7 +15426,7 @@ export default function AddFriendPage() {
             onToggleLike={toggleStoryCommentLike}
             onClose={() => setOpenStoryCommentThread(null)}
             onChatWithAuthor={(c) => {
-              // Ø£ØºÙ„Ù‚ Ø§Ù„Ø·Ø¨Ù‚Ø§Øª (ØªØ¹Ù„ÙŠÙ‚Ø§Øª + ØµÙ†Ø¯ÙˆÙ‚ Ø§Ù„ÙˆØ§Ø±Ø¯ + Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§) Ø«Ù… Ø§ÙØªØ­ Ø§Ù„Ø´Ø§Øª Ù…Ø¹ ØµØ§Ø­Ø¨ Ø§Ù„ØªØ¹Ù„ÙŠÙ‚
+              // ÃÛáŞ ÇáØÈŞÇÊ (ÊÚáíŞÇÊ + ÕäÏæŞ ÇáæÇÑÏ + ÇáßÇãíÑÇ) Ëã ÇİÊÍ ÇáÔÇÊ ãÚ ÕÇÍÈ ÇáÊÚáíŞ
               setOpenStoryCommentThread(null);
               setSharedInboxOpen(false);
               setSharedInboxStoryOnly(false);
@@ -15460,7 +15437,7 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Shared Post Thread â€” opened by tapping an item inside the inbox above â”€â”€ */}
+      {/* ?? Shared Post Thread — opened by tapping an item inside the inbox above ?? */}
       <AnimatePresence>
         {openSharedThread && (
           <SharedPostThread
@@ -15476,7 +15453,7 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Delete Post Confirmation â”€â”€ */}
+      {/* ?? Delete Post Confirmation ?? */}
       <AnimatePresence>
         {confirmDeletePost && (
           <motion.div
@@ -15510,10 +15487,10 @@ export default function AddFriendPage() {
                 }}>
                   <Trash2 size={19} strokeWidth={2} color="#ef4444" />
                 </div>
-                <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>Ø­Ø°Ù Ø§Ù„Ù…Ù†Ø´ÙˆØ±</p>
+                <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>ÍĞİ ÇáãäÔæÑ</p>
               </div>
               <p style={{ color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center', margin: 0 }}>
-                Ù‡Ù„ ØªØ±ÙŠØ¯ Ø­Ø°Ù Ù‡Ø°Ø§ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ù†Ù‡Ø§Ø¦ÙŠØ§Ù‹ØŸ Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø§Ù„ØªØ±Ø§Ø¬Ø¹ Ø¹Ù† Ù‡Ø°Ø§ Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡.
+                åá ÊÑíÏ ÍĞİ åĞÇ ÇáãäÔæÑ äåÇÆíÇğ¿ áÇ íãßä ÇáÊÑÇÌÚ Úä åĞÇ ÇáÅÌÑÇÁ.
               </p>
               <div style={{ display: 'flex', gap: 10 }}>
                 <motion.button
@@ -15526,7 +15503,7 @@ export default function AddFriendPage() {
                     color: CLR_TEXT, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
                   }}
                 >
-                  Ø¥Ù„ØºØ§Ø¡
+                  ÅáÛÇÁ
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.95 }}
@@ -15544,7 +15521,7 @@ export default function AddFriendPage() {
                       width: 14, height: 14, borderRadius: '50%',
                       border: '2px solid rgba(239,68,68,0.3)', borderTopColor: '#ef4444',
                     }} />
-                  ) : <><Trash2 size={13} strokeWidth={2} /> Ø­Ø°Ù</>}
+                  ) : <><Trash2 size={13} strokeWidth={2} /> ÍĞİ</>}
                 </motion.button>
               </div>
             </motion.div>
@@ -15552,9 +15529,9 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* Ù‚Ø§Ø¦Ù…Ø© Photo/Video Ù„Ù„Ù‚ØµØ© Ø£ÙÙ„ØºÙŠØª â€” Ø§Ù„ÙØªØ­ Ù…Ø¨Ø§Ø´Ø±Ø© Ù…Ù† Ø§Ù„Ù…Ø¹Ø±Ø¶ Ø£Ùˆ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ */}
+      {/* ŞÇÆãÉ Photo/Video ááŞÕÉ ÃõáÛíÊ — ÇáİÊÍ ãÈÇÔÑÉ ãä ÇáãÚÑÖ Ãæ ÇáßÇãíÑÇ */}
 
-      {/* â”€â”€ Story Viewer â”€â”€ */}
+      {/* ?? Story Viewer ?? */}
       <AnimatePresence>
         {viewerGroupIdx !== null && (
           <StoryViewer
@@ -15570,9 +15547,9 @@ export default function AddFriendPage() {
             isCompanyPublisher={isCompanyPublisher}
             onSendComment={sendStoryComment}
             onDeleteItem={(storyId) => {
-              // Ù†Ø³Ø¬Ù‘Ù„ Ø§Ù„Ù…Ø¹Ø±Ù‘Ù ÙƒÙ…Ø­Ø°ÙˆÙ Ù…Ø­Ù„ÙŠØ§Ù‹ Ø£ÙˆÙ„Ø§Ù‹ Ø­ØªÙ‰ Ù„Ùˆ Ø±Ø¬Ø¹ Ø§Ù„Ø±ÙŠÙØ±Ø´ Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ
-              // (ÙƒÙ„ Ø«Ø§Ù†ÙŠØªÙŠÙ†) Ø¨Ù†Ø³Ø®Ø© ÙƒØ§Ù† Ù‚Ø¯ Ø·Ù„Ø¨Ù‡Ø§ Ù‚Ø¨Ù„ Ø§ÙƒØªÙ…Ø§Ù„ Ø§Ù„Ø­Ø°Ù Ø¹Ù„Ù‰ Ø§Ù„Ø³ÙŠØ±ÙØ±ØŒ
-              // Ù…Ø§ ÙŠØ®Ù„ÙŠ Ø§Ù„Ø³ØªÙˆØ±ÙŠ ÙŠØ±Ø¬Ø¹ ÙŠØ¸Ù‡Ø± Ø¨Ø¹Ø¯ Ù…Ø§ Ø§Ø®ØªÙÙ‰.
+              // äÓÌøá ÇáãÚÑøİ ßãÍĞæİ ãÍáíÇğ ÃæáÇğ ÍÊì áæ ÑÌÚ ÇáÑíİÑÔ ÇáÊáŞÇÆí
+              // (ßá ËÇäíÊíä) ÈäÓÎÉ ßÇä ŞÏ ØáÈåÇ ŞÈá ÇßÊãÇá ÇáÍĞİ Úáì ÇáÓíÑİÑ¡
+              // ãÇ íÎáí ÇáÓÊæÑí íÑÌÚ íÙåÑ ÈÚÏ ãÇ ÇÎÊİì.
               deletedStoryIdsRef.current.add(storyId);
               setStoryGroups(prev => prev.map(g => ({
                 ...g,
@@ -15583,7 +15560,7 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Hidden inputs for quick "Ù†Ø´Ø± ØµÙˆØ±Ø©"/"Ù†Ø´Ø± ÙÙŠØ¯ÙŠÙˆ" â€” one-tap post publish â”€â”€ */}
+      {/* ?? Hidden inputs for quick "äÔÑ ÕæÑÉ"/"äÔÑ İíÏíæ" — one-tap post publish ?? */}
       <input
         ref={quickImageInputRef}
         type="file"
@@ -15607,10 +15584,10 @@ export default function AddFriendPage() {
         }}
       />
 
-      {/* Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ø«Ù„Ø§Ø« Ø®Ø·ÙˆØ· Ø£ÙØ²ÙŠÙ„Øª â€” Ø§Ù„Ù…ÙˆØ³ÙŠÙ‚Ù‰ ÙÙŠ Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª */}
+      {/* ŞÇÆãÉ ÇáËáÇË ÎØæØ ÃõÒíáÊ — ÇáãæÓíŞì İí ÇáÅÚÏÇÏÇÊ */}
 
 
-      {/* â”€â”€ Publish menu â€” opened from the "+" badge on my story avatar: Ù†Ø´Ø± Ø¥Ø¹Ù„Ø§Ù† Ù„Ù„Ù‚ØµØ© / Ù†Ø´Ø± ØµÙˆØ±Ø© / Ù†Ø´Ø± ÙÙŠØ¯ÙŠÙˆ â”€â”€ */}
+      {/* ?? Publish menu — opened from the "+" badge on my story avatar: äÔÑ ÅÚáÇä ááŞÕÉ / äÔÑ ÕæÑÉ / äÔÑ İíÏíæ ?? */}
       <AnimatePresence>
         {publishMenuOpen && (
           <motion.div
@@ -15638,7 +15615,7 @@ export default function AddFriendPage() {
                 whileTap={{ scale: 0.97 }}
                 onClick={() => {
                   setPublishMenuOpen(false);
-                  // ÙØªØ­ Ø§Ù„Ù…Ø¹Ø±Ø¶ Ù…Ø¨Ø§Ø´Ø±Ø© (ØµÙˆØ±Ø© Ø£Ùˆ ÙÙŠØ¯ÙŠÙˆ) Ø¨Ø¯ÙˆÙ† Ù‚Ø§Ø¦Ù…Ø© Photo/Video
+                  // İÊÍ ÇáãÚÑÖ ãÈÇÔÑÉ (ÕæÑÉ Ãæ İíÏíæ) ÈÏæä ŞÇÆãÉ Photo/Video
                   requestAnimationFrame(() => storyFileRef.current?.click());
                 }}
                 style={{
@@ -15648,7 +15625,7 @@ export default function AddFriendPage() {
                 }}
               >
                 <Plus size={18} color={CLR_PRIMARY} strokeWidth={2.2} />
-                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{isCompanyPublisher ? 'Ù†Ø´Ø± Ø¥Ø¹Ù„Ø§Ù† Ù„Ù„Ù‚ØµØ©' : 'Ù†Ø´Ø± Ù‚ØµØ©'}</span>
+                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{isCompanyPublisher ? 'äÔÑ ÅÚáÇä ááŞÕÉ' : 'äÔÑ ŞÕÉ'}</span>
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.97 }}
@@ -15660,14 +15637,14 @@ export default function AddFriendPage() {
                 }}
               >
                 <Camera size={18} color={CLR_PRIMARY} strokeWidth={2.2} />
-                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{isCompanyPublisher ? 'Ù†Ø´Ø± Ø¥Ø¹Ù„Ø§Ù† Ù„Ù„Ù‚ØµØ© Ø¹Ø¨Ø±' : 'Ù†Ø´Ø± Ø§Ù„Ù‚ØµØ© Ø¹Ø¨Ø±'}</span>
+                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{isCompanyPublisher ? 'äÔÑ ÅÚáÇä ááŞÕÉ ÚÈÑ' : 'äÔÑ ÇáŞÕÉ ÚÈÑ'}</span>
               </motion.button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§ Ø§Ù„Ù…Ø¯Ù…Ø¬Ø© Ù„Ù†Ø´Ø± Ø§Ù„Ù‚ØµØ© Ù…Ø¨Ø§Ø´Ø±Ø© â”€â”€ */}
+      {/* ?? ÇáßÇãíÑÇ ÇáãÏãÌÉ áäÔÑ ÇáŞÕÉ ãÈÇÔÑÉ ?? */}
       <AnimatePresence>
         {cameraCaptureOpen && (
           <CameraStoryCapture
@@ -15680,9 +15657,9 @@ export default function AddFriendPage() {
             storyCommentUnread={storyCommentThreads.filter(t => !t.read).length}
             shareChatUnread={userShareInbox.filter(x => !x.read).length}
             allowMusic={!isCompanyPublisher}
-            publishLabel={isCompanyPublisher ? 'Ù†Ø´Ø± Ø¥Ø¹Ù„Ø§Ù† Ù„Ù„Ù‚ØµØ©' : 'Ù†Ø´Ø± Ù‚ØµØ©'}
+            publishLabel={isCompanyPublisher ? 'äÔÑ ÅÚáÇä ááŞÕÉ' : 'äÔÑ ŞÕÉ'}
             onOpenStoryComments={() => {
-              // Ø¥Ø¸Ù‡Ø§Ø± Story + Chat Ù…Ø¹Ø§Ù‹Ø› Ø¥Ù† ÙˆÙØ¬Ø¯Øª Ù…Ø´Ø§Ø±ÙƒØ§Øª ØºÙŠØ± Ù…Ù‚Ø±ÙˆØ¡Ø© ÙŠÙÙØ¶Ù‘ÙÙ„ Chat
+              // ÅÙåÇÑ Story + Chat ãÚÇğº Åä æõÌÏÊ ãÔÇÑßÇÊ ÛíÑ ãŞÑæÁÉ íõİÖøóá Chat
               setSharedInboxStoryOnly(false);
               setSharedInboxOpen(true);
             }}
@@ -15690,7 +15667,7 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Quick-publish error toast â”€â”€ */}
+      {/* ?? Quick-publish error toast ?? */}
       <AnimatePresence>
         {quickPublishError && (
           <motion.div
@@ -15709,7 +15686,7 @@ export default function AddFriendPage() {
       </AnimatePresence>
 
 
-      {/* Story page Photo/Video composer â€” independent from text feed */}
+      {/* Story page Photo/Video composer — independent from text feed */}
       <AnimatePresence>
         {storyMediaOpen && (
           <motion.div
@@ -15767,7 +15744,7 @@ export default function AddFriendPage() {
                 <textarea
                   value={storyMediaText}
                   onChange={e => setStoryMediaText(e.target.value.slice(0, 2000))}
-                  placeholder="Write a caption (optional)â€¦"
+                  placeholder="Write a caption (optional)…"
                   rows={3}
                   style={{
                     width: '100%', boxSizing: 'border-box', borderRadius: 12, padding: '10px 12px',
@@ -15817,7 +15794,7 @@ export default function AddFriendPage() {
                   <input
                     value={storyMediaUrl}
                     onChange={e => setStoryMediaUrl(e.target.value)}
-                    placeholder="Paste image or video URLâ€¦"
+                    placeholder="Paste image or video URL…"
                     style={{
                       flex: 1, borderRadius: 12, padding: '10px 12px',
                       background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
@@ -15955,7 +15932,7 @@ export default function AddFriendPage() {
                     fontSize: '0.88rem',
                   }}
                 >
-                  {storyMediaPosting ? 'Publishingâ€¦' : 'Publish to story page'}
+                  {storyMediaPosting ? 'Publishing…' : 'Publish to story page'}
                 </button>
               </div>
             </motion.div>
@@ -15963,7 +15940,7 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Friends / Company panel â€” opened from top friends icon on story page â”€â”€ */}
+      {/* ?? Friends / Company panel — opened from top friends icon on story page ?? */}
       <AnimatePresence>
         {namesBarOpen && (
           <motion.div
@@ -16053,7 +16030,7 @@ export default function AddFriendPage() {
                 }}><X size={14} /></button>
               </div>
 
-              {/* â”€â”€ Friends tab â”€â”€ */}
+              {/* ?? Friends tab ?? */}
               {true && (
                 <>
                   <style>{`.names-bar-strip::-webkit-scrollbar{display:none}`}</style>
@@ -16089,7 +16066,7 @@ export default function AddFriendPage() {
                 </>
               )}
 
-              {/* â”€â”€ Company tab â€” Ù‚Ø§Ø¦Ù…Ø© Ø¹Ù…ÙˆØ¯ÙŠØ©: Ø§Ø³Ù… Ø§Ù„Ø´Ø±ÙƒØ© + Ø§Ù„Ø§Ø³Ù… Ø§Ù„ØªØ¬Ø§Ø±ÙŠ ÙÙ‚Ø· (Ø¨Ø¯ÙˆÙ† Ø¥ÙŠÙ…ÙŠÙ„) â”€â”€ */}
+              {/* ?? Company tab — ŞÇÆãÉ ÚãæÏíÉ: ÇÓã ÇáÔÑßÉ + ÇáÇÓã ÇáÊÌÇÑí İŞØ (ÈÏæä Åíãíá) ?? */}
               {false && friendsPanelTab === 'company' && (
                 <div style={{
                   overflowY: 'auto',
@@ -16103,19 +16080,19 @@ export default function AddFriendPage() {
                   gap: 8,
                 }}>
                   {companiesLoading && (
-                    <p style={{ color: CLR_TEXT_DIM, fontSize: '0.8rem', textAlign: 'center', padding: '28px 16px' }}>Ø¬Ø§Ø±ÙŠ ØªØ­Ù…ÙŠÙ„ Ø§Ù„Ø´Ø±ÙƒØ§Øªâ€¦</p>
+                    <p style={{ color: CLR_TEXT_DIM, fontSize: '0.8rem', textAlign: 'center', padding: '28px 16px' }}>ÌÇÑí ÊÍãíá ÇáÔÑßÇÊ…</p>
                   )}
                   {!companiesLoading && companies.length === 0 && (
                     <div style={{ padding: '28px 12px', textAlign: 'center' }}>
                       <Building2 size={28} style={{ color: CLR_PRIMARY_DIM, marginBottom: 10 }} />
-                      <p style={{ color: CLR_TEXT, fontSize: '0.85rem', fontWeight: 700, margin: '0 0 6px' }}>Ù„Ø§ ØªÙˆØ¬Ø¯ Ø´Ø±ÙƒØ§Øª Ù…Ø³Ø¬Ù‘Ù„Ø© Ø¨Ø¹Ø¯</p>
+                      <p style={{ color: CLR_TEXT, fontSize: '0.85rem', fontWeight: 700, margin: '0 0 6px' }}>áÇ ÊæÌÏ ÔÑßÇÊ ãÓÌøáÉ ÈÚÏ</p>
                       <p style={{ color: CLR_TEXT_DIM, fontSize: '0.72rem', margin: 0, lineHeight: 1.5 }}>
-                        Ø³ØªØ¸Ù‡Ø± Ù‡Ù†Ø§ ÙƒÙ„ Ø§Ù„Ø´Ø±ÙƒØ§Øª Ø§Ù„Ù…Ø³Ø¬Ù‘Ù„Ø© ÙÙŠ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚.
+                        ÓÊÙåÑ åäÇ ßá ÇáÔÑßÇÊ ÇáãÓÌøáÉ İí ÇáÊØÈíŞ.
                       </p>
                     </div>
                   )}
                   {!companiesLoading && companies.map(c => {
-                    const companyName = c.name || c.tradeName || c.username || 'Ø´Ø±ÙƒØ©';
+                    const companyName = c.name || c.tradeName || c.username || 'ÔÑßÉ';
                     const tradeName = c.tradeName && c.tradeName !== companyName ? c.tradeName : null;
                     const storyG = storyGroups.find(g =>
                       String(g.userId) === String(c.id)
@@ -16179,7 +16156,7 @@ export default function AddFriendPage() {
                           )}
                         </div>
                         <div style={{ minWidth: 0, flex: 1, textAlign: 'right' }}>
-                          {/* Ø§Ø³Ù… Ø§Ù„Ø´Ø±ÙƒØ© */}
+                          {/* ÇÓã ÇáÔÑßÉ */}
                           <p style={{
                             margin: 0,
                             color: CLR_PRIMARY,
@@ -16191,7 +16168,7 @@ export default function AddFriendPage() {
                           }}>
                             {companyName}
                           </p>
-                          {/* Ø§Ù„Ø§Ø³Ù… Ø§Ù„ØªØ¬Ø§Ø±ÙŠ ÙÙ‚Ø· â€” Ø¨Ø¯ÙˆÙ† Ø¥ÙŠÙ…ÙŠÙ„ */}
+                          {/* ÇáÇÓã ÇáÊÌÇÑí İŞØ — ÈÏæä Åíãíá */}
                           {tradeName && (
                             <p style={{
                               margin: '4px 0 0',
@@ -16223,7 +16200,7 @@ export default function AddFriendPage() {
                             width: 44, height: 44, borderRadius: '50%', padding: 0, flexShrink: 0,
                             background: 'none', border: 'none', cursor: 'pointer', position: 'relative',
                           }}
-                          aria-label="Ø³ØªÙˆØ±ÙŠ Ø§Ù„Ø´Ø±ÙƒØ©"
+                          aria-label="ÓÊæÑí ÇáÔÑßÉ"
                         >
                           <div style={{
                             position: 'absolute', inset: 0, borderRadius: '50%',
@@ -16257,10 +16234,10 @@ export default function AddFriendPage() {
       </AnimatePresence>
 
 
-      {/* â”€â”€ Friend story profile â€” opened by tapping any friend in the globe's names bar.
+      {/* ?? Friend story profile — opened by tapping any friend in the globe's names bar.
           Shows their posts (text + media alike) three-per-row, same as the profile page.
-          onOpenPost uses openSinglePostView so tapping any tile â€” text or media â€” opens the
-          full post exactly like the general text-posts feed (with like/comment/repost/share). â”€â”€ */}
+          onOpenPost uses openSinglePostView so tapping any tile — text or media — opens the
+          full post exactly like the general text-posts feed (with like/comment/repost/share). ?? */}
       <AnimatePresence>
         {viewingProfile && (
           <>
@@ -16321,7 +16298,7 @@ export default function AddFriendPage() {
                     note: saved.note || saved.lastMessage || '',
                   });
                 }}
-                aria-label="ÙØªØ­ Ø´Ø§Øª Ø§Ù„Ø´Ø±ÙƒØ©"
+                aria-label="İÊÍ ÔÇÊ ÇáÔÑßÉ"
                 style={{
                   position: 'fixed',
                   top: 'max(10px, env(safe-area-inset-top))',
@@ -16348,7 +16325,7 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ My followers list â€” opened by tapping "Followers" in my own profile stats row. â”€â”€ */}
+      {/* ?? My followers list — opened by tapping "Followers" in my own profile stats row. ?? */}
       <AnimatePresence>
         {followersModalOpen && (
           <FollowersListModal
@@ -16370,7 +16347,7 @@ export default function AddFriendPage() {
               setCompanyInboxTick(x => x + 1);
               setCompanyInboxOpen(false);
             }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><X size={20} /></button>
-            <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800 }}>Ø±Ø³Ø§Ø¦Ù„ Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡</p>
+            <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800 }}>ÑÓÇÆá ÇáÚãáÇÁ</p>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
             {(() => {
@@ -16378,7 +16355,7 @@ export default function AddFriendPage() {
               try { rows = JSON.parse(localStorage.getItem(`stooorna_company_inbox_${user.id}`) || '[]'); } catch { rows = []; }
               rows = Array.isArray(rows) ? rows.filter((x: any) => String(x.id) !== String(user.id)) : [];
               if (rows.length === 0) {
-                return <p style={{ color: 'rgba(150,200,200,0.6)', textAlign: 'center', padding: 28 }}>Ù„Ø§ Ø±Ø³Ø§Ø¦Ù„ Ø¨Ø¹Ø¯</p>;
+                return <p style={{ color: 'rgba(150,200,200,0.6)', textAlign: 'center', padding: 28 }}>áÇ ÑÓÇÆá ÈÚÏ</p>;
               }
               return rows.map((row: any) => (
                 <div key={row.id} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', marginBottom: 8, borderRadius: 12, border: '1px solid rgba(0,188,212,0.25)', background: row.unread ? 'rgba(250,204,21,0.1)' : 'rgba(0,188,212,0.06)', direction: 'rtl' }}>
@@ -16397,11 +16374,11 @@ export default function AddFriendPage() {
                 }} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'right', direction: 'rtl', padding: 0 }}>
                   <UserAvatar name={row.name || row.username || '?'} avatarUrl={row.avatarUrl} size={36} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, fontSize: '0.85rem' }}>{row.name || row.username || 'Ù…Ø³ØªØ®Ø¯Ù…'}</p>
+                    <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, fontSize: '0.85rem' }}>{row.name || row.username || 'ãÓÊÎÏã'}</p>
                     <p style={{ margin: 0, color: 'rgba(160,200,200,0.75)', fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.lastMessage}</p>
                   </div>
                 </button>
-                <button type="button" aria-label="Ø­Ø°Ù" onClick={() => {
+                <button type="button" aria-label="ÍĞİ" onClick={() => {
                   try {
                     const key = `stooorna_company_inbox_${user.id}`;
                     const list = JSON.parse(localStorage.getItem(key) || '[]').filter((x: any) => String(x.id) !== String(row.id));
@@ -16419,9 +16396,9 @@ export default function AddFriendPage() {
         </div>
       )}
 
-      {/* â”€â”€ Music player â€” the <audio> element itself now lives inside musicPlayerStore
+      {/* ?? Music player — the <audio> element itself now lives inside musicPlayerStore
           (never attached to the DOM), so it survives this page unmounting; only the
-          search modal for the music icon is rendered here. â”€â”€ */}
+          search modal for the music icon is rendered here. ?? */}
       <AnimatePresence>
         {musicModalOpen && (
           <MusicSearchModal
@@ -16438,7 +16415,7 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Ø´ÙŠØ± Ø§Ù„Ù…Ù†ØªØ¬: Ø®Ø§Ø±Ø¬ÙŠ | Ø§Ø³ØªÙØ³Ø§Ø± Ø¹Ù† Ø§Ù„Ù…Ù†ØªØ¬ â”€â”€ */}
+      {/* ?? ÔíÑ ÇáãäÊÌ: ÎÇÑÌí | ÇÓÊİÓÇÑ Úä ÇáãäÊÌ ?? */}
       <AnimatePresence>
         {productShareMenuPost && (
           <motion.div
@@ -16468,7 +16445,7 @@ export default function AddFriendPage() {
               }}
             >
               <p style={{ margin: '0 0 12px', color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.92rem', textAlign: 'center' }}>
-                Ù…Ø´Ø§Ø±ÙƒØ© / Ø§Ø³ØªÙØ³Ø§Ø±
+                ãÔÇÑßÉ / ÇÓÊİÓÇÑ
               </p>
               <motion.button
                 whileTap={{ scale: 0.97 }}
@@ -16486,11 +16463,11 @@ export default function AddFriendPage() {
                 }}
               >
                 <Send size={16} strokeWidth={2.2} />
-                Ù†Ø´Ø± Ø¨Ø§Ù„Ø®Ø§Ø±Ø¬
+                äÔÑ ÈÇáÎÇÑÌ
               </motion.button>
               {(() => {
                 const p = productShareMenuPost;
-                // Ø´Ø±ÙƒØ© ÙÙ‚Ø· â†’ Ø§Ø³ØªÙØ³Ø§Ø± Ø¹Ù† Ø§Ù„Ù…Ù†ØªØ¬ | Ù…Ø³ØªØ®Ø¯Ù… â†’ Ù†Ø´Ø± Ø§Ù„Ù‰ ØµØ¯ÙŠÙ‚
+                // ÔÑßÉ İŞØ ? ÇÓÊİÓÇÑ Úä ÇáãäÊÌ | ãÓÊÎÏã ? äÔÑ Çáì ÕÏíŞ
                 const isCo = !!(p && (
                   (p as any).publisherType === 'company'
                   || (p as any).isCompanyPost === true
@@ -16517,7 +16494,7 @@ export default function AddFriendPage() {
                       }}
                     >
                       <MessageCircle size={16} strokeWidth={2.2} />
-                      Ø§Ø³ØªÙØ³Ø§Ø± Ø¹Ù† Ø§Ù„Ù…Ù†ØªØ¬
+                      ÇÓÊİÓÇÑ Úä ÇáãäÊÌ
                     </motion.button>
                   );
                 }
@@ -16531,14 +16508,14 @@ export default function AddFriendPage() {
                   background: 'transparent', color: CLR_TEXT_DIM, fontWeight: 600, cursor: 'pointer',
                 }}
               >
-                Ø¥Ù„ØºØ§Ø¡
+                ÅáÛÇÁ
               </button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Ù†Ù…ÙˆØ°Ø¬ Ø§Ø³ØªÙØ³Ø§Ø± Ø§Ù„Ù…Ù†ØªØ¬ â†’ Ø´Ø§Øª Ø§Ù„Ø´Ø±ÙƒØ© â”€â”€ */}
+      {/* ?? äãæĞÌ ÇÓÊİÓÇÑ ÇáãäÊÌ ? ÔÇÊ ÇáÔÑßÉ ?? */}
       <AnimatePresence>
         {productInquiryPost && (() => {
           const ad = parseProductAd(productInquiryPost.text);
@@ -16566,7 +16543,7 @@ export default function AddFriendPage() {
                   <X size={20} />
                 </button>
                 <p style={{ margin: 0, flex: 1, color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.95rem' }}>
-                  Ø§Ø³ØªÙØ³Ø§Ø± Ø¹Ù† Ø§Ù„Ù…Ù†ØªØ¬
+                  ÇÓÊİÓÇÑ Úä ÇáãäÊÌ
                 </p>
               </div>
               <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -16587,13 +16564,13 @@ export default function AddFriendPage() {
                     <p style={{ margin: '8px 0 0', color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.45 }}>{ad.details}</p>
                   ) : null}
                   <p style={{ margin: '10px 0 0', color: CLR_TEXT_DIM, fontSize: '0.72rem' }}>
-                    Ø§Ù„Ø´Ø±ÙƒØ©: {productInquiryPost.authorName || productInquiryPost.authorUsername || 'â€”'}
+                    ÇáÔÑßÉ: {productInquiryPost.authorName || productInquiryPost.authorUsername || '—'}
                   </p>
                 </div>
                 <textarea
                   value={productInquiryText}
                   onChange={e => setProductInquiryText(e.target.value.slice(0, 500))}
-                  placeholder="Ø§ÙƒØªØ¨ Ø³Ø¤Ø§Ù„Ùƒ Ø¹Ù† Ø§Ù„Ù…Ù†ØªØ¬ (Ù…Ø«Ø§Ù„: Ù‡Ù„ Ø§Ù„Ø³Ø¹Ø± Ù†Ù‡Ø§Ø¦ÙŠØŸ Ù‡Ù„ Ù…ØªÙˆÙØ±ØŸ)â€¦"
+                  placeholder="ÇßÊÈ ÓÄÇáß Úä ÇáãäÊÌ (ãËÇá: åá ÇáÓÚÑ äåÇÆí¿ åá ãÊæİÑ¿)…"
                   rows={4}
                   style={{
                     width: '100%', boxSizing: 'border-box', resize: 'vertical',
@@ -16639,7 +16616,7 @@ export default function AddFriendPage() {
                     opacity: productInquirySending ? 0.7 : 1,
                   }}
                 >
-                  {productInquirySending ? 'Ø¬Ø§Ø±ÙŠ Ø§Ù„Ø¥Ø±Ø³Ø§Ù„â€¦' : 'Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ø§Ø³ØªÙØ³Ø§Ø± ÙˆÙØªØ­ Ø§Ù„Ø´Ø§Øª'}
+                  {productInquirySending ? 'ÌÇÑí ÇáÅÑÓÇá…' : 'ÅÑÓÇá ÇáÇÓÊİÓÇÑ æİÊÍ ÇáÔÇÊ'}
                 </motion.button>
               </div>
             </motion.div>
@@ -16647,7 +16624,7 @@ export default function AddFriendPage() {
         })()}
       </AnimatePresence>
 
-      {/* â”€â”€ Ù†Ø´Ø± Ø§Ù„Ù‰ ØµØ¯ÙŠÙ‚: Ø§Ø®ØªÙŠØ§Ø± ØµØ¯ÙŠÙ‚ + Ù…Ù„Ø§Ø­Ø¸Ø© â”€â”€ */}
+      {/* ?? äÔÑ Çáì ÕÏíŞ: ÇÎÊíÇÑ ÕÏíŞ + ãáÇÍÙÉ ?? */}
       <AnimatePresence>
         {userSharePickPost && (
           <motion.div
@@ -16668,25 +16645,25 @@ export default function AddFriendPage() {
               <button type="button" onClick={() => { setUserSharePickPost(null); setUserSharePickFriend(null); setUserShareNote(''); }} style={{ background: 'none', border: 'none', color: CLR_PRIMARY, cursor: 'pointer', padding: 2 }}>
                 <X size={20} />
               </button>
-              <p style={{ margin: 0, flex: 1, color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.95rem' }}>{userSharePickFriend ? 'ØªØ¹Ù„ÙŠÙ‚ Ø¹Ù„Ù‰ Ø§Ù„Ù…Ù†Ø´ÙˆØ±' : 'Ù†Ø´Ø± Ø§Ù„Ù‰ ØµØ¯ÙŠÙ‚'}</p>
+              <p style={{ margin: 0, flex: 1, color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.95rem' }}>{userSharePickFriend ? 'ÊÚáíŞ Úáì ÇáãäÔæÑ' : 'äÔÑ Çáì ÕÏíŞ'}</p>
             </div>
             <div style={{ padding: '12px 14px' }}>
               {userSharePickFriend ? (
                 <>
                   <p style={{ margin: '0 0 8px', color: '#eab308', fontWeight: 800, fontSize: '0.85rem', textAlign: 'right' }}>
-                    Ø¥Ù„Ù‰: {userSharePickFriend.name || userSharePickFriend.username || 'ØµØ¯ÙŠÙ‚'}
+                    Åáì: {userSharePickFriend.name || userSharePickFriend.username || 'ÕÏíŞ'}
                   </p>
                   <div style={{
                     borderRadius: 12, padding: '10px 12px', marginBottom: 10,
                     border: '1px solid rgba(234,179,8,0.4)', background: 'rgba(234,179,8,0.08)',
                     color: CLR_TEXT, fontSize: '0.82rem', whiteSpace: 'pre-wrap', maxHeight: 90, overflow: 'auto', direction: 'rtl',
                   }}>
-                    {(userSharePickPost?.text || '').slice(0, 280) || 'Ù…Ù†Ø´ÙˆØ±'}
+                    {(userSharePickPost?.text || '').slice(0, 280) || 'ãäÔæÑ'}
                   </div>
                   <textarea
                     value={userShareNote}
                     onChange={e => setUserShareNote(e.target.value.slice(0, 300))}
-                    placeholder="Ø§ÙƒØªØ¨ ØªØ¹Ù„ÙŠÙ‚Ø§Ù‹ Ø¹Ù„Ù‰ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø«Ù… Ø£Ø±Ø³Ù„â€¦"
+                    placeholder="ÇßÊÈ ÊÚáíŞÇğ Úáì ÇáãäÔæÑ Ëã ÃÑÓá…"
                     rows={3}
                     style={{
                       width: '100%', boxSizing: 'border-box', borderRadius: 12, padding: '10px 12px',
@@ -16697,7 +16674,7 @@ export default function AddFriendPage() {
                   <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                     <button type="button" onClick={() => { setUserSharePickFriend(null); setUserShareNote(''); }}
                       style={{ flex: 1, padding: 12, borderRadius: 12, border: `1px solid ${CLR_PRIMARY_BORDER}`, background: 'transparent', color: CLR_TEXT_DIM, fontWeight: 700, cursor: 'pointer' }}>
-                      Ø±Ø¬ÙˆØ¹
+                      ÑÌæÚ
                     </button>
                     <button
                       type="button"
@@ -16743,17 +16720,17 @@ export default function AddFriendPage() {
                         fontWeight: 800, cursor: userShareNote.trim() ? 'pointer' : 'default',
                       }}
                     >
-                      Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ù…Ø´Ø§Ø±ÙƒØ©
+                      ÅÑÓÇá ÇáãÔÇÑßÉ
                     </button>
                   </div>
                 </>
               ) : (
-                <p style={{ margin: 0, color: CLR_TEXT_DIM, fontSize: '0.8rem', textAlign: 'right' }}>Ø§Ø®ØªØ± ØµØ¯ÙŠÙ‚Ø§Ù‹ Ø£ÙˆÙ„Ø§Ù‹ â€” Ù„Ù† ÙŠÙØ±Ø³Ù„ Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ø­ØªÙ‰ ØªÙƒØªØ¨ ØªØ¹Ù„ÙŠÙ‚Ø§Ù‹</p>
+                <p style={{ margin: 0, color: CLR_TEXT_DIM, fontSize: '0.8rem', textAlign: 'right' }}>ÇÎÊÑ ÕÏíŞÇğ ÃæáÇğ — áä íõÑÓá ÇáãäÔæÑ ÍÊì ÊßÊÈ ÊÚáíŞÇğ</p>
               )}
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '0 14px 20px', display: userSharePickFriend ? 'none' : 'flex', flexDirection: 'column', gap: 8 }}>
               {friends.length === 0 && (
-                <p style={{ color: CLR_TEXT_DIM, textAlign: 'center', marginTop: 40, fontSize: '0.85rem' }}>Ù„Ø§ Ø£ØµØ¯Ù‚Ø§Ø¡ Ø¨Ø¹Ø¯ â€” Ø£Ø¶Ù Ø£ØµØ¯Ù‚Ø§Ø¡ Ù„Ù„Ù…Ø´Ø§Ø±ÙƒØ© Ù…Ø¹Ù‡Ù…</p>
+                <p style={{ color: CLR_TEXT_DIM, textAlign: 'center', marginTop: 40, fontSize: '0.85rem' }}>áÇ ÃÕÏŞÇÁ ÈÚÏ — ÃÖİ ÃÕÏŞÇÁ ááãÔÇÑßÉ ãÚåã</p>
               )}
               {friends.map(f => (
                 <button
@@ -16771,7 +16748,7 @@ export default function AddFriendPage() {
                 >
                   <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl} size={42} style={{ border: `2px solid ${CLR_PRIMARY_BORDER}` }} />
                   <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
-                    <p style={{ margin: 0, fontWeight: 800, color: CLR_PRIMARY, fontSize: '0.88rem' }}>{f.name || f.username || 'â€”'}</p>
+                    <p style={{ margin: 0, fontWeight: 800, color: CLR_PRIMARY, fontSize: '0.88rem' }}>{f.name || f.username || '—'}</p>
                     {f.username && <p style={{ margin: '2px 0 0', color: CLR_TEXT_DIM, fontSize: '0.72rem' }}>@{f.username}</p>}
                   </div>
                   <Send size={16} color={CLR_PRIMARY} />
@@ -16782,7 +16759,7 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Ù…ÙŠÙ†ÙŠ Ø´Ø§Øª Ù…Ø´Ø§Ø±ÙƒØ©: Ù†ÙØ³ Ø§Ù„Ù…Ø±Ø¨Ø¹ â€” Ù†Øµ / ØµÙˆØª / ØµÙˆØ±Ø© / ÙÙŠØ¯ÙŠÙˆ ÙÙ‚Ø· â€” Ø¨Ø¯ÙˆÙ† /chat â”€â”€ */}
+      {/* ?? ãíäí ÔÇÊ ãÔÇÑßÉ: äİÓ ÇáãÑÈÚ — äÕ / ÕæÊ / ÕæÑÉ / İíÏíæ İŞØ — ÈÏæä /chat ?? */}
       <AnimatePresence>
         {userShareChatPeer && (
           <motion.div
@@ -16805,9 +16782,9 @@ export default function AddFriendPage() {
               <UserAvatar name={userShareChatPeer.name || userShareChatPeer.username || '?'} avatarUrl={userShareChatPeer.avatarUrl} size={36} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, color: '#eab308', fontWeight: 800, fontSize: '0.9rem' }}>
-                  {userShareChatPeer.name || userShareChatPeer.username || 'Ù…Ø³ØªØ®Ø¯Ù…'}
+                  {userShareChatPeer.name || userShareChatPeer.username || 'ãÓÊÎÏã'}
                 </p>
-                <p style={{ margin: 0, color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>Ø´Ø§Øª Ø§Ù„Ù…Ø´Ø§Ø±ÙƒØ© Â· Ù‡Ø°Ø§ Ø§Ù„Ù…Ø±Ø¨Ø¹ ÙÙ‚Ø·</p>
+                <p style={{ margin: 0, color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>ÔÇÊ ÇáãÔÇÑßÉ · åĞÇ ÇáãÑÈÚ İŞØ</p>
               </div>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -16833,7 +16810,7 @@ export default function AddFriendPage() {
                       const isVid = ty.includes('video') || /\.(mp4|webm|mov)(\?|$)/i.test(url);
                       const isPdf = ty.includes('pdf') || /\.pdf(\?|$)/i.test(url);
                       if (isVid) return <video key={i} src={url} controls playsInline style={{ width: '100%', maxHeight: 260, borderRadius: 10, marginBottom: 8, background: '#000' }} />;
-                      if (isPdf) return <a key={i} href={url} target="_blank" rel="noreferrer" style={{ display: 'block', marginBottom: 8, color: CLR_PRIMARY, fontWeight: 800 }}>ÙØªØ­ Ù…Ù„Ù PDF</a>;
+                      if (isPdf) return <a key={i} href={url} target="_blank" rel="noreferrer" style={{ display: 'block', marginBottom: 8, color: CLR_PRIMARY, fontWeight: 800 }}>İÊÍ ãáİ PDF</a>;
                       return <img key={i} src={url} alt="" style={{ width: '100%', maxHeight: 280, objectFit: 'contain', borderRadius: 10, marginBottom: 8, display: 'block', background: 'rgba(0,0,0,0.25)' }} />;
                     });
                   })()}
@@ -16858,7 +16835,7 @@ export default function AddFriendPage() {
                   flexDirection: user && m.fromId === user.id ? 'row' : 'row-reverse',
                 }}>
                   {user && m.fromId === user.id ? (
-                  <button type="button" aria-label="Ø­Ø°Ù Ø§Ù„Ø±Ø³Ø§Ù„Ø©" onClick={() => {
+                  <button type="button" aria-label="ÍĞİ ÇáÑÓÇáÉ" onClick={() => {
                     if (!user || !userShareChatPeer) return;
                     if (m.fromId !== user.id) return;
                     const pid = userShareChatPeer.post?.id ?? 'share';
@@ -16907,7 +16884,7 @@ export default function AddFriendPage() {
               />
               <button type="button" onClick={() => shareMiniFileRef.current?.click()}
                 style={{ width: 40, height: 40, borderRadius: 20, border: `1px solid ${CLR_PRIMARY_BORDER}`, background: CLR_PRIMARY_FAINT, color: CLR_PRIMARY, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}
-                title="ØµÙˆØ±Ø© Ø£Ùˆ ÙÙŠØ¯ÙŠÙˆ">
+                title="ÕæÑÉ Ãæ İíÏíæ">
                 <ImageIcon size={16} />
               </button>
               <button
@@ -16937,7 +16914,7 @@ export default function AddFriendPage() {
                   } catch { /* mic denied */ }
                 }}
                 style={{ width: 40, height: 40, borderRadius: 20, border: `1px solid ${shareMiniRecording ? 'rgba(239,68,68,0.5)' : CLR_PRIMARY_BORDER}`, background: shareMiniRecording ? 'rgba(239,68,68,0.15)' : CLR_PRIMARY_FAINT, color: shareMiniRecording ? '#ef4444' : CLR_PRIMARY, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}
-                title="ØªØ³Ø¬ÙŠÙ„ ØµÙˆØªÙŠ"
+                title="ÊÓÌíá ÕæÊí"
               >
                 {shareMiniRecording ? <MicOff size={16} /> : <Mic size={16} />}
               </button>
@@ -16953,7 +16930,7 @@ export default function AddFriendPage() {
                     setShareMiniText('');
                   }
                 }}
-                placeholder="Ø§ÙƒØªØ¨ Ø±Ø³Ø§Ù„Ø©â€¦"
+                placeholder="ÇßÊÈ ÑÓÇáÉ…"
                 style={{
                   width: '100%', boxSizing: 'border-box', borderRadius: 20, padding: '10px 42px 10px 14px',
                   background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
@@ -16986,7 +16963,7 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* â”€â”€ Guest guard modal â€” ÙŠØ¸Ù‡Ø± Ø¹Ù†Ø¯ Ù…Ø­Ø§ÙˆÙ„Ø© Ø§Ù„Ø²Ø§Ø¦Ø± Ø§Ù„ØªÙØ§Ø¹Ù„ â”€â”€ */}
+      {/* ?? Guest guard modal — íÙåÑ ÚäÏ ãÍÇæáÉ ÇáÒÇÆÑ ÇáÊİÇÚá ?? */}
       {GuestModal}
     </>;
 }
