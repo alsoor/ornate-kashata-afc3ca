@@ -2752,9 +2752,10 @@ function GlobalBottomNavigation() {
           aria-label="Friends"
           style={{
             position: 'absolute',
-            right: 54,
+            left: '68%',
+            right: 'auto',
             top: '50%',
-            transform: 'translateY(-50%)',
+            transform: 'translate(-50%, -50%)',
             width: 44,
             height: 36,
             border: 'none',
