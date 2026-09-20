@@ -5,7 +5,7 @@ import React from 'react';
 import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import UserAvatar from '@/components/UserAvatar';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, Menu, Bell, PenLine } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, Bell, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, ChevronLeft, ChevronRight, Settings, Radio, Building2, LogIn } from 'lucide-react';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -47,24 +47,113 @@ interface SecretChat {
   created_at: string | null;
   member_count: number;
 }
-const C = {
-  bg: 'radial-gradient(ellipse 70% 60% at 50% 30%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)',
-  headerBg: 'hsl(var(--background)/0.95)',
-  primary: '#00BCD4',
-  primaryDim: 'rgba(0,188,212,0.35)',
-  primaryFaint: 'rgba(0,188,212,0.08)',
-  primaryBorder: 'rgba(0,188,212,0.2)',
-  text: 'rgba(200,230,230,0.9)',
-  textDim: 'rgba(150,200,200,0.5)',
-  cardBg: 'rgba(0,188,212,0.05)',
-  cardBorder: 'rgba(0,188,212,0.12)',
-  inputBg: 'rgba(0,30,35,0.8)',
-  navBorder: 'rgba(0,188,212,0.08)',
-  tabActive: 'rgba(0,188,212,0.15)',
-  tabBorder: 'rgba(0,188,212,0.3)',
-  postBorder: '#0d3d33',
-  paper: '#f7f6f2'
-};
+// ── Design tokens — CSS colour aliases used throughout this page ──
+// These are raw CSS values (gradients, rgba, hsl), not user-visible copy,
+// so they intentionally live here rather than in virtual:content.
+const PAGE_BG   = 'radial-gradient(ellipse 70% 60% at 50% 30%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)';
+const CLR_HEADER_BG     = 'hsl(var(--background)/0.95)';
+const CLR_PRIMARY       = '#00BCD4';
+const CLR_PRIMARY_DIM   = 'rgba(0,188,212,0.35)';
+const CLR_PRIMARY_FAINT = 'rgba(0,188,212,0.08)';
+const CLR_PRIMARY_BORDER= 'rgba(0,188,212,0.2)';
+const CLR_TEXT          = 'rgba(200,230,230,0.9)';
+const CLR_TEXT_DIM      = 'rgba(150,200,200,0.5)';
+const CLR_CARD_BG       = 'rgba(0,188,212,0.05)';
+const CLR_CARD_BORDER   = 'rgba(0,188,212,0.12)';
+const CLR_INPUT_BG      = 'rgba(0,30,35,0.8)';
+const CLR_NAV_BORDER    = 'rgba(0,188,212,0.08)';
+const CLR_TAB_ACTIVE    = 'rgba(0,188,212,0.15)';
+const CLR_TAB_BORDER    = 'rgba(0,188,212,0.3)';
+
+const CLR_POST_BORDER   = '#0d3d33';
+
+// ── بث صوتي نشط: أيقونة حمراء وامضة لكل البثوث ─────────────────────────────
+function liveChannelForHost(hostId: string): string {
+  const clean = String(hostId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+  if (clean) return `stooorna-live-${clean}`;
+  let h = 0;
+  const s = String(hostId || '');
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  const uid = Math.abs(h) % 100_000 || 1;
+  return `stooorna-live-${uid}`;
+}
+
+function readLocalLiveActive(hostId: string): boolean {
+  try {
+    const raw = localStorage.getItem(`stooorna_live_active_${hostId}`);
+    if (!raw) return false;
+    const data = JSON.parse(raw) as { active?: boolean; at?: number };
+    if (!data?.active) return false;
+    if (data.at && Date.now() - data.at > 20_000) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** هل يوجد بث صوتي شغّال لهذا الحساب الآن؟ */
+function useLiveBroadcastActive(hostId: string | null | undefined): boolean {
+  const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    if (!hostId) {
+      setActive(false);
+      return;
+    }
+    let cancelled = false;
+    const channel = liveChannelForHost(hostId);
+
+    const apply = (v: boolean) => {
+      if (!cancelled) setActive(v);
+    };
+
+    const checkLocal = () => apply(readLocalLiveActive(hostId));
+
+    const checkRoom = async () => {
+      if (readLocalLiveActive(hostId)) {
+        apply(true);
+      }
+      try {
+        const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
+        if (!r.ok) {
+          checkLocal();
+          return;
+        }
+        const data = await r.json() as { members?: unknown[] };
+        const n = Array.isArray(data.members) ? data.members.length : 0;
+        if (n > 0) apply(true);
+        else apply(readLocalLiveActive(hostId));
+      } catch {
+        checkLocal();
+      }
+    };
+
+    checkRoom();
+    const interval = window.setInterval(checkRoom, 4000);
+
+    const onEvt = (e: Event) => {
+      const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean } | undefined;
+      if (!d || !d.hostId) return;
+      if (String(d.hostId) === String(hostId)) apply(!!d.active);
+    };
+    window.addEventListener('stooorna:live-active', onEvt);
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === `stooorna_live_active_${hostId}`) checkLocal();
+    };
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('stooorna:live-active', onEvt);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [hostId]);
+
+  return active;
+}
+
 
 // ── Notification sound design — small synthesized tones (water-drop / bubble mixes) ──
 // No audio files needed: each event gets its own tiny Web Audio mix so the tones stay distinct.
@@ -264,6 +353,14 @@ interface StoryItem {
   expiresAt: string;
   createdAt: string;
   seen: boolean;
+  audioUrl?: string | null;
+  overlayText?: string | null;
+  overlayColor?: string | null;
+  overlayX?: number | null;   // 0–1 fraction of container width
+  overlayY?: number | null;   // 0–1 fraction of container height
+  musicBadgeX?: number | null;
+  musicBadgeY?: number | null;
+  musicBadgeScale?: number | null;
 }
 interface StoryGroup {
   userId: string;
@@ -294,6 +391,9 @@ interface PostItem {
   mediaType: 'image' | 'video' | null;
   mediaUrls?: string[];
   mediaTypes?: ('image' | 'video')[];
+  // text = منشور نصي (قد يحمل وسائط مرفقة)، photos/videos = أقسام الوسائط المستقلة فقط
+  audience?: 'text' | 'public' | string | null;
+  destination?: 'text' | 'photos' | 'videos' | string | null;
   hashtags: string[];
   createdAt: string;
   likesCount: number;
@@ -310,6 +410,279 @@ interface PostItem {
   // الإضافة فورًا بلا انتظار، ولو true تُرسل كطلب صداقة بانتظار القبول. اختياري
   // لأن الحقل قد لا يكون مضافًا بعد من طرف الـ API — نفترض الحذر (انتظار) لو غاب.
   authorIsPrivate?: boolean;
+}
+
+// ── Product ad — plain Arabic text only (server rejected JSON / special markers) ──
+// Format stored in post.text:
+//   LINE1: title
+//   optional "السعر: …"
+//   then details + extra paragraphs separated by blank lines
+interface ProductAdData {
+  __productAd: 1;
+  title: string;
+  details: string;
+  price: string;
+  extras: string[];
+}
+function buildProductPostText(data: { title: string; details: string; price: string; extras: string[] }): string {
+  const title = (data.title || 'منتج').trim();
+  const price = (data.price || '').trim();
+  const details = (data.details || '').trim();
+  const extras = (data.extras || []).map(s => s.trim()).filter(Boolean);
+  const parts: string[] = [title];
+  if (price) parts.push(`السعر: ${price}`);
+  if (details) parts.push(details);
+  for (const ex of extras) parts.push(ex);
+  return parts.join('\n\n');
+}
+function parseProductAd(text: string | null | undefined): ProductAdData | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  // legacy JSON / marker formats from earlier builds
+  if (trimmed.startsWith('{')) {
+    try {
+      const first = trimmed.split('\n')[0];
+      const o = JSON.parse(first.startsWith('{') ? first : trimmed) as ProductAdData;
+      if (o && (o as any).__productAd === 1) return o;
+    } catch { /* ignore */ }
+    try {
+      const o = JSON.parse(trimmed) as ProductAdData;
+      if (o && (o as any).__productAd === 1) return o;
+    } catch { /* ignore */ }
+  }
+  const marker = trimmed.match(/⟦stooorna-product:([A-Za-z0-9+/=]+)⟧\s*$/);
+  if (marker) {
+    try {
+      const json = decodeURIComponent(escape(atob(marker[1])));
+      const o = JSON.parse(json) as ProductAdData;
+      if (o && o.__productAd === 1) return o;
+    } catch { /* ignore */ }
+  }
+  // plain format produced by buildProductPostText
+  const body = trimmed.replace(/\n*⟦stooorna-product:[A-Za-z0-9+/=]+⟧\s*$/, '').trim();
+  if (!body) return null;
+  const blocks = body.split(/\n\n+/).map(b => b.trim()).filter(Boolean);
+  if (blocks.length === 0) return null;
+  const title = blocks[0];
+  let price = '';
+  const rest: string[] = [];
+  for (let i = 1; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (!price && /^السعر\s*:/.test(b)) {
+      price = b.replace(/^السعر\s*:\s*/, '').trim();
+    } else {
+      rest.push(b);
+    }
+  }
+  return {
+    __productAd: 1,
+    title,
+    price,
+    details: rest[0] || '',
+    extras: rest.slice(1),
+  };
+}
+function productAdDisplayTitle(post: PostItem): string {
+  const ad = parseProductAd(post.text);
+  if (ad?.title?.trim()) return ad.title.trim();
+  return (post.text || '').split('\n')[0]?.trim().slice(0, 80) || 'إعلان';
+}
+
+/** استفسار عن منتج — يُرسل كرسالة شات للشركة ويظهر في صندوق شات الشركات */
+const PRODUCT_INQUIRY_PREFIX = '__PRODUCT_INQUIRY__';
+export type ProductInquiryPayload = {
+  postId: number;
+  title: string;
+  price: string;
+  details: string;
+  imageUrl: string;
+  question: string;
+  companyId: string;
+  companyName: string;
+  companyUsername?: string | null;
+  companyAvatar?: string | null;
+};
+export function buildProductInquiryBody(data: ProductInquiryPayload): string {
+  return PRODUCT_INQUIRY_PREFIX + JSON.stringify(data);
+}
+export function parseProductInquiry(body: string | null | undefined): ProductInquiryPayload | null {
+  if (!body || typeof body !== 'string' || !body.startsWith(PRODUCT_INQUIRY_PREFIX)) return null;
+  try {
+    const o = JSON.parse(body.slice(PRODUCT_INQUIRY_PREFIX.length)) as ProductInquiryPayload;
+    if (o && o.postId && o.companyId) return o;
+  } catch { /* ignore */ }
+  return null;
+}
+const PRODUCT_INQUIRY_THREADS_KEY = 'stooorna_product_inquiry_threads';
+/** خيوط استفسار نشطة عند المستخدم — لمصفرة أيقونة الشير عند رد الشركة */
+function loadProductInquiryThreads(): Record<string, { companyId: string; hasReply: boolean; postId: number }> {
+  try {
+    const raw = localStorage.getItem(PRODUCT_INQUIRY_THREADS_KEY);
+    const o = raw ? JSON.parse(raw) : {};
+    return o && typeof o === 'object' ? o : {};
+  } catch { return {}; }
+}
+function saveProductInquiryThread(postId: number, companyId: string, hasReply = false) {
+  try {
+    const all = loadProductInquiryThreads();
+    all[String(postId)] = { companyId, hasReply, postId };
+    localStorage.setItem(PRODUCT_INQUIRY_THREADS_KEY, JSON.stringify(all));
+    window.dispatchEvent(new CustomEvent('stooorna:product-inquiry', { detail: all }));
+  } catch { /* */ }
+}
+function productInquiryShareAlert(postId: number): boolean {
+  const t = loadProductInquiryThreads()[String(postId)];
+  return !!(t && t.hasReply);
+}
+function clearProductInquiryReplyFlag(postId: number) {
+  try {
+    const all = loadProductInquiryThreads();
+    if (all[String(postId)]) {
+      all[String(postId)] = { ...all[String(postId)], hasReply: false };
+      localStorage.setItem(PRODUCT_INQUIRY_THREADS_KEY, JSON.stringify(all));
+      window.dispatchEvent(new CustomEvent('stooorna:product-inquiry', { detail: all }));
+    }
+  } catch { /* */ }
+}
+
+const USER_SHARE_INBOX_KEY = (uid: string) => `stooorna_user_share_inbox_${uid}`;
+type UserShareInboxItem = {
+  id: string;
+  fromId: string;
+  fromName: string | null;
+  fromUsername: string | null;
+  fromAvatar: string | null;
+  post: PostItem;
+  note: string;
+  at: number;
+  read: boolean;
+};
+function loadUserShareInbox(uid: string): UserShareInboxItem[] {
+  try {
+    const raw = localStorage.getItem(USER_SHARE_INBOX_KEY(uid));
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+function saveUserShareInbox(uid: string, list: UserShareInboxItem[]) {
+  try {
+    localStorage.setItem(USER_SHARE_INBOX_KEY(uid), JSON.stringify(list.slice(0, 100)));
+    window.dispatchEvent(new CustomEvent('stooorna:user-share-inbox', { detail: { userId: uid, list } }));
+  } catch { /* */ }
+}
+function pushUserShareInbox(toUserId: string, item: Omit<UserShareInboxItem, 'id' | 'at' | 'read'> & { id?: string }) {
+  if (!toUserId) return;
+  const list = loadUserShareInbox(toUserId);
+  const next: UserShareInboxItem = {
+    id: item.id || `ushare-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    fromId: item.fromId,
+    fromName: item.fromName ?? null,
+    fromUsername: item.fromUsername ?? null,
+    fromAvatar: item.fromAvatar ?? null,
+    post: item.post,
+    note: item.note || '',
+    at: Date.now(),
+    read: false,
+  };
+  saveUserShareInbox(toUserId, [next, ...list.filter(x => x.id !== next.id)]);
+  // قائمة Chat Friends في الشريط السفلي — عند الطرفين
+  const upsertFriendBar = (ownerId: string, peer: { id: string; name: string | null; username: string | null; avatarUrl: string | null; text: string; unread: number }) => {
+    if (!ownerId || !peer.id) return;
+    try {
+      const key = `stooorna_user_friend_chats_${ownerId}`;
+      const raw = localStorage.getItem(key);
+      const arr = raw ? JSON.parse(raw) : [];
+      const list = Array.isArray(arr) ? arr : [];
+      const row = {
+        id: peer.id,
+        name: peer.name,
+        username: peer.username,
+        avatarUrl: peer.avatarUrl,
+        lastMessage: peer.text,
+        at: Date.now(),
+        unread: peer.unread,
+        kind: 'friend',
+        postId: next.post?.id ?? null,
+        postText: (next.post?.text || '').slice(0, 400),
+        note: next.note || '',
+        mediaItems: (() => {
+          const post = next.post as any;
+          if (!post) return [];
+          const urls = Array.isArray(post.mediaUrls) && post.mediaUrls.length ? post.mediaUrls : (post.mediaUrl ? [post.mediaUrl] : []);
+          const types = Array.isArray(post.mediaTypes) && post.mediaTypes.length ? post.mediaTypes : (post.mediaType ? [post.mediaType] : []);
+          return urls.filter(Boolean).map((url: string, i: number) => {
+            const ty = String(types[i] || '').toLowerCase();
+            const kind = ty.includes('video') || /\.(mp4|webm|mov)(\?|$)/i.test(url) ? 'video'
+              : ty.includes('pdf') || /\.pdf(\?|$)/i.test(url) ? 'pdf' : 'image';
+            return { url, type: kind };
+          });
+        })(),
+      };
+      const out = [row, ...list.filter((x: any) => x.id !== peer.id)].slice(0, 200);
+      localStorage.setItem(key, JSON.stringify(out));
+      window.dispatchEvent(new CustomEvent('stooorna:user-friend-chats', { detail: { userId: ownerId, list: out, yellowBlink: peer.unread > 0 } }));
+      window.dispatchEvent(new CustomEvent('stooorna:bottom-chat-blink', { detail: { target: 'user', userId: ownerId, yellow: peer.unread > 0 } }));
+    } catch { /* */ }
+  };
+  upsertFriendBar(toUserId, {
+    id: next.fromId,
+    name: next.fromName,
+    username: next.fromUsername,
+    avatarUrl: next.fromAvatar,
+    text: next.note || (next.post?.text || 'مشاركة منشور').slice(0, 80),
+    unread: 1,
+  });
+  if (next.fromId && next.fromId !== toUserId) {
+    upsertFriendBar(next.fromId, {
+      id: toUserId,
+      name: null,
+      username: null,
+      avatarUrl: null,
+      text: next.note || 'تم إرسال المشاركة',
+      unread: 0,
+    });
+  }
+}
+
+
+
+type ShareThreadMsg = {
+  id: string;
+  fromId: string;
+  type: 'text' | 'voice' | 'image' | 'video';
+  body: string;
+  duration?: number | null;
+  at: number;
+};
+const SHARE_THREAD_KEY = (a: string, b: string, postId: string | number) => {
+  const [x, y] = [String(a), String(b)].sort();
+  return `stooorna_share_thread_${x}_${y}_${postId}`;
+};
+function loadShareThread(a: string, b: string, postId: string | number): ShareThreadMsg[] {
+  try {
+    const raw = localStorage.getItem(SHARE_THREAD_KEY(a, b, postId));
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+function saveShareThread(a: string, b: string, postId: string | number, list: ShareThreadMsg[]) {
+  try {
+    localStorage.setItem(SHARE_THREAD_KEY(a, b, postId), JSON.stringify(list.slice(-200)));
+    window.dispatchEvent(new CustomEvent('stooorna:share-thread', { detail: { a, b, postId } }));
+  } catch { /* */ }
+}
+function pushShareThreadMsg(a: string, b: string, postId: string | number, msg: Omit<ShareThreadMsg, 'id' | 'at'> & { id?: string }) {
+  const list = loadShareThread(a, b, postId);
+  const next: ShareThreadMsg = {
+    id: msg.id || `stm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    fromId: msg.fromId,
+    type: msg.type,
+    body: msg.body,
+    duration: msg.duration ?? null,
+    at: Date.now(),
+  };
+  saveShareThread(a, b, postId, [...list, next]);
+  return next;
 }
 
 // ── Shared-posts inbox types — posts someone sent me via the share sheet ──────
@@ -765,6 +1138,152 @@ function storyRelativeTime(dateStr: string): string {
   return `منذ ${arabicNumber(days)} يوم`;
 }
 
+/** تسمية وقت صغيرة لشبكة المنشورات (3 أعمدة) — من الخارج أسفل المربع */
+function postGridTimeLabel(dateStr: string | null | undefined): { relative: string; date: string } {
+  if (!dateStr) return { relative: '', date: '' };
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return { relative: '', date: '' };
+  const date = d.toLocaleDateString('ar-KW', { day: 'numeric', month: 'short', year: 'numeric' });
+  return { relative: storyRelativeTime(dateStr), date };
+}
+
+
+/** هل الحساب الحالي شركة؟ (صلاحية New Post / إعلان للقصة) — الأفراد لا ينشرون بوستات */
+function isCompanyUserAccount(user: any, companiesList?: Array<{ id?: string; email?: string | null; username?: string | null; name?: string | null }> | null): boolean {
+  if (!user) return false;
+  const t = String(user.accountType || user.type || user.role || user.userType || '').toLowerCase();
+  if (t === 'company' || t === 'business') return true;
+  if (user.isCompany === true || user.company === true || user.authorIsCompany === true) return true;
+  if (user.publisherType === 'company') return true;
+  if (user.companyName || user.tradeName || user.licenseNumber || user.commercialLicense) return true;
+  const email = String(user.email || '').trim().toLowerCase();
+  const uid = String(user.id || user.userId || '').trim();
+  const un = String(user.username || '').replace(/^@/, '').trim().toLowerCase();
+  const nm = String(user.name || '').trim().toLowerCase();
+  try {
+    const raw = localStorage.getItem('stooorna_companies_registry');
+    const list = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(list)) {
+      const hit = list.find((c: any) => {
+        const em = String(c.email || '').toLowerCase();
+        const id = String(c.userId || c.id || '');
+        const cun = String(c.username || '').replace(/^@/, '').trim().toLowerCase();
+        const cname = String(c.companyName || c.name || c.tradeName || '').trim().toLowerCase();
+        return (email && em === email)
+          || (uid && id === uid)
+          || (un && cun && un === cun)
+          || (nm && cname && nm === cname);
+      });
+      if (hit) return true;
+    }
+    const dir = localStorage.getItem('stooorna_companies_directory');
+    const dlist = dir ? JSON.parse(dir) : [];
+    if (Array.isArray(dlist)) {
+      const hit = dlist.some((c: any) => {
+        const id = String(c.id || c.userId || '');
+        const em = String(c.email || '').toLowerCase();
+        const cun = String(c.username || '').replace(/^@/, '').trim().toLowerCase();
+        const cname = String(c.name || c.companyName || c.tradeName || '').trim().toLowerCase();
+        return (uid && id === uid)
+          || (email && em === email)
+          || (un && cun && un === cun)
+          || (nm && cname && nm === cname);
+      });
+      if (hit) return true;
+    }
+  } catch { /* ignore */ }
+  if (companiesList && Array.isArray(companiesList)) {
+    const hit = companiesList.some(c => {
+      const id = String(c.id || '');
+      const em = String(c.email || '').toLowerCase();
+      const cun = String((c as any).username || '').replace(/^@/, '').trim().toLowerCase();
+      const cname = String((c as any).name || (c as any).companyName || (c as any).tradeName || '').trim().toLowerCase();
+      return (uid && id === uid)
+        || (email && em === email)
+        || (un && cun && un === cun)
+        || (nm && cname && nm === cname);
+    });
+    if (hit) return true;
+  }
+  return false;
+}
+
+function readBusinessApproved(userId?: string | null): boolean {
+  if (!userId) return false;
+  try {
+    const raw = localStorage.getItem('stooorna_business_registry');
+    const list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) return false;
+    return list.some((x: any) => String(x.userId) === String(userId) && x.status === 'approved');
+  } catch {
+    return false;
+  }
+}
+
+function useBusinessApproved(userId?: string | null): boolean {
+  const [on, setOn] = useState(() => readBusinessApproved(userId));
+  useEffect(() => {
+    const sync = () => setOn(readBusinessApproved(userId));
+    sync();
+    window.addEventListener('stooorna:business-registry', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('stooorna:business-registry', sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, [userId]);
+  return on;
+}
+
+
+function PostGridTimeFooter({ createdAt, onMedia }: { createdAt?: string | null; onMedia?: boolean }) {
+  const { relative, date } = postGridTimeLabel(createdAt);
+  if (!relative && !date) return null;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        padding: '10px 4px 3px',
+        background: onMedia
+          ? 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.35) 55%, transparent 100%)'
+          : 'linear-gradient(to top, rgba(0,20,24,0.88) 0%, rgba(0,20,24,0.45) 60%, transparent 100%)',
+        pointerEvents: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 1,
+        zIndex: 2,
+      }}
+    >
+      <span style={{
+        color: onMedia ? 'rgba(255,255,255,0.95)' : 'rgba(200,230,230,0.95)',
+        fontSize: '0.52rem',
+        fontWeight: 700,
+        lineHeight: 1.15,
+        textAlign: 'center',
+        maxWidth: '100%',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>{relative}</span>
+      <span style={{
+        color: onMedia ? 'rgba(255,255,255,0.7)' : 'rgba(150,200,200,0.75)',
+        fontSize: '0.48rem',
+        fontWeight: 600,
+        lineHeight: 1.1,
+        textAlign: 'center',
+        maxWidth: '100%',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}>{date}</span>
+    </div>
+  );
+}
+
 // ── لون حلقة الستوري: حالتان فقط بدون أي فواصل أو عدّ تنازلي —
 //    أصفر بالكامل ما دام في عنصر واحد على الأقل لم يُشاهَد بعد،
 //    وبمجرد مشاهدة كل عناصر المستخدم تتحول الحلقة بالكامل للأزرق
@@ -794,14 +1313,22 @@ const CAMERA_FILTERS: { id: CameraFilterId; label: string; css: string }[] = [
   { id: 'fade', label: 'باهت', css: 'contrast(0.85) brightness(1.1) saturate(0.7)' },
 ];
 
-function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendRequests = [], onRespondFriendRequest, onOpenStoryComments }: {
+function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendRequests = [], onRespondFriendRequest, onOpenStoryComments, storyCommentUnread = 0, shareChatUnread = 0, allowMusic = true, publishLabel }: {
   onClose: () => void;
   onPublish: (file: File) => Promise<void> | void;
   avatarUrl?: string | null;
   userName?: string | null;
   friendRequests?: IncomingRequest[];
   onRespondFriendRequest?: (id: number, action: 'accept' | 'reject') => void | Promise<void>;
+  /** جرس التنبيهات داخل الكاميرا — تعليقات الأصدقاء على الستوري */
   onOpenStoryComments?: () => void;
+  /** عدد خيوط تعليقات الستوري غير المقروءة (شارة الجرس) */
+  storyCommentUnread?: number;
+  /** مشاركات واردة من مستخدمين — تصفّر الجرس أصفر */
+  shareChatUnread?: number;
+  /** الأفراد: موسيقى + نص؛ الشركات: بدون موسيقى (تعليق/نص فقط) */
+  allowMusic?: boolean;
+  publishLabel?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -811,8 +1338,18 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const recordedChunksRef = useRef<Blob[]>([]);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRecordingRef = useRef(false);
+  const lastTapRef = useRef<number>(0);
 
-  const [facingMode, _setFacingMode] = useState<'user' | 'environment'>('user');
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+
+  // نقرتان متتاليتان على شاشة الكاميرا = تبديل أمامية/خلفية
+  function handleVideoDoubleTap() {
+    const now = Date.now();
+    if (now - lastTapRef.current < 350) {
+      setFacingMode(m => m === 'environment' ? 'user' : 'environment');
+    }
+    lastTapRef.current = now;
+  }
   const [requestsBoxOpen, setRequestsBoxOpen] = useState(false);
   const [respondingId, setRespondingId] = useState<number | null>(null);
   // بحث يوزرات داخل بكس طلبات الإضافة (بدون تغيير شكل البكس)
@@ -883,12 +1420,119 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   // الحقيقي بدل تكبير رقمي وهمي، لأن 0.5x فعليًا عدسة فيزيائية مختلفة على أغلب الهواتف
   // وليس مجرد "زوم بالسالب" على نفس العدسة.
   const [ultraWideDeviceId, setUltraWideDeviceId] = useState<string | null>(null);
+  const [backDeviceId, setBackDeviceId] = useState<string | null>(null);
+  const [frontDeviceId, setFrontDeviceId] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [captured, setCaptured] = useState<{ url: string; blob: Blob; type: 'image' | 'video' } | null>(null);
   const [closing, setClosing] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState('');
+
+  // ── شاشة تحرير القصة (نص + موسيقى) ─────────────────────────────────────────
+  const [editMode, setEditMode] = useState(false);
+  const [overlayText, setOverlayText] = useState('');
+  const [overlayColor, setOverlayColor] = useState('#ffffff');
+  // موضع النص على الصورة (0–1 نسبة من أبعاد الحاوية)
+  const [overlayPos, setOverlayPos] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 });
+  const overlayDragRef = useRef<{ startX: number; startY: number; startPosX: number; startPosY: number } | null>(null);
+
+  // ── موضع وحجم شارة الموسيقى (قابلة للسحب والتكبير) ──────────────────────────
+  const [musicBadgePos, setMusicBadgePos] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.88 });
+  const [musicBadgeScale, setMusicBadgeScale] = useState(1);
+  const musicDragRef = useRef<{
+    startX: number; startY: number; startPosX: number; startPosY: number;
+  } | null>(null);
+  const musicPinchRef = useRef<{
+    startDist: number; startScale: number;
+  } | null>(null);
+
+  const [selectedMusic, setSelectedMusic] = useState<{ label: string; file: File } | null>(null);
+  const musicPreviewRef = useRef<HTMLAudioElement | null>(null);
+  const [previewingMusic, setPreviewingMusic] = useState<string | null>(null);
+
+  // ── بحث الموسيقى عبر iTunes Search API ──────────────────────────────────────
+  const [musicQuery, setMusicQuery] = useState('');
+  const [musicResults, setMusicResults] = useState<{ id: string; title: string; artist: string; previewUrl: string; artworkUrl: string }[]>([]);
+  const [musicSearching, setMusicSearching] = useState(false);
+  const [musicDownloading, setMusicDownloading] = useState<string | null>(null);
+  const [selectedSearchMusic, setSelectedSearchMusic] = useState<{ id: string; title: string; artist: string; previewUrl: string; artworkUrl: string } | null>(null);
+  const musicSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  async function searchMusic(q: string) {
+    if (!q.trim()) { setMusicResults([]); return; }
+    setMusicSearching(true);
+    try {
+      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=12&country=US`;
+      const r = await fetch(url);
+      const data = await r.json() as { results: { trackId: number; trackName: string; artistName: string; previewUrl?: string; artworkUrl60?: string }[] };
+      setMusicResults(
+        data.results
+          .filter(t => t.previewUrl)
+          .map(t => ({
+            id: String(t.trackId),
+            title: t.trackName,
+            artist: t.artistName,
+            previewUrl: t.previewUrl!,
+            artworkUrl: (t.artworkUrl60 ?? '').replace('60x60', '100x100'),
+          }))
+      );
+    } catch { setMusicResults([]); }
+    setMusicSearching(false);
+  }
+
+  function handleMusicQueryChange(q: string) {
+    setMusicQuery(q);
+    if (musicSearchTimer.current) clearTimeout(musicSearchTimer.current);
+    musicSearchTimer.current = setTimeout(() => { void searchMusic(q); }, 500);
+  }
+
+  async function downloadAndSelectMusic(track: { id: string; title: string; artist: string; previewUrl: string; artworkUrl: string }) {
+    setMusicDownloading(track.id);
+    stopMusicPreview();
+    try {
+      const resp = await fetch(track.previewUrl);
+      const blob = await resp.blob();
+      const file = new File([blob], `${track.title}-${track.artist}.m4a`, { type: 'audio/mp4' });
+      setSelectedMusic({ label: `${track.title} — ${track.artist}`, file });
+      setSelectedBuiltinMusic(null);
+      setSelectedSearchMusic(track);
+    } catch { /* تجاهل */ }
+    setMusicDownloading(null);
+  }
+
+  // ألوان النص المتاحة
+  const TEXT_COLORS = ['#ffffff','#000000','#facc15','#f87171','#34d399','#60a5fa','#e879f9','#fb923c'];
+
+  // موسيقى مدمجة — ملفات صوتية من المكتبة العامة (royalty-free)
+  const BUILTIN_MUSIC: { id: string; label: string; emoji: string; url: string }[] = [
+    { id: 'upbeat',   label: 'نشيط',      emoji: '🎵', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
+    { id: 'chill',    label: 'هادئ',      emoji: '🎶', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
+    { id: 'romantic', label: 'رومانسي',   emoji: '💕', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' },
+    { id: 'epic',     label: 'ملحمي',     emoji: '🔥', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' },
+    { id: 'fun',      label: 'مرح',       emoji: '🎉', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3' },
+  ];
+  const [selectedBuiltinMusic, setSelectedBuiltinMusic] = useState<string | null>(null);
+
+  function stopMusicPreview() {
+    if (musicPreviewRef.current) {
+      musicPreviewRef.current.pause();
+      musicPreviewRef.current.src = '';
+      musicPreviewRef.current = null;
+    }
+    setPreviewingMusic(null);
+  }
+
+  function toggleMusicPreview(url: string, id: string) {
+    if (previewingMusic === id) { stopMusicPreview(); return; }
+    stopMusicPreview();
+    const audio = new Audio(url);
+    audio.volume = 0.5;
+    void audio.play().catch(() => {});
+    musicPreviewRef.current = audio;
+    setPreviewingMusic(id);
+    audio.onended = () => setPreviewingMusic(null);
+  }
 
   const activeFilterCss = CAMERA_FILTERS.find(f => f.id === filter)?.css ?? 'none';
 
@@ -898,17 +1542,26 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   // ويب موحّد لتحديد "أي عدسة هي الواسعة"، فهذا أفضل تقريب متاح في المتصفح.
   useEffect(() => {
     let cancelled = false;
-    async function findUltraWide() {
+    async function findCameras() {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const cams = devices.filter(d => d.kind === 'videoinput');
-        const wanted = facingMode === 'user' ? /front|user|face/i : /back|rear|environment/i;
-        const ultra = cams.find(d => /ultra.?wide|0\.5x|wide angle/i.test(d.label) && wanted.test(d.label))
+        // كاميرا خلفية: أي كاميرا تحمل back/rear/environment في اسمها
+        const backCam = cams.find(d => /back|rear|environment/i.test(d.label));
+        // كاميرا أمامية: أي كاميرا تحمل front/user/face في اسمها
+        const frontCam = cams.find(d => /front|user|face/i.test(d.label));
+        // عدسة واسعة
+        const wantedUW = facingMode === 'user' ? /front|user|face/i : /back|rear|environment/i;
+        const ultra = cams.find(d => /ultra.?wide|0\.5x|wide angle/i.test(d.label) && wantedUW.test(d.label))
           ?? cams.find(d => /ultra.?wide|0\.5x/i.test(d.label));
-        if (!cancelled) setUltraWideDeviceId(ultra?.deviceId ?? null);
+        if (!cancelled) {
+          setUltraWideDeviceId(ultra?.deviceId ?? null);
+          if (backCam?.deviceId) setBackDeviceId(backCam.deviceId);
+          if (frontCam?.deviceId) setFrontDeviceId(frontCam.deviceId);
+        }
       } catch { if (!cancelled) setUltraWideDeviceId(null); }
     }
-    void findUltraWide();
+    void findCameras();
     return () => { cancelled = true; };
   }, [facingMode]);
 
@@ -922,30 +1575,65 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     let cancelled = false;
     async function start() {
       try {
-        // exact أولاً لضمان التبديل الحقيقي أمامي↔خلفي، ثم fallback لـ ideal
         let stream: MediaStream | null = null;
-        const attempts: MediaTrackConstraints[] = wantUltraWide
-          ? [{ deviceId: { exact: ultraWideDeviceId! } }]
-          : [
-              { facingMode: { exact: facingMode } },
-              { facingMode: { ideal: facingMode } },
-              { facingMode },
-            ];
+
+        // نبني قائمة محاولات بترتيب الأولوية:
+        // 1. deviceId محدد (أدق) إن كان متاحاً
+        // 2. facingMode:exact
+        // 3. facingMode:ideal
+        // 4. facingMode بدون exact/ideal
+        const specificId = wantUltraWide
+          ? ultraWideDeviceId!
+          : facingMode === 'environment'
+            ? backDeviceId
+            : frontDeviceId;
+
+        const attempts: MediaTrackConstraints[] = [
+          ...(specificId ? [{ deviceId: { exact: specificId } }] : []),
+          { facingMode: { exact: facingMode } },
+          { facingMode: { ideal: facingMode } },
+          { facingMode },
+        ];
+
         for (const video of attempts) {
           try {
             stream = await navigator.mediaDevices.getUserMedia({ video, audio: true });
+            // تحقق أن الـ stream فعلاً من الكاميرا المطلوبة
+            const track = stream.getVideoTracks()[0];
+            const settings = track?.getSettings?.() ?? {};
+            const gotFacing = (settings as { facingMode?: string }).facingMode;
+            // إذا حصلنا على facing مختلف عن المطلوب نوقف هذا الـ stream ونجرب التالي
+            if (gotFacing && gotFacing !== facingMode && !wantUltraWide) {
+              stream.getTracks().forEach(t => t.stop());
+              stream = null;
+              continue;
+            }
             break;
           } catch { /* جرّب القيد التالي */ }
         }
+
         if (!stream) {
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         }
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+
+        // احفظ deviceId الكاميرا التي فُتحت فعلاً لاستخدامها في التبديل القادم
+        const openedTrack = stream.getVideoTracks()[0];
+        const openedSettings = openedTrack?.getSettings?.() ?? {};
+        const openedDeviceId = (openedSettings as { deviceId?: string }).deviceId;
+        const openedFacing = (openedSettings as { facingMode?: string }).facingMode;
+        if (openedDeviceId) {
+          if (openedFacing === 'environment' || (!openedFacing && facingMode === 'environment')) {
+            setBackDeviceId(openedDeviceId);
+          } else if (openedFacing === 'user' || (!openedFacing && facingMode === 'user')) {
+            setFrontDeviceId(openedDeviceId);
+          }
+        }
+
         const previousStream = streamRef.current;
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          // المرآة فقط للكاميرا الأمامية
           videoRef.current.style.transform = facingMode === 'user' ? 'scaleX(-1)' : 'none';
           await videoRef.current.play().catch(() => {});
         }
@@ -959,7 +1647,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     }
     void start();
     return () => { cancelled = true; };
-  }, [facingMode, wantUltraWide, ultraWideDeviceId]);
+  }, [facingMode, wantUltraWide, ultraWideDeviceId, backDeviceId, frontDeviceId]);
 
   // حلقة رسم: نعرض الفيديو كاملًا بأسلوب contain داخل إطار عمودي (بدون زوم إضافي)
   useEffect(() => {
@@ -983,19 +1671,31 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 
           const vw = video.videoWidth;
           const vh = video.videoHeight;
-          // cover: ملء الإطار 9:16 بدون أشرطة سوداء كبيرة (نفس معاينة objectFit:cover)
-          const scale = Math.max(targetW / vw, targetH / vh);
-          const dw = vw * scale;
-          const dh = vh * scale;
+
+          // zoom منطق:
+          // 1x  = نقرأ 70% من مركز المستشعر (crop رقمي = تكبير خفيف)
+          // 0.5x = نقرأ 100% من المستشعر (زاوية أوسع = wide angle رقمي)
+          // الفرق يكون واضحاً ومحسوساً بين الوضعين
+          const readFraction = zoom === 0.5 ? 1.0 : 0.7;
+          const srcW = vw * readFraction;
+          const srcH = vh * readFraction;
+          const srcX = (vw - srcW) / 2;
+          const srcY = (vh - srcH) / 2;
+
+          // cover: ملء الإطار 9:16 بدون أشرطة سوداء
+          const scale = Math.max(targetW / srcW, targetH / srcH);
+          const dw = srcW * scale;
+          const dh = srcH * scale;
           const dx = (targetW - dw) / 2;
           const dy = (targetH - dh) / 2;
+
           // إن كانت الكاميرا أمامية نرسم مرآة أفقية لتطابق المعاينة
           if (facingMode === 'user') {
             ctx.translate(targetW, 0);
             ctx.scale(-1, 1);
-            ctx.drawImage(video, 0, 0, vw, vh, targetW - dx - dw, dy, dw, dh);
+            ctx.drawImage(video, srcX, srcY, srcW, srcH, targetW - dx - dw, dy, dw, dh);
           } else {
-            ctx.drawImage(video, 0, 0, vw, vh, dx, dy, dw, dh);
+            ctx.drawImage(video, srcX, srcY, srcW, srcH, dx, dy, dw, dh);
           }
           ctx.restore();
         }
@@ -1004,7 +1704,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     }
     rafRef.current = requestAnimationFrame(draw);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [activeFilterCss, facingMode]);
+  }, [activeFilterCss, facingMode, zoom]);
 
   // محاولة تطبيق تكبير عتاد أقل من 1x (بعض الأجهزة تدعم zoom < 1 كقيد على نفس
   // المستشعر) — تُستخدم فقط كخيار احتياطي إن لم نجد جهاز عدسة واسعة منفصل.
@@ -1128,6 +1828,15 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     setCaptured(null);
     setRecordSeconds(0);
     setError('');
+    setEditMode(false);
+    setOverlayText('');
+    setOverlayColor('#ffffff');
+    setOverlayPos({ x: 0.5, y: 0.5 });
+    setMusicBadgePos({ x: 0.5, y: 0.88 });
+    setMusicBadgeScale(1);
+    setSelectedMusic(null);
+    setSelectedBuiltinMusic(null);
+    stopMusicPreview();
   }
 
   function requestClose() {
@@ -1145,12 +1854,60 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     setError('');
     try {
       const ext = captured.type === 'video' ? 'webm' : 'jpg';
-      const file = new File([captured.blob], `story-camera-${Date.now()}.${ext}`, {
-        type: captured.type === 'video' ? 'video/webm' : 'image/jpeg',
+      const mediaFile = captured.blob instanceof File
+        ? captured.blob
+        : new File([captured.blob], `story-camera-${Date.now()}.${ext}`, {
+            type: captured.type === 'video' ? 'video/webm' : 'image/jpeg',
+          });
+
+      // إذا لا توجد موسيقى ولا نص — نستخدم onPublish المباشر (legacy)
+      if (!selectedMusic && !selectedBuiltinMusic && !overlayText.trim()) {
+        await onPublish(mediaFile);
+        requestClose();
+        return;
+      }
+
+      // نرسل multipart/form-data مع الموسيقى والنص
+      const form = new FormData();
+      form.append('media', mediaFile);
+      if (overlayText.trim()) form.append('overlayText', overlayText.trim());
+      if (overlayColor !== '#ffffff') form.append('overlayColor', overlayColor);
+      form.append('overlayX', String(overlayPos.x));
+      form.append('overlayY', String(overlayPos.y));
+      if (allowMusic) {
+        form.append('musicBadgeX', String(musicBadgePos.x));
+        form.append('musicBadgeY', String(musicBadgePos.y));
+        form.append('musicBadgeScale', String(musicBadgeScale));
+      }
+
+      if (selectedMusic) {
+        form.append('audio', selectedMusic.file);
+      } else if (selectedBuiltinMusic) {
+        // نحمّل الموسيقى المدمجة ونرفعها
+        const track = BUILTIN_MUSIC.find(m => m.id === selectedBuiltinMusic);
+        if (track) {
+          try {
+            const resp = await fetch(track.url);
+            const blob = await resp.blob();
+            const audioFile = new File([blob], `music-${track.id}.mp3`, { type: 'audio/mpeg' });
+            form.append('audio', audioFile);
+          } catch { /* تجاهل خطأ تحميل الموسيقى */ }
+        }
+      }
+
+      const r = await fetch('/api/status', {
+        method: 'POST',
+        credentials: 'include',
+        body: form,
       });
-      await onPublish(file);
+      if (!r.ok) {
+        const errText = await r.text();
+        console.error('[publish] server error', r.status, errText);
+        throw new Error(errText);
+      }
       requestClose();
-    } catch {
+    } catch (err) {
+      console.error('[publish] caught error:', err);
       setError('تعذر نشر القصة — حاول مرة ثانية');
       setPublishing(false);
     }
@@ -1172,14 +1929,15 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         : { type: 'spring', stiffness: 380, damping: 36, mass: 0.9 }
       }
       style={{
-        position: 'fixed', inset: 0, zIndex: 10200, background: '#000',
+        position: 'fixed', inset: 0, zIndex: 12500, background: '#000',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}
     >
       <div
+        onClick={handleVideoDoubleTap}
         style={{ position: 'relative', flex: 1, overflow: 'hidden', display: captured ? 'none' : 'block', background: '#000' }}
       >
-        {/* معاينة مباشرة — cover يملأ الشاشة ويقلّل الإطار الأسود الكبير */}
+        {/* معاينة مباشرة — cover يملأ الشاشة */}
         <video
           ref={videoRef}
           muted
@@ -1190,8 +1948,15 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             width: '100%', height: '100%',
             objectFit: 'cover',
             background: '#000',
-            transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+            // 1x  = scale(1/0.7 ≈ 1.43) → crop المنتصف → تكبير خفيف
+            // 0.5x = scale(1)             → كامل المستشعر → زاوية أوسع
+            // نجمع مع mirror الكاميرا الأمامية
+            transform: facingMode === 'user'
+              ? `scaleX(${zoom === 0.5 ? -1 : -(1 / 0.7)}) scaleY(${zoom === 0.5 ? 1 : 1 / 0.7})`
+              : zoom === 0.5 ? 'none' : `scale(${1 / 0.7})`,
+            transformOrigin: 'center center',
             filter: activeFilterCss === 'none' ? 'none' : activeFilterCss,
+            transition: 'transform 0.2s ease',
           }}
         />
         <canvas
@@ -1245,13 +2010,37 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               {flashOn ? <Zap size={16} color="#FFD54A" strokeWidth={2.2} /> : <ZapOff size={16} color="#fff" strokeWidth={2.2} />}
             </motion.button>
-            <motion.button whileTap={{ scale: 0.9 }} onClick={() => onOpenStoryComments?.()}
-              style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
+            {/* جرس — تعليقات الستوري فقط */}
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => onOpenStoryComments?.()}
+              aria-label="Story comments"
+              style={{
+                width: 32, height: 32, borderRadius: '50%',
+                background: storyCommentUnread > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,0,0,0.35)',
+                border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative',
+              }}
+            >
               <Bell size={16} color="#fff" strokeWidth={2.2} />
+              {storyCommentUnread > 0 && (
+                <span style={{
+                  position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, borderRadius: 8,
+                  background: '#ef4444',
+                  color: '#fff',
+                  fontSize: '0.55rem', fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
+                  border: '1.5px solid #000',
+                }}>
+                  {storyCommentUnread > 9 ? '9+' : storyCommentUnread}
+                </span>
+              )}
             </motion.button>
+            {/* أيقونة الإضافة — طلبات الصداقة تصل هنا (بجانب الجرس) */}
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={() => setRequestsBoxOpen(true)}
+              aria-label="Friend requests"
               style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}
             >
               <UserPlus size={16} color="#fff" strokeWidth={2.2} />
@@ -1530,7 +2319,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           ))}
         </div>
 
-        {/* دائرة التصوير + زر إغلاق الكاميرا بجانبها (ينزلق للأسفل ويختفي) */}
+        {/* دائرة التصوير + زر مكتبة الصور + زر إغلاق */}
         <div
           onClick={e => e.stopPropagation()}
           style={{
@@ -1541,8 +2330,26 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             padding: '0 20px',
           }}
         >
-          {/* موازنة بصرية لنفس عرض زر الإغلاق */}
-          <div style={{ width: 46, height: 46, flexShrink: 0 }} />
+          {/* زر مكتبة الصور — يفتح file picker */}
+          <label
+            aria-label="اختيار صورة من المكتبة"
+            className="cam-gallery-btn"
+          >
+            <Images size={20} strokeWidth={2.1} />
+            <input
+              type="file"
+              accept="image/*,video/*"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const url = URL.createObjectURL(file);
+                const type = file.type.startsWith('video/') ? 'video' : 'image';
+                setCaptured({ url, blob: file, type });
+                e.target.value = '';
+              }}
+            />
+          </label>
           <motion.button
             whileTap={{ scale: 0.92 }}
             onPointerDown={handlePressStart}
@@ -1582,89 +2389,384 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         </div>
       </div>
 
-      {/* معاينة بعد التصوير — أزرار النشر ثابتة وواضحة فوق الشريط السفلي */}
+      {/* معاينة بعد التصوير */}
       {captured && (
-        <div style={{
-          position: 'relative', flex: 1, background: '#000',
-          display: 'flex', flexDirection: 'column', minHeight: 0,
-        }}>
-          <div style={{
-            flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0,
-            /* مساحة للأزرار السفلية حتى لا تُغطّي المعاينة الأزرار */
-            marginBottom: 0,
-          }}>
+        <div style={{ position: 'relative', flex: 1, background: '#000', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0 }}>
             {captured.type === 'image' ? (
               <img src={captured.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
             ) : (
               <video src={captured.url} autoPlay loop muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
             )}
-            <motion.button whileTap={{ scale: 0.9 }} onClick={requestClose} aria-label="إغلاق"
-              style={{
-                position: 'absolute', top: 'max(env(safe-area-inset-top,0px),10px)', right: 12,
-                width: 34, height: 34, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', border: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 6,
-              }}>
-              <X size={18} color="#fff" strokeWidth={2.4} />
+            {overlayText.trim() && (
+              <div
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+              >
+                <span
+                  className="story-overlay-text story-overlay-draggable"
+                  style={{
+                    color: overlayColor,
+                    position: 'absolute',
+                    left: `${overlayPos.x * 100}%`,
+                    top: `${overlayPos.y * 100}%`,
+                    transform: 'translate(-50%, -50%)',
+                    pointerEvents: 'auto',
+                    cursor: 'grab',
+                    userSelect: 'none',
+                    touchAction: 'none',
+                  }}
+                  onPointerDown={e => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+                    overlayDragRef.current = {
+                      startX: e.clientX,
+                      startY: e.clientY,
+                      startPosX: overlayPos.x,
+                      startPosY: overlayPos.y,
+                    };
+                    const onMove = (ev: PointerEvent) => {
+                      if (!overlayDragRef.current) return;
+                      const dx = (ev.clientX - overlayDragRef.current.startX) / rect.width;
+                      const dy = (ev.clientY - overlayDragRef.current.startY) / rect.height;
+                      setOverlayPos({
+                        x: Math.max(0.05, Math.min(0.95, overlayDragRef.current.startPosX + dx)),
+                        y: Math.max(0.05, Math.min(0.95, overlayDragRef.current.startPosY + dy)),
+                      });
+                    };
+                    const onUp = () => {
+                      overlayDragRef.current = null;
+                      window.removeEventListener('pointermove', onMove);
+                      window.removeEventListener('pointerup', onUp);
+                    };
+                    window.addEventListener('pointermove', onMove);
+                    window.addEventListener('pointerup', onUp);
+                  }}
+                >
+                  {overlayText}
+                </span>
+              </div>
+            )}
+            {allowMusic && (selectedMusic || selectedBuiltinMusic) && (
+              <div
+                className="story-music-orb story-music-badge--draggable"
+                style={{
+                  position: 'absolute',
+                  left: `${musicBadgePos.x * 100}%`,
+                  top: `${musicBadgePos.y * 100}%`,
+                  transform: `translate(-50%, -50%) scale(${musicBadgeScale})`,
+                  transformOrigin: 'center center',
+                  zIndex: 4,
+                }}
+                onPointerDown={e => {
+                  if (e.isPrimary === false) return;
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+                  musicDragRef.current = {
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    startPosX: musicBadgePos.x,
+                    startPosY: musicBadgePos.y,
+                  };
+                  const onMove = (ev: PointerEvent) => {
+                    if (!musicDragRef.current || !ev.isPrimary) return;
+                    const dx = (ev.clientX - musicDragRef.current.startX) / rect.width;
+                    const dy = (ev.clientY - musicDragRef.current.startY) / rect.height;
+                    setMusicBadgePos({
+                      x: Math.max(0.05, Math.min(0.95, musicDragRef.current.startPosX + dx)),
+                      y: Math.max(0.05, Math.min(0.95, musicDragRef.current.startPosY + dy)),
+                    });
+                  };
+                  const onUp = () => {
+                    musicDragRef.current = null;
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', onUp);
+                  };
+                  window.addEventListener('pointermove', onMove);
+                  window.addEventListener('pointerup', onUp);
+                }}
+                onTouchStart={e => {
+                  if (e.touches.length !== 2) return;
+                  const t1 = e.touches[0], t2 = e.touches[1];
+                  const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                  musicPinchRef.current = { startDist: dist, startScale: musicBadgeScale };
+                }}
+                onTouchMove={e => {
+                  if (e.touches.length !== 2 || !musicPinchRef.current) return;
+                  e.preventDefault();
+                  const t1 = e.touches[0], t2 = e.touches[1];
+                  const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                  const ratio = dist / musicPinchRef.current.startDist;
+                  setMusicBadgeScale(Math.max(0.3, Math.min(3, musicPinchRef.current.startScale * ratio)));
+                }}
+                onTouchEnd={() => { musicPinchRef.current = null; }}
+              >
+                <span className="orb-bar" />
+                <span className="orb-bar" />
+                <span className="orb-bar" />
+                <span className="orb-bar" />
+                <span className="orb-bar" />
+              </div>
+            )}
+            <motion.button whileTap={{ scale: 0.9 }} onClick={requestClose} aria-label="إغلاق" className="story-close-btn">
+              <X size={18} strokeWidth={2.4} />
             </motion.button>
+            {overlayText.trim() && (
+              <div className="story-drag-hint">اسحب النص لتغيير موضعه</div>
+            )}
+            {(selectedMusic || selectedBuiltinMusic) && (
+              <div className="story-drag-hint" style={{ bottom: overlayText.trim() ? 30 : 8 }}>اسحب الموسيقى • قرّب إصبعين للتكبير</div>
+            )}
           </div>
 
-          {error && (
-            <p style={{
-              color: '#ef4444', fontSize: '0.78rem', textAlign: 'center', margin: 0,
-              padding: '8px 16px', background: 'rgba(0,0,0,0.85)', flexShrink: 0,
-            }}>{error}</p>
-          )}
+          {error && <p className="story-edit-error">{error}</p>}
 
-          {/* شريط أزرار ثابت وواضح — لا يختفي تحت الشاشة */}
-          <div style={{
-            flexShrink: 0,
-            display: 'flex', flexDirection: 'column', gap: 8,
-            padding: '12px 16px',
-            paddingBottom: 'max(env(safe-area-inset-bottom,0px), 16px)',
-            background: 'rgba(6,14,14,0.97)',
-            borderTop: '1px solid rgba(0,188,212,0.2)',
-            zIndex: 8,
-          }}>
-            <motion.button
-              whileTap={{ scale: 0.97 }}
-              disabled={publishing}
-              onClick={() => void publish()}
-              style={{
-                width: '100%', minHeight: 48, padding: '12px 0', borderRadius: 14, border: 'none',
-                background: '#00BCD4', color: '#001417', fontWeight: 800, fontSize: '0.92rem',
-                cursor: publishing ? 'default' : 'pointer', opacity: publishing ? 0.7 : 1,
-                boxShadow: '0 4px 16px rgba(0,188,212,0.35)',
-              }}
-            >
-              {publishing ? 'جارِ النشر…' : 'نشر القصة'}
+          <div className="story-preview-bar">
+            <motion.button whileTap={{ scale: 0.97 }} onClick={() => setEditMode(true)} className="story-edit-btn">
+              <PenLine size={15} strokeWidth={2.2} />
+              تحرير (نص + موسيقى)
+              {(overlayText.trim() || selectedMusic || selectedBuiltinMusic) && (
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'hsl(var(--primary))', display: 'inline-block' }} />
+              )}
+            </motion.button>
+            <motion.button whileTap={{ scale: 0.97 }} disabled={publishing} onClick={() => void publish()} className="story-edit-publish-btn">
+              {publishing ? 'جارِ النشر…' : (publishLabel || (allowMusic ? 'نشر قصة' : 'نشر إعلان للقصة'))}
             </motion.button>
             <div style={{ display: 'flex', gap: 8 }}>
-              <motion.button whileTap={{ scale: 0.97 }} onClick={retake} disabled={publishing}
-                style={{
-                  flex: 1, minHeight: 44, padding: '10px 0', borderRadius: 12,
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  background: 'rgba(255,255,255,0.12)', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
-                }}>
-                إعادة التصوير
-              </motion.button>
-              <motion.button whileTap={{ scale: 0.97 }} onClick={requestClose} disabled={publishing}
-                style={{
-                  flex: 1, minHeight: 44, padding: '10px 0', borderRadius: 12,
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  background: 'rgba(255,255,255,0.12)', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
-                }}>
-                إغلاق الكاميرا
-              </motion.button>
+              <motion.button whileTap={{ scale: 0.97 }} onClick={retake} disabled={publishing} className="story-edit-retake-btn">إعادة التصوير</motion.button>
+              <motion.button whileTap={{ scale: 0.97 }} onClick={requestClose} disabled={publishing} className="story-edit-retake-btn">إغلاق</motion.button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ── شاشة التحرير: نص + موسيقى ─────────────────────────────────────── */}
+      <AnimatePresence>
+        {editMode && captured && (
+          <motion.div
+            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+            className="story-edit-overlay"
+          >
+            <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+              {captured.type === 'image' ? (
+                <img src={captured.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <video src={captured.url} autoPlay loop muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              )}
+              <div className="story-edit-dim" />
+            </div>
+
+            <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              {/* شريط علوي */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(env(safe-area-inset-top,0px),12px) 16px 10px' }}>
+                <button className="story-edit-btn-back" onClick={() => setEditMode(false)}>
+                  <ArrowLeft size={18} strokeWidth={2.4} /> رجوع
+                </button>
+                <span style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem' }}>تحرير القصة</span>
+                <button className="story-edit-btn-done" onClick={() => setEditMode(false)}>تم</button>
+              </div>
+
+              {/* حقل النص */}
+              <div style={{ padding: '0 16px 12px' }}>
+                <div className="story-edit-section">
+                  <p className="story-edit-section-label">
+                    <PenLine size={11} style={{ display: 'inline', marginLeft: 4 }} />نص على الصورة
+                  </p>
+                  <input
+                    className="story-edit-text-input"
+                    placeholder="اكتب شيئاً…"
+                    value={overlayText}
+                    onChange={e => setOverlayText(e.target.value)}
+                    maxLength={80}
+                    style={{ color: overlayColor }}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    {TEXT_COLORS.map(c => (
+                      <button key={c} type="button"
+                        className={`story-edit-color-dot${overlayColor === c ? ' active' : ''}`}
+                        style={{ background: c }} onClick={() => setOverlayColor(c)} aria-label={c} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* قسم الموسيقى — للأفراد فقط (الشركات بدون موسيقى) */}
+              {allowMusic && (
+              <div style={{ padding: '0 16px', flex: 1, overflowY: 'auto' }}>
+                <div className="story-edit-section">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <p className="story-edit-section-label">
+                      <Music size={11} style={{ display: 'inline', marginLeft: 4 }} />موسيقى خلفية
+                    </p>
+                    {(selectedBuiltinMusic || selectedMusic) && (
+                      <button type="button" className="story-music-remove-btn"
+                        onClick={() => { setSelectedBuiltinMusic(null); setSelectedMusic(null); setSelectedSearchMusic(null); stopMusicPreview(); }}>
+                        إزالة
+                      </button>
+                    )}
+                  </div>
+
+                  {/* شارة الاختيار الحالي */}
+                  {selectedMusic && (
+                    <div className="story-music-selected-banner">
+                      <Music size={14} color="hsl(var(--primary))" />
+                      <span>{selectedMusic.label}</span>
+                      <Check size={14} color="hsl(var(--primary))" strokeWidth={2.5} />
+                    </div>
+                  )}
+
+                  {/* ── بحث iTunes ── */}
+                  <div className="story-music-search-wrap">
+                    <Search size={14} className="story-music-search-icon" />
+                    <input
+                      className="story-music-search-input"
+                      placeholder="ابحث عن أغنية أو فنان…"
+                      value={musicQuery}
+                      onChange={e => handleMusicQueryChange(e.target.value)}
+                    />
+                  </div>
+
+                  {musicSearching && <p className="story-music-search-empty">جارِ البحث…</p>}
+                  {!musicSearching && musicQuery.trim() && musicResults.length === 0 && (
+                    <p className="story-music-search-empty">لا نتائج — جرّب كلمة أخرى</p>
+                  )}
+
+                  {musicResults.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                      {musicResults.map(track => {
+                        const isSelected = selectedSearchMusic?.id === track.id;
+                        const isDownloading = musicDownloading === track.id;
+                        return (
+                          <div key={track.id} className={`story-music-result-row${isSelected ? ' selected' : ''}`}>
+                            {track.artworkUrl
+                              ? <img src={track.artworkUrl} alt="" className="story-music-result-art" />
+                              : <div className="story-music-result-art" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Music size={18} color="hsl(var(--muted-foreground))" /></div>
+                            }
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p className="story-music-result-title">{track.title}</p>
+                              <p className="story-music-result-artist">{track.artist}</p>
+                            </div>
+                            <div className="story-music-result-actions">
+                              <button type="button"
+                                className={`story-music-preview-btn${previewingMusic === track.id ? ' active' : ' idle'}`}
+                                onClick={e => { e.stopPropagation(); toggleMusicPreview(track.previewUrl, track.id); }}>
+                                {previewingMusic === track.id ? <Pause size={15} /> : <Play size={15} />}
+                              </button>
+                              <button type="button"
+                                className={`story-music-dl-btn${isSelected ? ' done' : ''}`}
+                                disabled={isDownloading}
+                                onClick={() => { void downloadAndSelectMusic(track); }}>
+                                {isDownloading
+                                  ? <span className="cam-spinner" style={{ animation: 'spin 0.7s linear infinite' }} />
+                                  : isSelected
+                                    ? <><Check size={12} strokeWidth={2.5} /> تم</>
+                                    : <><Download size={12} strokeWidth={2.2} /> اختيار</>
+                                }
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* مقاطع مدمجة — تظهر فقط عند عدم البحث */}
+                  {!musicQuery.trim() && (
+                    <>
+                      <p className="story-music-section-title">مقاطع مدمجة</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {BUILTIN_MUSIC.map(track => (
+                          <div key={track.id}
+                            className={`story-music-row${selectedBuiltinMusic === track.id ? ' selected' : ''}`}
+                            onClick={() => {
+                              if (selectedBuiltinMusic === track.id) { setSelectedBuiltinMusic(null); stopMusicPreview(); }
+                              else { setSelectedBuiltinMusic(track.id); setSelectedMusic(null); setSelectedSearchMusic(null); }
+                            }}>
+                            <span style={{ fontSize: '1.1rem' }}>{track.emoji}</span>
+                            <span className="story-music-name">{track.label}</span>
+                            <button type="button"
+                              className={`story-music-preview-btn${previewingMusic === track.id ? ' active' : ' idle'}`}
+                              onClick={e => { e.stopPropagation(); toggleMusicPreview(track.url, track.id); }}>
+                              {previewingMusic === track.id ? <Pause size={15} /> : <Play size={15} />}
+                            </button>
+                            {selectedBuiltinMusic === track.id && <Check size={15} color="hsl(var(--primary))" strokeWidth={2.5} />}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {/* رفع من الجهاز */}
+                  <p className="story-music-section-title" style={{ marginTop: 12 }}>من جهازك</p>
+                  <label className="story-music-upload-label">
+                    <Music size={15} color="hsl(var(--muted-foreground))" />
+                    <span>{(selectedMusic && !selectedSearchMusic) ? `✓ ${selectedMusic.label}` : 'رفع ملف صوتي…'}</span>
+                    <input type="file" accept="audio/*" style={{ display: 'none' }}
+                      onChange={e => {
+                        const f = e.target.files?.[0]; if (!f) return;
+                        setSelectedMusic({ label: f.name.replace(/\.[^.]+$/, ''), file: f });
+                        setSelectedBuiltinMusic(null); setSelectedSearchMusic(null); stopMusicPreview(); e.target.value = '';
+                      }} />
+                  </label>
+                </div>
+              </div>
+              )}
+
+              {/* معاينة النص — قابل للسحب */}
+              {overlayText.trim() && (
+                <span
+                  className="story-overlay-text story-overlay-draggable"
+                  style={{
+                    color: overlayColor,
+                    position: 'absolute',
+                    left: `${overlayPos.x * 100}%`,
+                    top: `${overlayPos.y * 100}%`,
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 5,
+                    cursor: 'grab',
+                    touchAction: 'none',
+                  }}
+                  onPointerDown={e => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+                    overlayDragRef.current = {
+                      startX: e.clientX,
+                      startY: e.clientY,
+                      startPosX: overlayPos.x,
+                      startPosY: overlayPos.y,
+                    };
+                    const onMove = (ev: PointerEvent) => {
+                      if (!overlayDragRef.current) return;
+                      const dx = (ev.clientX - overlayDragRef.current.startX) / rect.width;
+                      const dy = (ev.clientY - overlayDragRef.current.startY) / rect.height;
+                      setOverlayPos({
+                        x: Math.max(0.05, Math.min(0.95, overlayDragRef.current.startPosX + dx)),
+                        y: Math.max(0.05, Math.min(0.95, overlayDragRef.current.startPosY + dy)),
+                      });
+                    };
+                    const onUp = () => {
+                      overlayDragRef.current = null;
+                      window.removeEventListener('pointermove', onMove);
+                      window.removeEventListener('pointerup', onUp);
+                    };
+                    window.addEventListener('pointermove', onMove);
+                    window.addEventListener('pointerup', onUp);
+                  }}
+                >
+                  {overlayText}
+                </span>
+              )}
+              <div style={{ height: 'max(env(safe-area-inset-bottom,0px), 16px)', flexShrink: 0 }} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
 
 // ── StoryViewer — fullscreen viewer ───────────────────────────────────────────
-function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia, onPublishPhoto, onPublishVideo, onOpenCamera, onDeleteItem, onSendComment }: {
+function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia, onPublishPhoto, onPublishVideo, onOpenCamera, onDeleteItem, onSendComment, isCompanyPublisher = false }: {
   groups: StoryGroup[];
   startGroupIdx: number;
   myId: string;
@@ -1676,6 +2778,8 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
   onOpenCamera: () => void;
   onDeleteItem: (storyId: number) => void;
   onSendComment: (storyId: number, text: string) => Promise<boolean>;
+  /** شركة = إعلان للقصة؛ فرد = نشر قصة (مع موسيقى/نص في الكاميرا) */
+  isCompanyPublisher?: boolean;
 }) {
   const [gIdx, setGIdx] = useState(startGroupIdx);
   const [iIdx, setIIdx] = useState(0);
@@ -1685,6 +2789,8 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // موسيقى القصة
+  const storyAudioRef = useRef<HTMLAudioElement | null>(null);
   // ── Inline story comment composer — stays on this same screen, never navigates away ──
   const [commentText, setCommentText] = useState('');
   const [commentSending, setCommentSending] = useState(false);
@@ -1706,6 +2812,30 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
   const viewingItemIdRef = useRef<number | null>(null);
   if (group) viewingUserIdRef.current = group.userId;
   if (item) viewingItemIdRef.current = item.id;
+
+  // تشغيل موسيقى القصة عند تغيّر العنصر
+  useEffect(() => {
+    // أوقف الموسيقى السابقة
+    if (storyAudioRef.current) {
+      storyAudioRef.current.pause();
+      storyAudioRef.current.src = '';
+      storyAudioRef.current = null;
+    }
+    if (item?.audioUrl) {
+      const audio = new Audio(item.audioUrl);
+      audio.volume = 0.6;
+      audio.loop = true;
+      void audio.play().catch(() => {});
+      storyAudioRef.current = audio;
+    }
+    return () => {
+      if (storyAudioRef.current) {
+        storyAudioRef.current.pause();
+        storyAudioRef.current.src = '';
+        storyAudioRef.current = null;
+      }
+    };
+  }, [item?.id, item?.audioUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const targetUserId = viewingUserIdRef.current;
@@ -1834,7 +2964,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
       initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }}
       animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }}
       exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }}
-      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'hsl(var(--background))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 10310, background: 'hsl(var(--background))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       onClick={e => {
         const x = (e as React.MouseEvent).clientX;
         if (x < window.innerWidth * 0.35) goPrev(); else goNext();
@@ -1871,16 +3001,10 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
             {storyMenuOpen && (
               <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 40, right: 0, minWidth: 142, padding: 6, borderRadius: 12, background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', boxShadow: '0 12px 28px hsl(var(--background)/0.5)' }}>
                 <button onClick={() => { setStoryMenuOpen(false); onAddMedia(); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}>
-                  <Plus size={16} color="hsl(var(--primary))" /> نشر للقصة
-                </button>
-                <button onClick={() => { setStoryMenuOpen(false); onPublishPhoto(); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}>
-                  <ImageIcon size={16} color="hsl(var(--primary))" /> Photo
-                </button>
-                <button onClick={() => { setStoryMenuOpen(false); onPublishVideo(); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}>
-                  <Video size={16} color="hsl(var(--primary))" /> Video
+                  <Plus size={16} color="hsl(var(--primary))" /> {isCompanyPublisher ? 'نشر إعلان للقصة' : 'نشر قصة'}
                 </button>
                 <button onClick={() => { setStoryMenuOpen(false); onOpenCamera(); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}>
-                  <Camera size={16} color="hsl(var(--primary))" /> نشر القصة عبر
+                  <Camera size={16} color="hsl(var(--primary))" /> {isCompanyPublisher ? 'نشر إعلان للقصة عبر' : 'نشر القصة عبر'}
                 </button>
                 <button onClick={() => { setStoryMenuOpen(false); setDeleteError(null); setConfirmDelete(true); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--destructive))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}>
                   <Trash2 size={16} /> حذف الحالة
@@ -1898,6 +3022,44 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
         ? <video src={item.mediaUrl} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         : <img src={item.mediaUrl} alt="story" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
       }
+      {/* نص overlay على القصة */}
+      {item.overlayText && (
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 3 }}>
+          <span
+            className="story-overlay-text"
+            style={{
+              color: item.overlayColor ?? '#ffffff',
+              position: 'absolute',
+              left: `${(item.overlayX ?? 0.5) * 100}%`,
+              top: `${(item.overlayY ?? 0.5) * 100}%`,
+              transform: 'translate(-50%, -50%)',
+            }}
+          >
+            {item.overlayText}
+          </span>
+        </div>
+      )}
+      {/* دائرة الموسيقى — تظهر بالموضع والحجم اللذين اختارهما الناشر */}
+      {item.audioUrl && (
+        <div
+          className="story-music-orb"
+          style={{
+            position: 'absolute',
+            left: `${(item.musicBadgeX ?? 0.5) * 100}%`,
+            top:  `${(item.musicBadgeY ?? 0.88) * 100}%`,
+            transform: `translate(-50%, -50%) scale(${item.musicBadgeScale ?? 1})`,
+            transformOrigin: 'center center',
+            zIndex: 3,
+            pointerEvents: 'none',
+          }}
+        >
+          <span className="orb-bar" />
+          <span className="orb-bar" />
+          <span className="orb-bar" />
+          <span className="orb-bar" />
+          <span className="orb-bar" />
+        </div>
+      )}
       {/* ── Confirm delete overlay ── */}
       {confirmDelete && (
         <motion.div
@@ -2031,22 +3193,504 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
   );
 }
 
-// ── PostText — renders post text with #hashtags highlighted ──────────────────
-function PostText({ text, color, textColor, onHashtag }: { text: string; color: string; textColor: string; onHashtag?: (tag: string) => void }) {
-  if (!text) return null;
-  const parts = text.split(/(#[\p{L}\p{N}_]+|@[\p{L}\p{N}_]+)/gu);
+// ── Detect image/video URLs inside plain text (for text posts with pasted links) ──
+const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"')\]]+/gi;
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|bmp|svg)(\?.*)?$/i;
+const VIDEO_EXT_RE = /\.(mp4|webm|mov|m4v|ogg|ogv)(\?.*)?$/i;
+const COMPOSER_SHORT_LINKS_KEY = 'stooorna_short_links';
+
+function composerLookupOriginalUrl(maybeShort: string): string {
+  try {
+    const u = new URL(maybeShort.trim());
+    const m = u.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/);
+    if (!m) return maybeShort.trim();
+    const code = m[1];
+    const list = JSON.parse(localStorage.getItem(COMPOSER_SHORT_LINKS_KEY) || '[]') as Array<{ code: string; url: string }>;
+    const hit = list.find(e => e.code === code);
+    return hit?.url || maybeShort.trim();
+  } catch {
+    return maybeShort.trim();
+  }
+}
+
+
+/** استخراج معرف التغريدة من رابط x.com / twitter.com */
+function parseXStatusId(raw: string): string | null {
+  try {
+    const u = new URL(raw.trim());
+    if (!/(^|\.)((twitter|x)\.com)$/i.test(u.hostname)) return null;
+    const m = u.pathname.match(/\/status(?:es)?\/(\d+)/i);
+    return m?.[1] ?? null;
+  } catch { return null; }
+}
+
+/**
+ * جلب وسائط تغريدة X عبر واجهات عامة (بدون مفتاح API).
+ * تُعيد روابط مباشرة لصور/فيديو من pbs.twimg.com / video.twimg.com
+ */
+async function resolveXStatusMedia(statusUrl: string): Promise<{ url: string; type: 'image' | 'video' }[]> {
+  const id = parseXStatusId(statusUrl);
+  if (!id) return [];
+  const endpoints = [
+    `https://api.fxtwitter.com/status/${id}`,
+    `https://api.vxtwitter.com/status/${id}`,
+  ];
+  for (const ep of endpoints) {
+    try {
+      const r = await fetch(ep);
+      if (!r.ok) continue;
+      const data = await r.json() as any;
+      const out: { url: string; type: 'image' | 'video' }[] = [];
+      const media = data?.tweet?.media ?? data?.media ?? null;
+      const photos = media?.photos ?? [];
+      const videos = media?.videos ?? (media?.video ? [media.video] : []);
+      if (Array.isArray(photos)) {
+        for (const p of photos) {
+          const url = p.url || p.media_url_https || p.src;
+          if (url) out.push({ url, type: 'image' });
+        }
+      }
+      if (Array.isArray(videos)) {
+        for (const v of videos) {
+          const variants = v.variants || v.video_info?.variants || [];
+          let url = v.url || v.video_url || null;
+          if (Array.isArray(variants) && variants.length) {
+            const mp4s = variants.filter((x: any) => String(x.content_type || x.type || '').includes('mp4') || String(x.url || '').includes('.mp4'));
+            mp4s.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
+            url = mp4s[0]?.url || variants[0]?.url || url;
+          }
+          if (url) out.push({ url, type: 'video' });
+        }
+      }
+      if (!out.length && Array.isArray(data?.mediaURLs)) {
+        for (const url of data.mediaURLs) {
+          if (typeof url !== 'string') continue;
+          if (VIDEO_EXT_RE.test(url) || /video\.twimg\.com/i.test(url)) out.push({ url, type: 'video' });
+          else out.push({ url, type: 'image' });
+        }
+      }
+      if (!out.length && data?.video?.url) out.push({ url: data.video.url, type: 'video' });
+      if (!out.length && typeof data?.image === 'string') out.push({ url: data.image, type: 'image' });
+      // all media array
+      const all = media?.all ?? data?.tweet?.media?.all;
+      if (!out.length && Array.isArray(all)) {
+        for (const item of all) {
+          if (item.type === 'video' || item.type === 'gif') {
+            const variants = item.variants || [];
+            const mp4s = variants.filter((x: any) => String(x.content_type || '').includes('mp4'));
+            mp4s.sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0));
+            const url = mp4s[0]?.url || item.url;
+            if (url) out.push({ url, type: 'video' });
+          } else if (item.url) {
+            out.push({ url: item.url, type: 'image' });
+          }
+        }
+      }
+      if (out.length) return out;
+    } catch { /* try next */ }
+  }
+  return [];
+}
+
+function classifyMediaUrl(raw: string): 'image' | 'video' | null {
+  try {
+    // حلّ الروابط القصيرة المحلية إلى الأصل قبل التصنيف
+    const resolved = composerLookupOriginalUrl(raw);
+    const u = new URL(resolved);
+    const path = u.pathname || '';
+    const full = u.href;
+    if (IMAGE_EXT_RE.test(path) || IMAGE_EXT_RE.test(full)) return 'image';
+    if (VIDEO_EXT_RE.test(path) || VIDEO_EXT_RE.test(full)) return 'video';
+    // استعلامات ?format=jpg وغيرها
+    if (/[?&](format|ext|type)=(png|jpe?g|gif|webp|avif)/i.test(full)) return 'image';
+    if (/[?&](format|ext|type)=(mp4|webm|mov)/i.test(full)) return 'video';
+    // hosts شائعة للصور
+    if (/(images\.unsplash\.com|i\.imgur\.com|cdn\.discordapp\.com|media\.tenor\.com|pbs\.twimg\.com|instagram\.|fbcdn\.|googleusercontent\.com)/i.test(u.hostname)) return 'image';
+    if (/video\.twimg\.com/i.test(u.hostname)) return 'video';
+    if (/\/image|\/img|\/photo|\/photos|\/thumb|\/media\/.*\.(png|jpe?g|gif|webp)/i.test(full)) return 'image';
+    if (/\/video|\/videos|\.mp4|\.webm|\/stream/i.test(full)) return 'video';
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveLinkToDirectMedia(rawUrl: string): Promise<{ url: string; type: 'image' | 'video' }[] | null> {
+  const normalized = composerNormalizeUrl(rawUrl);
+  if (!normalized) return null;
+  const kind = classifyMediaUrl(normalized);
+  if (kind) return [{ url: normalized, type: kind }];
+  if (parseXStatusId(normalized)) {
+    const media = await resolveXStatusMedia(normalized);
+    if (media.length) return media;
+  }
+  return null;
+}
+
+function extractTextMediaEmbeds(text: string): { cleanText: string; embeds: { url: string; type: 'image' | 'video' }[]; xStatusUrls: string[] } {
+  if (!text) return { cleanText: '', embeds: [], xStatusUrls: [] };
+  const embeds: { url: string; type: 'image' | 'video' }[] = [];
+  const xStatusUrls: string[] = [];
+  const seen = new Set<string>();
+  const cleanText = text.replace(URL_IN_TEXT_RE, (match) => {
+    const raw = match.replace(/[.,;:!?]+$/, '');
+    const resolved = composerLookupOriginalUrl(raw);
+    const kind = classifyMediaUrl(resolved);
+    if (kind && !seen.has(resolved)) {
+      seen.add(resolved);
+      embeds.push({ url: resolved, type: kind });
+      return '';
+    }
+    // رابط تغريدة X — يُعرض لاحقًا كميديا كاملة عبر مكوّن async
+    if (parseXStatusId(resolved) && !seen.has(resolved)) {
+      seen.add(resolved);
+      xStatusUrls.push(resolved);
+      return '';
+    }
+    return match;
+  }).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { cleanText, embeds, xStatusUrls };
+}
+
+// ── روابط الوسائط: نحتفظ بالرابط الأصلي للصورة/الفيديو حتى تُعرض مباشرة داخل البوست ──
+export function composerMakeShortCode(len = 7): string {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let out = '';
+  const arr = new Uint8Array(len);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) crypto.getRandomValues(arr);
+  else for (let i = 0; i < len; i++) arr[i] = Math.floor(Math.random() * 256);
+  for (let i = 0; i < len; i++) out += alphabet[arr[i] % alphabet.length];
+  return out;
+}
+function composerNormalizeUrl(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  try {
+    const withProto = /^https?:\/\//i.test(t) ? t : `https://${t}`;
+    const u = new URL(withProto);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    return u.toString();
+  } catch { return null; }
+}
+function composerSaveShortLink(entry: { code: string; url: string; shortUrl: string; createdAt: number }) {
+  try {
+    const prev = JSON.parse(localStorage.getItem(COMPOSER_SHORT_LINKS_KEY) || '[]') as Array<{ code: string }>;
+    const next = [entry, ...prev.filter(e => e.code !== entry.code)].slice(0, 100);
+    localStorage.setItem(COMPOSER_SHORT_LINKS_KEY, JSON.stringify(next));
+  } catch { /* ignore */ }
+}
+async function composerCreateShortLink(rawUrl: string): Promise<string | null> {
+  const normalized = composerNormalizeUrl(rawUrl);
+  if (!normalized) return null;
+  // رابط قصير قديم محلي → أرجع الأصل إن وُجد (حتى لا يفتح 404)
+  if (/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(normalized)) {
+    const original = composerLookupOriginalUrl(normalized);
+    // إن لم نجد الأصل لا نُعيد /s/ المعطوب — أفضل إرجاع null ليظهر خطأ واضح
+    if (original && !/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(original)) return original;
+    return null;
+  }
+  // صورة/فيديو مباشرة: الرابط الأصلي كما هو → يُعرض كبيرًا داخل البوست
+  const mediaKind = classifyMediaUrl(normalized);
+  if (mediaKind === 'image' || mediaKind === 'video') {
+    return normalized;
+  }
+  // صفحات (مثل x.com / مقالات): جرّب API السيرفر فقط — إن فشل نُبقي الرابط الأصلي
+  // ولا نختلق أبدًا stooorna.com/s/xxx بدون مسار حقيقي على السيرفر (سبب الـ 404)
+  try {
+    const r = await fetch('/api/short-links', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: normalized }),
+    });
+    if (r.ok) {
+      const d = await r.json() as { code?: string; shortUrl?: string; url?: string; id?: string };
+      const code = d.code || d.id;
+      const shortUrl = d.shortUrl || (code ? `https://stooorna.com/s/${code}` : null);
+      // نقبل القصير فقط إن السيرفر أكّد الحفظ (ok) — وإلا الأصل
+      if (shortUrl && code) {
+        composerSaveShortLink({ code, url: normalized, shortUrl, createdAt: Date.now() });
+        return shortUrl;
+      }
+      if (shortUrl && !/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(shortUrl)) return shortUrl;
+    }
+  } catch { /* keep original */ }
+  // لا اختصار وهمي — الرابط الأصلي (x.com وغيره) يبقى كما هو ويعمل
+  return normalized;
+}
+
+// ── X status → full image/video embed (fetches direct media) ───────────────────
+function XStatusEmbed({ statusUrl }: { statusUrl: string }) {
+  const [items, setItems] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setFailed(false);
+    resolveXStatusMedia(statusUrl).then(media => {
+      if (cancelled) return;
+      if (media.length) setItems(media);
+      else setFailed(true);
+      setLoading(false);
+    }).catch(() => {
+      if (!cancelled) { setFailed(true); setLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [statusUrl]);
+  if (loading) {
+    return (
+      <div onClick={e => e.stopPropagation()} style={{
+        width: '100%', minHeight: 120, borderRadius: 14, marginTop: 8,
+        background: 'rgba(0,188,212,0.06)', border: `1px solid ${CLR_POST_BORDER}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_TEXT_DIM, fontSize: '0.75rem',
+      }}>
+        جاري تحميل الوسائط…
+      </div>
+    );
+  }
+  if (failed || !items.length) {
+    return (
+      <a href={statusUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+        style={{ color: CLR_PRIMARY, fontSize: '0.75rem', wordBreak: 'break-all' }}>
+        {statusUrl}
+      </a>
+    );
+  }
+  return <PostLinkEmbeds embeds={items} />;
+}
+
+// ── Auto-expand image/video links large (no tap required) ─────────────────────
+function PostLinkEmbeds({ embeds }: { embeds: { url: string; type: 'image' | 'video' }[] }) {
+  if (!embeds.length) return null;
   return (
-    <p style={{ color: textColor, fontSize: '0.78rem', lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: "'Alexandria', var(--font-sans), sans-serif" }}>
-      {parts.map((part, i) => {
-        if (part.startsWith('#')) {
-          return <button key={i} onClick={event => { event.stopPropagation(); onHashtag?.(part.slice(1)); }} style={{ color, fontWeight: 700, background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}>{part}</button>;
-        }
-        if (part.startsWith('@')) {
-          return <span key={i} style={{ color: 'hsl(var(--primary))', fontWeight: 700 }}>{part}</span>;
-        }
-        return <React.Fragment key={i}>{part}</React.Fragment>;
-      })}
-    </p>
+    <div
+      onClick={e => e.stopPropagation()}
+      style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8, width: '100%' }}
+    >
+      {embeds.map((m, i) => (
+        <div
+          key={`${m.type}-${i}-${m.url}`}
+          style={{
+            width: '100%', borderRadius: 14, overflow: 'hidden',
+            border: `1px solid ${CLR_POST_BORDER}`, background: '#000',
+          }}
+        >
+          {m.type === 'video' ? (
+            <video
+              src={m.url}
+              controls
+              autoPlay
+              muted
+              playsInline
+              loop
+              style={{ width: '100%', maxHeight: '70vh', display: 'block', background: '#000' }}
+            />
+          ) : (
+            <img
+              src={m.url}
+              alt=""
+              style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain', display: 'block', background: '#000' }}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── روابط X (Twitter) داخل نص البوست — تعمل لنشر المستخدمين والشركات ─────────────
+// الرابط يبقى في النص كما هو، والصورة/الفيديو تظهر كاملة مباشرة
+// (معاينة مربع الكتابة + الفييد + صفحة البوست المفتوح).
+const X_MEDIA_CACHE = new Map<string, Promise<{ url: string; type: 'image' | 'video' }[]>>();
+
+/** كل روابط تغريدات X/Twitter داخل نص (بدون تكرار، بنفس ترتيب ظهورها) */
+function extractXStatusUrls(text: string | null | undefined): string[] {
+  if (!text) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const matches = text.match(URL_IN_TEXT_RE) || [];
+  for (const m of matches) {
+    const raw = m.replace(/[.,;:!?،؛]+$/, '');
+    const resolved = composerLookupOriginalUrl(raw);
+    const id = parseXStatusId(resolved);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(resolved);
+  }
+  return out;
+}
+
+/** نفس resolveXStatusMedia لكن مع كاش (لا يعيد الجلب عند كل عرض/تمرير). الفشل لا يُخزَّن حتى يمكن إعادة المحاولة */
+function resolveXStatusMediaCached(statusUrl: string): Promise<{ url: string; type: 'image' | 'video' }[]> {
+  const key = parseXStatusId(statusUrl) || statusUrl;
+  let pending = X_MEDIA_CACHE.get(key);
+  if (!pending) {
+    pending = resolveXStatusMedia(statusUrl)
+      .then(list => {
+        if (!list.length) X_MEDIA_CACHE.delete(key);
+        return list;
+      })
+      .catch(() => {
+        X_MEDIA_CACHE.delete(key);
+        return [] as { url: string; type: 'image' | 'video' }[];
+      });
+    X_MEDIA_CACHE.set(key, pending);
+  }
+  return pending;
+}
+
+/** رابط X → الصورة/الفيديو كاملة مباشرة (بدون أي ضغطة). failedNote: نص بديل بدل الرابط عند عدم وجود وسائط */
+function XLinkMedia({ statusUrl, failedNote }: { statusUrl: string; failedNote?: string }) {
+  const [items, setItems] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
+  useEffect(() => {
+    let cancelled = false;
+    setStatus('loading');
+    setItems([]);
+    resolveXStatusMediaCached(statusUrl).then(media => {
+      if (cancelled) return;
+      if (media.length) { setItems(media); setStatus('ready'); }
+      else setStatus('failed');
+    });
+    return () => { cancelled = true; };
+  }, [statusUrl]);
+
+  if (status === 'loading') {
+    return (
+      <div onClick={e => e.stopPropagation()} style={{
+        width: '100%', minHeight: 120, borderRadius: 14, marginTop: 8, boxSizing: 'border-box',
+        background: 'rgba(0,188,212,0.06)', border: `1px solid ${CLR_POST_BORDER}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#536471', fontSize: '0.75rem',
+      }}>
+        جاري تحميل الوسائط…
+      </div>
+    );
+  }
+  if (status === 'failed') {
+    if (failedNote) {
+      return <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p>;
+    }
+    return (
+      <a href={statusUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+        style={{ color: CLR_PRIMARY, fontSize: '0.75rem', wordBreak: 'break-all' }}>
+        {statusUrl}
+      </a>
+    );
+  }
+  return <PostLinkEmbeds embeds={items} />;
+}
+
+// ── روابط الصور/الفيديو (X أو رابط مباشر) — مستطيل Paste + الفييد ─────────────────
+/** تصنيف صارم لروابط الملفات المباشرة (امتداد/format=/مضيفات معروفة) — حتى لا نُدرج صفحات عادية كفيديو */
+function classifyDirectMediaUrl(raw: string): 'image' | 'video' | null {
+  try {
+    const u = new URL(raw);
+    const full = u.href;
+    if (IMAGE_EXT_RE.test(u.pathname) || IMAGE_EXT_RE.test(full)) return 'image';
+    if (VIDEO_EXT_RE.test(u.pathname) || VIDEO_EXT_RE.test(full)) return 'video';
+    if (/[?&](format|ext|type)=(png|jpe?g|gif|webp|avif)/i.test(full)) return 'image';
+    if (/[?&](format|ext|type)=(mp4|webm|mov)/i.test(full)) return 'video';
+    if (/(^|\.)video\.twimg\.com$/i.test(u.hostname)) return 'video';
+    if (/(^|\.)(pbs\.twimg\.com|images\.unsplash\.com|i\.imgur\.com|cdn\.discordapp\.com|media\.tenor\.com)$/i.test(u.hostname)) return 'image';
+  } catch { /* not a url */ }
+  return null;
+}
+
+/** كل الروابط التي تُعرض كوسائط داخل نص: تغريدات X + روابط صور/فيديو مباشرة (بدون تكرار) */
+function extractLinkMediaUrls(text: string | null | undefined): string[] {
+  if (!text) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const matches = text.match(URL_IN_TEXT_RE) || [];
+  for (const m of matches) {
+    const raw = m.replace(/[.,;:!?،؛]+$/, '');
+    const resolved = composerLookupOriginalUrl(raw);
+    const xId = parseXStatusId(resolved);
+    const key = xId ? `x:${xId}` : resolved;
+    if (seen.has(key)) continue;
+    if (xId || classifyDirectMediaUrl(resolved)) {
+      seen.add(key);
+      out.push(resolved);
+    }
+  }
+  return out;
+}
+
+/** أول رابط داخل نص الحافظة (يقبل: https://… أو www… أو x.com/…) وإلا null */
+function pickLinkFromText(raw: string | null | undefined): string | null {
+  const t = (raw || '').trim();
+  if (!t) return null;
+  const found = t.match(URL_IN_TEXT_RE);
+  if (found && found[0]) return found[0].replace(/[.,;:!?،؛]+$/, '');
+  if (/^(www\.\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)$/i.test(t)) return composerNormalizeUrl(t);
+  return null;
+}
+
+/** رابط واحد (X أو صورة/فيديو مباشر) → الصورة/الفيديو كاملة مباشرة. failedNote يظهر إن تعذّر العرض */
+function LinkMediaPreview({ url, failedNote }: { url: string; failedNote?: string }) {
+  const normalized = composerNormalizeUrl(url);
+  if (!normalized) return null;
+  const resolved = composerLookupOriginalUrl(normalized);
+  if (parseXStatusId(resolved)) return <XLinkMedia statusUrl={resolved} failedNote={failedNote} />;
+  const kind = classifyDirectMediaUrl(resolved);
+  if (kind) return <PostLinkEmbeds embeds={[{ url: resolved, type: kind }]} />;
+  return failedNote ? <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p> : null;
+}
+
+// ── PostText — renders post text with #hashtags highlighted ──────────────────
+function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, bold = false, collapseLong = false, onMore }: {
+  text: string;
+  color: string;
+  textColor: string;
+  onHashtag?: (tag: string) => void;
+  embedMediaLinks?: boolean;
+  bold?: boolean;
+  /** في الفييد: أكثر من 10 أسطر → أول 4 + More يفتح صفحة كاملة */
+  collapseLong?: boolean;
+  onMore?: () => void;
+}) {
+  if (!text) return null;
+  const extracted = embedMediaLinks
+    ? extractTextMediaEmbeds(text)
+    : { cleanText: text, embeds: [] as { url: string; type: 'image' | 'video' }[], xStatusUrls: [] as string[] };
+  const { cleanText, embeds, xStatusUrls } = extracted;
+  if (!cleanText && embeds.length === 0 && xStatusUrls.length === 0) return null;
+  const COLLAPSE_AFTER_LINES = 10;
+  const PREVIEW_LINES = 4;
+  const allLines = cleanText ? cleanText.split('\n') : [];
+  const shouldCollapse = !!collapseLong && !!onMore && allLines.length > COLLAPSE_AFTER_LINES;
+  const visibleText = shouldCollapse
+    ? allLines.slice(0, PREVIEW_LINES).join('\n') + (allLines.length > PREVIEW_LINES ? '\n…' : '')
+    : cleanText;
+  const parts = visibleText ? visibleText.split(/(#[\p{L}\p{N}_]+|@[\p{L}\p{N}_]+|https?:\/\/[^\s<>"')\]]+)/gu) : [];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {visibleText ? (
+        <p style={{ color: textColor, fontSize: '0.78rem', fontWeight: bold ? 700 : undefined, lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: "'Alexandria', var(--font-sans), sans-serif" }}>
+          {parts.map((part, i) => {
+            if (part.startsWith('#')) {
+              return <button key={i} onClick={event => { event.stopPropagation(); onHashtag?.(part.slice(1)); }} style={{ color, fontWeight: 700, background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}>{part}</button>;
+            }
+            if (part.startsWith('@')) {
+              return <span key={i} style={{ color: 'hsl(var(--primary))', fontWeight: 700 }}>{part}</span>;
+            }
+            if (/^https?:\/\//i.test(part)) {
+              return <a key={i} href={part} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color, fontWeight: 600, wordBreak: 'break-all' }}>{part}</a>;
+            }
+            return <React.Fragment key={i}>{part}</React.Fragment>;
+          })}
+        </p>
+      ) : null}
+      {shouldCollapse && (
+        <button type="button" onClick={e => { e.stopPropagation(); onMore?.(); }} aria-label="More"
+          style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: '2px 0', margin: 0, color: color || 'hsl(var(--primary))', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+          More
+        </button>
+      )}
+      {embedMediaLinks && <PostLinkEmbeds embeds={embeds} />}
+      {embedMediaLinks && xStatusUrls.map(u => <XStatusEmbed key={u} statusUrl={u} />)}
+    </div>
   );
 }
 
@@ -2061,6 +3705,30 @@ function PostMediaItems(post: PostItem): { url: string; type: 'image' | 'video' 
   return post.mediaUrl ? [{ url: post.mediaUrl, type: post.mediaType ?? 'image' }] : [];
 }
 
+// ── دمج منشورات جاية من السيرفر مع النسخة المحلية الحالية — يحمي منشوراتنا اللي
+// فيها أكثر من صورة: لو السيرفر رجّع نفس المنشور بعدد صور أقل (مثلاً صورة وحدة
+// بس بدل ٤ أو ٥)، نحافظ على قائمة الصور المحلية الكاملة بدل ما نفقدها كل ما
+// يصير تحديث بالخلفية (كل ثانيتين) أو عند فتح بانر "New Posts". ──
+function mergePostsPreservingMedia(prevPosts: PostItem[], serverPosts: PostItem[]): PostItem[] {
+  const prevById = new Map(prevPosts.map(p => [p.id, p]));
+  return serverPosts.map(serverPost => {
+    const existing = prevById.get(serverPost.id);
+    if (!existing) return serverPost;
+    const existingCount = existing.mediaUrls?.length ?? (existing.mediaUrl ? 1 : 0);
+    const serverCount = serverPost.mediaUrls?.length ?? (serverPost.mediaUrl ? 1 : 0);
+    if (existingCount > serverCount) {
+      return {
+        ...serverPost,
+        mediaUrl: existing.mediaUrl,
+        mediaType: existing.mediaType,
+        mediaUrls: existing.mediaUrls,
+        mediaTypes: existing.mediaTypes,
+      };
+    }
+    return serverPost;
+  });
+}
+
 function PostCard({
   post,
   isMine,
@@ -2068,6 +3736,7 @@ function PostCard({
   onFollow,
   onToggleLike,
   onOpenPost,
+  onOpenComments,
   onRequestDelete,
   onRemoveMedia,
   onHashtag,
@@ -2077,6 +3746,12 @@ function PostCard({
   onRepost,
   onDownload,
   onOpenProfile,
+  isPinned,
+  onTogglePin,
+  likeBurstKey = 0,
+  onProductShareMenu,
+  productShareAlert = false,
+  isCompanyAuthor = false,
 }: {
   post: PostItem;
   isMine: boolean;
@@ -2085,18 +3760,32 @@ function PostCard({
   followStatus: 'accepted' | 'pending' | 'none' | null;
   onFollow: (post: PostItem) => void;
   onToggleLike: (post: PostItem) => void;
+  /** يزيد عند كل لايك لتشغيل أنيميشن الفقاعة */
+  likeBurstKey?: number;
   onOpenPost: (post: PostItem) => void;
+  /** Instagram-style comments sheet — only the comment icon should open this */
+  onOpenComments?: (post: PostItem) => void;
   onRequestDelete: (post: PostItem) => void;
   onRemoveMedia: (post: PostItem) => void;
   onHashtag: (tag: string) => void;
   onToggleFavorite: (post: PostItem) => void;
   isFavorited: (postId: number) => boolean;
   onShare: (post: PostItem) => void;
+  /** قائمة شير المنتج: خارجي أو استفسار */
+  onProductShareMenu?: (post: PostItem) => void;
+  /** شير أصفر عند وجود رد من الشركة على استفسار */
+  productShareAlert?: boolean;
+  /** منشور شركة — نفس شريط المنتج بالخارج */
+  isCompanyAuthor?: boolean;
   onRepost: (post: PostItem) => void;
   onDownload: (post: PostItem) => void;
   // فتح صورة الملف الشخصي الآن يفتح مربع البروفايل الكامل (بيانات + شات + مكالمة) بدل
   // معاينة الصورة وحدها — لا يُستدعى لمنشورك أنت (isMine).
   onOpenProfile: (post: PostItem) => void;
+  // هل هذا هو منشوري المثبّت؟ اختياري — يظهر شارة "مثبت" ويتيح خيار "إلغاء التثبيت"
+  // بدل "تثبيت" في قائمة الثلاث نقاط. لا يُمرَّر إلا على منشوراتي أنا.
+  isPinned?: boolean;
+  onTogglePin?: (post: PostItem) => void;
 }) {
   const postDate = new Date(post.createdAt);
   const arabicNumber = (value: number) => new Intl.NumberFormat('ar-KW').format(value);
@@ -2115,53 +3804,93 @@ function PostCard({
     month: 'long',
     year: 'numeric',
   });
+  const mediaItems = PostMediaItems(post);
+  const hasMedia = mediaItems.length > 0;
+  const [mediaLightbox, setMediaLightbox] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
+  const [postMenuOpen, setPostMenuOpen] = useState(false);
+  // ── قائمة الثلاث نقاط + كتم الصوت داخل المعاينة كاملة الشاشة (mediaLightbox) ──
+  const [lightboxMenuOpen, setLightboxMenuOpen] = useState(false);
+  const [lightboxMuted, setLightboxMuted] = useState(false);
+  // ── كتم الصوت لكل عنصر فيديو داخل معاينة الفييد الصغيرة (مكتوم افتراضياً كمعاينة) ──
+  const [feedMuted, setFeedMuted] = useState<Record<number, boolean>>({});
+  // ── معرض الصور المتعددة داخل المنشور — تنقل يمين/يسار + عداد صفحات (1/N) زي انستغرام ──
+  const [mediaPage, setMediaPage] = useState(0);
+  const mediaScrollRef = useRef<HTMLDivElement | null>(null);
+  const productAd = parseProductAd(post.text);
+  const isProductAd = !!productAd;
+  // روابط X داخل نص المنشور — نص إعلان/منشور المنتج مخفي في الفييد، فنعرض وسائط الرابط مباشرة
+  const postXUrls = isProductAd ? extractLinkMediaUrls(post.text) : [];
+  const [productDetailsOpen, setProductDetailsOpen] = useState(false);
+  function goToMediaPage(idx: number) {
+    const el = mediaScrollRef.current;
+    if (!el) return;
+    const clamped = Math.max(0, Math.min(idx, mediaItems.length - 1));
+    el.scrollTo({ left: clamped * el.clientWidth, behavior: 'smooth' });
+    setMediaPage(clamped);
+  }
+
   return (
     <>
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        onClick={() => onOpenPost(post)}
         style={{
           border: 'none',
-          borderBottom: `1px solid ${C.postBorder}`,
-          background: 'transparent',
+          borderBottom: `1px solid ${CLR_POST_BORDER}`,
+          background: '#ffffff',
           borderRadius: 0,
-          padding: '14px 14px',
+          padding: hasMedia ? '14px 0 14px' : '14px 14px',
           margin: 0,
           display: 'flex',
           flexDirection: 'column',
-          gap: 10,
-          cursor: 'pointer',
+          gap: hasMedia ? 0 : 10,
+          position: 'relative',
         }}
       >
         {/* Repost attribution ribbon — only present on a feed entry created by a repost */}
         {post.repostedBy && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.textDim, fontSize: '0.68rem', fontWeight: 600 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#000000', fontSize: '0.68rem', fontWeight: 700, paddingInline: 14, marginBottom: 8 }}>
             <Repeat2 size={13} strokeWidth={2.2} />
             <span>أعاد {post.repostedBy.name || post.repostedBy.username || '—'} نشر هذا المنشور</span>
           </div>
         )}
-        {/* Header: publisher avatar + name */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Header: صورة البروفايل بجانب الاسم لكل مستخدم وشركة */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingInline: hasMedia ? 14 : 0, marginBottom: hasMedia ? 10 : 0 }}>
           <motion.button
             whileTap={{ scale: 0.94 }}
-            onClick={e => { e.stopPropagation(); if (!isMine) onOpenProfile(post); }}
+            onClick={e => {
+              e.stopPropagation();
+              if (isMine) return;
+              onOpenProfile(post);
+            }}
             aria-label="عرض الملف الشخصي"
-            style={{ padding: 0, border: 'none', background: 'none', cursor: 'pointer', borderRadius: '50%', flexShrink: 0 }}
+            style={{ padding: 0, border: 'none', background: 'none', cursor: isMine ? 'default' : 'pointer', borderRadius: '50%', flexShrink: 0 }}
           >
             <UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={38} />
           </motion.button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.82rem', fontWeight: 700, margin: 0 }}>
+            <p style={{ color: '#000000', fontSize: '0.82rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
               {post.authorName || post.authorUsername || '—'}
-              <span style={{ color: 'hsl(var(--foreground))', fontSize: '0.66rem', fontWeight: 500, marginInlineStart: 7 }}>
+              <span style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.66rem', fontWeight: 700, marginInlineStart: 6 }}>
                 {publishedDate}
               </span>
+              <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: '0.64rem', fontWeight: 600 }}>
+                · {timeAgo}
+              </span>
+              {isPinned && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                  marginInlineStart: 8, padding: '2px 7px', borderRadius: 10,
+                  background: 'hsl(var(--primary) / 0.12)', color: 'hsl(var(--primary))',
+                  fontSize: '0.62rem', fontWeight: 700,
+                }}>
+                  <Pin size={10} strokeWidth={2.4} />
+                  مثبت
+                </span>
+              )}
             </p>
-            <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.68rem', margin: 0 }}>
+            <p style={{ color: '#000000', fontSize: '0.68rem', fontWeight: 700, margin: 0 }}>
               {post.authorUsername && <span style={{ color: 'hsl(var(--primary))', fontWeight: 700 }}>@{post.authorUsername}</span>}
-              {post.authorUsername && <span style={{ color: 'hsl(var(--foreground))' }}> · </span>}
-              {timeAgo}
             </p>
           </div>
 
@@ -2169,10 +3898,10 @@ function PostCard({
           {followStatus === 'pending' && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
-              padding: '5px 10px', borderRadius: 20, background: C.cardBg, border: `1px solid ${C.cardBorder}`,
+              padding: '5px 10px', borderRadius: 20, background: CLR_CARD_BG, border: `1px solid ${CLR_CARD_BORDER}`,
             }}>
-              <Clock size={12} strokeWidth={2} color={C.textDim} />
-              <span style={{ fontSize: '0.66rem', color: C.textDim, fontWeight: 600, whiteSpace: 'nowrap' }}>بانتظار القبول</span>
+              <Clock size={12} strokeWidth={2} color={CLR_TEXT_DIM} />
+              <span style={{ fontSize: '0.66rem', color: CLR_TEXT_DIM, fontWeight: 600, whiteSpace: 'nowrap' }}>بانتظار القبول</span>
             </div>
           )}
           {followStatus === 'none' && (
@@ -2189,82 +3918,402 @@ function PostCard({
               {post.authorIsPrivate ? 'Private' : 'Follow'}
             </motion.button>
           )}
+
+          {/* ⋮ قائمة الناشر — زاوية البوست يمين */}
+          {isMine && (
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <motion.button
+                whileTap={{ scale: 0.88 }}
+                onClick={e => { e.stopPropagation(); setPostMenuOpen(v => !v); }}
+                aria-label="خيارات المنشور"
+                style={{
+                  width: 32, height: 32, borderRadius: '50%', border: 'none',
+                  background: 'transparent', color: '#000000', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                }}
+              >
+                <MoreVertical size={18} strokeWidth={2.2} />
+              </motion.button>
+              {postMenuOpen && (
+                <>
+                  <div
+                    onClick={e => { e.stopPropagation(); setPostMenuOpen(false); }}
+                    style={{ position: 'fixed', inset: 0, zIndex: 40 }}
+                  />
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      position: 'absolute', top: 34, insetInlineEnd: 0, zIndex: 41,
+                      minWidth: 150, padding: 6, borderRadius: 12,
+                      background: 'hsl(var(--card))',
+                      border: `1px solid ${CLR_CARD_BORDER}`,
+                      boxShadow: '0 12px 28px rgba(0,0,0,0.45)',
+                    }}
+                  >
+                    {onTogglePin && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPostMenuOpen(false);
+                          onTogglePin(post);
+                        }}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '10px 12px', border: 'none', borderRadius: 8,
+                          background: 'transparent', color: CLR_TEXT, cursor: 'pointer',
+                          fontSize: '0.8rem', textAlign: 'right',
+                        }}
+                      >
+                        {isPinned ? <PinOff size={15} color={CLR_PRIMARY} /> : <Pin size={15} color={CLR_PRIMARY} />}
+                        {isPinned ? 'إلغاء التثبيت' : 'تثبيت المنشور'}
+                      </button>
+                    )}
+                    {hasMedia && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPostMenuOpen(false);
+                          onRemoveMedia(post);
+                        }}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '10px 12px', border: 'none', borderRadius: 8,
+                          background: 'transparent', color: CLR_TEXT, cursor: 'pointer',
+                          fontSize: '0.8rem', textAlign: 'right',
+                        }}
+                      >
+                        <ImageIcon size={15} color={CLR_PRIMARY} />
+                        حذف الوسائط
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPostMenuOpen(false);
+                        onRequestDelete(post);
+                      }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '10px 12px', border: 'none', borderRadius: 8,
+                        background: 'transparent', color: 'hsl(var(--destructive))', cursor: 'pointer',
+                        fontSize: '0.8rem', textAlign: 'right',
+                      }}
+                    >
+                      <Trash2 size={15} />
+                      حذف المنشور
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Text-post area — no longer white paper: dark card background + border matching
-            the app's hashtag-page card style. Layout (radius, padding, margin) untouched,
-            just the color. */}
-        {post.text && (
-          <div style={{
-            background: 'transparent',
-            border: 'none',
-            borderRadius: 0,
-            padding: 0,
-            margin: 0,
-            display: 'flex',
-            flexDirection: 'column',
-          }}>
-            <PostText text={post.text} color="hsl(var(--primary))" textColor={C.textDim} onHashtag={onHashtag} />
+        {/* نص فقط بدون وسائط */}
+        {/* إعلان منتج: لا نص فوق الصورة — العنوان والسعر والتفاصيل فقط داخل أيقونة الثلاث خطوط */}
+        {!hasMedia && post.text && !isProductAd && (
+          <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column' }}>
+            <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => onOpenPost(post)} />
           </div>
         )}
 
-        {/* Media — small thumbnail inside the same card, tap to expand */}
-        {PostMediaItems(post).length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignSelf: 'flex-start' }}>
-            {PostMediaItems(post).map((media, index) => (
-              <div key={`${media.type}-${index}`} style={{ position: 'relative' }}>
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={e => { e.stopPropagation(); onOpenPost(post); }}
-                  aria-label={media.type === 'video' ? 'فتح الفيديو' : 'فتح الصورة'}
+        {/* نص الناشر فوق الصورة/الفيديو — مخفي تمامًا لإعلان المنتج */}
+        {hasMedia && post.text && !isProductAd && (
+          <div style={{
+            background: 'transparent', border: 'none', borderRadius: 0, padding: '0 14px 10px', margin: 0,
+            display: 'flex', flexDirection: 'column',
+          }}>
+            <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => onOpenPost(post)} />
+          </div>
+        )}
+
+        {/* Media — من اليمين لليسار بعرض الشاشة كاملاً. لو أكثر من عنصر واحد: معرض قابل
+            للتصفح يمين/يسار (سحب أو أزرار الأسهم) مع عداد صفحات "1/N" زي انستغرام. */}
+        {hasMedia && (
+          <div style={{ position: 'relative', width: '100%' }}>
+            {mediaItems.length > 1 && (
+              <style>{'.post-media-scroll::-webkit-scrollbar{display:none}'}</style>
+            )}
+            <div
+              ref={mediaScrollRef}
+              className={mediaItems.length > 1 ? 'post-media-scroll' : undefined}
+              onScroll={e => {
+                if (mediaItems.length <= 1) return;
+                const el = e.currentTarget;
+                if (!el.clientWidth) return;
+                const idx = Math.round(el.scrollLeft / el.clientWidth);
+                setMediaPage(prev => (prev === idx ? prev : idx));
+              }}
+              style={{
+                display: 'flex', flexDirection: 'row', width: '100%',
+                // نفرض LTR داخل شريط التصفح نفسه فقط (بعيدًا عن اتجاه الصفحة العام RTL)
+                // عشان يكون ترتيب السحب/العدّاد ثابت ومتوقّع دايمًا: سحب لليسار = الصورة التالية.
+                direction: 'ltr',
+                overflowX: mediaItems.length > 1 ? 'auto' : 'hidden',
+                scrollSnapType: mediaItems.length > 1 ? 'x mandatory' : undefined,
+                WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
+              }}
+            >
+              {mediaItems.map((media, index) => (
+                <div
+                  key={`${media.type}-${index}`}
                   style={{
-                    position: 'relative', width: 130, height: 130,
-                    borderRadius: 10, overflow: 'hidden', border: `1px solid ${C.postBorder}`,
-                    padding: 0, background: '#000', cursor: 'pointer', display: 'block',
+                    position: 'relative', width: '100%', flexShrink: 0,
+                    scrollSnapAlign: mediaItems.length > 1 ? 'start' : undefined,
                   }}
                 >
-                  {media.type === 'video' ? (
-                    <video src={media.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                  ) : (
-                    <img src={media.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      // منتج أو شركة → الصفحة الجديدة وليس اللايتبوكس القديم (كومنت/ريبوست فقط)
+                      if (isProductAd || isCompanyAuthor) {
+                        onOpenPost(post);
+                        return;
+                      }
+                      setMediaLightbox(media);
+                    }}
+                    aria-label={media.type === 'video' ? 'فتح الفيديو' : 'فتح الصورة'}
+                    style={{
+                      position: 'relative', width: '100%', border: '3px solid #000', boxSizing: 'border-box', padding: 0,
+                      background: '#000', cursor: 'pointer', display: 'block',
+                    }}
+                  >
+                    {media.type === 'video' ? (
+                      <video
+                        src={media.url}
+                        muted={feedMuted[index] !== false}
+                        autoPlay
+                        loop
+                        playsInline
+                        preload="metadata"
+                        onClick={e => e.stopPropagation()}
+                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'contain', display: 'block', background: '#000' }}
+                      />
+                    ) : (
+                      <img
+                        src={media.url}
+                        alt=""
+                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'contain', display: 'block', background: '#000' }}
+                      />
+                    )}
+                  </button>
+                  {/* أيقونة كتم/تشغيل الصوت — تحل محل أزرار الفيديو الافتراضية (controls) على
+                      معاينة الفييد الصغيرة، فتبقى الصورة/الفيديو تبين كاملة وبعيدة بدون تحكمات كبيرة تغطيها. */}
+                  {media.type === 'video' && (
+                    <motion.button
+                      whileTap={{ scale: 0.88 }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        setFeedMuted(prev => ({ ...prev, [index]: prev[index] === false ? true : false }));
+                      }}
+                      aria-label={feedMuted[index] === false ? 'كتم الصوت' : 'تشغيل الصوت'}
+                      style={{
+                        position: 'absolute', bottom: 10, insetInlineEnd: 10, width: 30, height: 30, borderRadius: '50%',
+                        background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
+                      }}
+                    >
+                      {feedMuted[index] === false ? <Volume2 size={14} strokeWidth={2.2} /> : <VolumeX size={14} strokeWidth={2.2} />}
+                    </motion.button>
                   )}
-                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {media.type === 'video' ? <Play size={22} strokeWidth={2} color="#fff" fill="#fff" /> : <Eye size={18} strokeWidth={2} color="#fff" />}
-                  </div>
-                </motion.button>
-                {isMine && index === 0 && (
-                  <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onRemoveMedia(post); }} aria-label="حذف الوسائط" style={{
-                    position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: '50%',
-                    background: 'rgba(20,20,20,0.85)', border: `1px solid ${C.postBorder}`, color: '#fff', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <X size={13} strokeWidth={2.6} />
+                  {isMine && index === 0 && (
+                    <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onRemoveMedia(post); }} aria-label="حذف الوسائط" style={{
+                      position: 'absolute', top: 10, right: 10, width: 28, height: 28, borderRadius: '50%',
+                      background: 'rgba(20,20,20,0.85)', border: `1px solid ${CLR_POST_BORDER}`, color: '#fff', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
+                    }}>
+                      <X size={14} strokeWidth={2.6} />
+                    </motion.button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* أسهم يمين/يسار + عداد الصفحات — تظهر فقط لو المنشور فيه أكثر من صورة/فيديو */}
+            {mediaItems.length > 1 && (
+              <>
+                {mediaPage > 0 && (
+                  <motion.button
+                    whileTap={{ scale: 0.88 }}
+                    onClick={e => { e.stopPropagation(); goToMediaPage(mediaPage - 1); }}
+                    aria-label="الصورة السابقة"
+                    style={{
+                      position: 'absolute', top: '50%', left: 8, transform: 'translateY(-50%)',
+                      width: 30, height: 30, borderRadius: '50%',
+                      background: 'rgba(0,0,0,0.45)', border: 'none', color: '#fff', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
+                    }}
+                  >
+                    <ChevronLeft size={17} strokeWidth={2.4} />
                   </motion.button>
                 )}
-              </div>
-            ))}
+                {mediaPage < mediaItems.length - 1 && (
+                  <motion.button
+                    whileTap={{ scale: 0.88 }}
+                    onClick={e => { e.stopPropagation(); goToMediaPage(mediaPage + 1); }}
+                    aria-label="الصورة التالية"
+                    style={{
+                      position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)',
+                      width: 30, height: 30, borderRadius: '50%',
+                      background: 'rgba(0,0,0,0.45)', border: 'none', color: '#fff', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
+                    }}
+                  >
+                    <ChevronRight size={17} strokeWidth={2.4} />
+                  </motion.button>
+                )}
+                <div style={{
+                  position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
+                  padding: '3px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.55)',
+                  color: '#fff', fontSize: '0.68rem', fontWeight: 700, zIndex: 2, letterSpacing: '0.02em',
+                }}>
+                  {mediaPage + 1}/{mediaItems.length}
+                </div>
+                <div style={{
+                  position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)',
+                  display: 'flex', alignItems: 'center', gap: 4, zIndex: 2,
+                }}>
+                  {mediaItems.map((_, dotIdx) => (
+                    <span key={dotIdx} style={{
+                      width: dotIdx === mediaPage ? 6 : 5, height: dotIdx === mediaPage ? 6 : 5, borderRadius: '50%',
+                      background: dotIdx === mediaPage ? '#fff' : 'rgba(255,255,255,0.45)',
+                      transition: 'all 0.15s',
+                    }} />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
 
-        {/* Actions: likes, downloads, and comments. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18, paddingTop: 2 }}>
-          <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post); }} style={{
-            display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
-            color: post.likedByMe ? '#ef4444' : C.textDim,
+        {/* رابط X داخل نص المنشور (مستخدم أو شركة): الصورة/الفيديو تظهر كاملة مباشرة بدون ضغطة */}
+        {postXUrls.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingInline: hasMedia ? 14 : 0, paddingTop: hasMedia ? 10 : 0 }}>
+            {postXUrls.map(u => <LinkMediaPreview key={u} url={u} />)}
+          </div>
+        )}
+
+        {/* Actions — منتج أو شركة: لايك → تعليقات → شير | تفاصيل (نفس داخل البوست) */}
+        {(isProductAd || isCompanyAuthor) ? (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            paddingTop: 12, paddingInline: hasMedia ? 14 : 0, gap: 8,
           }}>
-            <Heart size={16} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
-            <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>{post.likesCount > 0 ? post.likesCount : ''}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 72 }}>
+              <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post); }} style={{
+                position: 'relative', display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
+                color: post.likedByMe ? '#ef4444' : '#000000',
+              }}>
+                <Heart size={18} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
+                <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.likesCount > 0 ? post.likesCount : ''}</span>
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.88 }}
+                onClick={e => { e.stopPropagation(); (onOpenComments ?? onOpenPost)(post); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}
+              >
+                <MessageCircle size={18} strokeWidth={2} />
+                <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.commentsCount > 0 ? post.commentsCount : ''}</span>
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.88 }}
+                onClick={e => {
+                  e.stopPropagation();
+                  if (onProductShareMenu) onProductShareMenu(post);
+                  else onShare(post);
+                }}
+                aria-label="مشاركة"
+                style={{
+                  display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer',
+                  color: productShareAlert ? '#eab308' : '#000000',
+                }}
+              >
+                <Send size={17} strokeWidth={2} color={productShareAlert ? '#eab308' : undefined} />
+              </motion.button>
+            </div>
+
+            <motion.button
+              whileTap={{ scale: 0.92 }}
+              onClick={e => { e.stopPropagation(); setProductDetailsOpen(true); }}
+              aria-label="تفاصيل المنتج"
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
+                borderRadius: 10, width: 44, height: 36, cursor: 'pointer', padding: 0,
+              }}
+            >
+              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+            </motion.button>
+
+            {/* موازنة المساحة بعد نقل التعليقات بين اللايك والشير */}
+            <div style={{ minWidth: 72 }} />
+          </div>
+        ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18, paddingTop: 10, paddingInline: hasMedia ? 14 : 0 }}>
+          <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post); }} style={{
+            position: 'relative', display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
+            color: post.likedByMe ? '#ef4444' : '#000000', overflow: 'visible',
+          }}>
+            <span style={{ position: 'relative', width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+              <motion.span
+                key={likeBurstKey}
+                animate={likeBurstKey ? { scale: [1, 1.35, 0.92, 1] } : { scale: 1 }}
+                transition={{ duration: 0.42, ease: 'easeOut' }}
+                style={{ display: 'inline-flex' }}
+              >
+                <Heart size={16} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
+              </motion.span>
+              <AnimatePresence>
+                {likeBurstKey > 0 && (
+                  <motion.span
+                    key={`bubble-${likeBurstKey}`}
+                    initial={{ opacity: 0.95, scale: 0.25 }}
+                    animate={{ opacity: 0, scale: 2.6 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.55, ease: 'easeOut' }}
+                    aria-hidden
+                    style={{
+                      position: 'absolute', left: '50%', top: '50%', width: 18, height: 18,
+                      marginLeft: -9, marginTop: -9, borderRadius: '50%',
+                      border: '2px solid #ef4444',
+                      boxShadow: '0 0 12px rgba(239,68,68,0.55)',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                )}
+              </AnimatePresence>
+              <AnimatePresence>
+                {likeBurstKey > 0 && (
+                  <motion.span
+                    key={`bubble2-${likeBurstKey}`}
+                    initial={{ opacity: 0.7, scale: 0.4 }}
+                    animate={{ opacity: 0, scale: 3.4 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.7, ease: 'easeOut', delay: 0.05 }}
+                    aria-hidden
+                    style={{
+                      position: 'absolute', left: '50%', top: '50%', width: 14, height: 14,
+                      marginLeft: -7, marginTop: -7, borderRadius: '50%',
+                      background: 'rgba(239,68,68,0.25)',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                )}
+              </AnimatePresence>
+            </span>
+            <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.likesCount > 0 ? post.likesCount : ''}</span>
           </motion.button>
-          {/* زر التنزيل — يظهر فقط على المنشورات التي فيها صورة أو فيديو (مو النصية)،
-              بجانب زر اللايك مباشرة، ويظهر لصاحب المنشور وللمستخدمين الآخرين على حدٍ سواء. */}
           {PostMediaItems(post).length > 0 && (
-            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onDownload(post); }} style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: C.textDim }} aria-label="تنزيل">
+            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onDownload(post); }} style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }} aria-label="تنزيل">
               <Download size={15} strokeWidth={2} />
             </motion.button>
           )}
-          <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onOpenPost(post); }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: C.textDim }}>
+          <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); (onOpenComments ?? onOpenPost)(post); }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}>
             <MessageCircle size={15} strokeWidth={2} />
-            <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>{post.commentsCount > 0 ? post.commentsCount : ''}</span>
+            <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.commentsCount > 0 ? post.commentsCount : ''}</span>
           </motion.button>
 
           <motion.button
@@ -2272,7 +4321,7 @@ function PostCard({
             onClick={e => { e.stopPropagation(); onRepost(post); }}
             aria-label="إعادة نشر"
             title="إعادة نشر"
-            style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: post.repostedByMe ? 'hsl(var(--primary))' : C.textDim }}
+            style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: post.repostedByMe ? 'hsl(var(--primary))' : '#000000' }}
           >
             <Repeat2 size={15} strokeWidth={2} />
           </motion.button>
@@ -2281,7 +4330,7 @@ function PostCard({
             onClick={e => { e.stopPropagation(); onToggleFavorite(post); }}
             aria-label="إضافة إلى المفضلة"
             title="إضافة إلى المفضلة"
-            style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: isFavorited(post.id) ? '#22c55e' : C.textDim }}
+            style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: isFavorited(post.id) ? '#22c55e' : '#000000' }}
           >
             <Bookmark size={15} strokeWidth={2} fill={isFavorited(post.id) ? '#22c55e' : 'none'} />
           </motion.button>
@@ -2290,17 +4339,286 @@ function PostCard({
             onClick={e => { e.stopPropagation(); onShare(post); }}
             aria-label="إرسال المنشور للأصدقاء"
             title="إرسال المنشور للأصدقاء"
-            style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: C.textDim }}
+            style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}
           >
             <Send size={15} strokeWidth={2} />
           </motion.button>
           {followStatus === 'accepted' && (
             <span title="متابَع" style={{ display: 'flex', alignItems: 'center' }}>
-              <Check size={14} strokeWidth={3} color={C.textDim} />
+              <Check size={14} strokeWidth={3} color="#000000" />
             </span>
           )}
         </div>
+        )}
+
+        {/* شيت تفاصيل المنتج — يصعد من الأسفل */}
+        <AnimatePresence>
+          {(isProductAd || isCompanyAuthor) && productDetailsOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={e => { e.stopPropagation(); setProductDetailsOpen(false); }}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 10600, background: 'rgba(0,0,0,0.45)',
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              }}
+            >
+              <motion.div
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'spring', stiffness: 420, damping: 38 }}
+                onClick={e => e.stopPropagation()}
+                style={{
+                  width: '100%', maxWidth: 520, maxHeight: '70vh', overflowY: 'auto',
+                  background: '#fff', borderRadius: '18px 18px 0 0',
+                  padding: '14px 18px calc(20px + env(safe-area-inset-bottom, 0px))',
+                }}
+              >
+                <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
+                <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.1rem', fontWeight: 800, lineHeight: 1.35 }}>
+                  {productAd?.title || productAdDisplayTitle(post) || post.authorName || 'تفاصيل'}
+                </p>
+                {productAd?.price ? (
+                  <p style={{ margin: '8px 0 0', color: '#00BCD4', fontSize: '1rem', fontWeight: 800 }}>{productAd.price}</p>
+                ) : null}
+                {(() => {
+                  const stripPreviewUrls = (t: string) =>
+                    t.replace(URL_IN_TEXT_RE, (match) => {
+                      const raw = match.replace(/[.,;:!?،؛]+$/, '');
+                      const resolved = composerLookupOriginalUrl(raw);
+                      if (parseXStatusId(resolved) || classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved)) return '';
+                      return match;
+                    }).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+                  const detailsShown = productAd?.details ? stripPreviewUrls(productAd.details) : '';
+                  const fallbackShown = !productAd?.details && post.text && !post.text.trim().startsWith('{')
+                    ? stripPreviewUrls(post.text.replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim())
+                    : '';
+                  if (detailsShown) {
+                    return <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{detailsShown}</p>;
+                  }
+                  if (fallbackShown) {
+                    return <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{fallbackShown}</p>;
+                  }
+                  return null;
+                })()}
+                {(productAd?.extras ?? []).map((ex, i) => {
+                  const cleaned = ex.replace(URL_IN_TEXT_RE, (match) => {
+                    const raw = match.replace(/[.,;:!?،؛]+$/, '');
+                    const resolved = composerLookupOriginalUrl(raw);
+                    if (parseXStatusId(resolved) || classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved)) return '';
+                    return match;
+                  }).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+                  if (!cleaned) return null;
+                  return (
+                    <p key={i} style={{ margin: '10px 0 0', color: '#333', fontSize: '0.86rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.06)' }}>{cleaned}</p>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setProductDetailsOpen(false)}
+                  style={{
+                    marginTop: 18, width: '100%', height: 44, borderRadius: 12, border: 'none',
+                    background: '#0f1419', color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                  }}
+                >
+                  إغلاق
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
+
+      {/* Fullscreen media — يمين/يسار كامل الشاشة + النص أعلى أو أسفل */}
+      {mediaLightbox && typeof document !== 'undefined' && createPortal(
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => setMediaLightbox(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10500, background: '#000',
+            display: 'flex', flexDirection: 'column',
+          }}
+        >
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: 'max(10px, env(safe-area-inset-top, 0px)) 12px 8px',
+            flexShrink: 0,
+          }}>
+            <button
+              type="button"
+              onClick={() => setMediaLightbox(null)}
+              style={{
+                width: 36, height: 36, borderRadius: '50%', border: 'none',
+                background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <X size={18} strokeWidth={2.4} />
+            </button>
+
+            {/* ⋮ قائمة خيارات المنشور — تظهر داخل معاينة الفيديو/الصورة كاملة الشاشة، أعلى اليمين */}
+            {isMine && (
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); setLightboxMenuOpen(v => !v); }}
+                  aria-label="خيارات المنشور"
+                  style={{
+                    width: 36, height: 36, borderRadius: '50%', border: 'none',
+                    background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <MoreVertical size={18} strokeWidth={2.4} />
+                </button>
+                {lightboxMenuOpen && (
+                  <>
+                    <div
+                      onClick={e => { e.stopPropagation(); setLightboxMenuOpen(false); }}
+                      style={{ position: 'fixed', inset: 0, zIndex: 40 }}
+                    />
+                    <div
+                      onClick={e => e.stopPropagation()}
+                      style={{
+                        position: 'absolute', top: 42, insetInlineEnd: 0, zIndex: 41,
+                        minWidth: 160, padding: 6, borderRadius: 12,
+                        background: 'rgba(28,28,28,0.97)',
+                        border: '1px solid rgba(255,255,255,0.14)',
+                        boxShadow: '0 12px 28px rgba(0,0,0,0.55)',
+                      }}
+                    >
+                      {onTogglePin && (
+                        <button
+                          type="button"
+                          onClick={() => { setLightboxMenuOpen(false); onTogglePin(post); }}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '10px 12px', border: 'none', borderRadius: 8,
+                            background: 'transparent', color: '#fff', cursor: 'pointer',
+                            fontSize: '0.8rem', textAlign: 'right',
+                          }}
+                        >
+                          {isPinned ? <PinOff size={15} color={CLR_PRIMARY} /> : <Pin size={15} color={CLR_PRIMARY} />}
+                          {isPinned ? 'إلغاء التثبيت' : 'تثبيت المنشور'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => { setLightboxMenuOpen(false); setMediaLightbox(null); onRemoveMedia(post); }}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '10px 12px', border: 'none', borderRadius: 8,
+                          background: 'transparent', color: '#fff', cursor: 'pointer',
+                          fontSize: '0.8rem', textAlign: 'right',
+                        }}
+                      >
+                        <ImageIcon size={15} color={CLR_PRIMARY} />
+                        حذف الوسائط
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setLightboxMenuOpen(false); setMediaLightbox(null); onRequestDelete(post); }}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '10px 12px', border: 'none', borderRadius: 8,
+                          background: 'transparent', color: '#ef4444', cursor: 'pointer',
+                          fontSize: '0.8rem', textAlign: 'right',
+                        }}
+                      >
+                        <Trash2 size={15} />
+                        حذف المنشور
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '100%',
+            }}
+          >
+            {mediaLightbox.type === 'video' ? (
+              <video
+                src={mediaLightbox.url}
+                controls
+                autoPlay
+                muted={lightboxMuted}
+                playsInline
+                style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
+              />
+            ) : (
+              <img
+                src={mediaLightbox.url}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
+              />
+            )}
+          </div>
+
+          {/* شريط تحكّم أسفل الفيديو/الصورة: كتم الصوت + التعليقات + إعادة النشر */}
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 22,
+              padding: '10px 16px', flexShrink: 0,
+              background: 'rgba(0,0,0,0.55)',
+            }}
+          >
+            {mediaLightbox.type === 'video' && (
+              <motion.button
+                whileTap={{ scale: 0.88 }}
+                onClick={() => setLightboxMuted(v => !v)}
+                aria-label={lightboxMuted ? 'تشغيل الصوت' : 'كتم الصوت'}
+                style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
+              >
+                {lightboxMuted ? <VolumeX size={19} strokeWidth={2} /> : <Volume2 size={19} strokeWidth={2} />}
+              </motion.button>
+            )}
+            <motion.button
+              whileTap={{ scale: 0.88 }}
+              onClick={() => (onOpenComments ?? onOpenPost)(post)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
+            >
+              <MessageCircle size={18} strokeWidth={2} />
+              <span style={{ fontSize: '0.74rem', fontWeight: 700 }}>{post.commentsCount > 0 ? post.commentsCount : ''}</span>
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.88 }}
+              onClick={() => onRepost(post)}
+              aria-label="إعادة نشر"
+              title="إعادة نشر"
+              style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: post.repostedByMe ? CLR_PRIMARY : '#fff' }}
+            >
+              <Repeat2 size={18} strokeWidth={2} />
+            </motion.button>
+          </div>
+
+          {post.text && (
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                padding: '12px 16px calc(14px + env(safe-area-inset-bottom, 0px))',
+                flexShrink: 0, maxHeight: '28vh', overflowY: 'auto',
+                background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.4))',
+              }}
+            >
+              <p style={{ color: '#fff', fontSize: '0.9rem', lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {post.text}
+              </p>
+            </div>
+          )}
+        </motion.div>,
+        document.body
+      )}
     </>
   );
 }
@@ -2338,102 +4656,171 @@ interface MiniProfileData {
   pinnedTrackArtist?: string | null;
   pinnedTrackArtwork?: string | null;
   pinnedTrackPreviewUrl?: string | null;
+  // ── Pinned POST id (Pin option in a post's ⋮ menu) — when set, that post should be
+  // shown first in this person's Posts list on their profile, ahead of the rest. Optional
+  // so this degrades gracefully (no reordering) until the backend adds this column to
+  // /api/users/by-username/:username and /api/users/me. ──
+  pinnedPostId?: number | null;
 }
-// ── FollowersListModal — centered box listing accepted friends vertically, with a
-// switch to hide the list from other users (independent from the private-account rule,
-// which always hides it regardless of this switch). Shared between the owner's own
-// profile and any other profile-view component that has a friends list to show. ──
+// ── FollowersListModal — switch only (no user list). When on, others see a lock
+// instead of the followers count. Independent from the private-account rule. ──
 function FollowersListModal({
-  friends,
+  friends: _friends,
   followersVisible,
   onToggleVisible,
   onClose,
 }: {
-  friends: Friend[];
+  friends?: Friend[];
   followersVisible: boolean;
   onToggleVisible: (next: boolean) => void;
   onClose: () => void;
 }) {
+  // Switch only — no followers list for owner or visitors.
+  void _friends;
+  const hidden = !followersVisible;
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(3px)',
-        zIndex: 10300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,8,10,0.72)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        zIndex: 10300,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 20,
       }}
     >
       <motion.div
         onClick={e => e.stopPropagation()}
-        initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }}
+        initial={{ opacity: 0, scale: 0.88, y: 28 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: 16 }}
+        transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
         style={{
-          width: '100%', maxWidth: 380,
-          background: 'hsl(var(--card))',
-          borderRadius: 18,
+          width: '100%', maxWidth: 300,
+          borderRadius: 24,
           overflow: 'hidden',
-          maxHeight: '78dvh',
-          display: 'flex', flexDirection: 'column',
-          border: '1px solid hsl(var(--border))',
+          background: 'linear-gradient(165deg, rgba(14,36,40,0.98) 0%, rgba(8,18,20,0.99) 55%, rgba(6,14,16,1) 100%)',
+          border: `1.5px solid ${hidden ? 'rgba(0,188,212,0.45)' : 'rgba(0,188,212,0.18)'}`,
+          boxShadow: hidden
+            ? '0 24px 60px rgba(0,0,0,0.55), 0 0 40px rgba(0,188,212,0.18), inset 0 1px 0 rgba(255,255,255,0.06)'
+            : '0 24px 60px rgba(0,0,0,0.5), 0 0 24px rgba(0,188,212,0.08), inset 0 1px 0 rgba(255,255,255,0.05)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          padding: '22px 20px 20px',
+          position: 'relative',
         }}
       >
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid hsl(var(--border))' }}>
-          <p style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: 'hsl(var(--foreground))' }}>المتابعون</p>
-          <button onClick={onClose} aria-label="إغلاق" style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'hsl(var(--muted))', color: 'hsl(var(--foreground))', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <X size={14} strokeWidth={2.4} />
-          </button>
-        </div>
+        {/* Close */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="إغلاق"
+          style={{
+            position: 'absolute', top: 12, left: 12,
+            width: 30, height: 30, borderRadius: '50%', border: 'none',
+            background: 'rgba(255,255,255,0.06)',
+            color: 'rgba(200,230,230,0.7)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          <X size={14} strokeWidth={2.4} />
+        </button>
 
-        {/* Privacy switch — "إخفاء متابعيني عن الآخرين". Off = visible to others (unless
-            the account itself is private, which always wins). On = hidden even on a
-            public account. */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', gap: 10, borderBottom: '1px solid hsl(var(--border))' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'hsl(var(--foreground))' }}>إخفاء متابعيني عن الآخرين</span>
-            <span style={{ fontSize: '0.66rem', color: 'hsl(var(--muted-foreground))', lineHeight: 1.5 }}>
-              لو فعّلته، ما أحد يقدر يشوف قائمة متابعيني حتى لو حسابي عام
+        {/* Icon badge */}
+        <motion.div
+          key={hidden ? 'lock' : 'users'}
+          initial={{ scale: 0.7, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+          style={{
+            width: 64, height: 64, borderRadius: 20,
+            marginBottom: 14,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: hidden
+              ? 'linear-gradient(145deg, rgba(0,188,212,0.28), rgba(0,188,212,0.08))'
+              : 'linear-gradient(145deg, rgba(0,188,212,0.16), rgba(0,188,212,0.04))',
+            border: `1.5px solid ${hidden ? 'rgba(0,188,212,0.5)' : 'rgba(0,188,212,0.22)'}`,
+            boxShadow: hidden ? '0 8px 28px rgba(0,188,212,0.22)' : '0 6px 18px rgba(0,0,0,0.25)',
+            color: '#00BCD4',
+          }}
+        >
+          {hidden ? <Lock size={26} strokeWidth={2.1} /> : <Users size={26} strokeWidth={2.1} />}
+        </motion.div>
+
+        <p style={{
+          margin: 0, fontSize: '1rem', fontWeight: 800, color: 'rgba(220,245,245,0.95)',
+          letterSpacing: '0.01em', textAlign: 'center',
+        }}>
+          خصوصية المتابعين
+        </p>
+        <p style={{
+          margin: '8px 0 0', fontSize: '0.72rem', fontWeight: 500,
+          color: 'rgba(150,200,200,0.65)', lineHeight: 1.55, textAlign: 'center',
+          maxWidth: 240,
+        }}>
+          {hidden
+            ? 'المتابعون مخفيون — يظهر قفل بدل العدد للزوار'
+            : 'العدد ظاهر للجميع. فعّل المفتاح لإخفائه'}
+        </p>
+
+        {/* Toggle row */}
+        <div
+          style={{
+            width: '100%', marginTop: 20,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+            padding: '14px 14px',
+            borderRadius: 16,
+            background: hidden ? 'rgba(0,188,212,0.12)' : 'rgba(255,255,255,0.04)',
+            border: `1px solid ${hidden ? 'rgba(0,188,212,0.35)' : 'rgba(0,188,212,0.12)'}`,
+            transition: 'background 0.25s ease, border-color 0.25s ease',
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, textAlign: 'right' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: hidden ? '#00BCD4' : 'rgba(200,230,230,0.9)' }}>
+              {hidden ? 'مخفي' : 'ظاهر'}
+            </span>
+            <span style={{ fontSize: '0.64rem', color: 'rgba(150,200,200,0.55)', lineHeight: 1.4 }}>
+              إخفاء متابعيني عن الآخرين
             </span>
           </div>
           <motion.button
-            whileTap={{ scale: 0.92 }}
+            type="button"
+            whileTap={{ scale: 0.9 }}
             onClick={() => onToggleVisible(!followersVisible)}
             aria-label="تبديل إخفاء المتابعين"
-            aria-pressed={!followersVisible}
+            aria-pressed={hidden}
             style={{
-              width: 44, height: 26, borderRadius: 999, padding: 2, border: 'none', cursor: 'pointer', flexShrink: 0,
-              background: !followersVisible ? 'hsl(var(--primary))' : 'hsl(var(--muted))',
-              display: 'flex', alignItems: 'center', justifyContent: !followersVisible ? 'flex-end' : 'flex-start',
-              transition: 'background 0.2s ease',
+              width: 52, height: 30, borderRadius: 999, padding: 3, border: 'none',
+              cursor: 'pointer', flexShrink: 0,
+              background: hidden
+                ? 'linear-gradient(90deg, #00BCD4, #26C6DA)'
+                : 'rgba(255,255,255,0.12)',
+              display: 'flex', alignItems: 'center',
+              justifyContent: hidden ? 'flex-end' : 'flex-start',
+              boxShadow: hidden ? '0 4px 16px rgba(0,188,212,0.4)' : 'none',
+              transition: 'background 0.25s ease, box-shadow 0.25s ease',
             }}
           >
-            <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', display: 'block', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+            <motion.span
+              layout
+              transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+              style={{
+                width: 24, height: 24, borderRadius: '50%',
+                background: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                color: hidden ? '#00BCD4' : 'rgba(100,120,120,0.7)',
+              }}
+            >
+              {hidden ? <Lock size={11} strokeWidth={2.6} /> : <Eye size={11} strokeWidth={2.6} />}
+            </motion.span>
           </motion.button>
-        </div>
-
-        {/* List — friends stacked vertically, one under another */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', padding: '6px 8px', display: 'flex', flexDirection: 'column' }}>
-          {friends.length === 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '32px 12px' }}>
-              <Users size={26} strokeWidth={1.6} color="hsl(var(--muted-foreground))" />
-              <p style={{ fontSize: '0.8rem', color: 'hsl(var(--muted-foreground))', margin: 0 }}>لا يوجد متابعون بعد</p>
-            </div>
-          ) : (
-            friends.map(f => (
-              <div
-                key={f.id}
-                style={{
-                  width: '100%', boxSizing: 'border-box', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '9px 8px',
-                  borderRadius: 10, textAlign: 'right',
-                }}
-              >
-                <UserAvatar name={f.name ?? ''} avatarUrl={f.avatarUrl ?? null} size={38} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'hsl(var(--foreground))', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || '—'}</span>
-                  {f.username && <span style={{ fontSize: '0.7rem', color: 'hsl(var(--muted-foreground))' }}>@{f.username}</span>}
-                </div>
-              </div>
-            ))
-          )}
         </div>
       </motion.div>
     </motion.div>
@@ -2605,11 +4992,11 @@ const MiniProfileModal = ({
   function Field({ label, value }: { label: string; value: string | null }) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <p style={{ color: C.textDim, fontSize: '0.6rem', letterSpacing: '0.14em', textTransform: 'uppercase', margin: 0, fontWeight: 600 }}>
+        <p style={{ color: CLR_TEXT_DIM, fontSize: '0.6rem', letterSpacing: '0.14em', textTransform: 'uppercase', margin: 0, fontWeight: 600 }}>
           {label}
         </p>
-        <p style={{ color: C.text, fontSize: '0.84rem', margin: 0, lineHeight: 1.5 }}>
-          {value || <span style={{ color: C.textDim, fontStyle: 'italic' }}>—</span>}
+        <p style={{ color: CLR_TEXT, fontSize: '0.84rem', margin: 0, lineHeight: 1.5 }}>
+          {value || <span style={{ color: CLR_TEXT_DIM, fontStyle: 'italic' }}>—</span>}
         </p>
       </div>
     );
@@ -2655,10 +5042,9 @@ const MiniProfileModal = ({
             {/* Cover photo + pinned music above avatar */}
             <div style={{
               width: '100%', height: 130, position: 'relative',
-              background: coverUrl ? 'transparent' : C.primaryFaint,
+              background: 'transparent',
             }}>
               {coverUrl && <img src={coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
-              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.35) 100%)', pointerEvents: 'none' }} />
               {miniPinnedTrack && (
                 <div style={{
                   position: 'absolute', left: 0, right: 0, bottom: 44,
@@ -2691,51 +5077,39 @@ const MiniProfileModal = ({
               {/* ── Stats beside the profile picture: Post / Followers / Following / Likes —
                   same layout as the own-profile header, so any visited profile shows the
                   full picture (posts, likes, and follow counts) at a glance. ── */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginTop: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: C.text }}>{profile?.postsCount ?? 0}</span>
-                  <span style={{ fontSize: '0.6rem', color: C.textDim }}>Post</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.postsCount ?? 0}</span>
+                  <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Post</span>
                 </div>
                 <motion.button
                   whileTap={isOwnProfile ? { scale: 0.94 } : undefined}
                   onClick={() => { if (isOwnProfile) setFollowersModalOpen(true); }}
                   style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, background: 'none', border: 'none', padding: 0, cursor: isOwnProfile ? 'pointer' : 'default' }}
                 >
-                  {(!isOwnProfile && (!!profile?.isPrivate || profile?.followersVisible === false)) ? (
-                    <Lock size={13} strokeWidth={2.2} color={C.textDim} />
+                  {(isOwnProfile ? !followersVisible : (!isCompanyUserAccount(profile) && (!!profile?.isPrivate || profile?.followersVisible === false))) ? (
+                    <Lock size={13} strokeWidth={2.2} color={CLR_TEXT_DIM} />
                   ) : (
-                    <span style={{ fontSize: '0.9rem', fontWeight: 700, color: C.text }}>{profile?.followersCount ?? 0}</span>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.followersCount ?? 0}</span>
                   )}
-                  <span style={{ fontSize: '0.6rem', color: C.textDim }}>Followers</span>
+                  <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Followers</span>
                 </motion.button>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: C.text }}>{profile?.repostsCount ?? 0}</span>
-                  <span style={{ fontSize: '0.6rem', color: C.textDim }}>Repost</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{(profile as any)?.viewsCount ?? (profile as any)?.viewCount ?? 0}</span>
+                  <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Views</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: C.text }}>{profile?.likesCount ?? 0}</span>
-                  <span style={{ fontSize: '0.6rem', color: C.textDim }}>Likes</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.likesCount ?? 0}</span>
+                  <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Likes</span>
                 </div>
               </div>
 
-              {/* Chat + friend-menu row — never shown on your own profile */}
+              {/* حالة الصداقة فقط — الشات والاتصال نُقلا إلى الشريط السفلي وداخل صفحة الشات */}
               {!isOwnProfile && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-                {friendState === 'accepted' ? <>
-                  {/* Chat — only ever seen by the visitor, never by the profile's own owner */}
-                  <motion.button
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => {
-                      onClose();
-                      navigate(`/chat?with=${authorId}&name=${encodeURIComponent(name ?? '')}&username=${encodeURIComponent(username ?? '')}&avatarUrl=${encodeURIComponent(avatarUrl ?? '')}`);
-                    }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: C.primary, border: 'none', borderRadius: 20, color: '#06171a', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    <MessageCircle size={15} strokeWidth={2.4} />
-                    شات
-                  </motion.button>
+                {friendState === 'accepted' ? (
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ padding: '8px 14px', borderRadius: 20, background: C.primaryFaint, color: C.primary, fontSize: '0.78rem', fontWeight: 700 }}>صديق</span>
-                    <button onClick={() => setFriendMenuOpen(open => !open)} aria-label="خيارات الصديق" aria-expanded={friendMenuOpen} style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${C.primaryBorder}`, background: 'transparent', color: C.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                    <span style={{ padding: '8px 14px', borderRadius: 20, background: CLR_PRIMARY_FAINT, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700 }}>صديق</span>
+                    <button onClick={() => setFriendMenuOpen(open => !open)} aria-label="خيارات الصديق" aria-expanded={friendMenuOpen} style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${CLR_PRIMARY_BORDER}`, background: 'transparent', color: CLR_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                       <MoreVertical size={17} />
                     </button>
                     {friendMenuOpen && <div style={{ position: 'absolute', top: 38, insetInlineEnd: 0, zIndex: 280, minWidth: 142, padding: 6, borderRadius: 12, background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', boxShadow: 'var(--shadow-lg)' }}>
@@ -2743,29 +5117,18 @@ const MiniProfileModal = ({
                       <button onClick={blockUser} disabled={friendLoading} style={{ width: '100%', padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--destructive))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'right', fontSize: '0.78rem' }}>حظر</button>
                     </div>}
                   </div>
-                </> : <>
-                  {friendState === 'none' && (
-                    <motion.button whileTap={{ scale: 0.95 }} onClick={requestFriendship} disabled={friendLoading} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'transparent', border: `1px solid ${C.primary}`, borderRadius: 20, color: C.primary, fontSize: '0.78rem', fontWeight: 700, cursor: friendLoading ? 'default' : 'pointer', opacity: friendLoading ? 0.6 : 1 }}>
-                      <UserPlus size={15} strokeWidth={2.4} />
-                      طلب صداقة
-                    </motion.button>
-                  )}
-                  {friendState === 'pending' && <span style={{ padding: '8px 16px', borderRadius: 20, background: C.primaryFaint, color: C.primary, fontSize: '0.78rem', fontWeight: 700 }}>بانتظار القبول</span>}
-                </>}
+                ) : (
+                  <>
+                    {friendState === 'none' && (
+                      <motion.button whileTap={{ scale: 0.95 }} onClick={requestFriendship} disabled={friendLoading} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'transparent', border: `1px solid ${CLR_PRIMARY}`, borderRadius: 20, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700, cursor: friendLoading ? 'default' : 'pointer', opacity: friendLoading ? 0.6 : 1 }}>
+                        <UserPlus size={15} strokeWidth={2.4} />
+                        طلب صداقة
+                      </motion.button>
+                    )}
+                    {friendState === 'pending' && <span style={{ padding: '8px 16px', borderRadius: 20, background: CLR_PRIMARY_FAINT, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700 }}>بانتظار القبول</span>}
+                  </>
+                )}
               </div>}
-
-              {/* Call rectangle — its own row, directly under the chat/friend row, never on your
-                  own profile, only visible here when you're the visitor viewing an accepted friend. */}
-              {!isOwnProfile && friendState === 'accepted' && user && (
-                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
-                  <GlobeVoiceControl
-                    userId={user.id}
-                    userName={user.name ?? user.email ?? 'مستخدم'}
-                    avatarUrl={(user as any)?.avatarUrl ?? null}
-                    peerId={authorId}
-                  />
-                </div>
-              )}
 
             </div>
 
@@ -2773,7 +5136,7 @@ const MiniProfileModal = ({
             {loading ? (
               <div className="flex items-center justify-center" style={{ padding: '24px 0' }}>
                 <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} style={{
-                  width: 20, height: 20, borderRadius: '50%', border: `2px solid ${C.primaryBorder}`, borderTopColor: C.primary,
+                  width: 20, height: 20, borderRadius: '50%', border: `2px solid ${CLR_PRIMARY_BORDER}`, borderTopColor: CLR_PRIMARY,
                 }} />
               </div>
             ) : (
@@ -2826,9 +5189,9 @@ const MiniProfileModal = ({
   );
 }
 
-// ── FriendStoryProfile — the actual "story page" for another user opened from the globe's
-//    names bar: avatar, follow stats, chat/friend actions, and ONLY their Videos/Photos grids.
-//    Their text posts are never shown here — those already live in the public feed. ──
+// ── FriendStoryProfile — profile for another user: avatar, stats, and ONLY their posts.
+//    Video/Photo tabs removed; cover has no dark overlay. Posts (text + media alike) render
+//    three-per-row below, tapping any tile opens the full post page like a text post. ──
 export interface FriendStoryProfileProps {
   authorId: string;
   authorName: string | null;
@@ -2836,19 +5199,31 @@ export interface FriendStoryProfileProps {
   authorAvatarUrl: string | null;
   onClose: () => void;
   onOpenPost: (post: PostItem) => void;
+  /** يفتح شيت التعليقات المنزلق من الأسفل فقط (نفس المستخدم بكل مكان) — بدون فتح صفحة
+   * المنشور الكاملة. اختياري حتى لا ينكسر أي استدعاء قديم لهذا المكوّن. */
+  onToggleLike?: (post: PostItem) => void;
+  /** إعادة النشر — تظهر كزر داخل معاينة الصورة/الفيديو كاملة الشاشة (نفس شريط البوست النصي). اختياري. */
+  onRepost?: (post: PostItem) => void;
+  /** حساب شركة عام: يظهر اليوزر والمنشورات والبث للجميع بدون شرط صداقة.
+   * اللايك والتعليق متاحان للمستخدمين المسجّلين (guestGuard كما في باقي التطبيق). */
+  isCompanyProfile?: boolean;
 }
-export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost }: FriendStoryProfileProps) {
+export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, onRepost, isCompanyProfile = false }: FriendStoryProfileProps) {
   const navigate = useNavigate();
   const { user } = useSession();
+  const liveActive = useLiveBroadcastActive(authorId);
   const [profile, setProfile] = useState<MiniProfileData | null>(null);
+  const [friendProfileMediaTab, setFriendProfileMediaTab] = useState<'videos' | 'photos'>('videos');
   const [loading, setLoading] = useState(true);
   const [avatarExpanded, setAvatarExpanded] = useState(false);
   const [friendState, setFriendState] = useState<'none' | 'pending' | 'accepted'>('none');
   const [friendLoading, setFriendLoading] = useState(false);
   const [friendMenuOpen, setFriendMenuOpen] = useState(false);
-  const [contentTab, setContentTab] = useState<'videos' | 'photos'>('videos');
   const [authorPosts, setAuthorPosts] = useState<PostItem[]>([]);
-  const [selectedPost, setSelectedPost] = useState<PostItem | null>(null);
+  // فتح الصورة/الفيديو فقط بملء الشاشة — بدون فتح صفحة المنشور الكاملة القديمة
+  const [mediaLightbox, setMediaLightbox] = useState<{ url: string; type: 'image' | 'video'; post: PostItem } | null>(null);
+  // كتم صوت معاينة الفيديو كاملة الشاشة
+  const [lightboxMuted, setLightboxMuted] = useState(false);
 
   useProfileVisitHeartbeat(
     authorId,
@@ -2947,22 +5322,49 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
     return () => { cancelled = true; };
   }, [authorId, authorUsername]);
 
-  // ── This user's video/photo posts only — their text posts already live in the public feed. ──
+  // ── منشورات هذا الحساب للعامة: نصية + منتجات (حتى لو حُفظت audience=public مع وسائط) ──
   useEffect(() => {
     let cancelled = false;
-    async function loadMedia() {
+    async function loadPosts() {
       try {
-        const r = await fetch('/api/posts', { credentials: 'include' });
-        if (!r.ok) return;
-        const data = await r.json() as { posts: PostItem[] };
+        const collected: PostItem[] = [];
+        const r = await fetch('/api/posts?audience=text', { credentials: 'include' });
+        if (r.ok) {
+          const data = await r.json() as { posts: PostItem[] };
+          collected.push(...(data.posts ?? []));
+        }
+        try {
+          const pubR = await fetch('/api/posts?audience=public', { credentials: 'include' });
+          let pubPosts: PostItem[] = [];
+          if (pubR.ok) {
+            const data = await pubR.json() as { posts: PostItem[] };
+            pubPosts = data.posts ?? [];
+          } else {
+            const fallback = await fetch('/api/posts', { credentials: 'include' });
+            if (fallback.ok) {
+              const data = await fallback.json() as { posts: PostItem[] };
+              pubPosts = data.posts ?? [];
+            }
+          }
+          for (const p of pubPosts) {
+            const body = (p.text && String(p.text).trim()) || '';
+            if (!body) continue;
+            if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0) {
+              collected.push(p);
+            }
+          }
+        } catch { /* optional */ }
         if (cancelled) return;
-        const theirs = (data.posts ?? []).filter(p =>
-          String(p.authorId) === String(authorId) && (p.mediaType === 'image' || p.mediaType === 'video')
-        );
-        setAuthorPosts(theirs);
-      } catch {/* silent — grid simply stays empty */}
+        const byId = new Map<number, PostItem>();
+        for (const p of collected) {
+          if (String(p.authorId) === String(authorId)) byId.set(p.id, p);
+        }
+        setAuthorPosts(Array.from(byId.values()).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ));
+      } catch {/* silent */}
     }
-    loadMedia();
+    loadPosts();
     return () => { cancelled = true; };
   }, [authorId]);
 
@@ -2971,33 +5373,58 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const avatarUrl = profile?.avatarUrl ?? authorAvatarUrl;
   const coverUrl = profile?.coverUrl ?? null;
   const pinnedTrack = pinnedTrackFromProfile(profile);
-
-  const getPostThumbType = (post: PostItem) =>
-    post.mediaTypes && post.mediaTypes.length > 0 ? post.mediaTypes[0] : post.mediaType;
-  const videoPosts = authorPosts.filter(p => getPostThumbType(p) === 'video');
-  const photoPosts = authorPosts.filter(p => getPostThumbType(p) === 'image');
-  const activePosts = contentTab === 'videos' ? videoPosts : photoPosts;
-  // Private accounts only show their videos/photos to accepted friends.
-  const isHiddenPrivate = !!profile?.isPrivate && friendState !== 'accepted';
+  // الشركات عامة دائماً — لا تُخفى حتى لو وُسم الحساب خاصاً أو بدون صداقة
+  const isHiddenPrivate = !isCompanyProfile && !!profile?.isPrivate && friendState !== 'accepted';
+  // منشور هذا المستخدم المثبّت (إن وُجد) يظهر أولًا، والباقي تحته بترتيبه الطبيعي بدون تثبيت
+  const sortedAuthorPosts = useMemo(() => {
+    // الشركة: كل المنشورات/المنتجات بدون تبويب Video/Photo
+    let list = isCompanyProfile
+      ? [...authorPosts]
+      : authorPosts.filter(p => {
+          const t = (p.mediaTypes?.[0] ?? p.mediaType) || '';
+          const dest = String(p.destination || p.audience || '');
+          const isVid = t === 'video' || dest === 'videos';
+          const isPhoto = t === 'image' || dest === 'photos' || (!!p.mediaUrl && t !== 'video');
+          return true;
+        });
+    if (profile?.pinnedPostId == null) return list;
+    const pinnedIndex = list.findIndex(p => p.id === profile.pinnedPostId);
+    if (pinnedIndex <= 0) return list;
+    const copy = [...list];
+    const [pinned] = copy.splice(pinnedIndex, 1);
+    copy.unshift(pinned);
+    return copy;
+  }, [authorPosts, profile?.pinnedPostId, friendProfileMediaTab, isCompanyProfile]);
 
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }}
       transition={{ type: 'tween', duration: 0.32, ease: 'easeIn' }}
-      style={{ position: 'fixed', inset: 0, zIndex: 10250, background: C.bg, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 10420, background: PAGE_BG, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
     >
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
-        {/* Cover photo + close button + pinned music (above avatar, center of cover) */}
-        <div style={{ width: '100%', height: 130, position: 'relative', background: coverUrl ? 'transparent' : C.primaryFaint }}>
-          {coverUrl && <img src={coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.35) 100%)', pointerEvents: 'none' }} />
+        {/* Cover photo + close — بدون تعتيم؛ الخلفية نفس الصفحة */}
+        <div style={{ width: '100%', height: 130, position: 'relative', background: 'transparent' }}>
+          {coverUrl && (
+            <img
+              src={coverUrl}
+              alt=""
+              style={{
+                width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+                // بدون أي طبقة تعتيم فوق صورة الغلاف
+              }}
+            />
+          )}
           <motion.button
             whileTap={{ scale: 0.88 }}
             onClick={onClose}
             aria-label="إغلاق"
             style={{
               position: 'absolute', top: 10, insetInlineStart: 10, width: 32, height: 32, borderRadius: '50%',
-              background: 'rgba(0,0,0,0.4)', border: 'none', color: '#fff', cursor: 'pointer',
+              background: coverUrl ? 'rgba(0,0,0,0.25)' : 'rgba(0,188,212,0.12)',
+              border: coverUrl ? 'none' : `1px solid ${CLR_PRIMARY_BORDER}`,
+              color: coverUrl ? '#fff' : CLR_PRIMARY,
+              cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
             }}
           >
@@ -3025,94 +5452,109 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           <motion.button
             whileTap={{ scale: 0.94 }}
             onClick={() => setAvatarExpanded(true)}
-            style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', padding: 0, border: `3px solid ${C.bg}`, cursor: 'pointer', background: '#000' }}
+            style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', padding: 0, border: `3px solid ${PAGE_BG}`, cursor: 'pointer', background: '#000' }}
           >
             <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={80} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
           </motion.button>
 
-          <p style={{ color: C.text, fontSize: '0.9rem', fontWeight: 700, margin: '8px 0 0' }}>{name || username || '—'}</p>
-          {username && <p style={{ color: C.primary, fontSize: '0.75rem', fontWeight: 600, margin: '2px 0 0' }}>@{username}</p>}
+          <p style={{ color: CLR_TEXT, fontSize: '0.9rem', fontWeight: 700, margin: '8px 0 0' }}>{name || username || '—'}</p>
+          {username && <p style={{ color: CLR_PRIMARY, fontSize: '0.75rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
+            {(isCompanyProfile || readBusinessApproved(authorId)) && (
+              <span style={{
+                fontSize: '0.55rem', fontWeight: 900, color: '#0a0a0a',
+                background: '#eab308', borderRadius: 5, padding: '2px 6px',
+              }}>Business</span>
+            )}
+          </p>}
           {profile?.bio && (
-            <p style={{ color: C.text, opacity: 0.85, fontSize: '0.72rem', fontWeight: 500, margin: '6px 20px 0', textAlign: 'center', lineHeight: 1.5 }}>
+            <p style={{ color: CLR_TEXT, opacity: 0.85, fontSize: '0.72rem', fontWeight: 500, margin: '6px 20px 0', textAlign: 'center', lineHeight: 1.5 }}>
               {profile.bio}
             </p>
           )}
 
-          {/* Post / Followers / Following / Likes — same stats shown on your own profile */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginTop: 12 }}>
+          {/* Post / Followers / Views / Likes */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: C.text }}>{profile?.postsCount ?? authorPosts.length}</span>
-              <span style={{ fontSize: '0.6rem', color: C.textDim }}>Post</span>
+              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.postsCount ?? authorPosts.length}</span>
+              <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Post</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-              {(!!profile?.isPrivate || profile?.followersVisible === false) ? (
-                <Lock size={13} strokeWidth={2.2} color={C.textDim} />
+              {(!isCompanyProfile && (!!profile?.isPrivate || profile?.followersVisible === false)) ? (
+                <Lock size={13} strokeWidth={2.2} color={CLR_TEXT_DIM} />
               ) : (
-                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: C.text }}>{profile?.followersCount ?? 0}</span>
+                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.followersCount ?? 0}</span>
               )}
-              <span style={{ fontSize: '0.6rem', color: C.textDim }}>Followers</span>
+              <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Followers</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: C.text }}>
-                {profile?.repostsCount ?? authorPosts.reduce((sum, p) => sum + (p.repostsCount ?? 0), 0)}
+              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>
+                {(profile as any)?.viewsCount ?? (profile as any)?.viewCount ?? authorPosts.reduce((sum, p) => sum + (Number((p as any).viewsCount ?? (p as any).views ?? 0) || 0), 0)}
               </span>
-              <span style={{ fontSize: '0.6rem', color: C.textDim }}>Repost</span>
+              <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Views</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: C.text }}>
+              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>
                 {profile?.likesCount ?? authorPosts.reduce((sum, p) => sum + (p.likesCount ?? 0), 0)}
               </span>
-              <span style={{ fontSize: '0.6rem', color: C.textDim }}>Likes</span>
+              <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Likes</span>
             </div>
           </div>
 
-          {/* Chat (square icon) + friend check + call-control row — call control pinned to the right */}
+          {/* حالة الصداقة (لا تظهر لصاحب البروفايل نفسه) + دخول البث الصوتي */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
-            {friendState === 'accepted' ? <>
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={() => {
-                  onClose();
-                  // نستبدل موقعنا الحالي في history بنسخة تحمل علامة "افتح نفس بروفايل
-                  // هالصديق"، عشان لما نرجع من الشات بزر السهم/الرجوع (navigate(-1))
-                  // نطلع بنفس البروفايل بدل ما نرجع للقائمة الرئيسية الفاضية أو لصفحة
-                  // البوستات النصية (تلك العلامة تخص الشات اللي يُفتح من داخل صفحة
-                  // البوستات النصية بالعام، مش من البروفايل).
-                  navigate(`/add-friend?openProfile=${authorId}&openProfileName=${encodeURIComponent(name ?? '')}&openProfileUsername=${encodeURIComponent(username ?? '')}&openProfileAvatar=${encodeURIComponent(avatarUrl ?? '')}`, { replace: true });
-                  navigate(`/chat?with=${authorId}&name=${encodeURIComponent(name ?? '')}&username=${encodeURIComponent(username ?? '')}&avatarUrl=${encodeURIComponent(avatarUrl ?? '')}`);
-                }}
-                aria-label="شات"
-                title="شات"
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, padding: 0, background: 'transparent', border: 'none', color: C.primary, cursor: 'pointer' }}
-              >
-                <MessageCircle size={22} strokeWidth={2.2} />
-              </motion.button>
-              <span
-                aria-label="صديق"
-                title="صديق"
-                style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <Check size={20} strokeWidth={3} color="#22c55e" />
-              </span>
-            </> : <>
-              {friendState === 'none' && (
-                <motion.button whileTap={{ scale: 0.95 }} onClick={requestFriendship} disabled={friendLoading} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'transparent', border: `1px solid ${C.primary}`, borderRadius: 20, color: C.primary, fontSize: '0.78rem', fontWeight: 700, cursor: friendLoading ? 'default' : 'pointer', opacity: friendLoading ? 0.6 : 1 }}>
-                  <UserPlus size={15} strokeWidth={2.4} />
-                  طلب صداقة
-                </motion.button>
-              )}
-              {friendState === 'pending' && <span style={{ padding: '8px 16px', borderRadius: 20, background: C.primaryFaint, color: C.primary, fontSize: '0.78rem', fontWeight: 700 }}>بانتظار القبول</span>}
-            </>}
+            {user?.id && String(user.id) !== String(authorId) && (
+              friendState === 'accepted' ? (
+                <span aria-label="صديق" title="صديق" style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Check size={20} strokeWidth={3} color="#22c55e" />
+                </span>
+              ) : (
+                <>
+                  {friendState === 'none' && (
+                    <motion.button whileTap={{ scale: 0.95 }} onClick={requestFriendship} disabled={friendLoading} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'transparent', border: `1px solid ${CLR_PRIMARY}`, borderRadius: 20, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700, cursor: friendLoading ? 'default' : 'pointer', opacity: friendLoading ? 0.6 : 1 }}>
+                      <UserPlus size={15} strokeWidth={2.4} />
+                      طلب صداقة
+                    </motion.button>
+                  )}
+                  {friendState === 'pending' && <span style={{ padding: '8px 16px', borderRadius: 20, background: CLR_PRIMARY_FAINT, color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 700 }}>بانتظار القبول</span>}
+                </>
+              )
+            )}
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.95 }}
+              animate={liveActive ? { opacity: [1, 0.45, 1] } : { opacity: 1 }}
+              transition={liveActive ? { duration: 1.2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
+              onClick={() => {
+                const qs = new URLSearchParams({
+                  hostId: authorId,
+                  hostName: name || username || 'Host',
+                });
+                if (username) qs.set('hostUsername', username);
+                if (avatarUrl) qs.set('hostAvatar', avatarUrl);
+                navigate(`/live?${qs.toString()}`);
+              }}
+              aria-label="البث الصوتي"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '8px 14px', borderRadius: 20,
+                background: liveActive ? 'rgba(239,68,68,0.14)' : 'rgba(0,188,212,0.12)',
+                border: `1px solid ${liveActive ? 'rgba(239,68,68,0.45)' : CLR_PRIMARY_BORDER}`,
+                color: liveActive ? '#ef4444' : CLR_PRIMARY,
+                fontSize: '0.78rem', fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: liveActive ? '0 0 12px rgba(239,68,68,0.35)' : 'none',
+              }}
+            >
+              <Radio size={15} strokeWidth={2.3} color={liveActive ? '#ef4444' : CLR_PRIMARY} />
+              {liveActive ? 'البث مباشر' : 'بث صوتي'}
+            </motion.button>
           </div>
         </div>
 
-        {/* ── صف الزوايا: نقاط الحظر بالزاوية اليسرى العلوية، ونقاط الاتصال بنفس الطريقة بالزاوية
-            اليمنى العلوية (عامودي، ملوّنة بلون المايك) — والمايك الأحمر بالمنتصف بينهم، بنفس
-            مستوى خط النقاط — فوق شريط فيديوهات/صور مباشرة، بدل النص ── */}
         {friendState === 'accepted' && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', direction: 'ltr', padding: '4px 12px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', direction: 'ltr', padding: '4px 12px 0' }}>
             <div style={{ position: 'relative' }}>
-              <button onClick={() => setFriendMenuOpen(open => !open)} aria-label="خيارات الصديق" aria-expanded={friendMenuOpen} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent', color: C.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <button onClick={() => setFriendMenuOpen(open => !open)} aria-label="خيارات الصديق" aria-expanded={friendMenuOpen} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent', color: CLR_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <MoreVertical size={18} strokeWidth={2} style={{ display: 'block' }} />
               </button>
               {friendMenuOpen && <div style={{ position: 'absolute', top: 34, left: 0, zIndex: 30, minWidth: 142, padding: 6, borderRadius: 12, background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', boxShadow: 'var(--shadow-lg)', direction: 'rtl' }}>
@@ -3120,95 +5562,123 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 <button onClick={blockUser} disabled={friendLoading} style={{ width: '100%', padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--destructive))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'right', fontSize: '0.78rem' }}>حظر</button>
               </div>}
             </div>
-            {user && (
-              <GlobeVoiceControl
-                userId={user.id}
-                userName={user.name ?? user.email ?? 'مستخدم'}
-                avatarUrl={(user as any)?.avatarUrl ?? null}
-                peerId={authorId}
-                layout="split"
-                renderSplit={({ dotsButton, micButton }) => (
-                  <>
-                    {micButton}
-                    {dotsButton}
-                  </>
-                )}
-              />
-            )}
           </div>
         )}
-        {isHiddenPrivate ? (
-          <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 40, paddingBottom: 48, borderTop: `1px solid ${C.navBorder}`, marginTop: 8 }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: C.primaryFaint, border: `1px solid ${C.primaryBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.primaryDim }}>
+                {isHiddenPrivate ? (
+          <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 40, paddingBottom: 48, borderTop: `1px solid ${CLR_NAV_BORDER}`, marginTop: 8 }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_PRIMARY_DIM }}>
               <LockKeyhole size={22} strokeWidth={1.6} />
             </div>
-            <p style={{ color: C.text, fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>هذا الحساب خاص</p>
-            <p style={{ color: C.textDim, fontSize: '0.78rem', textAlign: 'center', maxWidth: 240, lineHeight: 1.6 }}>
-                  Add {name ?? 'this user'} as a friend to see their videos and photos
+            <p style={{ color: CLR_TEXT, fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>هذا الحساب خاص</p>
+            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', maxWidth: 240, lineHeight: 1.6 }}>
+                  أضف {name ?? 'هذا المستخدم'} كصديق لرؤية منشوراته
             </p>
           </div>
         ) : (
           <>
-            <div style={{ display: 'flex', borderTop: `1px solid ${C.navBorder}`, borderBottom: `1px solid ${C.navBorder}`, marginTop: 8 }}>
-              <button
-                onClick={() => setContentTab('videos')}
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px 0', border: 'none', background: contentTab === 'videos' ? C.tabActive : 'transparent', color: contentTab === 'videos' ? C.primary : C.textDim, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}
-              >
-                <Video size={15} strokeWidth={2} /> Video
-              </button>
-              <button
-                onClick={() => setContentTab('photos')}
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '11px 0', border: 'none', background: contentTab === 'photos' ? C.tabActive : 'transparent', color: contentTab === 'photos' ? C.primary : C.textDim, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}
-              >
-                <ImageIcon size={15} strokeWidth={2} /> Photo
-              </button>
+            {/* Single Post section header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '10px 0', marginTop: 8,
+              borderTop: `1px solid ${CLR_NAV_BORDER}`, borderBottom: `1px solid ${CLR_NAV_BORDER}`,
+              color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 800,
+              background: CLR_TAB_ACTIVE,
+            }}>
+              <FileText size={15} strokeWidth={2} />
+              {(isCompanyProfile || readBusinessApproved(authorId)) ? 'المنتجات' : 'Post'}
             </div>
 
             {loading ? (
               <div className="flex items-center justify-center" style={{ padding: '24px 0' }}>
-                <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${C.primaryBorder}`, borderTopColor: C.primary }} />
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${CLR_PRIMARY_BORDER}`, borderTopColor: CLR_PRIMARY }} />
               </div>
-            ) : activePosts.length > 0 ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '10px 2px 24px' }}>
-                {activePosts.map(post => {
-                  const thumbUrl = post.mediaUrls && post.mediaUrls.length > 0 ? post.mediaUrls[0] : post.mediaUrl;
-                  return (
-                    <motion.button
-                      key={post.id}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => setSelectedPost(post)}
-                      style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', padding: 0, border: 'none', background: '#000', cursor: 'pointer', overflow: 'hidden' }}
-                    >
-                      {contentTab === 'videos' ? (
-                        <video src={thumbUrl ?? ''} muted style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                      ) : (
-                        <img src={thumbUrl ?? ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                      )}
-                      {contentTab === 'videos' && (
-                        <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
-                          <Play size={13} strokeWidth={2.4} color="#fff" fill="#fff" />
-                        </div>
-                      )}
-                      {(post.mediaUrls?.length ?? 0) > 1 && (
-                        <div style={{ position: 'absolute', top: 6, insetInlineStart: 6 }}>
-                          <Images size={13} strokeWidth={2.4} color="#fff" />
-                        </div>
-                      )}
-                      <div style={{ position: 'absolute', bottom: 4, insetInlineStart: 6, display: 'flex', alignItems: 'center', gap: 3 }}>
-                        <Heart size={11} strokeWidth={2.4} color="#fff" fill={post.likedByMe ? '#fff' : 'none'} />
-                        <span style={{ color: '#fff', fontSize: '0.62rem', fontWeight: 700, textShadow: '0 1px 3px rgba(0,0,0,0.7)' }}>{post.likesCount}</span>
-                      </div>
-                    </motion.button>
-                  );
-                })}
-              </div>
+            ) : sortedAuthorPosts.length > 0 ? (
+              (() => {
+                const enrichedPosts = sortedAuthorPosts.map(post => {
+                  const rawThumbUrl = post.mediaUrls?.[0] ?? post.mediaUrl;
+                  const rawIsVideo = (post.mediaTypes?.[0] ?? post.mediaType) === 'video';
+                  // إذا المنشور بدون وسائط مرفقة لكن نصّه يحتوي رابط صورة/فيديو مباشر (مثل
+                  // video.twimg.com) — نستخرجه ونعرضه كصورة/فيديو مصغّر بدل ترك الرابط الخام
+                  // يظهر كنص عادي بلا معاينة.
+                  const textEmbed = !rawThumbUrl && post.text ? extractTextMediaEmbeds(post.text) : null;
+                  const embeddedMedia = textEmbed?.embeds?.[0] ?? null;
+                  const thumbUrl = rawThumbUrl ?? embeddedMedia?.url;
+                  const isVideo = rawThumbUrl ? rawIsVideo : embeddedMedia?.type === 'video';
+                  const displayText = textEmbed ? textEmbed.cleanText : post.text;
+                  const isPinnedPost = profile?.pinnedPostId != null && profile.pinnedPostId === post.id;
+                  return { post, thumbUrl, isVideo, displayText, isPinnedPost };
+                });
+                // كل المنشورات — نصيّة أو فيها وسائط — تعرض الآن سوا في شبكة واحدة ثلاثة
+                // جمب بعض (نفس ترتيب sortedAuthorPosts، والمنشور المثبّت أولًا). المربع
+                // اللي فيه صورة/فيديو يعرض المعاينة، والمربع النصي البحت يعرض مقتطف من
+                // النص. النقر على أي مربع (نصي أو وسائط) يفتح صفحة المنشور الكاملة بنفس
+                // الطريقة اللي تفتح فيها المنشورات النصية بالضبط.
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, padding: '4px 0 24px' }}>
+                    {enrichedPosts.map(({ post, thumbUrl, isVideo, displayText, isPinnedPost }) => (
+                      <button
+                        key={post.id}
+                        type="button"
+                        onClick={() => onOpenPost(post)}
+                        aria-label={thumbUrl ? (isVideo ? 'فتح الفيديو' : 'فتح الصورة') : 'فتح المنشور'}
+                        style={{
+                          position: 'relative', width: '100%', aspectRatio: '1 / 1', overflow: 'hidden',
+                          border: isPinnedPost ? '3px solid #ef4444' : 'none', boxSizing: 'border-box', padding: 0,
+                          background: thumbUrl ? '#000' : CLR_CARD_BG, cursor: 'pointer', display: 'block',
+                        }}
+                      >
+                        {thumbUrl ? (
+                          <>
+                            {isVideo ? (
+                              <video src={thumbUrl} muted autoPlay loop playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                            ) : (
+                              <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                            )}
+                            {isVideo && (
+                              <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
+                                <Play size={13} strokeWidth={2.4} color="#fff" fill="#fff" />
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div style={{
+                            width: '100%', height: '100%', padding: '8px 7px',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            border: `1px solid ${CLR_CARD_BORDER}`, boxSizing: 'border-box',
+                          }}>
+                            <p style={{
+                              color: CLR_TEXT, fontSize: '0.64rem', lineHeight: 1.45, margin: 0,
+                              textAlign: 'center',
+                              display: '-webkit-box', WebkitLineClamp: 6, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                            }}>
+                              {displayText}
+                            </p>
+                          </div>
+                        )}
+                        {/* المنشور المثبّت يبين بالأحمر */}
+                        {isPinnedPost && (
+                          <div style={{
+                            position: 'absolute', top: 6, insetInlineStart: 6,
+                            color: '#ef4444', filter: thumbUrl ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.7))' : 'none',
+                            display: 'flex', alignItems: 'center',
+                          }}>
+                            <Pin size={15} strokeWidth={2.6} fill="#ef4444" />
+                          </div>
+                        )}
+                        <PostGridTimeFooter createdAt={post.createdAt} onMedia={!!thumbUrl} />
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()
             ) : (
               <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 32, paddingBottom: 40 }}>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: C.primaryFaint, border: `1px solid ${C.primaryBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.primaryDim }}>
-                  {contentTab === 'videos' ? <Video size={20} strokeWidth={1.5} /> : <ImageIcon size={20} strokeWidth={1.5} />}
+                <div style={{ width: 52, height: 52, borderRadius: '50%', background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_PRIMARY_DIM }}>
+                  <FileText size={20} strokeWidth={1.5} />
                 </div>
-                <p style={{ color: C.textDim, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
-                  {contentTab === 'videos' ? 'No videos yet' : 'No photos yet'}
+                <p style={{ color: CLR_TEXT_DIM, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
+                  لا توجد منشورات بعد
                 </p>
               </div>
             )}
@@ -3216,23 +5686,102 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         )}
       </div>
 
+      {/* ── الصورة/الفيديو فقط بملء الشاشة — بدون فتح صفحة المنشور الكاملة القديمة.
+          التعليقات تُفتح فقط من أيقونة التعليقات (شيت منزلق من الأسفل يديره المستوى الأعلى). ── */}
       <AnimatePresence>
-        {selectedPost && (
-          <PostDetailPage
-            key={selectedPost.id}
-            post={selectedPost}
-            isMine={!!user && selectedPost.authorId === user.id}
-            comments={[]}
-            commentText=""
-            commentSending={false}
-            onChangeCommentText={() => undefined}
-            onSubmitComment={() => undefined}
-            onToggleLike={() => undefined}
-            onRemoveMedia={() => undefined}
-            onRequestDelete={() => undefined}
-            onSaveMediaText={async () => undefined}
-            onClose={() => setSelectedPost(null)}
-          />
+        {mediaLightbox && typeof document !== 'undefined' && createPortal(
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setMediaLightbox(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10450, background: '#000',
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+              padding: 'max(10px, env(safe-area-inset-top, 0px)) 12px 8px',
+              flexShrink: 0,
+            }}>
+              <button
+                type="button"
+                onClick={() => setMediaLightbox(null)}
+                aria-label="إغلاق"
+                style={{
+                  width: 36, height: 36, borderRadius: '50%', border: 'none',
+                  background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <X size={18} strokeWidth={2.4} />
+              </button>
+            </div>
+
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}
+            >
+              {mediaLightbox.type === 'video' ? (
+                <video
+                  src={mediaLightbox.url}
+                  controls
+                  autoPlay
+                  muted={lightboxMuted}
+                  playsInline
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
+                />
+              ) : (
+                <img
+                  src={mediaLightbox.url}
+                  alt=""
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
+                />
+              )}
+            </div>
+
+            {/* شريط تحكّم أسفل الفيديو/الصورة: كتم الصوت + فتح التعليقات */}
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 22,
+                padding: '10px 16px calc(10px + env(safe-area-inset-bottom, 0px))', flexShrink: 0,
+                background: 'rgba(0,0,0,0.55)',
+              }}
+            >
+              {mediaLightbox.type === 'video' && (
+                <motion.button
+                  whileTap={{ scale: 0.88 }}
+                  onClick={() => setLightboxMuted(v => !v)}
+                  aria-label={lightboxMuted ? 'تشغيل الصوت' : 'كتم الصوت'}
+                  style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
+                >
+                  {lightboxMuted ? <VolumeX size={19} strokeWidth={2} /> : <Volume2 size={19} strokeWidth={2} />}
+                </motion.button>
+              )}
+              <motion.button
+                whileTap={{ scale: 0.88 }}
+                onClick={() => onOpenPost(mediaLightbox.post)}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
+              >
+                <MessageCircle size={18} strokeWidth={2} />
+                <span style={{ fontSize: '0.74rem', fontWeight: 700 }}>{mediaLightbox.post.commentsCount > 0 ? mediaLightbox.post.commentsCount : ''}</span>
+              </motion.button>
+              {onRepost && (
+                <motion.button
+                  whileTap={{ scale: 0.88 }}
+                  onClick={() => onRepost(mediaLightbox.post)}
+                  aria-label="إعادة نشر"
+                  title="إعادة نشر"
+                  style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: mediaLightbox.post.repostedByMe ? CLR_PRIMARY : '#fff' }}
+                >
+                  <Repeat2 size={18} strokeWidth={2} />
+                </motion.button>
+              )}
+            </div>
+          </motion.div>,
+          document.body
         )}
       </AnimatePresence>
 
@@ -3249,6 +5798,213 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+// ── Instagram-style Comments sheet — white bottom sheet over the feed (like IG Reels/Posts).
+// Opens only when the user taps the comment icon — does NOT navigate to another page. ──
+function InstagramCommentsSheet({
+  post,
+  comments,
+  commentText,
+  commentSending,
+  onChangeCommentText,
+  onSubmitComment,
+  onClose,
+}: {
+  post: PostItem;
+  comments: PostComment[];
+  commentText: string;
+  commentSending: boolean;
+  onChangeCommentText: (v: string) => void;
+  onSubmitComment: (parentCommentId?: number | null) => void;
+  onClose: () => void;
+}) {
+  const [replyingTo, setReplyingTo] = useState<PostComment | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [post.id]);
+
+  const formatCommentDate = (value: string) => {
+    const diff = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+    if (diff < 60) return `${diff || 1}s`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
+    return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(new Date(value));
+  };
+
+  const submitWithReply = () => {
+    onSubmitComment(replyingTo?.id ?? null);
+    setReplyingTo(null);
+  };
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10450,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      }}
+    >
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 520,
+          height: 'min(72dvh, 640px)',
+          background: '#ffffff',
+          borderRadius: '18px 18px 0 0',
+          display: 'flex', flexDirection: 'column',
+          boxShadow: '0 -8px 40px rgba(0,0,0,0.25)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Handle + title */}
+        <div style={{
+          flexShrink: 0, padding: '10px 16px 12px',
+          borderBottom: '1px solid rgba(0,0,0,0.08)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+        }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.18)' }} />
+          <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+            <span style={{ color: '#0f0f0f', fontSize: '0.95rem', fontWeight: 700 }}>Comments</span>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              style={{
+                position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)',
+                width: 32, height: 32, borderRadius: '50%', border: 'none',
+                background: 'rgba(0,0,0,0.06)', color: '#0f0f0f', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <X size={16} strokeWidth={2.4} />
+            </button>
+          </div>
+        </div>
+
+        {/* Comments list */}
+        <div
+          ref={listRef}
+          style={{
+            flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+            padding: '12px 16px 8px', background: '#ffffff',
+          }}
+        >
+          {comments.length === 0 ? (
+            <div style={{ padding: '48px 16px', textAlign: 'center' }}>
+              <p style={{ color: '#0f0f0f', fontSize: '0.95rem', fontWeight: 700, margin: 0 }}>No comments yet</p>
+              <p style={{ color: 'rgba(0,0,0,0.45)', fontSize: '0.8rem', margin: '8px 0 0' }}>Start the conversation.</p>
+            </div>
+          ) : (
+            comments.map(c => (
+              <div
+                key={c.id}
+                style={{
+                  display: 'flex', gap: 10, marginBottom: 16,
+                  marginLeft: c.parentCommentId ? 36 : 0,
+                }}
+              >
+                <UserAvatar name={c.authorName} avatarUrl={c.authorAvatarUrl} size={32} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, lineHeight: 1.35 }}>
+                    <span style={{ color: '#0f0f0f', fontSize: '0.82rem', fontWeight: 700 }}>{c.authorName}</span>
+                    <span style={{ color: 'rgba(0,0,0,0.4)', fontSize: '0.72rem', marginInlineStart: 6 }}>{formatCommentDate(c.createdAt)}</span>
+                  </p>
+                  <p style={{ color: '#0f0f0f', fontSize: '0.86rem', margin: '3px 0 0', lineHeight: 1.45, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+                    {c.text}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setReplyingTo(c)}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, marginTop: 6,
+                      color: 'rgba(0,0,0,0.45)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600,
+                    }}
+                  >
+                    Reply
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Composer — Instagram style */}
+        <div style={{
+          flexShrink: 0,
+          borderTop: '1px solid rgba(0,0,0,0.08)',
+          background: '#ffffff',
+          padding: '8px 12px calc(10px + env(safe-area-inset-bottom, 0px))',
+        }}>
+          {replyingTo && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '6px 4px 8px',
+            }}>
+              <span style={{ color: 'rgba(0,0,0,0.5)', fontSize: '0.72rem' }}>
+                Replying to {replyingTo.authorName}
+              </span>
+              <button type="button" onClick={() => setReplyingTo(null)} style={{ background: 'none', border: 'none', color: 'rgba(0,0,0,0.45)', cursor: 'pointer', padding: 2 }}>
+                <X size={14} />
+              </button>
+            </div>
+          )}
+          {/* emoji quick row */}
+          <div style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '2px 2px 10px', scrollbarWidth: 'none' }}>
+            {['❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂'].map(emoji => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => onChangeCommentText((commentText || '') + emoji)}
+                style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', padding: 0, lineHeight: 1 }}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <input
+              value={commentText}
+              onChange={e => onChangeCommentText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !commentSending) submitWithReply(); }}
+              placeholder="What do you think of this?"
+              inputMode="text"
+              // لا autoFocus — الكيبورد يفتح فقط عندما يضغط المستخدم على الحقل بنفسه
+              style={{
+                flex: 1, background: 'transparent', border: '1px solid rgba(0,0,0,0.12)',
+                borderRadius: 22, padding: '11px 14px', color: '#0f0f0f', fontSize: '0.88rem',
+                outline: 'none',
+              }}
+            />
+            <motion.button
+              whileTap={{ scale: 0.92 }}
+              disabled={commentSending || !commentText.trim()}
+              onClick={submitWithReply}
+              style={{
+                background: 'none', border: 'none', cursor: commentText.trim() ? 'pointer' : 'default',
+                color: commentText.trim() ? '#0095f6' : 'rgba(0,0,0,0.25)',
+                fontWeight: 700, fontSize: '0.88rem', padding: '8px 4px', flexShrink: 0,
+              }}
+            >
+              Post
+            </motion.button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>,
+    document.body
   );
 }
 
@@ -3333,8 +6089,8 @@ function PostDetailPage({
     <motion.div
       initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 10200,
-        background: C.bg,
+        position: 'fixed', inset: 0, zIndex: 10400,
+        background: PAGE_BG,
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
       }}
@@ -3345,22 +6101,22 @@ function PostDetailPage({
         top: 0, left: 0, right: 0, zIndex: 2,
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '40px 14px 16px',
-        background: hasMedia ? 'linear-gradient(to bottom, rgba(0,0,0,0.68), rgba(0,0,0,0.32) 60%, transparent)' : C.headerBg,
+        background: hasMedia ? 'linear-gradient(to bottom, rgba(0,0,0,0.68), rgba(0,0,0,0.32) 60%, transparent)' : CLR_HEADER_BG,
         backdropFilter: hasMedia ? undefined : 'blur(14px)',
-        borderBottom: hasMedia ? undefined : `1px solid ${C.navBorder}`,
+        borderBottom: hasMedia ? undefined : `1px solid ${CLR_NAV_BORDER}`,
       }}>
         <button onClick={onClose} aria-label="إغلاق" style={{
-          background: 'none', border: 'none', color: hasMedia ? '#fff' : C.text, cursor: 'pointer',
+          background: 'none', border: 'none', color: hasMedia ? '#fff' : CLR_TEXT, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, flexShrink: 0,
         }}>
           <X size={20} strokeWidth={2.2} />
         </button>
         <UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={34} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ color: hasMedia ? '#fff' : C.text, fontSize: '0.82rem', fontWeight: 700, margin: 0, textShadow: hasMedia ? '0 1px 3px rgba(0,0,0,0.5)' : undefined }}>
+          <p style={{ color: hasMedia ? '#fff' : CLR_TEXT, fontSize: '0.82rem', fontWeight: 700, margin: 0, textShadow: hasMedia ? '0 1px 3px rgba(0,0,0,0.5)' : undefined }}>
             {post.authorName || post.authorUsername || '—'}
           </p>
-          <p style={{ color: hasMedia ? 'rgba(255,255,255,0.82)' : C.textDim, fontSize: '0.66rem', margin: '1px 0 0', textShadow: hasMedia ? '0 1px 3px rgba(0,0,0,0.5)' : undefined }}>
+          <p style={{ color: hasMedia ? 'rgba(255,255,255,0.82)' : CLR_TEXT_DIM, fontSize: '0.66rem', margin: '1px 0 0', textShadow: hasMedia ? '0 1px 3px rgba(0,0,0,0.5)' : undefined }}>
             {timeAgo}
           </p>
         </div>
@@ -3378,6 +6134,7 @@ function PostDetailPage({
       {hasMedia && (
         <div style={{
           position: 'relative', width: '100%', background: '#000', overflow: 'hidden',
+          border: '3px solid #000', boxSizing: 'border-box',
           flex: '0 0 auto',
           height: 'min(62dvh, 520px)',
           minHeight: 220,
@@ -3415,7 +6172,7 @@ function PostDetailPage({
         <div
           ref={panelScrollRef}
           className="post-detail-panel flex-1 min-h-0 overflow-y-auto overscroll-contain"
-          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', display: 'flex', flexDirection: 'column', minHeight: 180, flexGrow: 1 }}
+          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', display: 'flex', flexDirection: 'column', minHeight: 180, flexGrow: 1, background: '#ffffff' }}
         >
           {isMine && isMediaPost && (
             <div style={{ margin: '14px 14px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -3424,9 +6181,9 @@ function PostDetailPage({
                 onChange={event => setMediaText(event.target.value)}
                 placeholder="اكتب منشوراً نصياً للصورة أو الفيديو"
                 rows={3}
-                style={{ width: '100%', resize: 'vertical', borderRadius: 12, border: `1px solid ${C.postBorder}`, background: C.inputBg, color: C.text, padding: '10px 12px', fontFamily: 'inherit', fontSize: '0.82rem', boxSizing: 'border-box' }}
+                style={{ width: '100%', resize: 'vertical', borderRadius: 12, border: `1px solid ${CLR_POST_BORDER}`, background: CLR_INPUT_BG, color: CLR_TEXT, padding: '10px 12px', fontFamily: 'inherit', fontSize: '0.82rem', boxSizing: 'border-box' }}
               />
-              <button type="button" onClick={saveMediaText} disabled={savingMediaText} style={{ alignSelf: 'flex-end', border: 'none', borderRadius: 10, background: C.primary, color: 'hsl(var(--primary-foreground))', padding: '8px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: savingMediaText ? 'wait' : 'pointer' }}>
+              <button type="button" onClick={saveMediaText} disabled={savingMediaText} style={{ alignSelf: 'flex-end', border: 'none', borderRadius: 10, background: CLR_PRIMARY, color: 'hsl(var(--primary-foreground))', padding: '8px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: savingMediaText ? 'wait' : 'pointer' }}>
                 {savingMediaText ? 'جارٍ الحفظ...' : 'نشر النص'}
               </button>
             </div>
@@ -3434,19 +6191,19 @@ function PostDetailPage({
           {/* نص البوست يظهر دائماً إن وُجد */}
           {!!post.text && (
             <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: '16px 16px', margin: '14px 14px 0' }}>
-              <PostText text={post.text} color="hsl(var(--primary))" textColor={C.text} />
+              <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold embedMediaLinks />
             </div>
           )}
 
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
             margin: '12px 14px 0', padding: '10px 14px',
-            border: `1px solid ${C.postBorder}`, borderRadius: 14,
+            border: `1px solid ${CLR_POST_BORDER}`, borderRadius: 14,
             background: 'hsl(var(--muted))',
           }}>
             <motion.button whileTap={{ scale: 0.88 }} onClick={() => onToggleLike(post)} style={{
               display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
-              color: post.likedByMe ? '#ef4444' : C.textDim,
+              color: post.likedByMe ? '#ef4444' : CLR_TEXT_DIM,
             }}>
               <Heart size={17} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
               <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>{post.likesCount > 0 ? post.likesCount : 'إعجاب'}</span>
@@ -3454,11 +6211,11 @@ function PostDetailPage({
           </div>
 
           <div style={{ padding: '14px 14px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <p style={{ color: C.textDim, fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '4px 0' }}>
+            <p style={{ color: '#000000', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '4px 0' }}>
               الردود {comments.length > 0 ? `(${comments.length})` : ''}
             </p>
             {comments.length === 0 && (
-              <p style={{ color: C.textDim, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>
+              <p style={{ color: '#000000', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center', padding: '24px 0' }}>
                 لا توجد ردود بعد — كن أول من يعلّق
               </p>
             )}
@@ -3466,11 +6223,11 @@ function PostDetailPage({
                 <div key={c.id} style={{ display: 'flex', gap: 8, marginLeft: c.parentCommentId ? 22 : 0 }}>
                   <UserAvatar name={c.authorName} avatarUrl={c.authorAvatarUrl} size={30} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: C.text, fontSize: '0.76rem', fontWeight: 700, margin: 0 }}>{c.authorName}</p>
-                    <p style={{ color: C.text, fontSize: '0.8rem', margin: '2px 0 0', lineHeight: 1.5, wordBreak: 'break-word' }}>{c.text}</p>
+                    <p style={{ color: '#000000', fontSize: '0.76rem', fontWeight: 700, margin: 0 }}>{c.authorName}</p>
+                    <p style={{ color: '#000000', fontSize: '0.8rem', fontWeight: 700, margin: '2px 0 0', lineHeight: 1.5, wordBreak: 'break-word' }}>{c.text}</p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-                      <time dateTime={c.createdAt} style={{ color: C.textDim, fontSize: '0.62rem' }}>{formatCommentDate(c.createdAt)}</time>
-                      <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: C.primary, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>رد</button>
+                      <time dateTime={c.createdAt} style={{ color: '#000000', fontSize: '0.62rem', fontWeight: 700 }}>{formatCommentDate(c.createdAt)}</time>
+                      <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: CLR_PRIMARY, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>رد</button>
                     </div>
                   </div>
                 </div>
@@ -3486,13 +6243,13 @@ function PostDetailPage({
           position: 'relative',
           display: 'flex', alignItems: 'center', gap: hasMedia ? 8 : 0,
           padding: hasMedia ? '10px 14px calc(10px + env(safe-area-inset-bottom))' : `0 0 env(safe-area-inset-bottom)`,
-          borderTop: `1px solid ${C.navBorder}`,
-          background: C.headerBg, backdropFilter: 'blur(14px)',
+          borderTop: `1px solid ${CLR_NAV_BORDER}`,
+          background: CLR_HEADER_BG, backdropFilter: 'blur(14px)',
         }}>
           {replyingTo && (
-            <div style={{ position: 'absolute', bottom: 58, left: 14, right: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 10, background: C.inputBg, border: `1px solid ${C.primaryBorder}` }}>
-              <span style={{ color: C.textDim, fontSize: '0.68rem' }}>رد على {replyingTo.authorName}</span>
-              <button onClick={() => setReplyingTo(null)} aria-label="إلغاء الرد" style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
+            <div style={{ position: 'absolute', bottom: 58, left: 14, right: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 10, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}` }}>
+              <span style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>رد على {replyingTo.authorName}</span>
+              <button onClick={() => setReplyingTo(null)} aria-label="إلغاء الرد" style={{ background: 'none', border: 'none', color: CLR_TEXT_DIM, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
             </div>
           )}
           <input
@@ -3501,11 +6258,11 @@ function PostDetailPage({
             onKeyDown={e => { if (e.key === 'Enter' && !commentSending) submitWithReply(); }}
             placeholder="اكتب ردّاً على هذا المنشور..."
             style={hasMedia ? {
-              flex: 1, background: C.inputBg, border: `1px solid ${C.primaryBorder}`,
-              borderRadius: 20, padding: '10px 14px', color: C.text, fontSize: '0.82rem', outline: 'none',
+              flex: 1, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+              borderRadius: 20, padding: '10px 14px', color: CLR_TEXT, fontSize: '0.82rem', outline: 'none',
             } : {
-              flex: 1, background: C.headerBg, border: 'none', boxShadow: 'none',
-              borderRadius: 0, padding: '14px 14px', color: C.text, fontSize: '0.82rem',
+              flex: 1, background: CLR_HEADER_BG, border: 'none', boxShadow: 'none',
+              borderRadius: 0, padding: '14px 14px', color: CLR_TEXT, fontSize: '0.82rem',
               outline: 'none', WebkitAppearance: 'none', appearance: 'none',
             }}
           />
@@ -3515,14 +6272,14 @@ function PostDetailPage({
             onClick={submitWithReply}
             style={hasMedia ? {
               width: 38, height: 38, borderRadius: '50%',
-              background: commentText.trim() ? C.primary : C.primaryFaint,
-              border: 'none', color: commentText.trim() ? '#06171a' : C.textDim,
+              background: commentText.trim() ? CLR_PRIMARY : CLR_PRIMARY_FAINT,
+              border: 'none', color: commentText.trim() ? '#06171a' : CLR_TEXT_DIM,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             } : {
               width: 52, height: 52, borderRadius: 0,
-              background: C.headerBg,
-              border: 'none', borderInlineStart: `1px solid ${C.navBorder}`,
-              color: commentText.trim() ? C.primary : C.textDim,
+              background: CLR_HEADER_BG,
+              border: 'none', borderInlineStart: `1px solid ${CLR_NAV_BORDER}`,
+              color: commentText.trim() ? CLR_PRIMARY : CLR_TEXT_DIM,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}
           >
@@ -4609,7 +7366,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
               </div>
               <div style={{ height: 1, background: 'rgba(239,68,68,0.15)', margin: '0 6px' }} />
 
-              <motion.button whileTap={{ scale: 0.96 }} onClick={() => { const m = memberMenuFor; setMemberMenuFor(null); void toggleMuteMember(m); }} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', background: 'transparent', border: 'none', borderRadius: 9, color: C.text, fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', width: '100%', textAlign: 'right', justifyContent: 'flex-end' }}>
+              <motion.button whileTap={{ scale: 0.96 }} onClick={() => { const m = memberMenuFor; setMemberMenuFor(null); void toggleMuteMember(m); }} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', background: 'transparent', border: 'none', borderRadius: 9, color: CLR_TEXT, fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', width: '100%', textAlign: 'right', justifyContent: 'flex-end' }}>
                 {mutedUserIds.has(memberMenuFor.userId) ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
                 {mutedUserIds.has(memberMenuFor.userId) ? <Mic size={16} strokeWidth={2} /> : <MicOff size={16} strokeWidth={2} />}
               </motion.button>
@@ -4647,13 +7404,13 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
                 <div style={{ width: 46, height: 46, borderRadius: '50%', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Trash2 size={19} strokeWidth={2} color="#ef4444" />
                 </div>
-                <p style={{ color: C.text, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>حذف {confirmDeleteMember.username ? `@${confirmDeleteMember.username}` : confirmDeleteMember.name ?? 'المستخدم'}</p>
+                <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>حذف {confirmDeleteMember.username ? `@${confirmDeleteMember.username}` : confirmDeleteMember.name ?? 'المستخدم'}</p>
               </div>
-              <p style={{ color: C.textDim, fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center', margin: 0 }}>
+              <p style={{ color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center', margin: 0 }}>
                 سيتم حذفه من قائمة إضافاتك بشكل نهائي. لا يمكن التراجع عن هذا الإجراء.
               </p>
               <div style={{ display: 'flex', gap: 10 }}>
-                <motion.button whileTap={{ scale: 0.95 }} onClick={() => setConfirmDeleteMember(null)} disabled={memberActionBusy} style={{ flex: 1, padding: '10px', background: C.primaryFaint, border: `1px solid ${C.primaryBorder}`, borderRadius: 10, color: C.text, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
+                <motion.button whileTap={{ scale: 0.95 }} onClick={() => setConfirmDeleteMember(null)} disabled={memberActionBusy} style={{ flex: 1, padding: '10px', background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, borderRadius: 10, color: CLR_TEXT, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
                   إلغاء
                 </motion.button>
                 <motion.button whileTap={{ scale: 0.95 }} onClick={() => deleteMemberFromFriends(confirmDeleteMember)} disabled={memberActionBusy} style={{ flex: 1, padding: '10px', background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 10, color: '#ef4444', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
@@ -4682,14 +7439,14 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                 <UserAvatar name={confirmBlockMember.name ?? confirmBlockMember.username ?? '?'} avatarUrl={confirmBlockMember.avatarUrl} size={52} />
-                <p style={{ color: C.text, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>{confirmBlockMember.name ?? confirmBlockMember.username ?? '—'}</p>
-                {confirmBlockMember.username && <p style={{ color: C.textDim, fontSize: '0.72rem', margin: 0 }}>@{confirmBlockMember.username}</p>}
+                <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>{confirmBlockMember.name ?? confirmBlockMember.username ?? '—'}</p>
+                {confirmBlockMember.username && <p style={{ color: CLR_TEXT_DIM, fontSize: '0.72rem', margin: 0 }}>@{confirmBlockMember.username}</p>}
               </div>
-              <p style={{ color: C.textDim, fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center', margin: 0 }}>
+              <p style={{ color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center', margin: 0 }}>
                 هل تريد حظر هذا المستخدم؟ لن يتمكن من إيجاد يوزرك حتى لو بحث عنه، ويُزال من قائمة أصدقائك، إلى أن ترفع الحظر بنفسك.
               </p>
               <div style={{ display: 'flex', gap: 10 }}>
-                <motion.button whileTap={{ scale: 0.95 }} onClick={() => setConfirmBlockMember(null)} disabled={memberActionBusy} style={{ flex: 1, padding: '10px', background: C.primaryFaint, border: `1px solid ${C.primaryBorder}`, borderRadius: 10, color: C.text, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
+                <motion.button whileTap={{ scale: 0.95 }} onClick={() => setConfirmBlockMember(null)} disabled={memberActionBusy} style={{ flex: 1, padding: '10px', background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, borderRadius: 10, color: CLR_TEXT, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
                   إلغاء
                 </motion.button>
                 <motion.button whileTap={{ scale: 0.95 }} onClick={() => blockMember(confirmBlockMember)} disabled={memberActionBusy} style={{ flex: 1, padding: '10px', background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 10, color: '#ef4444', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
@@ -4731,8 +7488,12 @@ function SharedInboxDrawer({
   onOpenPostThread,
   favoritedPosts,
   onOpenFavoritePost,
-  initialSection = 'favorites',
+  userShareInbox = [],
+  onOpenUserShare,
+  onDeleteUserShare,
+  initialSection = 'story',
   storyOnly = false,
+  zIndex = 10295,
 }: {
   shares: SharedPostItem[];
   postInteractions: PostInteractionItem[];
@@ -4748,9 +7509,12 @@ function SharedInboxDrawer({
   onOpenPostThread: (thread: PostCommentThread) => void;
   favoritedPosts: PostItem[];
   onOpenFavoritePost: (post: PostItem) => void;
+  userShareInbox?: UserShareInboxItem[];
+  onOpenUserShare?: (item: UserShareInboxItem) => void;
+  onDeleteUserShare?: (id: string) => void;
   initialSection?: SharedInboxSection;
-  /** عند true: قسم تعليقات القصص فقط بدون المفضلة */
   storyOnly?: boolean;
+  zIndex?: number;
 }) {
   const [activeSection, setActiveSection] = useState<SharedInboxSection>(storyOnly ? 'story' : initialSection);
   const formatDate = (value: string) => new Intl.DateTimeFormat('ar-KW', {
@@ -4758,9 +7522,9 @@ function SharedInboxDrawer({
   }).format(new Date(value));
 
   const storyUnread = storyThreads.filter(t => !t.read).length;
+  const chatUnread = (userShareInbox || []).filter(t => !t.read).length;
   const tiles: { key: Exclude<SharedInboxSection, 'grid'>; label: string; caption: string; Icon: typeof Camera; count: number; unread: number }[] = [
     { key: 'story', label: 'Story', caption: 'تعليقات على قصتك', Icon: Camera, count: storyThreads.length, unread: storyUnread },
-    ...(!storyOnly ? [{ key: 'favorites' as const, label: 'Favorites', caption: 'منشورات ثبّتها', Icon: Bookmark, count: favoritedPosts.length, unread: 0 }] : []),
   ];
   const activeTile = tiles.find(t => t.key === activeSection) ?? null;
 
@@ -4768,12 +7532,12 @@ function SharedInboxDrawer({
     <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 40, paddingBottom: 8 }}>
       <div style={{
         width: 52, height: 52, borderRadius: '50%',
-        background: C.primaryFaint, border: `1px solid ${C.primaryBorder}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.primaryDim,
+        background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_PRIMARY_DIM,
       }}>
         {icon}
       </div>
-      <p style={{ color: C.textDim, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
+      <p style={{ color: CLR_TEXT_DIM, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
         {text}
       </p>
     </div>
@@ -4783,8 +7547,8 @@ function SharedInboxDrawer({
     <motion.div
       initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 10295,
-        background: C.bg,
+        position: 'fixed', inset: 0, zIndex,
+        background: PAGE_BG,
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
       }}
@@ -4793,24 +7557,24 @@ function SharedInboxDrawer({
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12,
         padding: '40px 14px 12px',
-        borderBottom: `1px solid ${C.navBorder}`,
-        background: C.headerBg, backdropFilter: 'blur(14px)',
+        borderBottom: `1px solid ${CLR_NAV_BORDER}`,
+        background: CLR_HEADER_BG, backdropFilter: 'blur(14px)',
       }}>
         <button onClick={onClose} aria-label="إغلاق" style={{
-          background: 'none', border: 'none', color: C.text, cursor: 'pointer',
+          background: 'none', border: 'none', color: CLR_TEXT, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4,
         }}>
           <X size={20} strokeWidth={2.2} />
         </button>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-          {activeTile && <activeTile.Icon size={16} strokeWidth={2.2} color={C.primary} />}
-          <p style={{ color: C.text, fontSize: '0.9rem', fontWeight: 700, margin: 0 }}>
+          {activeTile && <activeTile.Icon size={16} strokeWidth={2.2} color={CLR_PRIMARY} />}
+          <p style={{ color: CLR_TEXT, fontSize: '0.9rem', fontWeight: 700, margin: 0 }}>
             {activeTile?.label}
           </p>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderBottom: `1px solid ${C.navBorder}`, background: C.headerBg }}>
+      <div style={{ display: 'flex', gap: 8, padding: '10px 14px', borderBottom: `1px solid ${CLR_NAV_BORDER}`, background: CLR_HEADER_BG }}>
         {tiles.map(tile => (
           <button
             key={tile.key}
@@ -4818,15 +7582,15 @@ function SharedInboxDrawer({
             style={{
               position: 'relative', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '9px 8px', borderRadius: 10, cursor: 'pointer',
-              border: `1px solid ${activeSection === tile.key ? C.primary : C.cardBorder}`,
-              background: activeSection === tile.key ? C.primaryFaint : C.cardBg,
-              color: activeSection === tile.key ? C.primary : C.textDim, fontSize: '0.76rem', fontWeight: 700,
+              border: `1px solid ${activeSection === tile.key ? CLR_PRIMARY : CLR_CARD_BORDER}`,
+              background: activeSection === tile.key ? CLR_PRIMARY_FAINT : CLR_CARD_BG,
+              color: activeSection === tile.key ? CLR_PRIMARY : CLR_TEXT_DIM, fontSize: '0.76rem', fontWeight: 700,
             }}
           >
             <tile.Icon size={15} strokeWidth={2} />
             {tile.label}
             {tile.unread > 0 && (
-              <span style={{ minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px', background: C.primary, color: '#06171a', fontSize: '0.58rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px', background: CLR_PRIMARY, color: '#06171a', fontSize: '0.58rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                 {tile.unread}
               </span>
             )}
@@ -4838,7 +7602,7 @@ function SharedInboxDrawer({
       {activeSection === 'story' && (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', padding: '14px 14px 20px' }}>
           {storyThreadsLoading && storyThreads.length === 0 && (
-            <p style={{ color: C.textDim, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>جارٍ التحميل...</p>
+            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>جارٍ التحميل...</p>
           )}
           {!storyThreadsLoading && storyThreads.length === 0 && (
             <EmptyState icon={<Inbox size={20} strokeWidth={1.5} />} text="لا توجد منشورات مُرسلة إليك من قصتك بعد" />
@@ -4850,9 +7614,9 @@ function SharedInboxDrawer({
               onClick={() => onOpenStoryThread(thread)}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                border: `2px solid ${thread.read ? C.postBorder : 'hsl(var(--destructive))'}`,
+                border: `2px solid ${thread.read ? CLR_POST_BORDER : 'hsl(var(--destructive))'}`,
                 background: thread.read ? 'hsl(var(--muted))' : 'hsl(var(--destructive))',
-                color: thread.read ? C.text : 'hsl(var(--destructive-foreground))',
+                color: thread.read ? CLR_TEXT : 'hsl(var(--destructive-foreground))',
                 borderRadius: 14, padding: 10, cursor: 'pointer', textAlign: 'right',
                 animation: thread.read ? 'none' : 'storyCommentAlert 1.1s ease-in-out infinite',
                 paddingInlineEnd: 44,
@@ -4868,12 +7632,12 @@ function SharedInboxDrawer({
                   <p style={{ color: thread.read ? 'hsl(var(--foreground))' : 'hsl(var(--destructive-foreground))', fontSize: '0.8rem', fontWeight: 700, margin: 0 }}>
                     تعليقات على قصتك
 
-                  <span style={{ color: C.textDim, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>
+                  <span style={{ color: CLR_TEXT_DIM, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>
                     {formatDate(thread.createdAt)}
                   </span>
                 </p>
                 <p style={{
-                  color: thread.read ? C.textDim : 'hsl(var(--destructive-foreground))', fontSize: '0.74rem', margin: '3px 0 0',
+                  color: thread.read ? CLR_TEXT_DIM : 'hsl(var(--destructive-foreground))', fontSize: '0.74rem', margin: '3px 0 0',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {thread.lastComment ? `${thread.lastComment.authorName}: ${thread.lastComment.text}` : `${thread.commentsCount} تعليق`}
@@ -4904,7 +7668,7 @@ function SharedInboxDrawer({
             </div>
           ))}
           {storyThreads.length > 0 && (
-            <p style={{ color: C.textDim, fontSize: '0.66rem', textAlign: 'center', margin: '10px 0 0', lineHeight: 1.6 }}>
+            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.66rem', textAlign: 'center', margin: '10px 0 0', lineHeight: 1.6 }}>
               تختفي التعليقات تلقائياً بعد 24 ساعة من نشر القصة
             </p>
           )}
@@ -4915,7 +7679,7 @@ function SharedInboxDrawer({
       {false && (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', padding: '14px 14px 20px' }}>
           {postThreadsLoading && postThreads.length === 0 && (
-            <p style={{ color: C.textDim, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>جارٍ التحميل...</p>
+            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>جارٍ التحميل...</p>
           )}
           {!postThreadsLoading && postThreads.length === 0 && (
             <EmptyState icon={<Inbox size={20} strokeWidth={1.5} />} text="لا توجد تعليقات على منشوراتك بعد" />
@@ -4930,8 +7694,8 @@ function SharedInboxDrawer({
                 onClick={() => onOpenPostThread(thread)}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                  border: `2px solid ${thread.read ? C.postBorder : C.primary}`,
-                  background: thread.read ? 'hsl(var(--muted))' : C.primaryFaint,
+                  border: `2px solid ${thread.read ? CLR_POST_BORDER : CLR_PRIMARY}`,
+                  background: thread.read ? 'hsl(var(--muted))' : CLR_PRIMARY_FAINT,
                   borderRadius: 14, padding: 10, marginBottom: 10, cursor: 'pointer', textAlign: 'right',
                 }}
               >
@@ -4944,35 +7708,35 @@ function SharedInboxDrawer({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.8rem', fontWeight: 700, margin: 0 }}>
                     تعليقات على منشورك
-                    <span style={{ color: C.textDim, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>
+                    <span style={{ color: CLR_TEXT_DIM, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>
                       {formatDate(thread.post.createdAt)}
                     </span>
                   </p>
                   <p style={{
-                    color: C.textDim, fontSize: '0.74rem', margin: '3px 0 0',
+                    color: CLR_TEXT_DIM, fontSize: '0.74rem', margin: '3px 0 0',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
                     {thread.lastComment ? `${thread.lastComment.authorName}: ${thread.lastComment.text}` : `${thread.commentsCount} تعليق`}
                   </p>
                 </div>
                 {!thread.read && (
-                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: C.primary, flexShrink: 0 }} />
+                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: CLR_PRIMARY, flexShrink: 0 }} />
                 )}
               </motion.button>
             );
           })}
           {postInteractions.filter(item => item.type === 'repost').map(item => (
-            <div key={`repost-${item.id}`} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, border: `2px solid ${item.read ? C.postBorder : C.primary}`, background: item.read ? 'hsl(var(--muted))' : C.primaryFaint, borderRadius: 14, padding: 10, marginBottom: 10 }}>
+            <div key={`repost-${item.id}`} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, border: `2px solid ${item.read ? CLR_POST_BORDER : CLR_PRIMARY}`, background: item.read ? 'hsl(var(--muted))' : CLR_PRIMARY_FAINT, borderRadius: 14, padding: 10, marginBottom: 10 }}>
               <div style={{ width: 40, height: 40, borderRadius: 10, display: 'grid', placeItems: 'center', flexShrink: 0, background: 'hsl(var(--muted))', color: 'hsl(var(--primary))' }}><Repeat2 size={19} /></div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.8rem', fontWeight: 700, margin: 0 }}>{item.title}<span style={{ color: C.textDim, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>{formatDate(item.createdAt)}</span></p>
-                <p style={{ color: C.textDim, fontSize: '0.74rem', margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.body}</p>
+                <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.8rem', fontWeight: 700, margin: 0 }}>{item.title}<span style={{ color: CLR_TEXT_DIM, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>{formatDate(item.createdAt)}</span></p>
+                <p style={{ color: CLR_TEXT_DIM, fontSize: '0.74rem', margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.body}</p>
               </div>
-              {!item.read && <span style={{ width: 9, height: 9, borderRadius: '50%', background: C.primary, flexShrink: 0 }} />}
+              {!item.read && <span style={{ width: 9, height: 9, borderRadius: '50%', background: CLR_PRIMARY, flexShrink: 0 }} />}
             </div>
           ))}
           {(postThreads.length > 0 || postInteractions.some(item => item.type === 'repost')) && (
-            <p style={{ color: C.textDim, fontSize: '0.66rem', textAlign: 'center', margin: '10px 0 0', lineHeight: 1.6 }}>
+            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.66rem', textAlign: 'center', margin: '10px 0 0', lineHeight: 1.6 }}>
               تختفي التعليقات تلقائياً بعد 24 ساعة من نشر المنشور
             </p>
           )}
@@ -4983,19 +7747,19 @@ function SharedInboxDrawer({
       {false && (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', padding: '14px 14px 20px' }}>
           {loading && shares.length === 0 && (
-            <p style={{ color: C.textDim, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>جارٍ التحميل...</p>
+            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>جارٍ التحميل...</p>
           )}
           {!loading && shares.length === 0 && postInteractions.filter(item => item.type === 'share').length === 0 && (
             <EmptyState icon={<Inbox size={20} strokeWidth={1.5} />} text="لا توجد منشورات مُرسلة إليك بعد" />
           )}
           {postInteractions.filter(item => item.type === 'share').map(item => (
-            <div key={`share-${item.id}`} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, border: `2px solid ${item.read ? C.postBorder : C.primary}`, background: item.read ? 'hsl(var(--muted))' : C.primaryFaint, borderRadius: 14, padding: 10, marginBottom: 10 }}>
+            <div key={`share-${item.id}`} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, border: `2px solid ${item.read ? CLR_POST_BORDER : CLR_PRIMARY}`, background: item.read ? 'hsl(var(--muted))' : CLR_PRIMARY_FAINT, borderRadius: 14, padding: 10, marginBottom: 10 }}>
               <div style={{ width: 40, height: 40, borderRadius: 10, display: 'grid', placeItems: 'center', flexShrink: 0, background: 'hsl(var(--muted))', color: 'hsl(var(--primary))' }}><Send size={19} /></div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.8rem', fontWeight: 700, margin: 0 }}>{item.title}<span style={{ color: C.textDim, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>{formatDate(item.createdAt)}</span></p>
-                <p style={{ color: C.textDim, fontSize: '0.74rem', margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.body}</p>
+                <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.8rem', fontWeight: 700, margin: 0 }}>{item.title}<span style={{ color: CLR_TEXT_DIM, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>{formatDate(item.createdAt)}</span></p>
+                <p style={{ color: CLR_TEXT_DIM, fontSize: '0.74rem', margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.body}</p>
               </div>
-              {!item.read && <span style={{ width: 9, height: 9, borderRadius: '50%', background: C.primary, flexShrink: 0 }} />}
+              {!item.read && <span style={{ width: 9, height: 9, borderRadius: '50%', background: CLR_PRIMARY, flexShrink: 0 }} />}
             </div>
           ))}
           {shares.map(share => (
@@ -5005,8 +7769,8 @@ function SharedInboxDrawer({
               onClick={() => onOpenShare(share)}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                border: `2px solid ${share.read ? C.postBorder : C.primary}`,
-                background: share.read ? 'hsl(var(--muted))' : C.primaryFaint,
+                border: `2px solid ${share.read ? CLR_POST_BORDER : CLR_PRIMARY}`,
+                background: share.read ? 'hsl(var(--muted))' : CLR_PRIMARY_FAINT,
                 borderRadius: 14, padding: 10, marginBottom: 10, cursor: 'pointer', textAlign: 'right',
               }}
             >
@@ -5014,19 +7778,19 @@ function SharedInboxDrawer({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.8rem', fontWeight: 700, margin: 0 }}>
                   {share.senderName || share.senderUsername || '—'}
-                  <span style={{ color: C.textDim, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>
+                  <span style={{ color: CLR_TEXT_DIM, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>
                     {formatDate(share.createdAt)}
                   </span>
                 </p>
                 <p style={{
-                  color: C.textDim, fontSize: '0.74rem', margin: '3px 0 0',
+                  color: CLR_TEXT_DIM, fontSize: '0.74rem', margin: '3px 0 0',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {share.post.text || (share.post.mediaType === 'video' ? 'أرسل لك مقطع فيديو' : share.post.mediaType === 'image' ? 'أرسل لك صورة' : 'أرسل لك منشوراً')}
                 </p>
               </div>
               {!share.read && (
-                <span style={{ width: 9, height: 9, borderRadius: '50%', background: C.primary, flexShrink: 0 }} />
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: CLR_PRIMARY, flexShrink: 0 }} />
               )}
             </motion.button>
           ))}
@@ -5035,7 +7799,7 @@ function SharedInboxDrawer({
 
       {/* ── Favorites: posts pinned via the ⭐ icon — full page, own scroll (this is the
           section that used to be unreachable once the list above it grew long) ── */}
-      {activeSection === 'favorites' && (
+      {false && activeSection === 'favorites' && (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', padding: '14px 14px 20px' }}>
           {favoritedPosts.length === 0 && (
             <EmptyState icon={<Bookmark size={20} strokeWidth={1.5} />} text="لا توجد منشورات مفضّلة بعد" />
@@ -5049,7 +7813,7 @@ function SharedInboxDrawer({
                 onClick={() => onOpenFavoritePost(post)}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                  border: `2px solid ${C.postBorder}`,
+                  border: `2px solid ${CLR_POST_BORDER}`,
                   background: 'hsl(var(--muted))',
                   borderRadius: 14, padding: 10, marginBottom: 10, cursor: 'pointer', textAlign: 'right',
                 }}
@@ -5062,30 +7826,31 @@ function SharedInboxDrawer({
                     }
                   </div>
                 ) : (
-                  <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0, background: C.primaryFaint, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.primary }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0, background: CLR_PRIMARY_FAINT, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_PRIMARY }}>
                     <FileText size={17} strokeWidth={2} />
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.8rem', fontWeight: 700, margin: 0 }}>
                     {post.authorName || post.authorUsername || '—'}
-                    <span style={{ color: C.textDim, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>
+                    <span style={{ color: CLR_TEXT_DIM, fontSize: '0.64rem', fontWeight: 500, marginInlineStart: 7 }}>
                       {formatDate(post.createdAt)}
                     </span>
                   </p>
                   <p style={{
-                    color: C.textDim, fontSize: '0.74rem', margin: '3px 0 0',
+                    color: CLR_TEXT_DIM, fontSize: '0.74rem', margin: '3px 0 0',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
                     {post.text || (media?.type === 'video' ? 'فيديو' : media ? 'صورة' : '')}
                   </p>
                 </div>
-                <Bookmark size={15} strokeWidth={2} color={C.primary} fill={C.primary} style={{ flexShrink: 0 }} />
+                <Bookmark size={15} strokeWidth={2} color={CLR_PRIMARY} fill={CLR_PRIMARY} style={{ flexShrink: 0 }} />
               </motion.button>
             );
           })}
         </div>
       )}
+
     </motion.div>
   );
 }
@@ -5125,7 +7890,7 @@ function SharedPostThread({
       initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }}
       style={{
         position: 'fixed', inset: 0, zIndex: 260,
-        background: C.bg,
+        background: PAGE_BG,
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
       }}
@@ -5134,24 +7899,24 @@ function SharedPostThread({
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12,
         padding: '40px 14px 12px',
-        borderBottom: `1px solid ${C.navBorder}`,
-        background: C.headerBg, backdropFilter: 'blur(14px)',
+        borderBottom: `1px solid ${CLR_NAV_BORDER}`,
+        background: CLR_HEADER_BG, backdropFilter: 'blur(14px)',
       }}>
         <button onClick={onClose} aria-label="رجوع" style={{
-          background: 'none', border: 'none', color: C.text, cursor: 'pointer',
+          background: 'none', border: 'none', color: CLR_TEXT, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4,
         }}>
           <ArrowLeft size={20} strokeWidth={2.2} />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ color: C.text, fontSize: '0.86rem', fontWeight: 700, margin: 0 }}>منشور مُرسل</p>
-          <p style={{ color: C.textDim, fontSize: '0.68rem', margin: 0 }}>مع {share.senderName || share.senderUsername || '—'}</p>
+          <p style={{ color: CLR_TEXT, fontSize: '0.86rem', fontWeight: 700, margin: 0 }}>منشور مُرسل</p>
+          <p style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem', margin: 0 }}>مع {share.senderName || share.senderUsername || '—'}</p>
         </div>
       </div>
       {/* Scrollable content: the post itself + the private thread with the sender */}
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
         <div style={{
-          border: `2px solid ${C.postBorder}`,
+          border: `2px solid ${CLR_POST_BORDER}`,
           background: 'hsl(var(--muted))',
           borderRadius: 16,
           padding: 12,
@@ -5172,7 +7937,7 @@ function SharedPostThread({
 
           {post.text && (
             <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: '12px 14px' }}>
-              <PostText text={post.text} color="hsl(var(--primary))" textColor={C.textDim} />
+              <PostText text={post.text} color="hsl(var(--primary))" textColor={CLR_TEXT_DIM} embedMediaLinks />
             </div>
           )}
 
@@ -5190,13 +7955,13 @@ function SharedPostThread({
                     playsInline
                     style={{
                       width: '100%', maxHeight: '60dvh', borderRadius: 10,
-                      border: `1px solid ${C.postBorder}`, background: '#000', display: 'block',
+                      border: `1px solid ${CLR_POST_BORDER}`, background: '#000', display: 'block',
                     }}
                   />)
                 ) : (
                   <motion.button key={`${media.type}-${index}`} whileTap={{ scale: 0.97 }} onClick={() => setExpanded(true)} aria-label="تكبير الوسائط" style={{
                     position: 'relative', width: 160, height: 160, borderRadius: 10, overflow: 'hidden',
-                    border: `1px solid ${C.postBorder}`, padding: 0, background: '#000', cursor: 'pointer', display: 'block',
+                    border: `1px solid ${CLR_POST_BORDER}`, padding: 0, background: '#000', cursor: 'pointer', display: 'block',
                   }}>
                     <img src={media.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -5211,7 +7976,7 @@ function SharedPostThread({
           <div style={{ display: 'flex', alignItems: 'center', gap: 22, paddingTop: 2 }}>
             <motion.button whileTap={{ scale: 0.88 }} onClick={() => onToggleLike(share)} style={{
               display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
-              color: post.likedByMe ? '#ef4444' : C.textDim,
+              color: post.likedByMe ? '#ef4444' : CLR_TEXT_DIM,
             }}>
               <Heart size={16} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
               <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>{post.likesCount > 0 ? post.likesCount : ''}</span>
@@ -5221,11 +7986,11 @@ function SharedPostThread({
 
         {/* Private reply thread — only between me and the sender */}
         <div style={{ padding: '10px 14px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={{ color: C.textDim, fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '4px 0' }}>
+          <p style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '4px 0' }}>
             المحادثة مع {share.senderName || share.senderUsername || '—'} {comments.length > 0 ? `(${comments.length})` : ''}
           </p>
           {comments.length === 0 && (
-            <p style={{ color: C.textDim, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>
+            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>
               لا توجد ردود بعد — علّق على المنشور المُرسل إليك
             </p>
           )}
@@ -5233,11 +7998,11 @@ function SharedPostThread({
             <div key={c.id} style={{ display: 'flex', gap: 8, marginLeft: c.parentCommentId ? 22 : 0 }}>
               <UserAvatar name={c.authorName} avatarUrl={c.authorAvatarUrl} size={30} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ color: C.text, fontSize: '0.76rem', fontWeight: 700, margin: 0 }}>{c.authorName}</p>
-                <p style={{ color: C.text, fontSize: '0.8rem', margin: '2px 0 0', lineHeight: 1.5, wordBreak: 'break-word' }}>{c.text}</p>
+                <p style={{ color: CLR_TEXT, fontSize: '0.76rem', fontWeight: 700, margin: 0 }}>{c.authorName}</p>
+                <p style={{ color: CLR_TEXT, fontSize: '0.8rem', margin: '2px 0 0', lineHeight: 1.5, wordBreak: 'break-word' }}>{c.text}</p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-                  <time dateTime={c.createdAt} style={{ color: C.textDim, fontSize: '0.62rem' }}>{formatCommentDate(c.createdAt)}</time>
-                  <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: C.primary, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>رد</button>
+                  <time dateTime={c.createdAt} style={{ color: CLR_TEXT_DIM, fontSize: '0.62rem' }}>{formatCommentDate(c.createdAt)}</time>
+                  <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: CLR_PRIMARY, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>رد</button>
                 </div>
               </div>
             </div>
@@ -5248,14 +8013,14 @@ function SharedPostThread({
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '10px 14px calc(10px + env(safe-area-inset-bottom))',
-        borderTop: `1px solid ${C.navBorder}`,
-        background: C.headerBg, backdropFilter: 'blur(14px)',
+        borderTop: `1px solid ${CLR_NAV_BORDER}`,
+        background: CLR_HEADER_BG, backdropFilter: 'blur(14px)',
         position: 'relative',
       }}>
         {replyingTo && (
-          <div style={{ position: 'absolute', bottom: 58, left: 14, right: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 10, background: C.inputBg, border: `1px solid ${C.primaryBorder}` }}>
-            <span style={{ color: C.textDim, fontSize: '0.68rem' }}>رد على {replyingTo.authorName}</span>
-            <button onClick={() => setReplyingTo(null)} aria-label="إلغاء الرد" style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
+          <div style={{ position: 'absolute', bottom: 58, left: 14, right: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 10, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}` }}>
+            <span style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>رد على {replyingTo.authorName}</span>
+            <button onClick={() => setReplyingTo(null)} aria-label="إلغاء الرد" style={{ background: 'none', border: 'none', color: CLR_TEXT_DIM, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
           </div>
         )}
         <input
@@ -5264,8 +8029,8 @@ function SharedPostThread({
           onKeyDown={e => { if (e.key === 'Enter' && !commentSending) submitWithReply(); }}
           placeholder="اكتب ردّاً..."
           style={{
-            flex: 1, background: C.inputBg, border: `1px solid ${C.primaryBorder}`,
-            borderRadius: 20, padding: '10px 14px', color: C.text, fontSize: '0.82rem', outline: 'none',
+            flex: 1, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+            borderRadius: 20, padding: '10px 14px', color: CLR_TEXT, fontSize: '0.82rem', outline: 'none',
           }}
         />
         <motion.button
@@ -5274,8 +8039,8 @@ function SharedPostThread({
           onClick={submitWithReply}
           style={{
             width: 38, height: 38, borderRadius: '50%',
-            background: commentText.trim() ? C.primary : C.primaryFaint,
-            border: 'none', color: commentText.trim() ? '#06171a' : C.textDim,
+            background: commentText.trim() ? CLR_PRIMARY : CLR_PRIMARY_FAINT,
+            border: 'none', color: commentText.trim() ? '#06171a' : CLR_TEXT_DIM,
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           }}
         >
@@ -5360,7 +8125,7 @@ function StoryCommentThreadPage({
       initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }}
       style={{
         position: 'fixed', inset: 0, zIndex: 260,
-        background: C.bg,
+        background: PAGE_BG,
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
       }}
@@ -5369,25 +8134,25 @@ function StoryCommentThreadPage({
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12,
         padding: '40px 14px 12px',
-        borderBottom: `1px solid ${C.navBorder}`,
-        background: C.headerBg, backdropFilter: 'blur(14px)',
+        borderBottom: `1px solid ${CLR_NAV_BORDER}`,
+        background: CLR_HEADER_BG, backdropFilter: 'blur(14px)',
       }}>
         <button onClick={onClose} aria-label="رجوع" style={{
-          background: 'none', border: 'none', color: C.text, cursor: 'pointer',
+          background: 'none', border: 'none', color: CLR_TEXT, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4,
         }}>
           <ArrowLeft size={20} strokeWidth={2.2} />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ color: C.text, fontSize: '0.86rem', fontWeight: 700, margin: 0 }}>تعليقات على قصتك</p>
-          <p style={{ color: C.textDim, fontSize: '0.66rem', margin: '2px 0 0' }}>تختفي هذه المحادثة في {expiresLabel}</p>
+          <p style={{ color: CLR_TEXT, fontSize: '0.86rem', fontWeight: 700, margin: 0 }}>تعليقات على قصتك</p>
+          <p style={{ color: CLR_TEXT_DIM, fontSize: '0.66rem', margin: '2px 0 0' }}>تختفي هذه المحادثة في {expiresLabel}</p>
         </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
         {/* Story preview */}
         <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ position: 'relative', alignSelf: 'flex-start', width: 130, height: 130, borderRadius: 10, overflow: 'hidden', border: `1px solid ${C.postBorder}`, background: '#000' }}>
+          <div style={{ position: 'relative', alignSelf: 'flex-start', width: 130, height: 130, borderRadius: 10, overflow: 'hidden', border: `1px solid ${CLR_POST_BORDER}`, background: '#000' }}>
             {thread.mediaType === 'video' ? (
               <video src={thread.mediaUrl} muted controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
@@ -5398,11 +8163,11 @@ function StoryCommentThreadPage({
 
         {/* Comments */}
         <div style={{ padding: '0 14px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={{ color: C.textDim, fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '4px 0' }}>
+          <p style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '4px 0' }}>
             التعليقات {comments.length > 0 ? `(${comments.length})` : ''}
           </p>
           {comments.length === 0 && (
-            <p style={{ color: C.textDim, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>
+            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', padding: '24px 0' }}>
               لا توجد تعليقات بعد
             </p>
           )}
@@ -5422,14 +8187,14 @@ function StoryCommentThreadPage({
             >
               <UserAvatar name={c.authorName} avatarUrl={c.authorAvatarUrl} size={30} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ color: C.text, fontSize: '0.76rem', fontWeight: 700, margin: 0 }}>{c.authorName}</p>
-                <p style={{ color: C.text, fontSize: '0.8rem', margin: '2px 0 0', lineHeight: 1.5, wordBreak: 'break-word' }}>{c.text}</p>
+                <p style={{ color: CLR_TEXT, fontSize: '0.76rem', fontWeight: 700, margin: 0 }}>{c.authorName}</p>
+                <p style={{ color: CLR_TEXT, fontSize: '0.8rem', margin: '2px 0 0', lineHeight: 1.5, wordBreak: 'break-word' }}>{c.text}</p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 4 }} onClick={e => e.stopPropagation()}>
-                  <time dateTime={c.createdAt} style={{ color: C.textDim, fontSize: '0.62rem' }}>{formatCommentDate(c.createdAt)}</time>
-                  <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: C.primary, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>رد</button>
+                  <time dateTime={c.createdAt} style={{ color: CLR_TEXT_DIM, fontSize: '0.62rem' }}>{formatCommentDate(c.createdAt)}</time>
+                  <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: CLR_PRIMARY, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>رد</button>
                   <motion.button whileTap={{ scale: 0.88 }} onClick={() => onToggleLike(c)} style={{
                     display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                    color: c.likedByMe ? '#ef4444' : C.textDim,
+                    color: c.likedByMe ? '#ef4444' : CLR_TEXT_DIM,
                   }}>
                     <Heart size={12} strokeWidth={2} fill={c.likedByMe ? '#ef4444' : 'none'} />
                     <span style={{ fontSize: '0.62rem', fontWeight: 600 }}>{c.likesCount > 0 ? c.likesCount : ''}</span>
@@ -5441,7 +8206,7 @@ function StoryCommentThreadPage({
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: 4,
                         background: 'none', border: 'none', padding: 0,
-                        color: C.primary, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700,
+                        color: CLR_PRIMARY, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700,
                       }}
                     >
                       <MessageCircle size={12} strokeWidth={2.2} />
@@ -5459,14 +8224,14 @@ function StoryCommentThreadPage({
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '10px 14px calc(10px + env(safe-area-inset-bottom))',
-        borderTop: `1px solid ${C.navBorder}`,
-        background: C.headerBg, backdropFilter: 'blur(14px)',
+        borderTop: `1px solid ${CLR_NAV_BORDER}`,
+        background: CLR_HEADER_BG, backdropFilter: 'blur(14px)',
         position: 'relative',
       }}>
         {replyingTo && (
-          <div style={{ position: 'absolute', bottom: 58, left: 14, right: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 10, background: C.inputBg, border: `1px solid ${C.primaryBorder}` }}>
-            <span style={{ color: C.textDim, fontSize: '0.68rem' }}>رد على {replyingTo.authorName}</span>
-            <button onClick={() => setReplyingTo(null)} aria-label="إلغاء الرد" style={{ background: 'none', border: 'none', color: C.textDim, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
+          <div style={{ position: 'absolute', bottom: 58, left: 14, right: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 10, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}` }}>
+            <span style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>رد على {replyingTo.authorName}</span>
+            <button onClick={() => setReplyingTo(null)} aria-label="إلغاء الرد" style={{ background: 'none', border: 'none', color: CLR_TEXT_DIM, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
           </div>
         )}
         <input
@@ -5475,8 +8240,8 @@ function StoryCommentThreadPage({
           onKeyDown={e => { if (e.key === 'Enter' && !commentSending) submitWithReply(); }}
           placeholder="اكتب ردّاً..."
           style={{
-            flex: 1, background: C.inputBg, border: `1px solid ${C.primaryBorder}`,
-            borderRadius: 20, padding: '10px 14px', color: C.text, fontSize: '0.82rem', outline: 'none',
+            flex: 1, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+            borderRadius: 20, padding: '10px 14px', color: CLR_TEXT, fontSize: '0.82rem', outline: 'none',
           }}
         />
         <motion.button
@@ -5485,8 +8250,8 @@ function StoryCommentThreadPage({
           onClick={submitWithReply}
           style={{
             width: 38, height: 38, borderRadius: '50%',
-            background: commentText.trim() ? C.primary : C.primaryFaint,
-            border: 'none', color: commentText.trim() ? '#06171a' : C.textDim,
+            background: commentText.trim() ? CLR_PRIMARY : CLR_PRIMARY_FAINT,
+            border: 'none', color: commentText.trim() ? '#06171a' : CLR_TEXT_DIM,
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           }}
         >
@@ -5501,6 +8266,11 @@ export default function AddFriendPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isPending } = useSession();
+  // Keeps the latest user/companies values reachable from event listeners that are
+  // attached once on mount, so those listeners never act on a stale (pre-login-load) user.
+  const latestUserRef = useRef(user);
+  useEffect(() => { latestUserRef.current = user; }, [user]);
+  const latestCompaniesRef = useRef<CompanyAccount[]>([]);
   const { startCall } = useGlobalCall();
   const tick = useAutoRefresh();
   const { guard: guestGuard, GuestModal } = useGuestGuard(user);
@@ -5616,7 +8386,7 @@ export default function AddFriendPage() {
   // اختيار صورة/فيديو للستوري: مربّعان فقط بدون خيار "ملفات" ثالث —
   // نحدّد نوع الملف المسموح على الـ input قبل فتحه بدل قبول النوعين معاً.
   const [storyPickerOpen, setStoryPickerOpen] = useState<null | 'main' | 'add'>(null);
-  // 4-option menu opened from the "+" badge on my story avatar: نشر للقصة / نشر صورة / نشر فيديو / نشر القصة عبر الكاميرا
+  // 4-option menu opened from the "+" badge on my story avatar: نشر إعلان للقصة / نشر صورة / نشر فيديو / نشر إعلان للقصة عبر الكاميرا
   const [publishMenuOpen, setPublishMenuOpen] = useState(false);
   // فتح الكاميرا المدمجة لالتقاط ونشر القصة مباشرة
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
@@ -5627,7 +8397,19 @@ export default function AddFriendPage() {
       window.dispatchEvent(new CustomEvent('stooorna:story-camera-state', { detail: { open: false } }));
     };
   }, [cameraCaptureOpen]);
-  function openStoryPicker(kind: 'image' | 'video', target: 'main' | 'add') {
+  const openStoryPicker = useCallback((kind: 'image' | 'video', target: 'main' | 'add') => {
+    const ref = target === 'main' ? storyFileRef : storyAddFileRef;
+    const input = ref.current;
+    if (!input) {
+      setQuickPublishError('تعذّر فتح مكتبة الوسائط. أعد المحاولة.');
+      return;
+    }
+
+    input.accept = kind === 'image' ? 'image/*' : 'video/*';
+    setStoryPickerOpen(null);
+    requestAnimationFrame(() => input.click());
+  }, []);
+
   useEffect(() => {
     const openStoryCamera = () => {
       setPublishMenuOpen(false);
@@ -5637,11 +8419,6 @@ export default function AddFriendPage() {
     window.addEventListener('stooorna:open-story-camera', openStoryCamera);
     return () => window.removeEventListener('stooorna:open-story-camera', openStoryCamera);
   }, []);
-    const ref = target === 'main' ? storyFileRef : storyAddFileRef;
-    if (ref.current) ref.current.accept = kind === 'image' ? 'image/*' : 'video/*';
-    ref.current?.click();
-    setStoryPickerOpen(null);
-  }
 
   // Fetch stories
   const knownStoryItemIdsRef = useRef<Set<number> | null>(null);
@@ -5699,16 +8476,27 @@ export default function AddFriendPage() {
 
   // Upload a story
   async function uploadStory(file: File) {
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      setQuickPublishError('Please choose an image or video for your story.');
+      return;
+    }
+
+    setQuickPublishError('');
     setStoryUploading(true);
     try {
-      await fetch('/api/status', {
+      const response = await fetch('/api/status', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': file.type, 'X-File-Ext': `.${file.name.split('.').pop() ?? 'jpg'}` },
         body: file,
       });
+      if (!response.ok) {
+        throw new Error('Story upload failed');
+      }
       await fetchStories();
-    } catch {/* silent */} finally {
+    } catch {
+      setQuickPublishError('Unable to publish this story. Please try a different image or video.');
+    } finally {
       setStoryUploading(false);
     }
   }
@@ -5783,14 +8571,62 @@ export default function AddFriendPage() {
     }
   }, []);
   const [showComposer, setShowComposer] = useState(false);
+  // وضع النشر: اختيار فقط (لا يفتح المعرض) — Text | Photo | Video
   const [composerDestination, setComposerDestination] = useState<'text' | 'photos' | 'videos'>('text');
-  const [composerDestinationNotice] = useState('');
   const [composerText, setComposerText] = useState('');
-  const [composerMediaFiles, setComposerMediaFiles] = useState<{ file: File; type: 'image' | 'video'; preview: string }[]>([]);
+  // ── Product ad composer fields (title bold + details + price + dynamic + boxes) ──
+  const [composerProductTitle, setComposerProductTitle] = useState('');
+  const [composerProductDetails, setComposerProductDetails] = useState('');
+  const [composerProductPrice, setComposerProductPrice] = useState('');
+  const [composerProductExtras, setComposerProductExtras] = useState<string[]>([]);
+  const [composerMediaFiles, setComposerMediaFiles] = useState<{ file: File; type: 'image' | 'video' | 'pdf'; preview: string }[]>([]);
+  // الحد الأقصى لعدد الصور التي يمكن إرفاقها بالمنشور الواحد (تُعرض بعدها كمعرض قابل للتصفح يمين/يسار)
+  const MAX_COMPOSER_IMAGES = 10;
   const [composerPosting, setComposerPosting] = useState(false);
   const [composerError, setComposerError] = useState('');
-  const postImageRef = useRef<HTMLInputElement>(null);
-  const postVideoRef = useRef<HTMLInputElement>(null);
+  // setters used in clearPostMedia — values not read directly
+  const [, setComposerAwaitingMedia] = useState(false);
+  // composerLinkStep: يتحكم بإظهار/إخفاء مستطيل «رابط صورة أو فيديو» داخل صفحة كتابة البوست
+  const [composerLinkStep, setComposerLinkStep] = useState(false);
+  const [composerLinkInput, setComposerLinkInput] = useState('');
+  const [composerLinkShortening, setComposerLinkShortening] = useState(false);
+  // ── روابط X داخل مربع الكتابة (العنوان + التفاصيل + الحقول الإضافية) ──
+  // بمجرد لصق/كتابة الرابط تظهر الصورة أو الفيديو كاملة أسفل المربع (مستخدم + شركة — نفس الـ composer).
+  // debounce قصير حتى لا نجلب أثناء كتابة رقم التغريدة. الرابط يبقى داخل النص كما هو.
+  const [composerXText, setComposerXText] = useState('');
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setComposerXText([composerProductTitle, composerProductDetails, ...composerProductExtras].join('\n'));
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [composerProductTitle, composerProductDetails, composerProductExtras]);
+  // ── مستطيل «Paste»: الرابط المُلصق (composerLinkInput) يُعرض كاملًا فورًا مع النص ──
+  const [composerLinkPreviewUrl, setComposerLinkPreviewUrl] = useState('');
+  useEffect(() => {
+    const t = window.setTimeout(() => setComposerLinkPreviewUrl(composerLinkInput.trim()), 250);
+    return () => window.clearTimeout(t);
+  }, [composerLinkInput]);
+  // روابط الوسائط داخل النص نفسه (بدون تكرار ما في المستطيل)
+  const composerXUrls = useMemo(() => {
+    const own = composerLinkPreviewUrl ? extractLinkMediaUrls(composerLinkPreviewUrl) : [];
+    return extractLinkMediaUrls(composerXText).filter(u => !own.includes(u)).slice(0, 4);
+  }, [composerXText, composerLinkPreviewUrl]);
+  /** زر Paste: يقرأ الحافظة وينزّل الرابط مباشرة في المستطيل */
+  async function pasteLinkFromClipboard() {
+    setComposerError('');
+    try {
+      const clip = await navigator.clipboard.readText();
+      const link = pickLinkFromText(clip);
+      if (!link) {
+        setComposerError(clip?.trim() ? 'الحافظة لا تحتوي رابطًا صالحًا' : 'الحافظة فارغة');
+        return;
+      }
+      setComposerLinkInput(link);
+      setComposerLinkPreviewUrl(link);
+    } catch {
+      setComposerError('تعذر القراءة من الحافظة — اضغط مطولًا داخل المستطيل والصق الرابط');
+    }
+  }
   const [openComments, setOpenComments] = useState<PostItem | null>(null);
   // Only the "Post" tab (text posts) opens PostDetailPage with a slide-in-from-the-side
   // animation; Video/Photo grid thumbnails keep the original fade/scale-in behavior.
@@ -5804,6 +8640,26 @@ export default function AddFriendPage() {
   function closePostDetail() {
     setOpenComments(null);
   }
+  // ── Single post view — full-screen product ad page (media fills screen; bottom bar:
+  // like+share | details sheet | comments chat sheet). No repost / favorites. ──
+  const [singlePostView, setSinglePostView] = useState<PostItem | null>(null);
+  /** عند فتح بوست من داخل البروفايل — البوست فوق البروفايل؛ عند فتح بروفايل من البوست — البروفايل فوق البوست */
+  const [singlePostFromProfile, setSinglePostFromProfile] = useState(false);
+  const [adDetailsOpen, setAdDetailsOpen] = useState(false);
+  const [adVideoPaused, setAdVideoPaused] = useState(false);
+  function openSinglePostView(post: PostItem, fromProfile = false) {
+    setAdDetailsOpen(false);
+    setAdVideoPaused(false);
+    setSinglePostFromProfile(!!fromProfile);
+    setSinglePostView(post);
+  }
+  function closeSinglePostView() {
+    setSinglePostView(null);
+    setSinglePostFromProfile(false);
+    setAdDetailsOpen(false);
+    setAdVideoPaused(false);
+  }
+
   const [postComments, setPostComments] = useState<Record<number, PostComment[]>>({});
   const [commentText, setCommentText] = useState('');
   const [commentSending, setCommentSending] = useState(false);
@@ -5811,10 +8667,201 @@ export default function AddFriendPage() {
   const [deletingPostId, setDeletingPostId] = useState<number | null>(null);
   const [hashtagView, setHashtagView] = useState<{ tag: string; posts: PostItem[] } | null>(null);
   const [sharePost, setSharePost] = useState<PostItem | null>(null);
+  /** قائمة شير المنتج: خارجي | استفسار */
+  const [productShareMenuPost, setProductShareMenuPost] = useState<PostItem | null>(null);
+  const [productInquiryPost, setProductInquiryPost] = useState<PostItem | null>(null);
+  const [productInquiryText, setProductInquiryText] = useState('');
+  const [productInquirySending, setProductInquirySending] = useState(false);
+  const [productInquiryError, setProductInquiryError] = useState('');
+  const [inquiryAlertTick, setInquiryAlertTick] = useState(0);
+  useEffect(() => {
+    const onInq = () => setInquiryAlertTick(t => t + 1);
+    window.addEventListener('stooorna:product-inquiry', onInq);
+    return () => window.removeEventListener('stooorna:product-inquiry', onInq);
+  }, []);
+
+
+  function openShareMiniChat(peer: { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; post?: PostItem | null; note?: string | null }) {
+    if (!peer?.id) return;
+    if (user && String(peer.id) === String(user.id)) return;
+    setUserShareChatPeer({
+      id: peer.id,
+      name: peer.name ?? null,
+      username: peer.username ?? null,
+      avatarUrl: peer.avatarUrl ?? null,
+      post: peer.post ?? null,
+      note: peer.note ?? '',
+    });
+    setShareMiniMsgs(loadShareThread(user?.id || 'me', peer.id, peer.post?.id ?? 'share'));
+    setShareMiniText('');
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:open-mini-share-chat', {
+        detail: {
+          peerId: peer.id,
+          name: peer.name,
+          username: peer.username,
+          avatarUrl: peer.avatarUrl,
+          post: peer.post,
+          note: peer.note,
+          mediaItems: (() => {
+            const post: any = peer.post;
+            if (!post) return [];
+            const urls = Array.isArray(post.mediaUrls) && post.mediaUrls.length ? post.mediaUrls : (post.mediaUrl ? [post.mediaUrl] : []);
+            const types = Array.isArray(post.mediaTypes) && post.mediaTypes.length ? post.mediaTypes : (post.mediaType ? [post.mediaType] : []);
+            return urls.filter(Boolean).map((url: string, i: number) => {
+              const ty = String(types[i] || '').toLowerCase();
+              const kind = ty.includes('video') || /\.(mp4|webm|mov)(\?|$)/i.test(url) ? 'video'
+                : ty.includes('pdf') || /\.pdf(\?|$)/i.test(url) ? 'pdf' : 'image';
+              return { url, type: kind };
+            });
+          })(),
+        },
+      }));
+    } catch { /* */ }
+  }
+
+  async function sendProductInquiry(post: PostItem, question: string) {
+    if (!user?.id) {
+      navigate('/settings');
+      return;
+    }
+    const ad = parseProductAd(post.text);
+    const media = PostMediaItems(post);
+    const imageUrl = media.find(m => m.type === 'image')?.url || media[0]?.url || post.mediaUrl || '';
+    const payload: ProductInquiryPayload = {
+      postId: post.id,
+      title: ad?.title || productAdDisplayTitle(post),
+      price: ad?.price || '',
+      details: ad?.details || '',
+      imageUrl,
+      question: question.trim(),
+      companyId: post.authorId,
+      companyName: post.authorName || post.authorUsername || 'الشركة',
+      companyUsername: post.authorUsername,
+      companyAvatar: post.authorAvatarUrl,
+    };
+    const body = buildProductInquiryBody(payload);
+    // الشات السري القديم لم يعد مستخدماً — الميني شات المحلي فقط
+    try {
+      const dm = await fetch('/api/secret-chat/dm', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ peerId: post.authorId }),
+      });
+      if (dm.ok) {
+        const dmData = await dm.json();
+        const chatId = dmData.chatId || dmData.id;
+        if (chatId) {
+          await fetch('/api/secret-chat/messages', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chatId, body }),
+          }).catch(() => {});
+        }
+      }
+    } catch { /* تجاهل الشات القديم */ }
+    const previewText = `🛒 ${payload.title}${payload.price ? ` · ${payload.price}` : ''}: ${question.trim()}`;
+    try {
+      pushShareThreadMsg(user.id, post.authorId, post.id, { fromId: user.id, type: 'text', body: question.trim() });
+    } catch { /* */ }
+    // صندوق شات الشركات (RootLayout يقرأ stooorna_company_inbox_*)
+    try {
+      if (String(user.id) === String(post.authorId)) throw new Error('self');
+      const key = `stooorna_company_inbox_${post.authorId}`;
+      const prev = JSON.parse(localStorage.getItem(key) || '[]');
+      const list = Array.isArray(prev) ? prev : [];
+      const next = {
+        id: user.id,
+        name: user.name ?? null,
+        username: (user as any).username ?? null,
+        avatarUrl: (user as any).avatarUrl ?? null,
+        lastMessage: previewText,
+        at: Date.now(),
+        unread: 1,
+        note: question.trim(),
+        post,
+        postId: post.id,
+      };
+      const merged = [next, ...list.filter((x: any) => x.id !== user.id)].slice(0, 200);
+      localStorage.setItem(key, JSON.stringify(merged));
+      window.dispatchEvent(new CustomEvent('stooorna:company-inbox', { detail: { userId: post.authorId, list: merged } }));
+    } catch { /* non-blocking */ }
+    // صندوق شات المستخدم مع الشركات (أيقونة بين الهوم والمايك)
+    try {
+      const ukey = `stooorna_user_product_chats_${user.id}`;
+      const uprev = JSON.parse(localStorage.getItem(ukey) || '[]');
+      const ulist = Array.isArray(uprev) ? uprev : [];
+      const unext = {
+        id: post.authorId,
+        name: payload.companyName || post.authorName,
+        username: post.authorUsername,
+        avatarUrl: post.authorAvatarUrl,
+        lastMessage: previewText,
+        at: Date.now(),
+        unread: 0,
+        postId: post.id,
+        postText: (post.text || '').slice(0, 800),
+        note: question.trim(),
+        post,
+      };
+      const umerged = [unext, ...ulist.filter((x: any) => x.id !== post.authorId)].slice(0, 200);
+      localStorage.setItem(ukey, JSON.stringify(umerged));
+      window.dispatchEvent(new CustomEvent('stooorna:user-product-chats', { detail: { userId: user.id, list: umerged } }));
+    } catch { /* non-blocking */ }
+    saveProductInquiryThread(post.id, post.authorId, false);
+    clearProductInquiryReplyFlag(post.id);
+    // إشعار فوري لأيقونة شات الشركات في الشريط السفلي (وميض أصفر)
+    try {
+      localStorage.setItem(`stooorna_company_chat_blink_${post.authorId}`, String(Date.now()));
+      localStorage.setItem('stooorna_company_inbox_unread', '1');
+      window.dispatchEvent(new CustomEvent('stooorna:company-inbox-unread', {
+        detail: { companyId: post.authorId, fromUserId: user.id, at: Date.now() },
+      }));
+      window.dispatchEvent(new CustomEvent('stooorna:bottom-chat-blink', {
+        detail: { target: 'company', userId: post.authorId, yellow: true },
+      }));
+    } catch { /* non-blocking */ }
+    openShareMiniChat({
+      id: post.authorId,
+      name: payload.companyName,
+      username: post.authorUsername,
+      avatarUrl: post.authorAvatarUrl,
+      post,
+      note: question.trim(),
+    });
+  }
+
+  /** مشاركة خارجية فقط — بدون قائمة الأصدقاء / الشات */
+  function externalSharePost(post: PostItem) {
+    const ad = parseProductAd(post.text);
+    const title = ad?.title || productAdDisplayTitle(post) || 'منشور';
+    const textBody = ad
+      ? [ad.title, ad.price ? `السعر: ${ad.price}` : '', ad.details].filter(Boolean).join('\n')
+      : (post.text || title);
+    const url = typeof window !== 'undefined' ? window.location.href : '';
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      void navigator.share({ title, text: textBody, url }).catch(() => {
+        try {
+          if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(`${title}\n${textBody}\n${url}`);
+        } catch { /* ignore */ }
+      });
+      return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(`${title}\n${textBody}\n${url}`);
+    } catch { /* ignore */ }
+  }
+
+  // مفتاح أنيميشن فقاعة اللايك — يزيد عند كل ضغط لايك ليُشغّل الفقاعة
+  const [likeBubbleKey, setLikeBubbleKey] = useState<Record<number, number>>({});
 
   // إخفاء شريط التنقل السفلي (العام) أثناء فتح شيت "إرسال المنشور"، ورجوعه تلقائيًا عند الإغلاق
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('stooorna:share-sheet-state', { detail: { open: !!sharePost } }));
+    // عند فتح الشيت نحدّث قائمة الأصدقاء فوراً حتى تظهر مباشرة (لا بعد الرجوع/إغلاق الصفحة)
+    if (sharePost) void loadFriends();
     // تأمين إضافي: إرجاع الشريط لو خرجنا من الصفحة والشيت لسا مفتوح
     return () => {
       window.dispatchEvent(new CustomEvent('stooorna:share-sheet-state', { detail: { open: false } }));
@@ -5834,8 +8881,6 @@ export default function AddFriendPage() {
   const [sharedThreadComments, setSharedThreadComments] = useState<Record<number, SharedPostComment[]>>({});
   const [sharedCommentText, setSharedCommentText] = useState('');
   const [sharedCommentSending, setSharedCommentSending] = useState(false);
-  const sharedInboxUnreadCount = sharedInbox.filter(s => !s.read).length;
-  const postInteractionsUnreadCount = postInteractions.filter(item => !item.read).length;
   const knownShareIdsRef = useRef<Set<number> | null>(null);
 
   // ── Story-comment inbox — comments friends left on my stories (section 2 of the FEED-row box) ──
@@ -5845,17 +8890,13 @@ export default function AddFriendPage() {
   const [storyThreadComments, setStoryThreadComments] = useState<Record<number, StoryComment[]>>({});
   const [storyThreadCommentText, setStoryThreadCommentText] = useState('');
   const [storyThreadCommentSending, setStoryThreadCommentSending] = useState(false);
-  const storyCommentThreadsUnreadCount = storyCommentThreads.filter(t => !t.read).length;
   const knownStoryThreadIdsRef = useRef<Set<number> | null>(null);
 
   // ── Post-comment inbox — comments friends left on my video/photo posts (section 2 of the
   //    inbox box, right under the story-comment threads, same 24h auto-expiry) ──
   const [postCommentThreads, setPostCommentThreads] = useState<PostCommentThread[]>([]);
   const [postCommentThreadsLoading, setPostCommentThreadsLoading] = useState(false);
-  const postCommentThreadsUnreadCount = postCommentThreads.filter(t => !t.read).length;
   const knownPostThreadIdsRef = useRef<Set<number> | null>(null);
-
-  const totalInboxUnreadCount = sharedInboxUnreadCount + storyCommentThreadsUnreadCount + postCommentThreadsUnreadCount + postInteractionsUnreadCount;
 
   // Hide the app's bottom nav bar while the composer sheet, post comments, the
   // shared inbox panel (القصص والمفضلة), or a story-comment thread page is open.
@@ -5875,10 +8916,43 @@ export default function AddFriendPage() {
 
   const fetchPosts = useCallback(async () => {
     try {
-      const r = await fetch('/api/posts?audience=text', { credentials: 'include' });
-      if (!r.ok) return;
-      const data = await r.json() as { posts: PostItem[] };
-      setPosts(data.posts ?? []);
+      // التغذية العامة للمنشورات/المنتجات: كل المسجّلين يرونها.
+      // ندمج audience=text مع منشورات public التي تحمل نص منتج أو محتوى نصي
+      // (منشورات الشركات كانت تُحفظ أحيانًا audience=public مع وسائط فلا تظهر في audience=text فقط).
+      const collected: PostItem[] = [];
+      const textR = await fetch('/api/posts?audience=text', { credentials: 'include' });
+      if (textR.ok) {
+        const data = await textR.json() as { posts: PostItem[] };
+        collected.push(...(data.posts ?? []));
+      }
+      try {
+        const pubR = await fetch('/api/posts?audience=public', { credentials: 'include' });
+        let pubPosts: PostItem[] = [];
+        if (pubR.ok) {
+          const data = await pubR.json() as { posts: PostItem[] };
+          pubPosts = data.posts ?? [];
+        } else {
+          const fallback = await fetch('/api/posts', { credentials: 'include' });
+          if (fallback.ok) {
+            const data = await fallback.json() as { posts: PostItem[] };
+            pubPosts = data.posts ?? [];
+          }
+        }
+        for (const p of pubPosts) {
+          const body = (p.text && String(p.text).trim()) || '';
+          if (!body) continue;
+          // منتج / إعلان أو أي منشور نصي عام — يظهر للجميع في صفحة المنشورات
+          if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0) {
+            collected.push(p);
+          }
+        }
+      } catch { /* optional public merge */ }
+      const byId = new Map<number, PostItem>();
+      for (const p of collected) byId.set(p.id, p);
+      const merged = Array.from(byId.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      setPosts(prev => mergePostsPreservingMedia(prev, merged));
     } catch {/* silent — feed simply stays empty/local */}
   }, []);
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
@@ -5889,12 +8963,31 @@ export default function AddFriendPage() {
   const fetchMyMediaPosts = useCallback(async () => {
     if (!user) return;
     try {
-      const r = await fetch('/api/posts', { credentials: 'include' });
-      if (!r.ok) return;
+      // أقسام الصور/الفيديو مستقلة عن المنشورات النصية: لا نجلب منشورات audience=text
+      // حتى لو كانت تحمل صورة/فيديو مرفقًا مع النص.
+      const r = await fetch('/api/posts?audience=public', { credentials: 'include' });
+      if (!r.ok) {
+        // توافق مع السيرفر القديم إن لم يدعم audience=public
+        const fallback = await fetch('/api/posts', { credentials: 'include' });
+        if (!fallback.ok) return;
+        const data = await fallback.json() as { posts: PostItem[] };
+        const mine = (data.posts ?? []).filter(p => {
+          if (String(p.authorId) !== String(user.id)) return false;
+          if (!(p.mediaType === 'image' || p.mediaType === 'video')) return false;
+          // استبعاد أي منشور تابع لقسم الكتابة
+          if (p.audience === 'text' || p.destination === 'text') return false;
+          return true;
+        });
+        setMyMediaPosts(mine);
+        return;
+      }
       const data = await r.json() as { posts: PostItem[] };
-      const mine = (data.posts ?? []).filter(p =>
-        String(p.authorId) === String(user.id) && (p.mediaType === 'image' || p.mediaType === 'video')
-      );
+      const mine = (data.posts ?? []).filter(p => {
+        if (String(p.authorId) !== String(user.id)) return false;
+        if (!(p.mediaType === 'image' || p.mediaType === 'video')) return false;
+        if (p.audience === 'text' || p.destination === 'text') return false;
+        return true;
+      });
       setMyMediaPosts(mine);
     } catch {/* silent — grid simply stays empty */}
   }, [user]);
@@ -5911,8 +9004,55 @@ export default function AddFriendPage() {
   // "فيديوهات" — never the other section. Mirrors the same type-detection the grid itself uses.
   const getPostThumbType = (post: PostItem) =>
     post.mediaTypes && post.mediaTypes.length > 0 ? post.mediaTypes[0] : post.mediaType;
-  const myVideoPosts = useMemo(() => myMediaPosts.filter(p => getPostThumbType(p) === 'video'), [myMediaPosts]);
-  const myPhotoPosts = useMemo(() => myMediaPosts.filter(p => getPostThumbType(p) === 'image'), [myMediaPosts]);
+  const myVideoPosts = useMemo(() => myMediaPosts.filter(p => getPostThumbType(p) === 'video' && p.audience !== 'text' && p.destination !== 'text'), [myMediaPosts]);
+  const myPhotoPosts = useMemo(() => myMediaPosts.filter(p => getPostThumbType(p) === 'image' && p.audience !== 'text' && p.destination !== 'text'), [myMediaPosts]);
+
+  // ── دمج منشوراتي المنشورة كـ"عام" (صور/فيديو عبر زر "+" في قصتي) مع تغذية
+  // المنشورات النصية: هذه المنشورات كانت تُحسب فقط ضمن myMediaPosts (للإحصائية أعلى
+  // البروفايل) ولا تظهر أبدًا داخل قسم "المنشورات" ولا داخل صفحة القصص، رغم كونها
+  // منشورات عامة فعلية. هنا نُلحقها بقائمة posts (بدون تكرار) لتظهر مع بقية منشوراتي. ──
+  const combinedFeedPosts = useMemo(() => {
+    const seenIds = new Set(posts.map(p => p.id));
+    // Keep Photo/Video (story page grid) out of the text/public feed
+    const extras = myMediaPosts.filter(p => {
+      if (seenIds.has(p.id)) return false;
+      const dest = String(p.destination || '');
+      if (dest === 'photos' || dest === 'videos') return false;
+      if (p.mediaType === 'image' || p.mediaType === 'video') return false;
+      return true;
+    });
+    if (extras.length === 0) return posts;
+    return [...posts, ...extras].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [posts, myMediaPosts]);
+
+  // ── تثبيت منشور واحد على الأقل في صفحتي — محفوظ محليًا (localStorage) ومُزامَن
+  // best-effort إلى /api/users/me بنفس أسلوب pinnedTrack أعلاه؛ يعمل فورًا على هذا
+  // الجهاز، ويظهر لبقية الزوار بمجرد أن يدعم الـ API هذا الحقل. ──
+  const [pinnedPostId, setPinnedPostId] = useState<number | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem('stooorna_pinned_post_id');
+      return raw ? Number(raw) : null;
+    } catch { return null; }
+  });
+  const handleTogglePinPost = useCallback((post: PostItem) => {
+    setPinnedPostId(prev => {
+      const next = prev === post.id ? null : post.id;
+      try {
+        if (next === null) window.localStorage.removeItem('stooorna_pinned_post_id');
+        else window.localStorage.setItem('stooorna_pinned_post_id', String(next));
+      } catch { /* storage optional */ }
+      void fetch('/api/users/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ pinnedPostId: next }),
+      }).catch(() => { /* best-effort — the local pin above still governs this device */ });
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const refresh = () => { void fetchPosts(); };
@@ -5932,10 +9072,38 @@ export default function AddFriendPage() {
     if (!user) return;
     (async () => {
       try {
+        const collected: PostItem[] = [];
         const r = await fetch('/api/posts?audience=text', { credentials: 'include' });
-        if (!r.ok) return;
-        const data = await r.json() as { posts: PostItem[] };
-        const fresh = data.posts ?? [];
+        if (r.ok) {
+          const data = await r.json() as { posts: PostItem[] };
+          collected.push(...(data.posts ?? []));
+        }
+        try {
+          const pubR = await fetch('/api/posts?audience=public', { credentials: 'include' });
+          let pubPosts: PostItem[] = [];
+          if (pubR.ok) {
+            const data = await pubR.json() as { posts: PostItem[] };
+            pubPosts = data.posts ?? [];
+          } else {
+            const fallback = await fetch('/api/posts', { credentials: 'include' });
+            if (fallback.ok) {
+              const data = await fallback.json() as { posts: PostItem[] };
+              pubPosts = data.posts ?? [];
+            }
+          }
+          for (const p of pubPosts) {
+            const body = (p.text && String(p.text).trim()) || '';
+            if (!body) continue;
+            if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0) {
+              collected.push(p);
+            }
+          }
+        } catch { /* optional */ }
+        const byId = new Map<number, PostItem>();
+        for (const p of collected) byId.set(p.id, p);
+        const fresh = Array.from(byId.values()).sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
         const newOnes = fresh.filter(p => !knownPostIdsRef.current.has(p.id));
         if (newOnes.length > 0) {
           pendingNewPostsRef.current = fresh;
@@ -5949,28 +9117,19 @@ export default function AddFriendPage() {
     })();
   }, [user, tick]);
   function loadPendingNewPosts() {
-    if (pendingNewPostsRef.current.length) setPosts(pendingNewPostsRef.current);
+    if (pendingNewPostsRef.current.length) {
+      setPosts(prev => mergePostsPreservingMedia(prev, pendingNewPostsRef.current));
+    }
     setNewPostsAvailable(0);
     newPostsSoundPlayedRef.current = false;
-  }
-
-  function pickPostMedia(file: File, type: 'image' | 'video') {
-    const url = URL.createObjectURL(file);
-    setComposerMediaFiles(prev => [...prev, { file, type, preview: url }]);
-  }
-
-
-  function removePostMediaAt(index: number) {
-    setComposerMediaFiles(prev => {
-      const item = prev[index];
-      if (item) URL.revokeObjectURL(item.preview);
-      return prev.filter((_, itemIndex) => itemIndex !== index);
-    });
   }
 
   function clearPostMedia() {
     composerMediaFiles.forEach(item => URL.revokeObjectURL(item.preview));
     setComposerMediaFiles([]);
+    setComposerAwaitingMedia(false);
+    setComposerLinkStep(false);
+    setComposerLinkInput('');
   }
 
   // ── Quick publish — "نشر صورة" / "نشر فيديو": one-tap post with a single photo or video and no
@@ -6003,8 +9162,7 @@ export default function AddFriendPage() {
       if (!r.ok) throw new Error('Failed to publish post');
       const d = await r.json();
       if (!d?.post?.id) throw new Error('Post was not saved');
-      const saved: PostItem = d.post;
-      setPosts(prev => [saved, ...prev]);
+      const saved: PostItem = { ...d.post, audience: 'public', destination: type === 'video' ? 'videos' : 'photos' };
       setMyMediaPosts(prev => [saved, ...prev]);
       playNewPostSound();
     } catch (error) {
@@ -6015,66 +9173,564 @@ export default function AddFriendPage() {
     }
   }
 
-  async function submitPost(destination: 'text' | 'photos' | 'videos' = composerDestination === 'text' ? 'text' : (composerMediaFiles[0]?.type === 'video' ? 'videos' : 'photos')) {
-    const trimmed = composerText.trim();
-    if (destination === 'text' && !trimmed) {
-      setComposerError('أضف نصاً قبل نشر صورة أو فيديو في قسم الكتابة');
+
+
+  async function shortenComposerLink(raw: string): Promise<string | null> {
+    setComposerLinkShortening(true);
+    setComposerError('');
+    try {
+      // روابط X: استخرج الصورة/الفيديو المباشر ليعرض كاملًا داخل البوست
+      const media = await resolveLinkToDirectMedia(raw);
+      if (media && media.length) {
+        // أول وسيط (أو اجمع الروابط) — نضع الروابط المباشرة
+        const joined = media.map(m => m.url).join('\n');
+        setComposerLinkInput(joined);
+        return joined;
+      }
+      const short = await composerCreateShortLink(raw);
+      if (!short) {
+        setComposerError('الرابط غير صالح أو لا يمكن استخراج وسائط منه');
+        return null;
+      }
+      setComposerLinkInput(short);
+      return short;
+    } finally {
+      setComposerLinkShortening(false);
+    }
+  }
+
+  async function pasteAndShortenComposerLink() {
+    setComposerError('');
+    try {
+      const clip = await navigator.clipboard.readText();
+      if (!clip?.trim()) {
+        setComposerError('الحافظة فارغة');
+        return;
+      }
+      // افتح خطوة الرابط إن لم تكن مفتوحة
+      setComposerLinkStep(true);
+      const short = await shortenComposerLink(clip.trim());
+      // بعد التحويل مباشرة جاهز للنشر
+      if (short) {
+        // لا ننشر تلقائيًا إلا إذا المستخدم ضغط نشر — لكن الرابط صار جاهزًا
+      }
+    } catch {
+      setComposerError('تعذر القراءة من الحافظة — الصق يدويًا');
+    }
+  }
+
+  async function handleComposerTextPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    if (composerDestination !== 'text') return;
+    const pasted = e.clipboardData?.getData('text')?.trim() || '';
+    if (!pasted) return;
+    // إذا كان الملصق رابطًا فقط (أو يبدأ برابط) → حوّله لرابط قصير في خانة الرابط
+    const looksLikeUrl = /^(https?:\/\/\S+)$/i.test(pasted) || /^(www\.\S+)$/i.test(pasted);
+    if (!looksLikeUrl) return;
+    e.preventDefault();
+    setComposerLinkStep(true);
+    await shortenComposerLink(pasted);
+  }
+
+  async function submitPost(destination: 'text' | 'photos' | 'videos' = 'text') {
+    /**
+     * إصلاح "Failed to create post":
+     * مسار موثوق بخطوتين عند وجود صورة/فيديو:
+     *   1) إنشاء المنشور بنفس طلب quickPublishMedia الناجح (نص فارغ + وسائط)
+     *   2) تحديث النص عبر PATCH /api/posts/:id/caption
+     * بدون وسائط: إنشاء منشور نصي مباشرة.
+     */
+    destination = 'text';
+    const title = (composerProductTitle || '').trim();
+    const details = (composerProductDetails || '').trim();
+    const price = (composerProductPrice || '').trim();
+    const extras = (composerProductExtras || []).map(s => String(s).trim()).filter(Boolean);
+    const linkRaw = (composerLinkInput || '').trim();
+    const linkCandidates = linkRaw
+      ? linkRaw.split(/[\s\n]+/).map(s => s.trim()).filter(Boolean).map(s => {
+          try {
+            const withProto = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+            const u = new URL(withProto);
+            if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+            return u.toString();
+          } catch { return ''; }
+        }).filter(Boolean)
+      : [];
+    const linkNormalized = linkCandidates[0] || '';
+
+    if (!title && !details && !price && extras.length === 0 && !linkNormalized && composerMediaFiles.length === 0) {
+      setComposerError('أضف عنوان المنتج أو تفاصيل أو وسائط قبل النشر');
       return;
     }
-    if (destination !== 'text' && composerMediaFiles.length === 0) {
-      setComposerError('اختر صورة أو فيديو للنشر');
-      return;
-    }
+
     setComposerPosting(true);
     setComposerError('');
     try {
-      const hashtags = Array.from(trimmed.matchAll(/#([\p{L}\p{N}_]+)/gu)).map(m => m[1]);
-      const uploadedMedia: { url: string; type: 'image' | 'video' }[] = [];
+      // Do not store image/video/X preview URLs inside product text
+      const nonMediaLinks: string[] = [];
+      for (const u of linkCandidates) {
+        const resolved = composerLookupOriginalUrl(u);
+        const isMediaPreview =
+          !!parseXStatusId(resolved) ||
+          !!classifyMediaUrl(resolved) ||
+          !!classifyDirectMediaUrl(resolved);
+        if (!isMediaPreview) nonMediaLinks.push(u);
+      }
+      const detailsWithLink = [details, ...nonMediaLinks].filter(Boolean).join('\n');
+      const finalText = buildProductPostText({
+        title: title || 'منتج',
+        details: detailsWithLink,
+        price,
+        extras,
+      });
 
-      for (const item of composerMediaFiles) {
+      // ── رفع الوسائط (صور / فيديو / PDF) ──
+      const uploadedMedia: { url: string; type: 'image' | 'video' }[] = [];
+      let lastUploadError = '';
+
+      const extractUploadUrl = async (res: Response): Promise<string | null> => {
+        try {
+          const d = await res.json() as { url?: string; mediaUrl?: string; path?: string; fileUrl?: string };
+          const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path;
+          return u ? String(u) : null;
+        } catch {
+          return null;
+        }
+      };
+
+      /** رفع PDF: 1) مسارات ملفات  2) تحويل الصفحة الأولى لصورة JPEG ورفعها كصورة (يعمل مع قيود السيرفر) */
+      const loadPdfJs = async (): Promise<any> => {
+        const w = window as any;
+        if (w.pdfjsLib) return w.pdfjsLib;
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+          s.onload = () => resolve();
+          s.onerror = () => reject(new Error('pdf.js load failed'));
+          document.head.appendChild(s);
+        });
+        const lib = (window as any).pdfjsLib;
+        if (lib) {
+          lib.GlobalWorkerOptions.workerSrc =
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+        return lib;
+      };
+
+      const pdfFirstPageToJpeg = async (file: File): Promise<Blob | null> => {
+        try {
+          const lib = await loadPdfJs();
+          if (!lib) return null;
+          const buf = await file.arrayBuffer();
+          const pdf = await lib.getDocument({ data: buf }).promise;
+          const page = await pdf.getPage(1);
+          const base = page.getViewport({ scale: 1 });
+          const scale = Math.min(2.2, 1200 / Math.max(base.width, 1));
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return null;
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          return await new Promise<Blob | null>((resolve) => {
+            canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.88);
+          });
+        } catch (e) {
+          console.warn('[PDF→JPEG]', e);
+          return null;
+        }
+      };
+
+      const pdfCoverPlaceholder = async (file: File): Promise<Blob> => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 840;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = '#0a1214';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#00BCD4';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(24, 24, canvas.width - 48, canvas.height - 48);
+        ctx.fillStyle = '#00BCD4';
+        ctx.font = 'bold 72px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('PDF', canvas.width / 2, canvas.height / 2 - 20);
+        ctx.fillStyle = 'rgba(200,230,230,0.9)';
+        ctx.font = '28px sans-serif';
+        const name = (file.name || 'document.pdf').slice(0, 36);
+        ctx.fillText(name, canvas.width / 2, canvas.height / 2 + 40);
+        return await new Promise<Blob>((resolve) => {
+          canvas.toBlob((b) => resolve(b || new Blob()), 'image/jpeg', 0.9);
+        });
+      };
+
+      const uploadImageBlob = async (blob: Blob, filename: string): Promise<string | null> => {
+        const file = new File([blob], filename, { type: 'image/jpeg' });
+        // FormData
+        try {
+          const fd = new FormData();
+          fd.append('file', file, filename);
+          fd.append('type', 'image');
+          fd.append('mediaType', 'image');
+          const r = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+          if (r.ok) {
+            const u = await extractUploadUrl(r);
+            if (u) return u;
+          }
+        } catch { /* next */ }
+        // raw
         try {
           const r = await fetch('/api/posts/media', {
             method: 'POST',
             credentials: 'include',
-            headers: { 'Content-Type': item.file.type, 'X-File-Ext': `.${item.file.name.split('.').pop() ?? (item.type === 'video' ? 'mp4' : 'jpg')}` },
-            body: item.file,
+            headers: {
+              'Content-Type': 'image/jpeg',
+              'X-File-Ext': '.jpg',
+              'X-Media-Type': 'image',
+            },
+            body: file,
           });
           if (r.ok) {
-            const d = await r.json();
-            if (d.url) uploadedMedia.push({ url: d.url, type: item.type });
+            const u = await extractUploadUrl(r);
+            if (u) return u;
           }
-        } catch {/* fall back to no uploaded item */}
+        } catch { /* next */ }
+        return null;
+      };
+
+      const uploadPdfFile = async (file: File): Promise<string | null> => {
+        // أ) محاولة رفع الملف الأصلي كمستند
+        const attempts: Array<() => Promise<Response>> = [
+          async () => fetch('/api/support/upload', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': file.type || 'application/pdf' }, body: file,
+          }),
+          async () => {
+            const fd = new FormData();
+            fd.append('file', file, file.name || 'document.pdf');
+            fd.append('type', 'file');
+            return fetch('/api/support/upload', { method: 'POST', credentials: 'include', body: fd });
+          },
+          async () => {
+            const fd = new FormData();
+            fd.append('file', file, file.name || 'document.pdf');
+            return fetch('/api/upload', { method: 'POST', credentials: 'include', body: fd });
+          },
+          async () => {
+            const fd = new FormData();
+            fd.append('file', file, file.name || 'document.pdf');
+            return fetch('/api/files/upload', { method: 'POST', credentials: 'include', body: fd });
+          },
+        ];
+        for (const run of attempts) {
+          try {
+            const res = await run();
+            if (!res.ok) continue;
+            const url = await extractUploadUrl(res);
+            if (url) return url;
+          } catch { /* next */ }
+        }
+
+        // ب) تحويل الصفحة الأولى إلى صورة JPEG ورفعها كصورة (يتوافق مع "Only images and videos")
+        const pageJpeg = await pdfFirstPageToJpeg(file);
+        if (pageJpeg) {
+          const url = await uploadImageBlob(pageJpeg, `${(file.name || 'doc').replace(/\.pdf$/i, '')}-p1.jpg`);
+          if (url) return url;
+        }
+
+        // ج) غلاف PDF بسيط كصورة
+        const cover = await pdfCoverPlaceholder(file);
+        const coverUrl = await uploadImageBlob(cover, `${(file.name || 'doc').replace(/\.pdf$/i, '')}-cover.jpg`);
+        if (coverUrl) return coverUrl;
+
+        throw new Error('تعذر رفع PDF ولا تحويله إلى صورة');
+      };
+
+      for (const item of composerMediaFiles) {
+        try {
+          const file = item.file;
+          const isPdf =
+            item.type === 'pdf' ||
+            (file.type || '') === 'application/pdf' ||
+            /\.pdf$/i.test(file.name);
+          const isVideo =
+            item.type === 'video' ||
+            (file.type || '').startsWith('video/') ||
+            /\.(mp4|mov|webm|m4v|mkv|3gp)$/i.test(file.name);
+
+          // PDF: مسار رفع منفصل (السيرفر يرفض PDF على posts/media كصورة/فيديو)
+          if (isPdf) {
+            try {
+              const pdfUrl = await uploadPdfFile(file);
+              if (pdfUrl) {
+                // صورة غلاف / صفحة PDF أو رابط الملف — يُنشر كـ image لقبول السيرفر
+                uploadedMedia.push({ url: String(pdfUrl), type: 'image' });
+              } else {
+                lastUploadError = 'رفع PDF نجح بدون رابط';
+              }
+            } catch (e) {
+              lastUploadError = `فشل رفع PDF: ${e instanceof Error ? e.message : String(e)}`;
+              console.error('[Post PDF upload]', lastUploadError);
+            }
+            continue;
+          }
+
+          const mediaType: 'image' | 'video' = isVideo ? 'video' : 'image';
+          const ext = (
+            file.name.split('.').pop() ||
+            (isVideo ? 'mp4' : 'jpg')
+          ).replace(/^\./, '');
+          // Server accepts raw body only with image/* or video/* Content-Type
+          let contentType = (file.type || '').split(';')[0].toLowerCase();
+          if (!contentType.startsWith('image/') && !contentType.startsWith('video/')) {
+            contentType = isVideo ? 'video/mp4' : 'image/jpeg';
+          }
+
+          let uploadRes: Response | null = null;
+          let lastBody = '';
+
+          try {
+            uploadRes = await fetch('/api/posts/media', {
+              method: 'POST',
+              credentials: 'include',
+              headers: {
+                'Content-Type': contentType,
+                'X-File-Ext': `.${ext}`,
+              },
+              body: file,
+            });
+            if (!uploadRes.ok) lastBody = await uploadRes.text().catch(() => '');
+          } catch (e) {
+            lastBody = e instanceof Error ? e.message : 'raw fail';
+            uploadRes = null;
+          }
+
+          if (!uploadRes || !uploadRes.ok) {
+            try {
+              uploadRes = await fetch('/api/posts/media', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                  'Content-Type': contentType,
+                  'X-File-Ext': `.${ext}`,
+                  'X-Media-Type': mediaType,
+                },
+                body: file,
+              });
+              if (!uploadRes.ok) lastBody = await uploadRes.text().catch(() => '');
+            } catch (e) {
+              lastBody = e instanceof Error ? e.message : 'raw2 fail';
+              uploadRes = null;
+            }
+          }
+
+          if (!uploadRes || !uploadRes.ok) {
+            lastUploadError = `رفع ${isVideo ? 'الفيديو' : 'الملف'} فشل${uploadRes ? ` (${uploadRes.status})` : ''} ${lastBody.slice(0, 100)}`;
+            console.error('[Post media upload]', lastUploadError);
+            continue;
+          }
+          const url = await extractUploadUrl(uploadRes);
+          if (url) {
+            uploadedMedia.push({ url: String(url), type: mediaType });
+          } else {
+            lastUploadError = 'الرفع نجح بدون رابط';
+          }
+        } catch (err) {
+          lastUploadError = err instanceof Error ? err.message : 'خطأ رفع';
+          console.error('[Post media upload]', err);
+        }
+      }
+      if (composerMediaFiles.length > 0 && uploadedMedia.length === 0) {
+        setComposerError(lastUploadError || 'تعذر رفع الملف (صورة / فيديو / PDF)');
+        setComposerPosting(false);
+        return;
       }
 
-      try {
-        const mediaUrls = uploadedMedia.map(item => item.url);
-        const mediaTypes = uploadedMedia.map(item => item.type);
-        const mediaUrl = mediaUrls[0] ?? null;
-        const mediaType = mediaTypes[0] ?? null;
-        const r = await fetch('/api/posts', {
+      // Preview links become media, not text
+      if (linkCandidates.length) {
+        const seenMedia = new Set(uploadedMedia.map(m => m.url));
+        for (const raw of linkCandidates) {
+          try {
+            const resolved = composerLookupOriginalUrl(raw);
+            const kind = classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved);
+            if (kind && !seenMedia.has(resolved)) {
+              seenMedia.add(resolved);
+              uploadedMedia.push({ url: resolved, type: kind });
+              continue;
+            }
+            if (parseXStatusId(resolved)) {
+              const media = await resolveLinkToDirectMedia(resolved);
+              if (media?.length) {
+                for (const m of media) {
+                  if (seenMedia.has(m.url)) continue;
+                  seenMedia.add(m.url);
+                  uploadedMedia.push(m);
+                }
+              }
+            }
+          } catch { /* next */ }
+        }
+      }
+
+      const mediaUrl = uploadedMedia[0]?.url ?? null;
+      const mediaType = uploadedMedia[0]?.type ?? null;
+      const mediaUrls = uploadedMedia.map(m => m.url);
+      const mediaTypes = uploadedMedia.map(m => m.type);
+
+      let saved: PostItem | null = null;
+
+      if (mediaUrl && mediaType) {
+        const mediaDest = mediaType === 'video' ? 'videos' : 'photos';
+        let createRes = await fetch('/api/posts', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: trimmed, mediaUrl, mediaType, mediaUrls, mediaTypes, hashtags, audience: destination === 'text' ? 'text' : 'public', destination }),
+          body: JSON.stringify({
+            text: finalText || '',
+            mediaUrl,
+            mediaType,
+            mediaUrls,
+            mediaTypes,
+            hashtags: [],
+            audience: 'text',
+            destination: 'text',
+            publisherType: isCompanyPublisher ? 'company' : 'user',
+            isCompanyPost: !!isCompanyPublisher,
+            authorIsCompany: !!isCompanyPublisher,
+          }),
         });
-        if (!r.ok) {
-          const failure = await r.json().catch(() => ({})) as { error?: string };
-          throw new Error(failure.error || 'Failed to publish post');
+        if (!createRes.ok) {
+          createRes = await fetch('/api/posts', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: '',
+              mediaUrl,
+              mediaType,
+              mediaUrls,
+              mediaTypes,
+              hashtags: [],
+              audience: 'public',
+              destination: mediaDest,
+              publisherType: isCompanyPublisher ? 'company' : 'user',
+              isCompanyPost: !!isCompanyPublisher,
+              authorIsCompany: !!isCompanyPublisher,
+            }),
+          });
         }
-        const d = await r.json();
-        if (!d?.post?.id) throw new Error('Post was not saved');
-        const saved: PostItem = d.post;
-        if (destination === 'text') setPosts(prev => [saved, ...prev]);
-        else setMyMediaPosts(prev => [saved, ...prev]);
-        playNewPostSound();
-        if (!mediaUrl) playNotificationSound();
-        setComposerText('');
-        clearPostMedia();
-        setShowComposer(false);
-      } catch (error) {
-        console.error('[Text post publish]', error);
-        setComposerError('تعذر نشر المنشور — حاول مرة ثانية');
+        if (!createRes.ok) {
+          const errBody = await createRes.text().catch(() => '');
+          let msg = '';
+          try { msg = (JSON.parse(errBody) as { error?: string }).error || ''; } catch { msg = errBody.slice(0, 120); }
+          throw new Error(msg || `فشل إنشاء المنشور (${createRes.status})`);
+        }
+        const createData = await createRes.json();
+        if (!createData?.post?.id) throw new Error('المنشور لم يُحفظ على السيرفر');
+
+        saved = {
+          ...createData.post,
+          text: createData.post.text || finalText || '',
+          mediaUrl,
+          mediaType,
+          mediaUrls,
+          mediaTypes,
+          audience: 'text',
+          destination: 'text',
+          publisherType: isCompanyPublisher ? 'company' : 'user',
+          isCompanyPost: !!isCompanyPublisher,
+          authorIsCompany: !!isCompanyPublisher,
+        } as PostItem;
+
+        if (finalText.trim() && !(createData.post.text || '').trim()) {
+          try {
+            await fetch(`/api/posts/${saved.id}/caption`, {
+              method: 'PATCH',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: finalText }),
+            });
+          } catch { /* keep local */ }
+          saved = {
+            ...saved,
+            text: finalText,
+            mediaUrl,
+            mediaType,
+            mediaUrls,
+            mediaTypes,
+            audience: 'text',
+            destination: 'text',
+          };
+        } else if (finalText.trim()) {
+          saved = { ...saved, text: finalText, mediaUrl, mediaType, mediaUrls, mediaTypes };
+        }
+      } else {
+        // ── بدون وسائط: منشور نصي مباشر ──
+        const createRes = await fetch('/api/posts', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: finalText,
+            mediaUrl: null,
+            mediaType: null,
+            mediaUrls: [],
+            mediaTypes: [],
+            hashtags: [],
+            audience: 'text',
+            destination: 'text',
+            publisherType: isCompanyPublisher ? 'company' : 'user',
+            isCompanyPost: !!isCompanyPublisher,
+            authorIsCompany: !!isCompanyPublisher,
+          }),
+        });
+        if (!createRes.ok) {
+          const errBody = await createRes.text().catch(() => '');
+          let msg = '';
+          try { msg = (JSON.parse(errBody) as { error?: string }).error || ''; } catch { msg = errBody.slice(0, 120); }
+          throw new Error(msg || `فشل إنشاء المنشور (${createRes.status})`);
+        }
+        const createData = await createRes.json();
+        if (!createData?.post?.id) throw new Error('المنشور لم يُحفظ على السيرفر');
+        saved = {
+          ...createData.post,
+          audience: 'text',
+          destination: 'text',
+          text: createData.post.text || finalText,
+          publisherType: isCompanyPublisher ? 'company' : 'user',
+          isCompanyPost: !!isCompanyPublisher,
+          authorIsCompany: !!isCompanyPublisher,
+        } as PostItem;
       }
+
+      if (!saved?.id) throw new Error('المنشور لم يُحفظ');
+
+      // وسم المنشور حسب نوع الناشر حتى يظهر في التبويب الصحيح (مستخدمين ≠ شركات)
+      const tagged = {
+        ...saved!,
+        publisherType: isCompanyPublisher ? 'company' as const : 'user' as const,
+        isCompanyPost: !!isCompanyPublisher,
+        authorIsCompany: !!isCompanyPublisher,
+      };
+      setPosts(prev => [tagged, ...prev]);
+      // صور/فيديو الشبكة فقط (destination photos/videos) — منتجات المنشورات النصية تبقى في التغذية العامة
+      if (tagged.mediaUrl && tagged.audience !== 'text' && tagged.destination !== 'text') {
+        setMyMediaPosts(prev => [tagged, ...prev]);
+      }
+      // افتح تبويب التغذية المناسب تلقائياً
+      setTextFeedTab(isCompanyPublisher ? 'companies' : 'app');
+      playNewPostSound();
+      setComposerText('');
+      setComposerProductTitle('');
+      setComposerProductDetails('');
+      setComposerProductPrice('');
+      setComposerProductExtras([]);
+      setComposerLinkInput('');
+      clearPostMedia();
+      setShowComposer(false);
+    } catch (error) {
+      console.error('[Post publish]', error);
+      setComposerError(error instanceof Error && error.message ? error.message : 'تعذر نشر المنشور — حاول مرة ثانية');
     } finally {
       setComposerPosting(false);
     }
@@ -6082,6 +9738,10 @@ export default function AddFriendPage() {
 
   async function toggleLike(post: PostItem) {
     if (guestGuard()) return;
+    // أنيميشن فقاعة عند اللايك (خاصة عند الإضافة)
+    if (!post.likedByMe) {
+      setLikeBubbleKey(prev => ({ ...prev, [post.id]: (prev[post.id] ?? 0) + 1 }));
+    }
     const previousPosts = posts;
     const previousMedia = myMediaPosts;
     const applyOptimistic = (p: PostItem) => p.id === post.id
@@ -6143,22 +9803,75 @@ export default function AddFriendPage() {
     }
   }
 
+  /** يبني حمولة الشير كرسالة شات واحدة: صورة/فيديو + نص في نفس المربع */
+  function buildPostShareBody(post: PostItem): string {
+    const mediaUrl = (post.mediaUrls && post.mediaUrls[0]) || post.mediaUrl || '';
+    const mediaType = (post.mediaTypes && post.mediaTypes[0]) || post.mediaType || (mediaUrl ? 'image' : 'text');
+    const payload = {
+      mediaUrl,
+      mediaType: mediaType || 'text',
+      comment: post.text || '',
+      postId: post.id,
+      authorName: post.authorName || post.authorUsername || '',
+      authorAvatarUrl: post.authorAvatarUrl || null,
+    };
+    return '__POST_SHARE__' + JSON.stringify(payload);
+  }
+
+  /** عند اختيار صديق: يرسل المنشور فوراً إلى شات الدردشة معه (مربع واحد صورة+تعليق) */
+  async function sharePostToFriend(friendId: string) {
+    if (guestGuard()) return;
+    if (!sharePost || sharingPost) return;
+    setSharingPost(true);
+    setShareError('');
+    try {
+      // 1) افتح/أنشئ محادثة سرية مع الصديق
+      const dmRes = await fetch('/api/secret-chat/dm', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ peerId: friendId }),
+      });
+      if (!dmRes.ok) throw new Error('تعذر فتح المحادثة');
+      const dmData = await dmRes.json() as { chatId?: number };
+      if (!dmData.chatId) throw new Error('تعذر فتح المحادثة');
+
+      // 2) أرسل المنشور كرسالة واحدة (صورة/فيديو + نص معاً)
+      const body = buildPostShareBody(sharePost);
+      const msgRes = await fetch('/api/secret-chat/messages', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: dmData.chatId, body }),
+      });
+      if (!msgRes.ok) throw new Error('تعذر إرسال المنشور للشات');
+
+      // 3) احتفظ بـ API الشير القديم لصندوق الوارد (إن وُجد)
+      try {
+        await fetch(`/api/posts/${sharePost.id}/share`, {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipientIds: [friendId] }),
+        });
+      } catch { /* اختياري */ }
+
+      setSharePost(null);
+      setShareRecipients([]);
+    } catch (error) {
+      setShareError(error instanceof Error ? error.message : 'تعذر إرسال المنشور');
+    } finally {
+      setSharingPost(false);
+    }
+  }
+
   async function sendPostShare() {
     if (guestGuard()) return;
     if (!sharePost || !shareRecipients.length) return;
     setSharingPost(true);
     setShareError('');
     try {
-      const response = await fetch(`/api/posts/${sharePost.id}/share`, {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipientIds: shareRecipients }),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({})) as { error?: string };
-        throw new Error(data.error ?? 'Failed to share');
+      for (const friendId of shareRecipients) {
+        await sharePostToFriend(friendId);
       }
-      setSharePost(null);
-      setShareRecipients([]);
     } catch (error) {
       setShareError(error instanceof Error ? error.message : 'تعذر إرسال المنشور');
     } finally {
@@ -6179,6 +9892,27 @@ export default function AddFriendPage() {
     if (!user) return;
     void fetchPostInteractions();
   }, [user, fetchPostInteractions, tick]);
+
+  // تحميل مشاركات المستخدمين الواردة (قسم Chat في الجرس)
+  useEffect(() => {
+    if (!user?.id) {
+      setUserShareInbox([]);
+      return;
+    }
+    const refresh = () => setUserShareInbox(loadUserShareInbox(user.id));
+    refresh();
+    const onEvt = (e: Event) => {
+      const d = (e as CustomEvent).detail as { userId?: string; list?: UserShareInboxItem[] } | undefined;
+      if (d?.userId && String(d.userId) !== String(user.id)) return;
+      setUserShareInbox(Array.isArray(d?.list) ? d!.list! : loadUserShareInbox(user.id));
+    };
+    window.addEventListener('stooorna:user-share-inbox', onEvt as EventListener);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('stooorna:user-share-inbox', onEvt as EventListener);
+      window.removeEventListener('storage', refresh);
+    };
+  }, [user?.id]);
 
   const fetchSharedInbox = useCallback(async () => {
     try {
@@ -6606,6 +10340,62 @@ export default function AddFriendPage() {
   const [_textPostsMenuOpen, setTextPostsMenuOpen] = useState(false);
   // سحب لتحديث — Stooorna ثابتة في الهيدر مع ذبذبة خفيفة فقط
   const textPostsScrollRef = useRef<HTMLDivElement | null>(null);
+  // إخفاء الشريطين بدون setState على كل scroll (أداء أفضل — تحديث DOM مباشرة + rAF)
+  const postsChromeTopRef = useRef<HTMLDivElement | null>(null);
+  const postsChromeBottomRef = useRef<HTMLDivElement | null>(null);
+  const postsChromeVisibleRef = useRef(true);
+  const lastPostsScrollTopRef = useRef(0);
+  const postsChromeRafRef = useRef(0);
+
+  function applyPostsChromeVisible(visible: boolean) {
+    if (postsChromeVisibleRef.current === visible) return;
+    postsChromeVisibleRef.current = visible;
+    const top = postsChromeTopRef.current;
+    const bottom = postsChromeBottomRef.current;
+    if (top) {
+      top.style.transform = visible ? 'translate3d(0,0,0)' : 'translate3d(0,-100%,0)';
+      top.style.opacity = visible ? '1' : '0';
+      top.style.pointerEvents = visible ? 'auto' : 'none';
+    }
+    if (bottom) {
+      bottom.style.transform = visible ? 'translate3d(0,0,0)' : 'translate3d(0,100%,0)';
+      bottom.style.opacity = visible ? '1' : '0';
+      bottom.style.pointerEvents = visible ? 'auto' : 'none';
+    }
+  }
+
+  function handleTextPostsScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    const current = el.scrollTop;
+    const delta = current - lastPostsScrollTopRef.current;
+    lastPostsScrollTopRef.current = current;
+    // جدولة إطار واحد فقط — لا نعيد رسم React ولا نكدّس rAF
+    if (postsChromeRafRef.current) return;
+    postsChromeRafRef.current = requestAnimationFrame(() => {
+      postsChromeRafRef.current = 0;
+      if (current <= 4) {
+        applyPostsChromeVisible(true);
+      } else if (delta > 3) {
+        applyPostsChromeVisible(false);
+      } else if (delta < -3) {
+        applyPostsChromeVisible(true);
+      }
+    });
+  }
+
+  // إعادة إظهار الهيدرين تلقائياً كل ما تُفتح صفحة البوستات النصية من جديد
+  useEffect(() => {
+    if (textPostsPageOpen) {
+      lastPostsScrollTopRef.current = 0;
+      applyPostsChromeVisible(true);
+    }
+    return () => {
+      if (postsChromeRafRef.current) {
+        cancelAnimationFrame(postsChromeRafRef.current);
+        postsChromeRafRef.current = 0;
+      }
+    };
+  }, [textPostsPageOpen]);
 
   // Refresh text posts in the background while this page is open. The current UI
   // remains mounted, so open media, post details, and the composer are unaffected.
@@ -6626,16 +10416,17 @@ export default function AddFriendPage() {
     return () => window.clearInterval(intervalId);
   }, [textPostsPageOpen, fetchPosts]);
 
-  // Keep the bottom navigation label in sync with the text-posts page.
-  // لا نرسل open:false في cleanup هذا الـ effect — كان يسبب ثبات Home بدل ×
+  // مزامنة الشريط السفلي: حدث + class على body (أوثق عند إعادة الدخول للتطبيق)
+  // لا نرسل open:false في cleanup — يسبب سباق StrictMode فيُظهر الشريط فوق صفحة البوستات
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('stooorna:text-posts-state', { detail: { open: textPostsPageOpen } }));
-  }, [textPostsPageOpen]);
-  useEffect(() => {
+    try {
+      document.body.classList.toggle('stooorna-text-posts-open', textPostsPageOpen);
+    } catch { /* ignore */ }
     return () => {
-      window.dispatchEvent(new CustomEvent('stooorna:text-posts-state', { detail: { open: false } }));
+      try { document.body.classList.remove('stooorna-text-posts-open'); } catch { /* ignore */ }
     };
-  }, []);
+  }, [textPostsPageOpen]);
 
   // فتح من الشريط السفلي (أيقونة البوست) بدون أخطاء تنقّل
   useEffect(() => {
@@ -6646,11 +10437,19 @@ export default function AddFriendPage() {
     // ضغط مطوّل من الشريط السفلي → فتح بكس نشر بوست نصي
     // openTextComposer=1 (الرسمي) أو compose=1 (توافق قديم)
     if (searchParams.get('openTextComposer') === '1' || searchParams.get('compose') === '1') {
+      if (!user) {
+        navigate('/settings');
+        return;
+      }
+      // الأفراد لا يملكون صلاحية نشر بوست — للشركات فقط
+      if (!isCompanyUserAccount(user, companies)) {
+        setTextPostsPageOpen(true);
+        return;
+      }
       setTextPostsPageOpen(true);
       setComposerDestination('text');
       setComposerError('');
       try { clearPostMedia(); } catch { /* */ }
-      // تأخير بسيط حتى تُركَّب طبقة الصفحة ثم تفتح الشيت فوقها
       const t = window.setTimeout(() => setShowComposer(true), 50);
       return () => window.clearTimeout(t);
     }
@@ -6670,14 +10469,23 @@ export default function AddFriendPage() {
     };
     // ضغط مطوّل على أيقونة البوستات في الشريط السفلي → نفس بكس «نشر بوست نصي»
     const openComposerFromNav = () => {
-      setTextPostsPageOpen(true);
+      const currentUser = latestUserRef.current;
+      if (!currentUser) {
+        navigate('/settings');
+        return;
+      }
+      // Individuals: no New Post — open the feed only
+      if (!isCompanyUserAccount(currentUser, latestCompaniesRef.current)) {
+        setTextPostsPageOpen(true);
+        setTextPostsMenuOpen(false);
+        return;
+      }
+      // Companies: open the publish/composer page directly, without opening the public feed behind it
       setTextPostsMenuOpen(false);
       setComposerDestination('text');
       setComposerError('');
       try { clearPostMedia(); } catch { /* */ }
-      // ضمان فتح الشيت حتى لو وصلت الأحداث قبل اكتمال الرندر
       window.setTimeout(() => setShowComposer(true), 0);
-      window.setTimeout(() => setShowComposer(true), 80);
     };
     window.addEventListener('stooorna:open-text-posts', openFromNav);
     window.addEventListener('stooorna:close-text-posts', closeFromNav);
@@ -6747,12 +10555,114 @@ export default function AddFriendPage() {
   //    next to "Likes" in the profile stats row opens a floating, horizontally-scrollable strip
   //    of friends at the top of the screen; tapping a friend opens their mini profile. ──
   const [namesBarOpen, setNamesBarOpen] = useState(false);
+  const [storyMoreOpen, setStoryMoreOpen] = useState(false);
+  const [friendsPanelTab, setFriendsPanelTab] = useState<'friends' | 'company'>('friends');
+  const [storyMediaOpen, setStoryMediaOpen] = useState(false);
+  const [storyMediaText, setStoryMediaText] = useState('');
+  const [storyMediaUrl, setStoryMediaUrl] = useState('');
+  const [storyMediaPreview, setStoryMediaPreview] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
+  const [storyMediaFile, setStoryMediaFile] = useState<File | null>(null);
+  const [storyMediaPosting, setStoryMediaPosting] = useState(false);
+  const [storyMediaError, setStoryMediaError] = useState('');
+  const storyMediaImageRef = useRef<HTMLInputElement>(null);
+  const storyMediaVideoRef = useRef<HTMLInputElement>(null);
+  // ── Company accounts directory (registered company profiles only) ──
+  interface CompanyAccount {
+    id: string;
+    name: string | null;
+    tradeName?: string | null;
+    username: string | null;
+    email: string | null;
+    avatarUrl?: string | null;
+    ownerName?: string | null;
+  }
+  const [companies, setCompanies] = useState<CompanyAccount[]>([]);
+  useEffect(() => { latestCompaniesRef.current = companies; }, [companies]);
+  /** شركة = New Post + إعلان قصة؛ فرد = قصة فقط (بدون بوست) */
+
+  const businessApproved = useBusinessApproved(user?.id ? String(user.id) : null);
+  const isCompanyPublisher = useMemo(
+    () => isCompanyUserAccount(user, companies) || businessApproved,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, user?.id, (user as any)?.accountType, (user as any)?.email, companies, businessApproved],
+  );
+
+  /** فيد البوست النصي: قسم التطبيق (مستخدمين) | قسم الشركات */
+  const [textFeedTab, setTextFeedTab] = useState<'app' | 'companies'>('app');
+  /** مشاركة بوست مستخدم → اختيار مستلم */
+  const [userSharePickPost, setUserSharePickPost] = useState<PostItem | null>(null);
+  const [userShareNote, setUserShareNote] = useState('');
+  /** مشاركات واردة من مستخدمين (ميني شات في الجرس) */
+  const [userShareInbox, setUserShareInbox] = useState<Array<{
+    id: string; fromId: string; fromName: string | null; fromUsername: string | null;
+    fromAvatar: string | null; post: PostItem; note: string; at: number; read: boolean;
+  }>>([]);
+
+  const myLiveActive = useLiveBroadcastActive(user?.id ? String(user.id) : null);
+
+  // Publish the text-posts alert state so the bottom bar radar button can mirror it
+  useEffect(() => {
+    const newPosts = newPostsAvailable > 0;
+    const unread = userShareInbox.some(x => !x.read);
+    const detail = { newPosts, alert: !textPostsPageOpen && (newPosts || unread) };
+    try { (window as any).__stooornaTextPostsAlert = detail; } catch { /* ignore */ }
+    window.dispatchEvent(new CustomEvent('stooorna:text-posts-alert', { detail }));
+  }, [textPostsPageOpen, newPostsAvailable, userShareInbox]);
+  const [companyInboxOpen, setCompanyInboxOpen] = useState(false);
+  const [companyInboxTick, setCompanyInboxTick] = useState(0);
+  const [userShareChatPeer, setUserShareChatPeer] = useState<{
+    id: string; name: string | null; username: string | null; avatarUrl: string | null; post?: PostItem | null; note?: string;
+  } | null>(null);
+  const [userSharePickFriend, setUserSharePickFriend] = useState<Friend | null>(null);
+  const [shareMiniText, setShareMiniText] = useState('');
+  const [shareMiniMsgs, setShareMiniMsgs] = useState<ShareThreadMsg[]>([]);
+  const [shareMiniRecording, setShareMiniRecording] = useState(false);
+  const shareMiniRecRef = useRef<MediaRecorder | null>(null);
+
+  useEffect(() => {
+    const bump = () => setCompanyInboxTick(x => x + 1);
+    window.addEventListener('stooorna:company-inbox', bump);
+    window.addEventListener('stooorna:company-inbox-unread', bump);
+    window.addEventListener('stooorna:user-product-chats', bump);
+    return () => {
+      window.removeEventListener('stooorna:company-inbox', bump);
+      window.removeEventListener('stooorna:company-inbox-unread', bump);
+      window.removeEventListener('stooorna:user-product-chats', bump);
+    };
+  }, []);
+  function closeShareMiniChat() {
+    const peer = userShareChatPeer;
+    setUserShareChatPeer(null);
+    setShareMiniText('');
+    setShareMiniRecording(false);
+    if (!peer) return;
+    const peerIsCompany = companies.some(c => String(c.id) === String(peer.id))
+      || isCompanyUserAccount({ id: peer.id, username: peer.username, name: peer.name }, companies);
+    if (peerIsCompany && user && String(peer.id) !== String(user.id)) {
+      setViewingProfile({
+        id: peer.id,
+        name: peer.name || peer.username || 'شركة',
+        username: peer.username,
+        avatarUrl: peer.avatarUrl,
+        isCompany: true,
+      });
+    }
+    try { window.dispatchEvent(new CustomEvent('stooorna:close-chat-panels')); } catch { /* */ }
+    if (isCompanyPublisher) {
+      try { localStorage.setItem('stooorna_company_inbox_unread', '0'); } catch { /* */ }
+      setCompanyInboxTick(x => x + 1);
+    }
+  }
+  const shareMiniChunksRef = useRef<Blob[]>([]);
+  const shareMiniFileRef = useRef<HTMLInputElement | null>(null);
+
+  const [companiesLoading, setCompaniesLoading] = useState(false);
   // Also auto-reopens when returning from the chat page's back button after chatting
   // from a friend's profile (see FriendStoryProfile's chat button), via the
   // ?openProfile=<id> marker (+ name/username/avatar) left in the URL before
   // navigating to /chat — mirrors the ?openTextPosts=1 pattern above.
   const [viewingProfile, setViewingProfile] = useState<{
-    id: string; name: string | null; username: string | null; avatarUrl: string | null;
+    id: string; name: string | null; username: string | null; avatarUrl: string | null; isCompany?: boolean;
   } | null>(() => {
     const openProfileId = searchParams.get('openProfile');
     if (!openProfileId) return null;
@@ -6761,8 +10671,78 @@ export default function AddFriendPage() {
       name: searchParams.get('openProfileName') || null,
       username: searchParams.get('openProfileUsername') || null,
       avatarUrl: searchParams.get('openProfileAvatar') || null,
+      isCompany: searchParams.get('openProfileCompany') === '1',
     };
   });
+  useEffect(() => {
+    if (searchParams.get('openChats') === '1' || searchParams.get('openFriendsPanel') === '1') {
+      setFriendsPanelTab(user ? 'friends' : 'company');
+      setNamesBarOpen(true);
+      try { window.dispatchEvent(new CustomEvent('stooorna:friends-panel-opened')); } catch { /* */ }
+    }
+    if (searchParams.get('panel') !== 'chats') {
+      setUserShareChatPeer(null);
+    }
+  }, [searchParams, user]);
+
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const d = (e as CustomEvent).detail as { tab?: 'friends' | 'company' } | undefined;
+      setFriendsPanelTab(d?.tab || (user ? 'friends' : 'company'));
+      setNamesBarOpen(true);
+      try { window.dispatchEvent(new CustomEvent('stooorna:friends-panel-opened')); } catch { /* */ }
+    };
+    const onClose = () => {
+      setNamesBarOpen(false);
+      try {
+        const next = new URLSearchParams(window.location.search);
+        if (next.has('openFriendsPanel') || next.has('openChats')) {
+          next.delete('openFriendsPanel');
+          next.delete('openChats');
+          const q = next.toString();
+          window.history.replaceState({}, '', window.location.pathname + (q ? '?' + q : ''));
+        }
+      } catch { /* */ }
+      try { window.dispatchEvent(new CustomEvent('stooorna:friends-panel-closed')); } catch { /* */ }
+    };
+    window.addEventListener('stooorna:open-friends-panel', onOpen as EventListener);
+    window.addEventListener('stooorna:close-friends-panel', onClose as EventListener);
+    const onOpenMedia = () => {
+      setStoryMediaOpen(true);
+      setStoryMediaError('');
+      try { window.dispatchEvent(new CustomEvent('stooorna:story-media-opened')); } catch { /* */ }
+    };
+    const onCloseMedia = () => {
+      setStoryMediaOpen(false);
+      try { window.dispatchEvent(new CustomEvent('stooorna:story-media-closed')); } catch { /* */ }
+    };
+    window.addEventListener('stooorna:open-story-media', onOpenMedia as EventListener);
+    window.addEventListener('stooorna:close-story-media', onCloseMedia as EventListener);
+    return () => {
+      window.removeEventListener('stooorna:open-friends-panel', onOpen as EventListener);
+      window.removeEventListener('stooorna:close-friends-panel', onClose as EventListener);
+      window.removeEventListener('stooorna:open-story-media', onOpenMedia as EventListener);
+      window.removeEventListener('stooorna:close-story-media', onCloseMedia as EventListener);
+    };
+  }, [user]);
+
+  // تحميل دليل الشركات مبكراً لتصنيف الستوريات والشير (وليس فقط عند فتح اللوحة)
+  useEffect(() => {
+    void loadCompanies();
+  }, []);
+  // Public company directory — reload when the panel opens
+  useEffect(() => {
+    if (namesBarOpen) {
+      void loadCompanies();
+    }
+  }, [namesBarOpen]);
+
+  // إعادة تحميل دليل الشركات عند فتح تبويب Company (متاح للجميع — ضيف ومسجّل)
+  useEffect(() => {
+    if (namesBarOpen && friendsPanelTab === 'company') {
+      void loadCompanies();
+    }
+  }, [namesBarOpen, friendsPanelTab]);
   const [secretChats, setSecretChats] = useState<SecretChat[]>([]);
   const [responding, setResponding] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -6948,6 +10928,332 @@ export default function AddFriendPage() {
       ));
     } catch {/* silent */}
   };
+
+  /** فتح بروفايل الشركة — يعمل حتى لو المصدر محلي؛ يحاول حل معرّف المستخدم الحقيقي */
+  const openCompanyProfile = async (c: CompanyAccount) => {
+    setNamesBarOpen(false);
+
+    let id = String(c.id || '');
+    let username = (c.username || '').replace(/^@/, '').trim() || null;
+    // Keep Arabic company title as the display name (primary)
+    const displayName = c.name || c.tradeName || null;
+    let name = displayName;
+    let avatarUrl = c.avatarUrl ?? null;
+
+    // شركة ليبرا العقارية → بروفايل @Libra (English account)
+    if (/ليبر/.test(String(c.name || c.tradeName || '')) && !username) {
+      username = 'Libra';
+    }
+    if (/libra/i.test(String(c.name || c.tradeName || c.username || '')) && !username) {
+      username = 'Libra';
+    }
+
+    try {
+      // Resolve real profile by username first (Libra)
+      const tryNames = [username, 'Libra'].filter(Boolean) as string[];
+      for (const un of tryNames) {
+        try {
+          const r = await fetch(`/api/users/by-username/${encodeURIComponent(un)}`, { credentials: 'include' });
+          if (!r.ok) continue;
+          const d = await r.json();
+          id = String(d.id || d.userId || d.user?.id || id);
+          username = (d.username || un || '').replace(/^@/, '') || username;
+          // Keep Arabic display name if we already have it
+          if (!name || !/[؀-ۿ]/.test(name)) {
+            name = d.companyName || d.name || name;
+          }
+          avatarUrl = d.avatarUrl || d.image || avatarUrl;
+          break;
+        } catch { /* next */ }
+      }
+      if ((!id || id.startsWith('local-company-')) && c.email) {
+        for (const url of [
+          `/api/users/by-email?email=${encodeURIComponent(c.email)}`,
+          `/api/users/search?q=${encodeURIComponent(c.email)}`,
+          `/api/users?email=${encodeURIComponent(c.email)}`,
+        ]) {
+          try {
+            const r = await fetch(url, { credentials: 'include' });
+            if (!r.ok) continue;
+            const d = await r.json();
+            const u = Array.isArray(d) ? d[0] : (d.user || d.users?.[0] || d);
+            if (u && (u.id || u.userId)) {
+              id = String(u.id || u.userId);
+              username = (u.username || username || '').replace(/^@/, '') || username;
+              if (!name || !/[؀-ۿ]/.test(name)) {
+                name = u.companyName || u.name || name;
+              }
+              avatarUrl = u.avatarUrl || u.image || avatarUrl;
+              break;
+            }
+          } catch { /* next */ }
+        }
+      }
+    } catch { /* continue */ }
+
+    if (!id) id = `company-${Date.now()}`;
+
+    setViewingProfile({
+      id,
+      name: displayName || name, // Arabic title stays primary
+      username,
+      avatarUrl,
+      isCompany: true,
+    });
+  };
+
+  const loadCompanies = async () => {
+    setCompaniesLoading(true);
+    try {
+      const byId = new Map<string, CompanyAccount>();
+
+      const hasArabic = (s: string | null | undefined) => /[\u0600-\u06FF]/.test(String(s || ''));
+      const normalizeKey = (c: { email?: string | null; username?: string | null; name?: string | null; tradeName?: string | null }) => {
+        const em = String(c.email || '').trim().toLowerCase();
+        if (em) return `e:${em}`;
+        const un = String(c.username || '').replace(/^@/, '').trim().toLowerCase();
+        if (un) return `u:${un}`;
+        const raw = `${c.name || ''} ${c.tradeName || ''}`
+          .toLowerCase()
+          .replace(/شركة|company|ال|لل|و/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        // collapse common aliases: ليبر / libra
+        const alias = raw.replace(/ليبرا|ليبر/g, 'libra').replace(/[^a-z0-9\u0600-\u06ff]+/g, '');
+        return alias ? `n:${alias}` : '';
+      };
+
+      // Personal accounts that must never appear under Company
+      const PERSONAL_BLOCKLIST = new Set([
+        'nadoosha', 'nadoosha❤️', '❤️nadoosha',
+      ]);
+
+      const isExplicitCompany = (x: any, fromCompaniesEndpoint: boolean) => {
+        if (!x || typeof x !== 'object') return false;
+        const accountType = String(x.accountType || x.type || x.role || x.userType || '').toLowerCase();
+        if (accountType === 'company' || accountType === 'business') return true;
+        if (x.isCompany === true || x.company === true) return true;
+        if (x.companyName || x.tradeName || x.licenseNumber || x.commercialLicense) return true;
+        if (fromCompaniesEndpoint) return true; // pure companies API
+        // Arabic company name signal only when not a plain personal username list
+        if (hasArabic(x.name) && /شركة|مؤسسة/.test(String(x.name || ''))) return true;
+        return false;
+      };
+
+      const isPersonalBlocked = (x: any) => {
+        const un = String(x.username || x.name || '').replace(/^@/, '').replace(/❤️/g, '').trim().toLowerCase();
+        if (PERSONAL_BLOCKLIST.has(un)) return true;
+        if (PERSONAL_BLOCKLIST.has(String(x.username || '').replace(/^@/, '').trim().toLowerCase())) return true;
+        // heart-prefixed personal display names without company flags
+        if (/❤️/.test(String(x.name || x.username || '')) && !x.companyName && !x.tradeName && !x.licenseNumber) {
+          const t = String(x.accountType || '').toLowerCase();
+          if (t !== 'company' && t !== 'business') return true;
+        }
+        return false;
+      };
+
+      const pushOne = (x: any, fromCompaniesEndpoint = false) => {
+        if (!x || typeof x !== 'object') return;
+        if (isPersonalBlocked(x)) return;
+        if (!isExplicitCompany(x, fromCompaniesEndpoint)) return;
+
+        const id = String(x.id || x.userId || x._id || x.uid || '');
+        if (!id) return;
+
+        // Prefer Arabic company title as primary display name
+        const arName = [x.companyName, x.name, x.tradeName].find(s => hasArabic(s)) || null;
+        const enName = [x.companyName, x.name, x.tradeName].find(s => s && !hasArabic(s)) || null;
+        const primaryName = arName || x.companyName || x.name || enName || null;
+        const trade = x.tradeName || (arName && enName && arName !== enName ? enName : null) || x.commercialName || null;
+
+        const next: CompanyAccount = {
+          id,
+          name: primaryName,
+          tradeName: trade && trade !== primaryName ? trade : (x.tradeName || null),
+          username: x.username || null,
+          email: x.email || null,
+          avatarUrl: x.avatarUrl || x.image || null,
+          ownerName: x.ownerName || x.owner || null,
+        };
+
+        // Deduplicate by email / username / normalized brand (e.g. Libra Company + شركة ليبرا)
+        const key = normalizeKey(next) || id;
+        let merged = false;
+        for (const [existingId, prev] of byId.entries()) {
+          const prevKey = normalizeKey(prev) || existingId;
+          const sameEmail = next.email && prev.email && next.email.toLowerCase() === prev.email.toLowerCase();
+          const sameUser =
+            next.username && prev.username &&
+            next.username.replace(/^@/, '').toLowerCase() === prev.username.replace(/^@/, '').toLowerCase();
+          const sameBrand = key && prevKey && key === prevKey;
+          if (sameEmail || sameUser || sameBrand) {
+            const preferAr = hasArabic(next.name) ? next.name : (hasArabic(prev.name) ? prev.name : (next.name || prev.name));
+            const otherName = preferAr === next.name ? (prev.name !== preferAr ? prev.name : next.tradeName) : (next.name !== preferAr ? next.name : prev.tradeName);
+            byId.delete(existingId);
+            // Prefer real user id over local-company-*
+            const preferId = String(existingId).startsWith('local-company-') ? id
+              : String(id).startsWith('local-company-') ? existingId
+              : id;
+            byId.set(preferId, {
+              id: preferId,
+              name: preferAr || next.name || prev.name,
+              tradeName: (next.tradeName || prev.tradeName || otherName || null),
+              username: next.username || prev.username,
+              email: next.email || prev.email,
+              avatarUrl: next.avatarUrl || prev.avatarUrl,
+              ownerName: next.ownerName || prev.ownerName,
+            });
+            merged = true;
+            break;
+          }
+        }
+        if (!merged) byId.set(id, next);
+      };
+
+      // Public company directory — no friendship required
+      const companyEndpoints = [
+        '/api/companies',
+        '/api/companies/public',
+        '/api/company/list',
+        '/api/company/public',
+        '/api/users?accountType=company',
+        '/api/users?type=company',
+        '/api/users?role=company',
+      ];
+      for (const url of companyEndpoints) {
+        try {
+          const r = await fetch(url, { credentials: 'include' });
+          if (!r.ok) continue;
+          const d = await r.json();
+          const list: any[] = Array.isArray(d)
+            ? d
+            : (d.companies || d.users || d.items || d.data || d.results || []);
+          if (!Array.isArray(list) || !list.length) continue;
+          for (const x of list) pushOne(x, true);
+          if (byId.size > 0 && !url.includes('/api/users')) break;
+        } catch { /* next */ }
+      }
+
+      // Do NOT dump entire /api/users into Company tab (prevents personal accounts like NaDooSha)
+
+      // Local company profile from Settings signup
+      try {
+        const raw = localStorage.getItem('stooorna_company_profile');
+        if (raw) {
+          const local = JSON.parse(raw) as {
+            companyName?: string; tradeName?: string; ownerName?: string; email?: string; username?: string; status?: string;
+          };
+          if (local?.companyName || local?.email) {
+            pushOne({
+              id: `local-company-${(local.email || local.companyName || 'x').toLowerCase()}`,
+              companyName: local.companyName,
+              tradeName: local.tradeName,
+              ownerName: local.ownerName,
+              email: local.email,
+              username: local.username || 'Libra',
+              isCompany: true,
+              accountType: 'company',
+            }, true);
+          }
+        }
+      } catch { /* ignore */ }
+
+      // Cached directory + active registry only
+      try {
+        const dirRaw = localStorage.getItem('stooorna_companies_directory');
+        if (dirRaw) {
+          const dir = JSON.parse(dirRaw) as any[];
+          if (Array.isArray(dir)) dir.forEach(x => pushOne({ ...x, isCompany: true }, true));
+        }
+      } catch { /* ignore */ }
+
+      try {
+        const regRaw = localStorage.getItem('stooorna_companies_registry');
+        if (regRaw) {
+          const reg = JSON.parse(regRaw) as Array<{
+            id: string; companyName?: string; tradeName?: string; ownerName?: string;
+            email?: string; status?: string; userId?: string | null; username?: string;
+          }>;
+          if (Array.isArray(reg)) {
+            for (const c of reg) {
+              if (c.status && c.status !== 'active') continue;
+              pushOne({
+                id: c.userId || c.id,
+                companyName: c.companyName,
+                tradeName: c.tradeName,
+                ownerName: c.ownerName,
+                email: c.email,
+                username: c.username || undefined,
+                isCompany: true,
+                accountType: 'company',
+              }, true);
+            }
+          }
+        }
+      } catch { /* ignore */ }
+
+      // Final pass: drop personal blocklist + prefer Arabic title for Libra brand
+      const finalMap = new Map<string, CompanyAccount>();
+      for (const c of byId.values()) {
+        if (isPersonalBlocked(c)) continue;
+        const un = String(c.username || '').replace(/^@/, '').toLowerCase();
+        if (un === 'nadoosha') continue;
+        // Drop pure English "Libra Company" duplicate if Arabic card exists
+        const key = normalizeKey(c) || c.id;
+        const existing = [...finalMap.values()].find(p => (normalizeKey(p) || p.id) === key);
+        if (existing) {
+          const preferAr = hasArabic(c.name) ? c : hasArabic(existing.name) ? existing : c;
+          const other = preferAr === c ? existing : c;
+          finalMap.delete([...finalMap.entries()].find(([, v]) => v === existing)![0]);
+          finalMap.set(preferAr.id, {
+            ...preferAr,
+            name: preferAr.name || other.name,
+            tradeName: preferAr.tradeName || other.tradeName || (other.name !== preferAr.name ? other.name : null),
+            username: preferAr.username || other.username || 'Libra',
+            email: preferAr.email || other.email,
+            avatarUrl: preferAr.avatarUrl || other.avatarUrl,
+            ownerName: preferAr.ownerName || other.ownerName,
+          });
+        } else {
+          // If English-only "Libra Company" and no Arabic yet, keep but rename display if registry has Arabic
+          finalMap.set(c.id, c);
+        }
+      }
+
+      // Hard-remove English-only Libra Company card when Arabic Libra company exists
+      const list = [...finalMap.values()];
+      const hasArabicLibra = list.some(c => hasArabic(c.name) && /ليبر/.test(String(c.name)));
+      const mapped = list
+        .filter(c => {
+          if (hasArabicLibra && !hasArabic(c.name) && /libra\s*company/i.test(String(c.name || ''))) return false;
+          if (/nadoosha/i.test(String(c.name || c.username || ''))) return false;
+          return true;
+        })
+        .map(c => {
+          // Ensure Arabic Libra opens the English Libra profile (username Libra)
+          if (hasArabic(c.name) && /ليبر/.test(String(c.name)) && !c.username) {
+            return { ...c, username: 'Libra' };
+          }
+          return c;
+        })
+        .sort((a, b) => (a.name || a.username || '').localeCompare(b.name || b.username || '', 'ar'));
+
+      try {
+        localStorage.setItem(
+          'stooorna_companies_directory',
+          JSON.stringify(mapped.filter(c => !String(c.id).startsWith('local-company-')).slice(0, 500)),
+        );
+      } catch { /* ignore */ }
+
+      setCompanies(mapped);
+    } catch {
+      setCompanies([]);
+    } finally {
+      setCompaniesLoading(false);
+    }
+  };
+
+
   const loadSecretChats = async () => {
     try {
       const r = await fetch('/api/secret-chat', {
@@ -7625,7 +11931,7 @@ export default function AddFriendPage() {
 
       <div className="flex flex-col" style={{
       minHeight: '100dvh',
-      background: C.bg,
+      background: PAGE_BG,
       fontFamily: 'var(--font-sans)'
     }}>
 
@@ -7634,9 +11940,9 @@ export default function AddFriendPage() {
         <div className="sticky top-0 z-20" style={{
           position: 'relative',
           paddingTop: 40,
-          background: C.headerBg,
+          background: CLR_HEADER_BG,
           backdropFilter: 'blur(14px)',
-          borderBottom: `1px solid ${C.navBorder}`,
+          borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
@@ -7645,123 +11951,7 @@ export default function AddFriendPage() {
               tucked away instead of taking their own row. ── */}
           {/* قائمة الثلاث خطوط أُزيلت بالكامل من الهوم — الموسيقى في الإعدادات */}
 
-          {/* ── Globe (search-friends) button — hidden for guests ── */}
-          {user && (
-          <motion.button
-            whileTap={{ scale: 0.88 }}
-            onClick={() => {
-              if (textPostsPageOpen) {
-                setTextPostsPageOpen(false);
-                setTextPostsMenuOpen(false);
-              } else {
-                textPostsOpenedFromUrl.current = false;
-                setTextPostsPageOpen(true);
-              }
-            }}
-            aria-label={textPostsPageOpen ? "Close text posts" : newPostsAvailable > 0 ? "New text posts available" : "Text posts"}
-            style={{
-              position: 'absolute', top: 84, right: 14, zIndex: 7,
-              width: 32, height: 32, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.05)',
-              border: `1px solid ${!textPostsPageOpen && newPostsAvailable > 0 ? 'rgba(239,68,68,0.55)' : 'rgba(255,255,255,0.1)'}`,
-              color: C.primary, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              opacity: headerOpen ? 1 : 0,
-              pointerEvents: headerOpen ? 'auto' : 'none',
-              transition: headerOpen
-                ? 'opacity 240ms ease-out 200ms'
-                : 'opacity 140ms ease-in',
-            }}
-          >
-            <style>{`
-              @keyframes stooornaTextPostSpin {
-                from { transform: rotate(0deg); }
-                to { transform: rotate(360deg); }
-              }
-            `}</style>
-            <AnimatePresence mode="wait" initial={false}>
-              {textPostsPageOpen ? (
-                <motion.span
-                  key="close-text-posts"
-                  initial={{ opacity: 0, rotate: -90, scale: 0.65 }}
-                  animate={{ opacity: 1, rotate: 0, scale: 1 }}
-                  exit={{ opacity: 0, rotate: 90, scale: 0.65 }}
-                  transition={{ duration: 0.2 }}
-                  style={{ display: 'flex' }}
-                >
-                  <X size={19} strokeWidth={2.1} />
-                </motion.span>
-              ) : (
-                <motion.span
-                  key="open-text-posts"
-                  initial={{ opacity: 0, scale: 0.65 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.65 }}
-                  transition={{ duration: 0.2 }}
-                  style={{ display: 'flex', width: 18, height: 18 }}
-                >
-                  <span
-                    aria-hidden
-                    style={{
-                      position: 'relative',
-                      width: 18,
-                      height: 18,
-                      display: 'block',
-                      animation: 'stooornaTextPostSpin 7s linear infinite',
-                    }}
-                  >
-                    <span style={{
-                      position: 'absolute', inset: 0, borderRadius: '50%',
-                      border: `1.5px solid ${newPostsAvailable > 0 ? 'rgba(239,68,68,0.7)' : 'rgba(0,188,212,0.45)'}`,
-                      boxSizing: 'border-box',
-                    }} />
-                    <span style={{
-                      position: 'absolute',
-                      inset: 3.2,
-                      borderRadius: '50%',
-                      background: newPostsAvailable > 0 ? '#ef4444' : 'rgba(0,188,212,0.28)',
-                      boxShadow: newPostsAvailable > 0
-                        ? '0 0 8px rgba(239,68,68,0.55)'
-                        : '0 0 6px rgba(0,188,212,0.25)',
-                      transition: 'background 0.25s, box-shadow 0.25s',
-                    }} />
-                    <span style={{
-                      position: 'absolute',
-                      left: '50%',
-                      top: '50%',
-                      width: 11,
-                      height: 2,
-                      marginLeft: -1.5,
-                      marginTop: -1,
-                      borderRadius: 2,
-                      background: newPostsAvailable > 0 ? '#ffffff' : '#00BCD4',
-                      transformOrigin: '1.5px 50%',
-                      boxShadow: newPostsAvailable > 0
-                        ? '0 0 4px rgba(255,255,255,0.7)'
-                        : '0 0 4px rgba(0,188,212,0.6)',
-                      transition: 'background 0.25s, box-shadow 0.25s',
-                    }} />
-                    <span style={{
-                      position: 'absolute',
-                      left: '50%',
-                      top: '50%',
-                      width: 4,
-                      height: 4,
-                      marginLeft: 7,
-                      marginTop: -2,
-                      borderRadius: '50%',
-                      background: newPostsAvailable > 0 ? '#ffffff' : '#00BCD4',
-                      boxShadow: newPostsAvailable > 0
-                        ? '0 0 5px rgba(255,255,255,0.85)'
-                        : '0 0 5px rgba(0,188,212,0.8)',
-                      transition: 'background 0.25s, box-shadow 0.25s',
-                    }} />
-                  </span>
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </motion.button>
-          )}
+          {/* Animated radar (text posts) button - now in the bottom bar (RootLayout) */}
 
 
           {/* ── Everything above the Video|Post|Photo switcher (music button, avatar/stats
@@ -7811,7 +12001,8 @@ export default function AddFriendPage() {
                           if (myGroup) {
                             setViewerGroupIdx(storyGroups.indexOf(myGroup));
                           } else {
-                            setStoryPickerOpen('main');
+                            // بدون قائمة Photo/Video — افتح قائمة النشر (قصة / كاميرا)
+                            setPublishMenuOpen(true);
                           }
                         }}
                         disabled={storyUploading}
@@ -7829,7 +12020,7 @@ export default function AddFriendPage() {
                           <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={68} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
                         </div>
                       </motion.button>
-                      {/* + badge — its own button now: always opens the نشر للقصة/صورة/فيديو
+                      {/* + badge — its own button now: always opens the نشر إعلان للقصة/صورة/فيديو
                           menu, whether or not a story already exists. */}
                       <motion.button
                         whileTap={{ scale: 0.88 }}
@@ -7869,8 +12060,15 @@ export default function AddFriendPage() {
                 {(myUsername || myBio) && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {myUsername && (
-                      <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2 }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         @{myUsername}
+                        {businessApproved && (
+                          <span style={{
+                            fontSize: '0.55rem', fontWeight: 900, color: '#0a0a0a',
+                            background: '#eab308', borderRadius: 5, padding: '2px 6px',
+                            letterSpacing: '0.03em',
+                          }}>Business</span>
+                        )}
                       </span>
                     )}
                     {myUsername && myBio && (
@@ -7884,27 +12082,34 @@ export default function AddFriendPage() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: C.text }}>{myMediaPosts.length}</span>
-                    <span style={{ fontSize: '0.65rem', color: C.textDim }}>Post</span>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaPosts.length}</span>
+                    <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Post</span>
                   </div>
                   <motion.button
                     whileTap={{ scale: 0.94 }}
                     onClick={() => setFollowersModalOpen(true)}
                     style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                   >
-                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: C.text }}>{friends.length}</span>
-                    <span style={{ fontSize: '0.65rem', color: C.textDim }}>Followers</span>
+                    {!followersVisible ? (
+                      <Lock size={14} strokeWidth={2.2} color={CLR_TEXT_DIM} />
+                    ) : (
+                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{friends.length}</span>
+                    )}
+                    <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Followers</span>
                   </motion.button>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: C.text }}>{myMediaRepostsTotal}</span>
-                    <span style={{ fontSize: '0.65rem', color: C.textDim }}>Repost</span>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>
+                      {(user as any)?.viewsCount ?? (user as any)?.viewCount ?? myMediaPosts.reduce((s, p) => s + (Number((p as any).viewsCount ?? (p as any).views ?? 0) || 0), 0)}
+                    </span>
+                    <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Views</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: C.text }}>{myMediaLikesTotal}</span>
-                    <span style={{ fontSize: '0.65rem', color: C.textDim }}>Likes</span>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaLikesTotal}</span>
+                    <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
                   </div>
+
                 </div>
               </div>
             </div>
@@ -7928,7 +12133,11 @@ export default function AddFriendPage() {
                   alignItems: 'center',
                 }}
               >
-                {storyGroups.filter(g => g.userId !== user?.id).map((g) => {
+                {/* ستوريات المستخدمين فقط في شريط الهيدر — الشركات في تبويب Company */}
+                {storyGroups.filter(g => {
+                  if (g.userId === user?.id) return false;
+                  return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
+                }).map((g) => {
                   const realIdx = storyGroups.indexOf(g);
                   const hasUnseen = g.items.some(it => !it.seen);
                   return (
@@ -7962,7 +12171,7 @@ export default function AddFriendPage() {
                           </div>
                         </div>
                       </motion.button>
-                      <span style={{ fontSize: '0.55rem', color: C.textDim, maxWidth: 60, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: '0.55rem', color: CLR_TEXT_DIM, maxWidth: 60, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {g.username ? `@${g.username}` : g.name}
                       </span>
                     </div>
@@ -8001,47 +12210,27 @@ export default function AddFriendPage() {
                 style={{
                   display: 'block',
                   width: 36, height: 4, borderRadius: 2,
-                  background: C.primaryBorder,
+                  background: CLR_PRIMARY_BORDER,
                 }}
               />
             </motion.button>
           </div>
 
 
-          {/* ══ Content switcher — Videos | Photos. Lives in the sticky header, right
-              below the grabber, so it never moves when the feed below is scrolled and stays
-              visible even when the grabber collapses everything above it (music button,
-              avatar/stats row, stories strip). Text posts moved to their own fullscreen
-              page, opened via the pen icon next to the compose button. ══ */}
+          {/* Content header — single Post section */}
           {pageTab === 'profile' && (
             <div style={{ padding: '0 0 8px' }}>
-              {/* direction: 'ltr' forces this row to read left→right regardless of the page's
-                  own text direction, so the on-screen order is always exactly: Video - Photo */}
-              <div style={{ display: 'flex', width: '100%', marginBottom: 8, borderRadius: 0, overflow: 'hidden', borderTop: `1px solid ${C.tabBorder}`, borderBottom: `1px solid ${C.tabBorder}`, direction: 'ltr' }}>
-                {([
-                  { id: 'videos' as const, label: 'Video', icon: <Video size={14} strokeWidth={2} /> },
-                  { id: 'photos' as const, label: 'Photo', icon: <ImageIcon size={14} strokeWidth={2} /> },
-                ]).map((tab, index) => (
-                  <React.Fragment key={tab.id}>
-                    {index > 0 && <div style={{ width: 1, background: C.tabBorder }} />}
-                    <motion.button
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => setProfileContentTab(tab.id)}
-                      style={{
-                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-                        padding: '9px 4px', border: 'none', cursor: 'pointer',
-                        background: profileContentTab === tab.id ? C.tabActive : 'transparent',
-                        color: profileContentTab === tab.id ? C.primary : C.textDim,
-                        fontSize: '0.72rem', fontWeight: 700,
-                      }}
-                    >
-                      {tab.icon}
-                      {tab.label}
-                    </motion.button>
-                  </React.Fragment>
-                ))}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                padding: '9px 4px', marginBottom: 8,
+                borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}`,
+                color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800,
+                background: CLR_TAB_ACTIVE,
+              }}>
+                <FileText size={14} strokeWidth={2} />
+                {isCompanyPublisher ? 'المنتجات' : 'Post'}
               </div>
-              <div style={{ height: 1, background: C.navBorder }} />
+              <div style={{ height: 1, background: CLR_NAV_BORDER }} />
             </div>
           )}
         </div>
@@ -8104,150 +12293,116 @@ export default function AddFriendPage() {
                 )}
 
 
-                {/* ── My Videos grid — video posts recorded via the camera. Three squares per row,
-                {profileContentTab === 'text' && (
-                  <div style={{ padding: '10px 12px 4px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setTextPostsPageOpen(true)}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        padding: '16px 12px', borderRadius: 14, cursor: 'pointer',
-                        border: `1px solid ${C.primaryBorder}`, background: C.primaryFaint, color: C.primary,
-                        fontSize: '0.82rem', fontWeight: 700,
-                      }}
-                    >
-                      <FileText size={18} strokeWidth={2} />
-                      عرض منشورات الكتابة
-                    </button>
-                  </div>
-                )}
-
-                     same as Instagram's profile grid. Shown only on the "فيديوهات" tab. ── */}
-                
-                {profileContentTab === 'videos' && (myVideoPosts.length > 0 ? (
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(3, 1fr)',
-                    gap: 2,
-                    padding: '10px 2px 4px',
-                  }}>
-                    {myVideoPosts.map(post => {
-                      const thumbUrl = post.mediaUrls && post.mediaUrls.length > 0 ? post.mediaUrls[0] : post.mediaUrl;
-                      return (
-                        <motion.button
-                          key={post.id}
-                          whileTap={{ scale: 0.97 }}
-                          onClick={() => openMediaPostDetail(post)}
+                {/* ── My posts (text posts + publicly-published photos/videos, Video/Photo
+                    grids removed — everything I publish lands here). Same as the story/friend
+                    profile page: shown three-per-row regardless of type (text+video, text
+                    alone, or text+image), pinned post first. Tapping any tile opens the full
+                    post page the same way a text post opens (openTextPostDetail). ── */}
+                {(() => {
+                  let myTextPosts = combinedFeedPosts.filter(p =>
+                    !!user && String(p.authorId) === String(user.id)
+                  );
+                  // Single Post section — show all posts (no Video/Photo split)
+                  ;
+                  // المنشور المثبّت (إن وُجد) يظهر أولًا، والباقي يتبعه بترتيبه الطبيعي
+                  if (pinnedPostId !== null) {
+                    const pinnedIndex = myTextPosts.findIndex(p => p.id === pinnedPostId);
+                    if (pinnedIndex > 0) {
+                      const [pinned] = myTextPosts.splice(pinnedIndex, 1);
+                      myTextPosts.unshift(pinned);
+                    }
+                  }
+                  if (myTextPosts.length === 0) {
+                    return (
+                      <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 32 }}>
+                        <div style={{
+                          width: 52, height: 52, borderRadius: '50%',
+                          background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_PRIMARY_DIM,
+                        }}>
+                          <FileText size={20} strokeWidth={1.5} />
+                        </div>
+                        <p style={{ color: CLR_TEXT_DIM, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
+                          لا توجد منشورات نصية بعد
+                        </p>
+                      </div>
+                    );
+                  }
+                  const enrichedMyPosts = myTextPosts.map(post => {
+                    const rawThumbUrl = post.mediaUrls?.[0] ?? post.mediaUrl;
+                    const rawIsVideo = (post.mediaTypes?.[0] ?? post.mediaType) === 'video';
+                    // إذا المنشور بدون وسائط مرفقة لكن نصّه يحتوي رابط صورة/فيديو مباشر —
+                    // نستخرجه ونعرضه كصورة/فيديو مصغّر بدل ترك الرابط الخام يظهر كنص عادي.
+                    const productAd = parseProductAd(post.text);
+                    const textEmbed = !rawThumbUrl && post.text && !productAd ? extractTextMediaEmbeds(post.text) : null;
+                    const embeddedMedia = textEmbed?.embeds?.[0] ?? null;
+                    const thumbUrl = rawThumbUrl ?? embeddedMedia?.url;
+                    const isVideo = rawThumbUrl ? rawIsVideo : embeddedMedia?.type === 'video';
+                    const displayText = productAd
+                      ? [productAd.title, productAd.price].filter(Boolean).join(' · ')
+                      : textEmbed ? textEmbed.cleanText : post.text;
+                    const isPinnedPost = pinnedPostId === post.id;
+                    return { post, thumbUrl, isVideo, displayText, isPinnedPost };
+                  });
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
+                      {enrichedMyPosts.map(({ post, thumbUrl, isVideo, displayText, isPinnedPost }) => (
+                        <button
+                          key={post.repostKey ?? post.id}
+                          type="button"
+                          onClick={() => openSinglePostView(post)}
+                          aria-label={thumbUrl ? (isVideo ? 'فتح الفيديو' : 'فتح الصورة') : 'فتح المنشور'}
                           style={{
-                            position: 'relative',
-                            width: '100%',
-                            aspectRatio: '1 / 1',
-                            padding: 0,
-                            border: 'none',
-                            background: '#000',
-                            cursor: 'pointer',
-                            overflow: 'hidden',
+                            position: 'relative', width: '100%', aspectRatio: '1 / 1', overflow: 'hidden',
+                            border: isPinnedPost ? '3px solid #ef4444' : 'none', boxSizing: 'border-box', padding: 0,
+                            background: thumbUrl ? '#000' : CLR_CARD_BG, cursor: 'pointer', display: 'block',
                           }}
                         >
-                          <video src={thumbUrl ?? ''} muted style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                          <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
-                            <Play size={13} strokeWidth={2.4} color="#fff" fill="#fff" />
-                          </div>
-                          {(post.mediaUrls?.length ?? 0) > 1 && (
-                            <div style={{ position: 'absolute', top: 6, insetInlineStart: 6 }}>
-                              <Images size={13} strokeWidth={2.4} color="#fff" />
+                          {thumbUrl ? (
+                            <>
+                              {isVideo ? (
+                                <video src={thumbUrl} muted autoPlay loop playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              ) : (
+                                <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              )}
+                              {isVideo && (
+                                <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
+                                  <Play size={13} strokeWidth={2.4} color="#fff" fill="#fff" />
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div style={{
+                              width: '100%', height: '100%', padding: '8px 7px',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              border: `1px solid ${CLR_CARD_BORDER}`, boxSizing: 'border-box',
+                            }}>
+                              <p style={{
+                                color: CLR_TEXT, fontSize: '0.64rem', lineHeight: 1.45, margin: 0,
+                                textAlign: 'center',
+                                display: '-webkit-box', WebkitLineClamp: 6, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                              }}>
+                                {displayText}
+                              </p>
                             </div>
                           )}
-                          <div style={{
-                            position: 'absolute', bottom: 4, insetInlineStart: 6,
-                            display: 'flex', alignItems: 'center', gap: 3,
-                          }}>
-                            <Heart size={11} strokeWidth={2.4} color="#fff" fill={post.likedByMe ? '#fff' : 'none'} />
-                            <span style={{ color: '#fff', fontSize: '0.62rem', fontWeight: 700, textShadow: '0 1px 3px rgba(0,0,0,0.7)' }}>
-                              {post.likesCount}
-                            </span>
-                          </div>
-                        </motion.button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 32 }}>
-                    <div style={{
-                      width: 52, height: 52, borderRadius: '50%',
-                      background: C.primaryFaint, border: `1px solid ${C.primaryBorder}`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.primaryDim,
-                    }}>
-                      <Video size={20} strokeWidth={1.5} />
-                    </div>
-                    <p style={{ color: C.textDim, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
-                      لا توجد فيديوهات بعد
-                    </p>
-                  </div>
-                ))}
-
-                {/* ── My Photos grid — image posts recorded via the camera. Shown only on the
-                     "صور" tab, kept completely separate from the videos grid above. ── */}
-                
-                {profileContentTab === 'photos' && (myPhotoPosts.length > 0 ? (
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(3, 1fr)',
-                    gap: 2,
-                    padding: '10px 2px 4px',
-                  }}>
-                    {myPhotoPosts.map(post => {
-                      const thumbUrl = post.mediaUrls && post.mediaUrls.length > 0 ? post.mediaUrls[0] : post.mediaUrl;
-                      return (
-                        <motion.button
-                          key={post.id}
-                          whileTap={{ scale: 0.97 }}
-                          onClick={() => openMediaPostDetail(post)}
-                          style={{
-                            position: 'relative',
-                            width: '100%',
-                            aspectRatio: '1 / 1',
-                            padding: 0,
-                            border: 'none',
-                            background: '#000',
-                            cursor: 'pointer',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <img src={thumbUrl ?? ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                          {(post.mediaUrls?.length ?? 0) > 1 && (
-                            <div style={{ position: 'absolute', top: 6, insetInlineStart: 6 }}>
-                              <Images size={13} strokeWidth={2.4} color="#fff" />
+                          {/* المنشور المثبّت يبين بالأحمر */}
+                          {isPinnedPost && (
+                            <div style={{
+                              position: 'absolute', top: 6, insetInlineStart: 6,
+                              color: '#ef4444', filter: thumbUrl ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.7))' : 'none',
+                              display: 'flex', alignItems: 'center',
+                            }}>
+                              <Pin size={15} strokeWidth={2.6} fill="#ef4444" />
                             </div>
                           )}
-                          <div style={{
-                            position: 'absolute', bottom: 4, insetInlineStart: 6,
-                            display: 'flex', alignItems: 'center', gap: 3,
-                          }}>
-                            <Heart size={11} strokeWidth={2.4} color="#fff" fill={post.likedByMe ? '#fff' : 'none'} />
-                            <span style={{ color: '#fff', fontSize: '0.62rem', fontWeight: 700, textShadow: '0 1px 3px rgba(0,0,0,0.7)' }}>
-                              {post.likesCount}
-                            </span>
-                          </div>
-                        </motion.button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 32 }}>
-                    <div style={{
-                      width: 52, height: 52, borderRadius: '50%',
-                      background: C.primaryFaint, border: `1px solid ${C.primaryBorder}`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.primaryDim,
-                    }}>
-                      <ImageIcon size={20} strokeWidth={1.5} />
+                          <PostGridTimeFooter createdAt={post.createdAt} onMedia={!!thumbUrl} />
+                        </button>
+                      ))}
                     </div>
-                    <p style={{ color: C.textDim, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
-                      لا توجد صور بعد
-                    </p>
-                  </div>
-                ))}
+                  );
+                })()}
               </motion.div>}
 
             {/* ══ ADD TAB: Search + Requests ══ */}
@@ -8255,7 +12410,7 @@ export default function AddFriendPage() {
 
                 {/* Inner sub-tabs: Search | Requests */}
                 <div className="flex" style={{
-              borderBottom: `1px solid ${C.navBorder}`
+              borderBottom: `1px solid ${CLR_NAV_BORDER}`
             }}>
                   {([{
                 key: 'search' as const,
@@ -8270,8 +12425,8 @@ export default function AddFriendPage() {
                 padding: '10px 4px',
                 background: 'none',
                 border: 'none',
-                borderBottom: tab === st.key ? `2px solid ${C.primary}` : '2px solid transparent',
-                color: tab === st.key ? C.primary : C.textDim,
+                borderBottom: tab === st.key ? `2px solid ${CLR_PRIMARY}` : '2px solid transparent',
+                color: tab === st.key ? CLR_PRIMARY : CLR_TEXT_DIM,
                 fontSize: '0.72rem',
                 fontWeight: 600,
                 letterSpacing: '0.12em',
@@ -8285,8 +12440,8 @@ export default function AddFriendPage() {
               }}>
                       {st.label}
                       {st.badge > 0 && <span style={{
-                  background: tab === st.key ? C.primary : C.primaryDim,
-                  color: tab === st.key ? '#060e0e' : C.primary,
+                  background: tab === st.key ? CLR_PRIMARY : CLR_PRIMARY_DIM,
+                  color: tab === st.key ? '#060e0e' : CLR_PRIMARY,
                   borderRadius: 10,
                   padding: '1px 6px',
                   fontSize: '0.6rem',
@@ -8301,17 +12456,17 @@ export default function AddFriendPage() {
                 {tab === 'search' && <div className="flex flex-col gap-4">
                     <div className="relative">
                       <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{
-                  color: C.primaryDim
+                  color: CLR_PRIMARY_DIM
                 }}>
                         <Search size={16} strokeWidth={2} />
                       </div>
                       <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by username or name…" autoFocus style={{
                   width: '100%',
-                  background: C.inputBg,
-                  border: `1px solid ${C.primaryBorder}`,
+                  background: CLR_INPUT_BG,
+                  border: `1px solid ${CLR_PRIMARY_BORDER}`,
                   borderRadius: 10,
                   padding: '12px 14px 12px 38px',
-                  color: C.text,
+                  color: CLR_TEXT,
                   fontSize: '0.9rem',
                   outline: 'none',
                   boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.4)'
@@ -8327,8 +12482,8 @@ export default function AddFriendPage() {
                     width: 14,
                     height: 14,
                     borderRadius: '50%',
-                    border: `2px solid ${C.primaryDim}`,
-                    borderTopColor: C.primary
+                    border: `2px solid ${CLR_PRIMARY_DIM}`,
+                    borderTopColor: CLR_PRIMARY
                   }} />
                         </div>}
                     </div>
@@ -8342,7 +12497,7 @@ export default function AddFriendPage() {
                   y: 0
                 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} className="flex flex-col gap-2">
                           <p style={{
-                    color: C.textDim,
+                    color: CLR_TEXT_DIM,
                     fontSize: '0.65rem',
                     letterSpacing: '0.25em',
                     textTransform: 'uppercase',
@@ -8357,37 +12512,37 @@ export default function AddFriendPage() {
                       opacity: 1,
                       x: 0
                     }} className="flex items-center justify-between rounded-xl px-4 py-3" style={{
-                      background: isRed ? 'rgba(239,68,68,0.06)' : C.cardBg,
-                      border: `1px solid ${isRed ? 'rgba(239,68,68,0.35)' : C.cardBorder}`,
+                      background: isRed ? 'rgba(239,68,68,0.06)' : CLR_CARD_BG,
+                      border: `1px solid ${isRed ? 'rgba(239,68,68,0.35)' : CLR_CARD_BORDER}`,
                       transition: 'all 0.2s'
                     }}>
                                 <div className="flex items-center gap-3">
                                   <UserAvatar name={u.name ?? u.username ?? u.email} avatarUrl={u.avatarUrl} size={38} red={isRed} online={presence[u.id]?.online} />
                                   <div>
                                     <p style={{
-                            color: C.text,
+                            color: CLR_TEXT,
                             fontSize: '0.88rem',
                             fontWeight: 500
                           }}>{u.name ?? '—'}</p>
                                     <p style={{
-                            color: C.textDim,
+                            color: CLR_TEXT_DIM,
                             fontSize: '0.72rem',
                             fontWeight: 400
                           }}>
                                       {u.username ? <span style={{
-                              color: isRed ? '#ef4444' : C.textDim
+                              color: isRed ? '#ef4444' : CLR_TEXT_DIM
                             }}>@{u.username}</span> : u.email}
                                     </p>
                                   </div>
                                 </div>
                                 {u.friendStatus === 'accepted' ? <motion.button whileTap={{
                         scale: 0.9
-                      }} onClick={() => navigate(`/chat?with=${u.id}&name=${encodeURIComponent(u.name ?? '')}&username=${encodeURIComponent(u.username ?? '')}&avatarUrl=${encodeURIComponent(u.avatarUrl ?? '')}`)} style={{
+                      }} onClick={() => openShareMiniChat({ id: u.id, name: u.name, username: u.username, avatarUrl: u.avatarUrl })} style={{
                         background: 'rgba(0,188,212,0.12)',
-                        border: `1px solid ${C.primaryBorder}`,
+                        border: `1px solid ${CLR_PRIMARY_BORDER}`,
                         borderRadius: 8,
                         padding: '6px 12px',
-                        color: C.primary,
+                        color: CLR_PRIMARY,
                         fontSize: '0.75rem',
                         fontWeight: 600,
                         cursor: 'pointer',
@@ -8398,7 +12553,7 @@ export default function AddFriendPage() {
                                     <MessageCircle size={13} strokeWidth={2} />
                                     Chat
                                   </motion.button> : u.friendStatus === 'pending' ? <div style={{
-                        color: C.primaryDim,
+                        color: CLR_PRIMARY_DIM,
                         display: 'flex',
                         alignItems: 'center',
                         gap: 4
@@ -8410,11 +12565,11 @@ export default function AddFriendPage() {
                                   </div> : <motion.button whileTap={{
                         scale: 0.9
                       }} onClick={() => sendRequest(u.id)} disabled={sending === u.id} style={{
-                        background: sending === u.id ? C.primaryFaint : 'rgba(0,188,212,0.12)',
-                        border: `1px solid ${C.primaryBorder}`,
+                        background: sending === u.id ? CLR_PRIMARY_FAINT : 'rgba(0,188,212,0.12)',
+                        border: `1px solid ${CLR_PRIMARY_BORDER}`,
                         borderRadius: 8,
                         padding: '6px 12px',
-                        color: C.primary,
+                        color: CLR_PRIMARY,
                         fontSize: '0.75rem',
                         fontWeight: 600,
                         cursor: 'pointer',
@@ -8432,7 +12587,7 @@ export default function AddFriendPage() {
                     </AnimatePresence>
 
                     {query.length >= 2 && !searching && results.length === 0 && <motion.p initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} style={{
-                color: C.textDim,
+                color: CLR_TEXT_DIM,
                 fontSize: '0.82rem',
                 textAlign: 'center',
                 marginTop: 8
@@ -8447,17 +12602,17 @@ export default function AddFriendPage() {
                   width: 64,
                   height: 64,
                   borderRadius: '50%',
-                  background: C.primaryFaint,
-                  border: `1px solid ${C.primaryBorder}`,
+                  background: CLR_PRIMARY_FAINT,
+                  border: `1px solid ${CLR_PRIMARY_BORDER}`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: C.primaryDim
+                  color: CLR_PRIMARY_DIM
                 }}>
                           <Search size={26} strokeWidth={1.5} />
                         </div>
                         <p style={{
-                  color: C.textDim,
+                  color: CLR_TEXT_DIM,
                   fontSize: '0.82rem',
                   textAlign: 'center',
                   maxWidth: 220,
@@ -8477,17 +12632,17 @@ export default function AddFriendPage() {
                   width: 64,
                   height: 64,
                   borderRadius: '50%',
-                  background: C.primaryFaint,
-                  border: `1px solid ${C.primaryBorder}`,
+                  background: CLR_PRIMARY_FAINT,
+                  border: `1px solid ${CLR_PRIMARY_BORDER}`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: C.primaryDim
+                  color: CLR_PRIMARY_DIM
                 }}>
                           <UserPlus size={26} strokeWidth={1.5} />
                         </div>
                         <p style={{
-                  color: C.textDim,
+                  color: CLR_TEXT_DIM,
                   fontSize: '0.82rem',
                   textAlign: 'center',
                   maxWidth: 220,
@@ -8511,12 +12666,12 @@ export default function AddFriendPage() {
                               <UserAvatar name={label} avatarUrl={req.avatarUrl} size={38} online={presence[req.requesterId]?.online} />
                               <div>
                                 <p style={{
-                        color: C.text,
+                        color: CLR_TEXT,
                         fontSize: '0.88rem',
                         fontWeight: 500
                       }}>{req.name ?? '—'}</p>
                                 <p style={{
-                        color: C.textDim,
+                        color: CLR_TEXT_DIM,
                         fontSize: '0.72rem'
                       }}>{req.username ? `@${req.username}` : req.email ?? ''}</p>
                               </div>
@@ -8529,8 +12684,8 @@ export default function AddFriendPage() {
                       height: 32,
                       borderRadius: '50%',
                       background: 'rgba(0,188,212,0.15)',
-                      border: `1px solid ${C.primaryBorder}`,
-                      color: C.primary,
+                      border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      color: CLR_PRIMARY,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -8577,15 +12732,18 @@ export default function AddFriendPage() {
                 <div key={post.id} style={{ margin: '12px 14px', padding: 14, borderRadius: 14, background: 'transparent', border: 'none' }}>
                   <div
                     role="button"
-                    onClick={() => setViewingProfile({
-                      id: post.authorId, name: post.authorName, username: post.authorUsername, avatarUrl: post.authorAvatarUrl,
-                    })}
+                    onClick={() => {
+                      if (user && String(post.authorId) === String(user.id)) return;
+                      setViewingProfile({
+                        id: post.authorId, name: post.authorName, username: post.authorUsername, avatarUrl: post.authorAvatarUrl,
+                      });
+                    }}
                     style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10, cursor: 'pointer' }}
                   >
                     <UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={32} />
                     <div><strong style={{ color: 'hsl(var(--foreground))', fontSize: '0.8rem' }}>{post.authorName}</strong><div style={{ color: 'hsl(var(--primary))', fontSize: '0.7rem' }}>{post.authorUsername ? `@${post.authorUsername}` : ''}</div></div>
                   </div>
-                  <PostText text={post.text} color="hsl(var(--primary))" textColor={C.textDim} onHashtag={openHashtag} />
+                  <PostText text={post.text} color="hsl(var(--primary))" textColor={CLR_TEXT_DIM} onHashtag={openHashtag} />
                 </div>
               )) : <p style={{ color: 'hsl(var(--muted-foreground))', textAlign: 'center', padding: 32 }}>لا توجد منشورات لهذا الهاشتاق بعد</p>}
             </motion.div>
@@ -8593,21 +12751,21 @@ export default function AddFriendPage() {
         </AnimatePresence>
 
         <AnimatePresence>
-          {sharePost && (
-            <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 10280, background: 'hsl(var(--background)/0.9)', display: 'flex', alignItems: 'flex-end', overflow: 'hidden' }} onClick={() => setSharePost(null)}>
+          {false && sharePost && (
+            <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 10450, background: 'hsl(var(--background)/0.9)', display: 'flex', alignItems: 'flex-end', overflow: 'hidden' }} onClick={() => setSharePost(null)}>
               <motion.div initial={{ y: 80 }} animate={{ y: 0 }} exit={{ y: 80 }} onClick={event => event.stopPropagation()} style={{ width: '100%', maxHeight: '78dvh', overflowY: 'auto', borderRadius: '22px 22px 0 0', background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', padding: '18px 16px 28px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}><strong style={{ color: 'hsl(var(--foreground))' }}>Send post to friends</strong><button onClick={() => setSharePost(null)} style={{ background: 'none', border: 'none', color: 'hsl(var(--foreground))', cursor: 'pointer' }}><X size={20} /></button></div>
                 <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.74rem', margin: '0 0 12px' }}>Choose friends to send this post in a private chat.</p>
+                <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.72rem', margin: '0 0 10px' }}>اضغط على صديق لإرسال المنشور مباشرة إلى دردشته (صورة/فيديو + النص في مربع واحد).</p>
                 {friends.length ? friends.map(friend => {
-                  const selected = shareRecipients.includes(friend.friendId);
-                  return <button key={friend.friendId} onClick={() => setShareRecipients(current => selected ? current.filter(id => id !== friend.friendId) : [...current, friend.friendId])} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 4px', background: 'none', border: 'none', color: 'hsl(var(--foreground))', cursor: 'pointer', textAlign: 'start' }}>
+                  return <button key={friend.friendId} disabled={sharingPost} onClick={() => void sharePostToFriend(friend.friendId)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 4px', background: 'none', border: 'none', color: 'hsl(var(--foreground))', cursor: sharingPost ? 'wait' : 'pointer', textAlign: 'start', opacity: sharingPost ? 0.6 : 1 }}>
                     <UserAvatar name={friend.name ?? friend.username ?? 'User'} avatarUrl={friend.avatarUrl} size={38} />
                     <span style={{ flex: 1, fontSize: '0.84rem' }}>{friend.name ?? friend.username ?? 'User'}</span>
-                    <span style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${selected ? 'hsl(var(--primary))' : 'hsl(var(--border))'}`, background: selected ? 'hsl(var(--primary))' : 'transparent', display: 'grid', placeItems: 'center' }}>{selected && <Check size={13} color="hsl(var(--primary-foreground))" />}</span>
+                    <Send size={16} strokeWidth={2} color="hsl(var(--primary))" />
                   </button>;
                 }) : <p style={{ color: 'hsl(var(--muted-foreground))', textAlign: 'center', padding: 20 }}>Add friends first to share posts with them</p>}
                 {shareError && <p style={{ color: 'hsl(var(--destructive))', fontSize: '0.75rem' }}>{shareError}</p>}
-                <button disabled={!shareRecipients.length || sharingPost} onClick={sendPostShare} style={{ width: '100%', marginTop: 14, padding: '12px', borderRadius: 12, border: 'none', background: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))', fontWeight: 700, cursor: shareRecipients.length ? 'pointer' : 'not-allowed', opacity: shareRecipients.length ? 1 : 0.5 }}>{sharingPost ? 'Sending…' : 'Send'}</button>
+                {sharingPost && <p style={{ color: 'hsl(var(--primary))', fontSize: '0.75rem', textAlign: 'center', marginTop: 8 }}>جاري الإرسال…</p>}
               </motion.div>
             </motion.div>
           )}
@@ -8711,7 +12869,7 @@ export default function AddFriendPage() {
 
       {/* ── New Secret Chat Modal ── */}
       <AnimatePresence>
-        {showNewSecret && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
+        {false && showNewSecret && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
         inset: 0,
         zIndex: 50,
@@ -8737,7 +12895,7 @@ export default function AddFriendPage() {
           width: '100%',
           maxWidth: 480,
           background: 'hsl(var(--background))',
-          border: `1px solid ${C.primaryBorder}`,
+          border: `1px solid ${CLR_PRIMARY_BORDER}`,
           borderBottom: 'none',
           borderRadius: '20px 20px 0 0',
           padding: '24px 20px 40px',
@@ -8756,10 +12914,10 @@ export default function AddFriendPage() {
               gap: 7
             }}>
                   <Lock size={15} style={{
-                color: C.primary
+                color: CLR_PRIMARY
               }} />
                   <p style={{
-                color: C.primary,
+                color: CLR_PRIMARY,
                 fontSize: '0.8rem',
                 fontWeight: 700,
                 letterSpacing: '0.2em',
@@ -8771,7 +12929,7 @@ export default function AddFriendPage() {
             }} onClick={() => setShowNewSecret(false)} style={{
               background: 'none',
               border: 'none',
-              color: C.textDim,
+              color: CLR_TEXT_DIM,
               cursor: 'pointer'
             }}>
                   <X size={18} />
@@ -8779,11 +12937,11 @@ export default function AddFriendPage() {
               </div>
               <input type="text" value={scName} onChange={e => setScName(e.target.value)} placeholder="اسم الدردشة السرية…" style={{
             width: '100%',
-            background: C.inputBg,
-            border: `1px solid ${C.primaryBorder}`,
+            background: CLR_INPUT_BG,
+            border: `1px solid ${CLR_PRIMARY_BORDER}`,
             borderRadius: 10,
             padding: '11px 14px',
-            color: C.text,
+            color: CLR_TEXT,
             fontSize: '0.9rem',
             outline: 'none',
             fontFamily: 'var(--font-sans)',
@@ -8797,16 +12955,16 @@ export default function AddFriendPage() {
               right: 12,
               top: '50%',
               transform: 'translateY(-50%)',
-              color: C.primaryDim
+              color: CLR_PRIMARY_DIM
             }} />
                 <input type={scPinVisible ? 'text' : 'password'} inputMode="numeric" maxLength={8} value={scPin} onChange={e => setScPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="الرقم السري (4-8 أرقام)" style={{
               width: '100%',
               boxSizing: 'border-box',
-              background: C.inputBg,
-              border: `1px solid ${C.primaryBorder}`,
+              background: CLR_INPUT_BG,
+              border: `1px solid ${CLR_PRIMARY_BORDER}`,
               borderRadius: 10,
               padding: '11px 36px 11px 36px',
-              color: C.text,
+              color: CLR_TEXT,
               fontSize: '0.9rem',
               outline: 'none',
               letterSpacing: '0.2em',
@@ -8820,14 +12978,14 @@ export default function AddFriendPage() {
               background: 'none',
               border: 'none',
               cursor: 'pointer',
-              color: C.textDim
+              color: CLR_TEXT_DIM
             }}>
                   {scPinVisible ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
               <div>
                 <p style={{
-              color: C.textDim,
+              color: CLR_TEXT_DIM,
               fontSize: '0.65rem',
               letterSpacing: '0.2em',
               textTransform: 'uppercase',
@@ -8850,8 +13008,8 @@ export default function AddFriendPage() {
                   alignItems: 'center',
                   gap: 10,
                   padding: '10px 12px',
-                  background: selected ? C.primaryFaint : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${selected ? C.primaryBorder : 'rgba(255,255,255,0.06)'}`,
+                  background: selected ? CLR_PRIMARY_FAINT : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${selected ? CLR_PRIMARY_BORDER : 'rgba(255,255,255,0.06)'}`,
                   borderRadius: 10,
                   cursor: 'pointer',
                   textAlign: 'left'
@@ -8861,23 +13019,23 @@ export default function AddFriendPage() {
                     flex: 1
                   }}>
                           <p style={{
-                      color: C.text,
+                      color: CLR_TEXT,
                       fontSize: '0.85rem',
                       fontWeight: 500
                     }}>{f.name ?? '—'}</p>
                           {f.username && <p style={{
-                      color: C.textDim,
+                      color: CLR_TEXT_DIM,
                       fontSize: '0.7rem'
                     }}>@{f.username}</p>}
                         </div>
                         {selected && <Check size={16} style={{
-                    color: C.primary,
+                    color: CLR_PRIMARY,
                     flexShrink: 0
                   }} strokeWidth={2.5} />}
                       </motion.button>;
               })}
                   {friends.length === 0 && <p style={{
-                color: C.textDim,
+                color: CLR_TEXT_DIM,
                 fontSize: '0.8rem',
                 textAlign: 'center',
                 padding: '16px 0'
@@ -8888,10 +13046,10 @@ export default function AddFriendPage() {
             scale: 0.97
           }} onClick={createSecretChat} disabled={!scName.trim() || scCreating} style={{
             padding: '12px',
-            background: scName.trim() ? C.primaryFaint : 'rgba(255,255,255,0.03)',
-            border: `1px solid ${C.primaryBorder}`,
+            background: scName.trim() ? CLR_PRIMARY_FAINT : 'rgba(255,255,255,0.03)',
+            border: `1px solid ${CLR_PRIMARY_BORDER}`,
             borderRadius: 12,
-            color: scName.trim() ? C.primary : C.primaryDim,
+            color: scName.trim() ? CLR_PRIMARY : CLR_PRIMARY_DIM,
             fontSize: '0.82rem',
             fontWeight: 700,
             cursor: scName.trim() ? 'pointer' : 'default',
@@ -8915,7 +13073,7 @@ export default function AddFriendPage() {
 
       {/* ── PIN Gate Modal ── */}
       <AnimatePresence>
-        {openingChat && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
+        {false && openingChat && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
         inset: 0,
         zIndex: 60,
@@ -8938,7 +13096,7 @@ export default function AddFriendPage() {
           opacity: 0
         }} onClick={(e: React.MouseEvent) => e.stopPropagation()} style={{
           background: 'hsl(var(--background))',
-          border: `1px solid ${C.primaryBorder}`,
+          border: `1px solid ${CLR_PRIMARY_BORDER}`,
           borderRadius: 20,
           padding: '28px 24px',
           width: '100%',
@@ -8952,23 +13110,23 @@ export default function AddFriendPage() {
             width: 52,
             height: 52,
             borderRadius: '50%',
-            background: C.primaryFaint,
-            border: `1px solid ${C.primaryBorder}`,
+            background: CLR_PRIMARY_FAINT,
+            border: `1px solid ${CLR_PRIMARY_BORDER}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: C.primary
+            color: CLR_PRIMARY
           }}>
                 <Lock size={22} strokeWidth={1.8} />
               </div>
               <p style={{
-            color: C.text,
+            color: CLR_TEXT,
             fontSize: '0.95rem',
             fontWeight: 700,
             textAlign: 'center'
           }}>{openingChat.name}</p>
               <p style={{
-            color: C.textDim,
+            color: CLR_TEXT_DIM,
             fontSize: '0.8rem',
             textAlign: 'center'
           }}>أدخل الرقم السري للدخول</p>
@@ -8982,11 +13140,11 @@ export default function AddFriendPage() {
             }} placeholder="الرقم السري" autoFocus style={{
               width: '100%',
               boxSizing: 'border-box',
-              background: C.inputBg,
-              border: `1px solid ${openPinError ? 'hsl(var(--destructive))' : C.primaryBorder}`,
+              background: CLR_INPUT_BG,
+              border: `1px solid ${openPinError ? 'hsl(var(--destructive))' : CLR_PRIMARY_BORDER}`,
               borderRadius: 12,
               padding: '12px 36px 12px 14px',
-              color: C.text,
+              color: CLR_TEXT,
               fontSize: '1.1rem',
               outline: 'none',
               letterSpacing: '0.3em',
@@ -9002,7 +13160,7 @@ export default function AddFriendPage() {
               background: 'none',
               border: 'none',
               cursor: 'pointer',
-              color: C.textDim
+              color: CLR_TEXT_DIM
             }}>
                   {openPinVisible ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
@@ -9022,10 +13180,10 @@ export default function AddFriendPage() {
             }} onClick={() => setOpeningChat(null)} style={{
               flex: 1,
               padding: '11px',
-              background: C.primaryFaint,
-              border: `1px solid ${C.primaryBorder}`,
+              background: CLR_PRIMARY_FAINT,
+              border: `1px solid ${CLR_PRIMARY_BORDER}`,
               borderRadius: 12,
-              color: C.text,
+              color: CLR_TEXT,
               fontSize: '0.82rem',
               fontWeight: 600,
               cursor: 'pointer'
@@ -9037,10 +13195,10 @@ export default function AddFriendPage() {
             }} onClick={() => void verifyAndOpenChat()} disabled={openPinChecking || !openPin} style={{
               flex: 1,
               padding: '11px',
-              background: C.primaryFaint,
-              border: `1px solid ${C.primaryBorder}`,
+              background: CLR_PRIMARY_FAINT,
+              border: `1px solid ${CLR_PRIMARY_BORDER}`,
               borderRadius: 12,
-              color: C.primary,
+              color: CLR_PRIMARY,
               fontSize: '0.82rem',
               fontWeight: 700,
               cursor: 'pointer',
@@ -9055,7 +13213,7 @@ export default function AddFriendPage() {
 
       {/* ── Active Secret Chat ── */}
       <AnimatePresence>
-        {activeChat && <motion.div initial={{
+        {false && activeChat && <motion.div initial={{
         opacity: 0,
         y: 40
       }} animate={{
@@ -9081,24 +13239,24 @@ export default function AddFriendPage() {
           gap: 10,
           padding: '44px 16px 12px',
           background: 'hsl(var(--background))',
-          borderBottom: `1px solid ${C.primaryBorder}`
+          borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`
         }}>
               <motion.button whileTap={{
             scale: 0.88
           }} onClick={() => setActiveChat(null)} style={{
             background: 'none',
             border: 'none',
-            color: C.primary,
+            color: CLR_PRIMARY,
             cursor: 'pointer',
             padding: 4
           }}>
                 <ArrowLeft size={22} strokeWidth={2} />
               </motion.button>
               <Lock size={14} style={{
-            color: C.primaryDim
+            color: CLR_PRIMARY_DIM
           }} />
               <p style={{
-            color: C.primary,
+            color: CLR_PRIMARY,
             fontSize: '0.9rem',
             fontWeight: 700,
             flex: 1
@@ -9106,10 +13264,10 @@ export default function AddFriendPage() {
               <motion.button whileTap={{
             scale: 0.88
           }} onClick={() => void callActiveSecretChat()} aria-label="Call secret chat participants" title="اتصال بأعضاء الدردشة السرية" style={{
-            background: C.primaryFaint,
-            border: `1px solid ${C.primaryBorder}`,
+            background: CLR_PRIMARY_FAINT,
+            border: `1px solid ${CLR_PRIMARY_BORDER}`,
             borderRadius: 10,
-            color: C.primary,
+            color: CLR_PRIMARY,
             cursor: 'pointer',
             padding: 6,
             display: 'flex',
@@ -9143,7 +13301,7 @@ export default function AddFriendPage() {
         }}>
               {chatMessages.length === 0 && <div style={{
             textAlign: 'center',
-            color: C.textDim,
+            color: CLR_TEXT_DIM,
             fontSize: '0.82rem',
             marginTop: 40
           }}>لا توجد رسائل بعد</div>}
@@ -9216,8 +13374,8 @@ export default function AddFriendPage() {
                 borderRadius: '50%',
                 flexShrink: 0,
                 overflow: 'hidden',
-                border: `1.5px solid ${C.primaryBorder}`,
-                background: C.primaryFaint,
+                border: `1.5px solid ${CLR_PRIMARY_BORDER}`,
+                background: CLR_PRIMARY_FAINT,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -9228,7 +13386,7 @@ export default function AddFriendPage() {
                   height: '100%',
                   objectFit: 'cover'
                 }} /> : <span style={{
-                  color: C.primary,
+                  color: CLR_PRIMARY,
                   fontSize: '0.7rem',
                   fontWeight: 700
                 }}>{(m.sender_name ?? m.sender_username ?? '?')[0].toUpperCase()}</span>}
@@ -9243,7 +13401,7 @@ export default function AddFriendPage() {
               }}>
                       {/* Sender name (others only) */}
                       {!isMe && <p style={{
-                  color: C.primaryDim,
+                  color: CLR_PRIMARY_DIM,
                   fontSize: '0.62rem',
                   fontWeight: 600,
                   margin: 0,
@@ -9254,8 +13412,8 @@ export default function AddFriendPage() {
 
                       {/* Bubble */}
                       <div style={{
-                  background: isMe ? C.primaryFaint : 'rgba(255,255,255,0.05)',
-                  border: `1px solid ${isMe ? C.primaryBorder : 'rgba(255,255,255,0.08)'}`,
+                  background: isMe ? CLR_PRIMARY_FAINT : 'rgba(255,255,255,0.05)',
+                  border: `1px solid ${isMe ? CLR_PRIMARY_BORDER : 'rgba(255,255,255,0.08)'}`,
                   borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                   padding: msgType === 'image' ? 5 : '9px 13px',
                   overflow: 'hidden'
@@ -9279,7 +13437,7 @@ export default function AddFriendPage() {
                             >
                               <div style={{
                                 display: 'flex', alignItems: 'center', gap: 6,
-                                color: C.primaryDim, fontSize: '0.62rem', fontWeight: 600,
+                                color: CLR_PRIMARY_DIM, fontSize: '0.62rem', fontWeight: 600,
                               }}>
                                 <Repeat2 size={12} strokeWidth={2.2} />
                                 <span>Shared a post</span>
@@ -9291,7 +13449,7 @@ export default function AddFriendPage() {
                                 }} />
                               )}
                               <p style={{
-                                color: C.text, fontSize: '0.82rem', lineHeight: 1.45,
+                                color: CLR_TEXT, fontSize: '0.82rem', lineHeight: 1.45,
                                 margin: 0, display: '-webkit-box',
                                 WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
                                 overflow: 'hidden',
@@ -9299,13 +13457,13 @@ export default function AddFriendPage() {
                                 {ps.text || '—'}
                               </p>
                               <span style={{
-                                color: C.primary, fontSize: '0.68rem', fontWeight: 700,
+                                color: CLR_PRIMARY, fontSize: '0.68rem', fontWeight: 700,
                               }}>View post →</span>
                             </motion.button>
                           );
                         })()}
                         {msgType === 'text' && <p style={{
-                    color: C.text,
+                    color: CLR_TEXT,
                     fontSize: '0.88rem',
                     lineHeight: 1.5,
                     margin: 0
@@ -9317,7 +13475,7 @@ export default function AddFriendPage() {
                     display: 'block',
                     objectFit: 'cover'
                   }} />}
-                        {msgType === 'voice' && <ScVoiceBubble url={m.body} duration={m.duration} isMe={isMe} primaryColor={C.primary} primaryBorder={C.primaryBorder} textDim={C.textDim} />}
+                        {msgType === 'voice' && <ScVoiceBubble url={m.body} duration={m.duration} isMe={isMe} primaryColor={CLR_PRIMARY} primaryBorder={CLR_PRIMARY_BORDER} textDim={CLR_TEXT_DIM} />}
                         {msgType === 'video' && filePayload && <video src={filePayload.url} controls playsInline style={{
                     maxWidth: 200,
                     maxHeight: 180,
@@ -9328,7 +13486,7 @@ export default function AddFriendPage() {
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
-                    color: C.primary,
+                    color: CLR_PRIMARY,
                     textDecoration: 'none',
                     fontSize: '0.82rem',
                     minWidth: 120
@@ -9340,7 +13498,7 @@ export default function AddFriendPage() {
                       overflow: 'hidden'
                     }}>
                               <p style={{
-                        color: C.primary,
+                        color: CLR_PRIMARY,
                         fontSize: '0.8rem',
                         fontWeight: 600,
                         margin: 0,
@@ -9350,7 +13508,7 @@ export default function AddFriendPage() {
                         maxWidth: 140
                       }}>{filePayload.name}</p>
                               <p style={{
-                        color: C.textDim,
+                        color: CLR_TEXT_DIM,
                         fontSize: '0.65rem',
                         margin: 0,
                         textTransform: 'uppercase'
@@ -9361,7 +13519,7 @@ export default function AddFriendPage() {
 
                       {/* Time */}
                       {timeLabel && <p style={{
-                  color: C.textDim,
+                  color: CLR_TEXT_DIM,
                   fontSize: '0.6rem',
                   margin: 0,
                   paddingInline: 4
@@ -9375,7 +13533,7 @@ export default function AddFriendPage() {
             {/* Input bar */}
             <div style={{
           padding: '10px 14px 32px',
-          borderTop: `1px solid ${C.primaryBorder}`,
+          borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
           background: 'hsl(var(--background))'
         }}>
 
@@ -9406,12 +13564,12 @@ export default function AddFriendPage() {
                   width: 4,
                   height: 12,
                   borderRadius: 3,
-                  background: C.primary,
+                  background: CLR_PRIMARY,
                   transformOrigin: 'bottom'
                 }} />)}
                     </div>
                     <span style={{
-                color: C.textDim,
+                color: CLR_TEXT_DIM,
                 fontSize: '0.72rem'
               }}>
                       {scTypingNames.join('، ')} يكتب...
@@ -9531,9 +13689,9 @@ export default function AddFriendPage() {
                 width: 42,
                 height: 42,
                 borderRadius: '50%',
-                background: scShowAttach ? C.primaryFaint : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${scShowAttach ? C.primary : C.primaryBorder}`,
-                color: scShowAttach ? C.primary : C.textDim,
+                background: scShowAttach ? CLR_PRIMARY_FAINT : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${scShowAttach ? CLR_PRIMARY : CLR_PRIMARY_BORDER}`,
+                color: scShowAttach ? CLR_PRIMARY : CLR_TEXT_DIM,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -9570,7 +13728,7 @@ export default function AddFriendPage() {
                   bottom: 52,
                   left: 0,
                   background: 'hsl(var(--card))',
-                  border: `1px solid ${C.primaryBorder}`,
+                  border: `1px solid ${CLR_PRIMARY_BORDER}`,
                   borderRadius: 14,
                   padding: 8,
                   display: 'flex',
@@ -9614,12 +13772,12 @@ export default function AddFriendPage() {
                     borderRadius: 10,
                     background: 'transparent',
                     border: 'none',
-                    color: C.text,
+                    color: CLR_TEXT,
                     cursor: 'pointer',
                     fontSize: '0.85rem'
-                  }} onMouseEnter={e => e.currentTarget.style.background = C.primaryFaint} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  }} onMouseEnter={e => e.currentTarget.style.background = CLR_PRIMARY_FAINT} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                             <span style={{
-                      color: C.primary
+                      color: CLR_PRIMARY
                     }}>{item.icon}</span>
                             <span>{item.label}</span>
                           </motion.button>)}
@@ -9635,11 +13793,11 @@ export default function AddFriendPage() {
               }
             }} style={{
               flex: 1,
-              background: C.inputBg,
-              border: `1px solid ${C.primaryBorder}`,
+              background: CLR_INPUT_BG,
+              border: `1px solid ${CLR_PRIMARY_BORDER}`,
               borderRadius: 12,
               padding: '11px 14px',
-              color: C.text,
+              color: CLR_TEXT,
               fontSize: '0.9rem',
               outline: 'none',
               direction: 'rtl'
@@ -9652,9 +13810,9 @@ export default function AddFriendPage() {
               width: 42,
               height: 42,
               borderRadius: '50%',
-              background: C.primaryFaint,
-              border: `1px solid ${C.primaryBorder}`,
-              color: C.primary,
+              background: CLR_PRIMARY_FAINT,
+              border: `1px solid ${CLR_PRIMARY_BORDER}`,
+              color: CLR_PRIMARY,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -9688,9 +13846,9 @@ export default function AddFriendPage() {
               width: 42,
               height: 42,
               borderRadius: '50%',
-              background: C.primaryFaint,
-              border: `1px solid ${C.primaryBorder}`,
-              color: C.primary,
+              background: CLR_PRIMARY_FAINT,
+              border: `1px solid ${CLR_PRIMARY_BORDER}`,
+              color: CLR_PRIMARY,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -9747,7 +13905,7 @@ export default function AddFriendPage() {
           }}>
                 <UserAvatar name={confirmRemoveFriend.name ?? confirmRemoveFriend.username ?? '?'} avatarUrl={confirmRemoveFriend.avatarUrl} size={52} />
                 <p style={{
-              color: C.text,
+              color: CLR_TEXT,
               fontSize: '0.92rem',
               fontWeight: 700,
               margin: 0
@@ -9755,13 +13913,13 @@ export default function AddFriendPage() {
                   {confirmRemoveFriend.name ?? confirmRemoveFriend.username ?? '—'}
                 </p>
                 {confirmRemoveFriend.username && <p style={{
-              color: C.textDim,
+              color: CLR_TEXT_DIM,
               fontSize: '0.72rem',
               margin: 0
             }}>@{confirmRemoveFriend.username}</p>}
               </div>
               <p style={{
-            color: C.textDim,
+            color: CLR_TEXT_DIM,
             fontSize: '0.8rem',
             lineHeight: 1.5,
             textAlign: 'center',
@@ -9778,10 +13936,10 @@ export default function AddFriendPage() {
             }} onClick={() => setConfirmRemoveFriend(null)} style={{
               flex: 1,
               padding: '10px',
-              background: C.primaryFaint,
-              border: `1px solid ${C.primaryBorder}`,
+              background: CLR_PRIMARY_FAINT,
+              border: `1px solid ${CLR_PRIMARY_BORDER}`,
               borderRadius: 10,
-              color: C.text,
+              color: CLR_TEXT,
               fontSize: '0.82rem',
               fontWeight: 600,
               cursor: 'pointer'
@@ -9873,7 +14031,7 @@ export default function AddFriendPage() {
                 <Trash2 size={22} strokeWidth={1.8} />
               </div>
               <p style={{
-            color: C.text,
+            color: CLR_TEXT,
             fontSize: '0.92rem',
             fontWeight: 700,
             textAlign: 'center',
@@ -9882,7 +14040,7 @@ export default function AddFriendPage() {
                 حذف الدردشة السرية
               </p>
               <p style={{
-            color: C.textDim,
+            color: CLR_TEXT_DIM,
             fontSize: '0.8rem',
             lineHeight: 1.5,
             textAlign: 'center',
@@ -9900,10 +14058,10 @@ export default function AddFriendPage() {
             }} onClick={() => setConfirmDeleteChat(null)} style={{
               flex: 1,
               padding: '10px',
-              background: C.primaryFaint,
-              border: `1px solid ${C.primaryBorder}`,
+              background: CLR_PRIMARY_FAINT,
+              border: `1px solid ${CLR_PRIMARY_BORDER}`,
               borderRadius: 10,
-              color: C.text,
+              color: CLR_TEXT,
               fontSize: '0.82rem',
               fontWeight: 600,
               cursor: 'pointer'
@@ -9980,7 +14138,7 @@ export default function AddFriendPage() {
                 <LogOut size={22} strokeWidth={1.8} />
               </div>
               <p style={{
-            color: C.text,
+            color: CLR_TEXT,
             fontSize: '0.92rem',
             fontWeight: 700,
             textAlign: 'center',
@@ -9989,7 +14147,7 @@ export default function AddFriendPage() {
                 مغادرة الغرفة السرية
               </p>
               <p style={{
-            color: C.textDim,
+            color: CLR_TEXT_DIM,
             fontSize: '0.8rem',
             lineHeight: 1.5,
             textAlign: 'center',
@@ -10007,10 +14165,10 @@ export default function AddFriendPage() {
             }} onClick={() => setConfirmLeaveChat(null)} style={{
               flex: 1,
               padding: '10px',
-              background: C.primaryFaint,
-              border: `1px solid ${C.primaryBorder}`,
+              background: CLR_PRIMARY_FAINT,
+              border: `1px solid ${CLR_PRIMARY_BORDER}`,
               borderRadius: 10,
-              color: C.text,
+              color: CLR_TEXT,
               fontSize: '0.82rem',
               fontWeight: 600,
               cursor: 'pointer'
@@ -10100,7 +14258,7 @@ export default function AddFriendPage() {
                   </div>
                 </div>
                 <p style={{
-              color: C.text,
+              color: CLR_TEXT,
               fontSize: '0.92rem',
               fontWeight: 700,
               margin: 0
@@ -10108,13 +14266,13 @@ export default function AddFriendPage() {
                   {confirmBlockFriend.name ?? confirmBlockFriend.username ?? '—'}
                 </p>
                 {confirmBlockFriend.username && <p style={{
-              color: C.textDim,
+              color: CLR_TEXT_DIM,
               fontSize: '0.72rem',
               margin: 0
             }}>@{confirmBlockFriend.username}</p>}
               </div>
               <p style={{
-            color: C.textDim,
+            color: CLR_TEXT_DIM,
             fontSize: '0.8rem',
             lineHeight: 1.5,
             textAlign: 'center',
@@ -10139,10 +14297,10 @@ export default function AddFriendPage() {
             }} onClick={() => setConfirmBlockFriend(null)} style={{
               flex: 1,
               padding: '10px',
-              background: C.primaryFaint,
-              border: `1px solid ${C.primaryBorder}`,
+              background: CLR_PRIMARY_FAINT,
+              border: `1px solid ${CLR_PRIMARY_BORDER}`,
               borderRadius: 10,
-              color: C.text,
+              color: CLR_TEXT,
               fontSize: '0.82rem',
               fontWeight: 600,
               cursor: 'pointer'
@@ -10196,7 +14354,7 @@ export default function AddFriendPage() {
         transform: 'translateX(-50%)',
         width: 'min(360px, calc(100vw - 32px))',
         background: 'hsl(var(--card))',
-        border: `1px solid ${C.primaryBorder}`,
+        border: `1px solid ${CLR_PRIMARY_BORDER}`,
         borderRadius: 18,
         padding: '12px 16px',
         zIndex: 9999,
@@ -10211,14 +14369,14 @@ export default function AddFriendPage() {
           width: 40,
           height: 40,
           borderRadius: '50%',
-          background: C.primaryFaint,
-          border: `1.5px solid ${C.primaryBorder}`,
+          background: CLR_PRIMARY_FAINT,
+          border: `1.5px solid ${CLR_PRIMARY_BORDER}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0
         }}>
-              <Lock size={18} strokeWidth={1.8} color={C.primary} />
+              <Lock size={18} strokeWidth={1.8} color={CLR_PRIMARY} />
             </div>
             {/* Text */}
             <div style={{
@@ -10232,7 +14390,7 @@ export default function AddFriendPage() {
             marginBottom: 2
           }}>
                 <span style={{
-              color: C.primary,
+              color: CLR_PRIMARY,
               fontSize: '0.7rem',
               fontWeight: 700,
               letterSpacing: '0.04em'
@@ -10240,16 +14398,16 @@ export default function AddFriendPage() {
                   {scNotif.chatName}
                 </span>
                 <span style={{
-              color: C.textDim,
+              color: CLR_TEXT_DIM,
               fontSize: '0.62rem'
             }}>•</span>
                 <span style={{
-              color: C.textDim,
+              color: CLR_TEXT_DIM,
               fontSize: '0.62rem'
             }}>{scNotif.senderName}</span>
               </div>
               <p style={{
-            color: C.text,
+            color: CLR_TEXT,
             fontSize: '0.82rem',
             margin: 0,
             overflow: 'hidden',
@@ -10273,7 +14431,7 @@ export default function AddFriendPage() {
           left: 0,
           right: 0,
           height: 2,
-          background: C.primary,
+          background: CLR_PRIMARY,
           borderRadius: '0 0 18px 18px',
           transformOrigin: 'left'
         }} />
@@ -10281,257 +14439,713 @@ export default function AddFriendPage() {
       </AnimatePresence>
 
 
-      {/* ── New Post Composer ── */}
+      {/* ── New Post Composer — X/Twitter style (white fullscreen) ── */}
       <AnimatePresence>
         {showComposer && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }}
-            onClick={() => !composerPosting && setShowComposer(false)}
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 36 }}
             style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-              zIndex: 10295, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              position: 'fixed', inset: 0, zIndex: 10410,
+              background: '#ffffff',
+              display: 'flex', flexDirection: 'column',
             }}
           >
-            <motion.div
-              onClick={e => e.stopPropagation()}
-              initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }}
-              style={{
-                width: '100%', maxWidth: 480,
-                background: 'hsl(var(--card))',
-                border: `1px solid ${C.primaryBorder}`,
-                borderBottom: 'none',
-                borderRadius: '20px 20px 0 0',
-                padding: '16px 16px calc(16px + env(safe-area-inset-bottom))',
-                display: 'flex', flexDirection: 'column', gap: 12,
-                maxHeight: '85dvh',
-              }}
-            >
-              {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                <p style={{ color: C.text, fontSize: '0.9rem', fontWeight: 700, margin: 0, flex: 1 }}>{composerDestination === 'text' ? 'منشور نصي جديد' : 'نشر صورة أو فيديو'}</p>
-                <button onClick={() => !composerPosting && setShowComposer(false)} style={{
-                  background: 'none', border: 'none', color: C.textDim, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, marginLeft: 'auto',
-                }}>
-                  <X size={20} strokeWidth={2} />
-                </button>
-              </div>
+            {/* Top bar: X | Post */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: 'max(10px, env(safe-area-inset-top, 0px)) 14px 10px',
+              borderBottom: '1px solid rgba(0,0,0,0.06)',
+            }}>
+              <button
+                type="button"
+                onClick={() => { if (!composerPosting) { setShowComposer(false); setComposerError(''); } }}
+                aria-label="Close"
+                style={{
+                  width: 36, height: 36, borderRadius: '50%', border: 'none',
+                  background: 'transparent', color: '#0f1419', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <X size={22} strokeWidth={2.2} />
+              </button>
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.96 }}
+                disabled={composerPosting || !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)}
+                onClick={() => void submitPost('text')}
+                style={{
+                  minWidth: 72, height: 34, padding: '0 18px', borderRadius: 999, border: 'none',
+                  background: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)
+                    ? 'rgba(29,155,240,0.45)' : '#1d9bf0',
+                  color: '#fff', fontWeight: 700, fontSize: '0.88rem',
+                  cursor: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) ? 'default' : 'pointer',
+                  opacity: composerPosting ? 0.7 : 1,
+                }}
+              >
+                {composerPosting ? '…' : 'نشر'}
+              </motion.button>
+            </div>
 
-              {/* Composer row */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                <div style={{ width: 76, height: 76, flexShrink: 0, borderRadius: '50%', overflow: 'hidden', border: `3px solid ${C.primary}`, boxShadow: `0 0 12px ${C.primaryFaint}` }}>
-                  <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={76} style={{ width: '100%', height: '100%', border: 'none', borderRadius: '50%', display: 'block' }} />
+            {/* Body: product ad fields */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 16px 8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>{isCompanyPublisher ? 'عنوان المنتج / الموضوع' : 'رأس الموضوع'}</label>
+                  <input
+                    value={composerProductTitle}
+                    onChange={e => setComposerProductTitle(e.target.value)}
+                    placeholder={isCompanyPublisher ? 'رأس الموضوع — خط عريض' : 'رأس الموضوع'}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
+                      padding: '12px 14px', fontSize: '1.05rem', fontWeight: 800, color: '#0a0a0a',
+                      background: '#f7f9f9', outline: 'none', fontFamily: 'inherit',
+                    }}
+                  />
                 </div>
-                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <p style={{ color: C.text, fontSize: '0.8rem', fontWeight: 600, margin: 0 }}>Me</p>
-                  {composerDestination === 'text' ? (
-                    <textarea value={composerText} onChange={e => setComposerText(e.target.value)} placeholder="بماذا تفكر؟ استخدم # لإضافة هاشتاق..." rows={4} style={{ width: '100%', resize: 'none', background: C.inputBg, border: `1px solid ${C.primaryBorder}`, borderRadius: 14, padding: 12, color: C.text, fontSize: '0.86rem', fontFamily: 'inherit', lineHeight: 1.6, outline: 'none', boxSizing: 'border-box' }} />
-                  ) : (
-                    <p style={{ color: C.textDim, fontSize: '0.78rem', lineHeight: 1.6, margin: 0, padding: '12px 0' }}>{composerDestinationNotice}</p>
+                <div>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>{isCompanyPublisher ? 'تفاصيل المنتج' : 'تفاصيل الموضوع'}</label>
+                  <textarea
+                    value={composerProductDetails}
+                    onChange={e => setComposerProductDetails(e.target.value)}
+                    placeholder={isCompanyPublisher ? 'وصف الإعلان والتفاصيل الحقيقية للمنتج…' : 'تفاصيل الموضوع…'}
+                    rows={5}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
+                      padding: '12px 14px', fontSize: '0.92rem', color: '#1a1a1a', lineHeight: 1.5,
+                      background: '#f7f9f9', outline: 'none', fontFamily: 'inherit', resize: 'vertical', minHeight: 100,
+                    }}
+                  />
+                </div>
+{/* ── مستطيل Paste: رابط صورة أو فيديو (X أو رابط مباشر) — للمستخدمين والشركات ── */}
+                <div>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>
+                    {isCompanyPublisher ? 'رابط إعلان (صورة أو فيديو)' : 'رابط صورة أو فيديو'}
+                  </label>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, minHeight: 48, boxSizing: 'border-box',
+                    border: '1.5px dashed rgba(29,155,240,0.55)', background: 'rgba(29,155,240,0.06)',
+                    borderRadius: 12, padding: '4px 6px 4px 12px',
+                  }}>
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.94 }}
+                      onClick={() => void pasteLinkFromClipboard()}
+                      aria-label="Paste"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                        height: 36, padding: '0 14px', borderRadius: 10, border: 'none',
+                        background: '#1d9bf0', color: '#fff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer',
+                      }}
+                    >
+                      <ClipboardPaste size={16} strokeWidth={2.4} /> Paste
+                    </motion.button>
+                    <input
+                      dir="ltr"
+                      inputMode="url"
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      value={composerLinkInput}
+                      onChange={e => setComposerLinkInput(e.target.value)}
+                      onPaste={e => {
+                        const link = pickLinkFromText(e.clipboardData?.getData('text'));
+                        if (!link) return;
+                        e.preventDefault();
+                        setComposerError('');
+                        setComposerLinkInput(link);
+                        setComposerLinkPreviewUrl(link);
+                      }}
+                      placeholder={isCompanyPublisher ? 'الصق رابط الإعلان (صورة أو فيديو)' : 'الصق رابط صورة أو فيديو'}
+                      style={{
+                        flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
+                        fontSize: '0.85rem', color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left',
+                      }}
+                    />
+                    {composerLinkInput.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => { setComposerLinkInput(''); setComposerLinkPreviewUrl(''); setComposerError(''); }}
+                        aria-label="مسح الرابط"
+                        style={{
+                          width: 30, height: 30, borderRadius: '50%', border: 'none', flexShrink: 0,
+                          background: 'rgba(15,20,25,0.08)', color: '#0f1419', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >
+                        <X size={15} strokeWidth={2.4} />
+                      </button>
+                    )}
+                  </div>
+                  {composerLinkPreviewUrl.includes('.') && (
+                    <LinkMediaPreview
+                      url={composerLinkPreviewUrl}
+                      failedNote="الرابط لا يبدو صورة أو فيديو — الصق رابط X أو رابط ملف مباشر (jpg / png / mp4)"
+                    />
                   )}
                 </div>
-              </div>
-
-              {/* Detected hashtags preview */}
-              {(() => {
-                const tags = Array.from(composerText.matchAll(/#([\p{L}\p{N}_]+)/gu)).map(m => m[1]);
-                return tags.length > 0 ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {tags.map((t, i) => (
-                      <span key={i} style={{
-                        color: C.primary, background: C.primaryFaint, border: `1px solid ${C.primaryBorder}`,
-                        borderRadius: 20, padding: '3px 10px', fontSize: '0.68rem', fontWeight: 600,
-                      }}>#{t}</span>
+                {/* معاينة فورية لروابط X: الصورة/الفيديو تظهر كاملة بمجرد وضع الرابط (مستخدم أو شركة) */}
+                {composerXUrls.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {composerXUrls.map(u => (
+                      <LinkMediaPreview key={u} url={u} failedNote="لا توجد صورة أو فيديو في هذا الرابط" />
                     ))}
                   </div>
-                ) : null;
-              })()}
+                )}
+{isCompanyPublisher && (
+                <div>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>السعر</label>
+                  <input
+                    value={composerProductPrice}
+                    onChange={e => setComposerProductPrice(e.target.value)}
+                    placeholder="مثال: 25 د.ك أو مجاني"
+                    style={{
+                      width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
+                      padding: '12px 14px', fontSize: '0.95rem', fontWeight: 700, color: '#0a0a0a',
+                      background: '#f7f9f9', outline: 'none', fontFamily: 'inherit',
+                    }}
+                  />
+                </div>
+                )}
+                {/* حقول إضافية: للشركات فقط — أُزيلت من نشر المستخدم النصي */}
+                {isCompanyPublisher && composerProductExtras.map((extra, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <textarea
+                      value={extra}
+                      onChange={e => setComposerProductExtras(prev => prev.map((x, i) => i === idx ? e.target.value : x))}
+                      placeholder={`حقل إضافي ${idx + 1}`}
+                      rows={2}
+                      style={{
+                        flex: 1, boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
+                        padding: '10px 12px', fontSize: '0.88rem', color: '#1a1a1a',
+                        background: '#f7f9f9', outline: 'none', fontFamily: 'inherit', resize: 'vertical',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setComposerProductExtras(prev => prev.filter((_, i) => i !== idx))}
+                      aria-label="حذف الحقل"
+                      style={{
+                        width: 36, height: 36, borderRadius: 10, border: 'none', flexShrink: 0,
+                        background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+                {isCompanyPublisher && (
+                <button
+                  type="button"
+                  onClick={() => setComposerProductExtras(prev => [...prev, ''])}
+                  style={{
+                    alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6,
+                    height: 36, padding: '0 14px', borderRadius: 10,
+                    border: '1.5px dashed rgba(29,155,240,0.45)', background: 'rgba(29,155,240,0.06)',
+                    color: '#1d9bf0', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer',
+                  }}
+                >
+                  <Plus size={16} strokeWidth={2.6} /> +
+                </button>
+                )}
 
-              {/* Media preview */}
-              {composerMediaFiles.length > 0 && (
-                <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.primaryBorder}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 6 }}>
-                    {composerMediaFiles.map((item, index) => (
-                      <div key={`${item.type}-${index}`} style={{ position: 'relative', minHeight: 120 }}>
+                {composerMediaFiles.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {composerMediaFiles.map((item, idx) => (
+                      <div key={idx} style={{ position: 'relative', width: 120, height: 120, borderRadius: 14, overflow: 'hidden', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {item.type === 'video' ? (
-                          <video src={item.preview} controls style={{ width: '100%', height: 180, display: 'block', background: '#000', objectFit: 'cover' }} />
+                          <video src={item.preview} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : item.type === 'pdf' ? (
+                          <span style={{ color: '#fff', fontSize: '0.75rem', fontWeight: 700 }}>PDF</span>
                         ) : (
-                          <img src={item.preview} alt="" style={{ width: '100%', height: 180, objectFit: 'cover', display: 'block' }} />
+                          <img src={item.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         )}
-                        <button type="button" onClick={() => removePostMediaAt(index)} aria-label="حذف الوسائط" style={{
-                          position: 'absolute', top: 7, right: 7, width: 28, height: 28, borderRadius: '50%',
-                          background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}><X size={14} strokeWidth={2.4} /></button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            URL.revokeObjectURL(item.preview);
+                            setComposerMediaFiles(prev => prev.filter((_, i) => i !== idx));
+                          }}
+                          style={{
+                            position: 'absolute', top: 6, right: 6, width: 26, height: 26, borderRadius: '50%',
+                            border: 'none', background: 'rgba(15,20,25,0.75)', color: '#fff', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          <X size={14} strokeWidth={2.4} />
+                        </button>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
-              {composerMediaFiles.length > 0 && (
-                <p style={{ color: C.textDim, fontSize: '0.72rem', margin: 0, textAlign: 'center' }}>
-                  {composerDestination === 'text' ? 'سيتم نشر المرفق في الشات العام النصي' : 'سيتم نشر المرفق في قسم الصور أو الفيديو'}
-                </p>
-              )}
-
-              {/* Publish error — shown when the post failed to save so nothing disappears silently */}
               {composerError && (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
-                  borderRadius: 10, padding: '8px 12px',
-                }}>
-                  <p style={{ color: '#ef4444', fontSize: '0.75rem', margin: 0 }}>{composerError}</p>
-                </div>
+                <p style={{ color: '#f4212e', fontSize: '0.8rem', margin: '12px 0 0' }}>{composerError}</p>
               )}
+            </div>
 
-              {/* Hidden file inputs */}
-              {/* Text-feed media inputs: photos and videos stay attached to the text post. */}
-              <input
-                ref={postImageRef}
-                type="file"
-                accept="image/*"
-                multiple={composerDestination === 'text'}
-                style={{ display: 'none' }}
-                onChange={e => {
-                  Array.from(e.target.files ?? []).forEach(file => pickPostMedia(file, 'image'));
-                  e.target.value = '';
-                }}
-              />
-              <input
-                ref={postVideoRef}
-                type="file"
-                accept="video/*"
-                multiple={composerDestination === 'text'}
-                style={{ display: 'none' }}
-                onChange={e => {
-                  Array.from(e.target.files ?? []).forEach(file => pickPostMedia(file, 'video'));
-                  e.target.value = '';
-                }}
-              />
-
-              {composerDestination !== 'text' && (
-                <motion.button type="button" whileTap={{ scale: 0.98 }} onClick={() => (composerDestination === 'photos' ? postImageRef : postVideoRef).current?.click()} aria-label={composerDestination === 'photos' ? 'اختيار صورة' : 'اختيار فيديو'} style={{ width: '100%', height: 46, borderRadius: 12, background: C.primaryFaint, border: `1px solid ${C.primaryBorder}`, color: C.primary, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontSize: '0.8rem', fontWeight: 700 }}>
-                  {composerDestination === 'photos' ? <ImageIcon size={18} strokeWidth={2} /> : <Video size={18} strokeWidth={2} />}
-                  {composerDestination === 'photos' ? 'اختيار صورة' : 'اختيار فيديو'}
-                </motion.button>
-              )}
-
-              {/* Text-post attachments */}
-              {composerDestination === 'text' ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {user && <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => postImageRef.current?.click()} aria-label="Attach image" style={{ height: 38, padding: '0 12px', borderRadius: 19, background: C.primaryFaint, border: `1px solid ${C.primaryBorder}`, color: C.primary, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontSize: '0.72rem', fontWeight: 700 }}><ImageIcon size={16} strokeWidth={2} />Photo</motion.button>}
-                    {user && <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={() => postVideoRef.current?.click()} aria-label="Attach video" style={{ height: 38, padding: '0 12px', borderRadius: 19, background: C.primaryFaint, border: `1px solid ${C.primaryBorder}`, color: C.primary, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontSize: '0.72rem', fontWeight: 700 }}><Video size={16} strokeWidth={2} />Video</motion.button>}
-                  </div>
-                  <motion.button whileTap={{ scale: 0.95 }} disabled={composerPosting || !composerText.trim()} onClick={() => void submitPost('text')} style={{ padding: '9px 22px', background: !composerText.trim() ? C.primaryFaint : C.primary, border: 'none', borderRadius: 20, color: !composerText.trim() ? C.textDim : 'hsl(var(--primary-foreground))', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {composerPosting ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }} style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid hsl(var(--primary-foreground))', borderTopColor: 'transparent' }} /> : <Send size={14} strokeWidth={2.4} />}
-                    نشر
-                  </motion.button>
-                </div>
-              ) : (
-                <motion.button type="button" whileTap={{ scale: 0.98 }} onClick={() => void submitPost(composerDestination)} disabled={composerPosting || composerMediaFiles.length === 0} style={{ width: '100%', minHeight: 50, borderRadius: 12, border: 'none', background: composerMediaFiles.length === 0 ? C.primaryFaint : C.primary, color: composerMediaFiles.length === 0 ? C.textDim : 'hsl(var(--primary-foreground))', cursor: composerMediaFiles.length === 0 ? 'not-allowed' : 'pointer', fontSize: '0.86rem', fontWeight: 700 }}>
-                  {composerPosting ? 'جارٍ النشر...' : 'نشر'}
-                </motion.button>
-              )}
-            </motion.div>
+            {/* Bottom toolbar — image HQ / video ad / PDF */}
+            <div style={{
+              borderTop: '1px solid rgba(0,0,0,0.08)',
+              padding: '10px 14px calc(12px + env(safe-area-inset-bottom, 0px))',
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}>
+              <label style={{
+                width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: '#1d9bf0',
+              }} title="صورة عالية الجودة">
+                <ImageIcon size={20} strokeWidth={2} />
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/*"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (!files.length) return;
+                    setComposerMediaFiles(prev => {
+                      const existingImageCount = prev.filter(item => item.type === 'image').length;
+                      const remainingSlots = MAX_COMPOSER_IMAGES - existingImageCount;
+                      if (remainingSlots <= 0) {
+                        setComposerError(`الحد الأقصى ${MAX_COMPOSER_IMAGES} صور`);
+                        return prev;
+                      }
+                      const accepted = files.slice(0, remainingSlots);
+                      return [
+                        ...prev,
+                        ...accepted.map(file => ({
+                          file,
+                          type: 'image' as const,
+                          preview: URL.createObjectURL(file),
+                        })),
+                      ];
+                    });
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <label style={{
+                width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: '#1d9bf0',
+              }} title="فيديو إعلاني">
+                <Video size={20} strokeWidth={2} />
+                <input
+                  type="file"
+                  accept="video/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.m4v"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setComposerMediaFiles(prev => [
+                      ...prev,
+                      { file, type: 'video' as const, preview: URL.createObjectURL(file) },
+                    ]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <label style={{
+                width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: '#1d9bf0',
+              }} title="ملف PDF">
+                <FileText size={20} strokeWidth={2} />
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setComposerMediaFiles(prev => [
+                      ...prev,
+                      { file, type: 'pdf' as const, preview: URL.createObjectURL(file) },
+                    ]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <div style={{ flex: 1 }} />
+              <span style={{ color: 'rgba(0,0,0,0.4)', fontSize: '0.72rem' }}>إعلان منتج</span>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Post Detail Page — opened by tapping any post; comments live only here ── */}
+      {/* ── Comments sheet (Instagram-style white bottom sheet) — opens only via comment icon ── */}
       <AnimatePresence>
         {openComments && (
-          <PostDetailPage
+          <InstagramCommentsSheet
             key={openComments.id}
-            post={(() => {
-              const fromFeed = posts.find(p => p.id === openComments.id);
-              const fromMedia = myMediaPosts.find(p => p.id === openComments.id);
-              // ادمج أحدث بيانات مع المنشور المفتوح حتى لا يضيع النص أو الوسائط
-              const base = fromFeed ?? fromMedia ?? openComments;
-              return {
-                ...openComments,
-                ...base,
-                text: base.text || openComments.text || '',
-                mediaUrl: base.mediaUrl ?? openComments.mediaUrl,
-                mediaType: base.mediaType ?? openComments.mediaType,
-                mediaUrls: (base.mediaUrls?.length ? base.mediaUrls : openComments.mediaUrls) ?? [],
-                mediaTypes: (base.mediaTypes?.length ? base.mediaTypes : openComments.mediaTypes) ?? [],
-              };
-            })()}
-            isMine={!!user && openComments.authorId === user.id}
+            post={openComments}
             comments={postComments[openComments.id] ?? []}
             commentText={commentText}
             commentSending={commentSending}
             onChangeCommentText={setCommentText}
             onSubmitComment={submitComment}
-            onToggleLike={toggleLike}
-            onRemoveMedia={removePostMedia}
-            onRequestDelete={post => setConfirmDeletePost(post)}
-            onSaveMediaText={saveMediaPostText}
             onClose={closePostDetail}
-            enterFromSide={postDetailEnterSide}
           />
         )}
       </AnimatePresence>
 
-      {/* ── Text Posts Page — هيدر نحيف: STOOORNA ثابتة مع وميض لامع يمر على الأحرف ── */}
+      {/* ── Full-screen product ad — tap any profile grid post opens this exact-screen page.
+          Bottom: Like + external share | Details (three lines) | Comments chat.
+          No repost / favorites. Video: autoplay only; tap pauses; leave page stops. ── */}
+      <AnimatePresence>
+        {singlePostView && (() => {
+          const ad = parseProductAd(singlePostView.text);
+          const mediaItems = PostMediaItems(singlePostView);
+          const primary = mediaItems[0];
+          const xUrls = extractLinkMediaUrls(singlePostView.text);
+          const isPdf = !!(primary?.url && /\.pdf(\?|$)/i.test(primary.url));
+          const livePost = posts.find(p => p.id === singlePostView.id) ?? singlePostView;
+          return (
+            <motion.div
+              key="single-post-view"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22 }}
+              style={{
+                position: 'fixed', inset: 0,
+                // من البروفايل: فوق البروفايل (10420) — من الفيد: تحت البروفايل لو فُتح بروفايل فوقه
+                zIndex: singlePostFromProfile ? 10450 : 10380,
+                background: '#000', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeSinglePostView}
+                aria-label="إغلاق"
+                style={{
+                  position: 'absolute', top: 'max(12px, env(safe-area-inset-top, 0px))', insetInlineStart: 12, zIndex: 6,
+                  width: 36, height: 36, borderRadius: '50%', border: 'none',
+                  background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <X size={18} strokeWidth={2.4} />
+              </button>
+
+              <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#000' }}>
+                {primary ? (
+                  isPdf ? (
+                    <iframe title="PDF" src={primary.url} style={{ width: '100%', height: '100%', border: 'none', background: '#111' }} />
+                  ) : primary.type === 'video' ? (
+                    <video
+                      key={primary.url}
+                      src={primary.url}
+                      autoPlay
+                      loop
+                      playsInline
+                      muted={false}
+                      controls={false}
+                      onClick={e => {
+                        e.stopPropagation();
+                        const v = e.currentTarget;
+                        if (v.paused) { void v.play(); setAdVideoPaused(false); }
+                        else { v.pause(); setAdVideoPaused(true); }
+                      }}
+                      style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000', cursor: 'pointer' }}
+                    />
+                  ) : (
+                    <img src={primary.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }} />
+                  )
+                ) : xUrls.length > 0 ? (
+                  <div style={{ width: '100%', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '56px 12px 12px', boxSizing: 'border-box' }}>
+                    <div style={{ margin: 'auto 0', width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {xUrls.map(u => <LinkMediaPreview key={u} url={u} />)}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+                    <p style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, textAlign: 'center', lineHeight: 1.5 }}>
+                      {ad?.title || productAdDisplayTitle(singlePostView)}
+                    </p>
+                  </div>
+                )}
+                {primary?.type === 'video' && adVideoPaused && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                    <Play size={48} color="#fff" fill="rgba(255,255,255,0.35)" />
+                  </div>
+                )}
+              </div>
+
+              <div style={{
+                flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 20px calc(12px + env(safe-area-inset-bottom, 0px))',
+                background: 'linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0.55))',
+                borderTop: '1px solid rgba(255,255,255,0.08)',
+              }}>
+                {/* الترتيب: لايك → تعليقات → شير | تفاصيل | بروفايل الشركة */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 88 }}>
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => toggleLike(livePost)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: livePost.likedByMe ? '#ef4444' : '#fff' }}
+                  >
+                    <Heart size={22} strokeWidth={2} fill={livePost.likedByMe ? '#ef4444' : 'none'} />
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{livePost.likesCount > 0 ? livePost.likesCount : ''}</span>
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => loadComments(livePost)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
+                  >
+                    <MessageCircle size={22} strokeWidth={2} />
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{livePost.commentsCount > 0 ? livePost.commentsCount : ''}</span>
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                      if (guestGuard()) return;
+                      if (productInquiryShareAlert(livePost.id)) {
+                        clearProductInquiryReplyFlag(livePost.id);
+                        openShareMiniChat({ id: livePost.authorId, name: livePost.authorName, username: livePost.authorUsername, avatarUrl: livePost.authorAvatarUrl, post: livePost });
+                        return;
+                      }
+                      setProductShareMenuPost(livePost);
+                    }}
+                    aria-label="مشاركة الإعلان"
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer', display: 'flex', padding: 4,
+                      color: productInquiryShareAlert(livePost.id) ? '#eab308' : '#fff',
+                    }}
+                  >
+                    <Send size={20} strokeWidth={2} color={productInquiryShareAlert(livePost.id) ? '#eab308' : undefined} />
+                  </motion.button>
+                </div>
+
+                <motion.button
+                  whileTap={{ scale: 0.92 }}
+                  onClick={() => setAdDetailsOpen(true)}
+                  aria-label="تفاصيل المنتج"
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+                    borderRadius: 12, width: 52, height: 44, cursor: 'pointer', padding: 0,
+                  }}
+                >
+                  <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+                  <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+                  <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+                </motion.button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 88, justifyContent: 'flex-end' }}>
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    type="button"
+                    onClick={() => {
+                      if (user && String(livePost.authorId) === String(user.id)) return;
+                      setViewingProfile({
+                        id: livePost.authorId,
+                        name: livePost.authorName,
+                        username: livePost.authorUsername,
+                        avatarUrl: livePost.authorAvatarUrl,
+                        isCompany: true,
+                      });
+                    }}
+                    aria-label="بروفايل الشركة"
+                    title="بروفايل الشركة"
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: 36, height: 36, borderRadius: 10,
+                      background: 'rgba(0,188,212,0.18)',
+                      border: '1px solid rgba(0,188,212,0.45)',
+                      color: '#00BCD4', cursor: 'pointer', padding: 0, flexShrink: 0,
+                    }}
+                  >
+                    <Building2 size={18} strokeWidth={2.2} />
+                  </motion.button>
+                </div>
+              </div>
+
+              <AnimatePresence>
+                {adDetailsOpen && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setAdDetailsOpen(false)}
+                    style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end' }}
+                  >
+                    <motion.div
+                      initial={{ y: '100%' }}
+                      animate={{ y: 0 }}
+                      exit={{ y: '100%' }}
+                      transition={{ type: 'spring', stiffness: 420, damping: 38 }}
+                      onClick={e => e.stopPropagation()}
+                      style={{
+                        width: '100%', maxHeight: '70vh', overflowY: 'auto',
+                        background: '#fff', borderRadius: '18px 18px 0 0',
+                        padding: '14px 18px calc(20px + env(safe-area-inset-bottom, 0px))',
+                      }}
+                    >
+                      <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
+                      <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.15rem', fontWeight: 800, lineHeight: 1.35 }}>
+                        {ad?.title || productAdDisplayTitle(singlePostView)}
+                      </p>
+                      {ad?.price ? (
+                        <p style={{ margin: '8px 0 0', color: CLR_PRIMARY, fontSize: '1rem', fontWeight: 800 }}>{ad.price}</p>
+                      ) : null}
+                      {ad?.details ? (
+                        <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{ad.details}</p>
+                      ) : singlePostView.text && !singlePostView.text.trim().startsWith('{') ? (
+                        <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                          {singlePostView.text.replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()}
+                        </p>
+                      ) : null}
+                      {(ad?.extras ?? []).map((ex, i) => (
+                        <p key={i} style={{ margin: '10px 0 0', color: '#333', fontSize: '0.86rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.06)' }}>{ex}</p>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setAdDetailsOpen(false)}
+                        style={{
+                          marginTop: 18, width: '100%', height: 44, borderRadius: 12, border: 'none',
+                          background: '#0f1419', color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                        }}
+                      >
+                        إغلاق
+                      </button>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* ── Text Posts Page — X أحمر متحرك بالأعلى + New Post تحتها بالمنتصف؛ الشريط السفلي مخفي ── */}
       <AnimatePresence>
       {textPostsPageOpen && (
           <motion.div
             key="text-posts-page"
             initial={textPostsOpenedFromUrl.current ? false : { opacity: 0, y: -36 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 56 }}
-            transition={{ duration: 0.34, ease: 'easeInOut' }}
+            exit={{ opacity: 0, y: '100%' }}
+            transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
             style={{
               position: 'fixed',
               top: 0, left: 0, right: 0,
-              bottom: 'calc(52px + env(safe-area-inset-bottom, 0px))',
-              zIndex: 10190,
-              background: C.bg, display: 'flex', flexDirection: 'column',
+              bottom: 0,
+              zIndex: 10300,
+              background: PAGE_BG,
               transformOrigin: 'center center',
             }}
           >
-            <div style={{
+            {/* هيدر علوي: أيقونة التطبيق | الشركات — يختفي بالتمرير مثل الشريط السفلي (DOM مباشر) */}
+            <div
+              ref={postsChromeTopRef}
+              style={{
+              position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '6px 14px',
-              paddingTop: 'max(8px, env(safe-area-inset-top, 0px))',
-              flexShrink: 0,
-              borderBottom: `1px solid ${C.navBorder}`,
+              gap: 22,
+              minHeight: 40,
+              paddingTop: 'max(6px, env(safe-area-inset-top, 0px))',
+              paddingBottom: 8,
+              borderBottom: `1.5px solid ${CLR_PRIMARY}`,
               background: 'rgba(6,14,14,0.96)',
-              minHeight: 46,
+              transform: 'translate3d(0,0,0)',
+              opacity: 1,
+              willChange: 'transform, opacity',
+              transition: 'transform 0.22s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.18s ease',
+              pointerEvents: 'auto',
+              backfaceVisibility: 'hidden' as const,
             }}>
-              <motion.button
+              <button
                 type="button"
-                whileTap={{ scale: 0.96 }}
-                onClick={() => {
-                  setComposerDestination('text');
-                  setComposerError('');
-                  try { clearPostMedia(); } catch { /* */ }
-                  window.setTimeout(() => setShowComposer(true), 0);
-                }}
-                aria-label="Create a text post"
+                onClick={() => setTextFeedTab('app')}
+                aria-label="التطبيق — منشورات المستخدمين"
                 style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  height: 38, padding: '0 14px', borderRadius: 19,
-                  border: `1px solid ${C.primaryBorder}`,
-                  background: C.primaryFaint,
-                  color: C.primary,
-                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: 4, borderRadius: '50%', cursor: 'pointer',
+                  background: 'transparent', border: 'none',
                 }}
               >
-                <PenLine size={17} strokeWidth={2.4} />
-                <span style={{ fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>New Post</span>
-              </motion.button>
+                <style>{`@keyframes stooornaAppIconSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                <span
+                  aria-hidden
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: '50%',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'radial-gradient(circle at 35% 30%, #123a40 0%, #061014 70%)',
+                    boxShadow: textFeedTab === 'app'
+                      ? '0 0 12px rgba(0,188,212,0.55), inset 0 0 0 1.5px rgba(0,188,212,0.85)'
+                      : 'inset 0 0 0 1.5px rgba(0,188,212,0.35)',
+                    opacity: textFeedTab === 'app' ? 1 : 0.45,
+                    transition: 'opacity 0.2s ease, box-shadow 0.2s ease',
+                    animation: textFeedTab === 'app' ? 'stooornaAppIconSpin 12s linear infinite' : 'none',
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="18" cy="18" r="15.5" stroke="#00BCD4" strokeWidth="2.2" opacity="0.95" />
+                    <path
+                      d="M11 20.5c2.2-5.2 5.4-8.2 7-9.2 1.6 1 4.8 4 7 9.2-2.1 1.6-4.6 2.6-7 2.6s-4.9-1-7-2.6Z"
+                      fill="#00BCD4"
+                      opacity="0.92"
+                    />
+                    <path
+                      d="M18 11.3c1.1 2.4 1.7 5.1 1.7 8.2 0 1.1-.1 2.1-.3 3"
+                      stroke="#7ee8f5"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      opacity="0.9"
+                    />
+                    <circle cx="18" cy="18" r="2.2" fill="#7ee8f5" />
+                  </svg>
+                </span>
+              </button>
+              <span
+                aria-hidden
+                style={{
+                  color: 'rgba(0,188,212,0.55)',
+                  fontSize: '1.05rem',
+                  fontWeight: 300,
+                  lineHeight: 1,
+                  userSelect: 'none',
+                  padding: '0 2px',
+                }}
+              >|</span>
+              <button
+                type="button"
+                onClick={() => setTextFeedTab('companies')}
+                aria-label="الشركات — منشورات الشركات"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: 4, borderRadius: '50%', cursor: 'pointer',
+                  background: 'transparent', border: 'none',
+                }}
+              >
+                <Building2
+                  size={24}
+                  strokeWidth={2.2}
+                  color={textFeedTab === 'companies' ? CLR_PRIMARY : CLR_TEXT_DIM}
+                  style={{ opacity: textFeedTab === 'companies' ? 1 : 0.45, transition: 'opacity 0.2s ease' }}
+                />
+              </button>
             </div>
             <div
               ref={textPostsScrollRef}
-              className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
-              style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+              onScroll={handleTextPostsScroll}
+              className="overflow-y-auto overscroll-contain"
+              style={{
+                position: 'absolute', inset: 0,
+                paddingTop: 'calc(35.5px + max(6px, env(safe-area-inset-top, 0px)))',
+                paddingBottom: 'calc(57.5px + max(8px, env(safe-area-inset-bottom, 0px)))',
+                WebkitOverflowScrolling: 'touch', touchAction: 'pan-y',
+              }}
             >
               <AnimatePresence>
                 {newPostsAvailable > 0 && (
@@ -10544,7 +15158,7 @@ export default function AddFriendPage() {
                       onClick={loadPendingNewPosts}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 6,
-                        background: C.primary, border: 'none', borderRadius: 20,
+                        background: CLR_PRIMARY, border: 'none', borderRadius: 20,
                         padding: '7px 16px', color: '#06171a', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
                         boxShadow: '0 2px 10px rgba(0,188,212,0.35)',
                       }}
@@ -10555,12 +15169,30 @@ export default function AddFriendPage() {
                   </motion.div>
                 )}
               </AnimatePresence>
-              {posts.length > 0 ? (
+              {(() => {
+                // فصل صارم: شركات فقط في تبويب الشركات — أفراد في تبويب التطبيق
+                // لا نعتمد على parseProductAd وحده (المستخدمون الأفراد ينشرون بنفس صيغة العنوان/التفاصيل)
+                const isCompanyPost = (p: PostItem) => {
+                  const anyP = p as PostItem & { publisherType?: string; isCompanyPost?: boolean; authorIsCompany?: boolean };
+                  if (anyP.publisherType === 'company' || anyP.isCompanyPost === true || anyP.authorIsCompany === true) return true;
+                  if (anyP.publisherType === 'user' || anyP.isCompanyPost === false || anyP.authorIsCompany === false) return false;
+                  if (companies.some(c => String(c.id) === String(p.authorId))) return true;
+                  // حساب الشركة الحالي: منشوراته في قسم الشركات
+                  if (user && String(p.authorId) === String(user.id) && isCompanyPublisher) return true;
+                  // حساب فردي حالي: منشوراته في قسم المستخدمين
+                  if (user && String(p.authorId) === String(user.id) && !isCompanyPublisher) return false;
+                  return isCompanyUserAccount({ id: p.authorId, username: p.authorUsername, name: p.authorName }, companies);
+                };
+                const feedPosts = combinedFeedPosts.filter(p =>
+                  textFeedTab === 'companies' ? isCompanyPost(p) : !isCompanyPost(p)
+                );
+                return feedPosts.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {posts.map(post => (
+                  {feedPosts.map(post => (
                     <PostCard
                       key={post.repostKey ?? post.id}
                       post={post}
+                      likeBurstKey={likeBubbleKey[post.id] ?? 0}
                       isMine={!!user && post.authorId === user.id}
                       followStatus={
                         !user || post.authorId === user.id
@@ -10573,18 +15205,58 @@ export default function AddFriendPage() {
                       }
                       onFollow={followAuthorFromPost}
                       onToggleLike={toggleLike}
-                      onOpenPost={openTextPostDetail}
+                      onOpenPost={p => {
+                        const companyAuthor = !!p.authorId && (
+                          companies.some(c => String(c.id) === String(p.authorId)) ||
+                          isCompanyUserAccount({ id: p.authorId, username: p.authorUsername, name: p.authorName })
+                        );
+                        if (parseProductAd(p.text) || companyAuthor) openSinglePostView(p);
+                        else openTextPostDetail(p);
+                      }}
+                      onOpenComments={loadComments}
                       onRequestDelete={setConfirmDeletePost}
                       onRemoveMedia={removePostMedia}
                       onHashtag={openHashtag}
                       onToggleFavorite={handleToggleFavoritePost}
                       isFavorited={isPostFavorited}
-                      onShare={post => { if (guestGuard()) return; setShareRecipients([]); setShareError(''); setSharePost(post); }}
+                      onShare={post => {
+                        if (guestGuard()) return;
+                        const companyAuthor = companies.some(c => String(c.id) === String(post.authorId)) ||
+                          isCompanyUserAccount({ id: post.authorId, username: post.authorUsername, name: post.authorName }) ||
+                          !!parseProductAd(post.text);
+                        if (companyAuthor) {
+                          setProductShareMenuPost(post);
+                        } else {
+                          setProductShareMenuPost(post); // same sheet; second action differs below
+                        }
+                      }}
+                      onProductShareMenu={post => {
+                        if (guestGuard()) return;
+                        void inquiryAlertTick;
+                        if (productInquiryShareAlert(post.id)) {
+                          clearProductInquiryReplyFlag(post.id);
+                          openShareMiniChat({ id: post.authorId, name: post.authorName, username: post.authorUsername, avatarUrl: post.authorAvatarUrl, post });
+                          return;
+                        }
+                        setProductShareMenuPost(post);
+                      }}
+                      productShareAlert={productInquiryShareAlert(post.id)}
+                      isCompanyAuthor={
+                        !!post.authorId && (
+                          companies.some(c => String(c.id) === String(post.authorId)) ||
+                          isCompanyUserAccount({ id: post.authorId, username: post.authorUsername, name: post.authorName })
+                        )
+                      }
                       onRepost={toggleRepost}
                       onDownload={handleDownloadPost}
-                      onOpenProfile={p => setViewingProfile({
-                        id: p.authorId, name: p.authorName, username: p.authorUsername, avatarUrl: p.authorAvatarUrl,
-                      })}
+                      onOpenProfile={p => {
+                        if (user && String(p.authorId) === String(user.id)) return;
+                        setViewingProfile({
+                          id: p.authorId, name: p.authorName, username: p.authorUsername, avatarUrl: p.authorAvatarUrl,
+                        });
+                      }}
+                      isPinned={!!user && post.authorId === user.id && pinnedPostId === post.id}
+                      onTogglePin={handleTogglePinPost}
                     />
                   ))}
                 </div>
@@ -10592,16 +15264,95 @@ export default function AddFriendPage() {
                 <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 32 }}>
                   <div style={{
                     width: 52, height: 52, borderRadius: '50%',
-                    background: C.primaryFaint, border: `1px solid ${C.primaryBorder}`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.primaryDim,
+                    background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_PRIMARY_DIM,
                   }}>
                     <FileText size={20} strokeWidth={1.5} />
                   </div>
-                  <p style={{ color: C.textDim, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
-                    لا توجد منشورات بعد — اضغط مطولاً على أيقونة البوستات بالشريط السفلي للنشر
+                  <p style={{ color: CLR_TEXT_DIM, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
+                    {textFeedTab === 'companies' ? 'لا منشورات شركات بعد' : 'لا منشورات مستخدمين بعد'}
                   </p>
                 </div>
-              )}
+              );
+              })()}
+            </div>
+
+            {/* هيدر سفلي: شركات = New Post بالمنتصف | أفراد = × للإغلاق بالمنتصف فقط */}
+            <div
+              ref={postsChromeBottomRef}
+              style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 2,
+              paddingTop: 8,
+              paddingBottom: 'max(8px, env(safe-area-inset-bottom, 0px))',
+              paddingLeft: 14,
+              paddingRight: 14,
+              borderTop: `1.5px solid ${CLR_PRIMARY}`,
+              background: 'rgba(6,14,14,0.96)',
+              minHeight: 48,
+              transform: 'translate3d(0,0,0)',
+              opacity: 1,
+              willChange: 'transform, opacity',
+              transition: 'transform 0.22s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.18s ease',
+              pointerEvents: 'auto',
+              backfaceVisibility: 'hidden' as const,
+            }}>
+              <>
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.96 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!user) {
+                      navigate('/settings');
+                      return;
+                    }
+                    setComposerDestination('text');
+                    setComposerError('');
+                    try { clearPostMedia(); } catch { /* */ }
+                    window.setTimeout(() => setShowComposer(true), 0);
+                  }}
+                  aria-label={!user ? 'تسجيل الدخول' : 'Create a text post'}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    height: 40, minWidth: 120, padding: '0 18px', borderRadius: 20,
+                    border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    background: CLR_PRIMARY_FAINT,
+                    color: CLR_PRIMARY,
+                    cursor: 'pointer',
+                    touchAction: 'manipulation',
+                    zIndex: 1,
+                  }}
+                >
+                  {!user ? <LogIn size={16} strokeWidth={2.4} /> : <PenLine size={16} strokeWidth={2.4} />}
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>{!user ? 'تسجيل الدخول' : 'New Post'}</span>
+                </motion.button>
+                <style>{`@keyframes stooornaRedXSpin { from { transform: translateY(-50%) rotate(0deg); } to { transform: translateY(-50%) rotate(360deg); } }`}</style>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTextPostsMenuOpen(false);
+                    setTextPostsPageOpen(false);
+                  }}
+                  aria-label="إغلاق"
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    top: '50%',
+                    width: 36, height: 36,
+                    border: 'none', background: 'none',
+                    color: '#ef4444', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    animation: 'stooornaRedXSpin 2.4s linear infinite',
+                    transformOrigin: 'center',
+                  }}
+                >
+                  <X size={22} strokeWidth={2.6} />
+                </button>
+              </>
             </div>
           </motion.div>
       )}
@@ -10615,8 +15366,8 @@ export default function AddFriendPage() {
             postInteractions={postInteractions}
             loading={sharedInboxLoading}
             onClose={() => { setSharedInboxOpen(false); setSharedInboxStoryOnly(false); }}
-            initialSection={sharedInboxStoryOnly ? 'story' : 'favorites'}
-            storyOnly={sharedInboxStoryOnly}
+            initialSection="story"
+            storyOnly
             onOpenShare={openSharedPost}
             storyThreads={storyCommentThreads}
             storyThreadsLoading={storyCommentThreadsLoading}
@@ -10632,6 +15383,32 @@ export default function AddFriendPage() {
             onOpenPostThread={handleOpenPostCommentThread}
             favoritedPosts={favoritedPosts}
             onOpenFavoritePost={post => { setSharedInboxOpen(false); openTextPostDetail(post); }}
+            userShareInbox={userShareInbox}
+            onOpenUserShare={(item) => {
+              if (!user?.id) return;
+              const list = loadUserShareInbox(user.id).map(x => x.id === item.id ? { ...x, read: true } : x);
+              saveUserShareInbox(user.id, list);
+              setUserShareInbox(list);
+              setSharedInboxOpen(false);
+              setUserShareChatPeer({
+                id: item.fromId,
+                name: item.fromName,
+                username: item.fromUsername,
+                avatarUrl: item.fromAvatar,
+                post: item.post,
+                note: item.note,
+              });
+              setShareMiniMsgs(loadShareThread(user.id, item.fromId, item.post?.id ?? item.id));
+              setShareMiniText('');
+            }}
+            onDeleteUserShare={(id) => {
+              if (!user?.id) return;
+              if (!window.confirm('حذف هذه المشاركة من قائمة Chat؟')) return;
+              const list = loadUserShareInbox(user.id).filter(x => x.id !== id);
+              saveUserShareInbox(user.id, list);
+              setUserShareInbox(list);
+            }}
+            zIndex={cameraCaptureOpen ? 13000 : 10295}
           />
         )}
       </AnimatePresence>
@@ -10654,7 +15431,7 @@ export default function AddFriendPage() {
               setSharedInboxOpen(false);
               setSharedInboxStoryOnly(false);
               setCameraCaptureOpen(false);
-              navigate(`/chat?with=${encodeURIComponent(c.authorId)}&name=${encodeURIComponent(c.authorName ?? '')}&avatarUrl=${encodeURIComponent(c.authorAvatarUrl ?? '')}`);
+              openShareMiniChat({ id: c.authorId, name: c.authorName, avatarUrl: c.authorAvatarUrl });
             }}
           />
         )}
@@ -10684,7 +15461,7 @@ export default function AddFriendPage() {
             onClick={() => deletingPostId === null && setConfirmDeletePost(null)}
             style={{
               position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)',
-              zIndex: 10290, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+              zIndex: 10420, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
             }}
           >
             <motion.div
@@ -10710,9 +15487,9 @@ export default function AddFriendPage() {
                 }}>
                   <Trash2 size={19} strokeWidth={2} color="#ef4444" />
                 </div>
-                <p style={{ color: C.text, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>حذف المنشور</p>
+                <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>حذف المنشور</p>
               </div>
-              <p style={{ color: C.textDim, fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center', margin: 0 }}>
+              <p style={{ color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center', margin: 0 }}>
                 هل تريد حذف هذا المنشور نهائياً؟ لا يمكن التراجع عن هذا الإجراء.
               </p>
               <div style={{ display: 'flex', gap: 10 }}>
@@ -10721,9 +15498,9 @@ export default function AddFriendPage() {
                   onClick={() => setConfirmDeletePost(null)}
                   disabled={deletingPostId !== null}
                   style={{
-                    flex: 1, padding: '10px', background: C.primaryFaint,
-                    border: `1px solid ${C.primaryBorder}`, borderRadius: 10,
-                    color: C.text, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+                    flex: 1, padding: '10px', background: CLR_PRIMARY_FAINT,
+                    border: `1px solid ${CLR_PRIMARY_BORDER}`, borderRadius: 10,
+                    color: CLR_TEXT, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
                   }}
                 >
                   إلغاء
@@ -10752,61 +15529,7 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* ── اختيار نوع الستوري: مستطيل بسيط بحجم الصورة/الفيديو، بنفس المكان دائماً ── */}
-      <AnimatePresence>
-        {storyPickerOpen && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }}
-            onClick={() => setStoryPickerOpen(null)}
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)',
-              zIndex: 10050, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-            }}
-          >
-            <motion.div
-              onClick={e => e.stopPropagation()}
-              initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }}
-              style={{
-                background: 'hsl(var(--card))',
-                border: `1px solid ${C.cardBorder}`,
-                borderRadius: 14,
-                width: 150,
-                aspectRatio: '9 / 16',
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-              }}
-            >
-              <motion.button
-                whileTap={{ scale: 0.96 }}
-                onClick={() => openStoryPicker('image', storyPickerOpen)}
-                style={{
-                  flex: 1, display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center', gap: 6,
-                  background: C.primaryFaint, border: 'none', borderBottom: `1px solid ${C.cardBorder}`,
-                  color: C.text, cursor: 'pointer',
-                }}
-              >
-                <ImageIcon size={20} color={C.primary} strokeWidth={2} />
-                <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>Photo</span>
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.96 }}
-                onClick={() => openStoryPicker('video', storyPickerOpen)}
-                style={{
-                  flex: 1, display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center', gap: 6,
-                  background: C.primaryFaint, border: 'none',
-                  color: C.text, cursor: 'pointer',
-                }}
-              >
-                <Video size={20} color={C.primary} strokeWidth={2} />
-                <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>Video</span>
-              </motion.button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* قائمة Photo/Video للقصة أُلغيت — الفتح مباشرة من المعرض أو الكاميرا */}
 
       {/* ── Story Viewer ── */}
       <AnimatePresence>
@@ -10817,10 +15540,11 @@ export default function AddFriendPage() {
             myId={user?.id ?? ''}
             onClose={() => setViewerGroupIdx(null)}
             onSeen={markStorySeen}
-            onAddMedia={() => setStoryPickerOpen('add')}
+            onAddMedia={() => { requestAnimationFrame(() => storyAddFileRef.current?.click()); }}
             onPublishPhoto={() => quickImageInputRef.current?.click()}
             onPublishVideo={() => quickVideoInputRef.current?.click()}
             onOpenCamera={() => setCameraCaptureOpen(true)}
+            isCompanyPublisher={isCompanyPublisher}
             onSendComment={sendStoryComment}
             onDeleteItem={(storyId) => {
               // نسجّل المعرّف كمحذوف محلياً أولاً حتى لو رجع الريفرش التلقائي
@@ -10863,7 +15587,7 @@ export default function AddFriendPage() {
       {/* قائمة الثلاث خطوط أُزيلت — الموسيقى في الإعدادات */}
 
 
-      {/* ── Publish menu — opened from the "+" badge on my story avatar: نشر للقصة / نشر صورة / نشر فيديو ── */}
+      {/* ── Publish menu — opened from the "+" badge on my story avatar: نشر إعلان للقصة / نشر صورة / نشر فيديو ── */}
       <AnimatePresence>
         {publishMenuOpen && (
           <motion.div
@@ -10871,7 +15595,7 @@ export default function AddFriendPage() {
             onClick={() => setPublishMenuOpen(false)}
             style={{
               position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)',
-              zIndex: 10060, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+              zIndex: 12010, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
             }}
           >
             <motion.div
@@ -10879,7 +15603,7 @@ export default function AddFriendPage() {
               initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }}
               style={{
                 background: 'hsl(var(--card))',
-                border: `1px solid ${C.cardBorder}`,
+                border: `1px solid ${CLR_CARD_BORDER}`,
                 borderRadius: 14,
                 width: 230,
                 overflow: 'hidden',
@@ -10889,39 +15613,19 @@ export default function AddFriendPage() {
             >
               <motion.button
                 whileTap={{ scale: 0.97 }}
-                onClick={() => { setPublishMenuOpen(false); setStoryPickerOpen('main'); }}
+                onClick={() => {
+                  setPublishMenuOpen(false);
+                  // فتح المعرض مباشرة (صورة أو فيديو) بدون قائمة Photo/Video
+                  requestAnimationFrame(() => storyFileRef.current?.click());
+                }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px',
-                  background: 'transparent', border: 'none', borderBottom: `1px solid ${C.cardBorder}`,
-                  color: C.text, cursor: 'pointer', textAlign: 'right', width: '100%',
+                  background: 'transparent', border: 'none', borderBottom: `1px solid ${CLR_CARD_BORDER}`,
+                  color: CLR_TEXT, cursor: 'pointer', textAlign: 'right', width: '100%',
                 }}
               >
-                <Plus size={18} color={C.primary} strokeWidth={2.2} />
-                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>نشر للقصة</span>
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={() => { setPublishMenuOpen(false); quickImageInputRef.current?.click(); }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px',
-                  background: 'transparent', border: 'none', borderBottom: `1px solid ${C.cardBorder}`,
-                  color: C.text, cursor: 'pointer', textAlign: 'right', width: '100%',
-                }}
-              >
-                <ImageIcon size={18} color={C.primary} strokeWidth={2.2} />
-                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>نشر صورة</span>
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={() => { setPublishMenuOpen(false); quickVideoInputRef.current?.click(); }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px',
-                  background: 'transparent', border: 'none', borderBottom: `1px solid ${C.cardBorder}`,
-                  color: C.text, cursor: 'pointer', textAlign: 'right', width: '100%',
-                }}
-              >
-                <Video size={18} color={C.primary} strokeWidth={2.2} />
-                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>نشر فيديو</span>
+                <Plus size={18} color={CLR_PRIMARY} strokeWidth={2.2} />
+                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{isCompanyPublisher ? 'نشر إعلان للقصة' : 'نشر قصة'}</span>
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.97 }}
@@ -10929,11 +15633,11 @@ export default function AddFriendPage() {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px',
                   background: 'transparent', border: 'none',
-                  color: C.text, cursor: 'pointer', textAlign: 'right', width: '100%',
+                  color: CLR_TEXT, cursor: 'pointer', textAlign: 'right', width: '100%',
                 }}
               >
-                <Camera size={18} color={C.primary} strokeWidth={2.2} />
-                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>نشر القصة عبر</span>
+                <Camera size={18} color={CLR_PRIMARY} strokeWidth={2.2} />
+                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{isCompanyPublisher ? 'نشر إعلان للقصة عبر' : 'نشر القصة عبر'}</span>
               </motion.button>
             </motion.div>
           </motion.div>
@@ -10950,9 +15654,13 @@ export default function AddFriendPage() {
             userName={user?.name ?? (user as any)?.username ?? null}
             friendRequests={incoming}
             onRespondFriendRequest={respond}
+            storyCommentUnread={storyCommentThreads.filter(t => !t.read).length}
+            shareChatUnread={userShareInbox.filter(x => !x.read).length}
+            allowMusic={!isCompanyPublisher}
+            publishLabel={isCompanyPublisher ? 'نشر إعلان للقصة' : 'نشر قصة'}
             onOpenStoryComments={() => {
-              // لا نغلق الكاميرا — صندوق التعليقات فوقها (z أعلى)، وعند إغلاق X تبقى الكاميرا مفتوحة
-              setSharedInboxStoryOnly(true);
+              // إظهار Story + Chat معاً؛ إن وُجدت مشاركات غير مقروءة يُفضَّل Chat
+              setSharedInboxStoryOnly(false);
               setSharedInboxOpen(true);
             }}
           />
@@ -10977,85 +15685,643 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
-      {/* ── Floating friends names bar — opened by tapping the animated globe next to "Likes".
-          Moved here from RecorderScreen (was the always-visible strip under STOOORNA). Floats
-          above everything, scrolls left/right, and closes itself once a friend is tapped. ── */}
+
+      {/* Story page Photo/Video composer — independent from text feed */}
       <AnimatePresence>
-        {namesBarOpen && (
+        {storyMediaOpen && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }}
-            onClick={() => setNamesBarOpen(false)}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+            onClick={() => {
+              if (storyMediaPosting) return;
+              setStoryMediaOpen(false);
+              try { window.dispatchEvent(new CustomEvent('stooorna:story-media-closed')); } catch { /* */ }
+            }}
             style={{
-              position: 'fixed', inset: 0, zIndex: 10080,
+              position: 'fixed', inset: 0, zIndex: 10090,
               background: 'rgba(0,0,0,0.45)',
-        overflow: 'hidden',
-      }}
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              padding: '0 0 calc(52px + env(safe-area-inset-bottom))',
+              boxSizing: 'border-box',
+            }}
           >
             <motion.div
               onClick={e => e.stopPropagation()}
-              initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 420, damping: 36, mass: 0.85 }}
               style={{
-                position: 'absolute', top: 'env(safe-area-inset-top, 0px)', left: 0, right: 0,
-                background: C.bg, borderBottom: `1px solid ${C.navBorder}`,
-                paddingTop: 10,
+                width: '100%',
+                maxWidth: 420,
+                maxHeight: 'min(58vh, 480px)',
+                display: 'flex', flexDirection: 'column',
+                background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
+                border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                borderBottom: 'none',
+                borderTopLeftRadius: 18,
+                borderTopRightRadius: 18,
+                boxShadow: '0 -12px 36px rgba(0,0,0,0.45)',
+                overflow: 'hidden',
+                boxSizing: 'border-box',
               }}
             >
-              <style>{`.names-bar-strip::-webkit-scrollbar{display:none}`}</style>
-              <div
-                className="names-bar-strip"
-                style={{
-                  display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', gap: 14,
-                  overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none',
-                  WebkitOverflowScrolling: 'touch', padding: '4px 16px 14px', alignItems: 'flex-start',
-                }}
-              >
-                {friends.length === 0 ? (
-                  <p style={{ color: C.textDim, fontSize: '0.75rem', padding: '10px 4px' }}>لا يوجد أصدقاء بعد</p>
-                ) : friends.map(f => {
-                  const label = f.username ? `@${f.username}` : (f.name ?? '??');
-                  return (
-                    <motion.button
-                      key={f.id}
-                      whileTap={{ scale: 0.9 }}
-                      onClick={() => {
-                        setNamesBarOpen(false);
-                        setViewingProfile({ id: f.friendId, name: f.name, username: f.username, avatarUrl: f.avatarUrl ?? null });
-                      }}
-                      style={{
-                        flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                        background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                        minWidth: 54, maxWidth: 60,
-                      }}
-                    >
-                      <UserAvatar name={label} avatarUrl={f.avatarUrl} size={46} style={{ border: `2px solid ${C.primaryBorder}` }} />
-                      <span style={{
-                        color: C.text, fontSize: '0.58rem', fontWeight: 500,
-                        maxWidth: 58, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>
-                        {label.replace('@', '')}
-                      </span>
-                    </motion.button>
-                  );
-                })}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 14px', borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`, flexShrink: 0,
+              }}>
+                <p style={{ margin: 0, color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.9rem' }}>Photo / Video</p>
+                <button type="button" disabled={storyMediaPosting} onClick={() => {
+                  setStoryMediaOpen(false);
+                  try { window.dispatchEvent(new CustomEvent('stooorna:story-media-closed')); } catch { /* */ }
+                }} aria-label="Close" style={{
+                  width: 28, height: 28, borderRadius: '50%', border: 'none',
+                  background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}><X size={14} /></button>
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <textarea
+                  value={storyMediaText}
+                  onChange={e => setStoryMediaText(e.target.value.slice(0, 2000))}
+                  placeholder="Write a caption (optional)…"
+                  rows={3}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', borderRadius: 12, padding: '10px 12px',
+                    background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    color: CLR_TEXT, fontSize: '0.88rem', outline: 'none', fontFamily: 'inherit', resize: 'vertical',
+                  }}
+                />
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" onClick={() => storyMediaImageRef.current?.click()} style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
+                    background: 'rgba(0,188,212,0.1)', border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    color: CLR_PRIMARY, fontWeight: 700, fontSize: '0.78rem',
+                  }}>
+                    <ImageIcon size={16} /> Photo
+                  </button>
+                  <button type="button" onClick={() => storyMediaVideoRef.current?.click()} style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
+                    background: 'rgba(0,188,212,0.1)', border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    color: CLR_PRIMARY, fontWeight: 700, fontSize: '0.78rem',
+                  }}>
+                    <Video size={16} /> Video
+                  </button>
+                </div>
+                <input ref={storyMediaImageRef} type="file" accept="image/*" hidden onChange={e => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!f) return;
+                  setStoryMediaFile(f);
+                  setStoryMediaUrl('');
+                  setStoryMediaPreview({ url: URL.createObjectURL(f), type: 'image' });
+                  setStoryMediaError('');
+                }} />
+                <input ref={storyMediaVideoRef} type="file" accept="video/*" hidden onChange={e => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!f) return;
+                  setStoryMediaFile(f);
+                  setStoryMediaUrl('');
+                  setStoryMediaPreview({ url: URL.createObjectURL(f), type: 'video' });
+                  setStoryMediaError('');
+                }} />
+
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    value={storyMediaUrl}
+                    onChange={e => setStoryMediaUrl(e.target.value)}
+                    placeholder="Paste image or video URL…"
+                    style={{
+                      flex: 1, borderRadius: 12, padding: '10px 12px',
+                      background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      color: CLR_TEXT, fontSize: '0.82rem', outline: 'none',
+                    }}
+                  />
+                  <button type="button" onClick={() => {
+                    const raw = storyMediaUrl.trim();
+                    if (!raw) return;
+                    const isVid = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(raw) || /\/video\//i.test(raw);
+                    setStoryMediaFile(null);
+                    setStoryMediaPreview({ url: raw, type: isVid ? 'video' : 'image' });
+                    setStoryMediaError('');
+                  }} style={{
+                    padding: '0 14px', borderRadius: 12, border: 'none',
+                    background: CLR_PRIMARY, color: '#041018', fontWeight: 800, cursor: 'pointer', fontSize: '0.78rem',
+                  }}>Preview</button>
+                </div>
+
+                {storyMediaPreview && (
+                  <div style={{
+                    borderRadius: 12, overflow: 'hidden',
+                    border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    background: 'rgba(0,0,0,0.35)',
+                    maxHeight: 180,
+                  }}>
+                    {storyMediaPreview.type === 'video' ? (
+                      <video src={storyMediaPreview.url} controls playsInline style={{ width: '100%', maxHeight: 180, display: 'block', background: '#000' }} />
+                    ) : (
+                      <img src={storyMediaPreview.url} alt="" style={{ width: '100%', maxHeight: 180, objectFit: 'contain', display: 'block' }} />
+                    )}
+                    <button type="button" onClick={() => {
+                      setStoryMediaPreview(null);
+                      setStoryMediaFile(null);
+                      setStoryMediaUrl('');
+                    }} style={{
+                      width: '100%', padding: 8, border: 'none', borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      background: 'rgba(239,68,68,0.12)', color: '#ef4444', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem',
+                    }}>Remove media</button>
+                  </div>
+                )}
+
+                {storyMediaError ? (
+                  <p style={{ margin: 0, color: '#ef4444', fontSize: '0.78rem', fontWeight: 600 }}>{storyMediaError}</p>
+                ) : null}
+              </div>
+
+              <div style={{ padding: '10px 14px 14px', flexShrink: 0, borderTop: `1px solid ${CLR_PRIMARY_BORDER}` }}>
+                <button
+                  type="button"
+                  disabled={storyMediaPosting || (!storyMediaPreview && !storyMediaFile)}
+                  onClick={async () => {
+                    if (!user) return;
+                    if (!storyMediaPreview && !storyMediaFile) {
+                      setStoryMediaError('Add a photo or video first');
+                      return;
+                    }
+                    setStoryMediaPosting(true);
+                    setStoryMediaError('');
+                    try {
+                      let url = storyMediaPreview?.url || '';
+                      let type: 'image' | 'video' = storyMediaPreview?.type || 'image';
+                      if (storyMediaFile) {
+                        const file = storyMediaFile;
+                        type = file.type.startsWith('video') ? 'video' : 'image';
+                        const uploadRes = await fetch('/api/posts/media', {
+                          method: 'POST',
+                          credentials: 'include',
+                          headers: {
+                            'Content-Type': file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg'),
+                            'X-File-Ext': '.' + ((file.name.split('.').pop()) || (type === 'video' ? 'mp4' : 'jpg')),
+                          },
+                          body: file,
+                        });
+                        if (!uploadRes.ok) throw new Error('Upload failed');
+                        const uploadData = await uploadRes.json();
+                        url = uploadData?.url;
+                        if (!url) throw new Error('No URL from upload');
+                      }
+                      const dest = type === 'video' ? 'videos' : 'photos';
+                      const r = await fetch('/api/posts', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          text: storyMediaText.trim(),
+                          mediaUrl: url,
+                          mediaType: type,
+                          mediaUrls: [url],
+                          mediaTypes: [type],
+                          hashtags: [],
+                          audience: 'public',
+                          destination: dest,
+                        }),
+                      });
+                      if (!r.ok) throw new Error('Publish failed');
+                      const d = await r.json();
+                      if (!d?.post?.id) throw new Error('Post not saved');
+                      const saved: PostItem = {
+                        ...d.post,
+                        mediaUrl: d.post.mediaUrl || url,
+                        mediaType: type,
+                        mediaUrls: d.post.mediaUrls?.length ? d.post.mediaUrls : [url],
+                        mediaTypes: [type],
+                        audience: 'public',
+                        destination: dest,
+                        text: d.post.text || storyMediaText.trim(),
+                        authorId: d.post.authorId || String(user.id),
+                      };
+                      setMyMediaPosts(prev => {
+                        const without = prev.filter(p => p.id !== saved.id);
+                        return [saved, ...without];
+                      });
+                      try { void fetchMyMediaPosts(); } catch { /* */ }
+                      try { playNewPostSound(); } catch { /* */ }
+                      setStoryMediaText('');
+                      setStoryMediaUrl('');
+                      setStoryMediaFile(null);
+                      setStoryMediaPreview(null);
+                      setStoryMediaOpen(false);
+                      setProfileContentTab(type === 'video' ? 'videos' : 'photos');
+                      try { window.dispatchEvent(new CustomEvent('stooorna:story-media-closed')); } catch { /* */ }
+                    } catch (err) {
+                      console.error('[story media publish]', err);
+                      setStoryMediaError(err instanceof Error ? err.message : 'Publish failed');
+                    } finally {
+                      setStoryMediaPosting(false);
+                    }
+                  }}
+                  style={{
+                    width: '100%', padding: 12, borderRadius: 12, border: 'none',
+                    background: (storyMediaPreview || storyMediaFile) && !storyMediaPosting ? CLR_PRIMARY : CLR_PRIMARY_FAINT,
+                    color: (storyMediaPreview || storyMediaFile) && !storyMediaPosting ? '#041018' : CLR_TEXT_DIM,
+                    fontWeight: 800, cursor: (storyMediaPreview || storyMediaFile) && !storyMediaPosting ? 'pointer' : 'default',
+                    fontSize: '0.88rem',
+                  }}
+                >
+                  {storyMediaPosting ? 'Publishing…' : 'Publish to story page'}
+                </button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* ── Friends / Company panel — opened from top friends icon on story page ── */}
+      <AnimatePresence>
+        {namesBarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+            onClick={() => {
+              setNamesBarOpen(false);
+              try { window.dispatchEvent(new CustomEvent('stooorna:friends-panel-closed')); } catch { /* */ }
+              const next = new URLSearchParams(searchParams);
+              if (next.has('openChats')) { next.delete('openChats'); setSearchParams(next, { replace: true }); }
+              if (next.has('openFriendsPanel')) { next.delete('openFriendsPanel'); setSearchParams(next, { replace: true }); }
+            }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10080,
+              background: 'rgba(0,0,0,0.45)',
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
+              boxSizing: 'border-box',
+            }}
+          >
+            <motion.div
+              onClick={e => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.88 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
+              style={{
+                position: 'relative',
+                width: 'min(92vw, 360px)',
+                height: 'min(56vh, 420px)',
+                maxHeight: 'min(56vh, 420px)',
+                display: 'flex',
+                flexDirection: 'column',
+                background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
+                border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                borderRadius: 18,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+                overflow: 'hidden',
+                boxSizing: 'border-box',
+              }}
+            >
+              {/* Header inside card: Friends | Company + close */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+                padding: '12px 12px 10px',
+                flexShrink: 0,
+                borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
+                boxSizing: 'border-box',
+                width: '100%',
+                minWidth: 0,
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                }}>
+                  <div
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      padding: '6px 10px', borderRadius: 999,
+                      background: 'rgba(0,188,212,0.18)',
+                      border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      color: CLR_PRIMARY,
+                      fontSize: '0.72rem', fontWeight: 800,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Users size={13} strokeWidth={2.2} />
+                    Friends
+                  </div>
+                </div>
+                <button type="button" onClick={() => {
+                  setNamesBarOpen(false);
+                  try { window.dispatchEvent(new CustomEvent('stooorna:friends-panel-closed')); } catch { /* */ }
+                  const next = new URLSearchParams(searchParams);
+                  if (next.has('openChats')) { next.delete('openChats'); setSearchParams(next, { replace: true }); }
+                  if (next.has('openFriendsPanel')) { next.delete('openFriendsPanel'); setSearchParams(next, { replace: true }); }
+                }} aria-label="Close" style={{
+                  width: 28, height: 28, borderRadius: '50%', border: 'none',
+                  background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}><X size={14} /></button>
+              </div>
+
+              {/* ── Friends tab ── */}
+              {true && (
+                <>
+                  <style>{`.names-bar-strip::-webkit-scrollbar{display:none}`}</style>
+                  <div className="names-bar-strip" style={{
+                    display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', gap: 14,
+                    overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none',
+                    WebkitOverflowScrolling: 'touch', padding: '10px 16px 14px', alignItems: 'flex-start',
+                  }}>
+                    {(() => {
+                      const userFriends = friends.filter(f =>
+                        !isCompanyUserAccount({ id: f.friendId, username: f.username, name: f.name }, companies)
+                      );
+                      if (userFriends.length === 0) {
+                        return <p style={{ color: CLR_TEXT_DIM, fontSize: '0.75rem', padding: '10px 4px' }}>No friends yet</p>;
+                      }
+                      return userFriends.map(f => {
+                      const label = f.username ? `@${f.username}` : (f.name ?? '??');
+                      return (
+                        <motion.button key={f.id} whileTap={{ scale: 0.9 }} onClick={() => {
+                          setNamesBarOpen(false);
+                          setViewingProfile({ id: f.friendId, name: f.name, username: f.username, avatarUrl: f.avatarUrl ?? null });
+                        }} style={{
+                          flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                          background: 'none', border: 'none', cursor: 'pointer', padding: 0, minWidth: 54, maxWidth: 60,
+                        }}>
+                          <UserAvatar name={label} avatarUrl={f.avatarUrl} size={46} style={{ border: `2px solid ${CLR_PRIMARY_BORDER}` }} />
+                          <span style={{ color: CLR_TEXT, fontSize: '0.58rem', fontWeight: 500, maxWidth: 58, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label.replace('@', '')}</span>
+                        </motion.button>
+                      );
+                      });
+                    })()}
+                  </div>
+                </>
+              )}
+
+              {/* ── Company tab — قائمة عمودية: اسم الشركة + الاسم التجاري فقط (بدون إيميل) ── */}
+              {false && friendsPanelTab === 'company' && (
+                <div style={{
+                  overflowY: 'auto',
+                  flex: 1,
+                  minHeight: 120,
+                  maxHeight: 'calc(78vh - 100px)',
+                  padding: '6px 12px 14px',
+                  WebkitOverflowScrolling: 'touch',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}>
+                  {companiesLoading && (
+                    <p style={{ color: CLR_TEXT_DIM, fontSize: '0.8rem', textAlign: 'center', padding: '28px 16px' }}>جاري تحميل الشركات…</p>
+                  )}
+                  {!companiesLoading && companies.length === 0 && (
+                    <div style={{ padding: '28px 12px', textAlign: 'center' }}>
+                      <Building2 size={28} style={{ color: CLR_PRIMARY_DIM, marginBottom: 10 }} />
+                      <p style={{ color: CLR_TEXT, fontSize: '0.85rem', fontWeight: 700, margin: '0 0 6px' }}>لا توجد شركات مسجّلة بعد</p>
+                      <p style={{ color: CLR_TEXT_DIM, fontSize: '0.72rem', margin: 0, lineHeight: 1.5 }}>
+                        ستظهر هنا كل الشركات المسجّلة في التطبيق.
+                      </p>
+                    </div>
+                  )}
+                  {!companiesLoading && companies.map(c => {
+                    const companyName = c.name || c.tradeName || c.username || 'شركة';
+                    const tradeName = c.tradeName && c.tradeName !== companyName ? c.tradeName : null;
+                    const storyG = storyGroups.find(g =>
+                      String(g.userId) === String(c.id)
+                      || (c.username && g.username && String(c.username).replace(/^@/, '').toLowerCase() === String(g.username).replace(/^@/, '').toLowerCase())
+                      || (c.name && g.name && String(c.name).trim().toLowerCase() === String(g.name).trim().toLowerCase())
+                    );
+                    const storyIdx = storyG ? storyGroups.indexOf(storyG) : -1;
+                    const hasStory = !!(storyG && storyG.items && storyG.items.length);
+                    const hasUnseen = hasStory && storyG.items.some((it: any) => !it.seen);
+                    return (
+                      <div
+                        key={c.id}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '10px 12px',
+                          borderRadius: 14,
+                          boxSizing: 'border-box',
+                          background: 'rgba(0,188,212,0.06)',
+                          border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                          textAlign: 'right',
+                          direction: 'rtl',
+                        }}
+                      >
+                      <motion.button
+                        type="button"
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => { void openCompanyProfile(c); }}
+                        style={{
+                          flex: 1, minWidth: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                          padding: 0,
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          textAlign: 'right',
+                          direction: 'rtl',
+                          color: 'inherit',
+                        }}
+                      >
+                        <div style={{
+                          width: 46,
+                          height: 46,
+                          borderRadius: 12,
+                          flexShrink: 0,
+                          background: 'rgba(0,188,212,0.12)',
+                          border: `1.5px solid ${CLR_PRIMARY_BORDER}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          overflow: 'hidden',
+                        }}>
+                          {c.avatarUrl ? (
+                            <img src={c.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <Building2 size={20} color={CLR_PRIMARY} strokeWidth={2} />
+                          )}
+                        </div>
+                        <div style={{ minWidth: 0, flex: 1, textAlign: 'right' }}>
+                          {/* اسم الشركة */}
+                          <p style={{
+                            margin: 0,
+                            color: CLR_PRIMARY,
+                            fontSize: '0.9rem',
+                            fontWeight: 800,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {companyName}
+                          </p>
+                          {/* الاسم التجاري فقط — بدون إيميل */}
+                          {tradeName && (
+                            <p style={{
+                              margin: '4px 0 0',
+                              color: 'rgba(150,200,200,0.75)',
+                              fontSize: '0.72rem',
+                              fontWeight: 500,
+                              lineHeight: 1.4,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              whiteSpace: 'normal',
+                            }}>
+                              {tradeName}
+                            </p>
+                          )}
+                        </div>
+                      </motion.button>
+                      {hasStory ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNamesBarOpen(false);
+                            setViewerGroupIdx(storyIdx);
+                          }}
+                          style={{
+                            width: 44, height: 44, borderRadius: '50%', padding: 0, flexShrink: 0,
+                            background: 'none', border: 'none', cursor: 'pointer', position: 'relative',
+                          }}
+                          aria-label="ستوري الشركة"
+                        >
+                          <div style={{
+                            position: 'absolute', inset: 0, borderRadius: '50%',
+                            background: storyRingColor(storyG.items, '#facc15', '#0ea5e9'),
+                            padding: 2.5, boxSizing: 'border-box',
+                            boxShadow: hasUnseen ? '0 0 8px rgba(250,204,21,0.45)' : 'none',
+                          }}>
+                            <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
+                              {(storyG.avatarUrl || c.avatarUrl) ? (
+                                <img src={storyG.avatarUrl || c.avatarUrl || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              ) : (
+                                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <Building2 size={16} color={CLR_PRIMARY} />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      ) : (
+                        <div style={{ width: 44, height: 44, flexShrink: 0 }} />
+                      )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+
       {/* ── Friend story profile — opened by tapping any friend in the globe's names bar.
-          Shows their Videos/Photos grid and follow stats, never their text posts. ── */}
+          Shows their posts (text + media alike) three-per-row, same as the profile page.
+          onOpenPost uses openSinglePostView so tapping any tile — text or media — opens the
+          full post exactly like the general text-posts feed (with like/comment/repost/share). ── */}
       <AnimatePresence>
         {viewingProfile && (
+          <>
           <FriendStoryProfile
             authorId={viewingProfile.id}
             authorName={viewingProfile.name}
             authorUsername={viewingProfile.username}
             authorAvatarUrl={viewingProfile.avatarUrl}
-            onClose={() => setViewingProfile(null)}
-            onOpenPost={openMediaPostDetail}
+            isCompanyProfile={!!viewingProfile.isCompany}
+            onClose={() => {
+              setViewingProfile(null);
+              setUserShareChatPeer(null);
+              setShareMiniText('');
+              setShareMiniRecording(false);
+              setCompanyInboxOpen(false);
+              try { window.dispatchEvent(new CustomEvent('stooorna:close-chat-panels')); } catch { /* */ }
+    if (isCompanyPublisher) {
+      try { localStorage.setItem('stooorna_company_inbox_unread', '0'); } catch { /* */ }
+      setCompanyInboxTick(x => x + 1);
+    }
+              try {
+                const u = new URL(window.location.href);
+                if (u.searchParams.get('panel') === 'chats') {
+                  u.searchParams.delete('panel');
+                  window.history.replaceState({}, '', u.pathname + (u.searchParams.toString() ? '?' + u.searchParams.toString() : '') + u.hash);
+                }
+              } catch { /* */ }
+            }}
+            onOpenPost={p => openSinglePostView(p, true)}
+            onToggleLike={toggleLike}
+            onRepost={toggleRepost}
           />
+          {!userShareChatPeer && user && String(viewingProfile.id) !== String(user.id) && (!!viewingProfile.isCompany || isCompanyUserAccount(viewingProfile, companies)) && (() => {
+            let saved: any = null;
+            try {
+              const list = JSON.parse(localStorage.getItem(`stooorna_user_product_chats_${user.id}`) || '[]');
+              saved = Array.isArray(list) ? list.find((x: any) => String(x.id) === String(viewingProfile.id)) : null;
+            } catch { saved = null; }
+            if (!saved) return null;
+            return (
+              <motion.button
+                key="company-chat-fab"
+                type="button"
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: [1, 1.08, 1], opacity: 1 }}
+                transition={{ scale: { duration: 1.4, repeat: Infinity, ease: 'easeInOut' }, opacity: { duration: 0.2 } }}
+                onClick={() => {
+                  if (user && String(user.id) === String(viewingProfile.id)) {
+                    setCompanyInboxOpen(true);
+                    return;
+                  }
+                  openShareMiniChat({
+                    id: viewingProfile.id,
+                    name: saved.name || viewingProfile.name,
+                    username: saved.username || viewingProfile.username,
+                    avatarUrl: saved.avatarUrl || viewingProfile.avatarUrl,
+                    post: saved.post || (saved.postId ? { id: saved.postId, text: saved.postText, authorId: viewingProfile.id, authorName: viewingProfile.name, authorUsername: viewingProfile.username, authorAvatarUrl: viewingProfile.avatarUrl } as any : undefined),
+                    note: saved.note || saved.lastMessage || '',
+                  });
+                }}
+                aria-label="فتح شات الشركة"
+                style={{
+                  position: 'fixed',
+                  top: 'max(10px, env(safe-area-inset-top))',
+                  right: 12,
+                  zIndex: 10890,
+                  width: 34, height: 34, borderRadius: '50%',
+                  background: (() => {
+                    try {
+                      return localStorage.getItem('stooorna_company_inbox_unread') === '1' ? 'linear-gradient(145deg, #facc15 0%, #ca8a04 100%)' : 'linear-gradient(145deg, #00BCD4 0%, #00838f 100%)';
+                    } catch { return 'linear-gradient(145deg, #00BCD4 0%, #00838f 100%)'; }
+                  })(),
+                  border: '1.5px solid rgba(255,255,255,0.18)',
+                  color: '#041018', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 4px 14px rgba(0,188,212,0.4)',
+                  padding: 0,
+                }}
+              >
+                <MessageCircle size={16} strokeWidth={2.3} />
+              </motion.button>
+            );
+          })()}
+          </>
         )}
       </AnimatePresence>
 
@@ -11070,6 +16336,65 @@ export default function AddFriendPage() {
           />
         )}
       </AnimatePresence>
+
+      
+
+      {companyInboxOpen && user && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10880, background: '#061014', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', paddingTop: 'max(12px, env(safe-area-inset-top))', borderBottom: '1px solid rgba(0,188,212,0.25)' }}>
+            <button type="button" onClick={() => {
+              try { localStorage.setItem('stooorna_company_inbox_unread', '0'); } catch { /* */ }
+              setCompanyInboxTick(x => x + 1);
+              setCompanyInboxOpen(false);
+            }} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><X size={20} /></button>
+            <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800 }}>رسائل العملاء</p>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+            {(() => {
+              let rows: any[] = [];
+              try { rows = JSON.parse(localStorage.getItem(`stooorna_company_inbox_${user.id}`) || '[]'); } catch { rows = []; }
+              rows = Array.isArray(rows) ? rows.filter((x: any) => String(x.id) !== String(user.id)) : [];
+              if (rows.length === 0) {
+                return <p style={{ color: 'rgba(150,200,200,0.6)', textAlign: 'center', padding: 28 }}>لا رسائل بعد</p>;
+              }
+              return rows.map((row: any) => (
+                <div key={row.id} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', marginBottom: 8, borderRadius: 12, border: '1px solid rgba(0,188,212,0.25)', background: row.unread ? 'rgba(250,204,21,0.1)' : 'rgba(0,188,212,0.06)', direction: 'rtl' }}>
+                <button type="button" onClick={() => {
+                  try { localStorage.setItem('stooorna_company_inbox_unread', '0'); } catch { /* */ }
+                  setCompanyInboxOpen(false);
+                  if (String(row.id) === String(user.id)) return;
+                  openShareMiniChat({
+                    id: row.id,
+                    name: row.name,
+                    username: row.username,
+                    avatarUrl: row.avatarUrl,
+                    note: row.note || row.lastMessage,
+                    post: row.post || undefined,
+                  });
+                }} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'right', direction: 'rtl', padding: 0 }}>
+                  <UserAvatar name={row.name || row.username || '?'} avatarUrl={row.avatarUrl} size={36} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, fontSize: '0.85rem' }}>{row.name || row.username || 'مستخدم'}</p>
+                    <p style={{ margin: 0, color: 'rgba(160,200,200,0.75)', fontSize: '0.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.lastMessage}</p>
+                  </div>
+                </button>
+                <button type="button" aria-label="حذف" onClick={() => {
+                  try {
+                    const key = `stooorna_company_inbox_${user.id}`;
+                    const list = JSON.parse(localStorage.getItem(key) || '[]').filter((x: any) => String(x.id) !== String(row.id));
+                    localStorage.setItem(key, JSON.stringify(list));
+                    window.dispatchEvent(new CustomEvent('stooorna:company-inbox', { detail: { userId: user.id, list } }));
+                    setCompanyInboxTick(x => x + 1);
+                  } catch { /* */ }
+                }} style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#ef4444', cursor: 'pointer' }}>
+                  <Trash2 size={15} />
+                </button>
+                </div>
+              ));
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* ── Music player — the <audio> element itself now lives inside musicPlayerStore
           (never attached to the DOM), so it survives this page unmounting; only the
@@ -11087,6 +16412,554 @@ export default function AddFriendPage() {
             onPinTrack={handlePinTrack}
             onUnpinTrack={handleUnpinTrack}
           />
+        )}
+      </AnimatePresence>
+
+      {/* ── شير المنتج: خارجي | استفسار عن المنتج ── */}
+      <AnimatePresence>
+        {productShareMenuPost && (
+          <motion.div
+            key="product-share-menu"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setProductShareMenuPost(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10650,
+              background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            }}
+          >
+            <motion.div
+              initial={{ y: 40 }}
+              animate={{ y: 0 }}
+              exit={{ y: 60 }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: '100%', maxWidth: 420,
+                background: 'linear-gradient(180deg, #0d2a2e 0%, #0a1a1a 100%)',
+                borderTopLeftRadius: 18, borderTopRightRadius: 18,
+                border: '1px solid rgba(0,188,212,0.25)',
+                padding: '16px 16px max(20px, env(safe-area-inset-bottom))',
+                boxSizing: 'border-box',
+              }}
+            >
+              <p style={{ margin: '0 0 12px', color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.92rem', textAlign: 'center' }}>
+                مشاركة / استفسار
+              </p>
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                type="button"
+                onClick={() => {
+                  const p = productShareMenuPost;
+                  setProductShareMenuPost(null);
+                  if (p) externalSharePost(p);
+                }}
+                style={{
+                  width: '100%', padding: '14px 16px', borderRadius: 14, marginBottom: 8,
+                  background: 'rgba(0,188,212,0.12)', border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                  color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
+              >
+                <Send size={16} strokeWidth={2.2} />
+                نشر بالخارج
+              </motion.button>
+              {(() => {
+                const p = productShareMenuPost;
+                // شركة فقط → استفسار عن المنتج | مستخدم → نشر الى صديق
+                const isCo = !!(p && (
+                  (p as any).publisherType === 'company'
+                  || (p as any).isCompanyPost === true
+                  || (p as any).authorIsCompany === true
+                  || companies.some(c => String(c.id) === String(p.authorId))
+                  || isCompanyUserAccount({ id: p.authorId, username: p.authorUsername, name: p.authorName }, companies)
+                ));
+                if (isCo) {
+                  return (
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      type="button"
+                      onClick={() => {
+                        setProductShareMenuPost(null);
+                        setProductInquiryText('');
+                        setProductInquiryError('');
+                        setProductInquiryPost(p);
+                      }}
+                      style={{
+                        width: '100%', padding: '14px 16px', borderRadius: 14, marginBottom: 8,
+                        background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.4)',
+                        color: '#eab308', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      }}
+                    >
+                      <MessageCircle size={16} strokeWidth={2.2} />
+                      استفسار عن المنتج
+                    </motion.button>
+                  );
+                }
+                return null;
+              })()}
+              <button
+                type="button"
+                onClick={() => setProductShareMenuPost(null)}
+                style={{
+                  width: '100%', padding: '12px', borderRadius: 12, border: 'none',
+                  background: 'transparent', color: CLR_TEXT_DIM, fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                إلغاء
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── نموذج استفسار المنتج → شات الشركة ── */}
+      <AnimatePresence>
+        {productInquiryPost && (() => {
+          const ad = parseProductAd(productInquiryPost.text);
+          const media = PostMediaItems(productInquiryPost);
+          const img = media.find(m => m.type === 'image')?.url || media[0]?.url || productInquiryPost.mediaUrl;
+          return (
+            <motion.div
+              key="product-inquiry-form"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 10660,
+                background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(8px)',
+                display: 'flex', flexDirection: 'column',
+              }}
+            >
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+                borderBottom: '1px solid rgba(0,188,212,0.25)',
+                background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
+              }}>
+                <button type="button" onClick={() => setProductInquiryPost(null)} style={{ background: 'none', border: 'none', color: CLR_PRIMARY, cursor: 'pointer', padding: 2 }}>
+                  <X size={20} />
+                </button>
+                <p style={{ margin: 0, flex: 1, color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.95rem' }}>
+                  استفسار عن المنتج
+                </p>
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {img && (
+                  <img src={img} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 14, border: `1px solid ${CLR_PRIMARY_BORDER}` }} />
+                )}
+                <div style={{
+                  background: 'rgba(0,188,212,0.08)', border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                  borderRadius: 14, padding: '12px 14px',
+                }}>
+                  <p style={{ margin: 0, color: CLR_PRIMARY, fontWeight: 800, fontSize: '1rem' }}>
+                    {ad?.title || productAdDisplayTitle(productInquiryPost)}
+                  </p>
+                  {ad?.price ? (
+                    <p style={{ margin: '6px 0 0', color: '#eab308', fontWeight: 800, fontSize: '0.95rem' }}>{ad.price}</p>
+                  ) : null}
+                  {ad?.details ? (
+                    <p style={{ margin: '8px 0 0', color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.45 }}>{ad.details}</p>
+                  ) : null}
+                  <p style={{ margin: '10px 0 0', color: CLR_TEXT_DIM, fontSize: '0.72rem' }}>
+                    الشركة: {productInquiryPost.authorName || productInquiryPost.authorUsername || '—'}
+                  </p>
+                </div>
+                <textarea
+                  value={productInquiryText}
+                  onChange={e => setProductInquiryText(e.target.value.slice(0, 500))}
+                  placeholder="اكتب سؤالك عن المنتج (مثال: هل السعر نهائي؟ هل متوفر؟)…"
+                  rows={4}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', resize: 'vertical',
+                    borderRadius: 14, padding: '12px 14px',
+                    background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    color: CLR_TEXT, fontSize: '0.88rem', outline: 'none', fontFamily: 'inherit',
+                  }}
+                />
+                {productInquiryError && (
+                  <p style={{ margin: 0, color: '#ef4444', fontSize: '0.78rem', textAlign: 'center' }}>{productInquiryError}</p>
+                )}
+              </div>
+              <div style={{
+                padding: '12px 16px max(16px, env(safe-area-inset-bottom))',
+                borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
+                background: 'rgba(6,14,14,0.96)',
+              }}>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  type="button"
+                  disabled={productInquirySending || !productInquiryText.trim()}
+                  onClick={async () => {
+                    if (!productInquiryPost || !productInquiryText.trim()) return;
+                    setProductInquirySending(true);
+                    setProductInquiryError('');
+                    try {
+                      await sendProductInquiry(productInquiryPost, productInquiryText);
+                      setProductInquiryPost(null);
+                      setProductInquiryText('');
+                      closeSinglePostView();
+                    } catch (err) {
+                      setProductInquiryError(String(err instanceof Error ? err.message : err));
+                    } finally {
+                      setProductInquirySending(false);
+                    }
+                  }}
+                  style={{
+                    width: '100%', padding: '14px', borderRadius: 14, border: 'none',
+                    background: productInquiryText.trim() ? CLR_PRIMARY : CLR_PRIMARY_FAINT,
+                    color: productInquiryText.trim() ? '#041018' : CLR_TEXT_DIM,
+                    fontWeight: 800, fontSize: '0.9rem',
+                    cursor: productInquiryText.trim() ? 'pointer' : 'default',
+                    opacity: productInquirySending ? 0.7 : 1,
+                  }}
+                >
+                  {productInquirySending ? 'جاري الإرسال…' : 'إرسال الاستفسار وفتح الشات'}
+                </motion.button>
+              </div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* ── نشر الى صديق: اختيار صديق + ملاحظة ── */}
+      <AnimatePresence>
+        {userSharePickPost && (
+          <motion.div
+            key="user-share-pick"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10670,
+              background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(8px)',
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+              borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
+              background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
+            }}>
+              <button type="button" onClick={() => { setUserSharePickPost(null); setUserSharePickFriend(null); setUserShareNote(''); }} style={{ background: 'none', border: 'none', color: CLR_PRIMARY, cursor: 'pointer', padding: 2 }}>
+                <X size={20} />
+              </button>
+              <p style={{ margin: 0, flex: 1, color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.95rem' }}>{userSharePickFriend ? 'تعليق على المنشور' : 'نشر الى صديق'}</p>
+            </div>
+            <div style={{ padding: '12px 14px' }}>
+              {userSharePickFriend ? (
+                <>
+                  <p style={{ margin: '0 0 8px', color: '#eab308', fontWeight: 800, fontSize: '0.85rem', textAlign: 'right' }}>
+                    إلى: {userSharePickFriend.name || userSharePickFriend.username || 'صديق'}
+                  </p>
+                  <div style={{
+                    borderRadius: 12, padding: '10px 12px', marginBottom: 10,
+                    border: '1px solid rgba(234,179,8,0.4)', background: 'rgba(234,179,8,0.08)',
+                    color: CLR_TEXT, fontSize: '0.82rem', whiteSpace: 'pre-wrap', maxHeight: 90, overflow: 'auto', direction: 'rtl',
+                  }}>
+                    {(userSharePickPost?.text || '').slice(0, 280) || 'منشور'}
+                  </div>
+                  <textarea
+                    value={userShareNote}
+                    onChange={e => setUserShareNote(e.target.value.slice(0, 300))}
+                    placeholder="اكتب تعليقاً على المنشور ثم أرسل…"
+                    rows={3}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', borderRadius: 12, padding: '10px 12px',
+                      background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      color: CLR_TEXT, fontSize: '0.85rem', outline: 'none', fontFamily: 'inherit', resize: 'vertical',
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <button type="button" onClick={() => { setUserSharePickFriend(null); setUserShareNote(''); }}
+                      style={{ flex: 1, padding: 12, borderRadius: 12, border: `1px solid ${CLR_PRIMARY_BORDER}`, background: 'transparent', color: CLR_TEXT_DIM, fontWeight: 700, cursor: 'pointer' }}>
+                      رجوع
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!userShareNote.trim()}
+                      onClick={() => {
+                        if (!user || !userSharePickPost || !userSharePickFriend) return;
+                        const note = userShareNote.trim();
+                        const friend = userSharePickFriend;
+                        pushUserShareInbox(friend.friendId, {
+                          fromId: user.id,
+                          fromName: user.name ?? null,
+                          fromUsername: (user as any).username ?? null,
+                          fromAvatar: (user as any).avatarUrl ?? (user as any).image ?? null,
+                          post: userSharePickPost,
+                          note,
+                        });
+                        pushShareThreadMsg(user.id, friend.friendId, userSharePickPost.id, {
+                          fromId: user.id, type: 'text', body: note,
+                        });
+                        try {
+                          window.dispatchEvent(new CustomEvent('stooorna:bottom-chat-blink', {
+                            detail: { target: 'user', userId: friend.friendId, yellow: true },
+                          }));
+                        } catch { /* */ }
+                        setUserShareChatPeer({
+                          id: friend.friendId,
+                          name: friend.name,
+                          username: friend.username,
+                          avatarUrl: friend.avatarUrl,
+                          post: userSharePickPost,
+                          note,
+                        });
+                        setShareMiniMsgs(loadShareThread(user.id, friend.friendId, userSharePickPost.id));
+                        setUserSharePickPost(null);
+                        setUserSharePickFriend(null);
+                        setUserShareNote('');
+                        try { playShareArrivedSound(); } catch { /* */ }
+                      }}
+                      style={{
+                        flex: 2, padding: 12, borderRadius: 12, border: 'none',
+                        background: userShareNote.trim() ? CLR_PRIMARY : CLR_PRIMARY_FAINT,
+                        color: userShareNote.trim() ? '#041018' : CLR_TEXT_DIM,
+                        fontWeight: 800, cursor: userShareNote.trim() ? 'pointer' : 'default',
+                      }}
+                    >
+                      إرسال المشاركة
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p style={{ margin: 0, color: CLR_TEXT_DIM, fontSize: '0.8rem', textAlign: 'right' }}>اختر صديقاً أولاً — لن يُرسل المنشور حتى تكتب تعليقاً</p>
+              )}
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0 14px 20px', display: userSharePickFriend ? 'none' : 'flex', flexDirection: 'column', gap: 8 }}>
+              {friends.length === 0 && (
+                <p style={{ color: CLR_TEXT_DIM, textAlign: 'center', marginTop: 40, fontSize: '0.85rem' }}>لا أصدقاء بعد — أضف أصدقاء للمشاركة معهم</p>
+              )}
+              {friends.map(f => (
+                <button
+                  key={f.friendId}
+                  type="button"
+                  onClick={() => {
+                    setUserSharePickFriend(f);
+                    setUserShareNote('');
+                  }}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+                    borderRadius: 14, border: `1px solid ${CLR_PRIMARY_BORDER}`, background: CLR_CARD_BG,
+                    cursor: 'pointer', textAlign: 'right', direction: 'rtl', color: CLR_TEXT,
+                  }}
+                >
+                  <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl} size={42} style={{ border: `2px solid ${CLR_PRIMARY_BORDER}` }} />
+                  <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+                    <p style={{ margin: 0, fontWeight: 800, color: CLR_PRIMARY, fontSize: '0.88rem' }}>{f.name || f.username || '—'}</p>
+                    {f.username && <p style={{ margin: '2px 0 0', color: CLR_TEXT_DIM, fontSize: '0.72rem' }}>@{f.username}</p>}
+                  </div>
+                  <Send size={16} color={CLR_PRIMARY} />
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── ميني شات مشاركة: نفس المربع — نص / صوت / صورة / فيديو فقط — بدون /chat ── */}
+      <AnimatePresence>
+        {userShareChatPeer && (
+          <motion.div
+            key="user-share-chat"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10850,
+              background: PAGE_BG, display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+              borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
+              background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
+            }}>
+              <button type="button" onClick={closeShareMiniChat} style={{ background: 'none', border: 'none', color: CLR_PRIMARY, cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+              <UserAvatar name={userShareChatPeer.name || userShareChatPeer.username || '?'} avatarUrl={userShareChatPeer.avatarUrl} size={36} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 800, fontSize: '0.9rem' }}>
+                  {userShareChatPeer.name || userShareChatPeer.username || 'مستخدم'}
+                </p>
+                <p style={{ margin: 0, color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>شات المشاركة · هذا المربع فقط</p>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{
+                borderRadius: 16, overflow: 'hidden',
+                border: '1.5px solid rgba(234,179,8,0.55)',
+                background: 'linear-gradient(180deg, rgba(234,179,8,0.1) 0%, rgba(0,188,212,0.06) 100%)',
+                direction: 'rtl',
+              }}>
+                <div style={{ padding: '12px 14px' }}>
+                  <p style={{ margin: '0 0 8px', color: '#eab308', fontSize: '0.7rem', fontWeight: 800 }}>Shared post</p>
+                  {(() => {
+                    const post: any = userShareChatPeer.post;
+                    const items = post ? PostMediaItems(post) : [];
+                    const extra: string[] = [];
+                    if (post?.imageUrl) extra.push(post.imageUrl);
+                    if (post?.coverUrl) extra.push(post.coverUrl);
+                    const seen = new Set(items.map(x => x.url));
+                    extra.forEach(u => { if (u && !seen.has(u)) items.push({ url: u, type: /\.(mp4|webm|mov)(\?|$)/i.test(u) ? 'video' : 'image' }); });
+                    return items.map((media, i) => {
+                      const url = media.url;
+                      const ty = String(media.type || '').toLowerCase();
+                      const isVid = ty.includes('video') || /\.(mp4|webm|mov)(\?|$)/i.test(url);
+                      const isPdf = ty.includes('pdf') || /\.pdf(\?|$)/i.test(url);
+                      if (isVid) return <video key={i} src={url} controls playsInline style={{ width: '100%', maxHeight: 260, borderRadius: 10, marginBottom: 8, background: '#000' }} />;
+                      if (isPdf) return <a key={i} href={url} target="_blank" rel="noreferrer" style={{ display: 'block', marginBottom: 8, color: CLR_PRIMARY, fontWeight: 800 }}>فتح ملف PDF</a>;
+                      return <img key={i} src={url} alt="" style={{ width: '100%', maxHeight: 280, objectFit: 'contain', borderRadius: 10, marginBottom: 8, display: 'block', background: 'rgba(0,0,0,0.25)' }} />;
+                    });
+                  })()}
+                  <p style={{ margin: 0, color: CLR_TEXT, fontSize: '0.88rem', whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
+                    {(userShareChatPeer.post?.text || '').slice(0, 2000) || ''}
+                  </p>
+                  {userShareChatPeer.note ? (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed rgba(234,179,8,0.35)' }}>
+                      <p style={{ margin: '0 0 4px', color: '#eab308', fontSize: '0.7rem', fontWeight: 700 }}>Comment</p>
+                      <p style={{ margin: 0, color: CLR_TEXT, fontSize: '0.88rem', whiteSpace: 'pre-wrap' }}>{userShareChatPeer.note}</p>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              {shareMiniMsgs.map(m => (
+                <div key={m.id} style={{
+                  alignSelf: user && m.fromId === user.id ? 'flex-end' : 'flex-start',
+                  maxWidth: '90%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  flexDirection: user && m.fromId === user.id ? 'row' : 'row-reverse',
+                }}>
+                  {user && m.fromId === user.id ? (
+                  <button type="button" aria-label="حذف الرسالة" onClick={() => {
+                    if (!user || !userShareChatPeer) return;
+                    if (m.fromId !== user.id) return;
+                    const pid = userShareChatPeer.post?.id ?? 'share';
+                    const next = loadShareThread(user.id, userShareChatPeer.id, pid).filter(x => x.id !== m.id);
+                    saveShareThread(user.id, userShareChatPeer.id, pid, next);
+                    setShareMiniMsgs(next);
+                  }} style={{ width: 28, height: 28, flexShrink: 0, borderRadius: 8, border: '1px solid rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Trash2 size={13} />
+                  </button>
+                  ) : null}
+                  <div style={{
+                    padding: '8px 10px',
+                    borderRadius: 14,
+                    background: user && m.fromId === user.id ? 'rgba(0,188,212,0.18)' : 'rgba(255,255,255,0.06)',
+                    border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    minWidth: 0,
+                  }}>
+                  {m.type === 'text' && <p style={{ margin: 0, color: CLR_TEXT, fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{m.body}</p>}
+                  {m.type === 'voice' && <audio src={m.body} controls style={{ width: 210, height: 36 }} />}
+                  {m.type === 'image' && <img src={m.body} alt="" style={{ maxWidth: 220, borderRadius: 10, display: 'block' }} />}
+                  {m.type === 'video' && <video src={m.body} controls style={{ maxWidth: 220, borderRadius: 10, display: 'block' }} />}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{
+              padding: '10px 12px max(12px, env(safe-area-inset-bottom))',
+              borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
+              background: 'rgba(6,14,14,0.96)',
+              display: 'flex', gap: 8, alignItems: 'center',
+            }}>
+              <input
+                ref={shareMiniFileRef}
+                type="file"
+                accept="image/*,video/*"
+                hidden
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file || !user || !userShareChatPeer) return;
+                  const url = URL.createObjectURL(file);
+                  const type = file.type.startsWith('video') ? 'video' as const : 'image' as const;
+                  pushShareThreadMsg(user.id, userShareChatPeer.id, userShareChatPeer.post?.id ?? 'share', { fromId: user.id, type, body: url });
+                  setShareMiniMsgs(loadShareThread(user.id, userShareChatPeer.id, userShareChatPeer.post?.id ?? 'share'));
+                }}
+              />
+              <button type="button" onClick={() => shareMiniFileRef.current?.click()}
+                style={{ width: 40, height: 40, borderRadius: 20, border: `1px solid ${CLR_PRIMARY_BORDER}`, background: CLR_PRIMARY_FAINT, color: CLR_PRIMARY, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}
+                title="صورة أو فيديو">
+                <ImageIcon size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!user || !userShareChatPeer) return;
+                  if (shareMiniRecording) {
+                    shareMiniRecRef.current?.stop();
+                    setShareMiniRecording(false);
+                    return;
+                  }
+                  try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const rec = new MediaRecorder(stream);
+                    shareMiniChunksRef.current = [];
+                    rec.ondataavailable = ev => { if (ev.data.size) shareMiniChunksRef.current.push(ev.data); };
+                    rec.onstop = () => {
+                      stream.getTracks().forEach(tr => tr.stop());
+                      const blob = new Blob(shareMiniChunksRef.current, { type: 'audio/webm' });
+                      const url = URL.createObjectURL(blob);
+                      pushShareThreadMsg(user.id, userShareChatPeer.id, userShareChatPeer.post?.id ?? 'share', { fromId: user.id, type: 'voice', body: url });
+                      setShareMiniMsgs(loadShareThread(user.id, userShareChatPeer.id, userShareChatPeer.post?.id ?? 'share'));
+                    };
+                    shareMiniRecRef.current = rec;
+                    rec.start();
+                    setShareMiniRecording(true);
+                  } catch { /* mic denied */ }
+                }}
+                style={{ width: 40, height: 40, borderRadius: 20, border: `1px solid ${shareMiniRecording ? 'rgba(239,68,68,0.5)' : CLR_PRIMARY_BORDER}`, background: shareMiniRecording ? 'rgba(239,68,68,0.15)' : CLR_PRIMARY_FAINT, color: shareMiniRecording ? '#ef4444' : CLR_PRIMARY, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}
+                title="تسجيل صوتي"
+              >
+                {shareMiniRecording ? <MicOff size={16} /> : <Mic size={16} />}
+              </button>
+              <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
+              <input
+                value={shareMiniText}
+                onChange={e => setShareMiniText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey && shareMiniText.trim() && user && userShareChatPeer) {
+                    e.preventDefault();
+                    pushShareThreadMsg(user.id, userShareChatPeer.id, userShareChatPeer.post?.id ?? 'share', { fromId: user.id, type: 'text', body: shareMiniText.trim() });
+                    setShareMiniMsgs(loadShareThread(user.id, userShareChatPeer.id, userShareChatPeer.post?.id ?? 'share'));
+                    setShareMiniText('');
+                  }
+                }}
+                placeholder="اكتب رسالة…"
+                style={{
+                  width: '100%', boxSizing: 'border-box', borderRadius: 20, padding: '10px 42px 10px 14px',
+                  background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                  color: CLR_TEXT, fontSize: '0.88rem', outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                disabled={!shareMiniText.trim()}
+                onClick={() => {
+                  if (!user || !userShareChatPeer || !shareMiniText.trim()) return;
+                  pushShareThreadMsg(user.id, userShareChatPeer.id, userShareChatPeer.post?.id ?? 'share', { fromId: user.id, type: 'text', body: shareMiniText.trim() });
+                  setShareMiniMsgs(loadShareThread(user.id, userShareChatPeer.id, userShareChatPeer.post?.id ?? 'share'));
+                  setShareMiniText('');
+                }}
+                style={{
+                  position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+                  width: 32, height: 32, borderRadius: '50%', border: 'none',
+                  background: shareMiniText.trim() ? CLR_PRIMARY : 'transparent',
+                  color: shareMiniText.trim() ? '#041018' : CLR_TEXT_DIM,
+                  cursor: shareMiniText.trim() ? 'pointer' : 'default',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                }}
+              >
+                <Send size={15} />
+              </button>
+              </div>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
