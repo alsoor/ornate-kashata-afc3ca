@@ -1,0 +1,151 @@
+warning: in the working copy of 'src/pages/settings.tsx', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/src/pages/settings.tsx b/src/pages/settings.tsx[m
+[1mindex 0b84509..404104a 100644[m
+[1m--- a/src/pages/settings.tsx[m
+[1m+++ b/src/pages/settings.tsx[m
+[36m@@ -3,7 +3,7 @@[m [mimport { createPortal } from 'react-dom';[m
+ import { useNavigate } from "react-router";[m
+ import { Helmet } from '@dr.pogodin/react-helmet';[m
+ import { motion, AnimatePresence } from 'motion/react';[m
+[31m-import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, XCircle, Sparkles, AlertTriangle } from 'lucide-react';[m
+[32m+[m[32mimport { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste } from 'lucide-react';[m
+ import { useSession, signOut, signIn, signUp } from '@/lib/auth/auth-client';[m
+ import { usePresenceQuery } from '@/hooks/usePresence';[m
+ type Tab = 'account' | 'live';[m
+[36m@@ -2839,108 +2839,6 @@[m [mexport default function SettingsPage() {[m
+   const ownerUserIds = useMemo(() => allUsers.map(u => u.id), [allUsers]);[m
+   const ownerPresence = usePresenceQuery(isOwner ? ownerUserIds : []);[m
+ [m
+[31m-  // ── User Control tabs: Users / Company / Ban ──[m
+[31m-  type UserControlTab = 'users' | 'company' | 'ban';[m
+[31m-  const [ucTab, setUcTab] = useState<UserControlTab>('users');[m
+[31m-[m
+[31m-  // Company registration record reviewed inside User Control[m
+[31m-  type CompanyCertificateCheck = {[m
+[31m-    status: 'unchecked' | 'checking' | 'match' | 'mismatch' | 'error';[m
+[31m-    message?: string;[m
+[31m-  };[m
+[31m-  type SupportCtrlCompany = {[m
+[31m-    id: string;[m
+[31m-    name: string;[m
+[31m-    email: string | null;[m
+[31m-    ownerUserId?: string | null;[m
+[31m-    commercialRegistrationNumber?: string | null;[m
+[31m-    commercialLicenseNumber?: string | null;[m
+[31m-    commercialRegistrationFileUrl?: string | null;[m
+[31m-    commercialLicenseFileUrl?: string | null;[m
+[31m-    status: 'pending' | 'active' | 'rejected' | 'inactive';[m
+[31m-    createdAt?: string | null;[m
+[31m-    lastIp?: string | null;[m
+[31m-  };[m
+[31m-  const [allCompanies, setAllCompanies] = useState<SupportCtrlCompany[]>([]);[m
+[31m-  const [companiesLoading, setCompaniesLoading] = useState(false);[m
+[31m-  const [companiesError, setCompaniesError] = useState<string | null>(null);[m
+[31m-  const [companySavingId, setCompanySavingId] = useState<string | null>(null);[m
+[31m-  const [certCheckByCompany, setCertCheckByCompany] = useState<Record<string, CompanyCertificateCheck>>({});[m
+[31m-[m
+[31m-  async function loadCompanies() {[m
+[31m-    setCompaniesLoading(true);[m
+[31m-    setCompaniesError(null);[m
+[31m-    try {[m
+[31m-      const res = await fetch('/api/owner/companies', { credentials: 'include' });[m
+[31m-      if (res.ok) {[m
+[31m-        const data = await res.json();[m
+[31m-        const rows = Array.isArray(data) ? data : (data?.rows ?? []);[m
+[31m-        setAllCompanies(rows);[m
+[31m-      } else {[m
+[31m-        const errText = await res.text().catch(() => String(res.status));[m
+[31m-        setCompaniesError(`Error ${res.status}: ${errText}`);[m
+[31m-      }[m
+[31m-    } catch (e) {[m
+[31m-      setCompaniesError(`Network error: ${String(e)}`);[m
+[31m-    } finally {[m
+[31m-      setCompaniesLoading(false);[m
+[31m-    }[m
+[31m-  }[m
+[31m-[m
+[31m-  async function patchCompany(companyId: string, body: Record<string, unknown>) {[m
+[31m-    setCompanySavingId(companyId);[m
+[31m-    try {[m
+[31m-      const res = await fetch(`/api/owner/companies/${companyId}`, {[m
+[31m-        method: 'PATCH',[m
+[31m-        credentials: 'include',[m
+[31m-        headers: { 'Content-Type': 'application/json' },[m
+[31m-        body: JSON.stringify(body),[m
+[31m-      });[m
+[31m-      if (res.ok) {[m
+[31m-        const updated = await res.json().catch(() => null);[m
+[31m-        setAllCompanies(prev => prev.map(c => c.id === companyId ? { ...c, ...(updated || body) } as SupportCtrlCompany : c));[m
+[31m-        return true;[m
+[31m-      }[m
+[31m-      return false;[m
+[31m-    } catch {[m
+[31m-      return false;[m
+[31m-    } finally {[m
+[31m-      setCompanySavingId(null);[m
+[31m-    }[m
+[31m-  }[m
+[31m-[m
+[31m-  // AI-based certificate verification: confirms the uploaded commercial[m
+[31m-  // license / commercial registration files genuinely match the numbers[m
+[31m-  // the company entered. Backend endpoint is expected to run OCR + AI[m
+[31m-  // comparison and return { match: boolean, message?: string }.[m
+[31m-  async function verifyCompanyCertificate(company: SupportCtrlCompany) {[m
+[31m-    setCertCheckByCompany(prev => ({ ...prev, [company.id]: { status: 'checking' } }));[m
+[31m-    try {[m
+[31m-      const res = await fetch(`/api/owner/companies/${company.id}/verify-certificate`, {[m
+[31m-        method: 'POST',[m
+[31m-        credentials: 'include',[m
+[31m-        headers: { 'Content-Type': 'application/json' },[m
+[31m-        body: JSON.stringify({[m
+[31m-          commercialRegistrationNumber: company.commercialRegistrationNumber,[m
+[31m-          commercialLicenseNumber: company.commercialLicenseNumber,[m
+[31m-          commercialRegistrationFileUrl: company.commercialRegistrationFileUrl,[m
+[31m-          commercialLicenseFileUrl: company.commercialLicenseFileUrl,[m
+[31m-        }),[m
+[31m-      });[m
+[31m-      if (res.ok) {[m
+[31m-        const data = await res.json().catch(() => ({}));[m
+[31m-        setCertCheckByCompany(prev => ({[m
+[31m-          ...prev,[m
+[31m-          [company.id]: { status: data?.match ? 'match' : 'mismatch', message: data?.message },[m
+[31m-        }));[m
+[31m-      } else {[m
+[31m-        setCertCheckByCompany(prev => ({ ...prev, [company.id]: { status: 'error', message: `HTTP ${res.status}` } }));[m
+[31m-      }[m
+[31m-    } catch (e) {[m
+[31m-      setCertCheckByCompany(prev => ({ ...prev, [company.id]: { status: 'error', message: String(e) } }));[m
+[31m-    }[m
+[31m-  }[m
+[31m-[m
+ [m
+ [m
+   async function loadRecordings() {[m
+[36m@@ -3765,9 +3663,7 @@[m [mexport default function SettingsPage() {[m
+                         whileTap={{ scale: 0.98 }}[m
+                         type="button"[m
+                         onClick={() => {[m
+[31m-                          setUcTab('users');[m
+                           loadOwnerData();[m
+[31m-                          loadCompanies();[m
+                           setShowSupportUsers(true);[m
+                         }}[m
+                         className="flex items-center justify-between"[m
+[36m@@ -3798,45 +3694,6 @@[m [mexport default function SettingsPage() {[m
+                         </div>[m
+                         <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>[m
+                       </motion.button>[m
+[31m-[m
+[31m-                      {/* Companies — activate / deactivate registered company accounts */}[m
+[31m-                      <motion.button[m
+[31m-                        whileTap={{ scale: 0.98 }}[m
+[31m-                        type="button"[m
+[31m-                        onClick={() => {[m
+[31m-                          setUcTab('company');[m
+[31m-                          loadOwnerData();[m
+[31m-                          loadCompanies();[m
+[31m-                          setShowSupportUsers(true);[m
+[31m-                        }}[m
+[31m-                        className="flex items-center justify-between"[m
+[31m-                        style={{[m
+[31m-                          width: '100%
