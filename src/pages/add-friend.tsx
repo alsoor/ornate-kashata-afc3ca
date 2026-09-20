@@ -12072,6 +12072,43 @@ export default function AddFriendPage() {
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaLikesTotal}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
                   </div>
+                  {/* Account live broadcast — same row as stats, after Likes */}
+                  {user && (
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.88 }}
+                      onClick={() => {
+                        const qs = new URLSearchParams({
+                          hostId: String(user.id),
+                          hostName: String((user as any).name || (user as any).username || 'Host'),
+                        });
+                        if ((user as any).username) qs.set('hostUsername', String((user as any).username));
+                        const av = (user as any).avatarUrl || (user as any).image;
+                        if (av) qs.set('hostAvatar', String(av));
+                        navigate('/live?' + qs.toString());
+                      }}
+                      aria-label={myLiveActive ? 'Live broadcast is on' : 'Live audio broadcast'}
+                      style={{
+                        width: 32, height: 32, borderRadius: '50%', marginLeft: 4, flexShrink: 0,
+                        background: myLiveActive ? 'rgba(239,68,68,0.14)' : 'rgba(255,255,255,0.05)',
+                        border: '1px solid ' + (myLiveActive ? 'rgba(239,68,68,0.55)' : 'rgba(0,188,212,0.35)'),
+                        color: myLiveActive ? '#ef4444' : CLR_PRIMARY,
+                        cursor: 'pointer',
+                        boxShadow: myLiveActive ? '0 0 12px rgba(239,68,68,0.4)' : 'none',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: 0,
+                      }}
+                    >
+                      <style>{'@keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }'}</style>
+                      <span style={{
+                        display: 'flex',
+                        animation: myLiveActive ? 'stooornaLivePulse 1.2s ease-in-out infinite' : 'none',
+                        filter: myLiveActive ? 'drop-shadow(0 0 6px rgba(239,68,68,0.75))' : 'none',
+                      }}>
+                        <Radio size={18} strokeWidth={2.2} />
+                      </span>
+                    </motion.button>
+                  )}
                 </div>
               </div>
             </div>
