@@ -12072,7 +12072,7 @@ export default function AddFriendPage() {
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaLikesTotal}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
                   </div>
-                  {/* Account live broadcast — same row as stats, after Likes */}
+                  {/* Account live broadcast — far right, same row as Likes */}
                   {user && (
                     <motion.button
                       type="button"
@@ -12089,7 +12089,8 @@ export default function AddFriendPage() {
                       }}
                       aria-label={myLiveActive ? 'Live broadcast is on' : 'Live audio broadcast'}
                       style={{
-                        width: 32, height: 32, borderRadius: '50%', marginLeft: 4, flexShrink: 0,
+                        width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                        marginLeft: 'auto', marginRight: 0,
                         background: myLiveActive ? 'rgba(239,68,68,0.14)' : 'rgba(255,255,255,0.05)',
                         border: '1px solid ' + (myLiveActive ? 'rgba(239,68,68,0.55)' : 'rgba(0,188,212,0.35)'),
                         color: myLiveActive ? '#ef4444' : CLR_PRIMARY,
