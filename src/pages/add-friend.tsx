@@ -15730,48 +15730,71 @@ export default function AddFriendPage() {
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
               style={{
+                position: 'relative',
                 width: 'min(92vw, 360px)',
                 height: 'min(56vh, 420px)',
                 maxHeight: 'min(56vh, 420px)',
-                display: 'flex', flexDirection: 'column',
-                background: PAGE_BG,
+                display: 'flex',
+                flexDirection: 'column',
+                background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
                 border: `1px solid ${CLR_PRIMARY_BORDER}`,
                 borderRadius: 18,
                 boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
                 overflow: 'hidden',
+                boxSizing: 'border-box',
               }}
             >
-              {/* Header + tabs: Friends | Company */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px 4px', flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+              {/* Header inside card: Friends | Company + close */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+                padding: '12px 12px 10px',
+                flexShrink: 0,
+                borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
+                boxSizing: 'border-box',
+                width: '100%',
+                minWidth: 0,
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                }}>
                   <button
                     type="button"
                     onClick={() => setFriendsPanelTab('friends')}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
                       background: friendsPanelTab === 'friends' ? 'rgba(0,188,212,0.18)' : 'transparent',
                       border: `1px solid ${friendsPanelTab === 'friends' ? CLR_PRIMARY_BORDER : 'transparent'}`,
                       color: friendsPanelTab === 'friends' ? CLR_PRIMARY : CLR_TEXT_DIM,
-                      fontSize: '0.75rem', fontWeight: 800,
+                      fontSize: '0.72rem', fontWeight: 800,
+                      flexShrink: 0,
                     }}
                   >
-                    <Users size={14} strokeWidth={2.2} />
+                    <Users size={13} strokeWidth={2.2} />
                     Friends
                   </button>
                   <button
                     type="button"
                     onClick={() => setFriendsPanelTab('company')}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
                       background: friendsPanelTab === 'company' ? 'rgba(0,188,212,0.18)' : 'transparent',
                       border: `1px solid ${friendsPanelTab === 'company' ? CLR_PRIMARY_BORDER : 'transparent'}`,
                       color: friendsPanelTab === 'company' ? CLR_PRIMARY : CLR_TEXT_DIM,
-                      fontSize: '0.75rem', fontWeight: 800,
+                      fontSize: '0.72rem', fontWeight: 800,
+                      flexShrink: 0,
                     }}
                   >
-                    <Building2 size={14} strokeWidth={2.2} />
+                    <Building2 size={13} strokeWidth={2.2} />
                     Company
                   </button>
                 </div>
@@ -15783,7 +15806,7 @@ export default function AddFriendPage() {
                   if (next.has('openFriendsPanel')) { next.delete('openFriendsPanel'); setSearchParams(next, { replace: true }); }
                 }} aria-label="Close" style={{
                   width: 28, height: 28, borderRadius: '50%', border: 'none',
-                  background: 'rgba(255,255,255,0.06)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}><X size={14} /></button>
               </div>
