@@ -2729,7 +2729,52 @@ function GlobalBottomNavigation() {
         </button>
         )}
 
-        {/* الإعدادات — ثلاث خطوط أقصى يمين الشريط السفلي */}
+        {/* Friends — opens Friend / Company sheet from bottom */}
+        {user && (
+        <button
+          type="button"
+          onClick={() => {
+            popNavBubble('friends');
+            const open = () => {
+              try {
+                window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', {
+                  detail: { tab: 'friends' },
+                }));
+              } catch { /* */ }
+            };
+            if (location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend')) {
+              open();
+              return;
+            }
+            navigate('/add-friend?tab=friends&openFriendsPanel=1');
+            window.setTimeout(open, 80);
+          }}
+          aria-label="Friends"
+          style={{
+            position: 'absolute',
+            right: 54,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: 44,
+            height: 36,
+            border: 'none',
+            background: 'transparent',
+            borderRadius: 12,
+            color: 'rgba(0,188,212,0.85)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2,
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
+          <NavBubble id="friends" color="rgba(0,188,212,0.65)" />
+          <Users size={21} strokeWidth={2.2} />
+        </button>
+        )}
+
+        {/* Settings menu — three lines far right */}
         <button
           type="button"
           onClick={() => {
@@ -2740,7 +2785,7 @@ function GlobalBottomNavigation() {
             }
             navigate('/settings');
           }}
-          aria-label="الإعدادات"
+          aria-label="Settings"
           style={{
             position: 'absolute',
             right: 10,

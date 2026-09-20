@@ -10669,14 +10669,24 @@ export default function AddFriendPage() {
     };
   });
   useEffect(() => {
-    if (searchParams.get('openChats') === '1') {
-      setFriendsPanelTab('friends');
+    if (searchParams.get('openChats') === '1' || searchParams.get('openFriendsPanel') === '1') {
+      setFriendsPanelTab(user ? 'friends' : 'company');
       setNamesBarOpen(true);
     }
     if (searchParams.get('panel') !== 'chats') {
       setUserShareChatPeer(null);
     }
-  }, [searchParams]);
+  }, [searchParams, user]);
+
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const d = (e as CustomEvent).detail as { tab?: 'friends' | 'company' } | undefined;
+      setFriendsPanelTab(d?.tab || (user ? 'friends' : 'company'));
+      setNamesBarOpen(true);
+    };
+    window.addEventListener('stooorna:open-friends-panel', onOpen as EventListener);
+    return () => window.removeEventListener('stooorna:open-friends-panel', onOpen as EventListener);
+  }, [user]);
 
   // تحميل دليل الشركات مبكراً لتصنيف الستوريات والشير (وليس فقط عند فتح اللوحة)
   useEffect(() => {
@@ -11951,18 +11961,6 @@ export default function AddFriendPage() {
                 background: 'rgba(6,18,20,0.98)', border: `1px solid ${CLR_PRIMARY_BORDER}`,
                 borderRadius: 12, padding: 6, boxShadow: '0 10px 24px rgba(0,0,0,0.4)',
               }}>
-                <button type="button" onClick={() => {
-                  setStoryMoreOpen(false);
-                  setFriendsPanelTab(user ? 'friends' : 'company');
-                  setNamesBarOpen(true);
-                }}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '10px 12px', border: 'none', borderRadius: 8, cursor: 'pointer',
-                    background: 'transparent', color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.82rem',
-                  }}>
-                  <Users size={15} /> Friends
-                </button>
                 {isCompanyPublisher && (
                 <button type="button" onClick={() => { setStoryMoreOpen(false); setCompanyInboxOpen(true); }}
                   style={{
@@ -15804,24 +15802,26 @@ export default function AddFriendPage() {
       <AnimatePresence>
         {namesBarOpen && (
           <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22 }}
             onClick={() => {
               setNamesBarOpen(false);
               const next = new URLSearchParams(searchParams);
               if (next.has('openChats')) { next.delete('openChats'); setSearchParams(next, { replace: true }); }
+              if (next.has('openFriendsPanel')) { next.delete('openFriendsPanel'); setSearchParams(next, { replace: true }); }
             }}
-            style={{ position: 'fixed', inset: 0, zIndex: 10080, background: 'rgba(0,0,0,0.45)', overflow: 'hidden' }}
+            style={{ position: 'fixed', inset: 0, zIndex: 10080, background: 'rgba(0,0,0,0.5)', overflow: 'hidden' }}
           >
             <motion.div
               onClick={e => e.stopPropagation()}
-              initial={{ opacity: 0, y: -56 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -40 }}
-              transition={{ type: 'spring', stiffness: 380, damping: 32, mass: 0.85 }}
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.9 }}
               style={{
-                position: 'absolute', top: 0, left: 0, right: 0, maxHeight: '78vh',
+                position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: '82vh',
                 display: 'flex', flexDirection: 'column',
-                paddingTop: 'max(10px, env(safe-area-inset-top, 0px))',
-                background: PAGE_BG, borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
-                boxShadow: '0 10px 28px rgba(0,0,0,0.35)',
+                paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))',
+                background: PAGE_BG, borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
+                borderTopLeftRadius: 18, borderTopRightRadius: 18,
+                boxShadow: '0 -12px 32px rgba(0,0,0,0.4)',
               }}
             >
               {/* Header + tabs: Friends | Company */}
@@ -15862,6 +15862,7 @@ export default function AddFriendPage() {
                   setNamesBarOpen(false);
                   const next = new URLSearchParams(searchParams);
                   if (next.has('openChats')) { next.delete('openChats'); setSearchParams(next, { replace: true }); }
+                  if (next.has('openFriendsPanel')) { next.delete('openFriendsPanel'); setSearchParams(next, { replace: true }); }
                 }} aria-label="Close" style={{
                   width: 28, height: 28, borderRadius: '50%', border: 'none',
                   background: 'rgba(255,255,255,0.06)', color: CLR_TEXT_DIM, cursor: 'pointer',
