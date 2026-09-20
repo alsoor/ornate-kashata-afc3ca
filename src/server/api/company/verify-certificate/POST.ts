@@ -64,9 +64,60 @@ function docLabel(type: DocumentType): string {
     : 'trade license certificate';
 }
 
+/** Convert Arabic-Indic digits to Western digits and strip all non-digit chars. */
+function digitsOnly(raw: string | null | undefined): string {
+  if (!raw) return '';
+  const arabicIndic = '٠١٢٣٤٥٦٧٨٩';
+  let s = String(raw).trim();
+  let out = '';
+  for (const ch of s) {
+    const ai = arabicIndic.indexOf(ch);
+    if (ai >= 0) {
+      out += String(ai);
+    } else if (ch >= '0' && ch <= '9') {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+/**
+ * Compare expected form number vs number extracted from the certificate.
+ * Treats as equal when:
+ *  - same digits after removing spaces / dashes / slashes / leading zeros
+ *  - Arabic-Indic digits normalized to Western
+ *  - one number is a suffix/prefix of the other (e.g. "18932" vs "2025/18932")
+ *    as long as the shorter side has at least 4 digits (avoids false positives)
+ */
+function numbersEqual(expected: string, extracted: string | null | undefined): boolean {
+  const a = digitsOnly(expected);
+  const b = digitsOnly(extracted);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  // strip leading zeros then compare
+  const a2 = a.replace(/^0+/, '') || '0';
+  const b2 = b.replace(/^0+/, '') || '0';
+  if (a2 === b2) return true;
+  // compound formats: year/number — accept if the longer side ends with the shorter
+  // (or vice versa) when the shorter has enough digits
+  const minLen = 4;
+  if (a.length >= minLen && b.length >= minLen) {
+    if (a.endsWith(b) || b.endsWith(a)) return true;
+    if (a.startsWith(b) || b.startsWith(a)) return true;
+  }
+  return false;
+}
+
 export default async function handler(req: Request, res: Response) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ valid: false, message: 'Method not allowed' });
+  }
+
   try {
-    const { documentType, expectedNumber, dataUrl } = req.body as VerifyBody;
+    const body = (req.body || {}) as VerifyBody;
+    const documentType = body.documentType;
+    const expectedNumber = body.expectedNumber;
+    const dataUrl = body.dataUrl;
 
     if (documentType !== 'commercial_registry' && documentType !== 'trade_license') {
       return res.status(400).json({ valid: false, message: 'Invalid document type' });
@@ -109,12 +160,16 @@ export default async function handler(req: Request, res: Response) {
       '   This is very often a photo taken with a phone camera, not a clean scan — accept normal photo conditions',
       '   such as glare, slight blur, skew/rotation, shadows, or background visible around the paper. Only reject',
       '   for (1) if the content itself is clearly not this type of certificate.',
+      '   Kuwait / GCC commercial registration and trade license documents (Arabic and/or English) are valid.',
       '2) The registration/license number printed on the certificate.',
+      '   Prefer the main official number field. Formats may include year/number (e.g. 2025/18932),',
+      '   spaces, dashes, or Arabic-Indic digits.',
       '3) Whether that printed number matches the number the user typed. When comparing, treat these as identical:',
       '   - spaces, dashes, and slashes used as separators',
       '   - leading zeros',
       '   - Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) vs Western digits (0123456789) — convert before comparing',
-      '   Only mark numbersMatch as false if the actual digits differ once the above formatting differences are ignored.',
+      '   - year/number vs number-only when the significant digits match (e.g. "2025/18932" and "18932")',
+      '   Only mark numbersMatch as false if the actual significant digits differ once the above formatting differences are ignored.',
       '',
       'Reply with ONLY a JSON object, no extra text, in this exact shape:',
       '{"isCertificate": boolean, "extractedNumber": string | null, "numbersMatch": boolean, "reason": string}',
@@ -164,7 +219,10 @@ export default async function handler(req: Request, res: Response) {
     }
 
     const isCertificate = verdict.isCertificate === true;
-    const numbersMatch = verdict.numbersMatch === true;
+    // Trust the model when it says match, OR override with strict server-side digit compare
+    // so formatting differences (slashes, Arabic digits, year prefix) do not false-reject.
+    const serverMatch = numbersEqual(expectedNumber.trim(), verdict.extractedNumber);
+    const numbersMatch = verdict.numbersMatch === true || serverMatch;
     const valid = isCertificate && numbersMatch;
 
     if (!valid) {
@@ -175,7 +233,8 @@ export default async function handler(req: Request, res: Response) {
         expectedNumber: expectedNumber.trim(),
         extractedNumber: verdict.extractedNumber ?? null,
         isCertificate,
-        numbersMatch,
+        modelNumbersMatch: verdict.numbersMatch === true,
+        serverMatch,
         reason: verdict.reason ?? null,
       });
       const message = !isCertificate

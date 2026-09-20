@@ -3244,6 +3244,27 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         return { valid: true, dataUrl };
       }
 
+      // Fallback: if server returned an extracted number whose digits match the
+      // expected number (ignoring spaces/slashes/Arabic digits), accept it even
+      // when the model left numbersMatch false due to formatting differences.
+      if (data && data.extractedNumber != null && expectedNumber.trim()) {
+        const arabicIndic = '٠١٢٣٤٥٦٧٨٩';
+        const toDigits = (raw: string) => {
+          let out = '';
+          for (const ch of String(raw)) {
+            const ai = arabicIndic.indexOf(ch);
+            if (ai >= 0) out += String(ai);
+            else if (ch >= '0' && ch <= '9') out += ch;
+          }
+          return out.replace(/^0+/, '') || '0';
+        };
+        const a = toDigits(expectedNumber);
+        const b = toDigits(String(data.extractedNumber));
+        if (a && b && (a === b || (a.length >= 4 && b.length >= 4 && (a.endsWith(b) || b.endsWith(a) || a.startsWith(b) || b.startsWith(a))))) {
+          return { valid: true, dataUrl };
+        }
+      }
+
       return {
         valid: false,
         dataUrl,
