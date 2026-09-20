@@ -5184,6 +5184,7 @@ export default function SettingsPage() {
   // ── Owner-only (@Stooorna): Companies registry admin ──
   const [showOwnerCompanies, setShowOwnerCompanies] = useState(false);
   const [showRecoveredUsers, setShowRecoveredUsers] = useState(false);
+  const [showOwnerBusiness, setShowOwnerBusiness] = useState(false);
   const [recoveredUsers, setRecoveredUsers] = useState<DeletedUserRecord[]>([]);
   const [recoveredBusyId, setRecoveredBusyId] = useState<string>('');
   const [ownerCompanies, setOwnerCompanies] = useState<CompanyRegistration[]>([]);
@@ -5415,7 +5416,7 @@ export default function SettingsPage() {
 
   // Hide global app bottom tabs while any support chat / inbox overlay is open
   useEffect(() => {
-    const hidden = !!(showSupportChat || ownerChatUser || showOwnerInbox || showSupportUsers || supportCtrlUser || showOwnerCompanies || ownerCompanyDetail || showRecoveredUsers);
+    const hidden = !!(showSupportChat || ownerChatUser || showOwnerInbox || showSupportUsers || supportCtrlUser || showOwnerCompanies || ownerCompanyDetail || showRecoveredUsers || showOwnerBusiness);
     try {
       document.body.classList.toggle('stooorna-support-chat-open', hidden);
       window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden } }));
@@ -5426,7 +5427,7 @@ export default function SettingsPage() {
         window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } }));
       } catch { /* ignore */ }
     };
-  }, [showSupportChat, ownerChatUser, showOwnerInbox, showSupportUsers, supportCtrlUser, showOwnerCompanies, ownerCompanyDetail, showRecoveredUsers]);
+  }, [showSupportChat, ownerChatUser, showOwnerInbox, showSupportUsers, supportCtrlUser, showOwnerCompanies, ownerCompanyDetail, showRecoveredUsers, showOwnerBusiness]);
 
   async function patchSupportUser(userId: string, body: Record<string, unknown>) {
     // Prefer owner admin route; fallback to support-specific if added later
@@ -5708,10 +5709,12 @@ export default function SettingsPage() {
     const row = getBusinessForUser(user.id);
     setBusinessRow(row);
     setBusinessToggleOn(!!(row && (row.status === 'approved' || row.status === 'pending')));
+    if (row?.ownerNote && !row.ownerNoteSeen) setBizOwnerNoteOpen(true);
     const onBiz = () => {
       const r = getBusinessForUser(user.id);
       setBusinessRow(r);
       setBusinessToggleOn(!!(r && (r.status === 'approved' || r.status === 'pending')));
+      if (r?.ownerNote && !r.ownerNoteSeen) setBizOwnerNoteOpen(true);
     };
     window.addEventListener('stooorna:business-registry', onBiz);
     return () => window.removeEventListener('stooorna:business-registry', onBiz);
@@ -8586,6 +8589,53 @@ export default function SettingsPage() {
                     <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
                   </div>
                 </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => {
+                    setOwnerBusinessList(loadBusinessRegistry());
+                    startTransition(() => setShowOwnerBusiness(true));
+                  }}
+                  className="flex items-center justify-between"
+                  style={{
+                    width: '100%',
+                    background: T.surface,
+                    border: `1px solid ${T.surfaceBorder}`,
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    color: T.text,
+                    cursor: 'pointer',
+                  }}
+                  aria-label="Business applications"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center" style={{
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
+                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308',
+                    }}>
+                      <Briefcase size={19} strokeWidth={2.1} />
+                    </span>
+                    <span style={{ textAlign: 'left' }}>
+                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Business applications</span>
+                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
+                        Full request data · Approve · Reject · Owner note
+                      </span>
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {ownerBusinessList.filter(x => x.status === 'pending').length > 0 && (
+                      <span style={{
+                        minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+                        background: '#eab308', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {ownerBusinessList.filter(x => x.status === 'pending').length > 9 ? '9+' : ownerBusinessList.filter(x => x.status === 'pending').length}
+                      </span>
+                    )}
+                    <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
+                  </div>
+                </motion.button>
               </div>
             )}
 
@@ -8594,7 +8644,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Bottom nav bar — hidden while support overlays are open */}
-        {!showSupportChat && !ownerChatUser && !showOwnerInbox && !showSupportUsers && !supportCtrlUser && !showOwnerCompanies && !ownerCompanyDetail && !showRecoveredUsers && (
+        {!showSupportChat && !ownerChatUser && !showOwnerInbox && !showSupportUsers && !supportCtrlUser && !showOwnerCompanies && !ownerCompanyDetail && !showRecoveredUsers && !showOwnerBusiness && (
           <div className="w-full flex items-center justify-center px-10 py-4 z-10" style={{
             background: T.navBg,
             borderTop: `1px solid ${T.navBorder}`
@@ -10769,143 +10819,180 @@ export default function SettingsPage() {
         )}
       </AnimatePresence>
 
-      {/* ── Owner: Business applications (replaces Companies entry) ── */}
-      {isOwner && tab === 'companies' && (
-        <div style={{
-          margin: '0 16px 20px',
-          background: 'hsl(var(--card))',
-          border: '1px solid rgba(234,179,8,0.3)',
-          borderRadius: 16,
-          padding: 16,
-        }}>
-          <p style={{ fontWeight: 800, fontSize: 14, color: '#eab308', margin: '0 0 6px' }}>
-            Business applications
-            {ownerBusinessList.filter(x => x.status === 'pending').length > 0 && (
-              <span style={{
-                marginLeft: 8, padding: '2px 8px', borderRadius: 20,
-                background: 'rgba(234,179,8,0.2)', color: '#eab308',
-                fontSize: 11, fontWeight: 700,
-              }}>
-                {ownerBusinessList.filter(x => x.status === 'pending').length}
-              </span>
-            )}
-          </p>
-          <p style={{ margin: '0 0 12px', fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>
-            Users who applied to activate a Business account. Full registration data below.
-          </p>
-          {ownerBusinessList.length === 0 && (
-            <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: 13, margin: 0 }}>No business applications</p>
-          )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {ownerBusinessList.map(row => (
-              <div key={row.id} style={{
-                background: 'hsl(var(--muted)/0.3)',
-                border: `1px solid ${row.status === 'pending' ? 'rgba(234,179,8,0.35)' : row.status === 'approved' ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.3)'}`,
-                borderRadius: 12, padding: 12,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: 'hsl(var(--foreground))' }}>{row.projectName}</p>
-                    <p style={{ margin: '4px 0 0', fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>
-                      @{String(row.username || '').replace(/^@/, '') || 'user'} · {row.email || ''}
-                    </p>
-                    <p style={{ margin: '4px 0 0', fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>
-                      Commercial registration: {row.licenseNumber}
-                    </p>
-                    <p style={{ margin: '2px 0 0', fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>
-                      Trade license: {row.tradeLicenseNumber}
-                    </p>
-                    <p style={{ margin: '2px 0 0', fontSize: 10, color: 'hsl(var(--muted-foreground))' }}>
-                      Submitted: {row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}
-                    </p>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                      {row.commercialRegCert && (
-                        <a href={row.commercialRegCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#00BCD4' }}>
-                          Commercial cert{row.commercialRegCertName ? ` (${row.commercialRegCertName})` : ''}
-                        </a>
-                      )}
-                      {row.tradeLicenseCert && (
-                        <a href={row.tradeLicenseCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#00BCD4' }}>
-                          Trade cert{row.tradeLicenseCertName ? ` (${row.tradeLicenseCertName})` : ''}
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                  <span style={{
-                    padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
-                    background: row.status === 'pending' ? 'rgba(234,179,8,0.15)' : row.status === 'approved' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-                    color: row.status === 'pending' ? '#eab308' : row.status === 'approved' ? '#22c55e' : '#ef4444',
-                  }}>
-                    {row.status}
-                  </span>
-                </div>
-                {row.status === 'pending' && (
-                  <div style={{ marginTop: 10 }}>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'hsl(var(--muted-foreground))', marginBottom: 6 }}>
-                      Note for user (shown in their settings; disappears after they close it)
-                    </label>
-                    <textarea
-                      value={ownerBizNotes[row.id] || ''}
-                      onChange={e => setOwnerBizNotes(prev => ({ ...prev, [row.id]: e.target.value.slice(0, 500) }))}
-                      placeholder="Write instructions or rejection reason for the user..."
-                      rows={3}
-                      style={{
-                        width: '100%', boxSizing: 'border-box', borderRadius: 10, padding: '10px 12px',
-                        border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.55)',
-                        color: 'hsl(var(--foreground))', fontSize: 12, outline: 'none', resize: 'vertical',
-                        fontFamily: 'inherit', marginBottom: 8,
-                      }}
-                    />
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          reviewBusinessRegistration(row.id, 'approve', ownerBizNotes[row.id] || null);
-                          setOwnerBusinessList(loadBusinessRegistry());
-                          setOwnerBizNotes(prev => {
-                            const n = { ...prev };
-                            delete n[row.id];
-                            return n;
-                          });
-                        }}
-                        style={{
-                          flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                          background: '#22c55e', color: '#041018', fontSize: 12, fontWeight: 800,
-                        }}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          reviewBusinessRegistration(row.id, 'reject', ownerBizNotes[row.id] || null);
-                          setOwnerBusinessList(loadBusinessRegistry());
-                          setOwnerBizNotes(prev => {
-                            const n = { ...prev };
-                            delete n[row.id];
-                            return n;
-                          });
-                        }}
-                        style={{
-                          flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                          background: '#ef4444', color: '#fff', fontSize: 12, fontWeight: 800,
-                        }}
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {row.ownerNote && row.status !== 'pending' && (
-                  <p style={{ margin: '8px 0 0', fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>
-                    Note sent: {row.ownerNote}
-                  </p>
-                )}
+      {/* ── Owner: Business applications overlay (not mixed into company registry) ── */}
+      <AnimatePresence>
+        {showOwnerBusiness && isSupportOwnerAccount(
+          user as { email?: string | null; username?: string | null; name?: string | null },
+          profileUsername,
+        ) && (
+          <motion.div
+            key="owner-business-apps"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10370,
+              background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(10px)',
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+              borderBottom: '1px solid rgba(234,179,8,0.25)',
+              background: 'linear-gradient(180deg, #1a1608 0%, #0a0e0e 100%)',
+              minHeight: 52, flexShrink: 0,
+            }}>
+              <button
+                type="button"
+                onClick={() => setShowOwnerBusiness(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#eab308', padding: 2 }}
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+              <Briefcase size={18} style={{ color: '#eab308' }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.95rem' }}>Business applications</p>
+                <p style={{ margin: '1px 0 0', color: 'rgba(200,190,150,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
+                  Full request data · Approve / Reject · Note to user
+                </p>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+              <button
+                type="button"
+                onClick={() => setOwnerBusinessList(loadBusinessRegistry())}
+                style={{
+                  border: '1px solid rgba(234,179,8,0.35)', background: 'rgba(234,179,8,0.1)',
+                  color: '#eab308', borderRadius: 8, padding: '6px 10px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer',
+                }}
+              >
+                Refresh
+              </button>
+              <span style={{ color: 'rgba(200,190,150,0.7)', fontSize: '0.7rem' }}>{ownerBusinessList.length}</span>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {ownerBusinessList.length === 0 && (
+                <div style={{
+                  padding: 24, textAlign: 'center', color: 'rgba(180,180,160,0.7)',
+                  border: '1px dashed rgba(234,179,8,0.25)', borderRadius: 14,
+                }}>
+                  No business applications
+                </div>
+              )}
+              {ownerBusinessList.map(row => (
+                <div key={row.id} style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${row.status === 'pending' ? 'rgba(234,179,8,0.35)' : row.status === 'approved' ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.3)'}`,
+                  borderRadius: 14, padding: 14,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: '#f5e6a8' }}>{row.projectName}</p>
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: 'rgba(180,180,160,0.8)' }}>
+                        @{String(row.username || '').replace(/^@/, '') || 'user'} · {row.email || ''}
+                      </p>
+                      <p style={{ margin: '6px 0 0', fontSize: 11, color: 'rgba(180,180,160,0.7)' }}>
+                        Commercial registration: {row.licenseNumber}
+                      </p>
+                      <p style={{ margin: '2px 0 0', fontSize: 11, color: 'rgba(180,180,160,0.7)' }}>
+                        Trade license: {row.tradeLicenseNumber}
+                      </p>
+                      <p style={{ margin: '2px 0 0', fontSize: 10, color: 'rgba(150,150,130,0.6)' }}>
+                        Submitted: {row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}
+                      </p>
+                      <p style={{ margin: '2px 0 0', fontSize: 10, color: 'rgba(150,150,130,0.6)' }}>
+                        User ID: {row.userId}
+                      </p>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                        {row.commercialRegCert && (
+                          <a href={row.commercialRegCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#00BCD4' }}>
+                            Commercial cert{row.commercialRegCertName ? ` (${row.commercialRegCertName})` : ''}
+                          </a>
+                        )}
+                        {row.tradeLicenseCert && (
+                          <a href={row.tradeLicenseCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#00BCD4' }}>
+                            Trade cert{row.tradeLicenseCertName ? ` (${row.tradeLicenseCertName})` : ''}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <span style={{
+                      padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+                      background: row.status === 'pending' ? 'rgba(234,179,8,0.15)' : row.status === 'approved' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                      color: row.status === 'pending' ? '#eab308' : row.status === 'approved' ? '#22c55e' : '#ef4444',
+                    }}>
+                      {row.status}
+                    </span>
+                  </div>
+                  {row.status === 'pending' && (
+                    <div style={{ marginTop: 12 }}>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'rgba(180,180,160,0.75)', marginBottom: 6 }}>
+                        Note for user (shown once in their settings, then disappears after they close it)
+                      </label>
+                      <textarea
+                        value={ownerBizNotes[row.id] || ''}
+                        onChange={e => setOwnerBizNotes(prev => ({ ...prev, [row.id]: e.target.value.slice(0, 500) }))}
+                        placeholder="Write instructions or rejection reason for the user..."
+                        rows={3}
+                        style={{
+                          width: '100%', boxSizing: 'border-box', borderRadius: 10, padding: '10px 12px',
+                          border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.55)',
+                          color: 'rgba(220,230,230,0.95)', fontSize: 12, outline: 'none', resize: 'vertical',
+                          fontFamily: 'inherit', marginBottom: 8,
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            reviewBusinessRegistration(row.id, 'approve', ownerBizNotes[row.id] || null);
+                            setOwnerBusinessList(loadBusinessRegistry());
+                            setOwnerBizNotes(prev => {
+                              const n = { ...prev };
+                              delete n[row.id];
+                              return n;
+                            });
+                          }}
+                          style={{
+                            flex: 1, padding: '10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                            background: '#22c55e', color: '#041018', fontSize: 12, fontWeight: 800,
+                          }}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            reviewBusinessRegistration(row.id, 'reject', ownerBizNotes[row.id] || null);
+                            setOwnerBusinessList(loadBusinessRegistry());
+                            setOwnerBizNotes(prev => {
+                              const n = { ...prev };
+                              delete n[row.id];
+                              return n;
+                            });
+                          }}
+                          style={{
+                            flex: 1, padding: '10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                            background: '#ef4444', color: '#fff', fontSize: 12, fontWeight: 800,
+                          }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {row.ownerNote && row.status !== 'pending' && (
+                    <p style={{ margin: '8px 0 0', fontSize: 11, color: 'rgba(180,180,160,0.7)' }}>
+                      Note sent: {row.ownerNote}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Music modal — from profile Music button ── */}
       <AnimatePresence>
