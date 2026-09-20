@@ -4070,7 +4070,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           name: name.trim(),
           email: em,
           password,
-          // بعض إصدارات better-auth تدعم حقولاً إضافية
+          // some better-auth builds accept extra fields
           ...( { username: uname } as any ),
         } as any);
         if (!(res as { error?: { message?: string } })?.error) {
@@ -4085,15 +4085,31 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             setError(msg);
           }
         } else {
-          // تأكيد حفظ اليوزر على الملف الشخصي
+          // Persist username immediately so Settings profile shows it without re-entry
           try {
-            await fetch('/api/users/me', {
-              method: 'PATCH',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ username: uname }),
-            });
+            localStorage.setItem('stooorna_pending_username', uname);
+            localStorage.setItem(`stooorna_username_${em}`, uname);
           } catch { /* ignore */ }
+          try {
+            await signIn.email({ email: em, password });
+          } catch { /* already signed in */ }
+          const patchUsername = async () => {
+            try {
+              const r = await fetch('/api/users/me', {
+                method: 'PATCH',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: uname }),
+              });
+              return r.ok;
+            } catch {
+              return false;
+            }
+          };
+          if (!(await patchUsername())) {
+            await new Promise(r => setTimeout(r, 400));
+            await patchUsername();
+          }
         }
       } else {
         // Company signup: طلب تسجيل فقط — لا دخول مباشر حتى يوافق @Stooorna
@@ -5209,9 +5225,18 @@ export default function SettingsPage() {
   }
 
   // Profile username — must be declared before support-owner checks / effects
-  const [profileUsername, setProfileUsername] = useState<string>((user as {
-    username?: string | null;
-  })?.username ?? '');
+  const [profileUsername, setProfileUsername] = useState<string>(() => {
+    const fromSession = String((user as { username?: string | null })?.username ?? '').replace(/^@/, '').trim();
+    if (fromSession) return fromSession;
+    try {
+      const pending = localStorage.getItem('stooorna_pending_username') || '';
+      const em = String((user as { email?: string | null })?.email || '').toLowerCase();
+      const byEmail = em ? (localStorage.getItem(`stooorna_username_${em}`) || '') : '';
+      return (pending || byEmail).replace(/^@/, '').trim();
+    } catch {
+      return '';
+    }
+  });
 
   // هل الجلسة حساب شركة؟ وهل الأونر فعّل ميزة اليوزرنيم للشركات؟
   const sessionIsCompany = (() => {
@@ -5855,9 +5880,44 @@ export default function SettingsPage() {
   // Sync avatarUrl + profileUsername when user object changes — always fetch fresh from DB
   useEffect(() => {
     if (!user) return;
-    fetch('/api/users/me').then(r => r.ok ? r.json() : null).then(d => {
+    // Prefer session username immediately (no empty field after signup)
+    const sessionUn = String((user as { username?: string | null }).username || '').replace(/^@/, '').trim();
+    if (sessionUn) setProfileUsername(sessionUn);
+    try {
+      const pending = localStorage.getItem('stooorna_pending_username') || '';
+      const byEmail = localStorage.getItem(`stooorna_username_${String(user.email || '').toLowerCase()}`) || '';
+      const localUn = (pending || byEmail).replace(/^@/, '').trim();
+      if (localUn && !sessionUn) setProfileUsername(localUn);
+    } catch { /* ignore */ }
+    fetch('/api/users/me').then(r => r.ok ? r.json() : null).then(async d => {
       if (d?.avatarUrl) setAvatarUrl(d.avatarUrl);
-      if (d?.username) setProfileUsername(d.username);
+      if (d?.username) {
+        setProfileUsername(d.username);
+        try {
+          localStorage.setItem('stooorna_pending_username', String(d.username).replace(/^@/, ''));
+          if (user.email) localStorage.setItem(`stooorna_username_${String(user.email).toLowerCase()}`, String(d.username).replace(/^@/, ''));
+        } catch { /* */ }
+      } else {
+        // DB missing username — apply local/session value once
+        const fallback = sessionUn || (() => {
+          try {
+            return (localStorage.getItem('stooorna_pending_username')
+              || localStorage.getItem(`stooorna_username_${String(user.email || '').toLowerCase()}`)
+              || '').replace(/^@/, '').trim();
+          } catch { return ''; }
+        })();
+        if (fallback) {
+          setProfileUsername(fallback);
+          try {
+            await fetch('/api/users/me', {
+              method: 'PATCH',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username: fallback }),
+            });
+          } catch { /* ignore */ }
+        }
+      }
       if (d?.phoneNumber) setProfilePhone(d.phoneNumber);
       if (d?.coverUrl) setCoverUrl(d.coverUrl);
       if (d?.name) setDisplayNameState(d.name);

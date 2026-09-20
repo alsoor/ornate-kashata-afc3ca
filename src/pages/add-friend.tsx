@@ -3694,6 +3694,56 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
   );
 }
 
+/** True when author is an approved Business account (yellow badge next to @username) */
+function isAuthorBusinessAccount(authorId?: string | null, authorUsername?: string | null): boolean {
+  try {
+    const id = String(authorId || '').trim();
+    const un = String(authorUsername || '').replace(/^@/, '').trim().toLowerCase();
+    if (!id && !un) return false;
+    const dirRaw = localStorage.getItem('stooorna_business_directory');
+    const dir = dirRaw ? JSON.parse(dirRaw) : [];
+    if (Array.isArray(dir) && dir.some((x: any) =>
+      (id && String(x.userId || '') === id) ||
+      (un && String(x.username || '').replace(/^@/, '').toLowerCase() === un)
+    )) return true;
+    const regRaw = localStorage.getItem('stooorna_business_registry');
+    const reg = regRaw ? JSON.parse(regRaw) : [];
+    if (Array.isArray(reg) && reg.some((x: any) =>
+      x.status === 'approved' && (
+        (id && String(x.userId || '') === id) ||
+        (un && String(x.username || '').replace(/^@/, '').toLowerCase() === un)
+      )
+    )) return true;
+  } catch { /* ignore */ }
+  return false;
+}
+
+function BusinessHeadBadgeInline({ compact }: { compact?: boolean }) {
+  return (
+    <span
+      title="Business"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        fontSize: compact ? '0.52rem' : '0.58rem',
+        fontWeight: 900,
+        color: '#0a0a0a',
+        background: '#eab308',
+        borderRadius: 5,
+        padding: compact ? '1px 5px' : '2px 7px',
+        letterSpacing: '0.04em',
+        lineHeight: 1.2,
+        boxShadow: '0 0 8px rgba(234,179,8,0.45)',
+        verticalAlign: 'middle',
+        flexShrink: 0,
+        marginInlineStart: 4,
+      }}
+    >
+      Business
+    </span>
+  );
+}
+
 // ── PostCard — a single feed post: one card, paper-style text area, small expandable media ──
 function PostMediaItems(post: PostItem): { url: string; type: 'image' | 'video' }[] {
   if (post.mediaUrls?.length) {
@@ -3889,8 +3939,9 @@ function PostCard({
                 </span>
               )}
             </p>
-            <p style={{ color: '#000000', fontSize: '0.68rem', fontWeight: 700, margin: 0 }}>
+            <p style={{ color: '#000000', fontSize: '0.68rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
               {post.authorUsername && <span style={{ color: 'hsl(var(--primary))', fontWeight: 700 }}>@{post.authorUsername}</span>}
+              {isAuthorBusinessAccount(post.authorId, post.authorUsername) && <BusinessHeadBadgeInline compact />}
             </p>
           </div>
 
@@ -9488,24 +9539,27 @@ export default function AddFriendPage() {
 
           let uploadRes: Response | null = null;
           let lastBody = '';
+          let uploadedUrl: string | null = null;
 
+          // 1) FormData (most reliable on many hosts)
           try {
-            uploadRes = await fetch('/api/posts/media', {
-              method: 'POST',
-              credentials: 'include',
-              headers: {
-                'Content-Type': contentType,
-                'X-File-Ext': `.${ext}`,
-              },
-              body: file,
-            });
-            if (!uploadRes.ok) lastBody = await uploadRes.text().catch(() => '');
+            const fd = new FormData();
+            fd.append('file', file, file.name || `media.${ext}`);
+            fd.append('type', mediaType);
+            fd.append('mediaType', mediaType);
+            uploadRes = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+            if (uploadRes.ok) {
+              uploadedUrl = await extractUploadUrl(uploadRes);
+            } else {
+              lastBody = await uploadRes.text().catch(() => '');
+            }
           } catch (e) {
-            lastBody = e instanceof Error ? e.message : 'raw fail';
+            lastBody = e instanceof Error ? e.message : 'formdata fail';
             uploadRes = null;
           }
 
-          if (!uploadRes || !uploadRes.ok) {
+          // 2) Raw body with Content-Type
+          if (!uploadedUrl) {
             try {
               uploadRes = await fetch('/api/posts/media', {
                 method: 'POST',
@@ -9517,24 +9571,23 @@ export default function AddFriendPage() {
                 },
                 body: file,
               });
-              if (!uploadRes.ok) lastBody = await uploadRes.text().catch(() => '');
+              if (uploadRes.ok) {
+                uploadedUrl = await extractUploadUrl(uploadRes);
+              } else {
+                lastBody = await uploadRes.text().catch(() => '');
+              }
             } catch (e) {
-              lastBody = e instanceof Error ? e.message : 'raw2 fail';
+              lastBody = e instanceof Error ? e.message : 'raw fail';
               uploadRes = null;
             }
           }
 
-          if (!uploadRes || !uploadRes.ok) {
-            lastUploadError = `رفع ${isVideo ? 'الفيديو' : 'الملف'} فشل${uploadRes ? ` (${uploadRes.status})` : ''} ${lastBody.slice(0, 100)}`;
+          if (!uploadedUrl) {
+            lastUploadError = `Media upload failed${uploadRes ? ` (${uploadRes.status})` : ''} ${lastBody.slice(0, 100)}`;
             console.error('[Post media upload]', lastUploadError);
             continue;
           }
-          const url = await extractUploadUrl(uploadRes);
-          if (url) {
-            uploadedMedia.push({ url: String(url), type: mediaType });
-          } else {
-            lastUploadError = 'الرفع نجح بدون رابط';
-          }
+          uploadedMedia.push({ url: String(uploadedUrl), type: mediaType });
         } catch (err) {
           lastUploadError = err instanceof Error ? err.message : 'خطأ رفع';
           console.error('[Post media upload]', err);
@@ -9580,13 +9633,13 @@ export default function AddFriendPage() {
       let saved: PostItem | null = null;
 
       if (mediaUrl && mediaType) {
-        const mediaDest = mediaType === 'video' ? 'videos' : 'photos';
+        // Reliable path (same as quickPublishMedia): create with media first, then attach text
         let createRes = await fetch('/api/posts', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            text: finalText || '',
+            text: '',
             mediaUrl,
             mediaType,
             mediaUrls,
@@ -9600,6 +9653,27 @@ export default function AddFriendPage() {
           }),
         });
         if (!createRes.ok) {
+          createRes = await fetch('/api/posts', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: finalText || '',
+              mediaUrl,
+              mediaType,
+              mediaUrls,
+              mediaTypes,
+              hashtags: [],
+              audience: 'text',
+              destination: 'text',
+              publisherType: isCompanyPublisher ? 'company' : 'user',
+              isCompanyPost: !!isCompanyPublisher,
+              authorIsCompany: !!isCompanyPublisher,
+            }),
+          });
+        }
+        if (!createRes.ok) {
+          const mediaDest = mediaType === 'video' ? 'videos' : 'photos';
           createRes = await fetch('/api/posts', {
             method: 'POST',
             credentials: 'include',
@@ -9623,18 +9697,27 @@ export default function AddFriendPage() {
           const errBody = await createRes.text().catch(() => '');
           let msg = '';
           try { msg = (JSON.parse(errBody) as { error?: string }).error || ''; } catch { msg = errBody.slice(0, 120); }
-          throw new Error(msg || `فشل إنشاء المنشور (${createRes.status})`);
+          throw new Error(msg || `Failed to create post (${createRes.status})`);
         }
         const createData = await createRes.json();
-        if (!createData?.post?.id) throw new Error('المنشور لم يُحفظ على السيرفر');
+        if (!createData?.post?.id) throw new Error('Post was not saved on server');
+
+        const serverMediaUrl = createData.post.mediaUrl || mediaUrl;
+        const serverMediaUrls = (Array.isArray(createData.post.mediaUrls) && createData.post.mediaUrls.length)
+          ? createData.post.mediaUrls
+          : mediaUrls;
+        const serverMediaType = createData.post.mediaType || mediaType;
+        const serverMediaTypes = (Array.isArray(createData.post.mediaTypes) && createData.post.mediaTypes.length)
+          ? createData.post.mediaTypes
+          : mediaTypes;
 
         saved = {
           ...createData.post,
           text: createData.post.text || finalText || '',
-          mediaUrl,
-          mediaType,
-          mediaUrls,
-          mediaTypes,
+          mediaUrl: serverMediaUrl,
+          mediaType: serverMediaType,
+          mediaUrls: serverMediaUrls,
+          mediaTypes: serverMediaTypes,
           audience: 'text',
           destination: 'text',
           publisherType: isCompanyPublisher ? 'company' : 'user',
@@ -9642,7 +9725,7 @@ export default function AddFriendPage() {
           authorIsCompany: !!isCompanyPublisher,
         } as PostItem;
 
-        if (finalText.trim() && !(createData.post.text || '').trim()) {
+        if (finalText.trim()) {
           try {
             await fetch(`/api/posts/${saved.id}/caption`, {
               method: 'PATCH',
@@ -9654,15 +9737,13 @@ export default function AddFriendPage() {
           saved = {
             ...saved,
             text: finalText,
-            mediaUrl,
-            mediaType,
-            mediaUrls,
-            mediaTypes,
+            mediaUrl: serverMediaUrl,
+            mediaType: serverMediaType,
+            mediaUrls: serverMediaUrls,
+            mediaTypes: serverMediaTypes,
             audience: 'text',
             destination: 'text',
           };
-        } else if (finalText.trim()) {
-          saved = { ...saved, text: finalText, mediaUrl, mediaType, mediaUrls, mediaTypes };
         }
       } else {
         // ── بدون وسائط: منشور نصي مباشر ──
