@@ -2625,7 +2625,16 @@ function GlobalBottomNavigation() {
           }}
         >
           <NavBubble id="storyMedia" color="rgba(239,68,68,0.65)" />
-          <Plus size={22} strokeWidth={2.4} />
+          <span
+            aria-hidden
+            style={{
+              display: 'block',
+              width: 14,
+              height: 14,
+              borderRadius: '50%',
+              background: storyMediaOpen ? '#ef4444' : 'rgba(239,68,68,0.9)',
+            }}
+          />
         </button>
         )}
 
