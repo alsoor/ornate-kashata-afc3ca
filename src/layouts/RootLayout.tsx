@@ -2593,18 +2593,14 @@ function GlobalBottomNavigation() {
         <button
           type="button"
           onClick={() => {
-            popNavBubble('storyMedia');
-            const open = () => {
-              try { window.dispatchEvent(new CustomEvent('stooorna:open-text-composer')); } catch { /* */ }
-            };
-            if (location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend')) {
-              open();
+            popNavBubble('radar');
+            if (!(location.pathname === '/add-friend' && !isChatsPanel)) {
+              navigate('/add-friend?tab=friends&openTextPosts=1');
               return;
             }
-            navigate('/add-friend?tab=friends');
-            window.setTimeout(open, 100);
+            window.dispatchEvent(new CustomEvent(textPostsOpen ? 'stooorna:close-text-posts' : 'stooorna:open-text-posts'));
           }}
-          aria-label="New Post"
+          aria-label={textPostsOpen ? 'Close text posts' : textPostsAlert.newPosts ? 'New text posts available' : 'Text posts'}
           style={{
             position: 'absolute',
             left: '50%',
@@ -2612,33 +2608,79 @@ function GlobalBottomNavigation() {
             transform: 'translate(-50%, -50%)',
             width: 64,
             height: 36,
-            border: `1.5px solid ${storyMediaOpen ? 'rgba(239,68,68,0.85)' : 'rgba(239,68,68,0.5)'}`,
-            background: storyMediaOpen ? 'rgba(239,68,68,0.16)' : 'rgba(6,20,22,0.85)',
+            border: `1.5px solid ${textPostsAlert.alert ? 'rgba(234,179,8,0.85)' : 'rgba(234,179,8,0.55)'}`,
+            background: textPostsOpen ? 'rgba(234,179,8,0.16)' : 'rgba(6,20,22,0.85)',
             borderRadius: 999,
-            color: storyMediaOpen ? '#ef4444' : 'rgba(239,68,68,0.9)',
+            color: '#eab308',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 2,
             WebkitTapHighlightColor: 'transparent',
+            boxShadow: textPostsAlert.alert
+              ? '0 0 14px rgba(234,179,8,0.55)'
+              : 'none',
+            animation: textPostsAlert.alert ? 'stooornaYellowPulse 1.6s ease-in-out infinite' : 'none',
           }}
         >
-          <NavBubble id="storyMedia" color="rgba(239,68,68,0.65)" />
-          <span
-            aria-hidden
-            style={{
-              display: 'block',
-              width: 14,
-              height: 14,
-              borderRadius: '50%',
-              background: storyMediaOpen ? '#ef4444' : 'rgba(239,68,68,0.9)',
-            }}
-          />
+          <NavBubble id="radar" color="rgba(234,179,8,0.65)" />
+          <span aria-hidden style={{ display: 'flex', width: 20, height: 20 }}>
+            <span
+              aria-hidden
+              style={{
+                position: 'relative',
+                width: 20,
+                height: 20,
+                display: 'block',
+                animation: 'stooornaTextPostSpin 7s linear infinite',
+              }}
+            >
+              <span style={{
+                position: 'absolute', inset: 0, borderRadius: '50%',
+                border: '1.5px solid rgba(234,179,8,0.7)',
+                boxSizing: 'border-box',
+              }} />
+              <span style={{
+                position: 'absolute',
+                inset: 3.5,
+                borderRadius: '50%',
+                background: textPostsAlert.newPosts ? '#ef4444' : 'rgba(234,179,8,0.35)',
+                boxShadow: textPostsAlert.newPosts
+                  ? '0 0 8px rgba(239,68,68,0.55)'
+                  : '0 0 6px rgba(234,179,8,0.4)',
+              }} />
+              <span style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                width: 12,
+                height: 2,
+                marginLeft: -1.5,
+                marginTop: -1,
+                borderRadius: 2,
+                background: textPostsAlert.newPosts ? '#ffffff' : '#eab308',
+                transformOrigin: '1.5px 50%',
+                boxShadow: '0 0 4px rgba(234,179,8,0.7)',
+              }} />
+              <span style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                width: 4,
+                height: 4,
+                marginLeft: 8,
+                marginTop: -2,
+                borderRadius: '50%',
+                background: textPostsAlert.newPosts ? '#ffffff' : '#eab308',
+                boxShadow: '0 0 5px rgba(234,179,8,0.85)',
+              }} />
+            </span>
+          </span>
         </button>
         )}
 
-        {/* Plus menu — Settings / Friends / Account live / Text posts radar */}
+        {/* Plus menu — Settings / Friends / Account live */}
         <div style={{
           position: 'absolute',
           right: 8,
@@ -2867,86 +2909,6 @@ function GlobalBottomNavigation() {
                   }}
                 >
                   <Radio size={20} strokeWidth={2.2} />
-                </button>
-                )}
-                {user && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlusMenuOpen(false);
-                    popNavBubble('radar');
-                    if (!(location.pathname === '/add-friend' && !isChatsPanel)) {
-                      navigate('/add-friend?tab=friends&openTextPosts=1');
-                      return;
-                    }
-                    window.dispatchEvent(new CustomEvent(textPostsOpen ? 'stooorna:close-text-posts' : 'stooorna:open-text-posts'));
-                  }}
-                  aria-label={textPostsOpen ? 'Close text posts' : textPostsAlert.newPosts ? 'New text posts available' : 'Text posts'}
-                  style={{
-                    width: 44, height: 44, borderRadius: '50%',
-                    border: '1px solid rgba(234,179,8,0.55)',
-                    background: 'rgba(6,20,22,0.96)',
-                    color: '#eab308',
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: textPostsAlert.alert
-                      ? '0 0 14px rgba(234,179,8,0.55)'
-                      : '0 4px 16px rgba(0,0,0,0.45)',
-                    animation: textPostsAlert.alert ? 'stooornaYellowPulse 1.6s ease-in-out infinite' : 'none',
-                  }}
-                >
-                  <span aria-hidden style={{ display: 'flex', width: 20, height: 20 }}>
-                    <span
-                      aria-hidden
-                      style={{
-                        position: 'relative',
-                        width: 20,
-                        height: 20,
-                        display: 'block',
-                        animation: 'stooornaTextPostSpin 7s linear infinite',
-                      }}
-                    >
-                      <span style={{
-                        position: 'absolute', inset: 0, borderRadius: '50%',
-                        border: '1.5px solid rgba(234,179,8,0.7)',
-                        boxSizing: 'border-box',
-                      }} />
-                      <span style={{
-                        position: 'absolute',
-                        inset: 3.5,
-                        borderRadius: '50%',
-                        background: textPostsAlert.newPosts ? '#ef4444' : 'rgba(234,179,8,0.35)',
-                        boxShadow: textPostsAlert.newPosts
-                          ? '0 0 8px rgba(239,68,68,0.55)'
-                          : '0 0 6px rgba(234,179,8,0.4)',
-                      }} />
-                      <span style={{
-                        position: 'absolute',
-                        left: '50%',
-                        top: '50%',
-                        width: 12,
-                        height: 2,
-                        marginLeft: -1.5,
-                        marginTop: -1,
-                        borderRadius: 2,
-                        background: textPostsAlert.newPosts ? '#ffffff' : '#eab308',
-                        transformOrigin: '1.5px 50%',
-                        boxShadow: '0 0 4px rgba(234,179,8,0.7)',
-                      }} />
-                      <span style={{
-                        position: 'absolute',
-                        left: '50%',
-                        top: '50%',
-                        width: 4,
-                        height: 4,
-                        marginLeft: 8,
-                        marginTop: -2,
-                        borderRadius: '50%',
-                        background: textPostsAlert.newPosts ? '#ffffff' : '#eab308',
-                        boxShadow: '0 0 5px rgba(234,179,8,0.85)',
-                      }} />
-                    </span>
-                  </span>
                 </button>
                 )}
               </div>
