@@ -1208,6 +1208,34 @@ function isCompanyUserAccount(user: any, companiesList?: Array<{ id?: string; em
   return false;
 }
 
+function readBusinessApproved(userId?: string | null): boolean {
+  if (!userId) return false;
+  try {
+    const raw = localStorage.getItem('stooorna_business_registry');
+    const list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) return false;
+    return list.some((x: any) => String(x.userId) === String(userId) && x.status === 'approved');
+  } catch {
+    return false;
+  }
+}
+
+function useBusinessApproved(userId?: string | null): boolean {
+  const [on, setOn] = useState(() => readBusinessApproved(userId));
+  useEffect(() => {
+    const sync = () => setOn(readBusinessApproved(userId));
+    sync();
+    window.addEventListener('stooorna:business-registry', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('stooorna:business-registry', sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, [userId]);
+  return on;
+}
+
+
 function PostGridTimeFooter({ createdAt, onMedia }: { createdAt?: string | null; onMedia?: boolean }) {
   const { relative, date } = postGridTimeLabel(createdAt);
   if (!relative && !date) return null;
@@ -5430,7 +5458,14 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           </motion.button>
 
           <p style={{ color: CLR_TEXT, fontSize: '0.9rem', fontWeight: 700, margin: '8px 0 0' }}>{name || username || '—'}</p>
-          {username && <p style={{ color: CLR_PRIMARY, fontSize: '0.75rem', fontWeight: 600, margin: '2px 0 0' }}>@{username}</p>}
+          {username && <p style={{ color: CLR_PRIMARY, fontSize: '0.75rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
+            {(isCompanyProfile || readBusinessApproved(authorId)) && (
+              <span style={{
+                fontSize: '0.55rem', fontWeight: 900, color: '#0a0a0a',
+                background: '#eab308', borderRadius: 5, padding: '2px 6px',
+              }}>Business</span>
+            )}
+          </p>}
           {profile?.bio && (
             <p style={{ color: CLR_TEXT, opacity: 0.85, fontSize: '0.72rem', fontWeight: 500, margin: '6px 20px 0', textAlign: 'center', lineHeight: 1.5 }}>
               {profile.bio}
@@ -5550,7 +5585,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               background: CLR_TAB_ACTIVE,
             }}>
               <FileText size={15} strokeWidth={2} />
-              Post
+              {(isCompanyProfile || readBusinessApproved(authorId)) ? 'المنتجات' : 'Post'}
             </div>
 
             {loading ? (
@@ -10539,10 +10574,11 @@ export default function AddFriendPage() {
   const [companies, setCompanies] = useState<CompanyAccount[]>([]);
   /** شركة = New Post + إعلان قصة؛ فرد = قصة فقط (بدون بوست) */
 
+  const businessApproved = useBusinessApproved(user?.id ? String(user.id) : null);
   const isCompanyPublisher = useMemo(
-    () => isCompanyUserAccount(user, companies),
+    () => isCompanyUserAccount(user, companies) || businessApproved,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, user?.id, (user as any)?.accountType, (user as any)?.email, companies],
+    [user, user?.id, (user as any)?.accountType, (user as any)?.email, companies, businessApproved],
   );
 
   /** فيد البوست النصي: قسم التطبيق (مستخدمين) | قسم الشركات */
@@ -12018,8 +12054,15 @@ export default function AddFriendPage() {
                 {(myUsername || myBio) && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {myUsername && (
-                      <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2 }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         @{myUsername}
+                        {businessApproved && (
+                          <span style={{
+                            fontSize: '0.55rem', fontWeight: 900, color: '#0a0a0a',
+                            background: '#eab308', borderRadius: 5, padding: '2px 6px',
+                            letterSpacing: '0.03em',
+                          }}>Business</span>
+                        )}
                       </span>
                     )}
                     {myUsername && myBio && (
@@ -12179,7 +12222,7 @@ export default function AddFriendPage() {
                 background: CLR_TAB_ACTIVE,
               }}>
                 <FileText size={14} strokeWidth={2} />
-                Post
+                {isCompanyPublisher ? 'المنتجات' : 'Post'}
               </div>
               <div style={{ height: 1, background: CLR_NAV_BORDER }} />
             </div>

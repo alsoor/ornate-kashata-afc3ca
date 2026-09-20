@@ -348,6 +348,87 @@ export function setCompanyUsernameFeatureEnabled(enabled: boolean) {
   } catch { /* ignore */ }
 }
 
+// ── Business registration (regular users upgrade to Business after owner approval) ──
+export type BusinessRegStatus = 'none' | 'pending' | 'approved' | 'rejected';
+export type BusinessRegistration = {
+  id: string;
+  userId: string;
+  username?: string | null;
+  email?: string | null;
+  projectName: string;
+  licenseNumber: string;
+  tradeLicenseNumber: string;
+  commercialRegCert?: string;
+  commercialRegCertName?: string;
+  tradeLicenseCert?: string;
+  tradeLicenseCertName?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  updatedAt: string;
+  approvedAt?: string | null;
+};
+
+const BUSINESS_REGISTRY_KEY = 'stooorna_business_registry';
+
+export function loadBusinessRegistry(): BusinessRegistration[] {
+  try {
+    const raw = localStorage.getItem(BUSINESS_REGISTRY_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveBusinessRegistry(list: BusinessRegistration[]) {
+  try {
+    localStorage.setItem(BUSINESS_REGISTRY_KEY, JSON.stringify(list.slice(0, 2000)));
+    window.dispatchEvent(new CustomEvent('stooorna:business-registry', { detail: list }));
+  } catch { /* ignore */ }
+}
+
+export function getBusinessForUser(userId?: string | null): BusinessRegistration | null {
+  if (!userId) return null;
+  const uid = String(userId);
+  const list = loadBusinessRegistry();
+  const matches = list.filter(x => String(x.userId) === uid);
+  if (!matches.length) return null;
+  const approved = matches.find(x => x.status === 'approved');
+  if (approved) return approved;
+  const pending = matches.find(x => x.status === 'pending');
+  if (pending) return pending;
+  return matches.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0] || null;
+}
+
+export function isBusinessApproved(userId?: string | null): boolean {
+  const row = getBusinessForUser(userId);
+  return !!(row && row.status === 'approved');
+}
+
+export function upsertBusinessRegistration(row: BusinessRegistration) {
+  const list = loadBusinessRegistry().filter(x => !(String(x.userId) === String(row.userId) && x.status === 'pending'));
+  const withoutSameId = list.filter(x => x.id !== row.id);
+  withoutSameId.unshift(row);
+  saveBusinessRegistry(withoutSameId);
+  return row;
+}
+
+export function reviewBusinessRegistration(id: string, action: 'approve' | 'reject') {
+  const list = loadBusinessRegistry();
+  const next = list.map(x => {
+    if (x.id !== id) return x;
+    return {
+      ...x,
+      status: (action === 'approve' ? 'approved' : 'rejected') as 'approved' | 'rejected',
+      updatedAt: new Date().toISOString(),
+      approvedAt: action === 'approve' ? new Date().toISOString() : x.approvedAt ?? null,
+    };
+  });
+  saveBusinessRegistry(next);
+  return next;
+}
+
+
 
 export type DeletedUserRecord = {
   id: string;
@@ -3992,7 +4073,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   }
 
   const btnFg = 'hsl(var(--primary-foreground))';
-  const isCompany = accountKind === 'company';
+  const isCompany = false; // company signup disabled — regular users only
   const isRegister = mode === 'register';
 
   // CSS helper — not content, just a style shorthand
@@ -4075,8 +4156,8 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         </p>
       </div>
 
-      {/* مفتاح: هل أنت حساب شركة؟ — عند إنشاء الحساب فقط */}
-      {isRegister && (
+      {/* Company account toggle disabled — all signups are regular users */}
+      {false && isRegister && (
         <button
           type="button"
           onClick={() => switchKind(isCompany ? 'personal' : 'company')}
@@ -5576,6 +5657,49 @@ export default function SettingsPage() {
   const [nameMsg, setNameMsg] = useState('');
   const [displayNameState, setDisplayNameState] = useState<string>(user?.name ?? '');
 
+  // Business registration (regular user -> Business after owner approval)
+  const [businessToggleOn, setBusinessToggleOn] = useState(false);
+  const [businessModalOpen, setBusinessModalOpen] = useState(false);
+  const [businessRow, setBusinessRow] = useState<BusinessRegistration | null>(null);
+  const [bizProjectName, setBizProjectName] = useState('');
+  const [bizLicense, setBizLicense] = useState('');
+  const [bizTradeLicense, setBizTradeLicense] = useState('');
+  const [bizCommCert, setBizCommCert] = useState<string>('');
+  const [bizCommCertName, setBizCommCertName] = useState('');
+  const [bizTradeCert, setBizTradeCert] = useState<string>('');
+  const [bizTradeCertName, setBizTradeCertName] = useState('');
+  const [bizSubmitting, setBizSubmitting] = useState(false);
+  const [ownerBusinessList, setOwnerBusinessList] = useState<BusinessRegistration[]>([]);
+  const bizCommFileRef = useRef<HTMLInputElement | null>(null);
+  const bizTradeFileRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setBusinessRow(null);
+      setBusinessToggleOn(false);
+      return;
+    }
+    const row = getBusinessForUser(user.id);
+    setBusinessRow(row);
+    setBusinessToggleOn(!!(row && (row.status === 'approved' || row.status === 'pending')));
+    const onBiz = () => {
+      const r = getBusinessForUser(user.id);
+      setBusinessRow(r);
+      setBusinessToggleOn(!!(r && (r.status === 'approved' || r.status === 'pending')));
+    };
+    window.addEventListener('stooorna:business-registry', onBiz);
+    return () => window.removeEventListener('stooorna:business-registry', onBiz);
+  }, [user?.id]);
+
+  useEffect(() => {
+    const owner = isPrivilegedUser(user as { email?: string | null; username?: string | null; name?: string | null } | null);
+    if (!owner) return;
+    const refresh = () => setOwnerBusinessList(loadBusinessRegistry());
+    refresh();
+    window.addEventListener('stooorna:business-registry', refresh);
+    return () => window.removeEventListener('stooorna:business-registry', refresh);
+  }, [user, tab]);
+
   // Change email state
   const [editingEmail, setEditingEmail] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -6448,8 +6572,17 @@ export default function SettingsPage() {
                       fontSize: '0.78rem',
                       marginTop: 3,
                       fontWeight: isOwner ? 700 : 400,
-                      textShadow: isOwner ? '0 0 8px rgba(37,99,235,0.5)' : 'none'
-                    }}>@{profileUsername}</p>}
+                      textShadow: isOwner ? '0 0 8px rgba(37,99,235,0.5)' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap',
+                    }}>@{profileUsername}
+                      {businessRow?.status === 'approved' && (
+                        <span style={{
+                          fontSize: '0.58rem', fontWeight: 900, color: '#0a0a0a',
+                          background: '#eab308', borderRadius: 5, padding: '2px 7px',
+                          letterSpacing: '0.04em', boxShadow: '0 0 8px rgba(234,179,8,0.45)',
+                        }}>Business</span>
+                      )}
+                    </p>}
                         <div style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -6605,6 +6738,85 @@ export default function SettingsPage() {
 
                     </>
                   )}
+
+                  {/* ── Business toggle ── */}
+                  <div style={{
+                background: T.surface,
+                border: `1px solid ${T.surfaceBorder}`,
+                borderRadius: 14,
+                padding: '14px 16px',
+                marginBottom: 10,
+              }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{
+                          color: T.textMuted, fontSize: '0.62rem', letterSpacing: '0.2em',
+                          textTransform: 'uppercase', fontWeight: 500, margin: 0,
+                        }}>Business</p>
+                        <p style={{ margin: '4px 0 0', color: T.primaryDim, fontSize: '0.72rem', fontWeight: 600 }}>
+                          {businessRow?.status === 'approved'
+                            ? 'Active'
+                            : businessRow?.status === 'pending'
+                              ? 'جاري مراجعة الطلب'
+                              : 'Register your project'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Toggle Business"
+                        onClick={() => {
+                          if (businessRow?.status === 'approved') {
+                            setBusinessToggleOn(v => !v);
+                            return;
+                          }
+                          if (businessRow?.status === 'pending') {
+                            setBusinessToggleOn(true);
+                            setBusinessModalOpen(true);
+                            return;
+                          }
+                          const next = !businessToggleOn;
+                          setBusinessToggleOn(next);
+                          if (next) {
+                            setBizProjectName('');
+                            setBizLicense('');
+                            setBizTradeLicense('');
+                            setBizCommCert('');
+                            setBizCommCertName('');
+                            setBizTradeCert('');
+                            setBizTradeCertName('');
+                            setBusinessModalOpen(true);
+                          }
+                        }}
+                        style={{
+                          width: 48, height: 28, borderRadius: 999, border: 'none', cursor: 'pointer',
+                          background: (businessToggleOn || businessRow?.status === 'approved' || businessRow?.status === 'pending')
+                            ? '#eab308' : 'rgba(150,190,190,0.25)',
+                          position: 'relative', flexShrink: 0, padding: 0,
+                        }}
+                      >
+                        <span style={{
+                          position: 'absolute', top: 3, width: 22, height: 22, borderRadius: '50%',
+                          background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+                          left: (businessToggleOn || businessRow?.status === 'approved' || businessRow?.status === 'pending') ? 23 : 3,
+                          transition: 'left 0.2s',
+                        }} />
+                      </button>
+                    </div>
+                    {(businessRow?.status === 'pending' || businessRow?.status === 'approved') && (
+                      <button
+                        type="button"
+                        onClick={() => setBusinessModalOpen(true)}
+                        style={{
+                          marginTop: 10, width: '100%', padding: '10px 12px', borderRadius: 10, border: 'none',
+                          background: businessRow?.status === 'approved' ? 'rgba(234,179,8,0.18)' : 'rgba(0,188,212,0.12)',
+                          color: businessRow?.status === 'approved' ? '#eab308' : '#00BCD4',
+                          fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer',
+                        }}
+                      >
+                        {businessRow?.status === 'approved' ? 'Business' : 'جاري مراجعة الطلب'}
+                      </button>
+                    )}
+                  </div>
 
                   {/* ── Display Name ── */}
                   <div style={{
@@ -9917,8 +10129,8 @@ export default function SettingsPage() {
         )}
       </AnimatePresence>
 
-      {/* ── Owner: New Company Registration Requests ── */}
-      {isOwner && tab === 'companies' && ownerNewCompanies.length > 0 && (
+      {/* Owner: New Company Registration Requests — removed */}
+      {false && isOwner && tab === 'companies' && ownerNewCompanies.length > 0 && (
         <div style={{
           margin: '0 20px 20px',
           background: 'hsl(var(--card))',
@@ -10281,6 +10493,305 @@ export default function SettingsPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+
+      {/* ── Business registration modal ── */}
+      <AnimatePresence>
+        {businessModalOpen && (
+          <motion.div
+            key="biz-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10400,
+              background: 'rgba(0,0,0,0.72)',
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              padding: '12px 14px calc(16px + env(safe-area-inset-bottom))',
+              boxSizing: 'border-box',
+            }}
+            onClick={() => setBusinessModalOpen(false)}
+          >
+            <motion.div
+              onClick={e => e.stopPropagation()}
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 24, opacity: 0 }}
+              style={{
+                width: 'min(94vw, 400px)',
+                maxHeight: '82vh',
+                overflowY: 'auto',
+                background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
+                border: '1px solid rgba(234,179,8,0.35)',
+                borderRadius: 18,
+                padding: '16px 14px 18px',
+                boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+                direction: 'rtl',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.95rem' }}>Business</p>
+                <button type="button" onClick={() => setBusinessModalOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              {businessRow?.status === 'approved' ? (
+                <div style={{ textAlign: 'center', padding: '18px 8px' }}>
+                  <span style={{
+                    display: 'inline-block', fontSize: '0.75rem', fontWeight: 900, color: '#0a0a0a',
+                    background: '#eab308', borderRadius: 8, padding: '6px 14px',
+                  }}>Business</span>
+                  <p style={{ margin: '12px 0 0', color: 'rgba(200,230,230,0.85)', fontSize: '0.82rem', fontWeight: 700 }}>
+                    {businessRow.projectName}
+                  </p>
+                </div>
+              ) : businessRow?.status === 'pending' ? (
+                <button type="button" disabled style={{
+                  width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+                  background: 'rgba(0,188,212,0.18)', color: '#00BCD4', fontWeight: 900, fontSize: '0.88rem',
+                }}>
+                  جاري مراجعة الطلب
+                </button>
+              ) : (
+                <>
+                  <label style={{ display: 'block', color: 'rgba(180,210,210,0.75)', fontSize: '0.68rem', fontWeight: 700, marginBottom: 6 }}>
+                    Project name
+                  </label>
+                  <input
+                    value={bizProjectName}
+                    onChange={e => setBizProjectName(e.target.value.slice(0, 80))}
+                    placeholder="Project name"
+                    style={{
+                      width: '100%', boxSizing: 'border-box', marginBottom: 12, padding: '11px 12px', borderRadius: 11,
+                      border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)',
+                      color: '#d7eeee', fontSize: '0.88rem', outline: 'none',
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <label style={{ display: 'block', color: 'rgba(180,210,210,0.75)', fontSize: '0.65rem', fontWeight: 700, marginBottom: 6 }}>
+                        Commercial registration
+                      </label>
+                      <input
+                        value={bizLicense}
+                        onChange={e => setBizLicense(e.target.value.slice(0, 40))}
+                        placeholder="No."
+                        style={{
+                          width: '100%', boxSizing: 'border-box', padding: '10px 10px', borderRadius: 11,
+                          border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)',
+                          color: '#d7eeee', fontSize: '0.82rem', outline: 'none',
+                        }}
+                      />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <label style={{ display: 'block', color: 'rgba(180,210,210,0.75)', fontSize: '0.65rem', fontWeight: 700, marginBottom: 6 }}>
+                        Trade license
+                      </label>
+                      <input
+                        value={bizTradeLicense}
+                        onChange={e => setBizTradeLicense(e.target.value.slice(0, 40))}
+                        placeholder="No."
+                        style={{
+                          width: '100%', boxSizing: 'border-box', padding: '10px 10px', borderRadius: 11,
+                          border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)',
+                          color: '#d7eeee', fontSize: '0.82rem', outline: 'none',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <input ref={bizCommFileRef} type="file" accept="image/*,.pdf" hidden onChange={e => {
+                    const f = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!f) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setBizCommCert(String(reader.result || ''));
+                      setBizCommCertName(f.name);
+                    };
+                    reader.readAsDataURL(f);
+                  }} />
+                  <input ref={bizTradeFileRef} type="file" accept="image/*,.pdf" hidden onChange={e => {
+                    const f = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!f) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setBizTradeCert(String(reader.result || ''));
+                      setBizTradeCertName(f.name);
+                    };
+                    reader.readAsDataURL(f);
+                  }} />
+
+                  <p style={{ margin: '0 0 6px', color: 'rgba(180,210,210,0.75)', fontSize: '0.68rem', fontWeight: 700 }}>
+                    Commercial registration certificate
+                  </p>
+                  <button type="button" onClick={() => bizCommFileRef.current?.click()} style={{
+                    width: '100%', marginBottom: 10, padding: '12px', borderRadius: 12,
+                    border: '1px dashed rgba(234,179,8,0.4)', background: 'rgba(234,179,8,0.06)',
+                    color: '#eab308', fontWeight: 800, cursor: 'pointer', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', gap: 8,
+                  }}>
+                    <Plus size={16} />
+                    {bizCommCertName || 'Add file'}
+                  </button>
+
+                  <p style={{ margin: '0 0 6px', color: 'rgba(180,210,210,0.75)', fontSize: '0.68rem', fontWeight: 700 }}>
+                    Trade license certificate
+                  </p>
+                  <button type="button" onClick={() => bizTradeFileRef.current?.click()} style={{
+                    width: '100%', marginBottom: 14, padding: '12px', borderRadius: 12,
+                    border: '1px dashed rgba(234,179,8,0.4)', background: 'rgba(234,179,8,0.06)',
+                    color: '#eab308', fontWeight: 800, cursor: 'pointer', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', gap: 8,
+                  }}>
+                    <Plus size={16} />
+                    {bizTradeCertName || 'Add file'}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={bizSubmitting || !bizProjectName.trim() || !bizLicense.trim() || !bizTradeLicense.trim() || !bizCommCert || !bizTradeCert}
+                    onClick={() => {
+                      if (!user?.id) return;
+                      setBizSubmitting(true);
+                      const row: BusinessRegistration = {
+                        id: `biz-${user.id}-${Date.now()}`,
+                        userId: String(user.id),
+                        username: profileUsername || (user as any).username || null,
+                        email: user.email || null,
+                        projectName: bizProjectName.trim(),
+                        licenseNumber: bizLicense.trim(),
+                        tradeLicenseNumber: bizTradeLicense.trim(),
+                        commercialRegCert: bizCommCert,
+                        commercialRegCertName: bizCommCertName,
+                        tradeLicenseCert: bizTradeCert,
+                        tradeLicenseCertName: bizTradeCertName,
+                        status: 'pending',
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                      };
+                      upsertBusinessRegistration(row);
+                      setBusinessRow(row);
+                      setBusinessToggleOn(true);
+                      setBizSubmitting(false);
+                    }}
+                    style={{
+                      width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+                      background: (bizProjectName.trim() && bizLicense.trim() && bizTradeLicense.trim() && bizCommCert && bizTradeCert)
+                        ? '#eab308' : 'rgba(234,179,8,0.2)',
+                      color: (bizProjectName.trim() && bizLicense.trim() && bizTradeLicense.trim() && bizCommCert && bizTradeCert)
+                        ? '#0a0a0a' : 'rgba(150,150,130,0.7)',
+                      fontWeight: 900, fontSize: '0.9rem',
+                      cursor: (bizProjectName.trim() && bizLicense.trim() && bizTradeLicense.trim() && bizCommCert && bizTradeCert) ? 'pointer' : 'default',
+                    }}
+                  >
+                    {bizSubmitting ? '...' : (businessRow?.status === 'pending' ? 'جاري مراجعة الطلب' : 'إضغط للتسجيل')}
+                  </button>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Owner: Business registration requests ── */}
+      {isOwner && tab === 'companies' && (
+        <div style={{
+          margin: '0 20px 20px',
+          background: 'hsl(var(--card))',
+          border: '1px solid rgba(234,179,8,0.3)',
+          borderRadius: 16,
+          padding: 16,
+        }}>
+          <p style={{ fontWeight: 800, fontSize: 14, color: '#eab308', margin: '0 0 12px' }}>
+            Business requests
+            {ownerBusinessList.filter(x => x.status === 'pending').length > 0 && (
+              <span style={{
+                marginLeft: 8, padding: '2px 8px', borderRadius: 20,
+                background: 'rgba(234,179,8,0.2)', color: '#eab308',
+                fontSize: 11, fontWeight: 700,
+              }}>
+                {ownerBusinessList.filter(x => x.status === 'pending').length}
+              </span>
+            )}
+          </p>
+          {ownerBusinessList.length === 0 && (
+            <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: 13, margin: 0 }}>No business applications</p>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {ownerBusinessList.map(row => (
+              <div key={row.id} style={{
+                background: 'hsl(var(--muted)/0.3)',
+                border: `1px solid ${row.status === 'pending' ? 'rgba(234,179,8,0.35)' : row.status === 'approved' ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.3)'}`,
+                borderRadius: 12, padding: 12,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: 'hsl(var(--foreground))' }}>{row.projectName}</p>
+                    <p style={{ margin: '4px 0 0', fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>
+                      @{String(row.username || '').replace(/^@/, '') || 'user'} · {row.email || ''}
+                    </p>
+                    <p style={{ margin: '4px 0 0', fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>
+                      Reg: {row.licenseNumber} · License: {row.tradeLicenseNumber}
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                      {row.commercialRegCert && (
+                        <a href={row.commercialRegCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#00BCD4' }}>
+                          Commercial cert
+                        </a>
+                      )}
+                      {row.tradeLicenseCert && (
+                        <a href={row.tradeLicenseCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#00BCD4' }}>
+                          Trade cert
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <span style={{
+                    padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+                    background: row.status === 'pending' ? 'rgba(234,179,8,0.15)' : row.status === 'approved' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                    color: row.status === 'pending' ? '#eab308' : row.status === 'approved' ? '#22c55e' : '#ef4444',
+                  }}>
+                    {row.status}
+                  </span>
+                </div>
+                {row.status === 'pending' && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        reviewBusinessRegistration(row.id, 'approve');
+                        setOwnerBusinessList(loadBusinessRegistry());
+                      }}
+                      style={{
+                        flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                        background: '#22c55e', color: '#041018', fontSize: 12, fontWeight: 800,
+                      }}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        reviewBusinessRegistration(row.id, 'reject');
+                        setOwnerBusinessList(loadBusinessRegistry());
+                      }}
+                      style={{
+                        flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                        background: '#ef4444', color: '#fff', fontSize: 12, fontWeight: 800,
+                      }}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Music modal — from profile Music button ── */}
       <AnimatePresence>
