@@ -330,6 +330,7 @@ function GlobalBottomNavigation() {
   const [navBubble, setNavBubble] = useState<Record<string, number>>({});
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [friendsPanelOpen, setFriendsPanelOpen] = useState(false);
+  const settingsSheetOpen = location.pathname === '/settings' || location.pathname.startsWith('/settings');
   useEffect(() => {
     const onOpen = () => setFriendsPanelOpen(true);
     const onClose = () => setFriendsPanelOpen(false);
@@ -346,7 +347,6 @@ function GlobalBottomNavigation() {
     if (!settingsSheetOpen) return;
     setPlusMenuOpen(false);
   }, [settingsSheetOpen]);
-  const settingsSheetOpen = location.pathname === '/settings' || location.pathname.startsWith('/settings');
   const navBubbleTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   function popNavBubble(id: string) {
     if (navBubbleTimers.current[id]) clearTimeout(navBubbleTimers.current[id]);
