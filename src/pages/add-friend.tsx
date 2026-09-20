@@ -10562,6 +10562,15 @@ export default function AddFriendPage() {
   const [namesBarOpen, setNamesBarOpen] = useState(false);
   const [storyMoreOpen, setStoryMoreOpen] = useState(false);
   const [friendsPanelTab, setFriendsPanelTab] = useState<'friends' | 'company'>('friends');
+  const [storyMediaOpen, setStoryMediaOpen] = useState(false);
+  const [storyMediaText, setStoryMediaText] = useState('');
+  const [storyMediaUrl, setStoryMediaUrl] = useState('');
+  const [storyMediaPreview, setStoryMediaPreview] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
+  const [storyMediaFile, setStoryMediaFile] = useState<File | null>(null);
+  const [storyMediaPosting, setStoryMediaPosting] = useState(false);
+  const [storyMediaError, setStoryMediaError] = useState('');
+  const storyMediaImageRef = useRef<HTMLInputElement>(null);
+  const storyMediaVideoRef = useRef<HTMLInputElement>(null);
   // ── Company accounts directory (registered company profiles only) ──
   interface CompanyAccount {
     id: string;
@@ -10701,9 +10710,22 @@ export default function AddFriendPage() {
     };
     window.addEventListener('stooorna:open-friends-panel', onOpen as EventListener);
     window.addEventListener('stooorna:close-friends-panel', onClose as EventListener);
+    const onOpenMedia = () => {
+      setStoryMediaOpen(true);
+      setStoryMediaError('');
+      try { window.dispatchEvent(new CustomEvent('stooorna:story-media-opened')); } catch { /* */ }
+    };
+    const onCloseMedia = () => {
+      setStoryMediaOpen(false);
+      try { window.dispatchEvent(new CustomEvent('stooorna:story-media-closed')); } catch { /* */ }
+    };
+    window.addEventListener('stooorna:open-story-media', onOpenMedia as EventListener);
+    window.addEventListener('stooorna:close-story-media', onCloseMedia as EventListener);
     return () => {
       window.removeEventListener('stooorna:open-friends-panel', onOpen as EventListener);
       window.removeEventListener('stooorna:close-friends-panel', onClose as EventListener);
+      window.removeEventListener('stooorna:open-story-media', onOpenMedia as EventListener);
+      window.removeEventListener('stooorna:close-story-media', onCloseMedia as EventListener);
     };
   }, [user]);
 
@@ -15699,6 +15721,249 @@ export default function AddFriendPage() {
             }}
           >
             {quickPublishError}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+
+      {/* Story page Photo/Video composer — independent from text feed */}
+      <AnimatePresence>
+        {storyMediaOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+            onClick={() => {
+              if (storyMediaPosting) return;
+              setStoryMediaOpen(false);
+              try { window.dispatchEvent(new CustomEvent('stooorna:story-media-closed')); } catch { /* */ }
+            }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10090,
+              background: 'rgba(0,0,0,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
+              boxSizing: 'border-box',
+            }}
+          >
+            <motion.div
+              onClick={e => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+              style={{
+                width: 'min(92vw, 360px)',
+                maxHeight: 'min(70vh, 520px)',
+                display: 'flex', flexDirection: 'column',
+                background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
+                border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                borderRadius: 18,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+                overflow: 'hidden',
+                boxSizing: 'border-box',
+              }}
+            >
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 14px', borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`, flexShrink: 0,
+              }}>
+                <p style={{ margin: 0, color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.9rem' }}>Photo / Video</p>
+                <button type="button" disabled={storyMediaPosting} onClick={() => {
+                  setStoryMediaOpen(false);
+                  try { window.dispatchEvent(new CustomEvent('stooorna:story-media-closed')); } catch { /* */ }
+                }} aria-label="Close" style={{
+                  width: 28, height: 28, borderRadius: '50%', border: 'none',
+                  background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}><X size={14} /></button>
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <textarea
+                  value={storyMediaText}
+                  onChange={e => setStoryMediaText(e.target.value.slice(0, 2000))}
+                  placeholder="Write a caption (optional)…"
+                  rows={3}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', borderRadius: 12, padding: '10px 12px',
+                    background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    color: CLR_TEXT, fontSize: '0.88rem', outline: 'none', fontFamily: 'inherit', resize: 'vertical',
+                  }}
+                />
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" onClick={() => storyMediaImageRef.current?.click()} style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
+                    background: 'rgba(0,188,212,0.1)', border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    color: CLR_PRIMARY, fontWeight: 700, fontSize: '0.78rem',
+                  }}>
+                    <ImageIcon size={16} /> Photo
+                  </button>
+                  <button type="button" onClick={() => storyMediaVideoRef.current?.click()} style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
+                    background: 'rgba(0,188,212,0.1)', border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    color: CLR_PRIMARY, fontWeight: 700, fontSize: '0.78rem',
+                  }}>
+                    <Video size={16} /> Video
+                  </button>
+                </div>
+                <input ref={storyMediaImageRef} type="file" accept="image/*" hidden onChange={e => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!f) return;
+                  setStoryMediaFile(f);
+                  setStoryMediaUrl('');
+                  setStoryMediaPreview({ url: URL.createObjectURL(f), type: 'image' });
+                  setStoryMediaError('');
+                }} />
+                <input ref={storyMediaVideoRef} type="file" accept="video/*" hidden onChange={e => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!f) return;
+                  setStoryMediaFile(f);
+                  setStoryMediaUrl('');
+                  setStoryMediaPreview({ url: URL.createObjectURL(f), type: 'video' });
+                  setStoryMediaError('');
+                }} />
+
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    value={storyMediaUrl}
+                    onChange={e => setStoryMediaUrl(e.target.value)}
+                    placeholder="Paste image or video URL…"
+                    style={{
+                      flex: 1, borderRadius: 12, padding: '10px 12px',
+                      background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      color: CLR_TEXT, fontSize: '0.82rem', outline: 'none',
+                    }}
+                  />
+                  <button type="button" onClick={() => {
+                    const raw = storyMediaUrl.trim();
+                    if (!raw) return;
+                    const isVid = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(raw) || /\/video\//i.test(raw);
+                    setStoryMediaFile(null);
+                    setStoryMediaPreview({ url: raw, type: isVid ? 'video' : 'image' });
+                    setStoryMediaError('');
+                  }} style={{
+                    padding: '0 14px', borderRadius: 12, border: 'none',
+                    background: CLR_PRIMARY, color: '#041018', fontWeight: 800, cursor: 'pointer', fontSize: '0.78rem',
+                  }}>Preview</button>
+                </div>
+
+                {storyMediaPreview && (
+                  <div style={{
+                    borderRadius: 12, overflow: 'hidden',
+                    border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    background: 'rgba(0,0,0,0.35)',
+                    maxHeight: 180,
+                  }}>
+                    {storyMediaPreview.type === 'video' ? (
+                      <video src={storyMediaPreview.url} controls playsInline style={{ width: '100%', maxHeight: 180, display: 'block', background: '#000' }} />
+                    ) : (
+                      <img src={storyMediaPreview.url} alt="" style={{ width: '100%', maxHeight: 180, objectFit: 'contain', display: 'block' }} />
+                    )}
+                    <button type="button" onClick={() => {
+                      setStoryMediaPreview(null);
+                      setStoryMediaFile(null);
+                      setStoryMediaUrl('');
+                    }} style={{
+                      width: '100%', padding: 8, border: 'none', borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      background: 'rgba(239,68,68,0.12)', color: '#ef4444', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem',
+                    }}>Remove media</button>
+                  </div>
+                )}
+
+                {storyMediaError ? (
+                  <p style={{ margin: 0, color: '#ef4444', fontSize: '0.78rem', fontWeight: 600 }}>{storyMediaError}</p>
+                ) : null}
+              </div>
+
+              <div style={{ padding: '10px 14px 14px', flexShrink: 0, borderTop: `1px solid ${CLR_PRIMARY_BORDER}` }}>
+                <button
+                  type="button"
+                  disabled={storyMediaPosting || (!storyMediaPreview && !storyMediaFile)}
+                  onClick={async () => {
+                    if (!user) return;
+                    if (!storyMediaPreview && !storyMediaFile) {
+                      setStoryMediaError('Add a photo or video first');
+                      return;
+                    }
+                    setStoryMediaPosting(true);
+                    setStoryMediaError('');
+                    try {
+                      let url = storyMediaPreview?.url || '';
+                      let type: 'image' | 'video' = storyMediaPreview?.type || 'image';
+                      if (storyMediaFile) {
+                        const file = storyMediaFile;
+                        type = file.type.startsWith('video') ? 'video' : 'image';
+                        const uploadRes = await fetch('/api/posts/media', {
+                          method: 'POST',
+                          credentials: 'include',
+                          headers: {
+                            'Content-Type': file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg'),
+                            'X-File-Ext': '.' + ((file.name.split('.').pop()) || (type === 'video' ? 'mp4' : 'jpg')),
+                          },
+                          body: file,
+                        });
+                        if (!uploadRes.ok) throw new Error('Upload failed');
+                        const uploadData = await uploadRes.json();
+                        url = uploadData?.url;
+                        if (!url) throw new Error('No URL from upload');
+                      }
+                      const dest = type === 'video' ? 'videos' : 'photos';
+                      const r = await fetch('/api/posts', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          text: storyMediaText.trim(),
+                          mediaUrl: url,
+                          mediaType: type,
+                          mediaUrls: [url],
+                          mediaTypes: [type],
+                          hashtags: [],
+                          audience: 'public',
+                          destination: dest,
+                        }),
+                      });
+                      if (!r.ok) throw new Error('Publish failed');
+                      const d = await r.json();
+                      if (!d?.post?.id) throw new Error('Post not saved');
+                      const saved: PostItem = {
+                        ...d.post,
+                        audience: 'public',
+                        destination: dest,
+                        text: d.post.text || storyMediaText.trim(),
+                      };
+                      setMyMediaPosts(prev => [saved, ...prev]);
+                      try { playNewPostSound(); } catch { /* */ }
+                      setStoryMediaText('');
+                      setStoryMediaUrl('');
+                      setStoryMediaFile(null);
+                      setStoryMediaPreview(null);
+                      setStoryMediaOpen(false);
+                      setProfileContentTab(type === 'video' ? 'videos' : 'photos');
+                      try { window.dispatchEvent(new CustomEvent('stooorna:story-media-closed')); } catch { /* */ }
+                    } catch (err) {
+                      console.error('[story media publish]', err);
+                      setStoryMediaError(err instanceof Error ? err.message : 'Publish failed');
+                    } finally {
+                      setStoryMediaPosting(false);
+                    }
+                  }}
+                  style={{
+                    width: '100%', padding: 12, borderRadius: 12, border: 'none',
+                    background: (storyMediaPreview || storyMediaFile) && !storyMediaPosting ? CLR_PRIMARY : CLR_PRIMARY_FAINT,
+                    color: (storyMediaPreview || storyMediaFile) && !storyMediaPosting ? '#041018' : CLR_TEXT_DIM,
+                    fontWeight: 800, cursor: (storyMediaPreview || storyMediaFile) && !storyMediaPosting ? 'pointer' : 'default',
+                    fontSize: '0.88rem',
+                  }}
+                >
+                  {storyMediaPosting ? 'Publishing…' : 'Publish to story page'}
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

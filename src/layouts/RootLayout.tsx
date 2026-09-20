@@ -1,7 +1,7 @@
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollRestoration, useLocation, useNavigate } from "react-router";
-import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus } from 'lucide-react';
+import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus, Image as ImageIcon, Video } from 'lucide-react';
 import HomepageSameAsJsonLd from '@/components/HomepageSameAsJsonLd';
 import Website from '@/layouts/Website';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
@@ -330,6 +330,7 @@ function GlobalBottomNavigation() {
   const [navBubble, setNavBubble] = useState<Record<string, number>>({});
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [friendsPanelOpen, setFriendsPanelOpen] = useState(false);
+  const [storyMediaOpen, setStoryMediaOpen] = useState(false);
   const settingsSheetOpen = location.pathname === '/settings' || location.pathname.startsWith('/settings');
   useEffect(() => {
     const onOpen = () => setFriendsPanelOpen(true);
@@ -337,10 +338,18 @@ function GlobalBottomNavigation() {
     window.addEventListener('stooorna:friends-panel-opened', onOpen);
     window.addEventListener('stooorna:friends-panel-closed', onClose);
     window.addEventListener('stooorna:close-friends-panel', onClose);
+    const onMediaOpen = () => setStoryMediaOpen(true);
+    const onMediaClose = () => setStoryMediaOpen(false);
+    window.addEventListener('stooorna:story-media-opened', onMediaOpen);
+    window.addEventListener('stooorna:story-media-closed', onMediaClose);
+    window.addEventListener('stooorna:close-story-media', onMediaClose);
     return () => {
       window.removeEventListener('stooorna:friends-panel-opened', onOpen);
       window.removeEventListener('stooorna:friends-panel-closed', onClose);
       window.removeEventListener('stooorna:close-friends-panel', onClose);
+      window.removeEventListener('stooorna:story-media-opened', onMediaOpen);
+      window.removeEventListener('stooorna:story-media-closed', onMediaClose);
+      window.removeEventListener('stooorna:close-story-media', onMediaClose);
     };
   }, []);
   useEffect(() => {
@@ -2615,6 +2624,49 @@ function GlobalBottomNavigation() {
       justifyContent: 'center',
       position: 'relative',
     }}>
+
+        {user && (
+        <button
+          type="button"
+          onClick={() => {
+            popNavBubble('storyMedia');
+            const open = () => {
+              try { window.dispatchEvent(new CustomEvent('stooorna:open-story-media')); } catch { /* */ }
+            };
+            if (location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend')) {
+              open();
+              return;
+            }
+            navigate('/add-friend?tab=friends');
+            window.setTimeout(open, 100);
+          }}
+          aria-label="Publish photo or video"
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 48,
+            height: 36,
+            border: 'none',
+            background: storyMediaOpen ? 'rgba(0,188,212,0.16)' : 'transparent',
+            borderRadius: 12,
+            color: storyMediaOpen ? '#00BCD4' : 'rgba(0,188,212,0.9)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2,
+            WebkitTapHighlightColor: 'transparent',
+            gap: 3,
+          }}
+        >
+          <NavBubble id="storyMedia" color="rgba(0,188,212,0.65)" />
+          <ImageIcon size={17} strokeWidth={2.2} />
+          <Video size={15} strokeWidth={2.2} />
+        </button>
+        )}
+
         {/* Plus menu — Settings / Friends / Account live / Text posts radar */}
         <div style={{
           position: 'absolute',
@@ -2869,6 +2921,11 @@ function GlobalBottomNavigation() {
               }
               if (homeCallPickerOpen) {
                 setHomeCallPickerOpen(false);
+                return;
+              }
+              if (storyMediaOpen) {
+                window.dispatchEvent(new CustomEvent('stooorna:close-story-media'));
+                setStoryMediaOpen(false);
                 return;
               }
               // Otherwise open fan
