@@ -2655,99 +2655,7 @@ function GlobalBottomNavigation() {
             </div>
           </button>
 
-        {/* Animated radar button (text posts) - moved here from the top of the profile header */}
-        {user && (
-        <button
-          type="button"
-          onClick={() => {
-            popNavBubble('radar');
-            if (!(location.pathname === '/add-friend' && !isChatsPanel)) {
-              navigate('/add-friend?tab=friends&openTextPosts=1');
-              return;
-            }
-            window.dispatchEvent(new CustomEvent(textPostsOpen ? 'stooorna:close-text-posts' : 'stooorna:open-text-posts'));
-          }}
-          aria-label={textPostsOpen ? 'Close text posts' : textPostsAlert.newPosts ? 'New text posts available' : 'Text posts'}
-          style={{
-            position: 'absolute',
-            left: 16,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            width: 32,
-            height: 32,
-            padding: 0,
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid ' + (textPostsAlert.alert ? 'rgba(234,179,8,0.75)' : 'rgba(255,255,255,0.1)'),
-            color: textPostsAlert.alert ? '#eab308' : '#00BCD4',
-            boxShadow: textPostsAlert.alert ? '0 0 12px rgba(234,179,8,0.4)' : 'none',
-            animation: textPostsAlert.alert ? 'stooornaYellowPulse 1.6s ease-in-out infinite' : 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2,
-            WebkitTapHighlightColor: 'transparent',
-          }}
-        >
-          <NavBubble id="radar" color="rgba(0,188,212,0.65)" />
-          <span aria-hidden style={{ display: 'flex', width: 18, height: 18 }}>
-            <span
-              aria-hidden
-              style={{
-                position: 'relative',
-                width: 18,
-                height: 18,
-                display: 'block',
-                animation: 'stooornaTextPostSpin 7s linear infinite',
-              }}
-            >
-              <span style={{
-                position: 'absolute', inset: 0, borderRadius: '50%',
-                border: '1.5px solid ' + (textPostsAlert.newPosts ? 'rgba(239,68,68,0.7)' : 'rgba(0,188,212,0.45)'),
-                boxSizing: 'border-box',
-              }} />
-              <span style={{
-                position: 'absolute',
-                inset: 3.2,
-                borderRadius: '50%',
-                background: textPostsAlert.newPosts ? '#ef4444' : 'rgba(0,188,212,0.28)',
-                boxShadow: textPostsAlert.newPosts ? '0 0 8px rgba(239,68,68,0.55)' : '0 0 6px rgba(0,188,212,0.25)',
-                transition: 'background 0.25s, box-shadow 0.25s',
-              }} />
-              <span style={{
-                position: 'absolute',
-                left: '50%',
-                top: '50%',
-                width: 11,
-                height: 2,
-                marginLeft: -1.5,
-                marginTop: -1,
-                borderRadius: 2,
-                background: textPostsAlert.newPosts ? '#ffffff' : '#00BCD4',
-                transformOrigin: '1.5px 50%',
-                boxShadow: textPostsAlert.newPosts ? '0 0 4px rgba(255,255,255,0.7)' : '0 0 4px rgba(0,188,212,0.6)',
-                transition: 'background 0.25s, box-shadow 0.25s',
-              }} />
-              <span style={{
-                position: 'absolute',
-                left: '50%',
-                top: '50%',
-                width: 4,
-                height: 4,
-                marginLeft: 7,
-                marginTop: -2,
-                borderRadius: '50%',
-                background: textPostsAlert.newPosts ? '#ffffff' : '#00BCD4',
-                boxShadow: textPostsAlert.newPosts ? '0 0 5px rgba(255,255,255,0.85)' : '0 0 5px rgba(0,188,212,0.8)',
-                transition: 'background 0.25s, box-shadow 0.25s',
-              }} />
-            </span>
-          </span>
-        </button>
-        )}
-
-        {/* Plus menu — Settings / Friends / Account live */}
+        {/* Plus menu — Settings / Friends / Account live / Text posts radar */}
         <div style={{
           position: 'absolute',
           right: 8,
@@ -2866,6 +2774,86 @@ function GlobalBottomNavigation() {
                   }}
                 >
                   <Radio size={20} strokeWidth={2.2} />
+                </button>
+                )}
+                {user && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    popNavBubble('radar');
+                    if (!(location.pathname === '/add-friend' && !isChatsPanel)) {
+                      navigate('/add-friend?tab=friends&openTextPosts=1');
+                      return;
+                    }
+                    window.dispatchEvent(new CustomEvent(textPostsOpen ? 'stooorna:close-text-posts' : 'stooorna:open-text-posts'));
+                  }}
+                  aria-label={textPostsOpen ? 'Close text posts' : textPostsAlert.newPosts ? 'New text posts available' : 'Text posts'}
+                  style={{
+                    width: 44, height: 44, borderRadius: '50%',
+                    border: '1px solid rgba(234,179,8,0.55)',
+                    background: 'rgba(6,20,22,0.96)',
+                    color: '#eab308',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: textPostsAlert.alert
+                      ? '0 0 14px rgba(234,179,8,0.55)'
+                      : '0 4px 16px rgba(0,0,0,0.45)',
+                    animation: textPostsAlert.alert ? 'stooornaYellowPulse 1.6s ease-in-out infinite' : 'none',
+                  }}
+                >
+                  <span aria-hidden style={{ display: 'flex', width: 20, height: 20 }}>
+                    <span
+                      aria-hidden
+                      style={{
+                        position: 'relative',
+                        width: 20,
+                        height: 20,
+                        display: 'block',
+                        animation: 'stooornaTextPostSpin 7s linear infinite',
+                      }}
+                    >
+                      <span style={{
+                        position: 'absolute', inset: 0, borderRadius: '50%',
+                        border: '1.5px solid rgba(234,179,8,0.7)',
+                        boxSizing: 'border-box',
+                      }} />
+                      <span style={{
+                        position: 'absolute',
+                        inset: 3.5,
+                        borderRadius: '50%',
+                        background: textPostsAlert.newPosts ? '#ef4444' : 'rgba(234,179,8,0.35)',
+                        boxShadow: textPostsAlert.newPosts
+                          ? '0 0 8px rgba(239,68,68,0.55)'
+                          : '0 0 6px rgba(234,179,8,0.4)',
+                      }} />
+                      <span style={{
+                        position: 'absolute',
+                        left: '50%',
+                        top: '50%',
+                        width: 12,
+                        height: 2,
+                        marginLeft: -1.5,
+                        marginTop: -1,
+                        borderRadius: 2,
+                        background: textPostsAlert.newPosts ? '#ffffff' : '#eab308',
+                        transformOrigin: '1.5px 50%',
+                        boxShadow: '0 0 4px rgba(234,179,8,0.7)',
+                      }} />
+                      <span style={{
+                        position: 'absolute',
+                        left: '50%',
+                        top: '50%',
+                        width: 4,
+                        height: 4,
+                        marginLeft: 8,
+                        marginTop: -2,
+                        borderRadius: '50%',
+                        background: textPostsAlert.newPosts ? '#ffffff' : '#eab308',
+                        boxShadow: '0 0 5px rgba(234,179,8,0.85)',
+                      }} />
+                    </span>
+                  </span>
                 </button>
                 )}
               </div>
