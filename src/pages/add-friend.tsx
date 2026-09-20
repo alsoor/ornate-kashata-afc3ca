@@ -10474,13 +10474,12 @@ export default function AddFriendPage() {
         setTextPostsMenuOpen(false);
         return;
       }
-      setTextPostsPageOpen(true);
+      // Companies: open the publish/composer page directly, without opening the public feed behind it
       setTextPostsMenuOpen(false);
       setComposerDestination('text');
       setComposerError('');
       try { clearPostMedia(); } catch { /* */ }
       window.setTimeout(() => setShowComposer(true), 0);
-      window.setTimeout(() => setShowComposer(true), 80);
     };
     window.addEventListener('stooorna:open-text-posts', openFromNav);
     window.addEventListener('stooorna:close-text-posts', closeFromNav);
