@@ -522,8 +522,16 @@ export function stripCompanyCerts(c: CompanyRegistration): CompanyRegistration {
 }
 
 /** Registry for list/admin panels without multi-MB base64 fields. */
+let _lightRegCache: { at: number; list: CompanyRegistration[] } | null = null;
 export function loadCompaniesRegistryLight(): CompanyRegistration[] {
-  return loadCompaniesRegistry().map(stripCompanyCerts);
+  const now = Date.now();
+  if (_lightRegCache && now - _lightRegCache.at < 2000) return _lightRegCache.list;
+  const list = loadCompaniesRegistry().map(stripCompanyCerts);
+  _lightRegCache = { at: now, list };
+  return list;
+}
+export function invalidateCompaniesRegistryLightCache() {
+  _lightRegCache = null;
 }
 
 /** Full row (with certificates) for owner detail view only. */
@@ -557,6 +565,7 @@ export function saveCompaniesRegistry(list: CompanyRegistration[]) {
       return true;
     });
     localStorage.setItem(COMPANIES_REGISTRY_KEY, JSON.stringify(fixed));
+    try { invalidateCompaniesRegistryLightCache(); } catch { /* */ }
     // keep public directory in sync (active only) for add-friend Company tab
     const active = fixed.filter(c => c.status === 'active').map(c => ({
       id: c.userId || c.id,
@@ -894,7 +903,8 @@ export function preferredCompanyDisplayName(row: {
 
 /** Clean registry: drop personal accounts, normalize Libra Arabic name, dedupe */
 export function sanitizeCompaniesRegistry(): CompanyRegistration[] {
-  const list = loadCompaniesRegistry();
+  // UI-only: never write localStorage here — stringify of cert base64 freezes the main thread.
+  const list = loadCompaniesRegistryLight();
   const out: CompanyRegistration[] = [];
   const seen = new Set<string>();
   for (const c of list) {
@@ -912,9 +922,7 @@ export function sanitizeCompaniesRegistry(): CompanyRegistration[] {
       companyName: c.companyName || c.tradeName || un || c.email,
     });
   }
-  saveCompaniesRegistry(out);
-  // Return stripped rows so React state does not hold multi-MB base64 certs
-  return out.map(stripCompanyCerts);
+  return out;
 }
 
 /** هل هذا الصف حساب شركة؟ (يُستبعد من User Control ويُعرض في قسم الشركات فقط) */
@@ -5345,12 +5353,14 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!user || !isSupportOwnerAccount(user as { email?: string | null; username?: string | null }, profileUsername)) return;
-    loadSupportInbox();
-    const id = setInterval(loadSupportInbox, 8000);
+    // Only poll while settings is open; use longer interval to avoid jank
+    const boot = window.setTimeout(() => { loadSupportInbox(); }, 50);
+    const id = setInterval(loadSupportInbox, 20000);
     const onTicket = () => { loadSupportInbox(); };
     window.addEventListener('stooorna:support-ticket', onTicket);
     window.addEventListener('storage', onTicket);
     return () => {
+      clearTimeout(boot);
       clearInterval(id);
       window.removeEventListener('stooorna:support-ticket', onTicket);
       window.removeEventListener('storage', onTicket);
@@ -5360,12 +5370,14 @@ export default function SettingsPage() {
 
 
 
-  // Load recordings when tab changes
+  // Load recordings only when Live tab is active (deferred to keep tab switch smooth)
   useEffect(() => {
-    if (user && tab === 'live') {
+    if (!user || tab !== 'live') return;
+    const id = window.setTimeout(() => {
       loadRecordings();
       loadLiveRecs();
-    }
+    }, 0);
+    return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, tab]);
 
@@ -5489,7 +5501,18 @@ export default function SettingsPage() {
 
   // Load owner data (users list) when logged in as owner
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (user && isOwner) { loadOwnerData(); loadNewCompanies(); } }, [user, isOwner]);
+  // Defer heavy owner fetches until Company tab or admin panels open (prevents settings freeze)
+  useEffect(() => {
+    if (!user || !isOwner) return;
+    if (tab !== 'companies' && !showSupportUsers && !showOwnerCompanies) return;
+    const id = window.setTimeout(() => {
+      void loadOwnerData();
+      void loadNewCompanies();
+      if (tab === 'companies' || showOwnerCompanies) refreshOwnerCompanies();
+    }, 0);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isOwner, tab, showSupportUsers, showOwnerCompanies]);
   const [allUsers, setAllUsers] = useState<{
     id: string;
     name: string | null;
@@ -6012,7 +6035,7 @@ export default function SettingsPage() {
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain z-10 px-5 pt-6 pb-28" style={{
         WebkitOverflowScrolling: 'touch'
       }}>
-          <AnimatePresence mode="wait">
+          <AnimatePresence initial={false}>
 
             {/* ── LOADING ── */}
             {isPending && <motion.div key="loading" initial={{
@@ -7563,7 +7586,7 @@ export default function SettingsPage() {
           })()}
 
             {/* ── LOGGED IN — LIVE TAB ── */}
-            {!isPending && user && tab === 'live' && <motion.div key="live" initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} className="flex flex-col gap-3">
+            {!isPending && user && tab === 'live' && <div key="live" className="flex flex-col gap-3">
                 {/* ── Voice Recordings ── */}
                 <div className="flex items-center justify-between mb-1">
                   <p style={{
@@ -8018,7 +8041,7 @@ export default function SettingsPage() {
 
                     </motion.div>;
             })}
-              </motion.div>}
+              </div>}
 
           </AnimatePresence>
         </div>
