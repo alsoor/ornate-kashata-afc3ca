@@ -3151,6 +3151,10 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   // حالة فحص الشهادتين بالذكاء الاصطناعي: idle (لم يُرفع شيء بعد) | checking (جاري الفحص) | valid (تم التحقق ومطابقة الرقم) | invalid (شهادة غير صحيحة أو لا تطابق الرقم)
   const [commercialRegVerify, setCommercialRegVerify] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
   const [tradeLicenseVerify, setTradeLicenseVerify] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
+  // السبب الفعلي المُرجَع من السيرفر عند الرفض — يُعرض تحت الحقل مباشرة بدل نص عام ثابت،
+  // حتى يبين سبب الرفض الحقيقي (مثلاً: خطأ سيرفر، مفتاح API غير مركّب، أو عدم تطابق فعلي)
+  const [commercialRegVerifyMessage, setCommercialRegVerifyMessage] = useState('');
+  const [tradeLicenseVerifyMessage, setTradeLicenseVerifyMessage] = useState('');
   const [companySector, setCompanySector] = useState('');
   const [companySectorCustom, setCompanySectorCustom] = useState('');
   const [sectorOpen, setSectorOpen] = useState(false);
@@ -3172,6 +3176,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
     if (commercialRegVerify !== 'idle') {
       setCommercialRegVerify('idle');
       setCommercialRegFile(null);
+      setCommercialRegVerifyMessage('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [licenseNumber]);
@@ -3181,6 +3186,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
     if (tradeLicenseVerify !== 'idle') {
       setTradeLicenseVerify('idle');
       setTradeLicenseFile(null);
+      setTradeLicenseVerifyMessage('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tradeLicenseNumber]);
@@ -3915,15 +3921,18 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                   setError('');
                   setCommercialRegFile(null);
                   setCommercialRegVerify('checking');
+                  setCommercialRegVerifyMessage('');
                   const result = await verifyCertificateFile(file, 'commercial_registry', licenseNumber);
                   if (result.valid) {
                     setCommercialRegFile({ dataUrl: result.dataUrl, name: file.name });
                     setCommercialRegVerify('valid');
                   } else {
                     setCommercialRegVerify('invalid');
-                    setError(result.message || (authLang === 'en'
+                    const msg = result.message || (authLang === 'en'
                       ? 'The certificate is invalid'
-                      : 'الشهادة غير صحيحة'));
+                      : 'الشهادة غير صحيحة');
+                    setCommercialRegVerifyMessage(msg);
+                    setError(msg);
                   }
                 }}
               />
@@ -3959,14 +3968,14 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             {commercialRegFile && commercialRegVerify === 'valid' && (
               <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
                 <Check size={11} /> {commercialRegFile.name} — تم التحقق ومطابقتها لرقم السجل
-                <button type="button" onClick={() => { setCommercialRegFile(null); setCommercialRegVerify('idle'); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                <button type="button" onClick={() => { setCommercialRegFile(null); setCommercialRegVerify('idle'); setCommercialRegVerifyMessage(''); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
                   <X size={11} />
                 </button>
               </p>
             )}
             {commercialRegVerify === 'invalid' && (
               <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
-                <AlertTriangle size={11} /> الشهادة غير صحيحة — تأكد من رفع شهادة سجل تجاري تطابق الرقم المُدخل
+                <AlertTriangle size={11} /> {commercialRegVerifyMessage || 'الشهادة غير صحيحة — تأكد من رفع شهادة سجل تجاري تطابق الرقم المُدخل'}
               </p>
             )}
 
@@ -4001,15 +4010,18 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                   setError('');
                   setTradeLicenseFile(null);
                   setTradeLicenseVerify('checking');
+                  setTradeLicenseVerifyMessage('');
                   const result = await verifyCertificateFile(file, 'trade_license', tradeLicenseNumber);
                   if (result.valid) {
                     setTradeLicenseFile({ dataUrl: result.dataUrl, name: file.name });
                     setTradeLicenseVerify('valid');
                   } else {
                     setTradeLicenseVerify('invalid');
-                    setError(result.message || (authLang === 'en'
+                    const msg = result.message || (authLang === 'en'
                       ? 'The certificate is invalid'
-                      : 'الشهادة غير صحيحة'));
+                      : 'الشهادة غير صحيحة');
+                    setTradeLicenseVerifyMessage(msg);
+                    setError(msg);
                   }
                 }}
               />
@@ -4045,14 +4057,14 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             {tradeLicenseFile && tradeLicenseVerify === 'valid' && (
               <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
                 <Check size={11} /> {tradeLicenseFile.name} — تم التحقق ومطابقتها لرقم الترخيص
-                <button type="button" onClick={() => { setTradeLicenseFile(null); setTradeLicenseVerify('idle'); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                <button type="button" onClick={() => { setTradeLicenseFile(null); setTradeLicenseVerify('idle'); setTradeLicenseVerifyMessage(''); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
                   <X size={11} />
                 </button>
               </p>
             )}
             {tradeLicenseVerify === 'invalid' && (
               <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
-                <AlertTriangle size={11} /> الشهادة غير صحيحة — تأكد من رفع شهادة ترخيص تجاري تطابق الرقم المُدخل
+                <AlertTriangle size={11} /> {tradeLicenseVerifyMessage || 'الشهادة غير صحيحة — تأكد من رفع شهادة ترخيص تجاري تطابق الرقم المُدخل'}
               </p>
             )}
 
