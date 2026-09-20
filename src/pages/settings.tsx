@@ -366,6 +366,10 @@ export type BusinessRegistration = {
   createdAt: string;
   updatedAt: string;
   approvedAt?: string | null;
+  /** Owner note shown once in user settings after reject (or optional on approve) */
+  ownerNote?: string | null;
+  /** True after user dismissed the owner note */
+  ownerNoteSeen?: boolean;
 };
 
 const BUSINESS_REGISTRY_KEY = 'stooorna_business_registry';
@@ -413,8 +417,13 @@ export function upsertBusinessRegistration(row: BusinessRegistration) {
   return row;
 }
 
-export function reviewBusinessRegistration(id: string, action: 'approve' | 'reject') {
+export function reviewBusinessRegistration(
+  id: string,
+  action: 'approve' | 'reject',
+  ownerNote?: string | null,
+) {
   const list = loadBusinessRegistry();
+  const note = (ownerNote || '').trim() || null;
   const next = list.map(x => {
     if (x.id !== id) return x;
     return {
@@ -422,7 +431,22 @@ export function reviewBusinessRegistration(id: string, action: 'approve' | 'reje
       status: (action === 'approve' ? 'approved' : 'rejected') as 'approved' | 'rejected',
       updatedAt: new Date().toISOString(),
       approvedAt: action === 'approve' ? new Date().toISOString() : x.approvedAt ?? null,
+      ownerNote: note,
+      ownerNoteSeen: false,
     };
+  });
+  saveBusinessRegistry(next);
+  return next;
+}
+
+export function dismissBusinessOwnerNote(userId?: string | null) {
+  if (!userId) return loadBusinessRegistry();
+  const uid = String(userId);
+  const list = loadBusinessRegistry();
+  const next = list.map(x => {
+    if (String(x.userId) !== uid) return x;
+    if (!x.ownerNote || x.ownerNoteSeen) return x;
+    return { ...x, ownerNoteSeen: true };
   });
   saveBusinessRegistry(next);
   return next;
@@ -5670,6 +5694,8 @@ export default function SettingsPage() {
   const [bizTradeCertName, setBizTradeCertName] = useState('');
   const [bizSubmitting, setBizSubmitting] = useState(false);
   const [ownerBusinessList, setOwnerBusinessList] = useState<BusinessRegistration[]>([]);
+  const [ownerBizNotes, setOwnerBizNotes] = useState<Record<string, string>>({});
+  const [bizOwnerNoteOpen, setBizOwnerNoteOpen] = useState(false);
   const bizCommFileRef = useRef<HTMLInputElement | null>(null);
   const bizTradeFileRef = useRef<HTMLInputElement | null>(null);
 
@@ -6757,7 +6783,7 @@ export default function SettingsPage() {
                           {businessRow?.status === 'approved'
                             ? 'Active'
                             : businessRow?.status === 'pending'
-                              ? 'جاري مراجعة الطلب'
+                              ? 'Under review'
                               : 'Register your project'}
                         </p>
                       </div>
@@ -6813,7 +6839,26 @@ export default function SettingsPage() {
                           fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer',
                         }}
                       >
-                        {businessRow?.status === 'approved' ? 'Business' : 'جاري مراجعة الطلب'}
+                        {businessRow?.status === 'approved' ? 'Business' : 'Under review'}
+                      </button>
+                    )}
+                    {businessRow?.status === 'rejected' && (
+                      <p style={{ margin: '10px 0 0', color: '#ef4444', fontSize: '0.72rem', fontWeight: 700 }}>
+                        Request rejected — toggle is off. You may apply again.
+                      </p>
+                    )}
+                    {!!(businessRow?.ownerNote && !businessRow?.ownerNoteSeen) && (
+                      <button
+                        type="button"
+                        onClick={() => setBizOwnerNoteOpen(true)}
+                        style={{
+                          marginTop: 10, width: '100%', padding: '10px 12px', borderRadius: 10,
+                          border: '1px solid rgba(234,179,8,0.45)', background: 'rgba(234,179,8,0.12)',
+                          color: '#eab308', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer',
+                          textAlign: 'left',
+                        }}
+                      >
+                        Message from owner — tap to read
                       </button>
                     )}
                   </div>
@@ -8493,54 +8538,6 @@ export default function SettingsPage() {
                     </span>
                   </div>
                   <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
-                </motion.button>
-
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => {
-                    void loadOwnerData();
-                    refreshOwnerCompanies();
-                    startTransition(() => setShowOwnerCompanies(true));
-                  }}
-                  className="flex items-center justify-between"
-                  style={{
-                    width: '100%',
-                    background: T.surface,
-                    border: `1px solid ${T.surfaceBorder}`,
-                    borderRadius: 14,
-                    padding: '14px 16px',
-                    color: T.text,
-                    cursor: 'pointer',
-                  }}
-                  aria-label="Companies"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(0,188,212,0.1)',
-                      border: '1px solid rgba(0,188,212,0.35)', color: T.primary,
-                    }}>
-                      <Building2 size={19} strokeWidth={2.1} />
-                    </span>
-                    <span style={{ textAlign: 'left' }}>
-                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Companies</span>
-                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-                        Activate / deactivate registered company accounts
-                      </span>
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {ownerPendingCompanyCount > 0 && (
-                      <span style={{
-                        minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
-                        background: '#eab308', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        {ownerPendingCompanyCount > 9 ? '9+' : ownerPendingCompanyCount}
-                      </span>
-                    )}
-                    <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
-                  </div>
                 </motion.button>
 
                 <motion.button
@@ -10495,6 +10492,81 @@ export default function SettingsPage() {
       </AnimatePresence>
 
 
+
+      {/* ── Owner note for Business applicant (one-time) ── */}
+      <AnimatePresence>
+        {bizOwnerNoteOpen && businessRow?.ownerNote && !businessRow?.ownerNoteSeen && (
+          <motion.div
+            key="biz-owner-note"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10500,
+              background: 'rgba(0,0,0,0.7)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '16px 18px calc(72px + env(safe-area-inset-bottom))',
+              boxSizing: 'border-box',
+            }}
+            onClick={() => {
+              if (user?.id) dismissBusinessOwnerNote(user.id);
+              setBizOwnerNoteOpen(false);
+              const r = getBusinessForUser(user?.id);
+              setBusinessRow(r);
+            }}
+          >
+            <motion.div
+              onClick={e => e.stopPropagation()}
+              initial={{ scale: 0.94, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.96, opacity: 0 }}
+              style={{
+                width: 'min(92vw, 360px)',
+                background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
+                border: '1px solid rgba(234,179,8,0.4)',
+                borderRadius: 16,
+                padding: '16px 14px',
+                boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.9rem' }}>Message from owner</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (user?.id) dismissBusinessOwnerNote(user.id);
+                    setBizOwnerNoteOpen(false);
+                    const r = getBusinessForUser(user?.id);
+                    setBusinessRow(r);
+                  }}
+                  style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <p style={{ margin: 0, color: 'rgba(200,230,230,0.9)', fontSize: '0.88rem', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                {businessRow.ownerNote}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (user?.id) dismissBusinessOwnerNote(user.id);
+                  setBizOwnerNoteOpen(false);
+                  const r = getBusinessForUser(user?.id);
+                  setBusinessRow(r);
+                }}
+                style={{
+                  marginTop: 14, width: '100%', padding: '12px', borderRadius: 12, border: 'none',
+                  background: '#eab308', color: '#0a0a0a', fontWeight: 900, fontSize: '0.85rem', cursor: 'pointer',
+                }}
+              >
+                Got it
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Business registration modal ── */}
       <AnimatePresence>
         {businessModalOpen && (
@@ -10506,8 +10578,8 @@ export default function SettingsPage() {
             style={{
               position: 'fixed', inset: 0, zIndex: 10400,
               background: 'rgba(0,0,0,0.72)',
-              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-              padding: '12px 14px calc(16px + env(safe-area-inset-bottom))',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '12px 14px calc(72px + env(safe-area-inset-bottom))',
               boxSizing: 'border-box',
             }}
             onClick={() => setBusinessModalOpen(false)}
@@ -10519,7 +10591,7 @@ export default function SettingsPage() {
               exit={{ y: 24, opacity: 0 }}
               style={{
                 width: 'min(94vw, 400px)',
-                maxHeight: '82vh',
+                maxHeight: 'min(78vh, calc(100dvh - 120px - env(safe-area-inset-bottom)))',
                 overflowY: 'auto',
                 background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
                 border: '1px solid rgba(234,179,8,0.35)',
@@ -10527,6 +10599,7 @@ export default function SettingsPage() {
                 padding: '16px 14px 18px',
                 boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
                 direction: 'rtl',
+                marginBottom: 8,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -10551,7 +10624,7 @@ export default function SettingsPage() {
                   width: '100%', padding: '14px', borderRadius: 12, border: 'none',
                   background: 'rgba(0,188,212,0.18)', color: '#00BCD4', fontWeight: 900, fontSize: '0.88rem',
                 }}>
-                  جاري مراجعة الطلب
+                  Under review
                 </button>
               ) : (
                 <>
@@ -10687,7 +10760,7 @@ export default function SettingsPage() {
                       cursor: (bizProjectName.trim() && bizLicense.trim() && bizTradeLicense.trim() && bizCommCert && bizTradeCert) ? 'pointer' : 'default',
                     }}
                   >
-                    {bizSubmitting ? '...' : (businessRow?.status === 'pending' ? 'جاري مراجعة الطلب' : 'إضغط للتسجيل')}
+                    {bizSubmitting ? '...' : (businessRow?.status === 'pending' ? 'Under review' : 'Submit registration')}
                   </button>
                 </>
               )}
@@ -10696,17 +10769,17 @@ export default function SettingsPage() {
         )}
       </AnimatePresence>
 
-      {/* ── Owner: Business registration requests ── */}
+      {/* ── Owner: Business applications (replaces Companies entry) ── */}
       {isOwner && tab === 'companies' && (
         <div style={{
-          margin: '0 20px 20px',
+          margin: '0 16px 20px',
           background: 'hsl(var(--card))',
           border: '1px solid rgba(234,179,8,0.3)',
           borderRadius: 16,
           padding: 16,
         }}>
-          <p style={{ fontWeight: 800, fontSize: 14, color: '#eab308', margin: '0 0 12px' }}>
-            Business requests
+          <p style={{ fontWeight: 800, fontSize: 14, color: '#eab308', margin: '0 0 6px' }}>
+            Business applications
             {ownerBusinessList.filter(x => x.status === 'pending').length > 0 && (
               <span style={{
                 marginLeft: 8, padding: '2px 8px', borderRadius: 20,
@@ -10717,10 +10790,13 @@ export default function SettingsPage() {
               </span>
             )}
           </p>
+          <p style={{ margin: '0 0 12px', fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>
+            Users who applied to activate a Business account. Full registration data below.
+          </p>
           {ownerBusinessList.length === 0 && (
             <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: 13, margin: 0 }}>No business applications</p>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {ownerBusinessList.map(row => (
               <div key={row.id} style={{
                 background: 'hsl(var(--muted)/0.3)',
@@ -10734,17 +10810,23 @@ export default function SettingsPage() {
                       @{String(row.username || '').replace(/^@/, '') || 'user'} · {row.email || ''}
                     </p>
                     <p style={{ margin: '4px 0 0', fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>
-                      Reg: {row.licenseNumber} · License: {row.tradeLicenseNumber}
+                      Commercial registration: {row.licenseNumber}
+                    </p>
+                    <p style={{ margin: '2px 0 0', fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>
+                      Trade license: {row.tradeLicenseNumber}
+                    </p>
+                    <p style={{ margin: '2px 0 0', fontSize: 10, color: 'hsl(var(--muted-foreground))' }}>
+                      Submitted: {row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}
                     </p>
                     <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                       {row.commercialRegCert && (
                         <a href={row.commercialRegCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#00BCD4' }}>
-                          Commercial cert
+                          Commercial cert{row.commercialRegCertName ? ` (${row.commercialRegCertName})` : ''}
                         </a>
                       )}
                       {row.tradeLicenseCert && (
                         <a href={row.tradeLicenseCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#00BCD4' }}>
-                          Trade cert
+                          Trade cert{row.tradeLicenseCertName ? ` (${row.tradeLicenseCertName})` : ''}
                         </a>
                       )}
                     </div>
@@ -10758,34 +10840,66 @@ export default function SettingsPage() {
                   </span>
                 </div>
                 {row.status === 'pending' && (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        reviewBusinessRegistration(row.id, 'approve');
-                        setOwnerBusinessList(loadBusinessRegistry());
-                      }}
+                  <div style={{ marginTop: 10 }}>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'hsl(var(--muted-foreground))', marginBottom: 6 }}>
+                      Note for user (shown in their settings; disappears after they close it)
+                    </label>
+                    <textarea
+                      value={ownerBizNotes[row.id] || ''}
+                      onChange={e => setOwnerBizNotes(prev => ({ ...prev, [row.id]: e.target.value.slice(0, 500) }))}
+                      placeholder="Write instructions or rejection reason for the user..."
+                      rows={3}
                       style={{
-                        flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                        background: '#22c55e', color: '#041018', fontSize: 12, fontWeight: 800,
+                        width: '100%', boxSizing: 'border-box', borderRadius: 10, padding: '10px 12px',
+                        border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.55)',
+                        color: 'hsl(var(--foreground))', fontSize: 12, outline: 'none', resize: 'vertical',
+                        fontFamily: 'inherit', marginBottom: 8,
                       }}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        reviewBusinessRegistration(row.id, 'reject');
-                        setOwnerBusinessList(loadBusinessRegistry());
-                      }}
-                      style={{
-                        flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                        background: '#ef4444', color: '#fff', fontSize: 12, fontWeight: 800,
-                      }}
-                    >
-                      Reject
-                    </button>
+                    />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          reviewBusinessRegistration(row.id, 'approve', ownerBizNotes[row.id] || null);
+                          setOwnerBusinessList(loadBusinessRegistry());
+                          setOwnerBizNotes(prev => {
+                            const n = { ...prev };
+                            delete n[row.id];
+                            return n;
+                          });
+                        }}
+                        style={{
+                          flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                          background: '#22c55e', color: '#041018', fontSize: 12, fontWeight: 800,
+                        }}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          reviewBusinessRegistration(row.id, 'reject', ownerBizNotes[row.id] || null);
+                          setOwnerBusinessList(loadBusinessRegistry());
+                          setOwnerBizNotes(prev => {
+                            const n = { ...prev };
+                            delete n[row.id];
+                            return n;
+                          });
+                        }}
+                        style={{
+                          flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                          background: '#ef4444', color: '#fff', fontSize: 12, fontWeight: 800,
+                        }}
+                      >
+                        Reject
+                      </button>
+                    </div>
                   </div>
+                )}
+                {row.ownerNote && row.status !== 'pending' && (
+                  <p style={{ margin: '8px 0 0', fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>
+                    Note sent: {row.ownerNote}
+                  </p>
                 )}
               </div>
             ))}
