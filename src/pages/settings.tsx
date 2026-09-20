@@ -8041,7 +8041,100 @@ export default function SettingsPage() {
 
                     </motion.div>;
             })}
+
+
+
               </div>}
+
+            {/* ── LOGGED IN — COMPANY TAB (owner only) ── */}
+            {!isPending && user && tab === 'companies' && (
+              <div key="companies" className="flex flex-col gap-3" style={{ paddingBottom: 8 }}>
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => {
+                    loadOwnerData();
+                    startTransition(() => setShowSupportUsers(true));
+                  }}
+                  className="flex items-center justify-between"
+                  style={{
+                    width: '100%',
+                    background: T.surface,
+                    border: `1px solid ${T.surfaceBorder}`,
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    color: T.text,
+                    cursor: 'pointer',
+                  }}
+                  aria-label="User Control"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center" style={{
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(239,68,68,0.1)',
+                      border: '1px solid rgba(239,68,68,0.35)', color: '#ef4444',
+                    }}>
+                      <Users size={19} strokeWidth={2.1} />
+                    </span>
+                    <span style={{ textAlign: 'left' }}>
+                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>User Control</span>
+                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
+                        Username color · Edit username · Password · Ban
+                      </span>
+                    </span>
+                  </div>
+                  <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
+                </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => {
+                    void loadOwnerData();
+                    refreshOwnerCompanies();
+                    startTransition(() => setShowOwnerCompanies(true));
+                  }}
+                  className="flex items-center justify-between"
+                  style={{
+                    width: '100%',
+                    background: T.surface,
+                    border: `1px solid ${T.surfaceBorder}`,
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    color: T.text,
+                    cursor: 'pointer',
+                  }}
+                  aria-label="Companies"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center" style={{
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(0,188,212,0.1)',
+                      border: '1px solid rgba(0,188,212,0.35)', color: T.primary,
+                    }}>
+                      <Building2 size={19} strokeWidth={2.1} />
+                    </span>
+                    <span style={{ textAlign: 'left' }}>
+                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Companies</span>
+                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
+                        Activate / deactivate registered company accounts
+                      </span>
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {ownerPendingCompanyCount > 0 && (
+                      <span style={{
+                        minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+                        background: '#eab308', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {ownerPendingCompanyCount > 9 ? '9+' : ownerPendingCompanyCount}
+                      </span>
+                    )}
+                    <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
+                  </div>
+                </motion.button>
+              </div>
+            )}
+
 
           </AnimatePresence>
         </div>
@@ -9576,98 +9669,6 @@ export default function SettingsPage() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* ── Company tab (owner only): User Control + Companies ── */}
-      {!isPending && user && tab === 'companies' && isSupportOwnerAccount(
-        user as { email?: string | null; username?: string | null; name?: string | null },
-        profileUsername,
-      ) && (
-        <div style={{ padding: '0 20px', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <motion.button
-            whileTap={{ scale: 0.98 }}
-            type="button"
-            onClick={() => {
-              loadOwnerData();
-              startTransition(() => setShowSupportUsers(true));
-            }}
-            className="flex items-center justify-between"
-            style={{
-              width: '100%',
-              background: T.surface,
-              border: `1px solid ${T.surfaceBorder}`,
-              borderRadius: 14,
-              padding: '14px 16px',
-              color: T.text,
-              cursor: 'pointer',
-            }}
-            aria-label="User Control"
-          >
-            <div className="flex items-center gap-3">
-              <span className="flex items-center justify-center" style={{
-                width: 38, height: 38, borderRadius: 12, background: 'rgba(239,68,68,0.1)',
-                border: '1px solid rgba(239,68,68,0.35)', color: '#ef4444',
-              }}>
-                <Users size={19} strokeWidth={2.1} />
-              </span>
-              <span style={{ textAlign: 'left' }}>
-                <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>User Control</span>
-                <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-                  Username color · Edit username · Password · Ban
-                </span>
-              </span>
-            </div>
-            <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
-          </motion.button>
-
-          <motion.button
-            whileTap={{ scale: 0.98 }}
-            type="button"
-            onClick={() => {
-              void loadOwnerData();
-              refreshOwnerCompanies();
-              startTransition(() => setShowOwnerCompanies(true));
-            }}
-            className="flex items-center justify-between"
-            style={{
-              width: '100%',
-              background: T.surface,
-              border: `1px solid ${T.surfaceBorder}`,
-              borderRadius: 14,
-              padding: '14px 16px',
-              color: T.text,
-              cursor: 'pointer',
-            }}
-            aria-label="Companies"
-          >
-            <div className="flex items-center gap-3">
-              <span className="flex items-center justify-center" style={{
-                width: 38, height: 38, borderRadius: 12, background: 'rgba(0,188,212,0.1)',
-                border: '1px solid rgba(0,188,212,0.35)', color: T.primary,
-              }}>
-                <Building2 size={19} strokeWidth={2.1} />
-              </span>
-              <span style={{ textAlign: 'left' }}>
-                <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Companies</span>
-                <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-                  Activate / deactivate registered company accounts
-                </span>
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {ownerPendingCompanyCount > 0 && (
-                <span style={{
-                  minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
-                  background: '#eab308', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {ownerPendingCompanyCount > 9 ? '9+' : ownerPendingCompanyCount}
-                </span>
-              )}
-              <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
-            </div>
-          </motion.button>
-        </div>
-      )}
 
       {/* ── Owner: New Company Registration Requests ── */}
       {isOwner && tab === 'companies' && ownerNewCompanies.length > 0 && (
