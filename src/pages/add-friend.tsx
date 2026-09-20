@@ -8266,11 +8266,6 @@ export default function AddFriendPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isPending } = useSession();
-  // Keeps the latest user/companies values reachable from event listeners that are
-  // attached once on mount, so those listeners never act on a stale (pre-login-load) user.
-  const latestUserRef = useRef(user);
-  useEffect(() => { latestUserRef.current = user; }, [user]);
-  const latestCompaniesRef = useRef<CompanyAccount[]>([]);
   const { startCall } = useGlobalCall();
   const tick = useAutoRefresh();
   const { guard: guestGuard, GuestModal } = useGuestGuard(user);
@@ -10469,13 +10464,12 @@ export default function AddFriendPage() {
     };
     // ÷€ÿ „ÿÊ¯· ⁄·Ï √ÌﬁÊ‰… «·»Ê” «  ›Ì «·‘—Ìÿ «·”›·Ì ? ‰›” »ﬂ” ´‰‘— »Ê”  ‰’Ìª
     const openComposerFromNav = () => {
-      const currentUser = latestUserRef.current;
-      if (!currentUser) {
+      if (!user) {
         navigate('/settings');
         return;
       }
-      // Individuals: no New Post ó open the feed only
-      if (!isCompanyUserAccount(currentUser, latestCompaniesRef.current)) {
+      // «·√›—«œ: »œÊ‰ New Post ó › Õ «·›Ìœ ›ﬁÿ
+      if (!isCompanyUserAccount(user, companies)) {
         setTextPostsPageOpen(true);
         setTextPostsMenuOpen(false);
         return;
@@ -10577,7 +10571,6 @@ export default function AddFriendPage() {
     ownerName?: string | null;
   }
   const [companies, setCompanies] = useState<CompanyAccount[]>([]);
-  useEffect(() => { latestCompaniesRef.current = companies; }, [companies]);
   /** ‘—ﬂ… = New Post + ≈⁄·«‰ ﬁ’…∫ ›—œ = ﬁ’… ›ﬁÿ (»œÊ‰ »Ê” ) */
 
   const businessApproved = useBusinessApproved(user?.id ? String(user.id) : null);
@@ -12222,6 +12215,7 @@ export default function AddFriendPage() {
             <div style={{ padding: '0 0 8px' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                position: 'relative',
                 padding: '9px 4px', marginBottom: 8,
                 borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}`,
                 color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800,
@@ -12229,6 +12223,35 @@ export default function AddFriendPage() {
               }}>
                 <FileText size={14} strokeWidth={2} />
                 {isCompanyPublisher ? '«·„‰ Ã« ' : 'Post'}
+                {/* New Post ó same action as the button in the general text-posts section,
+                    added here so it's reachable directly from this profile/story page too. */}
+                {user && (
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.96 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setComposerDestination('text');
+                      setComposerError('');
+                      try { clearPostMedia(); } catch { /* */ }
+                      window.setTimeout(() => setShowComposer(true), 0);
+                    }}
+                    aria-label="Create a text post"
+                    style={{
+                      position: 'absolute', insetInlineEnd: 10, top: '50%', transform: 'translateY(-50%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      height: 28, padding: '0 12px', borderRadius: 16,
+                      border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      background: CLR_PRIMARY_FAINT,
+                      color: CLR_PRIMARY,
+                      cursor: 'pointer',
+                      touchAction: 'manipulation',
+                    }}
+                  >
+                    <PenLine size={13} strokeWidth={2.2} />
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.02em' }}>New Post</span>
+                  </motion.button>
+                )}
               </div>
               <div style={{ height: 1, background: CLR_NAV_BORDER }} />
             </div>
