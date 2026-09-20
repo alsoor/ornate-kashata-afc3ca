@@ -3215,17 +3215,25 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         }),
       });
 
+      // نقرأ محتوى الرد دايماً (حتى لو !res.ok) لأن السيرفر يرجع رسالة الخطأ
+      // الحقيقية بالـ body، ولو تجاهلناها بنعرض رسالة عامة تخفي سبب المشكلة الفعلي
+      let data: { valid?: boolean; message?: string; extractedNumber?: string | null } | null = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+
       if (!res.ok) {
         return {
           valid: false,
           dataUrl,
-          message: authLang === 'en'
-            ? 'Could not verify the certificate right now. Please try again.'
-            : 'تعذّر فحص الشهادة حالياً، حاول مرة أخرى',
+          message: data?.message || (authLang === 'en'
+            ? `Could not verify the certificate right now (server error ${res.status}). Please try again.`
+            : `تعذّر فحص الشهادة حالياً (خطأ من السيرفر ${res.status})، حاول مرة أخرى`),
         };
       }
 
-      const data = await res.json();
       if (data && data.valid === true) {
         return { valid: true, dataUrl };
       }
