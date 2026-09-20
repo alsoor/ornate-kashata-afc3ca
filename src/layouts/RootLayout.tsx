@@ -3001,14 +3001,17 @@ function GlobalBottomNavigation() {
               zIndex: 2,
               WebkitTapHighlightColor: 'transparent',
               boxShadow: (homeIncoming && homeCallPhase === 'idle') ? '0 0 12px rgba(34,197,94,0.45)' : 'none',
-              animation: (homeIncoming && homeCallPhase === 'idle') ? 'stooornaHomeRingShake 0.45s ease-in-out infinite' : 'none',
             }}
           >
             <NavBubble id="plus" color={(homeIncoming && homeCallPhase === 'idle') ? 'rgba(34,197,94,0.65)' : 'rgba(0,188,212,0.65)'} />
             <span style={{
               display: 'flex',
-              transition: 'transform 0.25s ease',
+              transition: (homeIncoming && homeCallPhase === 'idle') ? 'none' : 'transform 0.25s ease',
               transform: (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? 'rotate(45deg)' : 'rotate(0deg)',
+              animation: (homeIncoming && homeCallPhase === 'idle' && !(plusMenuOpen || settingsSheetOpen || friendsPanelOpen))
+                ? 'stooornaHomeRingShake 0.45s ease-in-out infinite'
+                : 'none',
+              transformOrigin: 'center center',
             }}>
               <Plus size={26} strokeWidth={2.4} />
             </span>
@@ -3145,6 +3148,6 @@ export default function RootLayout({
         ) : children}
       </div>
       <GlobalBottomNavigation />
-      <style>{`@keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-10deg) scale(1); } 50% { transform: rotate(10deg) scale(1.08); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } } @keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } } @keyframes stooornaTextPostSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } } @keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } } @keyframes stooornaTextPostSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </Website>;
 }
