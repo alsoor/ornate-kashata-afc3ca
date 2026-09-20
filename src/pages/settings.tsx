@@ -3155,6 +3155,19 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   // حتى يبين سبب الرفض الحقيقي (مثلاً: خطأ سيرفر، مفتاح API غير مركّب، أو عدم تطابق فعلي)
   const [commercialRegVerifyMessage, setCommercialRegVerifyMessage] = useState('');
   const [tradeLicenseVerifyMessage, setTradeLicenseVerifyMessage] = useState('');
+  // AI-extracted fields shown under each certificate after verification
+  const [commercialRegMeta, setCommercialRegMeta] = useState<{
+    extractedNumber?: string | null;
+    extractedExpiryDate?: string | null;
+    isExpired?: boolean;
+    numbersMatch?: boolean;
+  } | null>(null);
+  const [tradeLicenseMeta, setTradeLicenseMeta] = useState<{
+    extractedNumber?: string | null;
+    extractedExpiryDate?: string | null;
+    isExpired?: boolean;
+    numbersMatch?: boolean;
+  } | null>(null);
   const [companySector, setCompanySector] = useState('');
   const [companySectorCustom, setCompanySectorCustom] = useState('');
   const [sectorOpen, setSectorOpen] = useState(false);
@@ -3177,6 +3190,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
       setCommercialRegVerify('idle');
       setCommercialRegFile(null);
       setCommercialRegVerifyMessage('');
+      setCommercialRegMeta(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [licenseNumber]);
@@ -3187,6 +3201,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
       setTradeLicenseVerify('idle');
       setTradeLicenseFile(null);
       setTradeLicenseVerifyMessage('');
+      setTradeLicenseMeta(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tradeLicenseNumber]);
@@ -3200,13 +3215,32 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
     file: File,
     documentType: 'commercial_registry' | 'trade_license',
     expectedNumber: string,
-  ): Promise<{ valid: boolean; dataUrl: string; message?: string }> {
+  ): Promise<{
+    valid: boolean;
+    dataUrl: string;
+    message?: string;
+    extractedNumber?: string | null;
+    extractedExpiryDate?: string | null;
+    isExpired?: boolean;
+    numbersMatch?: boolean;
+    isCertificate?: boolean;
+  }> {
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = ev => resolve(ev.target?.result as string);
       reader.onerror = () => reject(new Error('file-read-failed'));
       reader.readAsDataURL(file);
     });
+
+    type VerifyApi = {
+      valid?: boolean;
+      message?: string;
+      extractedNumber?: string | null;
+      extractedExpiryDate?: string | null;
+      isExpired?: boolean;
+      numbersMatch?: boolean;
+      isCertificate?: boolean;
+    };
 
     try {
       const res = await fetch('/api/company/verify-certificate', {
@@ -3221,33 +3255,35 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         }),
       });
 
-      // نقرأ محتوى الرد دايماً (حتى لو !res.ok) لأن السيرفر يرجع رسالة الخطأ
-      // الحقيقية بالـ body، ولو تجاهلناها بنعرض رسالة عامة تخفي سبب المشكلة الفعلي
-      let data: { valid?: boolean; message?: string; extractedNumber?: string | null } | null = null;
+      let data: VerifyApi | null = null;
       try {
         data = await res.json();
       } catch {
         data = null;
       }
 
+      const meta = {
+        extractedNumber: data?.extractedNumber ?? null,
+        extractedExpiryDate: data?.extractedExpiryDate ?? null,
+        isExpired: data?.isExpired === true,
+        numbersMatch: data?.numbersMatch === true,
+        isCertificate: data?.isCertificate === true,
+      };
+
       if (!res.ok) {
         return {
           valid: false,
           dataUrl,
+          ...meta,
           message: data?.message || (authLang === 'en'
             ? `Could not verify the certificate right now (server error ${res.status}). Please try again.`
             : `تعذّر فحص الشهادة حالياً (خطأ من السيرفر ${res.status})، حاول مرة أخرى`),
         };
       }
 
-      if (data && data.valid === true) {
-        return { valid: true, dataUrl };
-      }
-
-      // Fallback: if server returned an extracted number whose digits match the
-      // expected number (ignoring spaces/slashes/Arabic digits), accept it even
-      // when the model left numbersMatch false due to formatting differences.
-      if (data && data.extractedNumber != null && expectedNumber.trim()) {
+      // Client-side digit match fallback (formatting differences)
+      let numbersMatch = data?.numbersMatch === true;
+      if (!numbersMatch && data?.extractedNumber != null && expectedNumber.trim()) {
         const arabicIndic = '٠١٢٣٤٥٦٧٨٩';
         const toDigits = (raw: string) => {
           let out = '';
@@ -3261,16 +3297,51 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         const a = toDigits(expectedNumber);
         const b = toDigits(String(data.extractedNumber));
         if (a && b && (a === b || (a.length >= 4 && b.length >= 4 && (a.endsWith(b) || b.endsWith(a) || a.startsWith(b) || b.startsWith(a))))) {
-          return { valid: true, dataUrl };
+          numbersMatch = true;
+        }
+      }
+
+      const isExpired = data?.isExpired === true;
+      const isCertificate = data?.isCertificate !== false; // if server omitted, don't block on this alone when valid:true
+      const serverValid = data?.valid === true;
+      const valid = serverValid || (numbersMatch && !isExpired && data?.isCertificate === true);
+
+      if (valid) {
+        return {
+          valid: true,
+          dataUrl,
+          extractedNumber: data?.extractedNumber ?? null,
+          extractedExpiryDate: data?.extractedExpiryDate ?? null,
+          isExpired: false,
+          numbersMatch: true,
+          isCertificate: true,
+        };
+      }
+
+      let message = data?.message;
+      if (!message) {
+        if (isExpired) {
+          message = authLang === 'en' ? 'The certificate has expired' : 'الشهادة منتهية الصلاحية';
+        } else if (!numbersMatch) {
+          message = authLang === 'en'
+            ? 'The number on the certificate does not match the number entered.'
+            : 'الشهادة غير صحيحة أو لا تطابق الرقم المُدخل';
+        } else {
+          message = authLang === 'en'
+            ? 'The certificate is invalid or does not match the number entered.'
+            : 'الشهادة غير صحيحة أو لا تطابق الرقم المُدخل';
         }
       }
 
       return {
         valid: false,
         dataUrl,
-        message: data?.message || (authLang === 'en'
-          ? 'The certificate is invalid or does not match the number entered.'
-          : 'الشهادة غير صحيحة أو لا تطابق الرقم المُدخل'),
+        extractedNumber: data?.extractedNumber ?? null,
+        extractedExpiryDate: data?.extractedExpiryDate ?? null,
+        isExpired,
+        numbersMatch,
+        isCertificate: data?.isCertificate === true,
+        message,
       };
     } catch {
       return {
@@ -3943,12 +4014,22 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                   setCommercialRegFile(null);
                   setCommercialRegVerify('checking');
                   setCommercialRegVerifyMessage('');
+                  setCommercialRegMeta(null);
                   const result = await verifyCertificateFile(file, 'commercial_registry', licenseNumber);
+                  setCommercialRegMeta({
+                    extractedNumber: result.extractedNumber ?? null,
+                    extractedExpiryDate: result.extractedExpiryDate ?? null,
+                    isExpired: result.isExpired === true,
+                    numbersMatch: result.numbersMatch === true,
+                  });
                   if (result.valid) {
                     setCommercialRegFile({ dataUrl: result.dataUrl, name: file.name });
                     setCommercialRegVerify('valid');
+                    setCommercialRegVerifyMessage('');
                   } else {
                     setCommercialRegVerify('invalid');
+                    // keep file preview so user can see AI readout under the field
+                    setCommercialRegFile({ dataUrl: result.dataUrl, name: file.name });
                     const msg = result.message || (authLang === 'en'
                       ? 'The certificate is invalid'
                       : 'الشهادة غير صحيحة');
@@ -3986,17 +4067,52 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 جارٍ التحقق من الشهادة بالذكاء الاصطناعي…
               </p>
             )}
+            {commercialRegMeta && commercialRegVerify !== 'idle' && commercialRegVerify !== 'checking' && (
+              <div style={{
+                margin: '-4px 0 0', padding: '8px 10px', borderRadius: 10, fontSize: 11, lineHeight: 1.55, direction: 'rtl',
+                background: commercialRegVerify === 'valid' ? 'hsl(var(--success)/0.08)' : 'hsl(var(--destructive)/0.06)',
+                border: `1px solid ${commercialRegVerify === 'valid' ? 'hsl(var(--success)/0.35)' : 'hsl(var(--destructive)/0.25)'}`,
+                color: 'rgba(200,230,230,0.92)',
+              }}>
+                <p style={{ margin: 0, fontWeight: 700, color: commercialRegVerify === 'valid' ? 'hsl(var(--success))' : 'hsl(var(--destructive))' }}>
+                  {commercialRegVerify === 'valid' ? (authLang === 'en' ? 'Verified by AI' : 'تم التحقق بالذكاء الاصطناعي') : (authLang === 'en' ? 'AI verification failed' : 'فشل التحقق بالذكاء الاصطناعي')}
+                </p>
+                <p style={{ margin: '4px 0 0' }}>
+                  {authLang === 'en' ? 'Number on certificate:' : 'الرقم على الشهادة:'}{' '}
+                  <span style={{ fontWeight: 700, direction: 'ltr', unicodeBidi: 'isolate' }}>{commercialRegMeta.extractedNumber || '—'}</span>
+                  {' · '}
+                  <span style={{ color: commercialRegMeta.numbersMatch ? 'hsl(var(--success))' : 'hsl(var(--destructive))', fontWeight: 700 }}>
+                    {commercialRegMeta.numbersMatch
+                      ? (authLang === 'en' ? 'matches form' : 'يطابق المدخل')
+                      : (authLang === 'en' ? 'does not match' : 'لا يطابق المدخل')}
+                  </span>
+                </p>
+                <p style={{ margin: '2px 0 0' }}>
+                  {authLang === 'en' ? 'Expiry date:' : 'تاريخ الانتهاء:'}{' '}
+                  <span style={{ fontWeight: 700, direction: 'ltr', unicodeBidi: 'isolate' }}>{commercialRegMeta.extractedExpiryDate || (authLang === 'en' ? 'not found' : 'غير ظاهر')}</span>
+                  {commercialRegMeta.isExpired && (
+                    <span style={{ color: 'hsl(var(--destructive))', fontWeight: 800 }}> — {authLang === 'en' ? 'EXPIRED' : 'منتهية'}</span>
+                  )}
+                  {!commercialRegMeta.isExpired && commercialRegMeta.extractedExpiryDate && (
+                    <span style={{ color: 'hsl(var(--success))', fontWeight: 700 }}> — {authLang === 'en' ? 'valid' : 'سارية'}</span>
+                  )}
+                </p>
+              </div>
+            )}
             {commercialRegFile && commercialRegVerify === 'valid' && (
-              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+              <p style={{ margin: '-2px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
                 <Check size={11} /> {commercialRegFile.name} — تم التحقق ومطابقتها لرقم السجل
-                <button type="button" onClick={() => { setCommercialRegFile(null); setCommercialRegVerify('idle'); setCommercialRegVerifyMessage(''); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                <button type="button" onClick={() => { setCommercialRegFile(null); setCommercialRegVerify('idle'); setCommercialRegVerifyMessage(''); setCommercialRegMeta(null); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
                   <X size={11} />
                 </button>
               </p>
             )}
             {commercialRegVerify === 'invalid' && (
-              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+              <p style={{ margin: '-2px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
                 <AlertTriangle size={11} /> {commercialRegVerifyMessage || 'الشهادة غير صحيحة — تأكد من رفع شهادة سجل تجاري تطابق الرقم المُدخل'}
+                <button type="button" onClick={() => { setCommercialRegFile(null); setCommercialRegVerify('idle'); setCommercialRegVerifyMessage(''); setCommercialRegMeta(null); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                  <X size={11} />
+                </button>
               </p>
             )}
 
@@ -4032,12 +4148,21 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                   setTradeLicenseFile(null);
                   setTradeLicenseVerify('checking');
                   setTradeLicenseVerifyMessage('');
+                  setTradeLicenseMeta(null);
                   const result = await verifyCertificateFile(file, 'trade_license', tradeLicenseNumber);
+                  setTradeLicenseMeta({
+                    extractedNumber: result.extractedNumber ?? null,
+                    extractedExpiryDate: result.extractedExpiryDate ?? null,
+                    isExpired: result.isExpired === true,
+                    numbersMatch: result.numbersMatch === true,
+                  });
                   if (result.valid) {
                     setTradeLicenseFile({ dataUrl: result.dataUrl, name: file.name });
                     setTradeLicenseVerify('valid');
+                    setTradeLicenseVerifyMessage('');
                   } else {
                     setTradeLicenseVerify('invalid');
+                    setTradeLicenseFile({ dataUrl: result.dataUrl, name: file.name });
                     const msg = result.message || (authLang === 'en'
                       ? 'The certificate is invalid'
                       : 'الشهادة غير صحيحة');
@@ -4075,17 +4200,52 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 جارٍ التحقق من الشهادة بالذكاء الاصطناعي…
               </p>
             )}
+            {tradeLicenseMeta && tradeLicenseVerify !== 'idle' && tradeLicenseVerify !== 'checking' && (
+              <div style={{
+                margin: '-4px 0 0', padding: '8px 10px', borderRadius: 10, fontSize: 11, lineHeight: 1.55, direction: 'rtl',
+                background: tradeLicenseVerify === 'valid' ? 'hsl(var(--success)/0.08)' : 'hsl(var(--destructive)/0.06)',
+                border: `1px solid ${tradeLicenseVerify === 'valid' ? 'hsl(var(--success)/0.35)' : 'hsl(var(--destructive)/0.25)'}`,
+                color: 'rgba(200,230,230,0.92)',
+              }}>
+                <p style={{ margin: 0, fontWeight: 700, color: tradeLicenseVerify === 'valid' ? 'hsl(var(--success))' : 'hsl(var(--destructive))' }}>
+                  {tradeLicenseVerify === 'valid' ? (authLang === 'en' ? 'Verified by AI' : 'تم التحقق بالذكاء الاصطناعي') : (authLang === 'en' ? 'AI verification failed' : 'فشل التحقق بالذكاء الاصطناعي')}
+                </p>
+                <p style={{ margin: '4px 0 0' }}>
+                  {authLang === 'en' ? 'Number on certificate:' : 'الرقم على الشهادة:'}{' '}
+                  <span style={{ fontWeight: 700, direction: 'ltr', unicodeBidi: 'isolate' }}>{tradeLicenseMeta.extractedNumber || '—'}</span>
+                  {' · '}
+                  <span style={{ color: tradeLicenseMeta.numbersMatch ? 'hsl(var(--success))' : 'hsl(var(--destructive))', fontWeight: 700 }}>
+                    {tradeLicenseMeta.numbersMatch
+                      ? (authLang === 'en' ? 'matches form' : 'يطابق المدخل')
+                      : (authLang === 'en' ? 'does not match' : 'لا يطابق المدخل')}
+                  </span>
+                </p>
+                <p style={{ margin: '2px 0 0' }}>
+                  {authLang === 'en' ? 'Expiry date:' : 'تاريخ الانتهاء:'}{' '}
+                  <span style={{ fontWeight: 700, direction: 'ltr', unicodeBidi: 'isolate' }}>{tradeLicenseMeta.extractedExpiryDate || (authLang === 'en' ? 'not found' : 'غير ظاهر')}</span>
+                  {tradeLicenseMeta.isExpired && (
+                    <span style={{ color: 'hsl(var(--destructive))', fontWeight: 800 }}> — {authLang === 'en' ? 'EXPIRED' : 'منتهية'}</span>
+                  )}
+                  {!tradeLicenseMeta.isExpired && tradeLicenseMeta.extractedExpiryDate && (
+                    <span style={{ color: 'hsl(var(--success))', fontWeight: 700 }}> — {authLang === 'en' ? 'valid' : 'سارية'}</span>
+                  )}
+                </p>
+              </div>
+            )}
             {tradeLicenseFile && tradeLicenseVerify === 'valid' && (
-              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+              <p style={{ margin: '-2px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
                 <Check size={11} /> {tradeLicenseFile.name} — تم التحقق ومطابقتها لرقم الترخيص
-                <button type="button" onClick={() => { setTradeLicenseFile(null); setTradeLicenseVerify('idle'); setTradeLicenseVerifyMessage(''); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                <button type="button" onClick={() => { setTradeLicenseFile(null); setTradeLicenseVerify('idle'); setTradeLicenseVerifyMessage(''); setTradeLicenseMeta(null); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
                   <X size={11} />
                 </button>
               </p>
             )}
             {tradeLicenseVerify === 'invalid' && (
-              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+              <p style={{ margin: '-2px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
                 <AlertTriangle size={11} /> {tradeLicenseVerifyMessage || 'الشهادة غير صحيحة — تأكد من رفع شهادة ترخيص تجاري تطابق الرقم المُدخل'}
+                <button type="button" onClick={() => { setTradeLicenseFile(null); setTradeLicenseVerify('idle'); setTradeLicenseVerifyMessage(''); setTradeLicenseMeta(null); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                  <X size={11} />
+                </button>
               </p>
             )}
 
