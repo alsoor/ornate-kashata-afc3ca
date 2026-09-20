@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
@@ -3148,6 +3148,9 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   const [tradeLicenseNumber, setTradeLicenseNumber] = useState('');
   const [commercialRegFile, setCommercialRegFile] = useState<{ dataUrl: string; name: string } | null>(null);
   const [tradeLicenseFile, setTradeLicenseFile] = useState<{ dataUrl: string; name: string } | null>(null);
+  // حالة فحص الشهادتين بالذكاء الاصطناعي: idle (لم يُرفع شيء بعد) | checking (جاري الفحص) | valid (تم التحقق ومطابقة الرقم) | invalid (شهادة غير صحيحة أو لا تطابق الرقم)
+  const [commercialRegVerify, setCommercialRegVerify] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
+  const [tradeLicenseVerify, setTradeLicenseVerify] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
   const [companySector, setCompanySector] = useState('');
   const [companySectorCustom, setCompanySectorCustom] = useState('');
   const [sectorOpen, setSectorOpen] = useState(false);
@@ -3162,6 +3165,87 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   function resetFormErrors() {
     setError('');
     setCompanyPendingMsg('');
+  }
+
+  // إذا غيّر المستخدم رقم السجل التجاري بعد أن فحصنا الشهادة، لازم يعيد الرفع/الفحص من جديد
+  useEffect(() => {
+    if (commercialRegVerify !== 'idle') {
+      setCommercialRegVerify('idle');
+      setCommercialRegFile(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [licenseNumber]);
+
+  // نفس الشيء لرقم الترخيص التجاري
+  useEffect(() => {
+    if (tradeLicenseVerify !== 'idle') {
+      setTradeLicenseVerify('idle');
+      setTradeLicenseFile(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tradeLicenseNumber]);
+
+  /**
+   * يرفع الشهادة (سجل تجاري أو ترخيص تجاري) لخدمة الفحص بالذكاء الاصطناعي بالسيرفر،
+   * ويتأكد أنها شهادة فعلية وأن الرقم المكتوب فيها يطابق الرقم الذي أدخله المستخدم.
+   * الفحص الفعلي (قراءة الشهادة بالـ AI) يتم في السيرفر عبر /api/company/verify-certificate.
+   */
+  async function verifyCertificateFile(
+    file: File,
+    documentType: 'commercial_registry' | 'trade_license',
+    expectedNumber: string,
+  ): Promise<{ valid: boolean; dataUrl: string; message?: string }> {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = ev => resolve(ev.target?.result as string);
+      reader.onerror = () => reject(new Error('file-read-failed'));
+      reader.readAsDataURL(file);
+    });
+
+    try {
+      const res = await fetch('/api/company/verify-certificate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          documentType,
+          expectedNumber: expectedNumber.trim(),
+          fileName: file.name,
+          dataUrl,
+        }),
+      });
+
+      if (!res.ok) {
+        return {
+          valid: false,
+          dataUrl,
+          message: authLang === 'en'
+            ? 'Could not verify the certificate right now. Please try again.'
+            : 'تعذّر فحص الشهادة حالياً، حاول مرة أخرى',
+        };
+      }
+
+      const data = await res.json();
+      if (data && data.valid === true) {
+        return { valid: true, dataUrl };
+      }
+
+      return {
+        valid: false,
+        dataUrl,
+        message: data?.message || (authLang === 'en'
+          ? 'The certificate is invalid or does not match the number entered.'
+          : 'الشهادة غير صحيحة أو لا تطابق الرقم المُدخل'),
+      };
+    } catch {
+      return {
+        valid: false,
+        dataUrl,
+        message: authLang === 'en'
+          ? 'Could not reach the verification service. Check your connection and try again.'
+          : 'تعذّر الاتصال بخدمة الفحص، تحقق من الإنترنت وحاول مجدداً',
+      };
+    }
   }
 
   function switchMode(next: AuthMode) {
@@ -3315,12 +3399,16 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           setError('رقم الترخيص التجاري مطلوب');
           return;
         }
-        if (!commercialRegFile) {
-          setError('⚠️ يجب رفع شهادة السجل التجاري لإتمام التسجيل');
+        if (commercialRegVerify === 'checking' || tradeLicenseVerify === 'checking') {
+          setError('⚠️ انتظر انتهاء التحقق من الشهادتين بالذكاء الاصطناعي');
           return;
         }
-        if (!tradeLicenseFile) {
-          setError('⚠️ يجب رفع شهادة الترخيص التجاري لإتمام التسجيل');
+        if (!commercialRegFile || commercialRegVerify !== 'valid') {
+          setError('⚠️ يجب رفع شهادة سجل تجاري صحيحة تطابق رقم السجل التجاري لإتمام التسجيل');
+          return;
+        }
+        if (!tradeLicenseFile || tradeLicenseVerify !== 'valid') {
+          setError('⚠️ يجب رفع شهادة ترخيص تجاري صحيحة تطابق رقم الترخيص التجاري لإتمام التسجيل');
           return;
         }
         if (!companySector.trim() && !companySectorCustom.trim()) {
@@ -3806,41 +3894,71 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 type="file"
                 accept="image/*,application/pdf"
                 style={{ display: 'none' }}
-                onChange={e => {
+                onChange={async e => {
                   const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = ev => {
-                    setCommercialRegFile({ dataUrl: ev.target?.result as string, name: file.name });
-                  };
-                  reader.readAsDataURL(file);
                   e.target.value = '';
+                  if (!file) return;
+                  if (!licenseNumber.trim()) {
+                    setError(authLang === 'en'
+                      ? 'Enter the commercial registration number before uploading the certificate'
+                      : 'أدخل رقم السجل التجاري أولاً قبل رفع الشهادة');
+                    return;
+                  }
+                  setError('');
+                  setCommercialRegFile(null);
+                  setCommercialRegVerify('checking');
+                  const result = await verifyCertificateFile(file, 'commercial_registry', licenseNumber);
+                  if (result.valid) {
+                    setCommercialRegFile({ dataUrl: result.dataUrl, name: file.name });
+                    setCommercialRegVerify('valid');
+                  } else {
+                    setCommercialRegVerify('invalid');
+                    setError(result.message || (authLang === 'en'
+                      ? 'The certificate is invalid'
+                      : 'الشهادة غير صحيحة'));
+                  }
                 }}
               />
               <button
                 type="button"
                 title="رفع شهادة السجل التجاري"
+                disabled={commercialRegVerify === 'checking'}
                 onClick={() => document.getElementById('commercial-reg-file')?.click()}
                 style={{
                   position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                  background: commercialRegFile ? 'hsl(var(--success)/0.18)' : 'hsl(var(--primary)/0.12)',
-                  border: `1px solid ${commercialRegFile ? 'hsl(var(--success)/0.5)' : 'hsl(var(--primary)/0.35)'}`,
+                  background: commercialRegVerify === 'valid' ? 'hsl(var(--success)/0.18)' : commercialRegVerify === 'invalid' ? 'hsl(var(--destructive)/0.18)' : 'hsl(var(--primary)/0.12)',
+                  border: `1px solid ${commercialRegVerify === 'valid' ? 'hsl(var(--success)/0.5)' : commercialRegVerify === 'invalid' ? 'hsl(var(--destructive)/0.5)' : 'hsl(var(--primary)/0.35)'}`,
                   borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', flexShrink: 0,
+                  cursor: commercialRegVerify === 'checking' ? 'wait' : 'pointer', flexShrink: 0,
+                  opacity: commercialRegVerify === 'checking' ? 0.6 : 1,
                 }}
               >
-                {commercialRegFile
-                  ? <Check size={15} color="hsl(var(--success))" />
-                  : <Plus size={15} color="hsl(var(--primary))" />
+                {commercialRegVerify === 'checking'
+                  ? <Clock size={15} color="hsl(var(--primary))" />
+                  : commercialRegVerify === 'valid'
+                    ? <Check size={15} color="hsl(var(--success))" />
+                    : commercialRegVerify === 'invalid'
+                      ? <X size={15} color="hsl(var(--destructive))" />
+                      : <Plus size={15} color="hsl(var(--primary))" />
                 }
               </button>
             </div>
-            {commercialRegFile && (
+            {commercialRegVerify === 'checking' && (
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--primary))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+                جارٍ التحقق من الشهادة بالذكاء الاصطناعي…
+              </p>
+            )}
+            {commercialRegFile && commercialRegVerify === 'valid' && (
               <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
-                <Check size={11} /> {commercialRegFile.name}
-                <button type="button" onClick={() => setCommercialRegFile(null)} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                <Check size={11} /> {commercialRegFile.name} — تم التحقق ومطابقتها لرقم السجل
+                <button type="button" onClick={() => { setCommercialRegFile(null); setCommercialRegVerify('idle'); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
                   <X size={11} />
                 </button>
+              </p>
+            )}
+            {commercialRegVerify === 'invalid' && (
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+                <AlertTriangle size={11} /> الشهادة غير صحيحة — تأكد من رفع شهادة سجل تجاري تطابق الرقم المُدخل
               </p>
             )}
 
@@ -3862,41 +3980,71 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 type="file"
                 accept="image/*,application/pdf"
                 style={{ display: 'none' }}
-                onChange={e => {
+                onChange={async e => {
                   const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = ev => {
-                    setTradeLicenseFile({ dataUrl: ev.target?.result as string, name: file.name });
-                  };
-                  reader.readAsDataURL(file);
                   e.target.value = '';
+                  if (!file) return;
+                  if (!tradeLicenseNumber.trim()) {
+                    setError(authLang === 'en'
+                      ? 'Enter the trade license number before uploading the certificate'
+                      : 'أدخل رقم الترخيص التجاري أولاً قبل رفع الشهادة');
+                    return;
+                  }
+                  setError('');
+                  setTradeLicenseFile(null);
+                  setTradeLicenseVerify('checking');
+                  const result = await verifyCertificateFile(file, 'trade_license', tradeLicenseNumber);
+                  if (result.valid) {
+                    setTradeLicenseFile({ dataUrl: result.dataUrl, name: file.name });
+                    setTradeLicenseVerify('valid');
+                  } else {
+                    setTradeLicenseVerify('invalid');
+                    setError(result.message || (authLang === 'en'
+                      ? 'The certificate is invalid'
+                      : 'الشهادة غير صحيحة'));
+                  }
                 }}
               />
               <button
                 type="button"
                 title="رفع شهادة الترخيص التجاري"
+                disabled={tradeLicenseVerify === 'checking'}
                 onClick={() => document.getElementById('trade-license-file')?.click()}
                 style={{
                   position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                  background: tradeLicenseFile ? 'hsl(var(--success)/0.18)' : 'hsl(var(--primary)/0.12)',
-                  border: `1px solid ${tradeLicenseFile ? 'hsl(var(--success)/0.5)' : 'hsl(var(--primary)/0.35)'}`,
+                  background: tradeLicenseVerify === 'valid' ? 'hsl(var(--success)/0.18)' : tradeLicenseVerify === 'invalid' ? 'hsl(var(--destructive)/0.18)' : 'hsl(var(--primary)/0.12)',
+                  border: `1px solid ${tradeLicenseVerify === 'valid' ? 'hsl(var(--success)/0.5)' : tradeLicenseVerify === 'invalid' ? 'hsl(var(--destructive)/0.5)' : 'hsl(var(--primary)/0.35)'}`,
                   borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', flexShrink: 0,
+                  cursor: tradeLicenseVerify === 'checking' ? 'wait' : 'pointer', flexShrink: 0,
+                  opacity: tradeLicenseVerify === 'checking' ? 0.6 : 1,
                 }}
               >
-                {tradeLicenseFile
-                  ? <Check size={15} color="hsl(var(--success))" />
-                  : <Plus size={15} color="hsl(var(--primary))" />
+                {tradeLicenseVerify === 'checking'
+                  ? <Clock size={15} color="hsl(var(--primary))" />
+                  : tradeLicenseVerify === 'valid'
+                    ? <Check size={15} color="hsl(var(--success))" />
+                    : tradeLicenseVerify === 'invalid'
+                      ? <X size={15} color="hsl(var(--destructive))" />
+                      : <Plus size={15} color="hsl(var(--primary))" />
                 }
               </button>
             </div>
-            {tradeLicenseFile && (
+            {tradeLicenseVerify === 'checking' && (
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--primary))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+                جارٍ التحقق من الشهادة بالذكاء الاصطناعي…
+              </p>
+            )}
+            {tradeLicenseFile && tradeLicenseVerify === 'valid' && (
               <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
-                <Check size={11} /> {tradeLicenseFile.name}
-                <button type="button" onClick={() => setTradeLicenseFile(null)} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                <Check size={11} /> {tradeLicenseFile.name} — تم التحقق ومطابقتها لرقم الترخيص
+                <button type="button" onClick={() => { setTradeLicenseFile(null); setTradeLicenseVerify('idle'); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
                   <X size={11} />
                 </button>
+              </p>
+            )}
+            {tradeLicenseVerify === 'invalid' && (
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+                <AlertTriangle size={11} /> الشهادة غير صحيحة — تأكد من رفع شهادة ترخيص تجاري تطابق الرقم المُدخل
               </p>
             )}
 
@@ -4820,6 +4968,19 @@ export default function SettingsPage() {
   const ownerPendingCompanyCount = ownerCompanies.filter(
     c => !isPersonalBlockedAccount(c) && c.status === 'pending',
   ).length;
+
+  // محسوبة مرة واحدة فقط عند تغيّر قائمة الشركات — لا تُعاد الحسابات في كل عملية render
+  // (كانت سابقاً تُحسب داخل الـ JSX مباشرة، وهذا كان يُبطئ الواجهة ويسبب التجمّد
+  // عند فتح تفاصيل الشركة أو حتى عند أي تفاعل آخر في صفحة الإعدادات)
+  const ownerCompaniesSorted = useMemo(() => {
+    return ownerCompanies
+      .filter(co => !/nadoosha/i.test(`${co.email} ${co.username || co.companyName || ''}`))
+      .slice()
+      .sort((a, b) => {
+        const rank = (st: CompanyRegStatus) => st === 'pending' ? 0 : st === 'active' ? 1 : 2;
+        return rank(a.status) - rank(b.status);
+      });
+  }, [ownerCompanies]);
 
   const [scEditBox, setScEditBox] = useState<'color' | 'username' | 'password' | null>(null);
   const [scUsername, setScUsername] = useState('');
@@ -8960,13 +9121,7 @@ export default function SettingsPage() {
                   }} />
                 </button>
               </div>
-              {ownerCompanies
-                .filter(co => !/nadoosha/i.test(`${co.email} ${co.username || co.companyName || ''}`))
-                .slice()
-                .sort((a, b) => {
-                  const rank = (st: CompanyRegStatus) => st === 'pending' ? 0 : st === 'active' ? 1 : 2;
-                  return rank(a.status) - rank(b.status);
-                })
+              {ownerCompaniesSorted
                 .map(co => {
                 const isActive = co.status === 'active';
                 const isPending = co.status === 'pending';
@@ -8988,7 +9143,13 @@ export default function SettingsPage() {
                   >
                     <button
                       type="button"
-                      onClick={() => setOwnerCompanyDetail({ ...co, companyName: displayName, tradeName: displayTrade || co.tradeName })}
+                      onClick={() => {
+                        // startTransition: يخلي الضغطة تستجيب فوراً بدون تجمّد
+                        // بينما يُعاد رسم التفاصيل الثقيلة (الصور) بشكل غير عاجل
+                        startTransition(() => {
+                          setOwnerCompanyDetail({ ...co, companyName: displayName, tradeName: displayTrade || co.tradeName });
+                        });
+                      }}
                       style={{
                         flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4,
                         padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'right',
@@ -9004,7 +9165,11 @@ export default function SettingsPage() {
                       title="عرض كامل بيانات التسجيل"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setOwnerCompanyDetail({ ...co, companyName: displayName, tradeName: displayTrade || co.tradeName });
+                        // startTransition: يخلي الضغطة تستجيب فوراً بدون تجمّد
+                        // بينما يُعاد رسم التفاصيل الثقيلة (الصور) بشكل غير عاجل
+                        startTransition(() => {
+                          setOwnerCompanyDetail({ ...co, companyName: displayName, tradeName: displayTrade || co.tradeName });
+                        });
                       }}
                       style={{
                         width: 44, flexShrink: 0, border: 'none', cursor: 'pointer',
@@ -9166,6 +9331,8 @@ export default function SettingsPage() {
                       <img
                         src={ownerCompanyDetail.commercialRegCert}
                         alt="شهادة السجل التجاري"
+                        loading="lazy"
+                        decoding="async"
                         style={{ width: '100%', borderRadius: 10, border: '1px solid hsl(var(--primary)/0.2)', objectFit: 'contain', maxHeight: 260 }}
                       />
                     ) : (
@@ -9191,6 +9358,8 @@ export default function SettingsPage() {
                       <img
                         src={ownerCompanyDetail.tradeLicenseCert}
                         alt="شهادة الترخيص التجاري"
+                        loading="lazy"
+                        decoding="async"
                         style={{ width: '100%', borderRadius: 10, border: '1px solid hsl(var(--gold)/0.2)', objectFit: 'contain', maxHeight: 260 }}
                       />
                     ) : (
