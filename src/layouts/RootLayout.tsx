@@ -1,7 +1,7 @@
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollRestoration, useLocation, useNavigate } from "react-router";
-import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus, Image as ImageIcon, Video } from 'lucide-react';
+import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus, Image as ImageIcon, Video, PenLine } from 'lucide-react';
 import HomepageSameAsJsonLd from '@/components/HomepageSameAsJsonLd';
 import Website from '@/layouts/Website';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
@@ -2595,7 +2595,7 @@ function GlobalBottomNavigation() {
           onClick={() => {
             popNavBubble('storyMedia');
             const open = () => {
-              try { window.dispatchEvent(new CustomEvent('stooorna:open-story-media')); } catch { /* */ }
+              try { window.dispatchEvent(new CustomEvent('stooorna:open-text-composer')); } catch { /* */ }
             };
             if (location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend')) {
               open();
@@ -2604,13 +2604,13 @@ function GlobalBottomNavigation() {
             navigate('/add-friend?tab=friends');
             window.setTimeout(open, 100);
           }}
-          aria-label="Publish photo or video"
+          aria-label="New Post"
           style={{
             position: 'absolute',
             left: '50%',
             top: '50%',
             transform: 'translate(-50%, -50%)',
-            width: 48,
+            width: 96,
             height: 36,
             border: 'none',
             background: storyMediaOpen ? 'rgba(0,188,212,0.16)' : 'transparent',
@@ -2622,12 +2622,12 @@ function GlobalBottomNavigation() {
             justifyContent: 'center',
             zIndex: 2,
             WebkitTapHighlightColor: 'transparent',
-            gap: 3,
+            gap: 6,
           }}
         >
           <NavBubble id="storyMedia" color="rgba(0,188,212,0.65)" />
-          <ImageIcon size={17} strokeWidth={2.2} />
-          <Video size={15} strokeWidth={2.2} />
+          <PenLine size={16} strokeWidth={2.2} />
+          <span style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.02em' }}>New Post</span>
         </button>
         )}
 

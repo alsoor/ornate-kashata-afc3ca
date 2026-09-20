@@ -12216,6 +12216,7 @@ export default function AddFriendPage() {
             <div style={{ padding: '0 0 8px' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                position: 'relative',
                 padding: '9px 4px', marginBottom: 8,
                 borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}`,
                 color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800,
@@ -12223,6 +12224,35 @@ export default function AddFriendPage() {
               }}>
                 <FileText size={14} strokeWidth={2} />
                 {isCompanyPublisher ? 'المنتجات' : 'Post'}
+                {/* New Post — same action as the button in the general text-posts section,
+                    added here so it's reachable directly from this profile/story page too. */}
+                {user && (
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.96 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setComposerDestination('text');
+                      setComposerError('');
+                      try { clearPostMedia(); } catch { /* */ }
+                      window.setTimeout(() => setShowComposer(true), 0);
+                    }}
+                    aria-label="Create a text post"
+                    style={{
+                      position: 'absolute', insetInlineEnd: 10, top: '50%', transform: 'translateY(-50%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      height: 28, padding: '0 12px', borderRadius: 16,
+                      border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      background: CLR_PRIMARY_FAINT,
+                      color: CLR_PRIMARY,
+                      cursor: 'pointer',
+                      touchAction: 'manipulation',
+                    }}
+                  >
+                    <PenLine size={13} strokeWidth={2.2} />
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.02em' }}>New Post</span>
+                  </motion.button>
+                )}
               </div>
               <div style={{ height: 1, background: CLR_NAV_BORDER }} />
             </div>
