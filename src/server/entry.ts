@@ -335,6 +335,13 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(
+  '/airo-assets',
+  express.static('/shared-storage/public/assets', {
+    maxAge: '30d',
+    fallthrough: true,
+  }),
+);
 
 // Serve uploaded media (avatars, posts, covers) — Railway alternative to nginx alias
 // Files are written under /shared-storage/public/assets/uploads by API handlers
