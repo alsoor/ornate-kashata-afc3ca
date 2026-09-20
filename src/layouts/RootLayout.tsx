@@ -2610,24 +2610,22 @@ function GlobalBottomNavigation() {
             left: '50%',
             top: '50%',
             transform: 'translate(-50%, -50%)',
-            width: 96,
+            width: 64,
             height: 36,
-            border: 'none',
-            background: storyMediaOpen ? 'rgba(0,188,212,0.16)' : 'transparent',
-            borderRadius: 12,
-            color: storyMediaOpen ? '#00BCD4' : 'rgba(0,188,212,0.9)',
+            border: `1.5px solid ${storyMediaOpen ? 'rgba(239,68,68,0.85)' : 'rgba(239,68,68,0.5)'}`,
+            background: storyMediaOpen ? 'rgba(239,68,68,0.16)' : 'rgba(6,20,22,0.85)',
+            borderRadius: 999,
+            color: storyMediaOpen ? '#ef4444' : 'rgba(239,68,68,0.9)',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 2,
             WebkitTapHighlightColor: 'transparent',
-            gap: 6,
           }}
         >
-          <NavBubble id="storyMedia" color="rgba(0,188,212,0.65)" />
-          <PenLine size={16} strokeWidth={2.2} />
-          <span style={{ fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.02em' }}>New Post</span>
+          <NavBubble id="storyMedia" color="rgba(239,68,68,0.65)" />
+          <Plus size={22} strokeWidth={2.4} />
         </button>
         )}
 
