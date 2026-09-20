@@ -3694,6 +3694,39 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
   );
 }
 
+/** Normalize media/avatar URLs so relative paths load on every route */
+function resolveMediaUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  const s = String(url).trim();
+  if (!s) return '';
+  if (/^(https?:|blob:|data:|\/\/)/i.test(s)) {
+    if (s.startsWith('//') && typeof window !== 'undefined') return `${window.location.protocol}${s}`;
+    return s;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      if (s.startsWith('/')) return `${window.location.origin}${s}`;
+      return new URL(s, window.location.origin).href;
+    } catch {
+      return s;
+    }
+  }
+  return s;
+}
+
+function normalizePostMediaFields<T extends {
+  mediaUrl?: string | null;
+  mediaUrls?: string[] | null;
+  authorAvatarUrl?: string | null;
+}>(post: T): T {
+  const mediaUrl = post.mediaUrl ? resolveMediaUrl(post.mediaUrl) : post.mediaUrl;
+  const mediaUrls = Array.isArray(post.mediaUrls)
+    ? post.mediaUrls.map(u => resolveMediaUrl(u)).filter(Boolean)
+    : post.mediaUrls;
+  const authorAvatarUrl = post.authorAvatarUrl ? resolveMediaUrl(post.authorAvatarUrl) : post.authorAvatarUrl;
+  return { ...post, mediaUrl, mediaUrls, authorAvatarUrl };
+}
+
 /** True when author is an approved Business account (yellow badge next to @username) */
 function isAuthorBusinessAccount(authorId?: string | null, authorUsername?: string | null): boolean {
   try {
@@ -3748,11 +3781,13 @@ function BusinessHeadBadgeInline({ compact }: { compact?: boolean }) {
 function PostMediaItems(post: PostItem): { url: string; type: 'image' | 'video' }[] {
   if (post.mediaUrls?.length) {
     return post.mediaUrls.map((url, index) => ({
-      url,
+      url: resolveMediaUrl(url),
       type: post.mediaTypes?.[index] === 'video' ? 'video' : 'image',
-    }));
+    })).filter(m => !!m.url);
   }
-  return post.mediaUrl ? [{ url: post.mediaUrl, type: post.mediaType ?? 'image' }] : [];
+  return post.mediaUrl
+    ? [{ url: resolveMediaUrl(post.mediaUrl), type: post.mediaType ?? 'image' }]
+    : [];
 }
 
 // ── دمج منشورات جاية من السيرفر مع النسخة المحلية الحالية — يحمي منشوراتنا اللي
@@ -3763,19 +3798,20 @@ function mergePostsPreservingMedia(prevPosts: PostItem[], serverPosts: PostItem[
   const prevById = new Map(prevPosts.map(p => [p.id, p]));
   return serverPosts.map(serverPost => {
     const existing = prevById.get(serverPost.id);
-    if (!existing) return serverPost;
+    const normalized = normalizePostMediaFields(serverPost);
+    if (!existing) return normalized;
     const existingCount = existing.mediaUrls?.length ?? (existing.mediaUrl ? 1 : 0);
-    const serverCount = serverPost.mediaUrls?.length ?? (serverPost.mediaUrl ? 1 : 0);
+    const serverCount = normalized.mediaUrls?.length ?? (normalized.mediaUrl ? 1 : 0);
     if (existingCount > serverCount) {
-      return {
-        ...serverPost,
+      return normalizePostMediaFields({
+        ...normalized,
         mediaUrl: existing.mediaUrl,
         mediaType: existing.mediaType,
         mediaUrls: existing.mediaUrls,
         mediaTypes: existing.mediaTypes,
-      };
+      });
     }
-    return serverPost;
+    return normalized;
   });
 }
 
@@ -3916,7 +3952,7 @@ function PostCard({
             aria-label="عرض الملف الشخصي"
             style={{ padding: 0, border: 'none', background: 'none', cursor: isMine ? 'default' : 'pointer', borderRadius: '50%', flexShrink: 0 }}
           >
-            <UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={38} />
+            <UserAvatar name={post.authorName} avatarUrl={resolveMediaUrl(post.authorAvatarUrl) || post.authorAvatarUrl} size={38} />
           </motion.button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ color: '#000000', fontSize: '0.82rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
@@ -5025,7 +5061,7 @@ const MiniProfileModal = ({
 
   const name = profile?.name ?? authorName;
   const username = profile?.username ?? authorUsername;
-  const avatarUrl = profile?.avatarUrl ?? authorAvatarUrl;
+  const avatarUrl = resolveMediaUrl(profile?.avatarUrl ?? authorAvatarUrl) || (profile?.avatarUrl ?? authorAvatarUrl);
   const coverUrl = profile?.coverUrl ?? null;
   const bio = profile?.bio ?? null;
   const phoneNumber = profile?.phoneNumber ?? null;
@@ -5421,7 +5457,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
 
   const name = profile?.name ?? authorName;
   const username = profile?.username ?? authorUsername;
-  const avatarUrl = profile?.avatarUrl ?? authorAvatarUrl;
+  const avatarUrl = resolveMediaUrl(profile?.avatarUrl ?? authorAvatarUrl) || (profile?.avatarUrl ?? authorAvatarUrl);
   const coverUrl = profile?.coverUrl ?? null;
   const pinnedTrack = pinnedTrackFromProfile(profile);
   // الشركات عامة دائماً — لا تُخفى حتى لو وُسم الحساب خاصاً أو بدون صداقة
@@ -9342,7 +9378,7 @@ export default function AddFriendPage() {
         try {
           const d = await res.json() as { url?: string; mediaUrl?: string; path?: string; fileUrl?: string };
           const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path;
-          return u ? String(u) : null;
+          return u ? resolveMediaUrl(String(u)) : null;
         } catch {
           return null;
         }
@@ -9786,13 +9822,13 @@ export default function AddFriendPage() {
 
       if (!saved?.id) throw new Error('المنشور لم يُحفظ');
 
-      // وسم المنشور حسب نوع الناشر حتى يظهر في التبويب الصحيح (مستخدمين ≠ شركات)
-      const tagged = {
+      // Tag post by publisher type so it lands in the correct feed tab
+      const tagged = normalizePostMediaFields({
         ...saved!,
         publisherType: isCompanyPublisher ? 'company' as const : 'user' as const,
         isCompanyPost: !!isCompanyPublisher,
         authorIsCompany: !!isCompanyPublisher,
-      };
+      } as PostItem);
       setPosts(prev => [tagged, ...prev]);
       // صور/فيديو الشبكة فقط (destination photos/videos) — منتجات المنشورات النصية تبقى في التغذية العامة
       if (tagged.mediaUrl && tagged.audience !== 'text' && tagged.destination !== 'text') {
