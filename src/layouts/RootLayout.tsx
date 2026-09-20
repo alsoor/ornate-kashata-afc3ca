@@ -329,6 +329,23 @@ function GlobalBottomNavigation() {
   /** فقاعات النقر — مرة واحدة عند الضغط ثم تُزال تلقائياً (لا تتكرر كل ثانية) */
   const [navBubble, setNavBubble] = useState<Record<string, number>>({});
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [friendsPanelOpen, setFriendsPanelOpen] = useState(false);
+  useEffect(() => {
+    const onOpen = () => setFriendsPanelOpen(true);
+    const onClose = () => setFriendsPanelOpen(false);
+    window.addEventListener('stooorna:friends-panel-opened', onOpen);
+    window.addEventListener('stooorna:friends-panel-closed', onClose);
+    window.addEventListener('stooorna:close-friends-panel', onClose);
+    return () => {
+      window.removeEventListener('stooorna:friends-panel-opened', onOpen);
+      window.removeEventListener('stooorna:friends-panel-closed', onClose);
+      window.removeEventListener('stooorna:close-friends-panel', onClose);
+    };
+  }, []);
+  useEffect(() => {
+    if (!settingsSheetOpen) return;
+    setPlusMenuOpen(false);
+  }, [settingsSheetOpen]);
   const settingsSheetOpen = location.pathname === '/settings' || location.pathname.startsWith('/settings');
   const navBubbleTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   function popNavBubble(id: string) {
@@ -2792,6 +2809,7 @@ function GlobalBottomNavigation() {
                   onClick={() => {
                     setPlusMenuOpen(false);
                     popNavBubble('friends');
+                    setFriendsPanelOpen(true);
                     const open = () => {
                       try {
                         window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', {
@@ -2857,10 +2875,27 @@ function GlobalBottomNavigation() {
             type="button"
             onClick={() => {
               popNavBubble('plus');
-              setPlusMenuOpen(o => !o);
+              // If fan open -> close fan
+              if (plusMenuOpen) {
+                setPlusMenuOpen(false);
+                return;
+              }
+              // If settings open -> close settings
+              if (settingsSheetOpen) {
+                window.dispatchEvent(new CustomEvent('stooorna:close-settings-sheet'));
+                return;
+              }
+              // If friends square open -> close it
+              if (friendsPanelOpen) {
+                window.dispatchEvent(new CustomEvent('stooorna:close-friends-panel'));
+                setFriendsPanelOpen(false);
+                return;
+              }
+              // Otherwise open fan
+              setPlusMenuOpen(true);
             }}
             aria-label="Open menu"
-            aria-expanded={plusMenuOpen}
+            aria-expanded={plusMenuOpen || settingsSheetOpen || friendsPanelOpen}
             style={{
               position: 'absolute',
               right: 0,
@@ -2869,9 +2904,9 @@ function GlobalBottomNavigation() {
               width: 44,
               height: 36,
               border: 'none',
-              background: plusMenuOpen ? 'rgba(0,188,212,0.14)' : 'transparent',
+              background: (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? 'rgba(0,188,212,0.14)' : 'transparent',
               borderRadius: 12,
-              color: plusMenuOpen ? '#00BCD4' : 'rgba(0,188,212,0.85)',
+              color: (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? '#00BCD4' : 'rgba(0,188,212,0.85)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -2884,7 +2919,7 @@ function GlobalBottomNavigation() {
             <span style={{
               display: 'flex',
               transition: 'transform 0.25s ease',
-              transform: plusMenuOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+              transform: (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? 'rotate(45deg)' : 'rotate(0deg)',
             }}>
               <Plus size={26} strokeWidth={2.4} />
             </span>

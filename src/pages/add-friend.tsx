@@ -10672,6 +10672,7 @@ export default function AddFriendPage() {
     if (searchParams.get('openChats') === '1' || searchParams.get('openFriendsPanel') === '1') {
       setFriendsPanelTab(user ? 'friends' : 'company');
       setNamesBarOpen(true);
+      try { window.dispatchEvent(new CustomEvent('stooorna:friends-panel-opened')); } catch { /* */ }
     }
     if (searchParams.get('panel') !== 'chats') {
       setUserShareChatPeer(null);
@@ -10683,9 +10684,27 @@ export default function AddFriendPage() {
       const d = (e as CustomEvent).detail as { tab?: 'friends' | 'company' } | undefined;
       setFriendsPanelTab(d?.tab || (user ? 'friends' : 'company'));
       setNamesBarOpen(true);
+      try { window.dispatchEvent(new CustomEvent('stooorna:friends-panel-opened')); } catch { /* */ }
+    };
+    const onClose = () => {
+      setNamesBarOpen(false);
+      try {
+        const next = new URLSearchParams(window.location.search);
+        if (next.has('openFriendsPanel') || next.has('openChats')) {
+          next.delete('openFriendsPanel');
+          next.delete('openChats');
+          const q = next.toString();
+          window.history.replaceState({}, '', window.location.pathname + (q ? '?' + q : ''));
+        }
+      } catch { /* */ }
+      try { window.dispatchEvent(new CustomEvent('stooorna:friends-panel-closed')); } catch { /* */ }
     };
     window.addEventListener('stooorna:open-friends-panel', onOpen as EventListener);
-    return () => window.removeEventListener('stooorna:open-friends-panel', onOpen as EventListener);
+    window.addEventListener('stooorna:close-friends-panel', onClose as EventListener);
+    return () => {
+      window.removeEventListener('stooorna:open-friends-panel', onOpen as EventListener);
+      window.removeEventListener('stooorna:close-friends-panel', onClose as EventListener);
+    };
   }, [user]);
 
   // تحميل دليل الشركات مبكراً لتصنيف الستوريات والشير (وليس فقط عند فتح اللوحة)
@@ -15688,29 +15707,37 @@ export default function AddFriendPage() {
       <AnimatePresence>
         {namesBarOpen && (
           <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
             onClick={() => {
               setNamesBarOpen(false);
+              try { window.dispatchEvent(new CustomEvent('stooorna:friends-panel-closed')); } catch { /* */ }
               const next = new URLSearchParams(searchParams);
               if (next.has('openChats')) { next.delete('openChats'); setSearchParams(next, { replace: true }); }
               if (next.has('openFriendsPanel')) { next.delete('openFriendsPanel'); setSearchParams(next, { replace: true }); }
             }}
-            style={{ position: 'fixed', inset: 0, zIndex: 10080, background: 'rgba(0,0,0,0.5)', overflow: 'hidden' }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10080,
+              background: 'rgba(0,0,0,0.45)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
+              boxSizing: 'border-box',
+            }}
           >
             <motion.div
               onClick={e => e.stopPropagation()}
-              initial={{ y: '-100%' }} animate={{ y: 0 }} exit={{ y: '-100%' }}
-              transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.85 }}
+              initial={{ opacity: 0, scale: 0.88 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
               style={{
-                position: 'absolute', top: 0, left: 0, right: 0,
-                height: 'min(62vh, calc(100dvh - 120px))',
-                maxHeight: 'min(62vh, calc(100dvh - 120px))',
+                width: 'min(92vw, 360px)',
+                height: 'min(56vh, 420px)',
+                maxHeight: 'min(56vh, 420px)',
                 display: 'flex', flexDirection: 'column',
-                paddingTop: 'max(10px, env(safe-area-inset-top, 0px))',
                 background: PAGE_BG,
-                borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
-                borderBottomLeftRadius: 18, borderBottomRightRadius: 18,
-                boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+                border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                borderRadius: 18,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
                 overflow: 'hidden',
               }}
             >
@@ -15750,6 +15777,7 @@ export default function AddFriendPage() {
                 </div>
                 <button type="button" onClick={() => {
                   setNamesBarOpen(false);
+                  try { window.dispatchEvent(new CustomEvent('stooorna:friends-panel-closed')); } catch { /* */ }
                   const next = new URLSearchParams(searchParams);
                   if (next.has('openChats')) { next.delete('openChats'); setSearchParams(next, { replace: true }); }
                   if (next.has('openFriendsPanel')) { next.delete('openFriendsPanel'); setSearchParams(next, { replace: true }); }
