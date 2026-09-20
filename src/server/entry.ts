@@ -275,7 +275,8 @@ const cors = require('cors');
 const allowedOrigins = [
     'https://stooorna.com',
     'https://www.stooorna.com',
-    'https://stoooorna.onrender.com'
+    'https://stoooorna.onrender.com',
+    'https://4zol715d.up.railway.app',
 ];
 
 app.use(cors({
@@ -334,6 +335,20 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve uploaded media (avatars, posts, covers) — Railway alternative to nginx alias
+// Files are written under /shared-storage/public/assets/uploads by API handlers
+// and exposed publicly as /airo-assets/uploads/...
+app.use(
+  '/airo-assets',
+  express.static('/shared-storage/public/assets', {
+    maxAge: '30d',
+    fallthrough: true,
+    setHeaders(res) {
+      res.set('Cache-Control', 'public, max-age=2592000');
+    },
+  }),
+);
 
 // ── IP tracking: lightweight — stored via /api/me/update-ip ─────────────────
 

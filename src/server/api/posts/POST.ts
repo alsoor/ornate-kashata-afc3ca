@@ -126,10 +126,10 @@ export default async function handler(req: Request, res: Response) {
 
     // The post is already safely stored. Profile lookup is best-effort only:
     // it must never turn a successful text post into a failed response.
-    let u: Record<string, unknown> = {};
+        let u: Record<string, unknown> = {};
     try {
       const userRows = (await db.execute(
-        sql`SELECT name, username, image FROM \user\ WHERE id = ${userId} LIMIT 1`
+        sql`SELECT name, username, avatar_url, image FROM user WHERE id = ${userId} LIMIT 1`
       ) as unknown as [any[]])[0];
       u = userRows?.[0] ?? {};
     } catch (profileError) {
@@ -138,8 +138,11 @@ export default async function handler(req: Request, res: Response) {
 
     const authorName = typeof u.name === 'string' ? u.name : (session.user.name ?? '');
     const authorUsername = typeof u.username === 'string' ? u.username : null;
-    const authorAvatarUrl = typeof u.image === 'string' ? u.image : null;
-    const post = {
+    const authorAvatarUrl =
+      (typeof u.avatar_url === 'string' && u.avatar_url) ? u.avatar_url
+      : (typeof u.image === 'string' && u.image) ? u.image
+      : null;
+const post = {
       id: insertId,
       authorId: userId,
       authorName,

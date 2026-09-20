@@ -1,7 +1,7 @@
 /**
  * POST /api/users/me/avatar
- * Accepts an image file (multipart or raw binary), saves to shared-storage,
- * updates user.avatar_url, returns { avatarUrl }.
+ * Accepts raw binary image (Content-Type: image/*), saves to shared-storage,
+ * updates user.avatar_url AND user.image, returns { avatarUrl }.
  */
 import type { Request, Response } from 'express';
 import { db } from '../../../../db/client.js';
@@ -22,12 +22,11 @@ export default async function handler(req: Request, res: Response) {
 
     const meId = session.user.id;
 
-    // Accept raw binary body (Content-Type: image/*)
-    const buf: Buffer = req.body;
+    const buf: Buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
     if (!buf || buf.length === 0) return res.status(400).json({ error: 'No image data' });
 
-    const ct = req.headers['content-type'] ?? 'image/jpeg';
-    const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : 'jpg';
+    const ct = String(req.headers['content-type'] ?? 'image/jpeg').toLowerCase();
+    const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : ct.includes('gif') ? 'gif' : 'jpg';
     const filename = `${meId}-${Date.now()}.${ext}`;
 
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
@@ -35,7 +34,12 @@ export default async function handler(req: Request, res: Response) {
     await fs.writeFile(filePath, buf);
 
     const avatarUrl = `${PUBLIC_BASE}/${filename}`;
-    await db.update(user).set({ avatarUrl }).where(eq(user.id, meId));
+    // Write both columns: feed uses avatar_url; some session paths still read image
+    try {
+      await db.update(user).set({ avatarUrl, image: avatarUrl } as any).where(eq(user.id, meId));
+    } catch {
+      await db.update(user).set({ avatarUrl }).where(eq(user.id, meId));
+    }
 
     res.json({ ok: true, avatarUrl });
   } catch (e) {

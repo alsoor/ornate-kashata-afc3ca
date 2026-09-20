@@ -65,7 +65,7 @@ export default async function handler(req: Request, res: Response) {
         SELECT
           p.id, p.user_id, p.media_url, p.media_type, p.caption,
           p.like_count, p.comment_count, p.created_at,
-          u.name, u.username, u.avatar_url, u.name_color,
+          u.name, u.username, COALESCE(u.avatar_url, u.image) AS avatar_url, u.name_color,
           COALESCE(up.is_private, FALSE) AS author_is_private,
           (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id AND pl.user_id = ${currentUserId}) AS liked_by_me,
           (SELECT COUNT(*) FROM post_reposts pr WHERE pr.post_id = p.id) AS repost_count,
@@ -84,7 +84,7 @@ export default async function handler(req: Request, res: Response) {
         SELECT
           p.id, p.user_id, p.media_url, p.media_type, p.caption,
           p.like_count, p.comment_count, p.created_at,
-          u.name, u.username, u.avatar_url, u.name_color,
+          u.name, u.username, COALESCE(u.avatar_url, u.image) AS avatar_url, u.name_color,
           COALESCE(up.is_private, FALSE) AS author_is_private,
           0 AS liked_by_me,
           (SELECT COUNT(*) FROM post_reposts pr WHERE pr.post_id = p.id) AS repost_count,
@@ -169,10 +169,10 @@ export default async function handler(req: Request, res: Response) {
           ru.id AS reposter_id,
           ru.name AS reposter_name,
           ru.username AS reposter_username,
-          ru.avatar_url AS reposter_avatar,
+          COALESCE(ru.avatar_url, ru.image) AS reposter_avatar,
           p.id, p.user_id, p.media_url, p.media_type, p.caption,
           p.like_count, p.comment_count, p.created_at,
-          u.name, u.username, u.avatar_url, u.name_color,
+          u.name, u.username, COALESCE(u.avatar_url, u.image) AS avatar_url, u.name_color,
           COALESCE(up.is_private, FALSE) AS author_is_private,
           ${currentUserId
             ? sql`(SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id AND pl.user_id = ${currentUserId}) AS liked_by_me,
