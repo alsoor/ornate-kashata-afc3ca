@@ -383,28 +383,10 @@ export function clearAllDeletedUsers() {
 
 /** إعادة تعيين اليوزرات المحذوفة — تسمح بإعادة إنشاء نفس اليوزر (فرد/شركة) */
 export function ensureDeletedUsersResetOnce() {
+  // Soft-deleted users must stay in recovery list — do not clear on boot.
   try {
-    // v3: إلغاء حظر الحسابات المحذوفة نهائياً للسماح بإعادة التسجيل
-    if (localStorage.getItem('stooorna_deleted_users_reset_v3') === '1') {
-      // تأكد أن القائمة فارغة دائماً
-      try { localStorage.removeItem(DELETED_USERS_KEY); } catch { /* */ }
-      return;
-    }
-    const old = loadDeletedUsers();
-    for (const u of old) {
-      if (u.username) markUsernameFreed(String(u.username).replace(/^@/, '').replace(/^deleted_/, ''));
-      if (u.username && String(u.username).startsWith('deleted_')) {
-        markUsernameFreed(String(u.username).replace(/^deleted_/, ''));
-      }
-      if (u.email) {
-        markUsernameFreed(String(u.email).split('@')[0]);
-        markUsernameFreed(String(u.email));
-      }
-    }
-    clearAllDeletedUsers();
-    try { localStorage.removeItem(DELETED_USERS_KEY); } catch { /* */ }
-    localStorage.setItem('stooorna_deleted_users_reset_v3', '1');
-    localStorage.setItem('stooorna_deleted_users_reset_v2', '1');
+    if (localStorage.getItem('stooorna_deleted_users_keep_v4') === '1') return;
+    localStorage.setItem('stooorna_deleted_users_keep_v4', '1');
   } catch { /* ignore */ }
 }
 
@@ -433,12 +415,87 @@ export function markUserDeleted(u: { id?: string | null; email?: string | null; 
 
 export function isUserDeleted(u: { id?: string | null; email?: string | null; username?: string | null } | null | undefined): boolean {
   if (!u) return false;
-  // تم إلغاء الحظر النهائي — يمكن إعادة استخدام اليوزر/الإيميل بعد الحذف
-  // نُبقي فقط تصفية العرض للحسابات التي يوزرها يبدأ بـ deleted_ (حساب شبح من السيرفر)
   const username = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
   if (username.startsWith('deleted_')) return true;
-  // القائمة المحلية فارغة بعد الريست — لا نحظر التسجيل
-  return false;
+  const id = String(u.id || '').trim();
+  const email = String(u.email || '').trim().toLowerCase();
+  const list = loadDeletedUsers();
+  return list.some(x =>
+    (id && x.id === id) ||
+    (email && String(x.email || '').toLowerCase() === email) ||
+    (username && String(x.username || '').replace(/^@/, '').toLowerCase() === username),
+  );
+}
+
+/** Soft-delete only — keeps row in recovery list (not permanent). */
+export function softDeleteUser(u: { id?: string | null; email?: string | null; username?: string | null; name?: string | null }) {
+  return markUserDeleted(u);
+}
+
+/** Restore a soft-deleted user so they reappear in User Control / app. */
+export function restoreDeletedUser(u: { id?: string | null; email?: string | null; username?: string | null }) {
+  const id = String(u.id || '').trim();
+  const email = String(u.email || '').trim().toLowerCase();
+  const username = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
+  const next = loadDeletedUsers().filter(x => {
+    if (id && x.id === id) return false;
+    if (email && String(x.email || '').toLowerCase() === email) return false;
+    if (username && String(x.username || '').replace(/^@/, '').toLowerCase() === username) return false;
+    return true;
+  });
+  saveDeletedUsers(next);
+  return next;
+}
+
+/** Permanent wipe: remove from recovery list, free username, try server hard-delete. */
+export async function permanentlyWipeUser(u: {
+  id?: string | null;
+  email?: string | null;
+  username?: string | null;
+}): Promise<boolean> {
+  const id = String(u.id || '').trim();
+  const email = String(u.email || '').trim().toLowerCase();
+  const username = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
+  // Free username for reuse
+  if (username) markUsernameFreed(username);
+  if (username) markUsernameFreed(`deleted_${username}`);
+  // Remove from soft-delete recovery list
+  restoreDeletedUser(u);
+  // Drop from company registry if present
+  try {
+    const reg = loadCompaniesRegistry().filter(c => {
+      const cem = String(c.email || '').toLowerCase();
+      const cun = String(c.username || '').replace(/^@/, '').toLowerCase();
+      const cid = String(c.id || '');
+      const cuid = String(c.userId || '');
+      if (email && cem === email) return false;
+      if (username && cun === username) return false;
+      if (id && (cid === id || cuid === id)) return false;
+      return true;
+    });
+    saveCompaniesRegistry(reg);
+  } catch { /* */ }
+  // Server hard delete attempts
+  const urls: string[] = [];
+  if (id) {
+    urls.push(`/api/owner/users/${id}/purge`, `/api/owner/users/${id}?hard=1`, `/api/owner/users/${id}`, `/api/support/users/${id}`);
+  }
+  if (email) {
+    urls.push(`/api/owner/users/by-email/${encodeURIComponent(email)}/purge`);
+  }
+  let ok = false;
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, {
+        method: url.includes('purge') || url.includes('hard') ? 'POST' : 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hard: true, permanent: true, email, username, id }),
+      });
+      if (r.ok || r.status === 204 || r.status === 404) { ok = true; break; }
+    } catch { /* next */ }
+  }
+  return ok;
 }
 
 
@@ -703,7 +760,25 @@ export function getCompanyNotice(email: string): string | null {
 
 export function findCompanyByEmail(email: string): CompanyRegistration | null {
   const em = email.trim().toLowerCase();
-  return loadCompaniesRegistry().find(c => c.email.toLowerCase() === em) || null;
+  if (!em) return null;
+  const hit = loadCompaniesRegistry().find(c => String(c.email || '').toLowerCase() === em);
+  if (hit) return hit;
+  // Fallback: raw registry (includes soft-deleted) so approved companies can still log in
+  try {
+    const raw = localStorage.getItem(COMPANIES_REGISTRY_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    const arr = Array.isArray(list) ? (list as CompanyRegistration[]) : [];
+    const found = arr.find(c => String(c.email || '').toLowerCase() === em) || null;
+    if (found) {
+      const remembered = getRememberedCompanyStatus(em);
+      if (remembered === 'active' || found.status === 'active') {
+        try { restoreDeletedUser({ id: found.userId || found.id, email: em, username: found.username }); } catch { /* */ }
+        return { ...found, status: remembered === 'active' ? 'active' : found.status };
+      }
+      return found;
+    }
+  } catch { /* */ }
+  return null;
 }
 
 export function loadCompanyActivations(): Record<string, { status: CompanyRegStatus; at: string; email: string }> {
@@ -3541,6 +3616,10 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         if (treatAsCompany) {
           let companyReg = reg;
           const remembered = getRememberedCompanyStatus(em);
+          if (remembered === 'active' || companyReg?.status === 'active') {
+            try { restoreDeletedUser({ id: companyReg?.userId || companyReg?.id, email: em, username: companyReg?.username }); } catch { /* */ }
+            companyReg = findCompanyByEmail(em) || companyReg;
+          }
           const remote = await fetchCompanyStatusFromServer(em);
           // Priority: any "active" wins; then local remembered; then remote; then registry.
           // Never let a stale remote "pending" override a local admin Approve.
@@ -3623,27 +3702,39 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           // active: sign in, or create auth user then sign in
           if (companyReg.status === 'active') {
             const regRow = companyReg;
+            // Approved companies must never stay soft-deleted
+            try { restoreDeletedUser({ id: regRow.userId || regRow.id, email: em, username: regRow.username }); } catch { /* */ }
+            rememberCompanyActivation(em, 'active');
+            try { await pushCompanyStatusToServer({ ...regRow, status: 'active' }, 'active'); } catch { /* */ }
             const notice = getCompanyNotice(em);
             if (notice) setCompanyPendingMsg(notice);
             const pwCandidates = Array.from(new Set(
               [password, regRow.password].filter((p): p is string => !!p && String(p).length > 0).map(String)
             ));
+            if (pwCandidates.length === 0 && password) pwCandidates.push(password);
             try {
+              const finishOk = async () => {
+                rememberCompanyActivation(em, 'active');
+                try { setSessionAccountKind('company'); } catch { /* */ }
+                setError('');
+                setCompanyPendingMsg('');
+                setLoading(false);
+              };
               // 1) Try sign-in with each known password
               for (const pw of pwCandidates) {
                 const trySignIn = await signIn.email({ email: em, password: pw });
                 if (!(trySignIn as { error?: unknown })?.error) {
-                  rememberCompanyActivation(em, 'active');
-                  try { setSessionAccountKind('company'); } catch { /* */ }
-                  setError('');
-                  setCompanyPendingMsg('');
-                  setLoading(false);
+                  await finishOk();
                   return;
                 }
               }
               // 2) Create auth account then sign in (first login after Approve)
               const displayName = regRow.companyName || regRow.ownerName || em;
-              const pwForCreate = pwCandidates[0] || password;
+              const pwForCreate = pwCandidates[0] || password || `Co${Date.now().toString(36)}A1`;
+              // Persist password used so later logins work on this device
+              try {
+                upsertCompanyRegistration({ ...regRow, password: pwForCreate, status: 'active' });
+              } catch { /* */ }
               const up = await signUp.email({
                 name: displayName,
                 email: em,
@@ -3653,29 +3744,37 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
               if (!(up as { error?: unknown })?.error) {
                 const after = await signIn.email({ email: em, password: pwForCreate });
                 if (!(after as { error?: unknown })?.error) {
-                  rememberCompanyActivation(em, 'active');
-                  try { setSessionAccountKind('company'); } catch { /* */ }
-                  setError('');
-                  setCompanyPendingMsg('');
-                  setLoading(false);
+                  await finishOk();
                   return;
                 }
               }
-              // 3) signUp may fail if user already exists — retry all passwords again
+              // 3) Existing account — retry passwords + force provision helper
               for (const pw of pwCandidates) {
                 const res2 = await signIn.email({ email: em, password: pw });
                 if (!(res2 as { error?: unknown })?.error) {
-                  rememberCompanyActivation(em, 'active');
-                  try { setSessionAccountKind('company'); } catch { /* */ }
-                  setError('');
-                  setCompanyPendingMsg('');
-                  setLoading(false);
+                  await finishOk();
+                  return;
+                }
+              }
+              try {
+                await provisionCompanyAuthAccount({ ...regRow, password: pwForCreate, status: 'active' });
+                const res3 = await signIn.email({ email: em, password: pwForCreate });
+                if (!(res3 as { error?: unknown })?.error) {
+                  await finishOk();
+                  return;
+                }
+              } catch { /* */ }
+              // 4) Last resort: sign in with the password the user typed now
+              if (password) {
+                const res4 = await signIn.email({ email: em, password });
+                if (!(res4 as { error?: unknown })?.error) {
+                  await finishOk();
                   return;
                 }
               }
               setError(
                 (up as { error?: { message?: string } })?.error?.message
-                || 'فشل تسجيل الدخول — تأكد من كلمة المرور المستخدمة عند التسجيل'
+                || 'Login failed — use the same password from company registration'
               );
               setLoading(false);
               return;
@@ -4938,6 +5037,9 @@ export default function SettingsPage() {
   const [supportCtrlUser, setSupportCtrlUser] = useState<SupportCtrlUser | null>(null);
   // ── Owner-only (@Stooorna): Companies registry admin ──
   const [showOwnerCompanies, setShowOwnerCompanies] = useState(false);
+  const [showRecoveredUsers, setShowRecoveredUsers] = useState(false);
+  const [recoveredUsers, setRecoveredUsers] = useState<DeletedUserRecord[]>([]);
+  const [recoveredBusyId, setRecoveredBusyId] = useState<string>('');
   const [ownerCompanies, setOwnerCompanies] = useState<CompanyRegistration[]>([]);
   // New independent company registrations from the companies table
   const [ownerNewCompanies, setOwnerNewCompanies] = useState<{
@@ -5167,7 +5269,7 @@ export default function SettingsPage() {
 
   // Hide global app bottom tabs while any support chat / inbox overlay is open
   useEffect(() => {
-    const hidden = !!(showSupportChat || ownerChatUser || showOwnerInbox || showSupportUsers || supportCtrlUser || showOwnerCompanies || ownerCompanyDetail);
+    const hidden = !!(showSupportChat || ownerChatUser || showOwnerInbox || showSupportUsers || supportCtrlUser || showOwnerCompanies || ownerCompanyDetail || showRecoveredUsers);
     try {
       document.body.classList.toggle('stooorna-support-chat-open', hidden);
       window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden } }));
@@ -5178,7 +5280,7 @@ export default function SettingsPage() {
         window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } }));
       } catch { /* ignore */ }
     };
-  }, [showSupportChat, ownerChatUser, showOwnerInbox, showSupportUsers, supportCtrlUser, showOwnerCompanies, ownerCompanyDetail]);
+  }, [showSupportChat, ownerChatUser, showOwnerInbox, showSupportUsers, supportCtrlUser, showOwnerCompanies, ownerCompanyDetail, showRecoveredUsers]);
 
   async function patchSupportUser(userId: string, body: Record<string, unknown>) {
     // Prefer owner admin route; fallback to support-specific if added later
@@ -8132,6 +8234,53 @@ export default function SettingsPage() {
                     <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
                   </div>
                 </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => {
+                    setRecoveredUsers(loadDeletedUsers());
+                    startTransition(() => setShowRecoveredUsers(true));
+                  }}
+                  className="flex items-center justify-between"
+                  style={{
+                    width: '100%',
+                    background: T.surface,
+                    border: `1px solid ${T.surfaceBorder}`,
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    color: T.text,
+                    cursor: 'pointer',
+                  }}
+                  aria-label="Banned and Deleted"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center" style={{
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
+                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308',
+                    }}>
+                      <ShieldCheck size={19} strokeWidth={2.1} />
+                    </span>
+                    <span style={{ textAlign: 'left' }}>
+                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Banned / Deleted</span>
+                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
+                        Restore · Unban · Permanent wipe
+                      </span>
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {loadDeletedUsers().length > 0 && (
+                      <span style={{
+                        minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
+                        background: '#eab308', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {loadDeletedUsers().length > 9 ? '9+' : loadDeletedUsers().length}
+                      </span>
+                    )}
+                    <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
+                  </div>
+                </motion.button>
               </div>
             )}
 
@@ -8140,7 +8289,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Bottom nav bar — hidden while support overlays are open */}
-        {!showSupportChat && !ownerChatUser && !showOwnerInbox && !showSupportUsers && !supportCtrlUser && !showOwnerCompanies && !ownerCompanyDetail && (
+        {!showSupportChat && !ownerChatUser && !showOwnerInbox && !showSupportUsers && !supportCtrlUser && !showOwnerCompanies && !ownerCompanyDetail && !showRecoveredUsers && (
           <div className="w-full flex items-center justify-center px-10 py-4 z-10" style={{
             background: T.navBg,
             borderTop: `1px solid ${T.navBorder}`
@@ -9405,6 +9554,7 @@ export default function SettingsPage() {
                           try {
                             await pushCompanyStatusToServer({ ...co, status: next }, next);
                             if (next === 'active') {
+                              try { restoreDeletedUser({ id: co.userId || co.id, email: co.email, username: co.username }); } catch { /* */ }
                               await provisionCompanyAuthAccount({ ...co, status: 'active' });
                             }
                           } finally {
@@ -9620,6 +9770,7 @@ export default function SettingsPage() {
                     void (async () => {
                       try {
                         await pushCompanyStatusToServer({ ...ownerCompanyDetail, status: 'active' }, 'active');
+                        try { restoreDeletedUser({ id: ownerCompanyDetail.userId || ownerCompanyDetail.id, email: ownerCompanyDetail.email, username: ownerCompanyDetail.username }); } catch { /* */ }
                         await provisionCompanyAuthAccount({ ...ownerCompanyDetail, status: 'active' });
                       } finally {
                         startTransition(() => { setOwnerCompanies(loadCompaniesRegistryLight()); });
@@ -9843,6 +9994,150 @@ export default function SettingsPage() {
           )}
         </div>
       )}
+
+
+      {/* ── Owner: Banned / soft-deleted recovery ── */}
+      <AnimatePresence>
+        {showRecoveredUsers && isSupportOwnerAccount(
+          user as { email?: string | null; username?: string | null; name?: string | null },
+          profileUsername,
+        ) && (
+          <motion.div
+            key="recovered-users"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10350,
+              background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(10px)',
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+              borderBottom: '1px solid rgba(234,179,8,0.25)',
+              background: 'linear-gradient(180deg, #1a1608 0%, #0a0e0e 100%)',
+              minHeight: 52, flexShrink: 0,
+            }}>
+              <button
+                type="button"
+                onClick={() => setShowRecoveredUsers(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#eab308', padding: 2 }}
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.95rem' }}>Banned / Deleted</p>
+                <p style={{ margin: '1px 0 0', color: 'rgba(200,190,150,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
+                  Restore accounts or permanent wipe
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRecoveredUsers(loadDeletedUsers())}
+                style={{
+                  border: '1px solid rgba(234,179,8,0.35)', background: 'rgba(234,179,8,0.1)',
+                  color: '#eab308', borderRadius: 8, padding: '6px 10px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer',
+                }}
+              >
+                Refresh
+              </button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
+              {recoveredUsers.length === 0 && (
+                <div style={{
+                  padding: 24, textAlign: 'center', color: 'rgba(180,180,160,0.7)',
+                  border: '1px dashed rgba(234,179,8,0.25)', borderRadius: 14,
+                }}>
+                  No banned or soft-deleted accounts in recovery list
+                </div>
+              )}
+              {recoveredUsers.map((row) => {
+                const key = row.id || row.email || row.username || Math.random().toString(36);
+                const busy = recoveredBusyId === key;
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      marginBottom: 10, padding: '12px 14px', borderRadius: 14,
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(234,179,8,0.2)',
+                    }}
+                  >
+                    <p style={{ margin: 0, color: '#f5e6a8', fontWeight: 800, fontSize: '0.88rem' }}>
+                      {row.username ? `@${String(row.username).replace(/^@/, '')}` : (row.email || row.id)}
+                    </p>
+                    {row.email && (
+                      <p style={{ margin: '4px 0 0', color: 'rgba(180,180,160,0.75)', fontSize: '0.72rem' }}>{row.email}</p>
+                    )}
+                    <p style={{ margin: '4px 0 0', color: 'rgba(150,150,130,0.6)', fontSize: '0.65rem' }}>
+                      Soft-deleted {row.deletedAt ? new Date(row.deletedAt).toLocaleString() : ''}
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={async () => {
+                          setRecoveredBusyId(key);
+                          try {
+                            restoreDeletedUser(row);
+                            // Unban on server if possible
+                            if (row.id) {
+                              try {
+                                await fetch(`/api/owner/users/${row.id}`, {
+                                  method: 'PATCH',
+                                  credentials: 'include',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ isBanned: false, banned: false, active: true, status: 'active' }),
+                                });
+                              } catch { /* */ }
+                            }
+                            setRecoveredUsers(loadDeletedUsers());
+                            try { await loadOwnerData(); } catch { /* */ }
+                          } finally {
+                            setRecoveredBusyId('');
+                          }
+                        }}
+                        style={{
+                          flex: 1, minWidth: 100, padding: '10px 12px', borderRadius: 10, border: 'none',
+                          background: '#22c55e', color: '#041018', fontWeight: 800, fontSize: '0.78rem',
+                          cursor: 'pointer', opacity: busy ? 0.6 : 1,
+                        }}
+                      >
+                        Restore / Unban
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={async () => {
+                          if (!window.confirm('PERMANENT delete: wipe all data and free the username. This cannot be undone.')) return;
+                          setRecoveredBusyId(key);
+                          try {
+                            await permanentlyWipeUser(row);
+                            setRecoveredUsers(loadDeletedUsers());
+                          } finally {
+                            setRecoveredBusyId('');
+                          }
+                        }}
+                        style={{
+                          flex: 1, minWidth: 100, padding: '10px 12px', borderRadius: 10, border: 'none',
+                          background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: '0.78rem',
+                          cursor: 'pointer', opacity: busy ? 0.6 : 1,
+                        }}
+                      >
+                        Permanent wipe
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Music modal — from profile Music button ── */}
       <AnimatePresence>
