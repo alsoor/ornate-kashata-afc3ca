@@ -15039,7 +15039,7 @@ export default function AddFriendPage() {
               transformOrigin: 'center center',
             }}
           >
-            {/* هيدر علوي: أيقونة التطبيق | الشركات — يختفي بالتمرير مثل الشريط السفلي (DOM مباشر) */}
+            {/* Top header: centered STOOORNA with slow shine; wave pulse when new public posts arrive */}
             <div
               ref={postsChromeTopRef}
               style={{
@@ -15047,11 +15047,10 @@ export default function AddFriendPage() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 22,
-              minHeight: 40,
-              paddingTop: 'max(6px, env(safe-area-inset-top, 0px))',
-              paddingBottom: 8,
-              borderBottom: `1.5px solid ${CLR_PRIMARY}`,
+              minHeight: 28,
+              paddingTop: 'max(4px, env(safe-area-inset-top, 0px))',
+              paddingBottom: 4,
+              borderBottom: '1px solid rgba(0,188,212,0.35)',
               background: 'rgba(6,14,14,0.96)',
               transform: 'translate3d(0,0,0)',
               opacity: 1,
@@ -15060,80 +15059,49 @@ export default function AddFriendPage() {
               pointerEvents: 'auto',
               backfaceVisibility: 'hidden' as const,
             }}>
+              <style>{`
+                @keyframes stooornaTitleShine {
+                  0% { background-position: 200% center; }
+                  100% { background-position: -200% center; }
+                }
+                @keyframes stooornaTitleWave {
+                  0%, 100% { transform: scale(1); letter-spacing: 0.18em; filter: brightness(1); }
+                  35% { transform: scale(1.06); letter-spacing: 0.22em; filter: brightness(1.35); }
+                  70% { transform: scale(0.98); letter-spacing: 0.16em; filter: brightness(1.1); }
+                }
+              `}</style>
               <button
                 type="button"
-                onClick={() => setTextFeedTab('app')}
-                aria-label="التطبيق — منشورات المستخدمين"
+                onClick={() => {
+                  if (newPostsAvailable > 0) loadPendingNewPosts();
+                }}
+                aria-label="STOOORNA"
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: 4, borderRadius: '50%', cursor: 'pointer',
+                  padding: '2px 8px', borderRadius: 8, cursor: newPostsAvailable > 0 ? 'pointer' : 'default',
                   background: 'transparent', border: 'none',
                 }}
               >
-                <style>{`@keyframes stooornaAppIconSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
                 <span
-                  aria-hidden
                   style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: '50%',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: 'radial-gradient(circle at 35% 30%, #123a40 0%, #061014 70%)',
-                    boxShadow: textFeedTab === 'app'
-                      ? '0 0 12px rgba(0,188,212,0.55), inset 0 0 0 1.5px rgba(0,188,212,0.85)'
-                      : 'inset 0 0 0 1.5px rgba(0,188,212,0.35)',
-                    opacity: textFeedTab === 'app' ? 1 : 0.45,
-                    transition: 'opacity 0.2s ease, box-shadow 0.2s ease',
-                    animation: textFeedTab === 'app' ? 'stooornaAppIconSpin 12s linear infinite' : 'none',
+                    fontSize: '0.72rem',
+                    fontWeight: 600,
+                    letterSpacing: '0.18em',
+                    lineHeight: 1.2,
+                    userSelect: 'none',
+                    backgroundImage: 'linear-gradient(105deg, #00BCD4 0%, #00BCD4 38%, #e0fbff 48%, #ffffff 52%, #e0fbff 56%, #00BCD4 68%, #00BCD4 100%)',
+                    backgroundSize: '220% 100%',
+                    WebkitBackgroundClip: 'text',
+                    backgroundClip: 'text',
+                    color: 'transparent',
+                    WebkitTextFillColor: 'transparent',
+                    animation: newPostsAvailable > 0
+                      ? 'stooornaTitleShine 3.8s linear infinite, stooornaTitleWave 1.4s ease-in-out infinite'
+                      : 'stooornaTitleShine 5.5s linear infinite',
                   }}
                 >
-                  <svg width="18" height="18" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="18" cy="18" r="15.5" stroke="#00BCD4" strokeWidth="2.2" opacity="0.95" />
-                    <path
-                      d="M11 20.5c2.2-5.2 5.4-8.2 7-9.2 1.6 1 4.8 4 7 9.2-2.1 1.6-4.6 2.6-7 2.6s-4.9-1-7-2.6Z"
-                      fill="#00BCD4"
-                      opacity="0.92"
-                    />
-                    <path
-                      d="M18 11.3c1.1 2.4 1.7 5.1 1.7 8.2 0 1.1-.1 2.1-.3 3"
-                      stroke="#7ee8f5"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      opacity="0.9"
-                    />
-                    <circle cx="18" cy="18" r="2.2" fill="#7ee8f5" />
-                  </svg>
+                  STOOORNA
                 </span>
-              </button>
-              <span
-                aria-hidden
-                style={{
-                  color: 'rgba(0,188,212,0.55)',
-                  fontSize: '1.05rem',
-                  fontWeight: 300,
-                  lineHeight: 1,
-                  userSelect: 'none',
-                  padding: '0 2px',
-                }}
-              >|</span>
-              <button
-                type="button"
-                onClick={() => setTextFeedTab('companies')}
-                aria-label="الشركات — منشورات الشركات"
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: 4, borderRadius: '50%', cursor: 'pointer',
-                  background: 'transparent', border: 'none',
-                }}
-              >
-                <Building2
-                  size={24}
-                  strokeWidth={2.2}
-                  color={textFeedTab === 'companies' ? CLR_PRIMARY : CLR_TEXT_DIM}
-                  style={{ opacity: textFeedTab === 'companies' ? 1 : 0.45, transition: 'opacity 0.2s ease' }}
-                />
               </button>
             </div>
             <div
@@ -15142,33 +15110,11 @@ export default function AddFriendPage() {
               className="overflow-y-auto overscroll-contain"
               style={{
                 position: 'absolute', inset: 0,
-                paddingTop: 'calc(35.5px + max(6px, env(safe-area-inset-top, 0px)))',
+                paddingTop: 'calc(28px + max(4px, env(safe-area-inset-top, 0px)))',
                 paddingBottom: 'calc(57.5px + max(8px, env(safe-area-inset-bottom, 0px)))',
                 WebkitOverflowScrolling: 'touch', touchAction: 'pan-y',
               }}
             >
-              <AnimatePresence>
-                {newPostsAvailable > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }}
-                    style={{ display: 'flex', justifyContent: 'center', padding: '4px 14px 10px' }}
-                  >
-                    <motion.button
-                      whileTap={{ scale: 0.95 }}
-                      onClick={loadPendingNewPosts}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        background: CLR_PRIMARY, border: 'none', borderRadius: 20,
-                        padding: '7px 16px', color: '#06171a', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
-                        boxShadow: '0 2px 10px rgba(0,188,212,0.35)',
-                      }}
-                    >
-                      <Repeat2 size={13} strokeWidth={2.6} />
-                      New Post{newPostsAvailable > 1 ? `s (${newPostsAvailable})` : ''}
-                    </motion.button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
               {(() => {
                 // فصل صارم: شركات فقط في تبويب الشركات — أفراد في تبويب التطبيق
                 // لا نعتمد على parseProductAd وحده (المستخدمون الأفراد ينشرون بنفس صيغة العنوان/التفاصيل)
