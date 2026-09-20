@@ -2566,42 +2566,6 @@ function GlobalBottomNavigation() {
   {userListPanel}
   {miniChatOverlay}
   {homeCallOverlay}
-  {homeIncoming && homeCallPhase === 'idle' && (
-    <div style={{
-      position: 'fixed',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      bottom: 'calc(62px + env(safe-area-inset-bottom))',
-      zIndex: 10960,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      pointerEvents: 'none',
-    }}>
-      <div style={{
-        color: '#22c55e',
-        fontSize: 28,
-        animation: 'stooornaHomeHintArrow 0.8s ease-in-out infinite',
-        lineHeight: 1,
-      }}>↓</div>
-      <div style={{
-        marginTop: 4,
-        background: 'rgba(6,14,14,0.94)',
-        color: '#fff',
-        border: '1px solid rgba(34,197,94,0.55)',
-        borderRadius: 14,
-        padding: '8px 12px',
-        fontSize: 12,
-        fontWeight: 700,
-        textAlign: 'center',
-        lineHeight: 1.45,
-        maxWidth: 260,
-      }}>
-        انقر للرد على المكالمة
-        <div style={{ color: '#86efac', fontWeight: 600, marginTop: 2 }}>لتجاهل المكالمة اضغط مطولاً</div>
-      </div>
-    </div>
-  )}
   <nav aria-label="Main navigation" style={{
     position: 'fixed',
     left: 0,
@@ -2724,32 +2688,114 @@ function GlobalBottomNavigation() {
                   <Settings size={20} strokeWidth={2.2} />
                 </button>
                 {user && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlusMenuOpen(false);
-                    if (homeIncoming && homeCallPhase === 'idle') {
-                      void answerHomeIncoming();
-                      return;
-                    }
-                    setHomeCallPickerOpen(true);
-                  }}
-                  aria-label="Call"
-                  style={{
-                    width: 44, height: 44, borderRadius: '50%',
-                    border: '1px solid ' + (homeIncoming ? 'rgba(34,197,94,0.55)' : 'rgba(0,188,212,0.4)'),
-                    background: 'rgba(6,20,22,0.96)',
-                    color: homeIncoming ? '#22c55e' : '#00BCD4',
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: homeIncoming
-                      ? '0 0 14px rgba(34,197,94,0.5)'
-                      : '0 4px 16px rgba(0,0,0,0.45)',
-                    animation: homeIncoming ? 'stooornaHomeRingShake 0.45s ease-in-out infinite' : 'none',
-                  }}
-                >
-                  <Phone size={20} strokeWidth={2.2} />
-                </button>
+                <div style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  {homeIncoming && homeCallPhase === 'idle' && (
+                    <div
+                      aria-hidden
+                      style={{
+                        position: 'absolute',
+                        right: 52,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: 'max-content',
+                        maxWidth: 168,
+                        background: 'rgba(6,14,14,0.96)',
+                        color: '#fff',
+                        border: '1px solid rgba(34,197,94,0.55)',
+                        borderRadius: 12,
+                        padding: '8px 10px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textAlign: 'left',
+                        lineHeight: 1.4,
+                        boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
+                        pointerEvents: 'none',
+                        zIndex: 10230,
+                      }}
+                    >
+                      <div style={{ color: '#86efac' }}>Tap to answer</div>
+                      <div style={{ color: 'rgba(200,230,210,0.95)', fontWeight: 600, marginTop: 3 }}>
+                        Long-press to decline
+                      </div>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      const target = e.currentTarget as any;
+                      if (target._homeLongPress) {
+                        target._homeLongPress = false;
+                        return;
+                      }
+                      if (homeIncoming && homeCallPhase === 'idle') {
+                        setPlusMenuOpen(false);
+                        void answerHomeIncoming();
+                        return;
+                      }
+                      setPlusMenuOpen(false);
+                      setHomeCallPickerOpen(true);
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      if (homeIncoming && homeCallPhase === 'idle') {
+                        ignoreHomeIncoming();
+                        setPlusMenuOpen(false);
+                      }
+                    }}
+                    onPointerDown={(e) => {
+                      if (!(homeIncoming && homeCallPhase === 'idle')) return;
+                      const target = e.currentTarget;
+                      const timer = window.setTimeout(() => {
+                        (target as any)._homeLongPress = true;
+                        ignoreHomeIncoming();
+                        setPlusMenuOpen(false);
+                      }, 550);
+                      (target as any)._homeLongPressTimer = timer;
+                      (target as any)._homeLongPress = false;
+                    }}
+                    onPointerUp={(e) => {
+                      const target = e.currentTarget as any;
+                      if (target._homeLongPressTimer) {
+                        window.clearTimeout(target._homeLongPressTimer);
+                        target._homeLongPressTimer = null;
+                      }
+                    }}
+                    onPointerLeave={(e) => {
+                      const target = e.currentTarget as any;
+                      if (target._homeLongPressTimer) {
+                        window.clearTimeout(target._homeLongPressTimer);
+                        target._homeLongPressTimer = null;
+                      }
+                    }}
+                    onPointerCancel={(e) => {
+                      const target = e.currentTarget as any;
+                      if (target._homeLongPressTimer) {
+                        window.clearTimeout(target._homeLongPressTimer);
+                        target._homeLongPressTimer = null;
+                      }
+                    }}
+                    aria-label={homeIncoming ? 'Answer call — long press to decline' : 'Call'}
+                    style={{
+                      width: 44, height: 44, borderRadius: '50%',
+                      border: '1px solid ' + (homeIncoming ? 'rgba(34,197,94,0.55)' : 'rgba(0,188,212,0.4)'),
+                      background: 'rgba(6,20,22,0.96)',
+                      color: homeIncoming ? '#22c55e' : '#00BCD4',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: homeIncoming
+                        ? '0 0 14px rgba(34,197,94,0.5)'
+                        : '0 4px 16px rgba(0,0,0,0.45)',
+                      animation: homeIncoming ? 'stooornaHomeRingShake 0.45s ease-in-out infinite' : 'none',
+                    }}
+                  >
+                    <Phone size={20} strokeWidth={2.2} />
+                  </button>
+                </div>
                 )}
                 {user && (
                 <button
@@ -2941,18 +2987,24 @@ function GlobalBottomNavigation() {
               width: 44,
               height: 36,
               border: 'none',
-              background: (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? 'rgba(0,188,212,0.14)' : 'transparent',
+              background: (homeIncoming && homeCallPhase === 'idle')
+                ? 'rgba(34,197,94,0.18)'
+                : (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? 'rgba(0,188,212,0.14)' : 'transparent',
               borderRadius: 12,
-              color: (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? '#00BCD4' : 'rgba(0,188,212,0.85)',
+              color: (homeIncoming && homeCallPhase === 'idle')
+                ? '#22c55e'
+                : (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? '#00BCD4' : 'rgba(0,188,212,0.85)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: 2,
               WebkitTapHighlightColor: 'transparent',
+              boxShadow: (homeIncoming && homeCallPhase === 'idle') ? '0 0 12px rgba(34,197,94,0.45)' : 'none',
+              animation: (homeIncoming && homeCallPhase === 'idle') ? 'stooornaHomeRingShake 0.45s ease-in-out infinite' : 'none',
             }}
           >
-            <NavBubble id="plus" color="rgba(0,188,212,0.65)" />
+            <NavBubble id="plus" color={(homeIncoming && homeCallPhase === 'idle') ? 'rgba(34,197,94,0.65)' : 'rgba(0,188,212,0.65)'} />
             <span style={{
               display: 'flex',
               transition: 'transform 0.25s ease',

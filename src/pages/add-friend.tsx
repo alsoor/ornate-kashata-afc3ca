@@ -5049,7 +5049,7 @@ const MiniProfileModal = ({
               {/* ── Stats beside the profile picture: Post / Followers / Following / Likes —
                   same layout as the own-profile header, so any visited profile shows the
                   full picture (posts, likes, and follow counts) at a glance. ── */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginTop: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 10 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                   <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.postsCount ?? 0}</span>
                   <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Post</span>
@@ -5066,6 +5066,10 @@ const MiniProfileModal = ({
                   )}
                   <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Followers</span>
                 </motion.button>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{(profile as any)?.viewsCount ?? (profile as any)?.viewCount ?? 0}</span>
+                  <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Views</span>
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                   <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.likesCount ?? 0}</span>
                   <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Likes</span>
@@ -5433,7 +5437,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             </p>
           )}
 
-          {/* Post / Followers / Likes */}
+          {/* Post / Followers / Views / Likes */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
               <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.postsCount ?? authorPosts.length}</span>
@@ -5446,6 +5450,12 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.followersCount ?? 0}</span>
               )}
               <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Followers</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>
+                {(profile as any)?.viewsCount ?? (profile as any)?.viewCount ?? authorPosts.reduce((sum, p) => sum + (Number((p as any).viewsCount ?? (p as any).views ?? 0) || 0), 0)}
+              </span>
+              <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Views</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
               <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>
@@ -12023,7 +12033,7 @@ export default function AddFriendPage() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaPosts.length}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Post</span>
@@ -12040,6 +12050,12 @@ export default function AddFriendPage() {
                     )}
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Followers</span>
                   </motion.button>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>
+                      {(user as any)?.viewsCount ?? (user as any)?.viewCount ?? myMediaPosts.reduce((s, p) => s + (Number((p as any).viewsCount ?? (p as any).views ?? 0) || 0), 0)}
+                    </span>
+                    <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Views</span>
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaLikesTotal}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
