@@ -3213,8 +3213,8 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
    */
   async function verifyCertificateFile(
     file: File,
-    documentType: 'commercial_registry' | 'trade_license',
-    expectedNumber: string,
+    _documentType: 'commercial_registry' | 'trade_license',
+    _expectedNumber: string,
   ): Promise<{
     valid: boolean;
     dataUrl: string;
@@ -3225,133 +3225,38 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
     numbersMatch?: boolean;
     isCertificate?: boolean;
   }> {
+    // Manual review flow: accept upload locally. Owner reviews certificates in settings.
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = ev => resolve(ev.target?.result as string);
       reader.onerror = () => reject(new Error('file-read-failed'));
       reader.readAsDataURL(file);
     });
-
-    type VerifyApi = {
-      valid?: boolean;
-      message?: string;
-      extractedNumber?: string | null;
-      extractedExpiryDate?: string | null;
-      isExpired?: boolean;
-      numbersMatch?: boolean;
-      isCertificate?: boolean;
-    };
-
-    try {
-      const res = await fetch('/api/company/verify-certificate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          documentType,
-          expectedNumber: expectedNumber.trim(),
-          fileName: file.name,
-          dataUrl,
-        }),
-      });
-
-      let data: VerifyApi | null = null;
-      try {
-        data = await res.json();
-      } catch {
-        data = null;
-      }
-
-      const meta = {
-        extractedNumber: data?.extractedNumber ?? null,
-        extractedExpiryDate: data?.extractedExpiryDate ?? null,
-        isExpired: data?.isExpired === true,
-        numbersMatch: data?.numbersMatch === true,
-        isCertificate: data?.isCertificate === true,
-      };
-
-      if (!res.ok) {
-        return {
-          valid: false,
-          dataUrl,
-          ...meta,
-          message: data?.message || (authLang === 'en'
-            ? `Could not verify the certificate right now (server error ${res.status}). Please try again.`
-            : `تعذّر فحص الشهادة حالياً (خطأ من السيرفر ${res.status})، حاول مرة أخرى`),
-        };
-      }
-
-      // Client-side digit match fallback (formatting differences)
-      let numbersMatch = data?.numbersMatch === true;
-      if (!numbersMatch && data?.extractedNumber != null && expectedNumber.trim()) {
-        const arabicIndic = '٠١٢٣٤٥٦٧٨٩';
-        const toDigits = (raw: string) => {
-          let out = '';
-          for (const ch of String(raw)) {
-            const ai = arabicIndic.indexOf(ch);
-            if (ai >= 0) out += String(ai);
-            else if (ch >= '0' && ch <= '9') out += ch;
-          }
-          return out.replace(/^0+/, '') || '0';
-        };
-        const a = toDigits(expectedNumber);
-        const b = toDigits(String(data.extractedNumber));
-        if (a && b && (a === b || (a.length >= 4 && b.length >= 4 && (a.endsWith(b) || b.endsWith(a) || a.startsWith(b) || b.startsWith(a))))) {
-          numbersMatch = true;
-        }
-      }
-
-      const isExpired = data?.isExpired === true;
-      const isCertificate = data?.isCertificate !== false; // if server omitted, don't block on this alone when valid:true
-      const serverValid = data?.valid === true;
-      const valid = serverValid || (numbersMatch && !isExpired && data?.isCertificate === true);
-
-      if (valid) {
-        return {
-          valid: true,
-          dataUrl,
-          extractedNumber: data?.extractedNumber ?? null,
-          extractedExpiryDate: data?.extractedExpiryDate ?? null,
-          isExpired: false,
-          numbersMatch: true,
-          isCertificate: true,
-        };
-      }
-
-      let message = data?.message;
-      if (!message) {
-        if (isExpired) {
-          message = authLang === 'en' ? 'The certificate has expired' : 'الشهادة منتهية الصلاحية';
-        } else if (!numbersMatch) {
-          message = authLang === 'en'
-            ? 'The number on the certificate does not match the number entered.'
-            : 'الشهادة غير صحيحة أو لا تطابق الرقم المُدخل';
-        } else {
-          message = authLang === 'en'
-            ? 'The certificate is invalid or does not match the number entered.'
-            : 'الشهادة غير صحيحة أو لا تطابق الرقم المُدخل';
-        }
-      }
-
+    const maxBytes = 12 * 1024 * 1024;
+    if (dataUrl.length > maxBytes) {
       return {
         valid: false,
         dataUrl,
-        extractedNumber: data?.extractedNumber ?? null,
-        extractedExpiryDate: data?.extractedExpiryDate ?? null,
-        isExpired,
-        numbersMatch,
-        isCertificate: data?.isCertificate === true,
-        message,
-      };
-    } catch {
-      return {
-        valid: false,
-        dataUrl,
-        message: authLang === 'en'
-          ? 'Could not reach the verification service. Check your connection and try again.'
-          : 'تعذّر الاتصال بخدمة الفحص، تحقق من الإنترنت وحاول مجدداً',
+        message: authLang === 'en' ? 'File is too large' : 'الملف كبير جداً',
       };
     }
+    const okType = file.type.startsWith('image/') || file.type === 'application/pdf' || /\.(png|jpe?g|gif|webp|pdf)$/i.test(file.name);
+    if (!okType) {
+      return {
+        valid: false,
+        dataUrl,
+        message: authLang === 'en' ? 'Only image or PDF is accepted' : 'يُقبل صورة أو PDF فقط',
+      };
+    }
+    return {
+      valid: true,
+      dataUrl,
+      isCertificate: true,
+      numbersMatch: true,
+      isExpired: false,
+      extractedNumber: null,
+      extractedExpiryDate: null,
+    };
   }
 
   function switchMode(next: AuthMode) {
@@ -3497,24 +3402,20 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           setError(L.needOwnerName);
           return;
         }
-        if (!licenseNumber.trim()) {
-          setError(L.needLicense);
-          return;
-        }
-        if (!tradeLicenseNumber.trim()) {
-          setError('رقم الترخيص التجاري مطلوب');
-          return;
-        }
         if (commercialRegVerify === 'checking' || tradeLicenseVerify === 'checking') {
-          setError('⚠️ انتظر انتهاء التحقق من الشهادتين بالذكاء الاصطناعي');
+          setError(authLang === 'en' ? 'Please wait until certificates finish uploading' : 'انتظر حتى ينتهي رفع الشهادات');
           return;
         }
         if (!commercialRegFile || commercialRegVerify !== 'valid') {
-          setError('⚠️ يجب رفع شهادة سجل تجاري صحيحة تطابق رقم السجل التجاري لإتمام التسجيل');
+          setError(authLang === 'en'
+            ? 'Please upload the commercial registration certificate'
+            : 'يجب رفع شهادة السجل التجاري لإتمام التسجيل');
           return;
         }
         if (!tradeLicenseFile || tradeLicenseVerify !== 'valid') {
-          setError('⚠️ يجب رفع شهادة ترخيص تجاري صحيحة تطابق رقم الترخيص التجاري لإتمام التسجيل');
+          setError(authLang === 'en'
+            ? 'Please upload the trade license certificate'
+            : 'يجب رفع شهادة الترخيص التجاري لإتمام التسجيل');
           return;
         }
         if (!companySector.trim() && !companySectorCustom.trim()) {
@@ -3990,11 +3891,18 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 {usernameStatus === 'invalid' && L.userInvalid}
               </p>
             )}
+            {/* Commercial registration certificate — label + upload (no number required) */}
             <div style={{ position: 'relative' }}>
-              <ShieldCheck size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-              <input type="text" placeholder={L.license} value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} required
-                style={fieldCss()} dir="ltr" />
-              {/* زر رفع شهادة السجل التجاري */}
+              <div style={{
+                ...fieldCss(),
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                paddingRight: 48, cursor: 'default',
+              }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(200,230,230,0.95)', fontWeight: 700, fontSize: '0.9rem' }}>
+                  <ShieldCheck size={16} color={T.primaryDim} />
+                  {authLang === 'en' ? 'Commercial registration certificate' : 'شهادة السجل التجاري'}
+                </span>
+              </div>
               <input
                 id="commercial-reg-file"
                 type="file"
@@ -4004,43 +3912,33 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                   const file = e.target.files?.[0];
                   e.target.value = '';
                   if (!file) return;
-                  if (!licenseNumber.trim()) {
-                    setError(authLang === 'en'
-                      ? 'Enter the commercial registration number before uploading the certificate'
-                      : 'أدخل رقم السجل التجاري أولاً قبل رفع الشهادة');
-                    return;
-                  }
                   setError('');
                   setCommercialRegFile(null);
                   setCommercialRegVerify('checking');
                   setCommercialRegVerifyMessage('');
                   setCommercialRegMeta(null);
-                  const result = await verifyCertificateFile(file, 'commercial_registry', licenseNumber);
-                  setCommercialRegMeta({
-                    extractedNumber: result.extractedNumber ?? null,
-                    extractedExpiryDate: result.extractedExpiryDate ?? null,
-                    isExpired: result.isExpired === true,
-                    numbersMatch: result.numbersMatch === true,
-                  });
-                  if (result.valid) {
-                    setCommercialRegFile({ dataUrl: result.dataUrl, name: file.name });
-                    setCommercialRegVerify('valid');
-                    setCommercialRegVerifyMessage('');
-                  } else {
+                  try {
+                    const result = await verifyCertificateFile(file, 'commercial_registry', '');
+                    if (result.valid) {
+                      setCommercialRegFile({ dataUrl: result.dataUrl, name: file.name });
+                      setCommercialRegVerify('valid');
+                      setCommercialRegVerifyMessage('');
+                    } else {
+                      setCommercialRegVerify('invalid');
+                      setCommercialRegFile(null);
+                      const msg = result.message || (authLang === 'en' ? 'Upload failed' : 'فشل الرفع');
+                      setCommercialRegVerifyMessage(msg);
+                      setError(msg);
+                    }
+                  } catch {
                     setCommercialRegVerify('invalid');
-                    // keep file preview so user can see AI readout under the field
-                    setCommercialRegFile({ dataUrl: result.dataUrl, name: file.name });
-                    const msg = result.message || (authLang === 'en'
-                      ? 'The certificate is invalid'
-                      : 'الشهادة غير صحيحة');
-                    setCommercialRegVerifyMessage(msg);
-                    setError(msg);
+                    setCommercialRegVerifyMessage(authLang === 'en' ? 'Upload failed' : 'فشل الرفع');
                   }
                 }}
               />
               <button
                 type="button"
-                title="رفع شهادة السجل التجاري"
+                title={authLang === 'en' ? 'Upload commercial registration certificate' : 'رفع شهادة السجل التجاري'}
                 disabled={commercialRegVerify === 'checking'}
                 onClick={() => document.getElementById('commercial-reg-file')?.click()}
                 style={{
@@ -4062,73 +3960,32 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 }
               </button>
             </div>
-            {commercialRegVerify === 'checking' && (
-              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--primary))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
-                جارٍ التحقق من الشهادة بالذكاء الاصطناعي…
-              </p>
-            )}
-            {commercialRegMeta && commercialRegVerify !== 'idle' && commercialRegVerify !== 'checking' && (
-              <div style={{
-                margin: '-4px 0 0', padding: '8px 10px', borderRadius: 10, fontSize: 11, lineHeight: 1.55, direction: 'rtl',
-                background: commercialRegVerify === 'valid' ? 'hsl(var(--success)/0.08)' : 'hsl(var(--destructive)/0.06)',
-                border: `1px solid ${commercialRegVerify === 'valid' ? 'hsl(var(--success)/0.35)' : 'hsl(var(--destructive)/0.25)'}`,
-                color: 'rgba(200,230,230,0.92)',
-              }}>
-                <p style={{ margin: 0, fontWeight: 700, color: commercialRegVerify === 'valid' ? 'hsl(var(--success))' : 'hsl(var(--destructive))' }}>
-                  {commercialRegVerify === 'valid' ? (authLang === 'en' ? 'Verified by AI' : 'تم التحقق بالذكاء الاصطناعي') : (authLang === 'en' ? 'AI verification failed' : 'فشل التحقق بالذكاء الاصطناعي')}
-                </p>
-                <p style={{ margin: '4px 0 0' }}>
-                  {authLang === 'en' ? 'Number on certificate:' : 'الرقم على الشهادة:'}{' '}
-                  <span style={{ fontWeight: 700, direction: 'ltr', unicodeBidi: 'isolate' }}>{commercialRegMeta.extractedNumber || '—'}</span>
-                  {' · '}
-                  <span style={{ color: commercialRegMeta.numbersMatch ? 'hsl(var(--success))' : 'hsl(var(--destructive))', fontWeight: 700 }}>
-                    {commercialRegMeta.numbersMatch
-                      ? (authLang === 'en' ? 'matches form' : 'يطابق المدخل')
-                      : (authLang === 'en' ? 'does not match' : 'لا يطابق المدخل')}
-                  </span>
-                </p>
-                <p style={{ margin: '2px 0 0' }}>
-                  {authLang === 'en' ? 'Expiry date:' : 'تاريخ الانتهاء:'}{' '}
-                  <span style={{ fontWeight: 700, direction: 'ltr', unicodeBidi: 'isolate' }}>{commercialRegMeta.extractedExpiryDate || (authLang === 'en' ? 'not found' : 'غير ظاهر')}</span>
-                  {commercialRegMeta.isExpired && (
-                    <span style={{ color: 'hsl(var(--destructive))', fontWeight: 800 }}> — {authLang === 'en' ? 'EXPIRED' : 'منتهية'}</span>
-                  )}
-                  {!commercialRegMeta.isExpired && commercialRegMeta.extractedExpiryDate && (
-                    <span style={{ color: 'hsl(var(--success))', fontWeight: 700 }}> — {authLang === 'en' ? 'valid' : 'سارية'}</span>
-                  )}
-                </p>
-              </div>
-            )}
             {commercialRegFile && commercialRegVerify === 'valid' && (
-              <p style={{ margin: '-2px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
-                <Check size={11} /> {commercialRegFile.name} — تم التحقق ومطابقتها لرقم السجل
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+                <Check size={11} /> {commercialRegFile.name}
                 <button type="button" onClick={() => { setCommercialRegFile(null); setCommercialRegVerify('idle'); setCommercialRegVerifyMessage(''); setCommercialRegMeta(null); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
                   <X size={11} />
                 </button>
               </p>
             )}
             {commercialRegVerify === 'invalid' && (
-              <p style={{ margin: '-2px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
-                <AlertTriangle size={11} /> {commercialRegVerifyMessage || 'الشهادة غير صحيحة — تأكد من رفع شهادة سجل تجاري تطابق الرقم المُدخل'}
-                <button type="button" onClick={() => { setCommercialRegFile(null); setCommercialRegVerify('idle'); setCommercialRegVerifyMessage(''); setCommercialRegMeta(null); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
-                  <X size={11} />
-                </button>
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+                <AlertTriangle size={11} /> {commercialRegVerifyMessage || (authLang === 'en' ? 'Upload failed' : 'فشل الرفع')}
               </p>
             )}
 
-            {/* رقم الترخيص التجاري */}
+            {/* Trade license certificate — label + upload (no number required) */}
             <div style={{ position: 'relative' }}>
-              <FileText size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-              <input
-                type="text"
-                placeholder="رقم الترخيص التجاري"
-                value={tradeLicenseNumber}
-                onChange={e => setTradeLicenseNumber(e.target.value)}
-                required
-                style={fieldCss()}
-                dir="ltr"
-              />
-              {/* زر رفع شهادة الترخيص التجاري */}
+              <div style={{
+                ...fieldCss(),
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                paddingRight: 48, cursor: 'default',
+              }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(200,230,230,0.95)', fontWeight: 700, fontSize: '0.9rem' }}>
+                  <FileText size={16} color={T.primaryDim} />
+                  {authLang === 'en' ? 'Trade license certificate' : 'شهادة الترخيص التجاري'}
+                </span>
+              </div>
               <input
                 id="trade-license-file"
                 type="file"
@@ -4138,42 +3995,33 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                   const file = e.target.files?.[0];
                   e.target.value = '';
                   if (!file) return;
-                  if (!tradeLicenseNumber.trim()) {
-                    setError(authLang === 'en'
-                      ? 'Enter the trade license number before uploading the certificate'
-                      : 'أدخل رقم الترخيص التجاري أولاً قبل رفع الشهادة');
-                    return;
-                  }
                   setError('');
                   setTradeLicenseFile(null);
                   setTradeLicenseVerify('checking');
                   setTradeLicenseVerifyMessage('');
                   setTradeLicenseMeta(null);
-                  const result = await verifyCertificateFile(file, 'trade_license', tradeLicenseNumber);
-                  setTradeLicenseMeta({
-                    extractedNumber: result.extractedNumber ?? null,
-                    extractedExpiryDate: result.extractedExpiryDate ?? null,
-                    isExpired: result.isExpired === true,
-                    numbersMatch: result.numbersMatch === true,
-                  });
-                  if (result.valid) {
-                    setTradeLicenseFile({ dataUrl: result.dataUrl, name: file.name });
-                    setTradeLicenseVerify('valid');
-                    setTradeLicenseVerifyMessage('');
-                  } else {
+                  try {
+                    const result = await verifyCertificateFile(file, 'trade_license', '');
+                    if (result.valid) {
+                      setTradeLicenseFile({ dataUrl: result.dataUrl, name: file.name });
+                      setTradeLicenseVerify('valid');
+                      setTradeLicenseVerifyMessage('');
+                    } else {
+                      setTradeLicenseVerify('invalid');
+                      setTradeLicenseFile(null);
+                      const msg = result.message || (authLang === 'en' ? 'Upload failed' : 'فشل الرفع');
+                      setTradeLicenseVerifyMessage(msg);
+                      setError(msg);
+                    }
+                  } catch {
                     setTradeLicenseVerify('invalid');
-                    setTradeLicenseFile({ dataUrl: result.dataUrl, name: file.name });
-                    const msg = result.message || (authLang === 'en'
-                      ? 'The certificate is invalid'
-                      : 'الشهادة غير صحيحة');
-                    setTradeLicenseVerifyMessage(msg);
-                    setError(msg);
+                    setTradeLicenseVerifyMessage(authLang === 'en' ? 'Upload failed' : 'فشل الرفع');
                   }
                 }}
               />
               <button
                 type="button"
-                title="رفع شهادة الترخيص التجاري"
+                title={authLang === 'en' ? 'Upload trade license certificate' : 'رفع شهادة الترخيص التجاري'}
                 disabled={tradeLicenseVerify === 'checking'}
                 onClick={() => document.getElementById('trade-license-file')?.click()}
                 style={{
@@ -4195,69 +4043,31 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 }
               </button>
             </div>
-            {tradeLicenseVerify === 'checking' && (
-              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--primary))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
-                جارٍ التحقق من الشهادة بالذكاء الاصطناعي…
-              </p>
-            )}
-            {tradeLicenseMeta && tradeLicenseVerify !== 'idle' && tradeLicenseVerify !== 'checking' && (
-              <div style={{
-                margin: '-4px 0 0', padding: '8px 10px', borderRadius: 10, fontSize: 11, lineHeight: 1.55, direction: 'rtl',
-                background: tradeLicenseVerify === 'valid' ? 'hsl(var(--success)/0.08)' : 'hsl(var(--destructive)/0.06)',
-                border: `1px solid ${tradeLicenseVerify === 'valid' ? 'hsl(var(--success)/0.35)' : 'hsl(var(--destructive)/0.25)'}`,
-                color: 'rgba(200,230,230,0.92)',
-              }}>
-                <p style={{ margin: 0, fontWeight: 700, color: tradeLicenseVerify === 'valid' ? 'hsl(var(--success))' : 'hsl(var(--destructive))' }}>
-                  {tradeLicenseVerify === 'valid' ? (authLang === 'en' ? 'Verified by AI' : 'تم التحقق بالذكاء الاصطناعي') : (authLang === 'en' ? 'AI verification failed' : 'فشل التحقق بالذكاء الاصطناعي')}
-                </p>
-                <p style={{ margin: '4px 0 0' }}>
-                  {authLang === 'en' ? 'Number on certificate:' : 'الرقم على الشهادة:'}{' '}
-                  <span style={{ fontWeight: 700, direction: 'ltr', unicodeBidi: 'isolate' }}>{tradeLicenseMeta.extractedNumber || '—'}</span>
-                  {' · '}
-                  <span style={{ color: tradeLicenseMeta.numbersMatch ? 'hsl(var(--success))' : 'hsl(var(--destructive))', fontWeight: 700 }}>
-                    {tradeLicenseMeta.numbersMatch
-                      ? (authLang === 'en' ? 'matches form' : 'يطابق المدخل')
-                      : (authLang === 'en' ? 'does not match' : 'لا يطابق المدخل')}
-                  </span>
-                </p>
-                <p style={{ margin: '2px 0 0' }}>
-                  {authLang === 'en' ? 'Expiry date:' : 'تاريخ الانتهاء:'}{' '}
-                  <span style={{ fontWeight: 700, direction: 'ltr', unicodeBidi: 'isolate' }}>{tradeLicenseMeta.extractedExpiryDate || (authLang === 'en' ? 'not found' : 'غير ظاهر')}</span>
-                  {tradeLicenseMeta.isExpired && (
-                    <span style={{ color: 'hsl(var(--destructive))', fontWeight: 800 }}> — {authLang === 'en' ? 'EXPIRED' : 'منتهية'}</span>
-                  )}
-                  {!tradeLicenseMeta.isExpired && tradeLicenseMeta.extractedExpiryDate && (
-                    <span style={{ color: 'hsl(var(--success))', fontWeight: 700 }}> — {authLang === 'en' ? 'valid' : 'سارية'}</span>
-                  )}
-                </p>
-              </div>
-            )}
             {tradeLicenseFile && tradeLicenseVerify === 'valid' && (
-              <p style={{ margin: '-2px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
-                <Check size={11} /> {tradeLicenseFile.name} — تم التحقق ومطابقتها لرقم الترخيص
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+                <Check size={11} /> {tradeLicenseFile.name}
                 <button type="button" onClick={() => { setTradeLicenseFile(null); setTradeLicenseVerify('idle'); setTradeLicenseVerifyMessage(''); setTradeLicenseMeta(null); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
                   <X size={11} />
                 </button>
               </p>
             )}
             {tradeLicenseVerify === 'invalid' && (
-              <p style={{ margin: '-2px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
-                <AlertTriangle size={11} /> {tradeLicenseVerifyMessage || 'الشهادة غير صحيحة — تأكد من رفع شهادة ترخيص تجاري تطابق الرقم المُدخل'}
-                <button type="button" onClick={() => { setTradeLicenseFile(null); setTradeLicenseVerify('idle'); setTradeLicenseVerifyMessage(''); setTradeLicenseMeta(null); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
-                  <X size={11} />
-                </button>
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+                <AlertTriangle size={11} /> {tradeLicenseVerifyMessage || (authLang === 'en' ? 'Upload failed' : 'فشل الرفع')}
               </p>
             )}
 
-            {/* تنبيه إلزامية الشهادتين */}
-            {(!commercialRegFile || !tradeLicenseFile) && (
+            {/* Both certificates required */}
+            {(!commercialRegFile || !tradeLicenseFile || commercialRegVerify !== 'valid' || tradeLicenseVerify !== 'valid') && (
               <div style={{
                 background: 'hsl(var(--gold)/0.08)', border: '1px solid hsl(var(--gold)/0.3)',
                 borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'flex-start', gap: 8,
               }}>
                 <AlertTriangle size={14} color="hsl(var(--gold))" style={{ flexShrink: 0, marginTop: 2 }} />
                 <p style={{ margin: 0, fontSize: '0.75rem', color: 'hsl(var(--gold)/0.9)', lineHeight: 1.5 }}>
-                  يجب رفع شهادة السجل التجاري وشهادة الترخيص التجاري — لن يُقبل الطلب بدونهما
+                  {authLang === 'en'
+                    ? 'Upload both the commercial registration certificate and the trade license certificate — the request will not be accepted without them'
+                    : 'يجب رفع شهادة السجل التجاري وشهادة الترخيص التجاري — لن يُقبل الطلب بدونهما'}
                 </p>
               </div>
             )}
