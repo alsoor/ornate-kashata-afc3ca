@@ -1,19 +1,20 @@
 /**
  * POST /api/company/verify-certificate
  *
- * Verifies an uploaded commercial-registration or trade-license certificate
- * using Claude vision:
- *   1) Confirms the file is a real certificate of the requested type.
- *   2) Reads the registration/license number printed on the document.
- *   3) Compares that number to the number the user typed.
- *   4) Reads the expiry / validity end date and rejects expired documents.
+ * Real document reading pipeline for commercial-registration and trade-license
+ * certificates (Kuwait / GCC style Arabic+English docs).
+ *
+ * Pipeline:
+ *   1) Prefer xAI Grok vision (same family as Grok chat) with detail=high
+ *   2) Fallback to Anthropic Claude vision if XAI is unavailable
+ *   3) Server-side digit normalization + expiry date check
  *
  * Request body (JSON):
  *   {
  *     documentType: 'commercial_registry' | 'trade_license',
  *     expectedNumber: string,
  *     fileName?: string,
- *     dataUrl: string
+ *     dataUrl: string   // data:<mime>;base64,...
  *   }
  *
  * Response (JSON):
@@ -21,19 +22,24 @@
  *     valid: boolean,
  *     message?: string,
  *     extractedNumber?: string | null,
- *     extractedExpiryDate?: string | null,  // ISO YYYY-MM-DD when known
+ *     extractedExpiryDate?: string | null,
  *     isExpired?: boolean,
  *     numbersMatch?: boolean,
- *     isCertificate?: boolean
+ *     isCertificate?: boolean,
+ *     provider?: 'xai' | 'anthropic'
  *   }
  *
- * Requires ANTHROPIC_API_KEY. Optional ANTHROPIC_VERIFY_MODEL
- * (default: claude-sonnet-5).
+ * Env:
+ *   XAI_API_KEY          (preferred)  — Grok vision
+ *   XAI_VERIFY_MODEL     optional, default grok-4.6
+ *   ANTHROPIC_API_KEY    fallback
+ *   ANTHROPIC_VERIFY_MODEL optional, default claude-sonnet-5
  *
- * Express body parser must allow large payloads, e.g.:
- *   app.use(express.json({ limit: '15mb' }));
+ * Express: app.use(express.json({ limit: '15mb' }));
  */
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const XAI_API_KEY = process.env.XAI_API_KEY || process.env.GROK_API_KEY || '';
+const XAI_MODEL = process.env.XAI_VERIFY_MODEL || 'grok-4.6';
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_VERIFY_MODEL || 'claude-sonnet-5';
 const MAX_DATA_URL_LENGTH = 12 * 1024 * 1024;
 
@@ -49,10 +55,12 @@ interface VerifyBody {
 interface AiVerdict {
   isCertificate?: boolean;
   extractedNumber?: string | null;
+  allNumbersFound?: string[] | null;
   numbersMatch?: boolean;
   extractedExpiryDate?: string | null;
   isExpired?: boolean;
   reason?: string;
+  rawTextSnippet?: string | null;
 }
 
 interface VerifyBodyOut {
@@ -63,6 +71,7 @@ interface VerifyBodyOut {
   isExpired?: boolean;
   numbersMatch?: boolean;
   isCertificate?: boolean;
+  provider?: 'xai' | 'anthropic';
 }
 
 interface VerifyResult {
@@ -74,7 +83,7 @@ function parseDataUrl(dataUrl: string): { mediaType: string; base64: string } | 
   try {
     const match = /^data:([^;]+);base64,([\s\S]+)$/.exec(dataUrl);
     if (!match) return null;
-    return { mediaType: match[1], base64: match[2] };
+    return { mediaType: match[1].trim().toLowerCase(), base64: match[2] };
   } catch {
     return null;
   }
@@ -82,8 +91,8 @@ function parseDataUrl(dataUrl: string): { mediaType: string; base64: string } | 
 
 function docLabel(type: DocumentType): string {
   return type === 'commercial_registry'
-    ? 'commercial registration certificate'
-    : 'trade license certificate';
+    ? 'commercial registration certificate (سجل تجاري)'
+    : 'trade license certificate (ترخيص تجاري / رخصة تجارية)';
 }
 
 function digitsOnly(raw: string | null | undefined): string {
@@ -120,39 +129,52 @@ function numbersEqual(expected: string, extracted: string | null | undefined): b
   }
 }
 
-/** Normalize AI date strings to YYYY-MM-DD when possible. */
+/** True if expected digits appear in any candidate from the document. */
+function matchAnyCandidate(expected: string, candidates: Array<string | null | undefined>): boolean {
+  for (const c of candidates) {
+    if (c && numbersEqual(expected, c)) return true;
+  }
+  // Also scan concatenated digit runs inside longer strings
+  const a = digitsOnly(expected);
+  if (!a || a.length < 4) return false;
+  for (const c of candidates) {
+    if (!c) continue;
+    const b = digitsOnly(c);
+    if (b.includes(a) || a.includes(b)) {
+      if (Math.min(a.length, b.length) >= 4) return true;
+    }
+  }
+  return false;
+}
+
 function normalizeDate(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const s = String(raw).trim();
   if (!s) return null;
-  // Already ISO-like
   const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (iso) {
-    const y = iso[1];
-    const m = iso[2].padStart(2, '0');
-    const d = iso[3].padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
   }
-  // DD/MM/YYYY or DD-MM-YYYY
   const dmy = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
   if (dmy) {
-    const d = dmy[1].padStart(2, '0');
-    const m = dmy[2].padStart(2, '0');
-    const y = dmy[3];
-    return `${y}-${m}-${d}`;
+    return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
   }
-  // YYYY/MM/DD
   const ymd = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
   if (ymd) {
-    const y = ymd[1];
-    const m = ymd[2].padStart(2, '0');
-    const d = ymd[3].padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    return `${ymd[1]}-${ymd[2].padStart(2, '0')}-${ymd[3].padStart(2, '0')}`;
   }
+  // Arabic-Indic digits in date
+  const western = s
+    .split('')
+    .map((ch) => {
+      const ai = '٠١٢٣٤٥٦٧٨٩'.indexOf(ch);
+      return ai >= 0 ? String(ai) : ch;
+    })
+    .join('');
+  if (western !== s) return normalizeDate(western);
   return s;
 }
 
-/** Return true if date (YYYY-MM-DD) is strictly before today (UTC date). */
 function isDateExpired(isoDate: string | null): boolean {
   if (!isoDate) return false;
   const m = isoDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -161,6 +183,155 @@ function isDateExpired(isoDate: string | null): boolean {
   const now = new Date();
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return exp < today;
+}
+
+function buildOcrPrompt(documentType: DocumentType, expectedNumber: string, todayIso: string): string {
+  return [
+    'You are a precise document OCR and verification engine for official Gulf / Kuwait business certificates.',
+    'Task: read EVERY visible digit and date on the attached ' + docLabel(documentType) + '.',
+    '',
+    'User-entered number to match: "' + String(expectedNumber).trim() + '"',
+    'Today (UTC): ' + todayIso,
+    '',
+    'Steps (follow in order):',
+    'A) Decide if this image/PDF is a real ' + docLabel(documentType) + ' (not a random photo, blank page, ID card, or unrelated paper).',
+    '   Phone photos with glare, blur, tilt, or background are OK if the certificate content is readable.',
+    'B) OCR: list ALL registration / license / file numbers visible (Arabic-Indic and Western digits).',
+    '   Prefer the main official number field near labels like:',
+    '   رقم السجل التجاري, رقم الترخيص, رقم الرخصة, Commercial Registration, License No, CR No.',
+    '   Formats often look like: 536769  or  2025/18932  or  2025-18932.',
+    'C) Pick the single best primary number as extractedNumber (the one that best matches official CR/license fields).',
+    'D) Put every other number you saw into allNumbersFound (array of strings).',
+    'E) Find expiry / validity end date (تاريخ الانتهاء, ساري حتى, صالح حتى, Expiry, Valid until).',
+    '   Output as YYYY-MM-DD when possible. If none visible, null.',
+    'F) isExpired = true only if expiry is strictly before today.',
+    'G) numbersMatch = true if extractedNumber OR any entry in allNumbersFound matches the user number',
+    '   after ignoring spaces, dashes, slashes, leading zeros, and Arabic vs Western digits.',
+    '   Example: user "2025/18932" matches document "18932" or "2025-18932".',
+    '',
+    'Return ONLY valid JSON (no markdown, no extra text):',
+    '{"isCertificate":boolean,"extractedNumber":string|null,"allNumbersFound":string[],"numbersMatch":boolean,"extractedExpiryDate":string|null,"isExpired":boolean,"reason":string,"rawTextSnippet":string|null}',
+  ].join('\n');
+}
+
+function parseVerdict(textBlock: string): AiVerdict {
+  let verdict: AiVerdict = {};
+  try {
+    const jsonMatch = textBlock.match(/\{[\s\S]*\}/);
+    if (jsonMatch) verdict = JSON.parse(jsonMatch[0]) as AiVerdict;
+  } catch {
+    verdict = {};
+  }
+  return verdict;
+}
+
+async function callGrokVision(
+  dataUrl: string,
+  mediaType: string,
+  prompt: string,
+): Promise<{ ok: boolean; text: string; error?: string }> {
+  if (!XAI_API_KEY) return { ok: false, text: '', error: 'no-xai-key' };
+
+  // Grok chat completions: images via image_url data URI. PDFs are not reliably
+  // supported on this path — caller should skip Grok for application/pdf.
+  if (mediaType === 'application/pdf') {
+    return { ok: false, text: '', error: 'pdf-use-anthropic' };
+  }
+
+  try {
+    const res = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + XAI_API_KEY,
+      },
+      body: JSON.stringify({
+        model: XAI_MODEL,
+        temperature: 0,
+        max_tokens: 800,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: {
+                  url: dataUrl,
+                  detail: 'high',
+                },
+              },
+              { type: 'text', text: prompt },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error('[verify-certificate] xAI error', res.status, errText.slice(0, 500));
+      return { ok: false, text: '', error: 'xai-http-' + res.status };
+    }
+
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const text = data.choices?.[0]?.message?.content || '';
+    if (!text) return { ok: false, text: '', error: 'xai-empty' };
+    return { ok: true, text };
+  } catch (e) {
+    console.error('[verify-certificate] xAI fetch failed', e);
+    return { ok: false, text: '', error: 'xai-fetch' };
+  }
+}
+
+async function callClaudeVision(
+  base64: string,
+  mediaType: string,
+  prompt: string,
+): Promise<{ ok: boolean; text: string; error?: string }> {
+  if (!ANTHROPIC_API_KEY) return { ok: false, text: '', error: 'no-anthropic-key' };
+
+  const isPdf = mediaType === 'application/pdf';
+  const contentBlock = isPdf
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+    : { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } };
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 800,
+        temperature: 0,
+        messages: [
+          {
+            role: 'user',
+            content: [contentBlock, { type: 'text', text: prompt }],
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error('[verify-certificate] Anthropic error', res.status, errText.slice(0, 500));
+      return { ok: false, text: '', error: 'anthropic-http-' + res.status };
+    }
+
+    const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
+    const text = data.content?.find((b) => b.type === 'text')?.text || '';
+    if (!text) return { ok: false, text: '', error: 'anthropic-empty' };
+    return { ok: true, text };
+  } catch (e) {
+    console.error('[verify-certificate] Anthropic fetch failed', e);
+    return { ok: false, text: '', error: 'anthropic-fetch' };
+  }
 }
 
 async function runVerify(body: VerifyBody): Promise<VerifyResult> {
@@ -193,101 +364,84 @@ async function runVerify(body: VerifyBody): Promise<VerifyResult> {
       return { status: 400, body: { valid: false, message: 'Only image or PDF certificates are accepted' } };
     }
 
-    if (!ANTHROPIC_API_KEY) {
-      console.error('[verify-certificate] ANTHROPIC_API_KEY is not configured');
+    if (!XAI_API_KEY && !ANTHROPIC_API_KEY) {
+      console.error('[verify-certificate] No XAI_API_KEY or ANTHROPIC_API_KEY configured');
       return { status: 503, body: { valid: false, message: 'Verification service is not configured' } };
     }
 
-    const contentBlock = isPdf
-      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: parsed.base64 } }
-      : { type: 'image', source: { type: 'base64', media_type: parsed.mediaType, data: parsed.base64 } };
-
     const todayIso = new Date().toISOString().slice(0, 10);
+    const prompt = buildOcrPrompt(documentType, String(expectedNumber), todayIso);
 
-    const prompt = [
-      'You are verifying a ' + docLabel(documentType) + ' uploaded during a business registration flow.',
-      'The user typed this number in the form: "' + String(expectedNumber).trim() + '".',
-      'Today\'s date (UTC) is: ' + todayIso + '.',
-      'Look at the attached document carefully and determine:',
-      '1) Whether it genuinely is a certificate of this type (not a random photo, blank page, or unrelated document).',
-      '   Phone photos with glare, slight blur, skew, shadows, or background around the paper are acceptable.',
-      '   Only reject if the content is clearly not this type of certificate.',
-      '   Kuwait / GCC commercial registration and trade license documents (Arabic and/or English) are valid.',
-      '2) The registration/license number printed on the certificate (main official number field).',
-      '   Formats may include year/number (e.g. 2025/18932), spaces, dashes, or Arabic-Indic digits.',
-      '3) Whether that printed number matches the number the user typed. Treat as identical:',
-      '   - spaces, dashes, slashes as separators',
-      '   - leading zeros',
-      '   - Arabic-Indic digits vs Western digits',
-      '   - year/number vs number-only when significant digits match',
-      '4) The expiry / validity end date printed on the certificate (look for expiry, valid until, end date,',
-      '   تاريخ الانتهاء, ساري حتى, صالح حتى). Convert to YYYY-MM-DD when possible.',
-      '   If no expiry date is visible, set extractedExpiryDate to null and isExpired to false.',
-      '5) isExpired: true only if the expiry date is strictly before today (' + todayIso + ').',
-      '',
-      'Reply with ONLY a JSON object, no extra text, in this exact shape:',
-      '{"isCertificate": boolean, "extractedNumber": string | null, "numbersMatch": boolean, "extractedExpiryDate": string | null, "isExpired": boolean, "reason": string}',
-    ].join('\n');
+    let provider: 'xai' | 'anthropic' | null = null;
+    let textBlock = '';
 
-    let aiRes: globalThis.Response;
-    try {
-      aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: ANTHROPIC_MODEL,
-          max_tokens: 600,
-          messages: [
-            {
-              role: 'user',
-              content: [contentBlock, { type: 'text', text: prompt }],
-            },
-          ],
-        }),
-      });
-    } catch (fetchErr) {
-      console.error('[verify-certificate] fetch to Anthropic failed', fetchErr);
-      return { status: 502, body: { valid: false, message: 'Verification service failed, please try again' } };
+    // Prefer Grok for images (high-detail vision). PDFs go to Claude first.
+    if (!isPdf && XAI_API_KEY) {
+      const g = await callGrokVision(dataUrl, parsed.mediaType, prompt);
+      if (g.ok) {
+        provider = 'xai';
+        textBlock = g.text;
+      } else {
+        console.warn('[verify-certificate] Grok unavailable, falling back:', g.error);
+      }
     }
 
-    if (!aiRes.ok) {
-      const errText = await aiRes.text().catch(() => '');
-      console.error('[verify-certificate] Anthropic API error', aiRes.status, errText);
-      return { status: 502, body: { valid: false, message: 'Verification service failed, please try again' } };
+    if (!provider && ANTHROPIC_API_KEY) {
+      const c = await callClaudeVision(parsed.base64, parsed.mediaType, prompt);
+      if (c.ok) {
+        provider = 'anthropic';
+        textBlock = c.text;
+      } else {
+        console.error('[verify-certificate] Claude failed:', c.error);
+      }
     }
 
-    let aiData: { content?: Array<{ type: string; text?: string }> } = {};
-    try {
-      aiData = (await aiRes.json()) as { content?: Array<{ type: string; text?: string }> };
-    } catch (parseErr) {
-      console.error('[verify-certificate] Failed to parse Anthropic JSON', parseErr);
-      return { status: 502, body: { valid: false, message: 'Verification service failed, please try again' } };
+    // Last resort: try the other provider if first path failed
+    if (!provider && isPdf && XAI_API_KEY) {
+      // PDF not ideal for Grok image path; still try Claude already done.
+    }
+    if (!provider && !isPdf && ANTHROPIC_API_KEY && !textBlock) {
+      const c = await callClaudeVision(parsed.base64, parsed.mediaType, prompt);
+      if (c.ok) {
+        provider = 'anthropic';
+        textBlock = c.text;
+      }
     }
 
-    const textBlock = (aiData.content && aiData.content.find((b) => b.type === 'text')?.text) || '';
-
-    let verdict: AiVerdict = {};
-    try {
-      const jsonMatch = textBlock.match(/\{[\s\S]*\}/);
-      if (jsonMatch) verdict = JSON.parse(jsonMatch[0]) as AiVerdict;
-    } catch {
-      verdict = {};
+    if (!provider || !textBlock) {
+      return {
+        status: 502,
+        body: { valid: false, message: 'Verification service failed, please try again' },
+      };
     }
 
+    const verdict = parseVerdict(textBlock);
     if (!textBlock || Object.keys(verdict).length === 0) {
-      console.error('[verify-certificate] Could not parse AI verdict. Raw text:', textBlock);
+      console.error('[verify-certificate] Could not parse AI verdict. Raw:', textBlock.slice(0, 400));
     }
 
     const isCertificate = verdict.isCertificate === true;
-    const serverMatch = numbersEqual(String(expectedNumber).trim(), verdict.extractedNumber);
+
+    const candidates: Array<string | null | undefined> = [
+      verdict.extractedNumber,
+      ...(Array.isArray(verdict.allNumbersFound) ? verdict.allNumbersFound : []),
+      verdict.rawTextSnippet,
+    ];
+    const serverMatch = matchAnyCandidate(String(expectedNumber).trim(), candidates);
     const numbersMatch = verdict.numbersMatch === true || serverMatch;
 
+    // If primary extracted number is empty but we matched via allNumbersFound, promote a match
+    let extractedNumber = verdict.extractedNumber ?? null;
+    if ((!extractedNumber || !numbersEqual(String(expectedNumber), extractedNumber)) && numbersMatch) {
+      for (const c of candidates) {
+        if (c && numbersEqual(String(expectedNumber), c)) {
+          extractedNumber = String(c).trim();
+          break;
+        }
+      }
+    }
+
     const extractedExpiryDate = normalizeDate(verdict.extractedExpiryDate ?? null);
-    // Prefer server-side expiry check when we have a normalized date
     let isExpired = false;
     if (extractedExpiryDate && /^\d{4}-\d{2}-\d{2}$/.test(extractedExpiryDate)) {
       isExpired = isDateExpired(extractedExpiryDate);
@@ -299,18 +453,21 @@ async function runVerify(body: VerifyBody): Promise<VerifyResult> {
 
     const baseOut: VerifyBodyOut = {
       valid,
-      extractedNumber: verdict.extractedNumber ?? null,
+      extractedNumber,
       extractedExpiryDate,
       isExpired,
       numbersMatch,
       isCertificate,
+      provider,
     };
 
     if (!valid) {
       console.log('[verify-certificate] rejected', {
+        provider,
         documentType,
         expectedNumber: String(expectedNumber).trim(),
-        extractedNumber: verdict.extractedNumber ?? null,
+        extractedNumber,
+        allNumbersFound: verdict.allNumbersFound ?? null,
         extractedExpiryDate,
         isCertificate,
         numbersMatch,
@@ -327,23 +484,17 @@ async function runVerify(body: VerifyBody): Promise<VerifyResult> {
         message = 'The number on the certificate does not match the number entered';
       }
 
-      return {
-        status: 200,
-        body: { ...baseOut, valid: false, message },
-      };
+      return { status: 200, body: { ...baseOut, valid: false, message } };
     }
 
-    return {
-      status: 200,
-      body: { ...baseOut, valid: true },
-    };
+    return { status: 200, body: { ...baseOut, valid: true } };
   } catch (err) {
     console.error('[verify-certificate] unexpected error', err);
     return { status: 500, body: { valid: false, message: 'Verification failed, please try again' } };
   }
 }
 
-/** Express-style default export: (req, res) => void */
+/** Express default export */
 export default async function handler(req: any, res: any) {
   try {
     if (req.method && req.method !== 'POST') {
