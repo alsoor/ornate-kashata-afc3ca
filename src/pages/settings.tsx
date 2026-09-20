@@ -732,6 +732,38 @@ export async function pushCompanyStatusToServer(co: CompanyRegistration, status:
 
 
 /** يقبل الإيميل فقط — لا تحويل من يوزرنيم */
+/** After Approve: create the auth user so the company can sign in immediately. */
+export async function provisionCompanyAuthAccount(co: CompanyRegistration): Promise<boolean> {
+  const email = String(co.email || '').trim().toLowerCase();
+  const password = String(co.password || '').trim();
+  if (!email || !password) return false;
+  const displayName = co.companyName || co.ownerName || email;
+  const username = String(co.username || '').replace(/^@/, '').trim() || undefined;
+  try {
+    // Prefer dedicated server activate endpoints (may create the user)
+    await pushCompanyStatusToServer({ ...co, status: 'active' }, 'active');
+  } catch { /* continue */ }
+  try {
+    const up = await signUp.email({
+      name: displayName,
+      email,
+      password,
+      ...(username ? ({ username } as any) : {}),
+    } as any);
+    if (!(up as { error?: unknown })?.error) return true;
+  } catch { /* may already exist */ }
+  // If already exists, sign-in probe with stored password (session not kept for owner)
+  try {
+    const r = await signIn.email({ email, password });
+    if (!(r as { error?: unknown })?.error) {
+      try { await signOut(); } catch { /* */ }
+      return true;
+    }
+  } catch { /* */ }
+  return false;
+}
+
+
 export async function resolveLoginEmailFromUsername(raw: string): Promise<{ email: string | null; username: string | null }> {
   const v = String(raw || '').trim().replace(/^@/, '');
   if (!v) return { email: null, username: null };
@@ -3459,13 +3491,25 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         // دخول موحّد: إيميل شركة → مسار الشركات، وإلا أفراد
         const treatAsCompany = !!reg || accountKind === 'company';
 
-        // ── دخول حسابات الشركات ──
+        // ── Company account login ──
         if (treatAsCompany) {
           let companyReg = reg;
           const remembered = getRememberedCompanyStatus(em);
           const remote = await fetchCompanyStatusFromServer(em);
-          const resolved: CompanyRegStatus | null =
-            remote || remembered || companyReg?.status || null;
+          // Priority: any "active" wins; then local remembered; then remote; then registry.
+          // Never let a stale remote "pending" override a local admin Approve.
+          let resolved: CompanyRegStatus | null = null;
+          const sources: Array<CompanyRegStatus | null | undefined> = [
+            remembered,
+            companyReg?.status,
+            remote,
+          ];
+          if (sources.some(s => s === 'active')) resolved = 'active';
+          else if (sources.some(s => s === 'inactive')) resolved = 'inactive';
+          else if (remembered) resolved = remembered;
+          else if (companyReg?.status) resolved = companyReg.status;
+          else if (remote) resolved = remote;
+
           if (companyReg && resolved && companyReg.status !== resolved) {
             setCompanyRegStatus(companyReg.id, resolved);
             companyReg = { ...companyReg, status: resolved };
@@ -3486,10 +3530,10 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             upsertCompanyRegistration(companyReg);
           }
           if (!companyReg) {
-            // ربما تمت الموافقة وأنشئ الحساب على السيرفر — جرّب الدخول
             const tryRemote = await signIn.email({ email: em, password });
             if (!(tryRemote as { error?: unknown })?.error) {
               rememberCompanyActivation(em, 'active');
+              try { setSessionAccountKind('company'); } catch { /* */ }
               setLoading(false);
               return;
             }
@@ -3500,13 +3544,25 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             return;
           }
           if (companyReg.status === 'pending') {
-            // إذا وافق الأونر من جهاز آخر: جرّب الدخول قبل الرفض
+            // Owner may have approved on another device — try real auth first
             const tryPending = await signIn.email({ email: em, password });
             if (!(tryPending as { error?: unknown })?.error) {
               setCompanyRegStatus(companyReg.id, 'active');
               rememberCompanyActivation(em, 'active');
+              try { setSessionAccountKind('company'); } catch { /* */ }
               setLoading(false);
               return;
+            }
+            // Also try stored password from registration
+            if (companyReg.password && companyReg.password !== password) {
+              const tryStored = await signIn.email({ email: em, password: companyReg.password });
+              if (!(tryStored as { error?: unknown })?.error) {
+                setCompanyRegStatus(companyReg.id, 'active');
+                rememberCompanyActivation(em, 'active');
+                try { setSessionAccountKind('company'); } catch { /* */ }
+                setLoading(false);
+                return;
+              }
             }
             setError('طلبكم قيد المراجعة — سوف يتم الاتصال بكم قريباً');
             setCompanyPendingMsg('سوف يتم الاتصال بكم قريباً');
@@ -3518,30 +3574,63 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             setLoading(false);
             return;
           }
-          // active: إن لم يُنشأ حساب بعد، أنشئه ثم سجّل الدخول
+          // active: sign in, or create auth user then sign in
           if (companyReg.status === 'active') {
-            const reg = companyReg;
+            const regRow = companyReg;
             const notice = getCompanyNotice(em);
             if (notice) setCompanyPendingMsg(notice);
+            const pwCandidates = Array.from(new Set(
+              [password, regRow.password].filter((p): p is string => !!p && String(p).length > 0).map(String)
+            ));
             try {
-              const trySignIn = await signIn.email({ email: em, password });
-              if (!(trySignIn as { error?: unknown })?.error) {
-                setLoading(false);
-                return;
-              }
-              const displayName = reg.companyName || reg.ownerName || em;
-              const up = await signUp.email({ name: displayName, email: em, password: password || reg.password || '' });
-              if ((up as { error?: { message?: string } })?.error) {
-                const res2 = await signIn.email({ email: em, password });
-                if ((res2 as { error?: { message?: string } })?.error) {
-                  setError((res2 as { error?: { message?: string } }).error?.message || 'فشل تسجيل الدخول — تأكد من كلمة المرور');
+              // 1) Try sign-in with each known password
+              for (const pw of pwCandidates) {
+                const trySignIn = await signIn.email({ email: em, password: pw });
+                if (!(trySignIn as { error?: unknown })?.error) {
+                  rememberCompanyActivation(em, 'active');
+                  try { setSessionAccountKind('company'); } catch { /* */ }
+                  setError('');
+                  setCompanyPendingMsg('');
                   setLoading(false);
                   return;
                 }
-              } else {
-                await signIn.email({ email: em, password: password || reg.password || '' });
-                try { setSessionAccountKind('company'); } catch { /* */ }
               }
+              // 2) Create auth account then sign in (first login after Approve)
+              const displayName = regRow.companyName || regRow.ownerName || em;
+              const pwForCreate = pwCandidates[0] || password;
+              const up = await signUp.email({
+                name: displayName,
+                email: em,
+                password: pwForCreate,
+                ...({ username: (regRow.username || '').replace(/^@/, '') || undefined } as any),
+              } as any);
+              if (!(up as { error?: unknown })?.error) {
+                const after = await signIn.email({ email: em, password: pwForCreate });
+                if (!(after as { error?: unknown })?.error) {
+                  rememberCompanyActivation(em, 'active');
+                  try { setSessionAccountKind('company'); } catch { /* */ }
+                  setError('');
+                  setCompanyPendingMsg('');
+                  setLoading(false);
+                  return;
+                }
+              }
+              // 3) signUp may fail if user already exists — retry all passwords again
+              for (const pw of pwCandidates) {
+                const res2 = await signIn.email({ email: em, password: pw });
+                if (!(res2 as { error?: unknown })?.error) {
+                  rememberCompanyActivation(em, 'active');
+                  try { setSessionAccountKind('company'); } catch { /* */ }
+                  setError('');
+                  setCompanyPendingMsg('');
+                  setLoading(false);
+                  return;
+                }
+              }
+              setError(
+                (up as { error?: { message?: string } })?.error?.message
+                || 'فشل تسجيل الدخول — تأكد من كلمة المرور المستخدمة عند التسجيل'
+              );
               setLoading(false);
               return;
             } catch (err) {
@@ -9218,7 +9307,6 @@ export default function SettingsPage() {
                       onClick={() => {
                         const next: CompanyRegStatus = isActive ? 'inactive' : 'active';
                         setOwnerCompanyBusy(true);
-                        // ثبّت بالإيميل أولاً ثم بالمعرّف — حتى لا يضيع التفعيل
                         rememberCompanyActivation(co.email, next);
                         setCompanyRegStatus(co.email || co.id, next, {
                           approvedBy: profileUsername || 'stooorna',
@@ -9226,10 +9314,17 @@ export default function SettingsPage() {
                         if (co.id && co.email) setCompanyRegStatus(co.id, next, { approvedBy: profileUsername || 'stooorna' });
                         const updated = loadCompaniesRegistry();
                         setOwnerCompanies(updated);
-                        void pushCompanyStatusToServer({ ...co, status: next }, next).finally(() => {
-                          setOwnerCompanies(loadCompaniesRegistry());
-                          setOwnerCompanyBusy(false);
-                        });
+                        void (async () => {
+                          try {
+                            await pushCompanyStatusToServer({ ...co, status: next }, next);
+                            if (next === 'active') {
+                              await provisionCompanyAuthAccount({ ...co, status: 'active' });
+                            }
+                          } finally {
+                            setOwnerCompanies(loadCompaniesRegistry());
+                            setOwnerCompanyBusy(false);
+                          }
+                        })();
                       }}
                       style={{
                         width: 88, flexShrink: 0, border: 'none', cursor: 'pointer',
@@ -9435,10 +9530,15 @@ export default function SettingsPage() {
                     const updated = loadCompaniesRegistry();
                     setOwnerCompanies(updated);
                     setOwnerCompanyDetail(prev => prev ? { ...prev, status: 'active', approvedAt: new Date().toISOString() } : prev);
-                    void pushCompanyStatusToServer({ ...ownerCompanyDetail, status: 'active' }, 'active').finally(() => {
-                      setOwnerCompanies(loadCompaniesRegistry());
-                      setOwnerCompanyBusy(false);
-                    });
+                    void (async () => {
+                      try {
+                        await pushCompanyStatusToServer({ ...ownerCompanyDetail, status: 'active' }, 'active');
+                        await provisionCompanyAuthAccount({ ...ownerCompanyDetail, status: 'active' });
+                      } finally {
+                        setOwnerCompanies(loadCompaniesRegistry());
+                        setOwnerCompanyBusy(false);
+                      }
+                    })();
                   }}
                   style={{
                     flex: 1, padding: '12px', borderRadius: 12, border: 'none', cursor: 'pointer',
