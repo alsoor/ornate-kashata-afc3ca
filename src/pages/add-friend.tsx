@@ -9112,13 +9112,6 @@ export default function AddFriendPage() {
   // ── Stories state ────────────────────────────────────────────────────────────
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
   const [viewerGroupIdx, setViewerGroupIdx] = useState<number | null>(null);
-  const lastFeedScrollTopRef = useRef(0);
-  const profileContentScrollRef = useRef<HTMLDivElement | null>(null);
-  // Tracks the touch start Y only while already at the top of the feed —
-  // used solely to detect an upward swipe there for the header-close gesture
-  // below. Stories only ever open on tap now, never on drag.
-  const topSwipeStartY = useRef<number | null>(null);
-
   const [storyUploading, setStoryUploading] = useState(false);
   const storyFileRef = useRef<HTMLInputElement>(null);
   // ref for adding extra media from inside the viewer
@@ -11440,10 +11433,6 @@ export default function AddFriendPage() {
   const [headerOpen, setHeaderOpen] = useState(true);
   // Once true, the grabber's attention-drawing bounce animation stops for good.
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
-  // Swiping up over the posts grid while already at the top of the feed collapses
-  // the header too, same as tapping the grabber bar directly — both ways work.
-  const headerSwipeCloseTriggeredRef = useRef(false);
-  const HEADER_CLOSE_SWIPE_THRESHOLD = 40;
   // Sub-tab inside the Profile page, replacing the old STOOORNA divider: switches the content
   // strip below it between the text-posts feed and the video/photo grid — independently of
   // everything above (stories strip, header, etc. never move when this changes).
@@ -13377,61 +13366,7 @@ export default function AddFriendPage() {
 
         {/* ── Content ── */}
         <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
-        <div
-          ref={profileContentScrollRef}
-          className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain"
-          onScroll={e => {
-            // Reports scroll direction to the global bottom bar (see RootLayout's
-            // GlobalBottomNavigation) so it can hide while browsing further into
-            // the feed and reappear when scrolling back toward the top. Nothing
-            // else on this page reacts to this event.
-            const el = e.currentTarget;
-            const top = el.scrollTop;
-            const last = lastFeedScrollTopRef.current;
-            const delta = top - last;
-            if (Math.abs(delta) > 4) {
-              window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', {
-                detail: { dir: (delta > 0 && top > 24) ? 'down' : 'up' },
-              }));
-              lastFeedScrollTopRef.current = top;
-            }
-          }}
-          onTouchStart={e => {
-            headerSwipeCloseTriggeredRef.current = false;
-            if (pageTab !== 'profile') {
-              topSwipeStartY.current = null;
-              return;
-            }
-            const el = profileContentScrollRef.current;
-            if (!el || el.scrollTop > 0) {
-              topSwipeStartY.current = null;
-              return;
-            }
-            topSwipeStartY.current = e.touches[0].clientY;
-          }}
-          onTouchMove={e => {
-            if (topSwipeStartY.current === null) return;
-            const el = profileContentScrollRef.current;
-            if (!el || el.scrollTop > 0) {
-              topSwipeStartY.current = null;
-              return;
-            }
-            const delta = e.touches[0].clientY - topSwipeStartY.current;
-            if (delta >= 0) return; // only upward swipes close the header here
-            // Swiping up (finger moving toward the top) while already at the top of
-            // the feed, over the posts grid, closes the header — same effect as
-            // tapping the grabber bar. Fires once per gesture, past a small threshold.
-            if (headerOpen && !headerSwipeCloseTriggeredRef.current && Math.abs(delta) > HEADER_CLOSE_SWIPE_THRESHOLD) {
-              headerSwipeCloseTriggeredRef.current = true;
-              setHeaderOpen(false);
-              setHeaderHintSeen(true);
-            }
-          }}
-          onTouchEnd={() => {
-            topSwipeStartY.current = null;
-            headerSwipeCloseTriggeredRef.current = false;
-          }}
-          style={{
+        <div className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{
           WebkitOverflowScrolling: 'touch',
           willChange: 'scroll-position',
           contain: 'strict',
@@ -16166,9 +16101,8 @@ export default function AddFriendPage() {
                 ))}
               </div>
               <div style={{
-                height: 'min(58vh, 440px)', flexShrink: 0,
-                overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
-                padding: 12,
+                flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
+                padding: 12, minHeight: 180, maxHeight: 'min(62vh, 520px)',
                 scrollbarWidth: 'thin', scrollbarColor: 'rgba(234,179,8,0.55) transparent',
               }}>
                 {(() => {
