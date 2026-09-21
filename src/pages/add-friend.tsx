@@ -16166,8 +16166,9 @@ export default function AddFriendPage() {
                 ))}
               </div>
               <div style={{
-                flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
-                padding: 12, minHeight: 180, maxHeight: 'min(62vh, 520px)',
+                height: 'min(58vh, 440px)', flexShrink: 0,
+                overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
+                padding: 12,
                 scrollbarWidth: 'thin', scrollbarColor: 'rgba(234,179,8,0.55) transparent',
               }}>
                 {(() => {
