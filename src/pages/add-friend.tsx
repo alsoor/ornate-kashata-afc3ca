@@ -5920,7 +5920,7 @@ export interface FriendStoryProfileProps {
   /** حساب شركة عام: يظهر اليوزر والمنشورات والبث للجميع بدون شرط صداقة.
    * اللايك والتعليق متاحان للمستخدمين المسجّلين (guestGuard كما في باقي التطبيق). */
   isCompanyProfile?: boolean;
-  /** When parent already knows this user is an accepted friend (e.g. opened from friends list). */
+  /** Parent already knows this user is an accepted friend (e.g. opened from friends list). */
   initialFriendAccepted?: boolean;
 }
 export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, onRepost, isCompanyProfile = false, initialFriendAccepted = false }: FriendStoryProfileProps) {
@@ -5969,7 +5969,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         if (!cancelled) setFriendStateReady(true);
       }
     }
-    // Reset while author changes so private lock does not flash incorrectly
     if (!initialFriendAccepted) {
       setFriendState('none');
       setFriendStateReady(false);
@@ -6107,7 +6106,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const coverUrl = profile?.coverUrl ?? null;
   const pinnedTrack = pinnedTrackFromProfile(profile);
   // الشركات عامة دائماً — لا تُخفى حتى لو وُسم الحساب خاصاً أو بدون صداقة
-  // Wait until friend state is known to avoid a brief "Private account" flash for accepted friends
   const isHiddenPrivate = friendStateReady && !isCompanyProfile && !!profile?.isPrivate && friendState !== 'accepted';
   // منشور هذا المستخدم المثبّت (إن وُجد) يظهر أولًا، والباقي تحته بترتيبه الطبيعي بدون تثبيت
   const sortedAuthorPosts = useMemo(() => {
@@ -11444,15 +11442,21 @@ export default function AddFriendPage() {
   );
   const isFriendManagement = pageTab === 'add';
 
-  // ── Header show/hide toggle ────────────────────────────────────────────────
-  // A small grabber bar sits right above the Video|Post|Photo switcher. Tapping it
-  // collapses the entire header above it (avatar/stats row, stories strip, new-post
-  // and inbox icons) like a shutter, so only the three sections + feed are visible
-  // and scrollable. Tapping again brings the header back down exactly as it was —
-  // this is a manual toggle only, not tied to scrolling.
+  // ── Profile chrome expand/collapse (scroll-driven, Telegram-style) ─────────
+  // true  = expanded: full story circle, stats, friends strip, products label
+  // false = compact: small stories row + username/bio only; bottom nav hidden
   const [headerOpen, setHeaderOpen] = useState(true);
-  // Once true, the grabber's attention-drawing bounce animation stops for good.
-  const [headerHintSeen, setHeaderHintSeen] = useState(false);
+  const profileScrollLastYRef = useRef(0);
+  const profileScrollRafRef = useRef(0);
+  useEffect(() => {
+    return () => {
+      try { window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } })); } catch { /* */ }
+      if (profileScrollRafRef.current) {
+        cancelAnimationFrame(profileScrollRafRef.current);
+        profileScrollRafRef.current = 0;
+      }
+    };
+  }, []);
   // Sub-tab inside the Profile page, replacing the old STOOORNA divider: switches the content
   // strip below it between the text-posts feed and the video/photo grid — independently of
   // everything above (stories strip, header, etc. never move when this changes).
@@ -13070,10 +13074,11 @@ export default function AddFriendPage() {
         {/* ── Header ── */}
         <div className="sticky top-0 z-20" style={{
           position: 'relative',
-          paddingTop: 40,
+          paddingTop: headerOpen ? 40 : 8,
           background: CLR_HEADER_BG,
           backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
+          transition: 'padding-top 220ms ease',
         }}>
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
@@ -13085,30 +13090,14 @@ export default function AddFriendPage() {
           {/* Animated radar (text posts) button - now in the bottom bar (RootLayout) */}
 
 
-          {/* ── Everything above the Video|Post|Photo switcher (music button, avatar/stats
-              row, stories strip, new-post + inbox icons) collapses together as one shutter,
-              toggled only by the grabber bar below — never by scrolling. A dark blurred fog
-              overlay covers it first, so nothing is ever seen half-cut mid-collapse — closing
-              fogs it over immediately then the space shrinks away behind the fog; opening
-              expands the space first, then the fog lifts to reveal everything cleanly. ── */}
+          {/* Profile chrome: expanded = full stats + story rows; compact (scroll up) =
+              Telegram-style: small stories strip + username/bio only. Never fully fog-hidden. */}
           <div style={{
-            display: 'grid',
-            gridTemplateRows: headerOpen ? '1fr' : '0fr',
-            transition: 'grid-template-rows 320ms cubic-bezier(0.22,1,0.36,1)',
+            overflow: 'hidden',
+            paddingTop: headerOpen ? 12 : 6,
+            position: 'relative',
+            transition: 'padding 220ms ease',
           }}>
-            <div style={{ overflow: 'hidden', paddingTop: 12, position: 'relative' }}>
-              {/* Fog overlay */}
-              <div aria-hidden style={{
-                position: 'absolute', inset: 0, zIndex: 6,
-                background: 'rgba(4,8,8,0.95)',
-                backdropFilter: 'blur(22px)',
-                WebkitBackdropFilter: 'blur(22px)',
-                opacity: headerOpen ? 0 : 1,
-                pointerEvents: headerOpen ? 'none' : 'auto',
-                transition: headerOpen
-                  ? 'opacity 240ms ease-out 200ms'
-                  : 'opacity 140ms ease-in',
-              }} />
 
           {/* Row 1 + Row 2: story circle + stats, then the friends' stories strip */}
           {pageTab === 'profile' && (
@@ -13123,21 +13112,21 @@ export default function AddFriendPage() {
                 const myGroup = storyGroups.find(g => g.userId === user?.id);
                 const hasStory = !!myGroup && myGroup.items.length > 0;
                 const allSeen = hasStory && myGroup!.items.every(i => i.seen);
+                const storySz = headerOpen ? 76 : 44;
                 return (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: -12, marginLeft: -6, flexShrink: 0 }}>
-                    <div style={{ width: 76, height: 76, position: 'relative' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: headerOpen ? -12 : 0, marginLeft: headerOpen ? -6 : 0, flexShrink: 0, transition: 'margin 200ms ease' }}>
+                    <div style={{ width: storySz, height: storySz, position: 'relative', transition: 'width 200ms ease, height 200ms ease' }}>
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => {
                           if (myGroup) {
                             setViewerGroupIdx(storyGroups.indexOf(myGroup));
                           } else {
-                            // بدون قائمة Photo/Video — افتح قائمة النشر (قصة / كاميرا)
                             setPublishMenuOpen(true);
                           }
                         }}
                         disabled={storyUploading}
-                        style={{ width: 76, height: 76, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
+                        style={{ width: storySz, height: storySz, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', transition: 'width 200ms ease, height 200ms ease' }}
                       >
                         {/* One fixed circular frame: the photo is clipped inside it and can never overflow. */}
                         {/* إطار أزرق ثابت + صورة ثابتة */}
@@ -13151,15 +13140,15 @@ export default function AddFriendPage() {
                           <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={68} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
                         </div>
                       </motion.button>
-                      {/* + badge — its own button now: always opens the نشر إعلان للقصة/صورة/فيديو
-                          menu, whether or not a story already exists. */}
+                      {/* + badge — hidden in compact scroll mode */}
+                      {headerOpen && (
                       <motion.button
                         whileTap={{ scale: 0.88 }}
                         animate={{ rotate: 360 }}
                         transition={{ duration: 2.4, repeat: Infinity, ease: 'linear' }}
                         onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); }}
                         disabled={storyUploading || quickPublishing}
-                        aria-label="خيارات النشر"
+                        aria-label="Publish options"
                         style={{
                           position: 'absolute', bottom: 1, right: 1,
                           width: 22, height: 22, borderRadius: '50%',
@@ -13176,10 +13165,13 @@ export default function AddFriendPage() {
                           : <Plus size={12} strokeWidth={3} color="#fff" />
                         }
                       </motion.button>
+                      )}
                     </div>
+                    {headerOpen && (
                     <span style={{ fontSize: '0.58rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500 }}>
                       قصتي
                     </span>
+                    )}
                   </div>
                 );
               })()}
@@ -13213,7 +13205,7 @@ export default function AddFriendPage() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                {headerOpen && <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaPosts.length}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Post</span>
@@ -13258,12 +13250,13 @@ export default function AddFriendPage() {
                     </motion.button>
                   )}
 
-                </div>
+                </div>}
               </div>
             </div>
           )}
 
-          {/* Row 2: Friends' stories strip — shown under the story circle on the PROFILE tab */}
+          {/* Row 2: Friends' stories strip — under story circle when expanded;
+              when compact (scroll up), sits beside my story like Telegram */}
           {pageTab === 'profile' && (
             <>
               <style>{`
@@ -13275,10 +13268,11 @@ export default function AddFriendPage() {
                 className="header-stories"
                 style={{
                   display: 'flex', flexDirection: 'row', flexWrap: 'nowrap',
-                  gap: 10, overflowX: 'auto', overflowY: 'hidden',
+                  gap: headerOpen ? 10 : 8, overflowX: 'auto', overflowY: 'hidden',
                   scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
-                  padding: '2px 14px 10px',
+                  padding: headerOpen ? '2px 14px 10px' : '0 12px 6px',
                   alignItems: 'center',
+                  transition: 'padding 200ms ease, gap 200ms ease',
                 }}
               >
                 {/* ستوريات المستخدمين فقط في شريط الهيدر — الشركات في تبويب Company */}
@@ -13293,7 +13287,7 @@ export default function AddFriendPage() {
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setViewerGroupIdx(realIdx)}
-                        style={{ width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
+                        style={{ width: headerOpen ? 60 : 40, height: headerOpen ? 60 : 40, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', transition: 'width 200ms ease, height 200ms ease' }}
                       >
                         {/* حلقة بلونين فقط: أصفر كامل ما دام في عنصر غير مُشاهَد،
                             وأزرق كامل (نفس أزرق دائرة "قصتي") بعد مشاهدة كل العناصر */}
@@ -13319,9 +13313,11 @@ export default function AddFriendPage() {
                           </div>
                         </div>
                       </motion.button>
+                      {headerOpen && (
                       <span style={{ fontSize: '0.55rem', color: CLR_TEXT_DIM, maxWidth: 60, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {g.username ? `@${g.username}` : g.name}
                       </span>
+                      )}
                     </div>
                   );
                 })}
@@ -13335,38 +13331,8 @@ export default function AddFriendPage() {
             </div>
           </div>
 
-          {/* ── Header show/hide grabber — sits exactly above the Video|Post|Photo switcher.
-              Tapping it toggles the whole header above it open/closed like a shutter.
-              It bounces gently up/down on a loop until the user taps it once, to draw the
-              eye toward the feature — then it settles down and stays still. ── */}
-          <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => { setHeaderOpen(o => !o); setHeaderHintSeen(true); }}
-              aria-label={headerOpen ? 'إخفاء الهيدر' : 'إظهار الهيدر'}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                padding: '8px 30px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >
-              <motion.span
-                animate={headerHintSeen ? { y: 0 } : { y: [0, -5, 0, -5, 0] }}
-                transition={headerHintSeen ? { duration: 0.2 } : {
-                  duration: 1.6, repeat: Infinity, repeatDelay: 0.9, ease: 'easeInOut',
-                }}
-                style={{
-                  display: 'block',
-                  width: 36, height: 4, borderRadius: 2,
-                  background: CLR_PRIMARY_BORDER,
-                }}
-              />
-            </motion.button>
-          </div>
-
-
-          {/* Content header — single Post section */}
-          {pageTab === 'profile' && (
+          {/* Content header — single Post section (hidden in compact scroll mode) */}
+          {pageTab === 'profile' && headerOpen && (
             <div style={{ padding: '0 0 8px' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -13378,7 +13344,6 @@ export default function AddFriendPage() {
                 <FileText size={14} strokeWidth={2} />
                 {isCompanyPublisher ? 'المنتجات' : 'Post'}
               </div>
-              <div style={{ height: 1, background: CLR_NAV_BORDER }} />
             </div>
           )}
         </div>
@@ -13386,7 +13351,31 @@ export default function AddFriendPage() {
 
         {/* ── Content ── */}
         <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
-        <div className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{
+        <div
+          className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain"
+          onScroll={(e) => {
+            if (pageTab !== 'profile') return;
+            const el = e.currentTarget;
+            const y = el.scrollTop;
+            const prev = profileScrollLastYRef.current;
+            const delta = y - prev;
+            profileScrollLastYRef.current = y;
+            if (profileScrollRafRef.current) return;
+            profileScrollRafRef.current = requestAnimationFrame(() => {
+              profileScrollRafRef.current = 0;
+              if (y <= 8) {
+                setHeaderOpen(true);
+                try { window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } })); } catch { /* */ }
+              } else if (delta > 4) {
+                setHeaderOpen(false);
+                try { window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: true } })); } catch { /* */ }
+              } else if (delta < -4) {
+                setHeaderOpen(true);
+                try { window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } })); } catch { /* */ }
+              }
+            });
+          }}
+          style={{
           WebkitOverflowScrolling: 'touch',
           willChange: 'scroll-position',
           contain: 'strict',
