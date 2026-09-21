@@ -3824,6 +3824,186 @@ function resolveMediaUrl(url: string | null | undefined): string {
 
 /** Record a unique post view (server dedupes per viewer). Fire-and-forget. */
 const recordedPostViews = new Set<string>();
+
+const FEED_ADS_KEY = 'stooorna_feed_ads';
+const AD_MEDIA_DB = 'stooorna_ad_media_db';
+const AD_MEDIA_STORE = 'media';
+
+function openAdMediaDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = indexedDB.open(AD_MEDIA_DB, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(AD_MEDIA_STORE)) db.createObjectStore(AD_MEDIA_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    } catch (e) { reject(e); }
+  });
+}
+
+async function stooornaAdMediaPut(id: string, dataUrl: string) {
+  try {
+    const db = await openAdMediaDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(AD_MEDIA_STORE, 'readwrite');
+      tx.objectStore(AD_MEDIA_STORE).put(dataUrl, id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch { /* ignore */ }
+}
+
+async function stooornaAdMediaGet(id: string): Promise<string | null> {
+  try {
+    const db = await openAdMediaDb();
+    const val = await new Promise<string | null>((resolve, reject) => {
+      const tx = db.transaction(AD_MEDIA_STORE, 'readonly');
+      const r = tx.objectStore(AD_MEDIA_STORE).get(id);
+      r.onsuccess = () => resolve((r.result as string) || null);
+      r.onerror = () => reject(r.error);
+    });
+    db.close();
+    return val;
+  } catch { return null; }
+}
+
+async function stooornaAdMediaDelete(id: string) {
+  try {
+    const db = await openAdMediaDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(AD_MEDIA_STORE, 'readwrite');
+      tx.objectStore(AD_MEDIA_STORE).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch { /* ignore */ }
+}
+
+function loadFeedAdsMeta(): any[] {
+  try {
+    const mem = (typeof window !== 'undefined' && (window as any).__stooornaFeedAds) as any[] | undefined;
+    if (Array.isArray(mem) && mem.length) return mem;
+  } catch { /* */ }
+  try {
+    const raw = localStorage.getItem(FEED_ADS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
+function saveFeedAdsMeta(list: any[]) {
+  const next = Array.isArray(list) ? list.slice(0, 120) : [];
+  try { (window as any).__stooornaFeedAds = next; } catch { /* */ }
+  try {
+    // metadata only — media lives in IndexedDB
+    const light = next.map(a => ({
+      ...a,
+      mediaUrl: a.mediaUrl && String(a.mediaUrl).startsWith('data:') ? null : a.mediaUrl,
+      pdfUrl: a.pdfUrl && String(a.pdfUrl).startsWith('data:') ? null : a.pdfUrl,
+    }));
+    localStorage.setItem(FEED_ADS_KEY, JSON.stringify(light));
+  } catch {
+    try {
+      localStorage.setItem(FEED_ADS_KEY, JSON.stringify(next.map(a => ({
+        id: a.id, userId: a.userId, authorName: a.authorName, authorUsername: a.authorUsername,
+        authorAvatarUrl: a.authorAvatarUrl, title: a.title, body: a.body, mediaType: a.mediaType,
+        mediaName: a.mediaName, mediaMime: a.mediaMime, createdAt: a.createdAt, endsAt: a.endsAt,
+        expiresAt: a.expiresAt, campaignEndsAt: a.campaignEndsAt, nextEligibleAt: a.nextEligibleAt,
+      }))));
+    } catch { /* */ }
+  }
+  try { window.dispatchEvent(new CustomEvent('stooorna:feed-ads', { detail: next })); } catch { /* */ }
+}
+
+function isAdLive(a: any, now = Date.now()): boolean {
+  const ends = new Date(a.endsAt || a.expiresAt || 0).getTime();
+  if (!ends) return true;
+  return ends > now;
+}
+
+function formatAdEndsAt(iso?: string | null): string {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch { return '—'; }
+}
+
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return '00:00:00';
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+/** live = on public feed (24h), cooldown = hidden 4h then auto republish, ended = campaign over */
+function getAdPhase(a: any, now = Date.now()): 'live' | 'cooldown' | 'ended' {
+  const ends = new Date(a.endsAt || a.expiresAt || 0).getTime();
+  const nextEl = new Date(a.nextEligibleAt || 0).getTime();
+  const campaign = new Date(a.campaignEndsAt || 0).getTime();
+  if (campaign && campaign <= now) return 'ended';
+  if (ends && ends > now) return 'live';
+  if (nextEl && nextEl > now) return 'cooldown';
+  if (campaign && campaign > now) return 'cooldown';
+  return 'ended';
+}
+
+function getAdCountdownMs(a: any, now = Date.now()): number {
+  const phase = getAdPhase(a, now);
+  if (phase === 'live') {
+    return Math.max(0, new Date(a.endsAt || a.expiresAt || 0).getTime() - now);
+  }
+  if (phase === 'cooldown') {
+    const nextEl = new Date(a.nextEligibleAt || 0).getTime();
+    return Math.max(0, nextEl - now);
+  }
+  return 0;
+}
+
+/** When 24h ends → 4h cooldown; when 4h ends → auto Publish another 24h until campaign ends */
+function processAdAutoRepublish(list: any[], now = Date.now()): { list: any[]; changed: boolean } {
+  let changed = false;
+  const next = (Array.isArray(list) ? list : []).map((a) => {
+    const campaign = new Date(a.campaignEndsAt || 0).getTime();
+    if (campaign && campaign <= now) return a;
+    let ends = new Date(a.endsAt || a.expiresAt || 0).getTime();
+    let nextEl = new Date(a.nextEligibleAt || 0).getTime();
+    if (!ends) return a;
+    // Live window expired but cooldown not set properly
+    if (ends <= now && (!nextEl || nextEl <= ends)) {
+      nextEl = ends + 4 * 3600 * 1000;
+      changed = true;
+      return {
+        ...a,
+        nextEligibleAt: new Date(nextEl).toISOString(),
+      };
+    }
+    // Cooldown finished → auto republish 24h
+    if (ends <= now && nextEl && nextEl <= now && (!campaign || campaign > now)) {
+      const newEnds = now + 24 * 3600 * 1000;
+      const newNext = newEnds + 4 * 3600 * 1000;
+      changed = true;
+      return {
+        ...a,
+        endsAt: new Date(newEnds).toISOString(),
+        expiresAt: new Date(newEnds).toISOString(),
+        nextEligibleAt: new Date(newNext).toISOString(),
+        lastAutoPublishAt: new Date(now).toISOString(),
+      };
+    }
+    return a;
+  });
+  return { list: next, changed };
+}
+
 const LOCAL_POST_VIEWS_KEY = 'stooorna_local_post_views';
 const LOCAL_AUTHOR_VIEWS_KEY = 'stooorna_local_author_views';
 
@@ -8890,11 +9070,57 @@ export default function AddFriendPage() {
   const [feedAdsTick, setFeedAdsTick] = useState(0);
   const [adPublishing, setAdPublishing] = useState(false);
   const [adPublishProgress, setAdPublishProgress] = useState(0);
+  const [adClockTick, setAdClockTick] = useState(0);
+  const [adDetailOpen, setAdDetailOpen] = useState<any | null>(null);
   useEffect(() => {
     const onAds = () => setFeedAdsTick(x => x + 1);
     window.addEventListener('stooorna:feed-ads', onAds);
     return () => window.removeEventListener('stooorna:feed-ads', onAds);
   }, []);
+  // Countdown + auto republish cycle (24h live → 4h wait → auto Publish)
+  useEffect(() => {
+    const tick = () => {
+      setAdClockTick(x => x + 1);
+      try {
+        const { list, changed } = processAdAutoRepublish(loadFeedAdsMeta(), Date.now());
+        if (changed) {
+          saveFeedAdsMeta(list);
+          setFeedAdsTick(x => x + 1);
+        }
+      } catch { /* */ }
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  // Restore media blobs from IndexedDB so video/image survive refresh
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = loadFeedAdsMeta();
+        let changed = false;
+        const next = [];
+        for (const a of list) {
+          if ((a.mediaUrl || a.pdfUrl) || !a.id) { next.push(a); continue; }
+          const m = await stooornaAdMediaGet(String(a.id));
+          if (m) {
+            changed = true;
+            next.push({
+              ...a,
+              mediaUrl: m,
+              pdfUrl: a.mediaType === 'pdf' ? m : a.pdfUrl,
+            });
+          } else next.push(a);
+        }
+        if (!cancelled && changed) {
+          try { (window as any).__stooornaFeedAds = next; } catch { /* */ }
+          setFeedAdsTick(x => x + 1);
+        }
+      } catch { /* */ }
+    })();
+    return () => { cancelled = true; };
+  }, [feedAdsTick === 0]);
   const isBusinessUser = !!(user?.id && (() => { try { const raw = localStorage.getItem('stooorna_business_registry'); const list = raw ? JSON.parse(raw) : []; return Array.isArray(list) && list.some((x: any) => String(x.userId) === String(user.id) && x.status === 'approved'); } catch { return false; } })());
   // وضع النشر: اختيار فقط (لا يفتح المعرض) — Text | Photo | Video
   const [composerDestination, setComposerDestination] = useState<'text' | 'photos' | 'videos'>('text');
@@ -15329,31 +15555,45 @@ export default function AddFriendPage() {
                 </div>
                 {feedAdViewer.title ? <p style={{ margin: '2px 0 0', color: 'rgba(255,255,255,0.75)', fontSize: '0.75rem' }}>{feedAdViewer.title}</p> : null}
               </div>
-              <button type="button" onClick={() => setFeedAdViewer(null)} style={{ border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer' }}>
-                <X size={18} />
+              <button
+                type="button"
+                onClick={() => setFeedAdViewer(null)}
+                aria-label="Close"
+                style={{
+                  border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff',
+                  width: 36, height: 36, minWidth: 36, borderRadius: '50%', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+                }}
+              >
+                <X size={18} strokeWidth={2.4} />
               </button>
             </div>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', minHeight: 220 }}>
-                {feedAdViewer.mediaType === 'video' && feedAdViewer.mediaUrl ? (
-                  <video src={feedAdViewer.mediaUrl} controls autoPlay playsInline style={{ width: '100%', maxHeight: '55vh', background: '#000' }} />
-                ) : null}
-                {feedAdViewer.mediaType === 'image' && feedAdViewer.mediaUrl ? (
-                  <img src={feedAdViewer.mediaUrl} alt="" style={{ width: '100%', maxHeight: '55vh', objectFit: 'contain' }} />
-                ) : null}
-                {(feedAdViewer.mediaType === 'pdf' || feedAdViewer.pdfUrl) && (
-                  <div style={{ padding: 24, textAlign: 'center' }}>
-                    <FileText size={48} color="#eab308" />
-                    <p style={{ color: '#fff', marginTop: 12, fontWeight: 700 }}>{feedAdViewer.mediaName || feedAdViewer.pdfName || 'PDF'}</p>
-                    <a href={feedAdViewer.mediaUrl || feedAdViewer.pdfUrl} target="_blank" rel="noopener noreferrer" style={{
-                      display: 'inline-block', marginTop: 14, padding: '10px 18px', borderRadius: 10,
-                      background: '#eab308', color: '#0a0a0a', fontWeight: 900, textDecoration: 'none',
-                    }}>Open PDF</a>
-                  </div>
-                )}
-                {!feedAdViewer.mediaUrl && !feedAdViewer.pdfUrl && (
-                  <p style={{ color: 'rgba(255,255,255,0.5)' }}>No media</p>
-                )}
+                {(() => {
+                  const src = feedAdViewer.mediaUrl || feedAdViewer.pdfUrl || '';
+                  if (feedAdViewer.mediaType === 'video' && src) {
+                    return <video src={src} controls autoPlay playsInline style={{ width: '100%', maxHeight: '55vh', background: '#000' }} />;
+                  }
+                  if (feedAdViewer.mediaType === 'image' && src) {
+                    return <img src={src} alt="" style={{ width: '100%', maxHeight: '55vh', objectFit: 'contain' }} />;
+                  }
+                  if (feedAdViewer.mediaType === 'pdf' || feedAdViewer.pdfUrl) {
+                    return (
+                      <div style={{ padding: 24, textAlign: 'center' }}>
+                        <FileText size={48} color="#eab308" />
+                        <p style={{ color: '#fff', marginTop: 12, fontWeight: 700 }}>{feedAdViewer.mediaName || feedAdViewer.pdfName || 'PDF'}</p>
+                        {src ? (
+                          <a href={src} target="_blank" rel="noopener noreferrer" style={{
+                            display: 'inline-block', marginTop: 14, padding: '10px 18px', borderRadius: 10,
+                            background: '#eab308', color: '#0a0a0a', fontWeight: 900, textDecoration: 'none',
+                          }}>Open PDF</a>
+                        ) : null}
+                      </div>
+                    );
+                  }
+                  return <p style={{ color: 'rgba(255,255,255,0.5)' }}>No media</p>;
+                })()}
               </div>
               {(feedAdViewer.title || feedAdViewer.body) && (
                 <div style={{ padding: '16px 18px calc(20px + env(safe-area-inset-bottom))', background: 'linear-gradient(180deg, #111 0%, #0a0a0a 100%)', borderTop: '1px solid rgba(234,179,8,0.3)' }}>
@@ -15418,18 +15658,9 @@ export default function AddFriendPage() {
               <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: 12, minHeight: 160, maxHeight: '52vh' }}>
                 {(() => {
                   void feedAdsTick;
+                  void adClockTick;
                   let list: any[] = [];
-                  try {
-                    try {
-                      const mem = (window as any).__stooornaFeedAds;
-                      if (Array.isArray(mem) && mem.length) list = mem;
-                    } catch { /* */ }
-                    if (!list.length) {
-                      const raw = localStorage.getItem('stooorna_feed_ads');
-                      list = raw ? JSON.parse(raw) : [];
-                    }
-                    if (!Array.isArray(list)) list = [];
-                  } catch { list = []; }
+                  try { list = loadFeedAdsMeta(); } catch { list = []; }
                   const uid = user?.id ? String(user.id) : '';
                   const mine = list.filter(a => String(a.userId) === uid);
                   const filtered = mine.filter(a => {
@@ -15454,53 +15685,187 @@ export default function AddFriendPage() {
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {showList.map((a, i) => (
-                        <button
+                        <div
                           key={a.id}
-                          type="button"
-                          onClick={() => { setMyAdsHubOpen(false); setFeedAdViewer(a); }}
                           style={{
-                            width: '100%', boxSizing: 'border-box', textAlign: 'left',
+                            width: '100%', boxSizing: 'border-box',
                             border: '1px solid rgba(234,179,8,0.4)',
                             background: 'rgba(234,179,8,0.07)', borderRadius: 10,
-                            padding: '8px 10px', cursor: 'pointer',
+                            padding: '8px 10px',
                             display: 'flex', alignItems: 'center', gap: 10,
                           }}
                         >
-                          <span style={{
-                            flexShrink: 0, minWidth: 22, height: 22, borderRadius: 6,
-                            background: 'rgba(234,179,8,0.25)', border: '1px solid rgba(234,179,8,0.55)',
-                            color: '#eab308', fontWeight: 900, fontSize: '0.7rem',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}>{i + 1}</span>
-                          <div style={{
-                            width: 52, height: 40, borderRadius: 8, overflow: 'hidden', flexShrink: 0,
-                            background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(234,179,8,0.25)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}>
-                            {a.mediaType === 'image' && a.mediaUrl ? (
-                              <img src={a.mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            ) : a.mediaType === 'video' && a.mediaUrl ? (
-                              <video src={a.mediaUrl} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            ) : (
-                              <FileText size={16} color="#eab308" />
-                            )}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ margin: 0, color: '#eab308', fontWeight: 800, fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {a.title || 'Ad'}
-                            </p>
-                            {a.body ? (
-                              <p style={{ margin: '2px 0 0', color: 'rgba(220,210,180,0.7)', fontSize: '0.68rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {String(a.body).slice(0, 48)}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              let full = { ...a };
+                              if (!full.mediaUrl && !full.pdfUrl) {
+                                const m = await stooornaAdMediaGet(String(a.id));
+                                if (m) {
+                                  full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
+                                }
+                              }
+                              setMyAdsHubOpen(false);
+                              setFeedAdViewer(full);
+                            }}
+                            style={{
+                              flex: 1, minWidth: 0, border: 'none', background: 'transparent', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: 0,
+                            }}
+                          >
+                            <span style={{
+                              flexShrink: 0, minWidth: 22, height: 22, borderRadius: 6,
+                              background: 'rgba(234,179,8,0.25)', border: '1px solid rgba(234,179,8,0.55)',
+                              color: '#eab308', fontWeight: 900, fontSize: '0.7rem',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>{i + 1}</span>
+                            <div style={{
+                              width: 52, height: 40, borderRadius: 8, overflow: 'hidden', flexShrink: 0,
+                              background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(234,179,8,0.25)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              {a.mediaType === 'image' && a.mediaUrl ? (
+                                <img src={a.mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : a.mediaType === 'video' && a.mediaUrl ? (
+                                <video src={a.mediaUrl} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : (
+                                <FileText size={16} color="#eab308" />
+                              )}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ margin: 0, color: '#eab308', fontWeight: 800, fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {a.title || 'Ad'}
                               </p>
-                            ) : null}
-                          </div>
-                        </button>
+                              {(() => {
+                                const phase = getAdPhase(a, Date.now());
+                                const ms = getAdCountdownMs(a, Date.now());
+                                const label = phase === 'live'
+                                  ? `Live ${formatCountdown(ms)}`
+                                  : phase === 'cooldown'
+                                    ? `Next publish ${formatCountdown(ms)}`
+                                    : 'Campaign ended';
+                                return (
+                                  <p style={{ margin: '2px 0 0', color: phase === 'live' ? '#eab308' : 'rgba(220,210,180,0.75)', fontSize: '0.65rem', fontWeight: 700 }}>
+                                    {label}
+                                  </p>
+                                );
+                              })()}
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Ad details"
+                            onClick={(e) => { e.stopPropagation(); setAdDetailOpen(a); }}
+                            style={{
+                              flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(234,179,8,0.45)',
+                              background: 'rgba(234,179,8,0.12)', color: '#eab308', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.72rem',
+                            }}
+                          >
+                            i
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Delete ad"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const id = String(a.id);
+                              await stooornaAdMediaDelete(id);
+                              const next = loadFeedAdsMeta().filter((x: any) => String(x.id) !== id);
+                              saveFeedAdsMeta(next);
+                              setFeedAdsTick(t => t + 1);
+                              if (feedAdViewer && String(feedAdViewer.id) === id) setFeedAdViewer(null);
+                              if (adDetailOpen && String(adDetailOpen.id) === id) setAdDetailOpen(null);
+                            }}
+                            style={{
+                              flexShrink: 0, width: 32, height: 32, borderRadius: 8, border: 'none',
+                              background: 'rgba(239,68,68,0.15)', color: '#ef4444', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       ))}
                     </div>
                   );
                 })()}
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+
+      {/* Ad details panel (timers + delete) */}
+      <AnimatePresence>
+        {adDetailOpen && (
+          <motion.div
+            key="ad-detail"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10620, background: 'rgba(0,0,0,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            }}
+            onClick={() => setAdDetailOpen(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.94, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.96, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: 'min(92vw, 360px)', background: 'linear-gradient(180deg, #12160e 0%, #0a0e0c 100%)',
+                border: '2px solid #eab308', borderRadius: 16, padding: 16,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+              }}
+            >
+              {(() => {
+                void adClockTick;
+                const a = adDetailOpen;
+                const phase = getAdPhase(a, Date.now());
+                const ms = getAdCountdownMs(a, Date.now());
+                const phaseLabel = phase === 'live' ? 'Live on feed' : phase === 'cooldown' ? 'Cooldownoldown · auto publish soon' : 'Campaign ended';
+                return (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.95rem' }}>Ad details</p>
+                      <button type="button" onClick={() => setAdDetailOpen(null)} style={{ border: 'none', background: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
+                    </div>
+                    <p style={{ margin: '0 0 6px', color: '#fff', fontWeight: 800, fontSize: '0.9rem' }}>{a.title || 'Ad'}</p>
+                    {a.body ? <p style={{ margin: '0 0 12px', color: 'rgba(220,210,180,0.8)', fontSize: '0.78rem', lineHeight: 1.4 }}>{a.body}</p> : null}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                      <p style={{ margin: 0, color: '#eab308', fontSize: '0.78rem', fontWeight: 800 }}>{phaseLabel}</p>
+                      <p style={{ margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: '1.15rem', fontWeight: 900, fontVariantNumeric: 'tabular-nums' }}>
+                        {phase === 'ended' ? '—' : formatCountdown(ms)}
+                      </p>
+                      <p style={{ margin: 0, color: 'rgba(200,190,150,0.7)', fontSize: '0.7rem' }}>
+                        {phase === 'live' ? 'Until feed ends (24h cycle)' : phase === 'cooldown' ? 'Until auto Publish (4h wait)' : 'No more auto publish'}
+                      </p>
+                      <p style={{ margin: '6px 0 0', color: 'rgba(200,190,150,0.65)', fontSize: '0.68rem' }}>Ends at: {formatAdEndsAt(a.endsAt || a.expiresAt)}</p>
+                      <p style={{ margin: 0, color: 'rgba(200,190,150,0.65)', fontSize: '0.68rem' }}>Next publish: {formatAdEndsAt(a.nextEligibleAt)}</p>
+                      <p style={{ margin: 0, color: 'rgba(200,190,150,0.65)', fontSize: '0.68rem' }}>Campaign until: {formatAdEndsAt(a.campaignEndsAt)}</p>
+                      <p style={{ margin: 0, color: 'rgba(200,190,150,0.65)', fontSize: '0.68rem' }}>Type: {a.mediaType || 'text'}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const id = String(a.id);
+                        await stooornaAdMediaDelete(id);
+                        const next = loadFeedAdsMeta().filter((x: any) => String(x.id) !== id);
+                        saveFeedAdsMeta(next);
+                        setFeedAdsTick(t => t + 1);
+                        if (feedAdViewer && String(feedAdViewer.id) === id) setFeedAdViewer(null);
+                        setAdDetailOpen(null);
+                      }}
+                      style={{
+                        width: '100%', padding: 12, borderRadius: 10, border: 'none',
+                        background: '#ef4444', color: '#fff', fontWeight: 900, cursor: 'pointer',
+                      }}
+                    >
+                      Delete ad
+                    </button>
+                  </>
+                );
+              })()}
             </motion.div>
           </motion.div>
         )}
@@ -15646,82 +16011,72 @@ export default function AddFriendPage() {
                     }
                   }, 90);
                   window.setTimeout(() => {
-                    try {
-                      const balKey = `stooorna_biz_balance_${user.id}`;
-                      let bal = Number(localStorage.getItem(balKey) || '0') || 0;
-                      // Deduct when possible; still publish so Ads always go live
-                      if (bal >= 5) {
-                        bal = Math.max(0, bal - 5);
-                        localStorage.setItem(balKey, String(bal));
-                        window.dispatchEvent(new CustomEvent('stooorna:biz-balance', { detail: { userId: user.id, balance: bal } }));
-                      }
-                      const adsKey = 'stooorna_feed_ads';
-                      let list: any[] = [];
+                    void (async () => {
                       try {
-                        const raw = localStorage.getItem(adsKey);
-                        list = raw ? JSON.parse(raw) : [];
-                        if (!Array.isArray(list)) list = [];
-                      } catch { list = []; }
-                      const uname = String(myUsername || (user as any).username || (user as any).name || 'business').replace(/^@/, '');
-                      const ad = {
-                        id: `ad-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                        userId: String(user.id),
-                        authorName: (user as any).name || uname || 'Business',
-                        authorUsername: uname,
-                        authorAvatarUrl: (user as any).image || (user as any).avatarUrl || null,
-                        title, body,
-                        mediaUrl: businessAdMedia?.dataUrl || null,
-                        mediaType: businessAdMedia?.type || (businessAdMedia ? 'image' : null),
-                        mediaName: businessAdMedia?.name || null,
-                        mediaMime: businessAdMedia?.mime || null,
-                        pdfUrl: businessAdMedia?.type === 'pdf' ? (businessAdMedia.dataUrl || null) : null,
-                        pdfName: businessAdMedia?.type === 'pdf' ? (businessAdMedia.name || null) : null,
-                        createdAt: new Date().toISOString(),
-                        expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
-                      };
-                      const next = [ad, ...list].slice(0, 80);
-                      // Prefer full payload; on quota error keep lighter copies
-                      try {
-                        localStorage.setItem(adsKey, JSON.stringify(next));
-                      } catch {
-                        try {
-                          const light = next.map((a: any) => ({
-                            ...a,
-                            mediaUrl: (a.mediaUrl && String(a.mediaUrl).length > 400000) ? null : a.mediaUrl,
-                            pdfUrl: (a.pdfUrl && String(a.pdfUrl).length > 400000) ? null : a.pdfUrl,
-                          }));
-                          localStorage.setItem(adsKey, JSON.stringify(light));
-                        } catch {
-                          try {
-                            localStorage.setItem(adsKey, JSON.stringify(next.slice(0, 5).map((a: any) => ({
-                              ...a, mediaUrl: null, pdfUrl: a.mediaType === 'pdf' ? null : a.pdfUrl,
-                            }))));
-                          } catch { /* ignore */ }
+                        const balKey = `stooorna_biz_balance_${user.id}`;
+                        let bal = Number(localStorage.getItem(balKey) || '0') || 0;
+                        if (bal >= 5) {
+                          bal = Math.max(0, bal - 5);
+                          localStorage.setItem(balKey, String(bal));
+                          window.dispatchEvent(new CustomEvent('stooorna:biz-balance', { detail: { userId: user.id, balance: bal } }));
                         }
-                      }
-                      // Mirror for same-tab refresh even if storage failed partially
-                      try {
-                        (window as any).__stooornaFeedAds = next;
-                      } catch { /* */ }
-                      setFeedAdsTick(x => x + 1);
-                      window.dispatchEvent(new CustomEvent('stooorna:feed-ads', { detail: next }));
-                      setAdPublishProgress(100);
-                      setBusinessAdTitle('');
-                      setBusinessAdBody('');
-                      setBusinessAdMedia(null);
-                      window.setTimeout(() => {
-                        setBusinessAdsOpen(false);
-                        setShowComposer(false);
+                        const list = loadFeedAdsMeta();
+                        const uname = String(myUsername || (user as any).username || (user as any).name || 'business').replace(/^@/, '');
+                        const now = Date.now();
+                        const endsAt = new Date(now + 24 * 3600 * 1000).toISOString();
+                        const nextEligibleAt = new Date(now + 24 * 3600 * 1000 + 4 * 3600 * 1000).toISOString();
+                        let campaignEndsAt = new Date(now + 30 * 24 * 3600 * 1000).toISOString();
+                        try {
+                          const ck = `stooorna_ad_campaign_${user.id}`;
+                          const existing = localStorage.getItem(ck);
+                          if (existing && new Date(existing).getTime() > now) campaignEndsAt = existing;
+                          else localStorage.setItem(ck, campaignEndsAt);
+                        } catch { /* */ }
+                        const adId = `ad-${now}-${Math.random().toString(36).slice(2, 8)}`;
+                        const dataUrl = businessAdMedia?.dataUrl || null;
+                        if (dataUrl) {
+                          await stooornaAdMediaPut(adId, dataUrl);
+                        }
+                        const ad = {
+                          id: adId,
+                          userId: String(user.id),
+                          authorName: (user as any).name || uname || 'Business',
+                          authorUsername: uname,
+                          authorAvatarUrl: (user as any).image || (user as any).avatarUrl || null,
+                          title, body,
+                          mediaUrl: dataUrl,
+                          mediaType: businessAdMedia?.type || (businessAdMedia ? 'image' : null),
+                          mediaName: businessAdMedia?.name || null,
+                          mediaMime: businessAdMedia?.mime || null,
+                          pdfUrl: businessAdMedia?.type === 'pdf' ? dataUrl : null,
+                          pdfName: businessAdMedia?.type === 'pdf' ? (businessAdMedia.name || null) : null,
+                          createdAt: new Date(now).toISOString(),
+                          endsAt,
+                          expiresAt: endsAt,
+                          nextEligibleAt,
+                          campaignEndsAt,
+                        };
+                        const next = [ad, ...list.filter(a => isAdLive(a, now))].slice(0, 80);
+                        saveFeedAdsMeta(next);
+                        setFeedAdsTick(x => x + 1);
+                        setAdPublishProgress(100);
+                        setBusinessAdTitle('');
+                        setBusinessAdBody('');
+                        setBusinessAdMedia(null);
+                        window.setTimeout(() => {
+                          setBusinessAdsOpen(false);
+                          setShowComposer(false);
+                          setAdPublishing(false);
+                          setAdPublishProgress(0);
+                          try { setTextPostsPageOpen(true); } catch { /* */ }
+                        }, 280);
+                      } catch (err) {
+                        console.error('[Ads] publish failed', err);
                         setAdPublishing(false);
                         setAdPublishProgress(0);
-                        try { setTextPostsPageOpen(true); } catch { /* */ }
-                      }, 280);
-                    } catch (err) {
-                      console.error('[Ads] publish failed', err);
-                      setAdPublishing(false);
-                      setAdPublishProgress(0);
-                    }
-                    window.clearInterval(timer);
+                      }
+                      window.clearInterval(timer);
+                    })();
                   }, 720);
                 }}
                 style={{
@@ -16135,18 +16490,10 @@ export default function AddFriendPage() {
                 );
                 const feedAds: any[] = (() => {
                   void feedAdsTick;
+                  void adClockTick;
                   try {
-                    let list: any[] = [];
-                    try {
-                      const mem = (window as any).__stooornaFeedAds;
-                      if (Array.isArray(mem) && mem.length) list = mem;
-                    } catch { /* */ }
-                    if (!list.length) {
-                      const raw = localStorage.getItem('stooorna_feed_ads');
-                      list = raw ? JSON.parse(raw) : [];
-                    }
                     const now = Date.now();
-                    return (Array.isArray(list) ? list : []).filter((a: any) => !a.expiresAt || new Date(a.expiresAt).getTime() > now);
+                    return loadFeedAdsMeta().filter((a: any) => isAdLive(a, now));
                   } catch { return []; }
                 })();
                 const renderFeedAdCard = (ad: any, key: string) => (
@@ -16154,9 +16501,31 @@ export default function AddFriendPage() {
                     key={key}
                     role="button"
                     tabIndex={0}
-                    onClick={() => setFeedAdViewer(ad)}
-                    onKeyDown={e => { if (e.key === 'Enter') setFeedAdViewer(ad); }}
+                    className="stooorna-feed-ad-card"
+                    onClick={() => {
+                      void (async () => {
+                        let full = { ...ad };
+                        if (!full.mediaUrl && !full.pdfUrl) {
+                          const m = await stooornaAdMediaGet(String(ad.id));
+                          if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
+                        }
+                        setFeedAdViewer(full);
+                      })();
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        void (async () => {
+                          let full = { ...ad };
+                          if (!full.mediaUrl && !full.pdfUrl) {
+                            const m = await stooornaAdMediaGet(String(ad.id));
+                            if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
+                          }
+                          setFeedAdViewer(full);
+                        })();
+                      }
+                    }}
                     style={{
+                      position: 'relative',
                       width: 'calc(100% - 20px)',
                       maxWidth: '100%',
                       textAlign: 'left', cursor: 'pointer',
@@ -16166,10 +16535,12 @@ export default function AddFriendPage() {
                       borderRadius: 14,
                       margin: '8px auto',
                       boxSizing: 'border-box',
-                      overflow: 'hidden',
+                      overflow: 'visible',
                       boxShadow: '0 0 0 1px rgba(234,179,8,0.25), 0 8px 24px rgba(234,179,8,0.12)',
                     }}
                   >
+                    <span aria-hidden className="stooorna-ad-side-glow stooorna-ad-side-glow-left" />
+                    <span aria-hidden className="stooorna-ad-side-glow stooorna-ad-side-glow-right" />
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                       <div style={{
                         width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
@@ -16198,6 +16569,20 @@ export default function AddFriendPage() {
                         ) : null}
                       </div>
                     </div>
+                    {(() => {
+                      void adClockTick;
+                      const ms = getAdCountdownMs(ad, Date.now());
+                      const phase = getAdPhase(ad, Date.now());
+                      if (phase !== 'live') return null;
+                      return (
+                        <p style={{
+                          margin: '0 0 8px', color: '#a16207', fontWeight: 800, fontSize: '0.72rem',
+                          letterSpacing: '0.02em',
+                        }}>
+                          Live · {formatCountdown(ms)}
+                        </p>
+                      );
+                    })()}
                     {ad.body ? (
                       <p style={{ margin: '0 0 10px', color: '#222', fontSize: '0.84rem', lineHeight: 1.45 }}>
                         {String(ad.body).slice(0, 220)}{String(ad.body).length > 220 ? '…' : ''}
@@ -16233,8 +16618,32 @@ export default function AddFriendPage() {
                     ) : null}
                   </div>
                 );
+                const adGlowStyle = (
+                  <style>{`
+                    @keyframes stooornaAdSidePulse {
+                      0%, 100% { opacity: 0.35; filter: blur(4px); }
+                      50% { opacity: 0.95; filter: blur(7px); }
+                    }
+                    .stooorna-ad-side-glow {
+                      position: absolute;
+                      top: 10%;
+                      bottom: 10%;
+                      width: 7px;
+                      border-radius: 8px;
+                      pointer-events: none;
+                      z-index: 2;
+                      background: #eab308;
+                      box-shadow: 0 0 12px 3px rgba(234,179,8,0.75), 0 0 22px 6px rgba(250,204,21,0.45);
+                      animation: stooornaAdSidePulse 1.6s ease-in-out infinite;
+                    }
+                    .stooorna-ad-side-glow-left { left: -5px; }
+                    .stooorna-ad-side-glow-right { right: -5px; animation-delay: 0.8s; }
+                    .stooorna-feed-ad-card { isolation: isolate; }
+                  `}</style>
+                );
                 return feedPosts.length > 0 || feedAds.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {adGlowStyle}
                   {feedPosts.length === 0 && feedAds.map((ad: any) => renderFeedAdCard(ad, `only-ad-${ad.id}`))}
                   {feedPosts.length > 0 && feedAds[0] ? renderFeedAdCard(feedAds[0], `top-ad-${feedAds[0].id}`) : null}
                   {feedPosts.flatMap((post, idx) => {
@@ -16317,9 +16726,31 @@ export default function AddFriendPage() {
                             key={`feed-ad-${ad.id}-${idx}`}
                             role="button"
                             tabIndex={0}
-                            onClick={() => setFeedAdViewer(ad)}
-                            onKeyDown={e => { if (e.key === 'Enter') setFeedAdViewer(ad); }}
+                            onClick={() => {
+                              void (async () => {
+                                let full = { ...ad };
+                                if (!full.mediaUrl && !full.pdfUrl) {
+                                  const m = await stooornaAdMediaGet(String(ad.id));
+                                  if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
+                                }
+                                setFeedAdViewer(full);
+                              })();
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                void (async () => {
+                                  let full = { ...ad };
+                                  if (!full.mediaUrl && !full.pdfUrl) {
+                                    const m = await stooornaAdMediaGet(String(ad.id));
+                                    if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
+                                  }
+                                  setFeedAdViewer(full);
+                                })();
+                              }
+                            }}
+                            className="stooorna-feed-ad-card"
                             style={{
+                              position: 'relative',
                               width: 'calc(100% - 20px)',
                               maxWidth: '100%',
                               textAlign: 'left', cursor: 'pointer',
@@ -16329,10 +16760,12 @@ export default function AddFriendPage() {
                               borderRadius: 14,
                               margin: '8px auto',
                               boxSizing: 'border-box',
-                              overflow: 'hidden',
+                              overflow: 'visible',
                               boxShadow: '0 0 0 1px rgba(234,179,8,0.25), 0 8px 24px rgba(234,179,8,0.12)',
                             }}
                           >
+                            <span aria-hidden className="stooorna-ad-side-glow stooorna-ad-side-glow-left" />
+                            <span aria-hidden className="stooorna-ad-side-glow stooorna-ad-side-glow-right" />
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                               <div style={{
                                 width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
