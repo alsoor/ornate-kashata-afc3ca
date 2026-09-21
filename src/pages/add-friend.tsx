@@ -5920,10 +5920,8 @@ export interface FriendStoryProfileProps {
   /** حساب شركة عام: يظهر اليوزر والمنشورات والبث للجميع بدون شرط صداقة.
    * اللايك والتعليق متاحان للمستخدمين المسجّلين (guestGuard كما في باقي التطبيق). */
   isCompanyProfile?: boolean;
-  /** Parent already knows this user is an accepted friend (e.g. opened from friends list). */
-  initialFriendAccepted?: boolean;
 }
-export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, onRepost, isCompanyProfile = false, initialFriendAccepted = false }: FriendStoryProfileProps) {
+export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, onRepost, isCompanyProfile = false }: FriendStoryProfileProps) {
   const navigate = useNavigate();
   const { user } = useSession();
   const liveActive = useLiveBroadcastActive(authorId);
@@ -5931,8 +5929,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [friendProfileMediaTab, setFriendProfileMediaTab] = useState<'videos' | 'photos'>('videos');
   const [loading, setLoading] = useState(true);
   const [avatarExpanded, setAvatarExpanded] = useState(false);
-  const [friendState, setFriendState] = useState<'none' | 'pending' | 'accepted'>(initialFriendAccepted ? 'accepted' : 'none');
-  const [friendStateReady, setFriendStateReady] = useState(!!initialFriendAccepted);
+  const [friendState, setFriendState] = useState<'none' | 'pending' | 'accepted'>('none');
   const [friendLoading, setFriendLoading] = useState(false);
   const [friendMenuOpen, setFriendMenuOpen] = useState(false);
   const [authorPosts, setAuthorPosts] = useState<PostItem[]>([]);
@@ -5951,34 +5948,19 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
     async function loadFriendState() {
       try {
         const response = await fetch('/api/friends', { credentials: 'include' });
-        if (!response.ok) {
-          if (!cancelled) setFriendStateReady(true);
-          return;
-        }
+        if (!response.ok) return;
         const data = await response.json();
         if (cancelled) return;
-        if ((data.accepted ?? []).some((friend: Friend) => String(friend.friendId) === String(authorId))) {
+        if ((data.accepted ?? []).some((friend: Friend) => friend.friendId === authorId)) {
           setFriendState('accepted');
-        } else if ((data.outgoing ?? []).some((request: { addresseeId?: string; userId?: string }) => String(request.addresseeId ?? request.userId) === String(authorId))) {
+        } else if ((data.outgoing ?? []).some((request: { addresseeId?: string; userId?: string }) => (request.addresseeId ?? request.userId) === authorId)) {
           setFriendState('pending');
-        } else {
-          setFriendState('none');
         }
       } catch { /* keep default */ }
-      finally {
-        if (!cancelled) setFriendStateReady(true);
-      }
-    }
-    if (!initialFriendAccepted) {
-      setFriendState('none');
-      setFriendStateReady(false);
-    } else {
-      setFriendState('accepted');
-      setFriendStateReady(true);
     }
     loadFriendState();
     return () => { cancelled = true; };
-  }, [authorId, initialFriendAccepted]);
+  }, [authorId]);
 
   async function requestFriendship() {
     if (friendState !== 'none' || friendLoading) return;
@@ -6106,7 +6088,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const coverUrl = profile?.coverUrl ?? null;
   const pinnedTrack = pinnedTrackFromProfile(profile);
   // الشركات عامة دائماً — لا تُخفى حتى لو وُسم الحساب خاصاً أو بدون صداقة
-  const isHiddenPrivate = friendStateReady && !isCompanyProfile && !!profile?.isPrivate && friendState !== 'accepted';
+  const isHiddenPrivate = !isCompanyProfile && !!profile?.isPrivate && friendState !== 'accepted';
   // منشور هذا المستخدم المثبّت (إن وُجد) يظهر أولًا، والباقي تحته بترتيبه الطبيعي بدون تثبيت
   const sortedAuthorPosts = useMemo(() => {
     // الشركة: كل المنشورات/المنتجات بدون تبويب Video/Photo
@@ -11442,38 +11424,15 @@ export default function AddFriendPage() {
   );
   const isFriendManagement = pageTab === 'add';
 
-  // Single story header in normal document flow — moves with the finger (no second compact clone).
-  // Only products bar is sticky; bottom nav hides after a short scroll.
+  // ── Header show/hide toggle ────────────────────────────────────────────────
+  // A small grabber bar sits right above the Video|Post|Photo switcher. Tapping it
+  // collapses the entire header above it (avatar/stats row, stories strip, new-post
+  // and inbox icons) like a shutter, so only the three sections + feed are visible
+  // and scrollable. Tapping again brings the header back down exactly as it was —
+  // this is a manual toggle only, not tied to scrolling.
   const [headerOpen, setHeaderOpen] = useState(true);
-  const profileProductsStickyRef = useRef<HTMLDivElement | null>(null);
-  const profileScrollRafRef = useRef(0);
-  const profileNavHiddenRef = useRef(false);
-  const profileScrollLastYRef = useRef(0);
-  const profileScrollElRef = useRef<HTMLDivElement | null>(null);
-  const storyPullStartYRef = useRef(0);
-  const storyPullingRef = useRef(false);
-  const [storyPullPx, setStoryPullPx] = useState(0);
-
-  function applyProfileScrollProgress(y: number) {
-    // Fixed chrome (stats + products) stays sticky; only bottom nav reacts to scroll.
-    const hideNav = y > 36;
-    if (hideNav !== profileNavHiddenRef.current) {
-      profileNavHiddenRef.current = hideNav;
-      try {
-        window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: hideNav } }));
-      } catch { /* */ }
-    }
-  }
-
-  useEffect(() => {
-    return () => {
-      try { window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } })); } catch { /* */ }
-      if (profileScrollRafRef.current) {
-        cancelAnimationFrame(profileScrollRafRef.current);
-        profileScrollRafRef.current = 0;
-      }
-    };
-  }, []);
+  // Once true, the grabber's attention-drawing bounce animation stops for good.
+  const [headerHintSeen, setHeaderHintSeen] = useState(false);
   // Sub-tab inside the Profile page, replacing the old STOOORNA divider: switches the content
   // strip below it between the text-posts feed and the video/photo grid — independently of
   // everything above (stories strip, header, etc. never move when this changes).
@@ -13082,95 +13041,20 @@ export default function AddFriendPage() {
       <h1 className="sr-only">{pageTitle}</h1>
 
       <div className="flex flex-col" style={{
-      height: '100dvh',
-      maxHeight: '100dvh',
-      overflow: 'hidden',
+      minHeight: '100dvh',
       background: PAGE_BG,
       fontFamily: 'var(--font-sans)'
     }}>
 
-        {/* ── Content ── */}
-        <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
-                <div
-          ref={profileScrollElRef}
-          className="profile-content-scroll flex flex-col px-0 pt-0 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain"
-          onTouchStart={(e) => {
-            if (pageTab !== 'profile') return;
-            const el = profileScrollElRef.current;
-            if (!el || el.scrollTop > 2) {
-              storyPullingRef.current = false;
-              return;
-            }
-            storyPullStartYRef.current = e.touches[0]?.clientY ?? 0;
-            storyPullingRef.current = true;
-          }}
-          onTouchMove={(e) => {
-            if (!storyPullingRef.current || pageTab !== 'profile') return;
-            const el = profileScrollElRef.current;
-            if (!el || el.scrollTop > 2) {
-              storyPullingRef.current = false;
-              if (storyPullPx) setStoryPullPx(0);
-              return;
-            }
-            const y = e.touches[0]?.clientY ?? 0;
-            const dy = y - storyPullStartYRef.current;
-            if (dy <= 0) {
-              if (storyPullPx) setStoryPullPx(0);
-              return;
-            }
-            const capped = Math.min(128, dy * 0.55);
-            setStoryPullPx(capped);
-          }}
-          onTouchEnd={() => {
-            if (!storyPullingRef.current) return;
-            storyPullingRef.current = false;
-            const opened = storyPullPx >= 72;
-            setStoryPullPx(0);
-            if (opened) {
-              setQuickPublishError('');
-              setPublishMenuOpen(true);
-            }
-          }}
-          onTouchCancel={() => {
-            storyPullingRef.current = false;
-            setStoryPullPx(0);
-          }}
-          onScroll={(e) => {
-            if (pageTab !== 'profile') return;
-            const y = e.currentTarget.scrollTop;
-            profileScrollLastYRef.current = y;
-            if (y > 8 && storyPullPx) setStoryPullPx(0);
-            if (profileScrollRafRef.current) return;
-            profileScrollRafRef.current = requestAnimationFrame(() => {
-              profileScrollRafRef.current = 0;
-              applyProfileScrollProgress(y);
-            });
-          }}
-          style={{
-          WebkitOverflowScrolling: 'touch',
-          willChange: 'scroll-position',
-          scrollbarWidth: 'none',
-        }}>
-          {!isFriendManagement && (
-        <>
-        <div
-          className="profile-header-expanded"
-          style={{
+        {!isFriendManagement && <>
+        {/* ── Header ── */}
+        <div className="sticky top-0 z-20" style={{
           position: 'relative',
+          paddingTop: 40,
           background: CLR_HEADER_BG,
+          backdropFilter: 'blur(14px)',
+          borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
-          {/* Sticky chrome: stats + products stay fixed; stories scroll under them */}
-          <div
-            className="profile-sticky-chrome"
-            style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 40,
-              paddingTop: 40,
-              background: CLR_HEADER_BG,
-              borderBottom: `1px solid ${CLR_NAV_BORDER}`,
-            }}
-          >
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
               non-interactive, matching the fog overlay's own transition). Opens a
@@ -13181,13 +13065,30 @@ export default function AddFriendPage() {
           {/* Animated radar (text posts) button - now in the bottom bar (RootLayout) */}
 
 
-          {/* Profile chrome: expanded = full stats + story rows; compact (scroll up) =
-              Telegram-style: small stories strip + username/bio only. Never fully fog-hidden. */}
+          {/* ── Everything above the Video|Post|Photo switcher (music button, avatar/stats
+              row, stories strip, new-post + inbox icons) collapses together as one shutter,
+              toggled only by the grabber bar below — never by scrolling. A dark blurred fog
+              overlay covers it first, so nothing is ever seen half-cut mid-collapse — closing
+              fogs it over immediately then the space shrinks away behind the fog; opening
+              expands the space first, then the fog lifts to reveal everything cleanly. ── */}
           <div style={{
-            overflow: 'hidden',
-            paddingTop: 12,
-            position: 'relative',
+            display: 'grid',
+            gridTemplateRows: headerOpen ? '1fr' : '0fr',
+            transition: 'grid-template-rows 320ms cubic-bezier(0.22,1,0.36,1)',
           }}>
+            <div style={{ overflow: 'hidden', paddingTop: 12, position: 'relative' }}>
+              {/* Fog overlay */}
+              <div aria-hidden style={{
+                position: 'absolute', inset: 0, zIndex: 6,
+                background: 'rgba(4,8,8,0.95)',
+                backdropFilter: 'blur(22px)',
+                WebkitBackdropFilter: 'blur(22px)',
+                opacity: headerOpen ? 0 : 1,
+                pointerEvents: headerOpen ? 'none' : 'auto',
+                transition: headerOpen
+                  ? 'opacity 240ms ease-out 200ms'
+                  : 'opacity 140ms ease-in',
+              }} />
 
           {/* Row 1 + Row 2: story circle + stats, then the friends' stories strip */}
           {pageTab === 'profile' && (
@@ -13196,68 +13097,79 @@ export default function AddFriendPage() {
               (shared-posts / my story posts) button now lives in the unified nav row below, always visible.
               The decorative Globe next to "Following" has been removed. */}
           {pageTab === 'profile' && (
-            <div className="flex items-center" style={{ paddingBottom: 8, paddingInline: 20, gap: 14 }}>
-              <div data-expand-col style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 6, flex: 1 }}>
+            <div className="flex items-center px-5" style={{ paddingBottom: 8, gap: 14 }}>
+              {/* ── My story circle — same place as before ── */}
+              {user && (() => {
+                const myGroup = storyGroups.find(g => g.userId === user?.id);
+                const hasStory = !!myGroup && myGroup.items.length > 0;
+                const allSeen = hasStory && myGroup!.items.every(i => i.seen);
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: -12, marginLeft: -6, flexShrink: 0 }}>
+                    <div style={{ width: 76, height: 76, position: 'relative' }}>
+                      <motion.button
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => {
+                          if (myGroup) {
+                            setViewerGroupIdx(storyGroups.indexOf(myGroup));
+                          } else {
+                            // بدون قائمة Photo/Video — افتح قائمة النشر (قصة / كاميرا)
+                            setPublishMenuOpen(true);
+                          }
+                        }}
+                        disabled={storyUploading}
+                        style={{ width: 76, height: 76, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
+                      >
+                        {/* One fixed circular frame: the photo is clipped inside it and can never overflow. */}
+                        {/* إطار أزرق ثابت + صورة ثابتة */}
+                        <div style={{
+                          position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'hidden',
+                          background: 'hsl(var(--card))',
+                          border: hasStory ? '4px solid #0ea5e9' : '3px solid #0ea5e9',
+                          boxSizing: 'border-box',
+                          boxShadow: hasStory && !allSeen ? '0 0 10px rgba(14,165,233,0.45)' : '0 0 8px rgba(14,165,233,0.25)',
+                        }}>
+                          <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={68} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                        </div>
+                      </motion.button>
+                      {/* + badge — its own button now: always opens the نشر إعلان للقصة/صورة/فيديو
+                          menu, whether or not a story already exists. */}
+                      <motion.button
+                        whileTap={{ scale: 0.88 }}
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 2.4, repeat: Infinity, ease: 'linear' }}
+                        onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); }}
+                        disabled={storyUploading || quickPublishing}
+                        aria-label="خيارات النشر"
+                        style={{
+                          position: 'absolute', bottom: 1, right: 1,
+                          width: 22, height: 22, borderRadius: '50%',
+                          background: '#ef4444',
+                          border: '2.5px solid hsl(var(--background))',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          padding: 0, cursor: 'pointer',
+                          boxShadow: '0 0 8px rgba(239,68,68,0.55)',
+                        }}
+                      >
+                        {storyUploading || quickPublishing
+                          ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+                              style={{ width: 9, height: 9, borderRadius: '50%', border: '2px solid #fff', borderTopColor: 'transparent' }} />
+                          : <Plus size={12} strokeWidth={3} color="#fff" />
+                        }
+                      </motion.button>
+                    </div>
+                    <span style={{ fontSize: '0.58rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500 }}>
+                      قصتي
+                    </span>
+                  </div>
+                );
+              })()}
+
+              {/* ── Username | Bio (same line, spaced apart with a divider) / Post-Followers-Following-Likes (untouched) ── */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 6, flex: 1 }}>
                 {/* Pinned track — shown right above my name/username, playable from here too. */}
                 {pinnedTrack && <PinnedTrackBar track={pinnedTrack} />}
                 {(myUsername || myBio) && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {user && (() => {
-                      const myGroup = storyGroups.find(g => g.userId === user?.id);
-                      const hasStory = !!myGroup && myGroup.items.length > 0;
-                      const allSeen = hasStory && myGroup!.items.every(i => i.seen);
-                      const storySz = 36;
-                      return (
-                        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                          <div data-story-circle style={{ width: storySz, height: storySz, position: 'relative' }}>
-                            <motion.button
-                              whileTap={{ scale: 0.9 }}
-                              onClick={() => {
-                                if (myGroup) {
-                                  setViewerGroupIdx(storyGroups.indexOf(myGroup));
-                                } else {
-                                  setPublishMenuOpen(true);
-                                }
-                              }}
-                              disabled={storyUploading}
-                              data-story-circle
-                              style={{ width: storySz, height: storySz, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
-                            >
-                              <div style={{
-                                position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'hidden',
-                                background: 'hsl(var(--card))',
-                                border: hasStory ? '2.5px solid #0ea5e9' : '2px solid #0ea5e9',
-                                boxSizing: 'border-box',
-                                boxShadow: hasStory && !allSeen ? '0 0 8px rgba(14,165,233,0.45)' : '0 0 6px rgba(14,165,233,0.25)',
-                              }}>
-                                <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={32} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
-                              </div>
-                            </motion.button>
-                            <motion.button
-                              whileTap={{ scale: 0.88 }}
-                              onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); }}
-                              disabled={storyUploading || quickPublishing}
-                              aria-label="Publish options"
-                              style={{
-                                position: 'absolute', bottom: -2, right: -2,
-                                width: 14, height: 14, borderRadius: '50%',
-                                background: '#ef4444',
-                                border: '2px solid hsl(var(--background))',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                padding: 0, cursor: 'pointer',
-                                boxShadow: '0 0 6px rgba(239,68,68,0.55)',
-                              }}
-                            >
-                              {storyUploading || quickPublishing
-                                ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
-                                    style={{ width: 6, height: 6, borderRadius: '50%', border: '1.5px solid #fff', borderTopColor: 'transparent' }} />
-                                : <Plus size={8} strokeWidth={3} color="#fff" />
-                              }
-                            </motion.button>
-                          </div>
-                        </div>
-                      );
-                    })()}
                     {myUsername && (
                       <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         @{myUsername}
@@ -13281,7 +13193,7 @@ export default function AddFriendPage() {
                   </div>
                 )}
 
-                {headerOpen && <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaPosts.length}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Post</span>
@@ -13326,72 +13238,13 @@ export default function AddFriendPage() {
                     </motion.button>
                   )}
 
-                </div>}
-              </div>
-            </div>
-          )}
-          </div>
-          )}
-          </div>
-
-            {/* Products header — fixed under stats (green line position) */}
-            {pageTab === 'profile' && (
-              <div
-                ref={profileProductsStickyRef}
-                style={{
-                  background: CLR_HEADER_BG,
-                }}
-              >
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  padding: '9px 4px',
-                  borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}`,
-                  color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800,
-                  background: CLR_TAB_ACTIVE,
-                }}>
-                  <FileText size={14} strokeWidth={2} />
-                  {isCompanyPublisher ? 'المنتجات' : 'Post'}
                 </div>
               </div>
-            )}
-          </div>
-          {/* End sticky chrome — stories + posts scroll beneath */}
-
-          {storyPullPx > 0 && pageTab === 'profile' && (
-            <div style={{
-              height: storyPullPx,
-              display: 'flex',
-              alignItems: 'flex-end',
-              justifyContent: 'center',
-              overflow: 'hidden',
-              pointerEvents: 'none',
-            }}>
-              <div style={{
-                width: 36,
-                height: 36,
-                marginBottom: 6,
-                borderRadius: '50%',
-                border: '2px solid #0ea5e9',
-                background: 'rgba(14,165,233,0.12)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transform: `scale(${0.55 + Math.min(storyPullPx, 72) / 160})`,
-                opacity: Math.min(1, storyPullPx / 48),
-              }}>
-                <Plus size={16} color="#0ea5e9" strokeWidth={2.4} />
-              </div>
             </div>
           )}
 
-          {pageTab === 'profile' && (() => {
-            const otherStories = storyGroups.filter(g => {
-              if (g.userId === user?.id) return false;
-              if (!g.items || g.items.length === 0) return false;
-              return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
-            });
-            if (otherStories.length === 0) return null;
-            return (
+          {/* Row 2: Friends' stories strip — shown under the story circle on the PROFILE tab */}
+          {pageTab === 'profile' && (
             <>
               <style>{`
                 .header-stories::-webkit-scrollbar{display:none}
@@ -13400,7 +13253,6 @@ export default function AddFriendPage() {
               `}</style>
               <div
                 className="header-stories"
-                data-expand-only
                 style={{
                   display: 'flex', flexDirection: 'row', flexWrap: 'nowrap',
                   gap: 10, overflowX: 'auto', overflowY: 'hidden',
@@ -13409,7 +13261,11 @@ export default function AddFriendPage() {
                   alignItems: 'center',
                 }}
               >
-                {otherStories.map((g) => {
+                {/* ستوريات المستخدمين فقط في شريط الهيدر — الشركات في تبويب Company */}
+                {storyGroups.filter(g => {
+                  if (g.userId === user?.id) return false;
+                  return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
+                }).map((g) => {
                   const realIdx = storyGroups.indexOf(g);
                   const hasUnseen = g.items.some(it => !it.seen);
                   return (
@@ -13443,22 +13299,79 @@ export default function AddFriendPage() {
                           </div>
                         </div>
                       </motion.button>
-                      {headerOpen && (
                       <span style={{ fontSize: '0.55rem', color: CLR_TEXT_DIM, maxWidth: 60, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {g.username ? `@${g.username}` : g.name}
                       </span>
-                      )}
                     </div>
                   );
                 })}
               </div>
             </>
-            );
-          })()}
-        </div>
-        </>
+          )}
+          </div>
           )}
 
+          {/* Actions row removed — text-posts button now lives in the header next to the globe. */}
+            </div>
+          </div>
+
+          {/* ── Header show/hide grabber — sits exactly above the Video|Post|Photo switcher.
+              Tapping it toggles the whole header above it open/closed like a shutter.
+              It bounces gently up/down on a loop until the user taps it once, to draw the
+              eye toward the feature — then it settles down and stays still. ── */}
+          <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => { setHeaderOpen(o => !o); setHeaderHintSeen(true); }}
+              aria-label={headerOpen ? 'إخفاء الهيدر' : 'إظهار الهيدر'}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '8px 30px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <motion.span
+                animate={headerHintSeen ? { y: 0 } : { y: [0, -5, 0, -5, 0] }}
+                transition={headerHintSeen ? { duration: 0.2 } : {
+                  duration: 1.6, repeat: Infinity, repeatDelay: 0.9, ease: 'easeInOut',
+                }}
+                style={{
+                  display: 'block',
+                  width: 36, height: 4, borderRadius: 2,
+                  background: CLR_PRIMARY_BORDER,
+                }}
+              />
+            </motion.button>
+          </div>
+
+
+          {/* Content header — single Post section */}
+          {pageTab === 'profile' && (
+            <div style={{ padding: '0 0 8px' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                padding: '9px 4px', marginBottom: 8,
+                borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}`,
+                color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800,
+                background: CLR_TAB_ACTIVE,
+              }}>
+                <FileText size={14} strokeWidth={2} />
+                {isCompanyPublisher ? 'المنتجات' : 'Post'}
+              </div>
+              <div style={{ height: 1, background: CLR_NAV_BORDER }} />
+            </div>
+          )}
+        </div>
+        </>}
+
+        {/* ── Content ── */}
+        <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
+        <div className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{
+          WebkitOverflowScrolling: 'touch',
+          willChange: 'scroll-position',
+          contain: 'strict',
+          scrollbarWidth: 'none',
+        }}>
           <AnimatePresence mode="wait">
 
             {/* ══ Post page — stories live in the header above; text posts sit directly under the
@@ -16707,7 +16620,6 @@ export default function AddFriendPage() {
               </button>
 
               <div
-                ref={singlePostMediaScrollRef}
                 style={{ flex: 1, minHeight: 0, position: 'relative', background: '#000', touchAction: 'none', overflow: 'hidden' }}
                 onTouchStart={e => {
                   const t = e.changedTouches[0];
@@ -17042,9 +16954,6 @@ export default function AddFriendPage() {
                   70% { transform: scale(0.98); letter-spacing: 0.16em; filter: brightness(1.1); }
                 }
               `}</style>
-
-{/* ── Username | Bio / stats — expanded only ── */}
-
               {!textFeedSearchOpen ? (
                 <>
                   <button
@@ -18380,7 +18289,6 @@ export default function AddFriendPage() {
             authorUsername={viewingProfile.username}
             authorAvatarUrl={viewingProfile.avatarUrl}
             isCompanyProfile={!!viewingProfile.isCompany}
-            initialFriendAccepted={friends.some(f => String(f.friendId) === String(viewingProfile.id))}
             onClose={() => {
               setViewingProfile(null);
               setUserShareChatPeer(null);
