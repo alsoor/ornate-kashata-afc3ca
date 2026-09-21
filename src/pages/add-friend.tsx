@@ -11450,6 +11450,7 @@ export default function AddFriendPage() {
   const [headerOpen, setHeaderOpen] = useState(true);
   const headerOpenRef = useRef(true);
   const profileCompactBarRef = useRef<HTMLDivElement | null>(null);
+  const profileProductsStickyRef = useRef<HTMLDivElement | null>(null);
   const profileScrollLastYRef = useRef(0);
   const profileScrollRafRef = useRef(0);
   function applyProfileHeaderOpen(open: boolean) {
@@ -11459,6 +11460,11 @@ export default function AddFriendPage() {
     if (bar) {
       bar.style.display = open ? 'none' : 'flex';
       bar.style.pointerEvents = open ? 'none' : 'auto';
+    }
+    const products = profileProductsStickyRef.current;
+    if (products) {
+      // Sit under compact bar when collapsed; flush to top when expanded chrome is visible
+      products.style.top = open ? '0px' : '56px';
     }
     try {
       window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: !open } }));
@@ -13101,10 +13107,10 @@ export default function AddFriendPage() {
             if (profileScrollRafRef.current) return;
             profileScrollRafRef.current = requestAnimationFrame(() => {
               profileScrollRafRef.current = 0;
+              // Stable threshold: compact bar once past expanded header; restore near top
               let next: boolean | null = null;
-              if (y <= 20) next = true;
-              else if (delta > 6) next = false;
-              else if (delta < -8) next = true;
+              if (y <= 24) next = true;
+              else if (y > 72) next = false;
               if (next === null) return;
               applyProfileHeaderOpen(next);
             });
@@ -13413,21 +13419,6 @@ export default function AddFriendPage() {
           {/* Actions row removed — text-posts button now lives in the header next to the globe. */}
           </div>
 
-          {/* Content header — single Post section (hidden in compact scroll mode) */}
-          {pageTab === 'profile' && (
-            <div data-expand-only style={{ padding: '0 0 8px' }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                padding: '9px 4px', marginBottom: 8,
-                borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}`,
-                color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800,
-                background: CLR_TAB_ACTIVE,
-              }}>
-                <FileText size={14} strokeWidth={2} />
-                {isCompanyPublisher ? 'المنتجات' : 'Post'}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Sticky compact stories bar — fixed height, shown only when scrolled (Telegram-style) */}
@@ -13503,6 +13494,31 @@ export default function AddFriendPage() {
             );
           })}
         </div>
+
+        {/* Products / Post label — sticky under compact stories bar (stays visible while browsing grid) */}
+        {pageTab === 'profile' && (
+          <div
+            ref={profileProductsStickyRef}
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 28,
+              padding: '0 0 0',
+              background: CLR_HEADER_BG,
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '9px 4px',
+              borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}`,
+              color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800,
+              background: CLR_TAB_ACTIVE,
+            }}>
+              <FileText size={14} strokeWidth={2} />
+              {isCompanyPublisher ? 'المنتجات' : 'Post'}
+            </div>
+          </div>
+        )}
         </>
           )}
 
