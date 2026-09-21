@@ -9258,11 +9258,14 @@ export default function AddFriendPage() {
   const [adDetailsOpen, setAdDetailsOpen] = useState(false);
   const [adVideoPaused, setAdVideoPaused] = useState(false);
   const [singlePostChromeVisible, setSinglePostChromeVisible] = useState(true);
+  const [singlePostMediaPage, setSinglePostMediaPage] = useState(0);
+  const singlePostMediaScrollRef = useRef<HTMLDivElement | null>(null);
   const singlePostTouchRef = useRef<{ y: number; t: number } | null>(null);
   function openSinglePostView(post: PostItem, fromProfile = false) {
     setAdDetailsOpen(false);
     setAdVideoPaused(false);
     setSinglePostChromeVisible(true);
+    setSinglePostMediaPage(0);
     setSinglePostFromProfile(!!fromProfile);
     setSinglePostView(post);
     try { recordPostView(post.id, post.authorId); } catch { /* */ }
