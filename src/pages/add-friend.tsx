@@ -5479,6 +5479,10 @@ const MiniProfileModal = ({
 
   const [myFriendsForFollowersList, setMyFriendsForFollowersList] = useState<Friend[]>([]);
   useEffect(() => {
+    setProductsBookPage(0);
+  }, [authorId]);
+
+  useEffect(() => {
     let cancelled = false;
     async function loadFriendState() {
       try {
@@ -5821,6 +5825,10 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [mediaLightbox, setMediaLightbox] = useState<{ url: string; type: 'image' | 'video'; post: PostItem } | null>(null);
   // كتم صوت معاينة الفيديو كاملة الشاشة
   const [lightboxMuted, setLightboxMuted] = useState(false);
+  const [productsBookPage, setProductsBookPage] = useState(0);
+  const productsBookTouchRef = useRef<{ x: number; t: number } | null>(null);
+  const productsBookScrollRef = useRef<HTMLDivElement | null>(null);
+  const isBizProfile = !!(isCompanyProfile || readBusinessApproved(authorId));
 
   useProfileVisitHeartbeat(
     authorId,
@@ -6174,7 +6182,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           </div>
         ) : (
           <>
-            {/* Single Post section header */}
+
+            {/* Products section */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '10px 0', marginTop: 8,
@@ -6183,7 +6192,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               background: CLR_TAB_ACTIVE,
             }}>
               <FileText size={15} strokeWidth={2} />
-              {(isCompanyProfile || readBusinessApproved(authorId)) ? 'المنتجات' : 'Post'}
+              {isBizProfile ? 'Products' : 'Post'}
             </div>
 
             {loading ? (
@@ -6195,9 +6204,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 const enrichedPosts = sortedAuthorPosts.map(post => {
                   const rawThumbUrl = post.mediaUrls?.[0] ?? post.mediaUrl;
                   const rawIsVideo = (post.mediaTypes?.[0] ?? post.mediaType) === 'video';
-                  // إذا المنشور بدون وسائط مرفقة لكن نصّه يحتوي رابط صورة/فيديو مباشر (مثل
-                  // video.twimg.com) — نستخرجه ونعرضه كصورة/فيديو مصغّر بدل ترك الرابط الخام
-                  // يظهر كنص عادي بلا معاينة.
                   const textEmbed = !rawThumbUrl && post.text ? extractTextMediaEmbeds(post.text) : null;
                   const embeddedMedia = textEmbed?.embeds?.[0] ?? null;
                   const thumbUrl = rawThumbUrl ?? embeddedMedia?.url;
@@ -6206,11 +6212,266 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   const isPinnedPost = profile?.pinnedPostId != null && profile.pinnedPostId === post.id;
                   return { post, thumbUrl, isVideo, displayText, isPinnedPost };
                 });
-                // كل المنشورات — نصيّة أو فيها وسائط — تعرض الآن سوا في شبكة واحدة ثلاثة
-                // جمب بعض (نفس ترتيب sortedAuthorPosts، والمنشور المثبّت أولًا). المربع
-                // اللي فيه صورة/فيديو يعرض المعاينة، والمربع النصي البحت يعرض مقتطف من
-                // النص. النقر على أي مربع (نصي أو وسائط) يفتح صفحة المنشور الكاملة بنفس
-                // الطريقة اللي تفتح فيها المنشورات النصية بالضبط.
+
+                // Business profile: closed book + page swipe (cover + one product per page)
+                if (isBizProfile) {
+                  const pages = enrichedPosts;
+                  const totalPages = pages.length + 1; // 0 = cover
+                  const handleBookSwipe = (dx: number) => {
+                    if (Math.abs(dx) < 48) return;
+                    setProductsBookPage(p => {
+                      if (dx < 0) return Math.min(totalPages - 1, p + 1);
+                      return Math.max(0, p - 1);
+                    });
+                  };
+                  return (
+                    <div
+                      style={{
+                        padding: '12px 14px calc(28px + env(safe-area-inset-bottom, 0px))',
+                        minHeight: '42vh',
+                      }}
+                    >
+                      <div
+                        ref={productsBookScrollRef}
+                        onTouchStart={e => {
+                          const t = e.changedTouches[0];
+                          if (!t) return;
+                          productsBookTouchRef.current = { x: t.clientX, t: Date.now() };
+                        }}
+                        onTouchEnd={e => {
+                          const start = productsBookTouchRef.current;
+                          productsBookTouchRef.current = null;
+                          if (!start) return;
+                          const t = e.changedTouches[0];
+                          if (!t) return;
+                          const dx = t.clientX - start.x;
+                          const dt = Date.now() - start.t;
+                          if (dt < 700) handleBookSwipe(dx);
+                        }}
+                        style={{
+                          position: 'relative',
+                          width: '100%',
+                          maxWidth: 340,
+                          margin: '0 auto',
+                          minHeight: 'min(58vh, 480px)',
+                          perspective: 1400,
+                        }}
+                      >
+                        {/* Book spine shadow */}
+                        <div style={{
+                          position: 'absolute', inset: 0, borderRadius: '6px 14px 14px 6px',
+                          boxShadow: '8px 12px 28px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(234,179,8,0.25)',
+                          background: 'linear-gradient(90deg, #1a1208 0%, #2a1c0c 8%, #3d2a12 12%, #2a1c0c 100%)',
+                          pointerEvents: 'none',
+                        }} />
+
+                        {/* Pages */}
+                        <div style={{
+                          position: 'relative',
+                          width: '100%',
+                          height: 'min(58vh, 480px)',
+                          borderRadius: '4px 12px 12px 4px',
+                          overflow: 'hidden',
+                          background: '#f7f1e6',
+                          border: '1px solid rgba(180,140,60,0.35)',
+                        }}>
+                          {/* COVER */}
+                          {productsBookPage === 0 && (
+                            <motion.div
+                              key="book-cover"
+                              initial={{ opacity: 0.6, rotateY: -12 }}
+                              animate={{ opacity: 1, rotateY: 0 }}
+                              transition={{ duration: 0.35 }}
+                              onClick={() => setProductsBookPage(1)}
+                              style={{
+                                position: 'absolute', inset: 0,
+                                background: 'linear-gradient(145deg, #0d2a2e 0%, #0a1a1a 40%, #061010 100%)',
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                gap: 14, cursor: 'pointer', padding: 24,
+                                boxShadow: 'inset 10px 0 24px rgba(0,0,0,0.35)',
+                              }}
+                            >
+                              <div style={{
+                                width: 64, height: 64, borderRadius: 16,
+                                background: 'rgba(234,179,8,0.15)', border: '1.5px solid rgba(234,179,8,0.55)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}>
+                                <FileText size={28} color="#eab308" strokeWidth={2} />
+                              </div>
+                              <p style={{
+                                margin: 0, color: '#eab308', fontSize: '1.35rem', fontWeight: 900,
+                                letterSpacing: '0.12em',
+                              }}>
+                                منتجات
+                              </p>
+                              <p style={{
+                                margin: 0, color: CLR_PRIMARY, fontSize: '0.95rem', fontWeight: 800,
+                              }}>
+                                @{authorUsername || authorName || 'business'}
+                              </p>
+                              <p style={{
+                                margin: '12px 0 0', color: 'rgba(200,230,230,0.55)', fontSize: '0.72rem',
+                                textAlign: 'center', lineHeight: 1.5,
+                              }}>
+                                Swipe left to open · {pages.length} product{pages.length === 1 ? '' : 's'}
+                              </p>
+                              <div style={{
+                                marginTop: 8, display: 'flex', alignItems: 'center', gap: 6,
+                                color: 'rgba(234,179,8,0.7)', fontSize: '0.7rem', fontWeight: 700,
+                              }}>
+                                <ChevronLeft size={14} /> 1 / {totalPages}
+                              </div>
+                            </motion.div>
+                          )}
+
+                          {/* PRODUCT PAGES */}
+                          {productsBookPage > 0 && pages[productsBookPage - 1] && (() => {
+                            const { post, thumbUrl, isVideo, displayText, isPinnedPost } = pages[productsBookPage - 1];
+                            return (
+                              <motion.div
+                                key={`book-page-${post.id}`}
+                                initial={{ opacity: 0, x: 40 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ duration: 0.28 }}
+                                style={{
+                                  position: 'absolute', inset: 0,
+                                  background: 'linear-gradient(180deg, #faf6ef 0%, #f0e6d6 100%)',
+                                  display: 'flex', flexDirection: 'column',
+                                  boxShadow: 'inset 8px 0 18px rgba(0,0,0,0.06)',
+                                }}
+                              >
+                                <div style={{
+                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                  padding: '10px 14px', borderBottom: '1px solid rgba(0,0,0,0.06)',
+                                }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setProductsBookPage(p => Math.max(0, p - 1))}
+                                    style={{
+                                      border: 'none', background: 'rgba(0,0,0,0.05)', borderRadius: 8,
+                                      width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      cursor: 'pointer', color: '#333',
+                                    }}
+                                  >
+                                    <ChevronRight size={16} />
+                                  </button>
+                                  <span style={{ color: '#5c4a2a', fontSize: '0.72rem', fontWeight: 800 }}>
+                                    {productsBookPage} / {pages.length}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setProductsBookPage(p => Math.min(totalPages - 1, p + 1))}
+                                    disabled={productsBookPage >= totalPages - 1}
+                                    style={{
+                                      border: 'none', background: 'rgba(0,0,0,0.05)', borderRadius: 8,
+                                      width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      cursor: productsBookPage >= totalPages - 1 ? 'default' : 'pointer',
+                                      color: '#333', opacity: productsBookPage >= totalPages - 1 ? 0.35 : 1,
+                                    }}
+                                  >
+                                    <ChevronLeft size={16} />
+                                  </button>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenPost(post)}
+                                  style={{
+                                    flex: 1, minHeight: 0, border: 'none', background: 'transparent',
+                                    padding: 0, cursor: 'pointer', display: 'flex', flexDirection: 'column',
+                                    textAlign: 'left',
+                                  }}
+                                >
+                                  <div style={{
+                                    flex: 1, minHeight: 0, position: 'relative', background: '#111',
+                                    margin: '10px 12px 8px', borderRadius: 10, overflow: 'hidden',
+                                  }}>
+                                    {thumbUrl ? (
+                                      isVideo ? (
+                                        <video
+                                          src={thumbUrl}
+                                          muted
+                                          autoPlay
+                                          loop
+                                          playsInline
+                                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                        />
+                                      ) : (
+                                        <img
+                                          src={thumbUrl}
+                                          alt=""
+                                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                        />
+                                      )
+                                    ) : (
+                                      <div style={{
+                                        width: '100%', height: '100%', display: 'flex', alignItems: 'center',
+                                        justifyContent: 'center', padding: 16, background: '#1a2224',
+                                      }}>
+                                        <p style={{
+                                          margin: 0, color: '#e8e0d0', fontSize: '0.88rem', lineHeight: 1.45,
+                                          textAlign: 'center', whiteSpace: 'pre-wrap',
+                                          display: '-webkit-box', WebkitLineClamp: 8, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                                        }}>
+                                          {(displayText || '').slice(0, 280) || 'Product'}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {isPinnedPost && (
+                                      <div style={{
+                                        position: 'absolute', top: 8, left: 8, width: 28, height: 28, borderRadius: '50%',
+                                        background: 'rgba(239,68,68,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      }}>
+                                        <Pin size={14} color="#fff" />
+                                      </div>
+                                    )}
+                                  </div>
+                                  {(displayText || '').trim() && (
+                                    <p style={{
+                                      margin: '0 14px 12px', color: '#2a2218', fontSize: '0.82rem',
+                                      lineHeight: 1.45, fontWeight: 600, textAlign: 'right', direction: 'rtl',
+                                      display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                                    }}>
+                                      {(displayText || '').trim()}
+                                    </p>
+                                  )}
+                                </button>
+
+                                <div style={{
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 18,
+                                  padding: '10px 14px 14px', borderTop: '1px solid rgba(0,0,0,0.06)',
+                                }}>
+                                  <button
+                                    type="button"
+                                    onClick={e => { e.stopPropagation(); onToggleLike(post); }}
+                                    style={{
+                                      display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'none',
+                                      cursor: 'pointer', color: post.likedByMe ? '#ef4444' : '#3a3020', fontWeight: 700,
+                                    }}
+                                  >
+                                    <Heart size={18} fill={post.likedByMe ? '#ef4444' : 'none'} />
+                                    {post.likesCount > 0 ? post.likesCount : ''}
+                                  </button>
+                                  <span style={{ color: '#8a7a60', fontSize: '0.7rem' }}>
+                                    Tap media to open full
+                                  </span>
+                                </div>
+                              </motion.div>
+                            );
+                          })()}
+                        </div>
+
+                        <p style={{
+                          margin: '10px 0 0', textAlign: 'center', color: CLR_TEXT_DIM, fontSize: '0.68rem',
+                        }}>
+                          Swipe left / right like a book
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Regular user profile: classic 3-column grid
                 return (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, padding: '4px 0 24px' }}>
                     {enrichedPosts.map(({ post, thumbUrl, isVideo, displayText, isPinnedPost }) => (
@@ -6218,50 +6479,36 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                         key={post.id}
                         type="button"
                         onClick={() => onOpenPost(post)}
-                        aria-label={thumbUrl ? (isVideo ? 'فتح الفيديو' : 'فتح الصورة') : 'فتح المنشور'}
                         style={{
-                          position: 'relative', width: '100%', aspectRatio: '1 / 1', overflow: 'hidden',
-                          border: isPinnedPost ? '3px solid #ef4444' : 'none', boxSizing: 'border-box', padding: 0,
-                          background: thumbUrl ? '#000' : CLR_CARD_BG, cursor: 'pointer', display: 'block',
+                          position: 'relative', aspectRatio: '1', padding: 0, border: 'none',
+                          background: '#0a1214', cursor: 'pointer', overflow: 'hidden',
                         }}
                       >
                         {thumbUrl ? (
-                          <>
-                            {isVideo ? (
-                              <video src={thumbUrl} muted autoPlay loop playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                            ) : (
-                              <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                            )}
-                            {isVideo && (
-                              <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
-                                <Play size={13} strokeWidth={2.4} color="#fff" fill="#fff" />
-                              </div>
-                            )}
-                          </>
+                          isVideo ? (
+                            <video src={thumbUrl} muted autoPlay loop playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          ) : (
+                            <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          )
                         ) : (
                           <div style={{
-                            width: '100%', height: '100%', padding: '8px 7px',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            border: `1px solid ${CLR_CARD_BORDER}`, boxSizing: 'border-box',
+                            width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            padding: 8, background: 'rgba(0,188,212,0.06)',
                           }}>
                             <p style={{
-                              color: CLR_TEXT, fontSize: '0.64rem', lineHeight: 1.45, margin: 0,
-                              textAlign: 'center',
-                              display: '-webkit-box', WebkitLineClamp: 6, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                              margin: 0, color: CLR_TEXT, fontSize: '0.65rem', lineHeight: 1.35, textAlign: 'center',
+                              display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden',
                             }}>
-                              {displayText}
+                              {(displayText || '').slice(0, 120)}
                             </p>
                           </div>
                         )}
-                        {/* المنشور المثبّت يبين بالأحمر */}
                         {isPinnedPost && (
                           <div style={{
-                            position: 'absolute', top: 6, insetInlineStart: 6,
-                            color: '#ef4444', filter: thumbUrl ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.7))' : 'none',
-                            display: 'flex', alignItems: 'center',
+                            position: 'absolute', top: 6, left: 6, width: 26, height: 26, borderRadius: '50%',
+                            background: 'rgba(239,68,68,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                           }}>
-                            <Pin size={15} strokeWidth={2.6} fill="#ef4444" />
+                            <Pin size={15} strokeWidth={2.6} fill="#ef4444" color="#fff" />
                           </div>
                         )}
                         <PostGridTimeFooter createdAt={post.createdAt} onMedia={!!thumbUrl} />
@@ -6276,13 +6523,14 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   <FileText size={20} strokeWidth={1.5} />
                 </div>
                 <p style={{ color: CLR_TEXT_DIM, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
-                  لا توجد منشورات بعد
+                  No posts yet
                 </p>
               </div>
             )}
           </>
         )}
       </div>
+
 
       {/* ── الصورة/الفيديو فقط بملء الشاشة — بدون فتح صفحة المنشور الكاملة القديمة.
           التعليقات تُفتح فقط من أيقونة التعليقات (شيت منزلق من الأسفل يديره المستوى الأعلى). ── */}
