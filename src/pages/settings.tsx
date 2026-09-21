@@ -5805,6 +5805,12 @@ export default function SettingsPage() {
   const [businessToggleOn, setBusinessToggleOn] = useState(false);
   const [businessModalOpen, setBusinessModalOpen] = useState(false);
   const [businessRow, setBusinessRow] = useState<BusinessRegistration | null>(null);
+  const [bizBalance, setBizBalance] = useState(0);
+  const [bizTopUpOpen, setBizTopUpOpen] = useState(false);
+  const [bizCardNumber, setBizCardNumber] = useState('');
+  const [bizCardExp, setBizCardExp] = useState('');
+  const [bizCardCvv, setBizCardCvv] = useState('');
+  const [bizTopUpAmount, setBizTopUpAmount] = useState('10');
   const [bizProjectName, setBizProjectName] = useState('');
   const [bizLicense, setBizLicense] = useState('');
   const [bizTradeLicense, setBizTradeLicense] = useState('');
@@ -5823,12 +5829,17 @@ export default function SettingsPage() {
     if (!user?.id) {
       setBusinessRow(null);
       setBusinessToggleOn(false);
+      setBizBalance(0);
       return;
     }
     const row = getBusinessForUser(user.id);
     setBusinessRow(row);
     setBusinessToggleOn(!!(row && (row.status === 'approved' || row.status === 'pending')));
     if (row?.ownerNote && !row.ownerNoteSeen) setBizOwnerNoteOpen(true);
+    try {
+      const bal = Number(localStorage.getItem(`stooorna_biz_balance_${user.id}`) || '0') || 0;
+      setBizBalance(bal);
+    } catch { setBizBalance(0); }
     const onBiz = () => {
       const r = getBusinessForUser(user.id);
       setBusinessRow(r);
@@ -7015,6 +7026,44 @@ export default function SettingsPage() {
                       </button>
                     )}
                   </div>
+
+                  {/* Business balance — approved only */}
+                  {businessRow?.status === 'approved' && (
+                    <div style={{
+                      background: T.surface,
+                      border: `1px solid ${T.surfaceBorder}`,
+                      borderRadius: 14,
+                      padding: '14px 16px',
+                      marginBottom: 10,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <div>
+                          <p style={{
+                            color: '#eab308', fontSize: '0.62rem', letterSpacing: '0.2em',
+                            textTransform: 'uppercase', fontWeight: 700, margin: 0,
+                          }}>My balance</p>
+                          <p style={{ margin: '6px 0 0', color: '#eab308', fontSize: '1.15rem', fontWeight: 900 }}>
+                            {bizBalance.toFixed(0)} KD
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="Add balance"
+                          onClick={() => setBizTopUpOpen(true)}
+                          style={{
+                            width: 36, height: 36, borderRadius: '50%', border: '1.5px solid rgba(234,179,8,0.55)',
+                            background: 'rgba(234,179,8,0.15)', color: '#eab308', fontWeight: 900,
+                            fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1,
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+                      <p style={{ margin: '10px 0 0', color: T.primaryDim, fontSize: '0.7rem', fontWeight: 600, lineHeight: 1.45 }}>
+                        Place ads from New Post → + Product Ad (5 KD / month). Ads appear between feed posts.
+                      </p>
+                    </div>
+                  )}
 
                   {/* ── Display Name ── */}
                   <div style={{
@@ -11148,6 +11197,78 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Visa top-up for Business balance */}
+      <AnimatePresence>
+        {bizTopUpOpen && (
+          <motion.div
+            key="biz-topup"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10500, background: 'rgba(0,0,0,0.75)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            }}
+            onClick={() => setBizTopUpOpen(false)}
+          >
+            <motion.div
+              onClick={e => e.stopPropagation()}
+              initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}
+              style={{
+                width: 'min(94vw, 380px)', background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
+                border: '1px solid rgba(234,179,8,0.35)', borderRadius: 16, padding: 18,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>Add balance (Visa)</p>
+                <button type="button" onClick={() => setBizTopUpOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
+              </div>
+              <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Card number</label>
+              <input value={bizCardNumber} onChange={e => setBizCardNumber(e.target.value.replace(/[^0-9 ]/g, '').slice(0, 19))}
+                placeholder="XXXX XXXX XXXX XXXX"
+                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 10, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#d7eeee', outline: 'none' }} />
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Expiry</label>
+                  <input value={bizCardExp} onChange={e => setBizCardExp(e.target.value.slice(0, 5))} placeholder="MM/YY"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#d7eeee', outline: 'none' }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>CVV</label>
+                  <input value={bizCardCvv} onChange={e => setBizCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="***"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#d7eeee', outline: 'none' }} />
+                </div>
+              </div>
+              <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Amount (KD)</label>
+              <input value={bizTopUpAmount} onChange={e => setBizTopUpAmount(e.target.value.replace(/[^0-9.]/g, '').slice(0, 8))}
+                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 14, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#eab308', fontWeight: 800, outline: 'none' }} />
+              <button
+                type="button"
+                onClick={() => {
+                  if (!user?.id) return;
+                  const amt = Math.max(1, Math.floor(Number(bizTopUpAmount) || 0));
+                  if (bizCardNumber.replace(/\s/g, '').length < 12) return;
+                  const next = bizBalance + amt;
+                  try {
+                    localStorage.setItem(`stooorna_biz_balance_${user.id}`, String(next));
+                    window.dispatchEvent(new CustomEvent('stooorna:biz-balance', { detail: { userId: user.id, balance: next } }));
+                  } catch { /* */ }
+                  setBizBalance(next);
+                  setBizCardNumber('');
+                  setBizCardExp('');
+                  setBizCardCvv('');
+                  setBizTopUpOpen(false);
+                }}
+                style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: '#eab308', color: '#0a0a0a', fontWeight: 900, cursor: 'pointer' }}
+              >
+                Pay & add balance
+              </button>
+              <p style={{ margin: '10px 0 0', color: 'rgba(180,210,210,0.55)', fontSize: '0.65rem', textAlign: 'center' }}>
+                Demo top-up (local). Connect a payment gateway for production.
+              </p>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

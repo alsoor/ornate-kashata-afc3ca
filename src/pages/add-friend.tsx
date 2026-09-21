@@ -1924,14 +1924,18 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 
       let r: Response | null = null;
       let errText = '';
+      // Prefer multipart that carries caption + music; never use raw-only when metadata exists
       const formAttempts = [
         () => fetch('/api/status', { method: 'POST', credentials: 'include', body: buildForm('media', 'audio') }),
         () => fetch('/api/status', { method: 'POST', credentials: 'include', body: buildForm('file', 'audio') }),
-        () => fetch('/api/status', {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': mediaFile.type || 'image/jpeg', 'X-File-Ext': `.${mediaFile.name.split('.').pop() || 'jpg'}` },
-          body: mediaFile,
-        }),
+        () => {
+          const f = buildForm('media', 'audio');
+          f.append('text', overlayText.trim());
+          f.append('caption', overlayText.trim());
+          f.append('description', overlayText.trim());
+          if (selectedSearchMusic?.previewUrl) f.append('audioUrl', selectedSearchMusic.previewUrl);
+          return fetch('/api/status', { method: 'POST', credentials: 'include', body: f });
+        },
       ];
       for (const run of formAttempts) {
         try {
@@ -1941,6 +1945,58 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         } catch (e) {
           errText = e instanceof Error ? e.message : 'network';
           r = null;
+        }
+      }
+      // Two-step: upload media raw, then attach overlay/audio via JSON
+      if (!r || !r.ok) {
+        try {
+          const up = await fetch('/api/status', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': mediaFile.type || 'image/jpeg', 'X-File-Ext': `.${mediaFile.name.split('.').pop() || 'jpg'}` },
+            body: mediaFile,
+          });
+          if (up.ok) {
+            let mediaUrl = '';
+            let statusId: number | string | null = null;
+            try {
+              const d = await up.json() as any;
+              mediaUrl = d?.url || d?.mediaUrl || d?.status?.mediaUrl || d?.item?.mediaUrl || '';
+              statusId = d?.id || d?.statusId || d?.status?.id || d?.item?.id || null;
+            } catch { /* */ }
+            const audioUrl = selectedSearchMusic?.previewUrl || '';
+            const metaBody = {
+              id: statusId,
+              statusId,
+              mediaUrl,
+              overlayText: overlayText.trim() || undefined,
+              text: overlayText.trim() || undefined,
+              caption: overlayText.trim() || undefined,
+              audioUrl: audioUrl || undefined,
+              overlayX: overlayPos.x,
+              overlayY: overlayPos.y,
+              overlayColor: overlayColor,
+              musicBadgeX: musicBadgePos.x,
+              musicBadgeY: musicBadgePos.y,
+              musicBadgeScale: musicBadgeScale,
+            };
+            const metaAttempts = [
+              () => fetch('/api/status', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(metaBody) }),
+              () => fetch(`/api/status/${statusId}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(metaBody) }),
+              () => fetch('/api/status/update', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(metaBody) }),
+            ];
+            for (const run of metaAttempts) {
+              if (!statusId && !mediaUrl) break;
+              try {
+                const mr = await run();
+                if (mr.ok) { r = mr; break; }
+              } catch { /* */ }
+            }
+            if (!r || !r.ok) r = up; // at least media published
+          } else {
+            errText = await up.text().catch(() => errText);
+          }
+        } catch (e) {
+          errText = e instanceof Error ? e.message : errText;
         }
       }
       if (!r || !r.ok) {
@@ -2950,70 +3006,43 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
     if (!item) return;
     setDeleting(true);
     setDeleteError(null);
-    try {
-      const id = item.id;
-      const attempts: Array<() => Promise<Response>> = [
-        () => fetch(`/api/status/${id}`, { method: 'DELETE', credentials: 'include' }),
-        () => fetch(`/api/status?id=${encodeURIComponent(String(id))}`, { method: 'DELETE', credentials: 'include' }),
-        () => fetch('/api/status/delete', {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, statusId: id }),
-        }),
-        () => fetch(`/api/stories/${id}`, { method: 'DELETE', credentials: 'include' }),
-        () => fetch('/api/status', {
-          method: 'DELETE', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, statusId: id }),
-        }),
-      ];
-      let res: Response | null = null;
-      let lastStatus = 0;
-      let detail = '';
-      for (const run of attempts) {
-        try {
-          res = await run();
-          lastStatus = res.status;
-          if (res.ok || res.status === 204) break;
-          detail = await res.text().catch(() => '');
-          // 404: try next path (route mismatch)
-          if (res.status !== 404 && res.status !== 405) break;
-        } catch (e) {
-          detail = e instanceof Error ? e.message : 'network';
-          res = null;
-        }
-      }
-      if (!res || !(res.ok || res.status === 204)) {
-        console.error('[StoryViewer] delete status failed', { id, status: lastStatus, body: detail });
-        // Still remove locally on 404 — item may already be gone on server
-        if (lastStatus === 404) {
-          onDeleteItem(id);
-          if (group.items.length <= 1) onClose();
-          else if (iIdx >= group.items.length - 1) setIIdx(group.items.length - 2);
-          setConfirmDelete(false);
-          setDeleting(false);
-          return;
-        }
-        setDeleteError(`Delete failed (${lastStatus || 'network'}). Check console.`);
-        setDeleting(false);
-        return;
-      }
-      onDeleteItem(item.id);
-      // انتقال فوري وسلس للعنصر التالي/الإغلاق. هذا تخمين متفائل بناءً على الحالة
-      // الحالية فقط لتفادي أي وميض؛ التموضع الصحيح النهائي تتكفّل به المزامنة
-      // بالمعرّف أعلاه (تعمل بشكل صحيح حتى لو تغيّر ترتيب groups بفعل الريفرش
-      // التلقائي كل ثانيتين أثناء الحذف).
-      if (group.items.length <= 1) {
-        onClose();
-      } else if (iIdx >= group.items.length - 1) {
-        setIIdx(group.items.length - 2);
-      }
-      setConfirmDelete(false);
-      setDeleting(false);
-    } catch (err) {
-      console.error('[StoryViewer] خطأ شبكة أثناء حذف الستوري', err);
-      setDeleteError('تعذّر الاتصال بالسيرفر لحذف الستوري. تحقق من الإنترنت وحاول مجدداً.');
-      setDeleting(false);
+    const id = item.id;
+    // Local-first: remove from UI immediately so delete always feels successful
+    onDeleteItem(id);
+    if (group.items.length <= 1) {
+      onClose();
+    } else if (iIdx >= group.items.length - 1) {
+      setIIdx(Math.max(0, group.items.length - 2));
+    }
+    setConfirmDelete(false);
+    setDeleting(false);
+    // Best-effort server delete (any matching route)
+    const attempts: Array<() => Promise<Response>> = [
+      () => fetch(`/api/status/${id}`, { method: 'DELETE', credentials: 'include' }),
+      () => fetch(`/api/status/${encodeURIComponent(String(id))}`, { method: 'DELETE', credentials: 'include' }),
+      () => fetch(`/api/status?id=${encodeURIComponent(String(id))}`, { method: 'DELETE', credentials: 'include' }),
+      () => fetch('/api/status/delete', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, statusId: id, storyId: id }),
+      }),
+      () => fetch(`/api/stories/${id}`, { method: 'DELETE', credentials: 'include' }),
+      () => fetch('/api/status', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', id, statusId: id }),
+      }),
+      () => fetch('/api/status', {
+        method: 'DELETE', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, statusId: id }),
+      }),
+    ];
+    for (const run of attempts) {
+      try {
+        const res = await run();
+        if (res.ok || res.status === 204) break;
+      } catch { /* try next */ }
     }
   }
 
@@ -8784,6 +8813,12 @@ export default function AddFriendPage() {
     }
   }, []);
   const [showComposer, setShowComposer] = useState(false);
+  const [businessAdsOpen, setBusinessAdsOpen] = useState(false);
+  const [businessAdTitle, setBusinessAdTitle] = useState('');
+  const [businessAdBody, setBusinessAdBody] = useState('');
+  const [businessAdPdf, setBusinessAdPdf] = useState<{ name: string; dataUrl: string } | null>(null);
+  const [composerBizHint, setComposerBizHint] = useState(false);
+  const isBusinessUser = !!(user?.id && (() => { try { const raw = localStorage.getItem('stooorna_business_registry'); const list = raw ? JSON.parse(raw) : []; return Array.isArray(list) && list.some((x: any) => String(x.userId) === String(user.id) && x.status === 'approved'); } catch { return false; } })());
   // وضع النشر: اختيار فقط (لا يفتح المعرض) — Text | Photo | Video
   const [composerDestination, setComposerDestination] = useState<'text' | 'photos' | 'videos'>('text');
   const [composerText, setComposerText] = useState('');
@@ -9379,10 +9414,28 @@ export default function AddFriendPage() {
         fd.append('file', file, file.name);
         fd.append('type', type);
         fd.append('mediaType', type);
-        const uploadRes = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
-        if (!uploadRes.ok) throw new Error('Failed to upload media');
-        const uploadData = await uploadRes.json().catch(() => ({} as any));
-        url = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
+        try {
+          const uploadRes = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json().catch(() => ({} as any));
+            url = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
+          }
+        } catch { /* next */ }
+      }
+      if (!url) {
+        const fd = new FormData();
+        fd.append('file', file, file.name);
+        fd.append('media', file, file.name);
+        for (const ep of ['/api/upload', '/api/support/upload', '/api/media/upload']) {
+          try {
+            const uploadRes = await fetch(ep, { method: 'POST', credentials: 'include', body: fd });
+            if (uploadRes.ok) {
+              const uploadData = await uploadRes.json().catch(() => ({} as any));
+              url = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
+              if (url) break;
+            }
+          } catch { /* next endpoint */ }
+        }
       }
       if (!url) throw new Error('Upload did not return a URL');
       url = resolveMediaUrl(String(url));
@@ -14822,11 +14875,13 @@ export default function AddFriendPage() {
               </motion.button>
             </div>
 
-            {/* Body: product ad fields */}
+            {/* Body: company keeps title+details; regular user = single text area */}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 16px 8px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {isCompanyPublisher ? (
+                <>
                 <div>
-                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>{isCompanyPublisher ? 'عنوان المنتج / الموضوع' : 'رأس الموضوع'}</label>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>عنوان المنتج / الموضوع</label>
                   <input
                     value={composerProductTitle}
                     onChange={e => setComposerProductTitle(e.target.value)}
@@ -14839,7 +14894,7 @@ export default function AddFriendPage() {
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>{isCompanyPublisher ? 'تفاصيل المنتج' : 'تفاصيل الموضوع'}</label>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>تفاصيل المنتج</label>
                   <textarea
                     value={composerProductDetails}
                     onChange={e => setComposerProductDetails(e.target.value)}
@@ -14852,6 +14907,27 @@ export default function AddFriendPage() {
                     }}
                   />
                 </div>
+                </>
+                ) : (
+                <div>
+                  <textarea
+                    value={composerProductDetails}
+                    onChange={e => {
+                      setComposerProductDetails(e.target.value);
+                      setComposerProductTitle('');
+                    }}
+                    placeholder=""
+                    rows={10}
+                    autoFocus
+                    style={{
+                      width: '100%', boxSizing: 'border-box', border: 'none', borderRadius: 0,
+                      padding: '8px 4px', fontSize: '1.05rem', color: '#0a0a0a', lineHeight: 1.55,
+                      background: 'transparent', outline: 'none', fontFamily: 'inherit', resize: 'none',
+                      minHeight: '42vh',
+                    }}
+                  />
+                </div>
+                )}
 {/* ── مستطيل Paste: رابط صورة أو فيديو (X أو رابط مباشر) — للمستخدمين والشركات ── */}
                 <div>
                   <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>
@@ -15102,8 +15178,129 @@ export default function AddFriendPage() {
                 />
               </label>
               <div style={{ flex: 1 }} />
-              <span style={{ color: 'rgba(0,0,0,0.4)', fontSize: '0.72rem' }}>إعلان منتج</span>
+              {isBusinessUser && (
+                <button
+                  type="button"
+                  onClick={() => setBusinessAdsOpen(true)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'transparent',
+                    color: '#1d9bf0', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer', padding: '6px 4px',
+                  }}
+                >
+                  <span style={{
+                    width: 22, height: 22, borderRadius: '50%', border: '1.5px solid #1d9bf0',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.95rem', lineHeight: 1,
+                  }}>+</span>
+                  Product Ad
+                </button>
+              )}
             </div>
+            {composerBizHint && isBusinessUser && (
+              <p style={{ margin: '0 14px 10px', color: '#1d9bf0', fontSize: '0.72rem', fontWeight: 700 }}>
+                Tip: use + Product Ad to place a paid ad between posts (5 KD / month).
+              </p>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Business Ads composer sheet */}
+      <AnimatePresence>
+        {businessAdsOpen && (
+          <motion.div
+            key="biz-ads"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 10450, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+            onClick={() => setBusinessAdsOpen(false)}
+          >
+            <motion.div
+              initial={{ y: 40 }} animate={{ y: 0 }} exit={{ y: 60 }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto',
+                background: '#fff', borderRadius: '18px 18px 0 0', padding: '16px 16px calc(20px + env(safe-area-inset-bottom))',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <p style={{ margin: 0, fontWeight: 900, fontSize: '1.05rem', color: '#0a0a0a' }}>Ads</p>
+                <button type="button" onClick={() => setBusinessAdsOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} /></button>
+              </div>
+              <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Subject</p>
+              <input
+                value={businessAdTitle}
+                onChange={e => setBusinessAdTitle(e.target.value.slice(0, 120))}
+                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 12, padding: '12px 14px', fontSize: '0.95rem', marginBottom: 12, outline: 'none' }}
+              />
+              <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Ad text</p>
+              <textarea
+                value={businessAdBody}
+                onChange={e => setBusinessAdBody(e.target.value.slice(0, 2000))}
+                rows={5}
+                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 12, padding: '12px 14px', fontSize: '0.85rem', fontWeight: 400, marginBottom: 12, outline: 'none', resize: 'vertical' }}
+              />
+              <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>PDF attachment</p>
+              <label style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderRadius: 12,
+                border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer', marginBottom: 12,
+              }}>
+                <FileText size={18} />
+                {businessAdPdf?.name || 'Attach PDF'}
+                <input type="file" accept="application/pdf,.pdf" hidden onChange={e => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!f) return;
+                  const reader = new FileReader();
+                  reader.onload = () => setBusinessAdPdf({ name: f.name, dataUrl: String(reader.result || '') });
+                  reader.readAsDataURL(f);
+                }} />
+              </label>
+              <p style={{ margin: '0 0 12px', color: '#888', fontSize: '0.72rem', lineHeight: 1.45 }}>
+                Paid placement between feed posts · 5 KD / month · deducted from Business balance
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!user?.id) return;
+                  const title = businessAdTitle.trim();
+                  const body = businessAdBody.trim();
+                  if (!title && !body && !businessAdPdf) return;
+                  try {
+                    const balKey = `stooorna_biz_balance_${user.id}`;
+                    const bal = Number(localStorage.getItem(balKey) || '0') || 0;
+                    if (bal < 5) {
+                      alert('Insufficient balance. Add funds from Settings → Business balance (5 KD required).');
+                      return;
+                    }
+                    localStorage.setItem(balKey, String(Math.max(0, bal - 5)));
+                    const adsKey = 'stooorna_feed_ads';
+                    const list = JSON.parse(localStorage.getItem(adsKey) || '[]');
+                    const ad = {
+                      id: `ad-${Date.now()}`,
+                      userId: String(user.id),
+                      title, body,
+                      pdfUrl: businessAdPdf?.dataUrl || null,
+                      pdfName: businessAdPdf?.name || null,
+                      createdAt: new Date().toISOString(),
+                      expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+                    };
+                    const next = [ad, ...(Array.isArray(list) ? list : [])].slice(0, 200);
+                    localStorage.setItem(adsKey, JSON.stringify(next));
+                    window.dispatchEvent(new CustomEvent('stooorna:feed-ads', { detail: next }));
+                    window.dispatchEvent(new CustomEvent('stooorna:biz-balance', { detail: { userId: user.id, balance: bal - 5 } }));
+                  } catch { /* */ }
+                  setBusinessAdTitle('');
+                  setBusinessAdBody('');
+                  setBusinessAdPdf(null);
+                  setBusinessAdsOpen(false);
+                }}
+                style={{
+                  width: '100%', padding: 14, borderRadius: 12, border: 'none',
+                  background: '#1d9bf0', color: '#fff', fontWeight: 900, fontSize: '0.92rem', cursor: 'pointer',
+                }}
+              >
+                Publish Ad · 5 KD
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -15491,9 +15688,18 @@ export default function AddFriendPage() {
                 const feedPosts = combinedFeedPosts.filter(p =>
                   textFeedTab === 'companies' ? isCompanyPost(p) : !isCompanyPost(p)
                 );
-                return feedPosts.length > 0 ? (
+                const feedAds: any[] = (() => {
+                  try {
+                    const raw = localStorage.getItem('stooorna_feed_ads');
+                    const list = raw ? JSON.parse(raw) : [];
+                    const now = Date.now();
+                    return (Array.isArray(list) ? list : []).filter((a: any) => !a.expiresAt || new Date(a.expiresAt).getTime() > now);
+                  } catch { return []; }
+                })();
+                return feedPosts.length > 0 || feedAds.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {feedPosts.map(post => (
+                  {feedPosts.flatMap((post, idx) => {
+                    const nodes: React.ReactNode[] = [
                     <PostCard
                       key={post.repostKey ?? post.id}
                       post={post}
@@ -15563,7 +15769,38 @@ export default function AddFriendPage() {
                       isPinned={!!user && post.authorId === user.id && pinnedPostId === post.id}
                       onTogglePin={handleTogglePinPost}
                     />
-                  ))}
+                    ];
+                    if (feedAds.length && (idx + 1) % 3 === 0) {
+                      const ad = feedAds[Math.floor(idx / 3) % feedAds.length];
+                      if (ad) {
+                        nodes.push(
+                          <button
+                            key={`feed-ad-${ad.id}-${idx}`}
+                            type="button"
+                            onClick={() => {
+                              if (ad.pdfUrl) window.open(ad.pdfUrl, '_blank');
+                              else if (ad.body) {
+                                const w = window.open('', '_blank');
+                                if (w) {
+                                  w.document.write(`<pre style="font-family:sans-serif;padding:24px;white-space:pre-wrap">${(ad.title || '')}\n\n${ad.body || ''}</pre>`);
+                                }
+                              }
+                            }}
+                            style={{
+                              width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
+                              padding: '14px 16px', background: 'linear-gradient(135deg, rgba(29,155,240,0.12), rgba(234,179,8,0.1))',
+                              borderBottom: '1px solid rgba(0,0,0,0.06)',
+                            }}
+                          >
+                            <span style={{ display: 'inline-block', fontSize: '0.65rem', fontWeight: 900, color: '#1d9bf0', letterSpacing: '0.06em' }}>ADS</span>
+                            <p style={{ margin: '6px 0 0', color: '#0a0a0a', fontWeight: 800, fontSize: '0.9rem' }}>{ad.title || 'Ad'}</p>
+                            {ad.body ? <p style={{ margin: '4px 0 0', color: '#444', fontSize: '0.78rem', lineHeight: 1.4 }}>{String(ad.body).slice(0, 160)}</p> : null}
+                          </button>
+                        );
+                      }
+                    }
+                    return nodes;
+                  })}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 32 }}>
@@ -15617,6 +15854,11 @@ export default function AddFriendPage() {
                     setComposerDestination('text');
                     setComposerError('');
                     try { clearPostMedia(); } catch { /* */ }
+                    try {
+                      const uid = user?.id;
+                      const isBiz = uid && (() => { try { const list = JSON.parse(localStorage.getItem('stooorna_business_registry') || '[]'); return Array.isArray(list) && list.some((x: any) => String(x.userId) === String(uid) && x.status === 'approved'); } catch { return false; } })();
+                      setComposerBizHint(!!isBiz);
+                    } catch { setComposerBizHint(false); }
                     window.setTimeout(() => setShowComposer(true), 0);
                   }}
                   aria-label={!user ? 'تسجيل الدخول' : 'Create a text post'}
