@@ -11450,24 +11450,8 @@ export default function AddFriendPage() {
   const profileNavHiddenRef = useRef(false);
 
   function applyProfileScrollProgress(y: number) {
-    const products = profileProductsStickyRef.current;
-    if (products) {
-      // Hide products header completely once user scrolls the story chrome
-      if (y > 24) {
-        products.style.maxHeight = '0px';
-        products.style.opacity = '0';
-        products.style.overflow = 'hidden';
-        products.style.borderWidth = '0';
-        products.style.pointerEvents = 'none';
-      } else {
-        products.style.maxHeight = '48px';
-        products.style.opacity = '1';
-        products.style.overflow = 'hidden';
-        products.style.borderWidth = '';
-        products.style.pointerEvents = 'auto';
-      }
-    }
-    const hideNav = y > 40;
+    // Fixed chrome (stats + products) stays sticky; only bottom nav reacts to scroll.
+    const hideNav = y > 36;
     if (hideNav !== profileNavHiddenRef.current) {
       profileNavHiddenRef.current = hideNav;
       try {
@@ -13125,11 +13109,20 @@ export default function AddFriendPage() {
           className="profile-header-expanded"
           style={{
           position: 'relative',
-          paddingTop: 40,
           background: CLR_HEADER_BG,
-          borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
-          {/* Single profile header — scrolls natively with finger */}
+          {/* Sticky chrome: stats + products stay fixed; stories scroll under them */}
+          <div
+            className="profile-sticky-chrome"
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 40,
+              paddingTop: 40,
+              background: CLR_HEADER_BG,
+              borderBottom: `1px solid ${CLR_NAV_BORDER}`,
+            }}
+          >
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
               non-interactive, matching the fog overlay's own transition). Opens a
@@ -13233,8 +13226,32 @@ export default function AddFriendPage() {
               </div>
             </div>
           )}
+          </div>
 
-          {/* Row 2: Friends' stories — expanded only (compact shows them left of header with my story) */}
+            {/* Products header — fixed under stats (green line position) */}
+            {pageTab === 'profile' && (
+              <div
+                ref={profileProductsStickyRef}
+                style={{
+                  background: CLR_HEADER_BG,
+                }}
+              >
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  padding: '9px 4px',
+                  borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}`,
+                  color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800,
+                  background: CLR_TAB_ACTIVE,
+                }}>
+                  <FileText size={14} strokeWidth={2} />
+                  {isCompanyPublisher ? 'المنتجات' : 'Post'}
+                </div>
+              </div>
+            )}
+          </div>
+          {/* End sticky chrome — stories + posts scroll beneath */}
+
+          {/* Stories row — scrolls under fixed stats + products */}
           {pageTab === 'profile' && (
             <>
               <style>{`
@@ -13378,32 +13395,6 @@ export default function AddFriendPage() {
 
         </div>
 
-        {/* Products / Post label — hides completely while scrolling (not sticky) */}
-        {pageTab === 'profile' && (
-          <div
-            ref={profileProductsStickyRef}
-            style={{
-              position: 'relative',
-              zIndex: 10,
-              maxHeight: 48,
-              opacity: 1,
-              overflow: 'hidden',
-              transition: 'max-height 160ms ease, opacity 140ms ease',
-              background: CLR_HEADER_BG,
-            }}
-          >
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              padding: '9px 4px',
-              borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}`,
-              color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800,
-              background: CLR_TAB_ACTIVE,
-            }}>
-              <FileText size={14} strokeWidth={2} />
-              {isCompanyPublisher ? 'المنتجات' : 'Post'}
-            </div>
-          </div>
-        )}
         </>
           )}
 
