@@ -428,7 +428,7 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
-        style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000', cursor: 'pointer' }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }}
       />
       <div
         onClick={e => e.stopPropagation()}
@@ -4797,20 +4797,23 @@ function PostCard({
               }}
               style={{
                 display: 'flex', flexDirection: 'row', width: '100%',
-                // نفرض LTR داخل شريط التصفح نفسه فقط (بعيدًا عن اتجاه الصفحة العام RTL)
-                // عشان يكون ترتيب السحب/العدّاد ثابت ومتوقّع دايمًا: سحب لليسار = الصورة التالية.
+                // Force LTR inside the media strip only so swipe order stays predictable.
                 direction: 'ltr',
                 overflowX: mediaItems.length > 1 ? 'auto' : 'hidden',
+                overflowY: 'hidden',
                 scrollSnapType: mediaItems.length > 1 ? 'x mandatory' : undefined,
                 WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
+                overscrollBehaviorX: 'contain',
               }}
             >
               {mediaItems.map((media, index) => (
                 <div
                   key={`${media.type}-${index}`}
                   style={{
-                    position: 'relative', width: '100%', flexShrink: 0,
+                    position: 'relative', width: '100%', minWidth: '100%', maxWidth: '100%',
+                    flexShrink: 0, flexGrow: 0, boxSizing: 'border-box',
                     scrollSnapAlign: mediaItems.length > 1 ? 'start' : undefined,
+                    scrollSnapStop: mediaItems.length > 1 ? 'always' : undefined,
                   }}
                 >
                   <button
@@ -4824,8 +4827,7 @@ function PostCard({
                     aria-label={media.type === 'video' ? 'Open video' : 'Open image'}
                     style={{
                       position: 'relative', width: '100%', boxSizing: 'border-box', padding: 0,
-                      borderTop: 'none', borderBottom: 'none',
-                      borderLeft: '4px solid #fff', borderRight: '4px solid #fff',
+                      border: 'none',
                       background: '#000', cursor: 'pointer', display: 'block', overflow: 'hidden', maxHeight: '48vh',
                     }}
                   >
@@ -6108,8 +6110,9 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
       transition={{ type: 'tween', duration: 0.32, ease: 'easeIn' }}
       style={{ position: 'fixed', inset: 0, zIndex: 10420, background: PAGE_BG, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
     >
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
-        {/* Cover photo + close — بدون تعتيم؛ الخلفية نفس الصفحة */}
+      {/* Fixed profile chrome — cover, avatar, stats, products/posts header stay put */}
+      <div style={{ flexShrink: 0, position: 'relative', zIndex: 3 }}>
+        {/* Cover photo + close */}
         <div style={{ width: '100%', height: 130, position: 'relative', background: 'transparent' }}>
           {coverUrl && (
             <img
@@ -6117,16 +6120,15 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               alt=""
               style={{
                 width: '100%', height: '100%', objectFit: 'cover', display: 'block',
-                // بدون أي طبقة تعتيم فوق صورة الغلاف
               }}
             />
           )}
           <motion.button
             whileTap={{ scale: 0.88 }}
             onClick={onClose}
-            aria-label="إغلاق"
+            aria-label="Close"
             style={{
-              position: 'absolute', top: 10, insetInlineStart: 10, width: 32, height: 32, borderRadius: '50%',
+              position: 'absolute', top: 'max(18px, env(safe-area-inset-top, 0px))', insetInlineStart: 10, width: 32, height: 32, borderRadius: '50%',
               background: coverUrl ? 'rgba(0,0,0,0.25)' : 'rgba(0,188,212,0.12)',
               border: coverUrl ? 'none' : `1px solid ${CLR_PRIMARY_BORDER}`,
               color: coverUrl ? '#fff' : CLR_PRIMARY,
@@ -6136,7 +6138,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           >
             <X size={17} strokeWidth={2.4} />
           </motion.button>
-          {/* مقطع Get المثبت — في منتصف أعلى الغلاف فوق الصورة (مكان الخطوط الحمراء) */}
           {pinnedTrack && (
             <div style={{
               position: 'absolute', left: 0, right: 0, bottom: 44,
@@ -6275,14 +6276,14 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_PRIMARY_DIM }}>
               <LockKeyhole size={22} strokeWidth={1.6} />
             </div>
-            <p style={{ color: CLR_TEXT, fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>هذا الحساب خاص</p>
+            <p style={{ color: CLR_TEXT, fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>Private account</p>
             <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', maxWidth: 240, lineHeight: 1.6 }}>
-                  أضف {name ?? 'هذا المستخدم'} كصديق لرؤية منشوراته
+              Add {name ?? 'this user'} as a friend to see their posts
             </p>
           </div>
         ) : (
           <>
-            {/* Single Post section header */}
+            {/* Single Post section header — sticky with profile chrome */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               padding: '10px 0', marginTop: 8,
@@ -6291,9 +6292,16 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               background: CLR_TAB_ACTIVE,
             }}>
               <FileText size={15} strokeWidth={2} />
-              {(isCompanyProfile || readBusinessApproved(authorId)) ? 'المنتجات' : 'Post'}
+              {(isCompanyProfile || readBusinessApproved(authorId)) ? 'Products' : 'Post'}
             </div>
+          </>
+        )}
+      </div>
 
+      {/* Scrollable posts grid only */}
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+        {!isHiddenPrivate && (
+          <>
             {loading ? (
               <div className="flex items-center justify-center" style={{ padding: '24px 0' }}>
                 <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${CLR_PRIMARY_BORDER}`, borderTopColor: CLR_PRIMARY }} />
@@ -6384,7 +6392,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   <FileText size={20} strokeWidth={1.5} />
                 </div>
                 <p style={{ color: CLR_TEXT_DIM, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
-                  لا توجد منشورات بعد
+                  No posts yet
                 </p>
               </div>
             )}
@@ -6392,8 +6400,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         )}
       </div>
 
-      {/* ── الصورة/الفيديو فقط بملء الشاشة — بدون فتح صفحة المنشور الكاملة القديمة.
-          التعليقات تُفتح فقط من أيقونة التعليقات (شيت منزلق من الأسفل يديره المستوى الأعلى). ── */}
+      {/* Fullscreen media lightbox only — comments open via icon (bottom sheet from parent). */}
       <AnimatePresence>
         {mediaLightbox && typeof document !== 'undefined' && createPortal(
           <motion.div
@@ -16643,8 +16650,10 @@ export default function AddFriendPage() {
                         display: 'flex', flexDirection: 'row', width: '100%', height: '100%',
                         direction: 'ltr',
                         overflowX: mediaItems.length > 1 ? 'auto' : 'hidden',
+                        overflowY: 'hidden',
                         scrollSnapType: mediaItems.length > 1 ? 'x mandatory' : undefined,
                         WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
+                        overscrollBehaviorX: 'contain',
                       }}
                     >
                       {mediaItems.map((media, index) => {
@@ -16653,9 +16662,12 @@ export default function AddFriendPage() {
                           <div
                             key={`${media.type}-${index}-${media.url.slice(-12)}`}
                             style={{
-                              width: '100%', height: '100%', flexShrink: 0,
+                              width: '100%', minWidth: '100%', maxWidth: '100%', height: '100%',
+                              flexShrink: 0, flexGrow: 0, boxSizing: 'border-box',
                               scrollSnapAlign: mediaItems.length > 1 ? 'start' : undefined,
+                              scrollSnapStop: mediaItems.length > 1 ? 'always' : undefined,
                               display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000',
+                              overflow: 'hidden',
                             }}
                           >
                             {pdf ? (
@@ -16667,7 +16679,7 @@ export default function AddFriendPage() {
                                 src={media.url}
                                 alt=""
                                 onClick={e => { e.stopPropagation(); }}
-                                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', background: '#000' }}
                               />
                             )}
                           </div>
