@@ -9168,6 +9168,59 @@ export default function AddFriendPage() {
       opacity: 1,
     };
   }, []);
+
+  // ── Pull-down-to-open on a specific friend's story circle (header strip) ──
+  // Dragging down on one particular circle grows that exact circle in place,
+  // tracking the finger live — not a separate floating preview elsewhere.
+  // Releasing past the threshold keeps growing it (with a spring) straight
+  // into full-screen, then hands off to the real story viewer, exactly like
+  // the top-of-feed pull above but rooted at the dragged circle's own rect.
+  const [avatarPullUserId, setAvatarPullUserId] = useState<string | null>(null);
+  const [avatarPullDistance, setAvatarPullDistance] = useState(0);
+  const [avatarPullDragging, setAvatarPullDragging] = useState(false);
+  const [avatarPullOpening, setAvatarPullOpening] = useState(false);
+  const avatarPullStartY = useRef<number | null>(null);
+  const avatarPullStartRect = useRef<{ top: number; left: number; width: number; height: number } | null>(null);
+  const avatarPullRealIdxRef = useRef<number | null>(null);
+  const avatarPullDraggedRef = useRef(false);
+  const AVATAR_PULL_THRESHOLD = 55;
+  const AVATAR_PULL_MAX = 90;
+  const avatarPullTargetGroup = useMemo(() => {
+    if (!avatarPullUserId) return null;
+    return storyGroups.find(g => g.userId === avatarPullUserId) || null;
+  }, [storyGroups, avatarPullUserId]);
+  const avatarPullItem = useMemo(() => {
+    if (!avatarPullTargetGroup) return null;
+    return avatarPullTargetGroup.items.find(it => !it.seen) || avatarPullTargetGroup.items[0] || null;
+  }, [avatarPullTargetGroup]);
+  /** Live size/position for the dragged circle, grown outward from its own captured rect. */
+  const avatarPullBoxStyle = useCallback((distance: number) => {
+    const rect = avatarPullStartRect.current;
+    if (!rect) return { top: 0, left: 0, width: 0, height: 0, borderRadius: 0, opacity: 0 };
+    const t = Math.max(0, Math.min(1, distance / AVATAR_PULL_MAX));
+    const width = rect.width + rect.width * 1.9 * t;
+    const height = rect.height + rect.height * 2.6 * t;
+    const centerX = rect.left + rect.width / 2;
+    const drift = distance * 0.35;
+    return {
+      top: rect.top - (height - rect.height) * 0.35 + drift,
+      left: centerX - width / 2,
+      width,
+      height,
+      borderRadius: (rect.width / 2) * (1 - t) + 22 * t,
+      opacity: 1,
+    };
+  }, []);
+  const resetAvatarPull = useCallback(() => {
+    setAvatarPullUserId(null);
+    setAvatarPullDistance(0);
+    setAvatarPullDragging(false);
+    setAvatarPullOpening(false);
+    avatarPullStartY.current = null;
+    avatarPullStartRect.current = null;
+    avatarPullRealIdxRef.current = null;
+  }, []);
+
   const [storyUploading, setStoryUploading] = useState(false);
   const storyFileRef = useRef<HTMLInputElement>(null);
   // ref for adding extra media from inside the viewer
@@ -13324,12 +13377,50 @@ export default function AddFriendPage() {
                 }).map((g) => {
                   const realIdx = storyGroups.indexOf(g);
                   const hasUnseen = g.items.some(it => !it.seen);
+                  const isBeingPulled = avatarPullUserId === g.userId && (avatarPullDragging || avatarPullDistance > 0 || avatarPullOpening);
                   return (
                     <div key={g.userId} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                       <motion.button
                         whileTap={{ scale: 0.9 }}
-                        onClick={() => setViewerGroupIdx(realIdx)}
-                        style={{ width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
+                        onClick={() => {
+                          if (avatarPullDraggedRef.current) {
+                            avatarPullDraggedRef.current = false;
+                            return;
+                          }
+                          setViewerGroupIdx(realIdx);
+                        }}
+                        onTouchStart={e => {
+                          if (avatarPullOpening) return;
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          avatarPullStartRect.current = { top: rect.top, left: rect.left, width: rect.width, height: rect.height };
+                          avatarPullStartY.current = e.touches[0].clientY;
+                          avatarPullRealIdxRef.current = realIdx;
+                          avatarPullDraggedRef.current = false;
+                          setAvatarPullUserId(g.userId);
+                        }}
+                        onTouchMove={e => {
+                          if (avatarPullStartY.current === null || avatarPullRealIdxRef.current !== realIdx) return;
+                          const delta = e.touches[0].clientY - avatarPullStartY.current;
+                          if (delta <= 0) {
+                            setAvatarPullDragging(false);
+                            setAvatarPullDistance(0);
+                            return;
+                          }
+                          if (delta > 6) avatarPullDraggedRef.current = true;
+                          setAvatarPullDragging(true);
+                          setAvatarPullDistance(Math.min(AVATAR_PULL_MAX, delta * 0.6));
+                        }}
+                        onTouchEnd={() => {
+                          if (avatarPullRealIdxRef.current !== realIdx) return;
+                          avatarPullStartY.current = null;
+                          setAvatarPullDragging(false);
+                          if (avatarPullDistance >= AVATAR_PULL_THRESHOLD) {
+                            setAvatarPullOpening(true);
+                            return; // keep distance + captured rect — the release animation's start point
+                          }
+                          resetAvatarPull();
+                        }}
+                        style={{ width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', opacity: isBeingPulled ? 0 : 1, pointerEvents: isBeingPulled ? 'none' : 'auto' }}
                       >
                         {/* حلقة بلونين فقط: أصفر كامل ما دام في عنصر غير مُشاهَد،
                             وأزرق كامل (نفس أزرق دائرة "قصتي") بعد مشاهدة كل العناصر */}
@@ -13355,7 +13446,7 @@ export default function AddFriendPage() {
                           </div>
                         </div>
                       </motion.button>
-                      <span style={{ fontSize: '0.55rem', color: CLR_TEXT_DIM, maxWidth: 60, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: '0.55rem', color: CLR_TEXT_DIM, maxWidth: 60, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: isBeingPulled ? 0 : 1 }}>
                         {g.username ? `@${g.username}` : g.name}
                       </span>
                     </div>
@@ -17780,6 +17871,100 @@ export default function AddFriendPage() {
             ) : pullTargetGroup && (
               <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: storyRingColor(pullTargetGroup.items, '#facc15', '#0ea5e9') }}>
                 <UserAvatar name={pullTargetGroup.name} avatarUrl={pullTargetGroup.avatarUrl} size={72} />
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Pull-down-to-open a specific friend's story circle — grows that
+          exact circle in place while dragging (see avatarPullBoxStyle above),
+          then springs it the rest of the way to full-screen once released
+          past the threshold, before handing off to the real story viewer. ── */}
+      {avatarPullUserId && !avatarPullOpening && (avatarPullDragging || avatarPullDistance > 0) && (
+        <>
+          <div
+            aria-hidden
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10304,
+              background: 'rgba(4,10,10,0.6)',
+              opacity: Math.min(1, avatarPullDistance / AVATAR_PULL_MAX),
+              pointerEvents: 'none',
+              transition: avatarPullDragging ? 'none' : 'opacity 220ms ease',
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: 'fixed', zIndex: 10305, overflow: 'hidden',
+              background: '#0a1414',
+              boxShadow: avatarPullDistance >= AVATAR_PULL_THRESHOLD ? '0 0 22px rgba(0,188,212,0.55)' : '0 6px 20px rgba(0,0,0,0.35)',
+              transition: avatarPullDragging ? 'none' : 'all 220ms cubic-bezier(0.22,1,0.36,1)',
+              pointerEvents: 'none',
+              ...avatarPullBoxStyle(avatarPullDistance),
+            }}
+          >
+            {avatarPullItem ? (
+              avatarPullItem.mediaType === 'video' ? (
+                <video src={avatarPullItem.mediaUrl} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              ) : (
+                <img src={avatarPullItem.mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              )
+            ) : avatarPullTargetGroup && (
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: storyRingColor(avatarPullTargetGroup.items, '#facc15', '#0ea5e9') }}>
+                <UserAvatar name={avatarPullTargetGroup.name} avatarUrl={avatarPullTargetGroup.avatarUrl} size={40} style={{ border: 'none' }} />
+              </div>
+            )}
+          </div>
+        </>
+      )}
+      <AnimatePresence>
+        {avatarPullOpening && (
+          <motion.div
+            key="avatar-pull-open-backdrop"
+            aria-hidden
+            initial={{ opacity: Math.min(1, avatarPullDistance / AVATAR_PULL_MAX) }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10305,
+              background: 'rgba(4,10,10,0.72)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+            }}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {avatarPullOpening && (
+          <motion.div
+            key="avatar-pull-open-box"
+            initial={avatarPullBoxStyle(avatarPullDistance)}
+            animate={pullBoxFinalStyle()}
+            transition={{ type: 'spring', stiffness: 300, damping: 30, mass: 0.9 }}
+            onAnimationComplete={() => {
+              const idx = avatarPullRealIdxRef.current;
+              resetAvatarPull();
+              if (idx !== null) setViewerGroupIdx(idx);
+            }}
+            style={{
+              position: 'fixed',
+              zIndex: 10306,
+              overflow: 'hidden',
+              background: '#0a1414',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+            }}
+          >
+            {avatarPullItem ? (
+              avatarPullItem.mediaType === 'video' ? (
+                <video src={avatarPullItem.mediaUrl} muted autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              ) : (
+                <img src={avatarPullItem.mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              )
+            ) : avatarPullTargetGroup && (
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: storyRingColor(avatarPullTargetGroup.items, '#facc15', '#0ea5e9') }}>
+                <UserAvatar name={avatarPullTargetGroup.name} avatarUrl={avatarPullTargetGroup.avatarUrl} size={72} />
               </div>
             )}
           </motion.div>
