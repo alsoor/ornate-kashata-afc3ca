@@ -9114,14 +9114,20 @@ export default function AddFriendPage() {
   const [viewerGroupIdx, setViewerGroupIdx] = useState<number | null>(null);
   // ── Pull-down-to-open-stories (top of the profile feed) ────────────────────
   // Pulling down past a small threshold while already at the top of the feed
-  // opens the next unseen story directly, skipping the strip, with a short
-  // pop/scale animation played first, then the full-screen viewer takes over.
+  // opens the next unseen story directly, skipping the strip. On release, the
+  // small avatar grows in place into a full-screen rounded card (same start
+  // rect it was released at) over a darkened backdrop, then hands off to the
+  // real story viewer once the card finishes growing — the Telegram-style
+  // "expanding icon" transition.
   const [storyPullDistance, setStoryPullDistance] = useState(0);
   const [storyPullDragging, setStoryPullDragging] = useState(false);
   const [storyPullOpening, setStoryPullOpening] = useState(false);
+  const [pullCardInitial, setPullCardInitial] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const storyPullStartY = useRef<number | null>(null);
   const lastFeedScrollTopRef = useRef(0);
   const profileContentScrollRef = useRef<HTMLDivElement | null>(null);
+  const pullIndicatorRef = useRef<HTMLDivElement | null>(null);
+  const pullOpenIdxRef = useRef<number | null>(null);
   const STORY_PULL_THRESHOLD = 72;
   const STORY_PULL_MAX = 130;
   const pullTargetGroup = useMemo(() => {
@@ -13437,17 +13443,14 @@ export default function AddFriendPage() {
             setStoryPullDragging(false);
             if (storyPullDistance >= STORY_PULL_THRESHOLD && pullTargetGroup) {
               const idx = storyGroups.indexOf(pullTargetGroup);
-              setStoryPullOpening(true);
-              window.setTimeout(() => {
-                if (idx >= 0) setViewerGroupIdx(idx);
-                window.setTimeout(() => {
-                  setStoryPullOpening(false);
-                  setStoryPullDistance(0);
-                }, 260);
-              }, 320);
-            } else {
-              setStoryPullDistance(0);
+              const rect = pullIndicatorRef.current?.getBoundingClientRect();
+              if (idx >= 0 && rect) {
+                pullOpenIdxRef.current = idx;
+                setPullCardInitial({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+                setStoryPullOpening(true);
+              }
             }
+            setStoryPullDistance(0);
           }}
           style={{
           WebkitOverflowScrolling: 'touch',
@@ -13455,21 +13458,23 @@ export default function AddFriendPage() {
           contain: 'strict',
           scrollbarWidth: 'none',
         }}>
-          {(storyPullDragging || storyPullOpening || storyPullDistance > 0) && (
+          {(storyPullDragging || storyPullDistance > 0) && !storyPullOpening && (
             <div
               aria-hidden
               style={{
-                height: storyPullOpening ? 96 : storyPullDistance,
+                height: storyPullDistance,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 overflow: 'hidden',
                 transition: storyPullDragging ? 'none' : 'height 260ms cubic-bezier(0.22,1,0.36,1)',
               }}
             >
               <motion.div
-                animate={storyPullOpening
-                  ? { scale: [1, 1.4, 0], opacity: [1, 1, 0] }
-                  : { scale: Math.min(1, storyPullDistance / STORY_PULL_THRESHOLD), opacity: Math.min(1, storyPullDistance / 30) }}
-                transition={storyPullOpening ? { duration: 0.32, ease: 'easeInOut' } : { duration: 0.05 }}
+                ref={pullIndicatorRef}
+                animate={{
+                  scale: Math.min(1, storyPullDistance / STORY_PULL_THRESHOLD),
+                  opacity: Math.min(1, storyPullDistance / 30),
+                }}
+                transition={{ duration: 0.05 }}
                 style={{ width: 56, height: 56, borderRadius: '50%', position: 'relative' }}
               >
                 <div style={{
@@ -17688,6 +17693,90 @@ export default function AddFriendPage() {
       </AnimatePresence>
 
       {/* قائمة Photo/Video للقصة أُلغيت — الفتح مباشرة من المعرض أو الكاميرا */}
+
+      {/* ── Pull-to-open expanding card — grows in place from the small avatar's
+          exact release position into a near-full-screen rounded card over a
+          darkened backdrop, Telegram-style, then hands off to the real
+          full-screen story viewer once it finishes growing. ── */}
+      <AnimatePresence>
+        {storyPullOpening && pullCardInitial && (
+          <motion.div
+            key="pull-card-backdrop"
+            aria-hidden
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10305,
+              background: 'rgba(4,10,10,0.6)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+            }}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {storyPullOpening && pullCardInitial && (
+          <motion.div
+            key="pull-card"
+            initial={{
+              top: pullCardInitial.top,
+              left: pullCardInitial.left,
+              width: pullCardInitial.width,
+              height: pullCardInitial.height,
+              borderRadius: pullCardInitial.width / 2,
+              opacity: 1,
+            }}
+            animate={{
+              top: typeof window !== 'undefined' ? window.innerHeight * 0.06 : 40,
+              left: typeof window !== 'undefined' ? window.innerWidth * 0.04 : 16,
+              width: typeof window !== 'undefined' ? window.innerWidth * 0.92 : 320,
+              height: typeof window !== 'undefined' ? window.innerHeight * 0.82 : 500,
+              borderRadius: 26,
+              opacity: 1,
+            }}
+            exit={{ opacity: 0, transition: { duration: 0.12 } }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30, mass: 0.9 }}
+            onAnimationComplete={() => {
+              if (pullOpenIdxRef.current !== null) setViewerGroupIdx(pullOpenIdxRef.current);
+              setStoryPullOpening(false);
+              setPullCardInitial(null);
+              pullOpenIdxRef.current = null;
+            }}
+            style={{
+              position: 'fixed',
+              zIndex: 10306,
+              overflow: 'hidden',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              gap: 10,
+              background: pullTargetGroup
+                ? storyRingColor(pullTargetGroup.items, 'linear-gradient(160deg, #d4a017, #92650a)', 'linear-gradient(160deg, #0ea5e9, #075985)')
+                : 'rgba(10,20,22,0.92)',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+            }}
+          >
+            {pullTargetGroup && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.6 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.14, duration: 0.2 }}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}
+              >
+                <UserAvatar
+                  name={pullTargetGroup.name}
+                  avatarUrl={pullTargetGroup.avatarUrl}
+                  size={84}
+                  style={{ border: '3px solid rgba(255,255,255,0.85)', boxShadow: '0 0 24px rgba(0,0,0,0.35)' }}
+                />
+                <span style={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>
+                  {pullTargetGroup.username ? `@${pullTargetGroup.username}` : pullTargetGroup.name}
+                </span>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Story Viewer ── */}
       <AnimatePresence>
