@@ -5480,6 +5480,7 @@ const MiniProfileModal = ({
   const [myFriendsForFollowersList, setMyFriendsForFollowersList] = useState<Friend[]>([]);
   useEffect(() => {
     setProductsBookPage(0);
+    setProductsBookExpanded(false);
   }, [authorId]);
 
   useEffect(() => {
@@ -5826,6 +5827,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   // كتم صوت معاينة الفيديو كاملة الشاشة
   const [lightboxMuted, setLightboxMuted] = useState(false);
   const [productsBookPage, setProductsBookPage] = useState(0);
+  const [productsBookFlipDir, setProductsBookFlipDir] = useState<1 | -1>(1);
+  const [productsBookExpanded, setProductsBookExpanded] = useState(false);
   const productsBookTouchRef = useRef<{ x: number; t: number } | null>(null);
   const productsBookScrollRef = useRef<HTMLDivElement | null>(null);
   const isBizProfile = !!(isCompanyProfile || readBusinessApproved(authorId));
@@ -6213,24 +6216,41 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   return { post, thumbUrl, isVideo, displayText, isPinnedPost };
                 });
 
-                // Business profile: closed book + page swipe (cover + one product per page)
+                // Business profile: realistic page-flip product book
                 if (isBizProfile) {
                   const pages = enrichedPosts;
-                  const totalPages = pages.length + 1; // 0 = cover
-                  const handleBookSwipe = (dx: number) => {
-                    if (Math.abs(dx) < 48) return;
-                    setProductsBookPage(p => {
-                      if (dx < 0) return Math.min(totalPages - 1, p + 1);
-                      return Math.max(0, p - 1);
-                    });
+                  const totalPages = pages.length + 1;
+                  const goPage = (next: number, dir: 1 | -1) => {
+                    const clamped = Math.max(0, Math.min(totalPages - 1, next));
+                    if (clamped === productsBookPage) return;
+                    setProductsBookFlipDir(dir);
+                    setProductsBookPage(clamped);
                   };
+                  const handleBookSwipe = (dx: number) => {
+                    if (Math.abs(dx) < 42) return;
+                    if (dx < 0) goPage(productsBookPage + 1, 1);
+                    else goPage(productsBookPage - 1, -1);
+                  };
+                  const currentProduct = productsBookPage > 0 ? pages[productsBookPage - 1] : null;
+                  const pageKey = productsBookPage === 0 ? 'cover' : `p-${currentProduct?.post.id}`;
+
                   return (
-                    <div
-                      style={{
-                        padding: '12px 14px calc(28px + env(safe-area-inset-bottom, 0px))',
-                        minHeight: '42vh',
-                      }}
-                    >
+                    <div style={{
+                      padding: '10px 12px calc(20px + env(safe-area-inset-bottom, 0px))',
+                      minHeight: '48vh',
+                    }}>
+                      <style>{`
+                        @keyframes stooornaBookPageIn {
+                          0% { transform: rotateY(-88deg); opacity: 0.35; box-shadow: -20px 0 40px rgba(0,0,0,0.35); }
+                          100% { transform: rotateY(0deg); opacity: 1; box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
+                        }
+                        @keyframes stooornaBookPageInBack {
+                          0% { transform: rotateY(88deg); opacity: 0.35; }
+                          100% { transform: rotateY(0deg); opacity: 1; }
+                        }
+                      `}</style>
+
+                      {/* Book shell */}
                       <div
                         ref={productsBookScrollRef}
                         onTouchStart={e => {
@@ -6239,234 +6259,294 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                           productsBookTouchRef.current = { x: t.clientX, t: Date.now() };
                         }}
                         onTouchEnd={e => {
-                          const start = productsBookTouchRef.current;
+                          const startT = productsBookTouchRef.current;
                           productsBookTouchRef.current = null;
-                          if (!start) return;
+                          if (!startT) return;
                           const t = e.changedTouches[0];
                           if (!t) return;
-                          const dx = t.clientX - start.x;
-                          const dt = Date.now() - start.t;
-                          if (dt < 700) handleBookSwipe(dx);
+                          if (Date.now() - startT.t < 800) handleBookSwipe(t.clientX - startT.x);
                         }}
                         style={{
                           position: 'relative',
                           width: '100%',
-                          maxWidth: 340,
+                          maxWidth: 360,
                           margin: '0 auto',
-                          minHeight: 'min(58vh, 480px)',
-                          perspective: 1400,
+                          perspective: 1600,
+                          perspectiveOrigin: '50% 50%',
                         }}
                       >
-                        {/* Book spine shadow */}
-                        <div style={{
-                          position: 'absolute', inset: 0, borderRadius: '6px 14px 14px 6px',
-                          boxShadow: '8px 12px 28px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(234,179,8,0.25)',
-                          background: 'linear-gradient(90deg, #1a1208 0%, #2a1c0c 8%, #3d2a12 12%, #2a1c0c 100%)',
-                          pointerEvents: 'none',
+                        {/* Spine */}
+                        <div aria-hidden style={{
+                          position: 'absolute', left: 0, top: 6, bottom: 6, width: 14, zIndex: 2,
+                          borderRadius: '6px 2px 2px 6px',
+                          background: 'linear-gradient(90deg, #1a1006 0%, #5c3d12 45%, #3a280c 100%)',
+                          boxShadow: '2px 0 8px rgba(0,0,0,0.4)',
+                        }} />
+                        {/* Stacked pages edge */}
+                        <div aria-hidden style={{
+                          position: 'absolute', right: 4, top: 10, bottom: 10, width: 10, zIndex: 1,
+                          background: 'repeating-linear-gradient(180deg, #e8dcc8 0px, #e8dcc8 2px, #d4c4a8 2px, #d4c4a8 3px)',
+                          borderRadius: 2, opacity: 0.9,
                         }} />
 
-                        {/* Pages */}
-                        <div style={{
-                          position: 'relative',
-                          width: '100%',
-                          height: 'min(58vh, 480px)',
-                          borderRadius: '4px 12px 12px 4px',
-                          overflow: 'hidden',
-                          background: '#f7f1e6',
-                          border: '1px solid rgba(180,140,60,0.35)',
-                        }}>
-                          {/* COVER */}
-                          {productsBookPage === 0 && (
-                            <motion.div
-                              key="book-cover"
-                              initial={{ opacity: 0.6, rotateY: -12 }}
-                              animate={{ opacity: 1, rotateY: 0 }}
-                              transition={{ duration: 0.35 }}
-                              onClick={() => setProductsBookPage(1)}
+                        {/* Turning page */}
+                        <div
+                          key={pageKey}
+                          style={{
+                            position: 'relative',
+                            marginLeft: 10,
+                            height: 'min(56vh, 460px)',
+                            borderRadius: '2px 12px 12px 2px',
+                            transformOrigin: 'left center',
+                            transformStyle: 'preserve-3d',
+                            animation: productsBookFlipDir === 1
+                              ? 'stooornaBookPageIn 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both'
+                              : 'stooornaBookPageInBack 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both',
+                            background: productsBookPage === 0
+                              ? 'linear-gradient(145deg, #0c2226 0%, #081616 55%, #040c0c 100%)'
+                              : 'linear-gradient(180deg, #fbf7f0 0%, #f3ebe0 100%)',
+                            border: productsBookPage === 0
+                              ? '1px solid rgba(234,179,8,0.45)'
+                              : '1px solid rgba(160,130,80,0.35)',
+                            boxShadow: '0 10px 28px rgba(0,0,0,0.35), inset 12px 0 24px rgba(0,0,0,0.08)',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {productsBookPage === 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => goPage(1, 1)}
                               style={{
-                                position: 'absolute', inset: 0,
-                                background: 'linear-gradient(145deg, #0d2a2e 0%, #0a1a1a 40%, #061010 100%)',
+                                width: '100%', height: '100%', border: 'none', cursor: 'pointer',
+                                background: 'transparent',
                                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                                gap: 14, cursor: 'pointer', padding: 24,
-                                boxShadow: 'inset 10px 0 24px rgba(0,0,0,0.35)',
+                                gap: 12, padding: 24,
                               }}
                             >
                               <div style={{
-                                width: 64, height: 64, borderRadius: 16,
-                                background: 'rgba(234,179,8,0.15)', border: '1.5px solid rgba(234,179,8,0.55)',
+                                width: 72, height: 72, borderRadius: 18,
+                                background: 'rgba(234,179,8,0.12)', border: '1.5px solid rgba(234,179,8,0.55)',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                               }}>
-                                <FileText size={28} color="#eab308" strokeWidth={2} />
+                                <FileText size={30} color="#eab308" strokeWidth={2} />
                               </div>
-                              <p style={{
-                                margin: 0, color: '#eab308', fontSize: '1.35rem', fontWeight: 900,
-                                letterSpacing: '0.12em',
-                              }}>
+                              <p style={{ margin: 0, color: '#eab308', fontSize: '1.4rem', fontWeight: 900, letterSpacing: '0.14em' }}>
                                 منتجات
                               </p>
-                              <p style={{
-                                margin: 0, color: CLR_PRIMARY, fontSize: '0.95rem', fontWeight: 800,
-                              }}>
+                              <p style={{ margin: 0, color: CLR_PRIMARY, fontSize: '1rem', fontWeight: 800 }}>
                                 @{authorUsername || authorName || 'business'}
                               </p>
-                              <p style={{
-                                margin: '12px 0 0', color: 'rgba(200,230,230,0.55)', fontSize: '0.72rem',
-                                textAlign: 'center', lineHeight: 1.5,
-                              }}>
-                                Swipe left to open · {pages.length} product{pages.length === 1 ? '' : 's'}
+                              <p style={{ margin: '10px 0 0', color: 'rgba(200,230,230,0.5)', fontSize: '0.72rem', textAlign: 'center' }}>
+                                Swipe left to turn the page
                               </p>
+                              <p style={{ margin: 0, color: 'rgba(234,179,8,0.65)', fontSize: '0.7rem', fontWeight: 700 }}>
+                                Cover · {pages.length} products
+                              </p>
+                            </button>
+                          ) : currentProduct && (
+                            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
                               <div style={{
-                                marginTop: 8, display: 'flex', alignItems: 'center', gap: 6,
-                                color: 'rgba(234,179,8,0.7)', fontSize: '0.7rem', fontWeight: 700,
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                padding: '8px 12px', borderBottom: '1px solid rgba(0,0,0,0.06)',
+                                background: 'rgba(255,255,255,0.35)',
                               }}>
-                                <ChevronLeft size={14} /> 1 / {totalPages}
+                                <button type="button" onClick={() => goPage(productsBookPage - 1, -1)}
+                                  style={{ border: 'none', background: 'rgba(0,0,0,0.05)', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                                  <ChevronRight size={15} color="#333" />
+                                </button>
+                                <span style={{ color: '#5c4a2a', fontSize: '0.72rem', fontWeight: 800 }}>
+                                  {productsBookPage} / {pages.length}
+                                </span>
+                                <button type="button" onClick={() => goPage(productsBookPage + 1, 1)}
+                                  disabled={productsBookPage >= totalPages - 1}
+                                  style={{ border: 'none', background: 'rgba(0,0,0,0.05)', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: productsBookPage >= totalPages - 1 ? 'default' : 'pointer', opacity: productsBookPage >= totalPages - 1 ? 0.35 : 1 }}>
+                                  <ChevronLeft size={15} color="#333" />
+                                </button>
                               </div>
-                            </motion.div>
-                          )}
-
-                          {/* PRODUCT PAGES */}
-                          {productsBookPage > 0 && pages[productsBookPage - 1] && (() => {
-                            const { post, thumbUrl, isVideo, displayText, isPinnedPost } = pages[productsBookPage - 1];
-                            return (
-                              <motion.div
-                                key={`book-page-${post.id}`}
-                                initial={{ opacity: 0, x: 40 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ duration: 0.28 }}
+                              <button
+                                type="button"
+                                onClick={() => setProductsBookExpanded(true)}
                                 style={{
-                                  position: 'absolute', inset: 0,
-                                  background: 'linear-gradient(180deg, #faf6ef 0%, #f0e6d6 100%)',
-                                  display: 'flex', flexDirection: 'column',
-                                  boxShadow: 'inset 8px 0 18px rgba(0,0,0,0.06)',
+                                  flex: 1, minHeight: 0, border: 'none', background: 'transparent', padding: 0,
+                                  cursor: 'pointer', display: 'flex', flexDirection: 'column', textAlign: 'left',
                                 }}
                               >
                                 <div style={{
-                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                  padding: '10px 14px', borderBottom: '1px solid rgba(0,0,0,0.06)',
+                                  flex: 1, minHeight: 0, margin: '10px 12px 8px', borderRadius: 10, overflow: 'hidden',
+                                  background: '#111', position: 'relative',
                                 }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => setProductsBookPage(p => Math.max(0, p - 1))}
-                                    style={{
-                                      border: 'none', background: 'rgba(0,0,0,0.05)', borderRadius: 8,
-                                      width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                      cursor: 'pointer', color: '#333',
-                                    }}
-                                  >
-                                    <ChevronRight size={16} />
-                                  </button>
-                                  <span style={{ color: '#5c4a2a', fontSize: '0.72rem', fontWeight: 800 }}>
-                                    {productsBookPage} / {pages.length}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setProductsBookPage(p => Math.min(totalPages - 1, p + 1))}
-                                    disabled={productsBookPage >= totalPages - 1}
-                                    style={{
-                                      border: 'none', background: 'rgba(0,0,0,0.05)', borderRadius: 8,
-                                      width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                      cursor: productsBookPage >= totalPages - 1 ? 'default' : 'pointer',
-                                      color: '#333', opacity: productsBookPage >= totalPages - 1 ? 0.35 : 1,
-                                    }}
-                                  >
-                                    <ChevronLeft size={16} />
-                                  </button>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={() => onOpenPost(post)}
-                                  style={{
-                                    flex: 1, minHeight: 0, border: 'none', background: 'transparent',
-                                    padding: 0, cursor: 'pointer', display: 'flex', flexDirection: 'column',
-                                    textAlign: 'left',
-                                  }}
-                                >
-                                  <div style={{
-                                    flex: 1, minHeight: 0, position: 'relative', background: '#111',
-                                    margin: '10px 12px 8px', borderRadius: 10, overflow: 'hidden',
-                                  }}>
-                                    {thumbUrl ? (
-                                      isVideo ? (
-                                        <video
-                                          src={thumbUrl}
-                                          muted
-                                          autoPlay
-                                          loop
-                                          playsInline
-                                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                                        />
-                                      ) : (
-                                        <img
-                                          src={thumbUrl}
-                                          alt=""
-                                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                                        />
-                                      )
+                                  {currentProduct.thumbUrl ? (
+                                    currentProduct.isVideo ? (
+                                      <video src={currentProduct.thumbUrl} muted autoPlay loop playsInline
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                                     ) : (
-                                      <div style={{
-                                        width: '100%', height: '100%', display: 'flex', alignItems: 'center',
-                                        justifyContent: 'center', padding: 16, background: '#1a2224',
-                                      }}>
-                                        <p style={{
-                                          margin: 0, color: '#e8e0d0', fontSize: '0.88rem', lineHeight: 1.45,
-                                          textAlign: 'center', whiteSpace: 'pre-wrap',
-                                          display: '-webkit-box', WebkitLineClamp: 8, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                                        }}>
-                                          {(displayText || '').slice(0, 280) || 'Product'}
-                                        </p>
-                                      </div>
-                                    )}
-                                    {isPinnedPost && (
-                                      <div style={{
-                                        position: 'absolute', top: 8, left: 8, width: 28, height: 28, borderRadius: '50%',
-                                        background: 'rgba(239,68,68,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                      }}>
-                                        <Pin size={14} color="#fff" />
-                                      </div>
+                                      <img src={currentProduct.thumbUrl} alt=""
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                    )
+                                  ) : (
+                                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: '#1a2224' }}>
+                                      <p style={{ margin: 0, color: '#e8e0d0', fontSize: '0.88rem', lineHeight: 1.45, textAlign: 'center', whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 8, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
+                                        {(currentProduct.displayText || '').slice(0, 280) || 'Product'}
+                                      </p>
+                                    </div>
+                                  )}
+                                  {currentProduct.isPinnedPost && (
+                                    <div style={{ position: 'absolute', top: 8, left: 8, width: 28, height: 28, borderRadius: '50%', background: 'rgba(239,68,68,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      <Pin size={14} color="#fff" />
+                                    </div>
+                                  )}
+                                </div>
+                                {(currentProduct.displayText || '').trim() && (
+                                  <p style={{
+                                    margin: '0 14px 12px', color: '#2a2218', fontSize: '0.82rem', lineHeight: 1.45,
+                                    fontWeight: 600, textAlign: 'right', direction: 'rtl',
+                                    display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden',
+                                  }}>
+                                    {(currentProduct.displayText || '').trim()}
+                                  </p>
+                                )}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* External chrome — outside the book */}
+                      {currentProduct && (
+                        <div style={{
+                          maxWidth: 360, margin: '12px auto 0',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '10px 8px',
+                          borderRadius: 14,
+                          background: 'rgba(0,188,212,0.06)',
+                          border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                            <button type="button" onClick={() => onToggleLike(currentProduct.post)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: 'none', cursor: 'pointer', color: currentProduct.post.likedByMe ? '#ef4444' : CLR_TEXT }}>
+                              <Heart size={20} fill={currentProduct.post.likedByMe ? '#ef4444' : 'none'} />
+                              <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{currentProduct.post.likesCount > 0 ? currentProduct.post.likesCount : ''}</span>
+                            </button>
+                            <button type="button" onClick={() => setProductsBookExpanded(true)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: 'none', cursor: 'pointer', color: CLR_TEXT }}>
+                              <MessageCircle size={20} />
+                              <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>{currentProduct.post.commentsCount > 0 ? currentProduct.post.commentsCount : ''}</span>
+                            </button>
+                            <button type="button" onClick={() => onOpenPost(currentProduct.post)}
+                              style={{ border: 'none', background: 'none', cursor: 'pointer', color: CLR_TEXT, display: 'flex', padding: 4 }}>
+                              <Send size={18} />
+                            </button>
+                          </div>
+                          <button type="button" onClick={() => setProductsBookExpanded(true)}
+                            style={{
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                              width: 44, height: 36, borderRadius: 10, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                              background: 'rgba(0,188,212,0.1)', cursor: 'pointer',
+                            }}>
+                            <span style={{ width: 16, height: 2, borderRadius: 1, background: CLR_PRIMARY }} />
+                            <span style={{ width: 16, height: 2, borderRadius: 1, background: CLR_PRIMARY }} />
+                            <span style={{ width: 16, height: 2, borderRadius: 1, background: CLR_PRIMARY }} />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Expanded book page (fullscreen paper) */}
+                      {productsBookExpanded && currentProduct && typeof document !== 'undefined' && createPortal(
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          style={{
+                            position: 'fixed', inset: 0, zIndex: 10500,
+                            background: 'rgba(0,0,0,0.72)',
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                            padding: 'max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom))',
+                          }}
+                        >
+                          <div style={{
+                            width: 'min(96vw, 420px)', height: 'min(78vh, 640px)',
+                            perspective: 1600, position: 'relative',
+                          }}>
+                            <div style={{
+                              width: '100%', height: '100%',
+                              borderRadius: '4px 14px 14px 4px',
+                              background: 'linear-gradient(180deg, #fbf7f0 0%, #efe6d8 100%)',
+                              boxShadow: '0 20px 50px rgba(0,0,0,0.45), inset 14px 0 28px rgba(0,0,0,0.06)',
+                              border: '1px solid rgba(160,130,80,0.4)',
+                              overflow: 'hidden',
+                              animation: 'stooornaBookPageIn 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both',
+                              transformOrigin: 'left center',
+                              display: 'flex', flexDirection: 'column',
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
+                                <button type="button" onClick={() => setProductsBookExpanded(false)}
+                                  style={{ border: 'none', background: 'rgba(0,0,0,0.06)', borderRadius: 8, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                                  <X size={16} color="#333" />
+                                </button>
+                                <span style={{ color: '#5c4a2a', fontWeight: 800, fontSize: '0.78rem' }}>
+                                  {productsBookPage} / {pages.length}
+                                </span>
+                                <div style={{ width: 34 }} />
+                              </div>
+                              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                                {currentProduct.thumbUrl && (
+                                  <div style={{ width: '100%', maxHeight: '52%', background: '#000' }}>
+                                    {currentProduct.isVideo ? (
+                                      <video src={currentProduct.thumbUrl} controls playsInline autoPlay
+                                        style={{ width: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }} />
+                                    ) : (
+                                      <img src={currentProduct.thumbUrl} alt=""
+                                        style={{ width: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }} />
                                     )}
                                   </div>
-                                  {(displayText || '').trim() && (
-                                    <p style={{
-                                      margin: '0 14px 12px', color: '#2a2218', fontSize: '0.82rem',
-                                      lineHeight: 1.45, fontWeight: 600, textAlign: 'right', direction: 'rtl',
-                                      display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                                    }}>
-                                      {(displayText || '').trim()}
-                                    </p>
-                                  )}
-                                </button>
-
-                                <div style={{
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 18,
-                                  padding: '10px 14px 14px', borderTop: '1px solid rgba(0,0,0,0.06)',
+                                )}
+                                <p style={{
+                                  margin: 0, padding: '14px 16px 20px', color: '#1a1510', fontSize: '0.92rem',
+                                  lineHeight: 1.55, whiteSpace: 'pre-wrap', direction: 'rtl', textAlign: 'right',
                                 }}>
-                                  <button
-                                    type="button"
-                                    onClick={e => { e.stopPropagation(); onToggleLike(post); }}
-                                    style={{
-                                      display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'none',
-                                      cursor: 'pointer', color: post.likedByMe ? '#ef4444' : '#3a3020', fontWeight: 700,
-                                    }}
-                                  >
-                                    <Heart size={18} fill={post.likedByMe ? '#ef4444' : 'none'} />
-                                    {post.likesCount > 0 ? post.likesCount : ''}
-                                  </button>
-                                  <span style={{ color: '#8a7a60', fontSize: '0.7rem' }}>
-                                    Tap media to open full
-                                  </span>
-                                </div>
-                              </motion.div>
-                            );
-                          })()}
-                        </div>
+                                  {(currentProduct.displayText || currentProduct.post.text || '').trim()}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
 
-                        <p style={{
-                          margin: '10px 0 0', textAlign: 'center', color: CLR_TEXT_DIM, fontSize: '0.68rem',
-                        }}>
-                          Swipe left / right like a book
-                        </p>
-                      </div>
+                          {/* Outside chrome under expanded paper */}
+                          <div style={{
+                            width: 'min(96vw, 420px)', marginTop: 12,
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '10px 12px', borderRadius: 14,
+                            background: 'rgba(6,14,14,0.92)', border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                              <button type="button" onClick={() => onToggleLike(currentProduct.post)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: 'none', cursor: 'pointer', color: currentProduct.post.likedByMe ? '#ef4444' : '#fff' }}>
+                                <Heart size={22} fill={currentProduct.post.likedByMe ? '#ef4444' : 'none'} />
+                                <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{currentProduct.post.likesCount > 0 ? currentProduct.post.likesCount : ''}</span>
+                              </button>
+                              <button type="button" onClick={() => onOpenPost(currentProduct.post)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: 'none', cursor: 'pointer', color: '#fff' }}>
+                                <MessageCircle size={22} />
+                                <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{currentProduct.post.commentsCount > 0 ? currentProduct.post.commentsCount : ''}</span>
+                              </button>
+                              <button type="button" onClick={() => onOpenPost(currentProduct.post)}
+                                style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#fff', display: 'flex', padding: 4 }}>
+                                <Send size={20} />
+                              </button>
+                            </div>
+                            <button type="button" onClick={() => onOpenPost(currentProduct.post)}
+                              style={{
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                                width: 48, height: 40, borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)',
+                                background: 'rgba(255,255,255,0.08)', cursor: 'pointer',
+                              }}>
+                              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#fff' }} />
+                              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#fff' }} />
+                              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#fff' }} />
+                            </button>
+                          </div>
+                        </motion.div>,
+                        document.body,
+                      )}
                     </div>
                   );
                 }
