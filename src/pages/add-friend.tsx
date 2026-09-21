@@ -13390,7 +13390,6 @@ export default function AddFriendPage() {
             </>
           )}
         </div>
-        </div>
         </>
           )}
 
