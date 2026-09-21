@@ -12576,10 +12576,11 @@ export default function AddFriendPage() {
                       onClick={() => { setMyAdsHubTab('video'); setMyAdsHubOpen(true); }}
                       aria-label="My Ads"
                       style={{
-                        marginLeft: 4, width: 28, height: 28, borderRadius: '50%', border: '2px solid #eab308',
+                        marginLeft: 'auto', width: 28, height: 28, borderRadius: '50%', border: '2px solid #eab308',
                         background: 'rgba(234,179,8,0.2)', color: '#eab308', cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
                         boxShadow: '0 0 10px rgba(234,179,8,0.45)',
+                        flexShrink: 0,
                       }}
                     >
                       <span style={{ fontSize: '0.55rem', fontWeight: 900, letterSpacing: '-0.02em' }}>Ads</span>
