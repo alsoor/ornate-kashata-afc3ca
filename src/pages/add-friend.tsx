@@ -425,33 +425,15 @@ interface ProductAdData {
   extras: string[];
 }
 function buildProductPostText(data: { title: string; details: string; price: string; extras: string[] }): string {
-  const title = (data.title || '').trim();
+  const title = (data.title || 'منتج').trim();
   const price = (data.price || '').trim();
   const details = (data.details || '').trim();
   const extras = (data.extras || []).map(s => s.trim()).filter(Boolean);
-  const parts: string[] = [];
-  if (title) parts.push(title);
+  const parts: string[] = [title];
   if (price) parts.push(`السعر: ${price}`);
   if (details) parts.push(details);
   for (const ex of extras) parts.push(ex);
   return parts.join('\n\n');
-}
-
-/** True when the post has real caption/product copy (not media-only / empty default title). */
-function postHasVisibleCaption(text: string | null | undefined): boolean {
-  const raw = String(text || '').replace(/\n*\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
-  if (!raw) return false;
-  if (raw === 'منتج') return false;
-  const ad = parseProductAd(raw);
-  if (ad) {
-    const title = (ad.title || '').trim();
-    const details = (ad.details || '').trim();
-    const price = (ad.price || '').trim();
-    const extras = (ad.extras || []).some(x => String(x || '').trim());
-    if ((!title || title === 'منتج') && !details && !price && !extras) return false;
-    return true;
-  }
-  return raw.length > 0;
 }
 function parseProductAd(text: string | null | undefined): ProductAdData | null {
   if (!text) return null;
@@ -3942,10 +3924,8 @@ function PostCard({
   const [mediaPage, setMediaPage] = useState(0);
   const mediaScrollRef = useRef<HTMLDivElement | null>(null);
   const productAd = parseProductAd(post.text);
-  const hasCaption = postHasVisibleCaption(post.text);
-  // Product UI (hamburger + details sheet) only when there is real text
-  const isProductAd = !!productAd && !!isCompanyAuthor && hasCaption;
-  const showProductDetailsBtn = (isProductAd || !!isCompanyAuthor) && hasCaption;
+  // Product UI (hamburger + details sheet) is only for company/business authors
+  const isProductAd = !!productAd && !!isCompanyAuthor;
 
   useEffect(() => {
     recordPostView(post.id);
@@ -4221,13 +4201,13 @@ function PostCard({
                         playsInline
                         preload="metadata"
                         onClick={e => e.stopPropagation()}
-                        style={{ width: '100%', height: '52vh', maxHeight: 460, objectFit: 'cover', objectPosition: 'center top', display: 'block', background: '#000' }}
+                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'contain', display: 'block', background: '#000' }}
                       />
                     ) : (
                       <img
                         src={media.url}
                         alt=""
-                        style={{ width: '100%', height: '52vh', maxHeight: 460, objectFit: 'cover', objectPosition: 'center top', display: 'block', background: '#000' }}
+                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'contain', display: 'block', background: '#000' }}
                       />
                     )}
                   </button>
@@ -4328,7 +4308,7 @@ function PostCard({
         )}
 
         {/* Actions — منتج أو شركة: لايك → تعليقات → شير | تفاصيل (نفس داخل البوست) */}
-        {(showProductDetailsBtn) ? (
+        {(isProductAd || isCompanyAuthor) ? (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             paddingTop: 12, paddingInline: hasMedia ? 14 : 0, gap: 8,
@@ -4486,7 +4466,7 @@ function PostCard({
 
         {/* شيت تفاصيل المنتج — يصعد من الأسفل */}
         <AnimatePresence>
-          {(showProductDetailsBtn) && productDetailsOpen && (
+          {(isProductAd || isCompanyAuthor) && productDetailsOpen && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -9412,7 +9392,7 @@ export default function AddFriendPage() {
       // Company accounts: product ad format. Regular users: plain caption (no default "منتج")
       const finalText = isCompanyPublisher
         ? buildProductPostText({
-            title,
+            title: title || 'منتج',
             details: detailsWithLink,
             price,
             extras,
@@ -9629,52 +9609,44 @@ export default function AddFriendPage() {
           let lastBody = '';
           let uploadedUrl: string | null = null;
 
-          const uploadEndpoints = ['/api/posts/media', '/api/media/upload', '/api/upload', '/api/files/upload', '/api/support/upload'];
+          // 1) FormData (most reliable on many hosts)
+          try {
+            const fd = new FormData();
+            fd.append('file', file, file.name || `media.${ext}`);
+            fd.append('type', mediaType);
+            fd.append('mediaType', mediaType);
+            uploadRes = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+            if (uploadRes.ok) {
+              uploadedUrl = await extractUploadUrl(uploadRes);
+            } else {
+              lastBody = await uploadRes.text().catch(() => '');
+            }
+          } catch (e) {
+            lastBody = e instanceof Error ? e.message : 'formdata fail';
+            uploadRes = null;
+          }
 
-          // 1) FormData across known upload routes
-          for (const endpoint of uploadEndpoints) {
-            if (uploadedUrl) break;
+          // 2) Raw body with Content-Type
+          if (!uploadedUrl) {
             try {
-              const fd = new FormData();
-              fd.append('file', file, file.name || `media.${ext}`);
-              fd.append('type', mediaType);
-              fd.append('mediaType', mediaType);
-              uploadRes = await fetch(endpoint, { method: 'POST', credentials: 'include', body: fd });
+              uploadRes = await fetch('/api/posts/media', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                  'Content-Type': contentType,
+                  'X-File-Ext': `.${ext}`,
+                  'X-Media-Type': mediaType,
+                },
+                body: file,
+              });
               if (uploadRes.ok) {
                 uploadedUrl = await extractUploadUrl(uploadRes);
               } else {
                 lastBody = await uploadRes.text().catch(() => '');
               }
             } catch (e) {
-              lastBody = e instanceof Error ? e.message : 'formdata fail';
+              lastBody = e instanceof Error ? e.message : 'raw fail';
               uploadRes = null;
-            }
-          }
-
-          // 2) Raw body with Content-Type
-          if (!uploadedUrl) {
-            for (const endpoint of uploadEndpoints) {
-              if (uploadedUrl) break;
-              try {
-                uploadRes = await fetch(endpoint, {
-                  method: 'POST',
-                  credentials: 'include',
-                  headers: {
-                    'Content-Type': contentType,
-                    'X-File-Ext': `.${ext}`,
-                    'X-Media-Type': mediaType,
-                  },
-                  body: file,
-                });
-                if (uploadRes.ok) {
-                  uploadedUrl = await extractUploadUrl(uploadRes);
-                } else {
-                  lastBody = await uploadRes.text().catch(() => '');
-                }
-              } catch (e) {
-                lastBody = e instanceof Error ? e.message : 'raw fail';
-                uploadRes = null;
-              }
             }
           }
 
@@ -14651,8 +14623,6 @@ export default function AddFriendPage() {
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.96 }}
-                animate={composerPosting ? { scale: [1, 1.08, 0.96, 1.06, 1], boxShadow: ['0 0 0 0 rgba(29,155,240,0.55)', '0 0 0 10px rgba(29,155,240,0)', '0 0 0 0 rgba(29,155,240,0.4)'] } : { scale: 1 }}
-                transition={composerPosting ? { duration: 0.7, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
                 disabled={composerPosting || !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)}
                 onClick={() => void submitPost('text')}
                 style={{
@@ -14676,7 +14646,7 @@ export default function AddFriendPage() {
                   <input
                     value={composerProductTitle}
                     onChange={e => setComposerProductTitle(e.target.value)}
-                    placeholder=""
+                    placeholder={isCompanyPublisher ? 'رأس الموضوع — خط عريض' : 'رأس الموضوع'}
                     style={{
                       width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
                       padding: '12px 14px', fontSize: '1.05rem', fontWeight: 800, color: '#0a0a0a',
@@ -14689,7 +14659,7 @@ export default function AddFriendPage() {
                   <textarea
                     value={composerProductDetails}
                     onChange={e => setComposerProductDetails(e.target.value)}
-                    placeholder=""
+                    placeholder={isCompanyPublisher ? 'وصف الإعلان والتفاصيل الحقيقية للمنتج…' : 'تفاصيل الموضوع…'}
                     rows={5}
                     style={{
                       width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
@@ -14976,7 +14946,6 @@ export default function AddFriendPage() {
       <AnimatePresence>
         {singlePostView && (() => {
           const ad = parseProductAd(singlePostView.text);
-          const hasCaption = postHasVisibleCaption(singlePostView.text);
           const mediaItems = PostMediaItems(singlePostView);
           const primary = mediaItems[0];
           const xUrls = extractLinkMediaUrls(singlePostView.text);
@@ -15100,7 +15069,6 @@ export default function AddFriendPage() {
                   </motion.button>
                 </div>
 
-                {hasCaption ? (
                 <motion.button
                   whileTap={{ scale: 0.92 }}
                   onClick={() => setAdDetailsOpen(true)}
@@ -15115,9 +15083,6 @@ export default function AddFriendPage() {
                   <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
                   <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
                 </motion.button>
-                ) : (
-                  <div style={{ width: 52, height: 44, flexShrink: 0 }} />
-                )}
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 88, justifyContent: 'flex-end' }}>
                   <motion.button
@@ -15149,7 +15114,7 @@ export default function AddFriendPage() {
               </div>
 
               <AnimatePresence>
-                {hasCaption && adDetailsOpen && (
+                {adDetailsOpen && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
