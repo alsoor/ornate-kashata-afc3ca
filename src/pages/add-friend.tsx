@@ -11442,34 +11442,61 @@ export default function AddFriendPage() {
   );
   const isFriendManagement = pageTab === 'add';
 
-  // ── Profile chrome expand/collapse (scroll-driven, Telegram-style) ─────────
-  // true  = expanded: full story circle, stats, friends strip, products label
-  // false = compact: small stories row + username/bio only; bottom nav hidden
-  // Expanded profile chrome scrolls away natively. A fixed-height sticky compact bar
-  // appears when scrolled (DOM only — no setState, no sticky height change = no jank).
-  const [headerOpen, setHeaderOpen] = useState(true);
-  const headerOpenRef = useRef(true);
+  // Telegram-style 3 stages for profile/story page:
+  //   compact  = products/post bar + small story avatar (default on open)
+  //   expanded = full account header (pull down once from compact)
+  //   stories  = open story viewer when friends have stories (pull down again / tap)
+  const [headerOpen, setHeaderOpen] = useState(false);
+  const [profileStage, setProfileStage] = useState<'compact' | 'expanded'>('compact');
+  const profileStageRef = useRef<'compact' | 'expanded'>('compact');
+  const profileExpandedRef = useRef<HTMLDivElement | null>(null);
   const profileCompactBarRef = useRef<HTMLDivElement | null>(null);
   const profileProductsStickyRef = useRef<HTMLDivElement | null>(null);
   const profileScrollLastYRef = useRef(0);
   const profileScrollRafRef = useRef(0);
-  function applyProfileHeaderOpen(open: boolean) {
-    if (headerOpenRef.current === open) return;
-    headerOpenRef.current = open;
+  const profilePullStartYRef = useRef<number | null>(null);
+  const profilePullArmedRef = useRef(false);
+
+  function setProfileStageSafe(next: 'compact' | 'expanded') {
+    if (profileStageRef.current === next) return;
+    profileStageRef.current = next;
+    setProfileStage(next);
+    setHeaderOpen(next === 'expanded');
+    const expanded = profileExpandedRef.current;
+    if (expanded) {
+      expanded.style.display = next === 'expanded' ? 'block' : 'none';
+    }
     const bar = profileCompactBarRef.current;
     if (bar) {
-      bar.style.display = open ? 'none' : 'flex';
-      bar.style.pointerEvents = open ? 'none' : 'auto';
+      bar.style.display = next === 'compact' ? 'flex' : 'none';
+      bar.style.pointerEvents = next === 'compact' ? 'auto' : 'none';
     }
     const products = profileProductsStickyRef.current;
     if (products) {
-      // Sit under compact bar when collapsed; flush to top when expanded chrome is visible
-      products.style.top = open ? '0px' : '56px';
+      products.style.top = next === 'compact' ? '52px' : '0px';
     }
     try {
-      window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: !open } }));
+      // Hide bottom nav only while reading the grid in compact mode with content scrolled
+      window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } }));
     } catch { /* */ }
   }
+
+  function openFriendStoriesViewer() {
+    const groups = storyGroups.filter(g => {
+      if (g.userId === user?.id) return false;
+      if (!g.items || g.items.length === 0) return false;
+      return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
+    });
+    if (groups.length === 0) return false;
+    const first = groups[0];
+    const idx = storyGroups.indexOf(first);
+    if (idx >= 0) {
+      setViewerGroupIdx(idx);
+      return true;
+    }
+    return false;
+  }
+
   useEffect(() => {
     return () => {
       try { window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } })); } catch { /* */ }
@@ -13102,18 +13129,49 @@ export default function AddFriendPage() {
             if (pageTab !== 'profile') return;
             const el = e.currentTarget;
             const y = el.scrollTop;
-            const delta = y - profileScrollLastYRef.current;
             profileScrollLastYRef.current = y;
             if (profileScrollRafRef.current) return;
             profileScrollRafRef.current = requestAnimationFrame(() => {
               profileScrollRafRef.current = 0;
-              // Stable threshold: compact bar once past expanded header; restore near top
-              let next: boolean | null = null;
-              if (y <= 24) next = true;
-              else if (y > 72) next = false;
-              if (next === null) return;
-              applyProfileHeaderOpen(next);
+              // Scrolling content down while expanded collapses back to compact (stage 1 -> 0)
+              if (profileStageRef.current === 'expanded' && y > 48) {
+                setProfileStageSafe('compact');
+                try { el.scrollTop = 0; } catch { /* */ }
+              }
             });
+          }}
+          onTouchStart={(e) => {
+            if (pageTab !== 'profile') return;
+            const el = e.currentTarget;
+            if (el.scrollTop <= 2) {
+              profilePullStartYRef.current = e.touches[0]?.clientY ?? null;
+              profilePullArmedRef.current = true;
+            } else {
+              profilePullStartYRef.current = null;
+              profilePullArmedRef.current = false;
+            }
+          }}
+          onTouchMove={(e) => {
+            if (pageTab !== 'profile' || !profilePullArmedRef.current) return;
+            const startY = profilePullStartYRef.current;
+            if (startY == null) return;
+            const y = e.touches[0]?.clientY ?? startY;
+            const pull = y - startY;
+            if (pull > 56) {
+              profilePullArmedRef.current = false;
+              profilePullStartYRef.current = null;
+              if (profileStageRef.current === 'compact') {
+                // Stage 1 -> 2: reveal full header
+                setProfileStageSafe('expanded');
+              } else if (profileStageRef.current === 'expanded') {
+                // Stage 2 -> 3: open friend stories if any
+                openFriendStoriesViewer();
+              }
+            }
+          }}
+          onTouchEnd={() => {
+            profilePullStartYRef.current = null;
+            profilePullArmedRef.current = false;
           }}
           style={{
           WebkitOverflowScrolling: 'touch',
@@ -13123,14 +13181,16 @@ export default function AddFriendPage() {
           {!isFriendManagement && (
         <>
         <div
+          ref={profileExpandedRef}
           className="profile-header-expanded"
           style={{
+          display: 'none',
           position: 'relative',
           paddingTop: 40,
           background: CLR_HEADER_BG,
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
-          {/* Expanded header — scrolls away with content (not sticky) */}
+          {/* Expanded header — stage 2 (pull down from compact) */}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
               non-interactive, matching the fog overlay's own transition). Opens a
@@ -13425,8 +13485,13 @@ export default function AddFriendPage() {
         <div
           ref={profileCompactBarRef}
           className="profile-header-compact"
+          onClick={(e) => {
+            // Tap empty area of compact bar -> expand full header (stage 2)
+            if ((e.target as HTMLElement).closest('button')) return;
+            setProfileStageSafe('expanded');
+          }}
           style={{
-            display: 'none',
+            display: 'flex',
             position: 'sticky',
             top: 0,
             zIndex: 30,
@@ -13501,7 +13566,7 @@ export default function AddFriendPage() {
             ref={profileProductsStickyRef}
             style={{
               position: 'sticky',
-              top: 0,
+              top: 52,
               zIndex: 28,
               padding: '0 0 0',
               background: CLR_HEADER_BG,
