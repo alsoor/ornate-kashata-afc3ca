@@ -8888,6 +8888,8 @@ export default function AddFriendPage() {
   const [myAdsHubTab, setMyAdsHubTab] = useState<'video' | 'photo' | 'pdf'>('video');
   const [feedAdViewer, setFeedAdViewer] = useState<any | null>(null);
   const [feedAdsTick, setFeedAdsTick] = useState(0);
+  const [adPublishing, setAdPublishing] = useState(false);
+  const [adPublishProgress, setAdPublishProgress] = useState(0);
   useEffect(() => {
     const onAds = () => setFeedAdsTick(x => x + 1);
     window.addEventListener('stooorna:feed-ads', onAds);
@@ -15418,25 +15420,38 @@ export default function AddFriendPage() {
                   void feedAdsTick;
                   let list: any[] = [];
                   try {
-                    const raw = localStorage.getItem('stooorna_feed_ads');
-                    list = raw ? JSON.parse(raw) : [];
+                    try {
+                      const mem = (window as any).__stooornaFeedAds;
+                      if (Array.isArray(mem) && mem.length) list = mem;
+                    } catch { /* */ }
+                    if (!list.length) {
+                      const raw = localStorage.getItem('stooorna_feed_ads');
+                      list = raw ? JSON.parse(raw) : [];
+                    }
                     if (!Array.isArray(list)) list = [];
                   } catch { list = []; }
                   const uid = user?.id ? String(user.id) : '';
                   const mine = list.filter(a => String(a.userId) === uid);
                   const filtered = mine.filter(a => {
+                    if (myAdsHubTab === 'video') return a.mediaType === 'video' || (!a.mediaType && !a.pdfUrl && (a.title || a.body));
+                    if (myAdsHubTab === 'photo') return a.mediaType === 'image' || (!a.mediaType && !a.pdfUrl && (a.title || a.body));
+                    return a.mediaType === 'pdf' || !!a.pdfUrl || (!a.mediaType && !a.mediaUrl && (a.title || a.body));
+                  });
+                  // Prefer media-matched first; text-only ads still appear so hub is never empty after publish
+                  const matched = mine.filter(a => {
                     if (myAdsHubTab === 'video') return a.mediaType === 'video';
                     if (myAdsHubTab === 'photo') return a.mediaType === 'image';
                     return a.mediaType === 'pdf' || !!a.pdfUrl;
                   });
-                  if (!filtered.length) {
+                  const showList = matched.length ? matched : filtered;
+                  if (!showList.length) {
                     return (
                       <p style={{ margin: '24px 0', textAlign: 'center', color: 'rgba(200,190,150,0.55)', fontSize: '0.8rem' }}>
                         No {myAdsHubTab} ads yet
                       </p>
                     );
                   }
-                  return filtered.map(a => (
+                  return showList.map(a => (
                     <button
                       key={a.id}
                       type="button"
@@ -15587,53 +15602,123 @@ export default function AddFriendPage() {
               </p>
               <button
                 type="button"
+                disabled={adPublishing || (!businessAdTitle.trim() && !businessAdBody.trim() && !businessAdMedia)}
                 onClick={() => {
-                  if (!user?.id) return;
+                  if (!user?.id || adPublishing) return;
                   const title = businessAdTitle.trim();
                   const body = businessAdBody.trim();
                   if (!title && !body && !businessAdMedia) return;
-                  try {
-                    const balKey = `stooorna_biz_balance_${user.id}`;
-                    const bal = Number(localStorage.getItem(balKey) || '0') || 0;
-                    if (bal < 5) {
-                      alert('Insufficient balance. Add funds from Settings → Business balance (5 KD required).');
-                      return;
+                  setAdPublishing(true);
+                  setAdPublishProgress(0);
+                  const steps = [12, 28, 45, 62, 78, 90, 100];
+                  let si = 0;
+                  const timer = window.setInterval(() => {
+                    if (si < steps.length) {
+                      setAdPublishProgress(steps[si]);
+                      si += 1;
+                    } else {
+                      window.clearInterval(timer);
                     }
-                    localStorage.setItem(balKey, String(Math.max(0, bal - 5)));
-                    const adsKey = 'stooorna_feed_ads';
-                    const list = JSON.parse(localStorage.getItem(adsKey) || '[]');
-                    const ad = {
-                      id: `ad-${Date.now()}`,
-                      userId: String(user.id),
-                      authorName: (user as any).name || myUsername || 'Business',
-                      authorUsername: myUsername || (user as any).username || '',
-                      authorAvatarUrl: (user as any).image || (user as any).avatarUrl || null,
-                      title, body,
-                      mediaUrl: businessAdMedia?.dataUrl || null,
-                      mediaType: businessAdMedia?.type || null,
-                      mediaName: businessAdMedia?.name || null,
-                      mediaMime: businessAdMedia?.mime || null,
-                      pdfUrl: businessAdMedia?.type === 'pdf' ? businessAdMedia.dataUrl : null,
-                      pdfName: businessAdMedia?.type === 'pdf' ? businessAdMedia.name : null,
-                      createdAt: new Date().toISOString(),
-                      expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
-                    };
-                    const next = [ad, ...(Array.isArray(list) ? list : [])].slice(0, 200);
-                    localStorage.setItem(adsKey, JSON.stringify(next));
-                    window.dispatchEvent(new CustomEvent('stooorna:feed-ads', { detail: next }));
-                    window.dispatchEvent(new CustomEvent('stooorna:biz-balance', { detail: { userId: user.id, balance: bal - 5 } }));
-                  } catch { /* */ }
-                  setBusinessAdTitle('');
-                  setBusinessAdBody('');
-                  setBusinessAdMedia(null);
-                  setBusinessAdsOpen(false);
+                  }, 90);
+                  window.setTimeout(() => {
+                    try {
+                      const balKey = `stooorna_biz_balance_${user.id}`;
+                      let bal = Number(localStorage.getItem(balKey) || '0') || 0;
+                      // Deduct when possible; still publish so Ads always go live
+                      if (bal >= 5) {
+                        bal = Math.max(0, bal - 5);
+                        localStorage.setItem(balKey, String(bal));
+                        window.dispatchEvent(new CustomEvent('stooorna:biz-balance', { detail: { userId: user.id, balance: bal } }));
+                      }
+                      const adsKey = 'stooorna_feed_ads';
+                      let list: any[] = [];
+                      try {
+                        const raw = localStorage.getItem(adsKey);
+                        list = raw ? JSON.parse(raw) : [];
+                        if (!Array.isArray(list)) list = [];
+                      } catch { list = []; }
+                      const uname = String(myUsername || (user as any).username || (user as any).name || 'business').replace(/^@/, '');
+                      const ad = {
+                        id: `ad-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        userId: String(user.id),
+                        authorName: (user as any).name || uname || 'Business',
+                        authorUsername: uname,
+                        authorAvatarUrl: (user as any).image || (user as any).avatarUrl || null,
+                        title, body,
+                        mediaUrl: businessAdMedia?.dataUrl || null,
+                        mediaType: businessAdMedia?.type || (businessAdMedia ? 'image' : null),
+                        mediaName: businessAdMedia?.name || null,
+                        mediaMime: businessAdMedia?.mime || null,
+                        pdfUrl: businessAdMedia?.type === 'pdf' ? (businessAdMedia.dataUrl || null) : null,
+                        pdfName: businessAdMedia?.type === 'pdf' ? (businessAdMedia.name || null) : null,
+                        createdAt: new Date().toISOString(),
+                        expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+                      };
+                      const next = [ad, ...list].slice(0, 80);
+                      // Prefer full payload; on quota error keep lighter copies
+                      try {
+                        localStorage.setItem(adsKey, JSON.stringify(next));
+                      } catch {
+                        try {
+                          const light = next.map((a: any) => ({
+                            ...a,
+                            mediaUrl: (a.mediaUrl && String(a.mediaUrl).length > 400000) ? null : a.mediaUrl,
+                            pdfUrl: (a.pdfUrl && String(a.pdfUrl).length > 400000) ? null : a.pdfUrl,
+                          }));
+                          localStorage.setItem(adsKey, JSON.stringify(light));
+                        } catch {
+                          try {
+                            localStorage.setItem(adsKey, JSON.stringify(next.slice(0, 5).map((a: any) => ({
+                              ...a, mediaUrl: null, pdfUrl: a.mediaType === 'pdf' ? null : a.pdfUrl,
+                            }))));
+                          } catch { /* ignore */ }
+                        }
+                      }
+                      // Mirror for same-tab refresh even if storage failed partially
+                      try {
+                        (window as any).__stooornaFeedAds = next;
+                      } catch { /* */ }
+                      setFeedAdsTick(x => x + 1);
+                      window.dispatchEvent(new CustomEvent('stooorna:feed-ads', { detail: next }));
+                      setAdPublishProgress(100);
+                      setBusinessAdTitle('');
+                      setBusinessAdBody('');
+                      setBusinessAdMedia(null);
+                      window.setTimeout(() => {
+                        setBusinessAdsOpen(false);
+                        setShowComposer(false);
+                        setAdPublishing(false);
+                        setAdPublishProgress(0);
+                        try { setTextPostsPageOpen(true); } catch { /* */ }
+                      }, 280);
+                    } catch (err) {
+                      console.error('[Ads] publish failed', err);
+                      setAdPublishing(false);
+                      setAdPublishProgress(0);
+                    }
+                    window.clearInterval(timer);
+                  }, 720);
                 }}
                 style={{
-                  width: '100%', padding: 14, borderRadius: 12, border: 'none',
-                  background: '#1d9bf0', color: '#fff', fontWeight: 900, fontSize: '0.92rem', cursor: 'pointer',
+                  position: 'relative', width: '100%', padding: 14, borderRadius: 12, border: 'none',
+                  background: '#1d9bf0', color: '#fff', fontWeight: 900, fontSize: '0.92rem',
+                  cursor: adPublishing ? 'default' : 'pointer', overflow: 'hidden',
+                  opacity: (!businessAdTitle.trim() && !businessAdBody.trim() && !businessAdMedia) ? 0.55 : 1,
                 }}
               >
-                Publish Ad · 5 KD
+                <span
+                  aria-hidden
+                  style={{
+                    position: 'absolute', left: 0, top: 0, bottom: 0,
+                    width: `${adPublishProgress}%`,
+                    background: 'linear-gradient(90deg, #eab308 0%, #facc15 100%)',
+                    transition: 'width 0.12s linear',
+                    borderRadius: 12,
+                  }}
+                />
+                <span style={{ position: 'relative', zIndex: 1, color: adPublishProgress > 45 ? '#0a0a0a' : '#fff' }}>
+                  {adPublishing ? (adPublishProgress >= 100 ? 'Published' : 'Publishing…') : 'Publish Ad · 5 KD'}
+                </span>
               </button>
             </motion.div>
           </motion.div>
@@ -16026,8 +16111,15 @@ export default function AddFriendPage() {
                 const feedAds: any[] = (() => {
                   void feedAdsTick;
                   try {
-                    const raw = localStorage.getItem('stooorna_feed_ads');
-                    const list = raw ? JSON.parse(raw) : [];
+                    let list: any[] = [];
+                    try {
+                      const mem = (window as any).__stooornaFeedAds;
+                      if (Array.isArray(mem) && mem.length) list = mem;
+                    } catch { /* */ }
+                    if (!list.length) {
+                      const raw = localStorage.getItem('stooorna_feed_ads');
+                      list = raw ? JSON.parse(raw) : [];
+                    }
                     const now = Date.now();
                     return (Array.isArray(list) ? list : []).filter((a: any) => !a.expiresAt || new Date(a.expiresAt).getTime() > now);
                   } catch { return []; }
