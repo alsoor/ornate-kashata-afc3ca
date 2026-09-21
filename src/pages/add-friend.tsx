@@ -11442,59 +11442,45 @@ export default function AddFriendPage() {
   );
   const isFriendManagement = pageTab === 'add';
 
-  // Telegram-style 3 stages for profile/story page:
-  //   compact  = products/post bar + small story avatar (default on open)
-  //   expanded = full account header (pull down once from compact)
-  //   stories  = open story viewer when friends have stories (pull down again / tap)
-  const [headerOpen, setHeaderOpen] = useState(false);
-  const [profileStage, setProfileStage] = useState<'compact' | 'expanded'>('compact');
-  const profileStageRef = useRef<'compact' | 'expanded'>('compact');
+  // Scroll-linked profile chrome (Telegram-style continuous motion):
+  // Expanded header stays in normal document flow and moves with the finger.
+  // Compact stories bar fades in at the top as the expanded block leaves the viewport.
+  // No display:none jumps and no scrollTop resets — motion stays continuous.
+  const [headerOpen, setHeaderOpen] = useState(true);
   const profileExpandedRef = useRef<HTMLDivElement | null>(null);
   const profileCompactBarRef = useRef<HTMLDivElement | null>(null);
   const profileProductsStickyRef = useRef<HTMLDivElement | null>(null);
   const profileScrollLastYRef = useRef(0);
   const profileScrollRafRef = useRef(0);
-  const profilePullStartYRef = useRef<number | null>(null);
-  const profilePullArmedRef = useRef(false);
+  const profileNavHiddenRef = useRef(false);
 
-  function setProfileStageSafe(next: 'compact' | 'expanded') {
-    if (profileStageRef.current === next) return;
-    profileStageRef.current = next;
-    setProfileStage(next);
-    setHeaderOpen(next === 'expanded');
+  function applyProfileScrollProgress(y: number) {
+    // progress 0 = fully expanded at top, 1 = fully compact
+    const range = 140;
+    const p = Math.max(0, Math.min(1, y / range));
     const expanded = profileExpandedRef.current;
     if (expanded) {
-      expanded.style.display = next === 'expanded' ? 'block' : 'none';
+      // Keep layout height natural; only fade/slide slightly for polish
+      expanded.style.opacity = String(1 - p * 0.15);
     }
     const bar = profileCompactBarRef.current;
     if (bar) {
-      bar.style.display = next === 'compact' ? 'flex' : 'none';
-      bar.style.pointerEvents = next === 'compact' ? 'auto' : 'none';
+      const show = p > 0.35;
+      bar.style.opacity = show ? String(Math.min(1, (p - 0.35) / 0.35)) : '0';
+      bar.style.pointerEvents = show ? 'auto' : 'none';
+      bar.style.transform = show ? 'translate3d(0,0,0)' : 'translate3d(0,-8px,0)';
     }
     const products = profileProductsStickyRef.current;
     if (products) {
-      products.style.top = next === 'compact' ? '52px' : '0px';
+      products.style.top = p > 0.35 ? '52px' : '0px';
     }
-    try {
-      // Hide bottom nav only while reading the grid in compact mode with content scrolled
-      window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } }));
-    } catch { /* */ }
-  }
-
-  function openFriendStoriesViewer() {
-    const groups = storyGroups.filter(g => {
-      if (g.userId === user?.id) return false;
-      if (!g.items || g.items.length === 0) return false;
-      return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
-    });
-    if (groups.length === 0) return false;
-    const first = groups[0];
-    const idx = storyGroups.indexOf(first);
-    if (idx >= 0) {
-      setViewerGroupIdx(idx);
-      return true;
+    const hideNav = y > 48;
+    if (hideNav !== profileNavHiddenRef.current) {
+      profileNavHiddenRef.current = hideNav;
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: hideNav } }));
+      } catch { /* */ }
     }
-    return false;
   }
 
   useEffect(() => {
@@ -13127,51 +13113,13 @@ export default function AddFriendPage() {
           className="profile-content-scroll flex flex-col px-0 pt-0 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain"
           onScroll={(e) => {
             if (pageTab !== 'profile') return;
-            const el = e.currentTarget;
-            const y = el.scrollTop;
+            const y = e.currentTarget.scrollTop;
             profileScrollLastYRef.current = y;
             if (profileScrollRafRef.current) return;
             profileScrollRafRef.current = requestAnimationFrame(() => {
               profileScrollRafRef.current = 0;
-              // Scrolling content down while expanded collapses back to compact (stage 1 -> 0)
-              if (profileStageRef.current === 'expanded' && y > 48) {
-                setProfileStageSafe('compact');
-                try { el.scrollTop = 0; } catch { /* */ }
-              }
+              applyProfileScrollProgress(y);
             });
-          }}
-          onTouchStart={(e) => {
-            if (pageTab !== 'profile') return;
-            const el = e.currentTarget;
-            if (el.scrollTop <= 2) {
-              profilePullStartYRef.current = e.touches[0]?.clientY ?? null;
-              profilePullArmedRef.current = true;
-            } else {
-              profilePullStartYRef.current = null;
-              profilePullArmedRef.current = false;
-            }
-          }}
-          onTouchMove={(e) => {
-            if (pageTab !== 'profile' || !profilePullArmedRef.current) return;
-            const startY = profilePullStartYRef.current;
-            if (startY == null) return;
-            const y = e.touches[0]?.clientY ?? startY;
-            const pull = y - startY;
-            if (pull > 56) {
-              profilePullArmedRef.current = false;
-              profilePullStartYRef.current = null;
-              if (profileStageRef.current === 'compact') {
-                // Stage 1 -> 2: reveal full header
-                setProfileStageSafe('expanded');
-              } else if (profileStageRef.current === 'expanded') {
-                // Stage 2 -> 3: open friend stories if any
-                openFriendStoriesViewer();
-              }
-            }
-          }}
-          onTouchEnd={() => {
-            profilePullStartYRef.current = null;
-            profilePullArmedRef.current = false;
           }}
           style={{
           WebkitOverflowScrolling: 'touch',
@@ -13184,13 +13132,13 @@ export default function AddFriendPage() {
           ref={profileExpandedRef}
           className="profile-header-expanded"
           style={{
-          display: 'none',
+          display: 'block',
           position: 'relative',
           paddingTop: 40,
           background: CLR_HEADER_BG,
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
-          {/* Expanded header — stage 2 (pull down from compact) */}
+          {/* Expanded header — scrolls with finger (Telegram continuous motion) */}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
               non-interactive, matching the fog overlay's own transition). Opens a
@@ -13485,11 +13433,6 @@ export default function AddFriendPage() {
         <div
           ref={profileCompactBarRef}
           className="profile-header-compact"
-          onClick={(e) => {
-            // Tap empty area of compact bar -> expand full header (stage 2)
-            if ((e.target as HTMLElement).closest('button')) return;
-            setProfileStageSafe('expanded');
-          }}
           style={{
             display: 'flex',
             position: 'sticky',
@@ -13505,6 +13448,10 @@ export default function AddFriendPage() {
             overflowY: 'hidden',
             scrollbarWidth: 'none',
             WebkitOverflowScrolling: 'touch',
+            opacity: 0,
+            pointerEvents: 'none',
+            transform: 'translate3d(0,-8px,0)',
+            transition: 'opacity 120ms linear, transform 120ms linear',
           }}
         >
           <style>{`.profile-header-compact::-webkit-scrollbar{display:none}`}</style>
@@ -13566,10 +13513,11 @@ export default function AddFriendPage() {
             ref={profileProductsStickyRef}
             style={{
               position: 'sticky',
-              top: 52,
+              top: 0,
               zIndex: 28,
               padding: '0 0 0',
               background: CLR_HEADER_BG,
+              transition: 'top 120ms linear',
             }}
           >
             <div style={{
