@@ -4896,34 +4896,25 @@ function PostCard({
                   padding: '14px 18px calc(20px + env(safe-area-inset-bottom, 0px))',
                 }}
               >
-                <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
-                <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.1rem', fontWeight: 800, lineHeight: 1.35 }}>
-                  {productAd?.title || productAdDisplayTitle(post) || post.authorName || 'تفاصيل'}
-                </p>
-                {productAd?.price ? (
-                  <p style={{ margin: '8px 0 0', color: '#00BCD4', fontSize: '1rem', fontWeight: 800 }}>{productAd.price}</p>
-                ) : null}
-                {(() => {
-                  const stripPreviewUrls = (t: string) =>
-                    t.replace(URL_IN_TEXT_RE, (match) => {
-                      const raw = match.replace(/[.,;:!?،؛]+$/, '');
-                      const resolved = composerLookupOriginalUrl(raw);
-                      if (parseXStatusId(resolved) || classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved)) return '';
-                      return match;
-                    }).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-                  const detailsShown = productAd?.details ? stripPreviewUrls(productAd.details) : '';
-                  const fallbackShown = !productAd?.details && post.text && !post.text.trim().startsWith('{')
-                    ? stripPreviewUrls(post.text.replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim())
-                    : '';
-                  if (detailsShown) {
-                    return <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{detailsShown}</p>;
-                  }
-                  if (fallbackShown) {
-                    return <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{fallbackShown}</p>;
-                  }
-                  return null;
-                })()}
-                {(productAd?.extras ?? []).map((ex, i) => {
+                                <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
+                {!isCompanyAuthor ? (
+                  <p style={{ margin: 0, color: '#0a0a0a', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                    {(post.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()}
+                  </p>
+                ) : (
+                  <>
+                    <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.1rem', fontWeight: 800, lineHeight: 1.35 }}>
+                      {productAd?.title || productAdDisplayTitle(post) || post.authorName || 'تفاصيل'}
+                    </p>
+                    {productAd?.price ? (
+                      <p style={{ margin: '8px 0 0', color: '#00BCD4', fontSize: '1rem', fontWeight: 800 }}>{productAd.price}</p>
+                    ) : null}
+                    {productAd?.details ? (
+                      <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{productAd.details}</p>
+                    ) : null}
+                  </>
+                )}
+                {isCompanyAuthor && (productAd?.extras ?? []).map((ex, i) => {
                   const cleaned = ex.replace(URL_IN_TEXT_RE, (match) => {
                     const raw = match.replace(/[.,;:!?،؛]+$/, '');
                     const resolved = composerLookupOriginalUrl(raw);
@@ -9942,10 +9933,7 @@ export default function AddFriendPage() {
             price,
             extras,
           })
-        : [title, detailsWithLink, price ? `السعر: ${price}` : '', ...extras]
-            .map(s => String(s || '').trim())
-            .filter(Boolean)
-            .join('\n\n');
+        : (detailsWithLink || title || '').trim();
 
       // ── رفع الوسائط (صور / فيديو / PDF) ──
       const uploadedMedia: { url: string; type: 'image' | 'video' }[] = [];
@@ -16415,23 +16403,37 @@ export default function AddFriendPage() {
                         padding: '14px 18px calc(20px + env(safe-area-inset-bottom, 0px))',
                       }}
                     >
-                      <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
-                      <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.15rem', fontWeight: 800, lineHeight: 1.35 }}>
-                        {ad?.title || productAdDisplayTitle(singlePostView)}
-                      </p>
-                      {ad?.price ? (
-                        <p style={{ margin: '8px 0 0', color: CLR_PRIMARY, fontSize: '1rem', fontWeight: 800 }}>{ad.price}</p>
-                      ) : null}
-                      {ad?.details ? (
-                        <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{ad.details}</p>
-                      ) : singlePostView.text && !singlePostView.text.trim().startsWith('{') ? (
-                        <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                          {singlePostView.text.replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()}
-                        </p>
-                      ) : null}
-                      {(ad?.extras ?? []).map((ex, i) => (
-                        <p key={i} style={{ margin: '10px 0 0', color: '#333', fontSize: '0.86rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.06)' }}>{ex}</p>
-                      ))}
+                                            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
+                      {(() => {
+                        const isCo = !!(
+                          companies.some(c => String(c.id) === String(singlePostView.authorId))
+                          || isCompanyUserAccount({ id: singlePostView.authorId, username: singlePostView.authorUsername, name: singlePostView.authorName }, companies)
+                          || (singlePostView as any).publisherType === 'company'
+                          || (singlePostView as any).authorIsCompany === true
+                          || (singlePostView as any).isCompanyPost === true
+                        );
+                        const plain = (singlePostView.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
+                        if (!isCo) {
+                          return (
+                            <p style={{ margin: 0, color: '#0a0a0a', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                              {plain}
+                            </p>
+                          );
+                        }
+                        return (
+                          <>
+                            <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.15rem', fontWeight: 800, lineHeight: 1.35 }}>
+                              {ad?.title || productAdDisplayTitle(singlePostView)}
+                            </p>
+                            {ad?.price ? (
+                              <p style={{ margin: '8px 0 0', color: CLR_PRIMARY, fontSize: '1rem', fontWeight: 800 }}>{ad.price}</p>
+                            ) : null}
+                            {ad?.details ? (
+                              <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{ad.details}</p>
+                            ) : null}
+                          </>
+                        );
+                      })()}
                       <button
                         type="button"
                         onClick={() => setAdDetailsOpen(false)}
