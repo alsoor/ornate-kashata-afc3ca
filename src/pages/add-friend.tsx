@@ -13388,11 +13388,6 @@ export default function AddFriendPage() {
               </div>
             </>
           )}
-          </div>
-          )}
-
-          {/* Actions row removed — text-posts button now lives in the header next to the globe. */}
-          </div>
 
         </div>
 
