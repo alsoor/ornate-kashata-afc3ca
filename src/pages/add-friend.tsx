@@ -11446,6 +11446,7 @@ export default function AddFriendPage() {
   // true  = expanded: full story circle, stats, friends strip, products label
   // false = compact: small stories row + username/bio only; bottom nav hidden
   const [headerOpen, setHeaderOpen] = useState(true);
+  const headerOpenRef = useRef(true);
   const profileScrollLastYRef = useRef(0);
   const profileScrollRafRef = useRef(0);
   useEffect(() => {
@@ -13074,11 +13075,11 @@ export default function AddFriendPage() {
         {/* ── Header ── */}
         <div className="sticky top-0 z-20" style={{
           position: 'relative',
-          paddingTop: headerOpen ? 40 : 8,
+          paddingTop: headerOpen ? 40 : 6,
           background: CLR_HEADER_BG,
           backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
-          transition: 'padding-top 220ms ease',
+          transition: 'padding-top 200ms ease',
         }}>
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
@@ -13106,7 +13107,7 @@ export default function AddFriendPage() {
               (shared-posts / my story posts) button now lives in the unified nav row below, always visible.
               The decorative Globe next to "Following" has been removed. */}
           {pageTab === 'profile' && (
-            <div className="flex items-center px-5" style={{ paddingBottom: 8, gap: 14 }}>
+            <div className="flex items-center" style={{ paddingBottom: headerOpen ? 8 : 4, paddingInline: headerOpen ? 20 : 12, gap: headerOpen ? 14 : 10, transition: 'padding 200ms ease, gap 200ms ease' }}>
               {/* ── My story circle — same place as before ── */}
               {user && (() => {
                 const myGroup = storyGroups.find(g => g.userId === user?.id);
@@ -13176,7 +13177,49 @@ export default function AddFriendPage() {
                 );
               })()}
 
-              {/* ── Username | Bio (same line, spaced apart with a divider) / Post-Followers-Following-Likes (untouched) ── */}
+              {/* Compact mode (Telegram): friend stories sit immediately to the right of my story, left-aligned */}
+              {!headerOpen && pageTab === 'profile' && (
+                <div
+                  className="header-stories-compact"
+                  style={{
+                    display: 'flex', flexDirection: 'row', flexWrap: 'nowrap',
+                    gap: 8, overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0,
+                    scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
+                    alignItems: 'center', paddingInlineEnd: 8,
+                  }}
+                >
+                  <style>{`.header-stories-compact::-webkit-scrollbar{display:none}`}</style>
+                  {storyGroups.filter(g => {
+                    if (g.userId === user?.id) return false;
+                    return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
+                  }).map((g) => {
+                    const realIdx = storyGroups.indexOf(g);
+                    const hasUnseen = g.items.some(it => !it.seen);
+                    return (
+                      <motion.button
+                        key={g.userId}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => setViewerGroupIdx(realIdx)}
+                        style={{ width: 40, height: 40, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0 }}
+                      >
+                        <div style={{
+                          position: 'absolute', inset: 0, borderRadius: '50%',
+                          background: storyRingColor(g.items, '#facc15', '#0ea5e9'),
+                          padding: 2, boxSizing: 'border-box',
+                          boxShadow: hasUnseen ? '0 0 6px rgba(250,204,21,0.4)' : 'none',
+                        }}>
+                          <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
+                            <UserAvatar name={g.name} avatarUrl={g.avatarUrl} size={36} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                          </div>
+                        </div>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ── Username | Bio / stats — expanded only ── */}
+              {headerOpen && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 6, flex: 1 }}>
                 {/* Pinned track — shown right above my name/username, playable from here too. */}
                 {pinnedTrack && <PinnedTrackBar track={pinnedTrack} />}
@@ -13252,12 +13295,12 @@ export default function AddFriendPage() {
 
                 </div>}
               </div>
+              )}
             </div>
           )}
 
-          {/* Row 2: Friends' stories strip — under story circle when expanded;
-              when compact (scroll up), sits beside my story like Telegram */}
-          {pageTab === 'profile' && (
+          {/* Row 2: Friends' stories — expanded only (compact shows them left of header with my story) */}
+          {pageTab === 'profile' && headerOpen && (
             <>
               <style>{`
                 .header-stories::-webkit-scrollbar{display:none}
@@ -13268,11 +13311,10 @@ export default function AddFriendPage() {
                 className="header-stories"
                 style={{
                   display: 'flex', flexDirection: 'row', flexWrap: 'nowrap',
-                  gap: headerOpen ? 10 : 8, overflowX: 'auto', overflowY: 'hidden',
+                  gap: 10, overflowX: 'auto', overflowY: 'hidden',
                   scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
-                  padding: headerOpen ? '2px 14px 10px' : '0 12px 6px',
+                  padding: '2px 14px 10px',
                   alignItems: 'center',
-                  transition: 'padding 200ms ease, gap 200ms ease',
                 }}
               >
                 {/* ستوريات المستخدمين فقط في شريط الهيدر — الشركات في تبويب Company */}
@@ -13362,16 +13404,16 @@ export default function AddFriendPage() {
             if (profileScrollRafRef.current) return;
             profileScrollRafRef.current = requestAnimationFrame(() => {
               profileScrollRafRef.current = 0;
-              if (y <= 8) {
-                setHeaderOpen(true);
-                try { window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } })); } catch { /* */ }
-              } else if (delta > 4) {
-                setHeaderOpen(false);
-                try { window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: true } })); } catch { /* */ }
-              } else if (delta < -4) {
-                setHeaderOpen(true);
-                try { window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } })); } catch { /* */ }
-              }
+              let next: boolean | null = null;
+              if (y <= 4) next = true;
+              else if (delta > 3) next = false;
+              else if (delta < -3) next = true;
+              if (next === null || next === headerOpenRef.current) return;
+              headerOpenRef.current = next;
+              setHeaderOpen(next);
+              try {
+                window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: !next } }));
+              } catch { /* */ }
             });
           }}
           style={{
