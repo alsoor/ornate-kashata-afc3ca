@@ -16685,9 +16685,12 @@ export default function AddFriendPage() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              gap: 8,
               minHeight: 28,
               paddingTop: 'max(4px, env(safe-area-inset-top, 0px))',
               paddingBottom: 4,
+              paddingLeft: 10,
+              paddingRight: 10,
               borderBottom: '1px solid rgba(0,188,212,0.35)',
               background: 'rgba(6,14,14,0.96)',
               transform: 'translate3d(0,0,0)',
@@ -16708,39 +16711,90 @@ export default function AddFriendPage() {
                   70% { transform: scale(0.98); letter-spacing: 0.16em; filter: brightness(1.1); }
                 }
               `}</style>
-              <button
-                type="button"
-                onClick={() => {
-                  if (newPostsAvailable > 0) loadPendingNewPosts();
-                }}
-                aria-label="STOOORNA"
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: '2px 8px', borderRadius: 8, cursor: newPostsAvailable > 0 ? 'pointer' : 'default',
-                  background: 'transparent', border: 'none',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                    letterSpacing: '0.18em',
-                    lineHeight: 1.2,
-                    userSelect: 'none',
-                    backgroundImage: 'linear-gradient(105deg, #00BCD4 0%, #00BCD4 38%, #e0fbff 48%, #ffffff 52%, #e0fbff 56%, #00BCD4 68%, #00BCD4 100%)',
-                    backgroundSize: '220% 100%',
-                    WebkitBackgroundClip: 'text',
-                    backgroundClip: 'text',
-                    color: 'transparent',
-                    WebkitTextFillColor: 'transparent',
-                    animation: newPostsAvailable > 0
-                      ? 'stooornaTitleShine 3.8s linear infinite, stooornaTitleWave 1.4s ease-in-out infinite'
-                      : 'stooornaTitleShine 5.5s linear infinite',
-                  }}
-                >
-                  STOOORNA
-                </span>
-              </button>
+              {!textFeedSearchOpen ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTextFeedSearchOpen(true);
+                      window.setTimeout(() => textFeedSearchInputRef.current?.focus(), 40);
+                    }}
+                    aria-label="Search"
+                    style={{
+                      position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                      marginTop: 'max(2px, env(safe-area-inset-top, 0px) / 2)',
+                      width: 32, height: 32, borderRadius: 8, border: 'none',
+                      background: 'rgba(0,188,212,0.1)', color: CLR_PRIMARY, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
+                    }}
+                  >
+                    <Search size={16} strokeWidth={2.3} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newPostsAvailable > 0) loadPendingNewPosts();
+                    }}
+                    aria-label="STOOORNA"
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      padding: '2px 8px', borderRadius: 8, cursor: newPostsAvailable > 0 ? 'pointer' : 'default',
+                      background: 'transparent', border: 'none',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        letterSpacing: '0.18em',
+                        lineHeight: 1.2,
+                        userSelect: 'none',
+                        backgroundImage: 'linear-gradient(105deg, #00BCD4 0%, #00BCD4 38%, #e0fbff 48%, #ffffff 52%, #e0fbff 56%, #00BCD4 68%, #00BCD4 100%)',
+                        backgroundSize: '220% 100%',
+                        WebkitBackgroundClip: 'text',
+                        backgroundClip: 'text',
+                        color: 'transparent',
+                        WebkitTextFillColor: 'transparent',
+                        animation: newPostsAvailable > 0
+                          ? 'stooornaTitleShine 3.8s linear infinite, stooornaTitleWave 1.4s ease-in-out infinite'
+                          : 'stooornaTitleShine 5.5s linear infinite',
+                      }}
+                    >
+                      STOOORNA
+                    </span>
+                  </button>
+                </>
+              ) : (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, width: '100%', maxWidth: 420,
+                  paddingTop: 2, paddingBottom: 2,
+                }}>
+                  <Search size={15} color={CLR_PRIMARY} strokeWidth={2.3} style={{ flexShrink: 0 }} />
+                  <input
+                    ref={textFeedSearchInputRef}
+                    value={textFeedSearchQuery}
+                    onChange={e => setTextFeedSearchQuery(e.target.value)}
+                    placeholder="Search posts, #hashtag, @user"
+                    style={{
+                      flex: 1, minWidth: 0, height: 30, borderRadius: 8, border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      background: CLR_INPUT_BG, color: CLR_TEXT, fontSize: '0.78rem',
+                      padding: '0 10px', outline: 'none',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => { setTextFeedSearchOpen(false); setTextFeedSearchQuery(''); }}
+                    aria-label="Close search"
+                    style={{
+                      width: 30, height: 30, borderRadius: 8, border: 'none',
+                      background: 'rgba(255,255,255,0.06)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              )}
             </div>
             <div
               ref={textPostsScrollRef}
@@ -16767,9 +16821,28 @@ export default function AddFriendPage() {
                   if (user && String(p.authorId) === String(user.id) && !isCompanyPublisher) return false;
                   return isCompanyUserAccount({ id: p.authorId, username: p.authorUsername, name: p.authorName }, companies);
                 };
-                const feedPosts = combinedFeedPosts.filter(p =>
+                const feedPostsBase = combinedFeedPosts.filter(p =>
                   textFeedTab === 'companies' ? isCompanyPost(p) : !isCompanyPost(p)
                 );
+                const feedPosts = (() => {
+                  const q = textFeedSearchQuery.trim().toLowerCase();
+                  if (!q) return feedPostsBase;
+                  const qTag = q.replace(/^#/, '');
+                  const qUser = q.replace(/^@/, '');
+                  return feedPostsBase.filter(p => {
+                    const text = (p.text || '').toLowerCase();
+                    const name = (p.authorName || '').toLowerCase();
+                    const uname = (p.authorUsername || '').toLowerCase().replace(/^@/, '');
+                    const tags = (p.hashtags || []).map(t => String(t).toLowerCase());
+                    if (text.includes(q)) return true;
+                    if (name.includes(q) || name.includes(qUser)) return true;
+                    if (uname.includes(qUser) || uname.includes(q)) return true;
+                    if (tags.some(t => t.includes(qTag) || t === qTag)) return true;
+                    if (q.startsWith('#') && tags.some(t => t === qTag || t.includes(qTag))) return true;
+                    if (q.startsWith('@') && (uname.includes(qUser) || name.includes(qUser))) return true;
+                    return false;
+                  });
+                })();
                 const feedAds: any[] = (() => {
                   void feedAdsTick;
                   void adClockTick;
