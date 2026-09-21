@@ -344,6 +344,155 @@ function ScVoiceBubble({
     }}>{label}</span>
     </div>;
 }
+
+function formatVideoClock(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return '0:00';
+  const s = Math.floor(sec);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, '0')}`;
+}
+
+/** Full-screen post video: play/pause, mute, seek bar, duration — controls at bottom */
+function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const seekingRef = useRef(false);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = muted;
+    if (active) {
+      v.currentTime = 0;
+      void v.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    } else {
+      v.pause();
+      setPlaying(false);
+    }
+  }, [active, src]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v) v.muted = muted;
+  }, [muted]);
+
+  function togglePlay() {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      void v.play().then(() => setPlaying(true)).catch(() => {});
+    } else {
+      v.pause();
+      setPlaying(false);
+    }
+  }
+
+  function onSeekStart() {
+    seekingRef.current = true;
+  }
+  function onSeek(val: number) {
+    const v = videoRef.current;
+    if (!v || !Number.isFinite(val)) return;
+    v.currentTime = val;
+    setCurrent(val);
+  }
+  function onSeekEnd(val: number) {
+    seekingRef.current = false;
+    onSeek(val);
+  }
+
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative', background: '#000' }}>
+      <video
+        ref={videoRef}
+        key={src}
+        src={src}
+        playsInline
+        loop
+        muted={muted}
+        controls={false}
+        onClick={e => { e.stopPropagation(); togglePlay(); }}
+        onTimeUpdate={() => {
+          const v = videoRef.current;
+          if (!v || seekingRef.current) return;
+          setCurrent(v.currentTime || 0);
+        }}
+        onLoadedMetadata={() => {
+          const v = videoRef.current;
+          if (v) setDuration(v.duration || 0);
+        }}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+        style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000', cursor: 'pointer' }}
+      />
+      <div
+        onClick={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
+        onTouchEnd={e => e.stopPropagation()}
+        style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 5,
+          padding: '10px 12px 12px',
+          background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 70%, transparent 100%)',
+          display: 'flex', flexDirection: 'column', gap: 8,
+        }}
+      >
+        <input
+          type="range"
+          min={0}
+          max={duration > 0 ? duration : 0}
+          step={0.05}
+          value={Math.min(current, duration || 0)}
+          onChange={e => onSeek(Number(e.target.value))}
+          onMouseDown={onSeekStart}
+          onMouseUp={e => onSeekEnd(Number((e.target as HTMLInputElement).value))}
+          onTouchStart={onSeekStart}
+          onTouchEnd={e => onSeekEnd(Number((e.target as HTMLInputElement).value))}
+          aria-label="Seek"
+          style={{
+            width: '100%', height: 4, margin: 0, padding: 0, cursor: 'pointer',
+            accentColor: '#00BCD4',
+          }}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); togglePlay(); }}
+            aria-label={playing ? 'Pause' : 'Play'}
+            style={{
+              width: 36, height: 36, borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+            }}
+          >
+            {playing ? <Pause size={16} strokeWidth={2.4} /> : <Play size={16} strokeWidth={2.4} style={{ marginLeft: 2 }} />}
+          </button>
+          <span style={{ color: '#fff', fontSize: '0.72rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums', minWidth: 72 }}>
+            {formatVideoClock(current)} / {formatVideoClock(duration)}
+          </span>
+          <div style={{ flex: 1 }} />
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setMuted(m => !m); }}
+            aria-label={muted ? 'Unmute' : 'Mute'}
+            style={{
+              width: 36, height: 36, borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+            }}
+          >
+            {muted ? <VolumeX size={16} strokeWidth={2.2} /> : <Volume2 size={16} strokeWidth={2.2} />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Story types ───────────────────────────────────────────────────────────────
 interface StoryItem {
   id: number;
@@ -4674,7 +4823,9 @@ function PostCard({
                     }}
                     aria-label={media.type === 'video' ? 'Open video' : 'Open image'}
                     style={{
-                      position: 'relative', width: '100%', border: '3px solid #000', boxSizing: 'border-box', padding: 0,
+                      position: 'relative', width: '100%', boxSizing: 'border-box', padding: 0,
+                      borderTop: 'none', borderBottom: 'none',
+                      borderLeft: '4px solid #fff', borderRight: '4px solid #fff',
                       background: '#000', cursor: 'pointer', display: 'block', overflow: 'hidden', maxHeight: '48vh',
                     }}
                   >
@@ -9353,7 +9504,10 @@ export default function AddFriendPage() {
     if (playlist.length < 2) return;
     const idx = playlist.findIndex(p => p.id === singlePostView.id);
     if (idx < 0) return;
-    const next = playlist[(idx + dir + playlist.length) % playlist.length];
+    const nextIdx = idx + dir;
+    // Stop at ends: no wrap from last to first or first to last
+    if (nextIdx < 0 || nextIdx >= playlist.length) return;
+    const next = playlist[nextIdx];
     if (!next || next.id === singlePostView.id) return;
     setAdDetailsOpen(false);
     setAdVideoPaused(false);
@@ -16507,17 +16661,7 @@ export default function AddFriendPage() {
                             {pdf ? (
                               <iframe title="PDF" src={media.url} style={{ width: '100%', height: '100%', border: 'none', background: '#111' }} />
                             ) : media.type === 'video' ? (
-                              <video
-                                key={media.url}
-                                src={media.url}
-                                autoPlay={index === singlePostMediaPage}
-                                loop
-                                playsInline
-                                muted={false}
-                                controls={false}
-                                onClick={e => { e.stopPropagation(); }}
-                                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000', cursor: 'pointer' }}
-                              />
+                              <SinglePostVideoPlayer src={media.url} active={index === singlePostMediaPage} />
                             ) : (
                               <img
                                 src={media.url}
