@@ -3824,7 +3824,47 @@ function resolveMediaUrl(url: string | null | undefined): string {
 
 /** Record a unique post view (server dedupes per viewer). Fire-and-forget. */
 const recordedPostViews = new Set<string>();
-function recordPostView(postId: number | string | null | undefined) {
+const LOCAL_POST_VIEWS_KEY = 'stooorna_local_post_views';
+const LOCAL_AUTHOR_VIEWS_KEY = 'stooorna_local_author_views';
+
+function readLocalPostViews(): Record<string, number> {
+  try {
+    const o = JSON.parse(localStorage.getItem(LOCAL_POST_VIEWS_KEY) || '{}');
+    return o && typeof o === 'object' ? o : {};
+  } catch { return {}; }
+}
+function readLocalAuthorViews(): Record<string, number> {
+  try {
+    const o = JSON.parse(localStorage.getItem(LOCAL_AUTHOR_VIEWS_KEY) || '{}');
+    return o && typeof o === 'object' ? o : {};
+  } catch { return {}; }
+}
+function getLocalPostViewCount(postId: number | string | null | undefined): number {
+  if (postId == null || postId === '') return 0;
+  return Number(readLocalPostViews()[String(postId)] || 0) || 0;
+}
+function getLocalAuthorViewCount(authorId: string | null | undefined): number {
+  if (!authorId) return 0;
+  return Number(readLocalAuthorViews()[String(authorId)] || 0) || 0;
+}
+/** Profile header Views: server counts + local fallback views */
+function resolveProfileViewsCount(
+  profileLike: { viewsCount?: number; viewCount?: number; id?: string; userId?: string } | null | undefined,
+  posts: Array<{ viewsCount?: number; views?: number; authorId?: string }> = [],
+): number {
+  const server =
+    Number((profileLike as any)?.viewsCount ?? (profileLike as any)?.viewCount ?? 0) || 0;
+  const fromPosts = posts.reduce((sum, p) => {
+    const sv = Number((p as any).viewsCount ?? (p as any).views ?? 0) || 0;
+    const lv = getLocalPostViewCount((p as any).id);
+    return sum + Math.max(sv, lv);
+  }, 0);
+  const authorId = String((profileLike as any)?.id || (profileLike as any)?.userId || '');
+  const localAuthor = getLocalAuthorViewCount(authorId);
+  return Math.max(server, fromPosts, localAuthor);
+}
+
+function recordPostView(postId: number | string | null | undefined, authorId?: string | null) {
   if (postId == null || postId === '') return;
   const key = String(postId);
   if (recordedPostViews.has(key)) return;
@@ -3836,9 +3876,29 @@ function recordPostView(postId: number | string | null | undefined) {
       sessionStorage.setItem(sk, '1');
     }
   } catch { /* ignore */ }
+  // Local counters so Views works even if /view API is missing
+  try {
+    const pv = readLocalPostViews();
+    pv[key] = (Number(pv[key]) || 0) + 1;
+    localStorage.setItem(LOCAL_POST_VIEWS_KEY, JSON.stringify(pv));
+    if (authorId) {
+      const av = readLocalAuthorViews();
+      const ak = String(authorId);
+      av[ak] = (Number(av[ak]) || 0) + 1;
+      localStorage.setItem(LOCAL_AUTHOR_VIEWS_KEY, JSON.stringify(av));
+    }
+    window.dispatchEvent(new CustomEvent('stooorna:post-views', { detail: { postId: key, authorId } }));
+  } catch { /* ignore */ }
   void fetch(`/api/posts/${encodeURIComponent(key)}/view`, {
     method: 'POST',
     credentials: 'include',
+  }).catch(() => { /* ignore */ });
+  // Alternate endpoints some backends use
+  void fetch('/api/posts/view', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ postId: key, id: key }),
   }).catch(() => { /* ignore */ });
 }
 
@@ -4043,8 +4103,8 @@ function PostCard({
   const isProductAd = !!productAd && !!isCompanyAuthor;
 
   useEffect(() => {
-    recordPostView(post.id);
-  }, [post.id]);
+    recordPostView(post.id, post.authorId);
+  }, [post.id, post.authorId]);
   // روابط X داخل نص المنشور — نص إعلان/منشور المنتج مخفي في الفييد، فنعرض وسائط الرابط مباشرة
   const postXUrls = isProductAd ? extractLinkMediaUrls(post.text) : [];
   const [productDetailsOpen, setProductDetailsOpen] = useState(false);
@@ -5311,7 +5371,7 @@ const MiniProfileModal = ({
                   <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Followers</span>
                 </motion.button>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{(profile as any)?.viewsCount ?? (profile as any)?.viewCount ?? 0}</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{resolveProfileViewsCount(profile as any, [])}</span>
                   <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Views</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
@@ -5705,7 +5765,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
               <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>
-                {(profile as any)?.viewsCount ?? (profile as any)?.viewCount ?? authorPosts.reduce((sum, p) => sum + (Number((p as any).viewsCount ?? (p as any).views ?? 0) || 0), 0)}
+                {resolveProfileViewsCount(profile as any, authorPosts)}
               </span>
               <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Views</span>
             </div>
@@ -8760,6 +8820,12 @@ export default function AddFriendPage() {
   }
   // ── Posts (feed) state ──────────────────────────────────────────────────────
   const [posts, setPosts] = useState<PostItem[]>([]);
+  const [viewsTick, setViewsTick] = useState(0);
+  useEffect(() => {
+    const onV = () => setViewsTick(x => x + 1);
+    window.addEventListener('stooorna:post-views', onV);
+    return () => window.removeEventListener('stooorna:post-views', onV);
+  }, []);
   const [favoritedPosts, setFavoritedPosts] = useState<PostItem[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -8900,6 +8966,7 @@ export default function AddFriendPage() {
     setAdVideoPaused(false);
     setSinglePostFromProfile(!!fromProfile);
     setSinglePostView(post);
+    try { recordPostView(post.id, post.authorId); } catch { /* */ }
   }
   function closeSinglePostView() {
     setSinglePostView(null);
@@ -12485,7 +12552,7 @@ export default function AddFriendPage() {
                   </motion.button>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>
-                      {(user as any)?.viewsCount ?? (user as any)?.viewCount ?? myMediaPosts.reduce((s, p) => s + (Number((p as any).viewsCount ?? (p as any).views ?? 0) || 0), 0)}
+                      {(() => { void viewsTick; return resolveProfileViewsCount(user as any, [...myMediaPosts, ...posts.filter(p => user && String(p.authorId) === String(user.id))]); })()}
                     </span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Views</span>
                   </div>
@@ -15229,14 +15296,24 @@ export default function AddFriendPage() {
               <input
                 value={businessAdTitle}
                 onChange={e => setBusinessAdTitle(e.target.value.slice(0, 120))}
-                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 12, padding: '12px 14px', fontSize: '0.95rem', marginBottom: 12, outline: 'none' }}
+                style={{
+                  width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,0,0,0.18)', borderRadius: 12,
+                  padding: '12px 14px', fontSize: '0.95rem', marginBottom: 12, outline: 'none',
+                  color: '#0a0a0a', background: '#ffffff', caretColor: '#0a0a0a',
+                  WebkitTextFillColor: '#0a0a0a',
+                }}
               />
               <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Ad text</p>
               <textarea
                 value={businessAdBody}
                 onChange={e => setBusinessAdBody(e.target.value.slice(0, 2000))}
                 rows={5}
-                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 12, padding: '12px 14px', fontSize: '0.85rem', fontWeight: 400, marginBottom: 12, outline: 'none', resize: 'vertical' }}
+                style={{
+                  width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,0,0,0.18)', borderRadius: 12,
+                  padding: '12px 14px', fontSize: '0.85rem', fontWeight: 400, marginBottom: 12, outline: 'none',
+                  resize: 'vertical', color: '#0a0a0a', background: '#ffffff', caretColor: '#0a0a0a',
+                  WebkitTextFillColor: '#0a0a0a',
+                }}
               />
               <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>PDF attachment</p>
               <label style={{
