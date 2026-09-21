@@ -11448,6 +11448,11 @@ export default function AddFriendPage() {
   const profileProductsStickyRef = useRef<HTMLDivElement | null>(null);
   const profileScrollRafRef = useRef(0);
   const profileNavHiddenRef = useRef(false);
+  const profileScrollLastYRef = useRef(0);
+  const profileScrollElRef = useRef<HTMLDivElement | null>(null);
+  const storyPullStartYRef = useRef(0);
+  const storyPullingRef = useRef(false);
+  const [storyPullPx, setStoryPullPx] = useState(0);
 
   function applyProfileScrollProgress(y: number) {
     // Fixed chrome (stats + products) stays sticky; only bottom nav reacts to scroll.
@@ -13087,11 +13092,54 @@ export default function AddFriendPage() {
         {/* ── Content ── */}
         <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
                 <div
+          ref={profileScrollElRef}
           className="profile-content-scroll flex flex-col px-0 pt-0 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain"
+          onTouchStart={(e) => {
+            if (pageTab !== 'profile') return;
+            const el = profileScrollElRef.current;
+            if (!el || el.scrollTop > 2) {
+              storyPullingRef.current = false;
+              return;
+            }
+            storyPullStartYRef.current = e.touches[0]?.clientY ?? 0;
+            storyPullingRef.current = true;
+          }}
+          onTouchMove={(e) => {
+            if (!storyPullingRef.current || pageTab !== 'profile') return;
+            const el = profileScrollElRef.current;
+            if (!el || el.scrollTop > 2) {
+              storyPullingRef.current = false;
+              if (storyPullPx) setStoryPullPx(0);
+              return;
+            }
+            const y = e.touches[0]?.clientY ?? 0;
+            const dy = y - storyPullStartYRef.current;
+            if (dy <= 0) {
+              if (storyPullPx) setStoryPullPx(0);
+              return;
+            }
+            const capped = Math.min(128, dy * 0.55);
+            setStoryPullPx(capped);
+          }}
+          onTouchEnd={() => {
+            if (!storyPullingRef.current) return;
+            storyPullingRef.current = false;
+            const opened = storyPullPx >= 72;
+            setStoryPullPx(0);
+            if (opened) {
+              setQuickPublishError('');
+              setPublishMenuOpen(true);
+            }
+          }}
+          onTouchCancel={() => {
+            storyPullingRef.current = false;
+            setStoryPullPx(0);
+          }}
           onScroll={(e) => {
             if (pageTab !== 'profile') return;
             const y = e.currentTarget.scrollTop;
             profileScrollLastYRef.current = y;
+            if (y > 8 && storyPullPx) setStoryPullPx(0);
             if (profileScrollRafRef.current) return;
             profileScrollRafRef.current = requestAnimationFrame(() => {
               profileScrollRafRef.current = 0;
@@ -13154,6 +13202,62 @@ export default function AddFriendPage() {
                 {pinnedTrack && <PinnedTrackBar track={pinnedTrack} />}
                 {(myUsername || myBio) && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {user && (() => {
+                      const myGroup = storyGroups.find(g => g.userId === user?.id);
+                      const hasStory = !!myGroup && myGroup.items.length > 0;
+                      const allSeen = hasStory && myGroup!.items.every(i => i.seen);
+                      const storySz = 36;
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                          <div data-story-circle style={{ width: storySz, height: storySz, position: 'relative' }}>
+                            <motion.button
+                              whileTap={{ scale: 0.9 }}
+                              onClick={() => {
+                                if (myGroup) {
+                                  setViewerGroupIdx(storyGroups.indexOf(myGroup));
+                                } else {
+                                  setPublishMenuOpen(true);
+                                }
+                              }}
+                              disabled={storyUploading}
+                              data-story-circle
+                              style={{ width: storySz, height: storySz, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
+                            >
+                              <div style={{
+                                position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'hidden',
+                                background: 'hsl(var(--card))',
+                                border: hasStory ? '2.5px solid #0ea5e9' : '2px solid #0ea5e9',
+                                boxSizing: 'border-box',
+                                boxShadow: hasStory && !allSeen ? '0 0 8px rgba(14,165,233,0.45)' : '0 0 6px rgba(14,165,233,0.25)',
+                              }}>
+                                <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={32} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                              </div>
+                            </motion.button>
+                            <motion.button
+                              whileTap={{ scale: 0.88 }}
+                              onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); }}
+                              disabled={storyUploading || quickPublishing}
+                              aria-label="Publish options"
+                              style={{
+                                position: 'absolute', bottom: -2, right: -2,
+                                width: 14, height: 14, borderRadius: '50%',
+                                background: '#ef4444',
+                                border: '2px solid hsl(var(--background))',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                padding: 0, cursor: 'pointer',
+                                boxShadow: '0 0 6px rgba(239,68,68,0.55)',
+                              }}
+                            >
+                              {storyUploading || quickPublishing
+                                ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+                                    style={{ width: 6, height: 6, borderRadius: '50%', border: '1.5px solid #fff', borderTopColor: 'transparent' }} />
+                                : <Plus size={8} strokeWidth={3} color="#fff" />
+                              }
+                            </motion.button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {myUsername && (
                       <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         @{myUsername}
@@ -13253,8 +13357,41 @@ export default function AddFriendPage() {
           </div>
           {/* End sticky chrome — stories + posts scroll beneath */}
 
-          {/* Stories row — scrolls under fixed stats + products */}
-          {pageTab === 'profile' && (
+          {storyPullPx > 0 && pageTab === 'profile' && (
+            <div style={{
+              height: storyPullPx,
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              pointerEvents: 'none',
+            }}>
+              <div style={{
+                width: 36,
+                height: 36,
+                marginBottom: 6,
+                borderRadius: '50%',
+                border: '2px solid #0ea5e9',
+                background: 'rgba(14,165,233,0.12)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transform: `scale(${0.55 + Math.min(storyPullPx, 72) / 160})`,
+                opacity: Math.min(1, storyPullPx / 48),
+              }}>
+                <Plus size={16} color="#0ea5e9" strokeWidth={2.4} />
+              </div>
+            </div>
+          )}
+
+          {pageTab === 'profile' && (() => {
+            const otherStories = storyGroups.filter(g => {
+              if (g.userId === user?.id) return false;
+              if (!g.items || g.items.length === 0) return false;
+              return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
+            });
+            if (otherStories.length === 0) return null;
+            return (
             <>
               <style>{`
                 .header-stories::-webkit-scrollbar{display:none}
@@ -13272,79 +13409,7 @@ export default function AddFriendPage() {
                   alignItems: 'center',
                 }}
               >
-                  {/* My story — same horizontal row as friend stories */}
-              {/* ── My story circle — same place as before ── */}
-              {user && (() => {
-                const myGroup = storyGroups.find(g => g.userId === user?.id);
-                const hasStory = !!myGroup && myGroup.items.length > 0;
-                const allSeen = hasStory && myGroup!.items.every(i => i.seen);
-                const storySz = 76;
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: -12, marginLeft: -6, flexShrink: 0 }}>
-                    <div data-story-circle style={{ width: storySz, height: storySz, position: 'relative' }}>
-                      <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => {
-                          if (myGroup) {
-                            setViewerGroupIdx(storyGroups.indexOf(myGroup));
-                          } else {
-                            setPublishMenuOpen(true);
-                          }
-                        }}
-                        disabled={storyUploading}
-                        data-story-circle
-                        style={{ width: storySz, height: storySz, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
-                      >
-                        {/* One fixed circular frame: the photo is clipped inside it and can never overflow. */}
-                        {/* إطار أزرق ثابت + صورة ثابتة */}
-                        <div style={{
-                          position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'hidden',
-                          background: 'hsl(var(--card))',
-                          border: hasStory ? '4px solid #0ea5e9' : '3px solid #0ea5e9',
-                          boxSizing: 'border-box',
-                          boxShadow: hasStory && !allSeen ? '0 0 10px rgba(14,165,233,0.45)' : '0 0 8px rgba(14,165,233,0.25)',
-                        }}>
-                          <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={68} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
-                        </div>
-                      </motion.button>
-                      {/* + badge — hidden in compact scroll mode via data-expand-only */}
-                      <motion.button
-                        data-expand-only
-                        whileTap={{ scale: 0.88 }}
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 2.4, repeat: Infinity, ease: 'linear' }}
-                        onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); }}
-                        disabled={storyUploading || quickPublishing}
-                        aria-label="Publish options"
-                        style={{
-                          position: 'absolute', bottom: 1, right: 1,
-                          width: 22, height: 22, borderRadius: '50%',
-                          background: '#ef4444',
-                          border: '2.5px solid hsl(var(--background))',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          padding: 0, cursor: 'pointer',
-                          boxShadow: '0 0 8px rgba(239,68,68,0.55)',
-                        }}
-                      >
-                        {storyUploading || quickPublishing
-                          ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
-                              style={{ width: 9, height: 9, borderRadius: '50%', border: '2px solid #fff', borderTopColor: 'transparent' }} />
-                          : <Plus size={12} strokeWidth={3} color="#fff" />
-                        }
-                      </motion.button>
-                    </div>
-                    <span data-expand-only style={{ fontSize: '0.58rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500 }}>
-                      قصتي
-                    </span>
-                  </div>
-                );
-              })()}
-
-                {/* ستوريات المستخدمين فقط في شريط الهيدر — الشركات في تبويب Company */}
-                {storyGroups.filter(g => {
-                  if (g.userId === user?.id) return false;
-                  return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
-                }).map((g) => {
+                {otherStories.map((g) => {
                   const realIdx = storyGroups.indexOf(g);
                   const hasUnseen = g.items.some(it => !it.seen);
                   return (
@@ -13388,7 +13453,8 @@ export default function AddFriendPage() {
                 })}
               </div>
             </>
-          )}
+            );
+          })()}
         </div>
         </>
           )}
