@@ -8882,7 +8882,7 @@ export default function AddFriendPage() {
   const [businessAdsOpen, setBusinessAdsOpen] = useState(false);
   const [businessAdTitle, setBusinessAdTitle] = useState('');
   const [businessAdBody, setBusinessAdBody] = useState('');
-  const [businessAdPdf, setBusinessAdPdf] = useState<{ name: string; dataUrl: string } | null>(null);
+  const [businessAdMedia, setBusinessAdMedia] = useState<{ name: string; dataUrl: string; type: 'image' | 'video' | 'pdf'; mime: string } | null>(null);
   const [composerBizHint, setComposerBizHint] = useState(false);
   const isBusinessUser = !!(user?.id && (() => { try { const raw = localStorage.getItem('stooorna_business_registry'); const list = raw ? JSON.parse(raw) : []; return Array.isArray(list) && list.some((x: any) => String(x.userId) === String(user.id) && x.status === 'approved'); } catch { return false; } })());
   // وضع النشر: اختيار فقط (لا يفتح المعرض) — Text | Photo | Video
@@ -15315,22 +15315,78 @@ export default function AddFriendPage() {
                   WebkitTextFillColor: '#0a0a0a',
                 }}
               />
-              <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>PDF attachment</p>
-              <label style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderRadius: 12,
-                border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer', marginBottom: 12,
-              }}>
-                <FileText size={18} />
-                {businessAdPdf?.name || 'Attach PDF'}
-                <input type="file" accept="application/pdf,.pdf" hidden onChange={e => {
-                  const f = e.target.files?.[0];
-                  e.target.value = '';
-                  if (!f) return;
-                  const reader = new FileReader();
-                  reader.onload = () => setBusinessAdPdf({ name: f.name, dataUrl: String(reader.result || '') });
-                  reader.readAsDataURL(f);
-                }} />
-              </label>
+              <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Media attachment</p>
+              <p style={{ margin: '0 0 10px', color: '#999', fontSize: '0.68rem', lineHeight: 1.4 }}>
+                Video (MP4, MOV) · Image (JPG, PNG, WebP) · PDF
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                <label style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
+                  border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer',
+                }}>
+                  <Video size={18} />
+                  Video (MP4, MOV)
+                  <input type="file" accept="video/mp4,video/quicktime,video/*,.mp4,.mov,.m4v" hidden onChange={e => {
+                    const f = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!f) return;
+                    const reader = new FileReader();
+                    reader.onload = () => setBusinessAdMedia({ name: f.name, dataUrl: String(reader.result || ''), type: 'video', mime: f.type || 'video/mp4' });
+                    reader.readAsDataURL(f);
+                  }} />
+                </label>
+                <label style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
+                  border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer',
+                }}>
+                  <ImageIcon size={18} />
+                  Image (JPG, PNG, WebP)
+                  <input type="file" accept="image/jpeg,image/png,image/webp,image/*,.jpg,.jpeg,.png,.webp" hidden onChange={e => {
+                    const f = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!f) return;
+                    const reader = new FileReader();
+                    reader.onload = () => setBusinessAdMedia({ name: f.name, dataUrl: String(reader.result || ''), type: 'image', mime: f.type || 'image/jpeg' });
+                    reader.readAsDataURL(f);
+                  }} />
+                </label>
+                <label style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
+                  border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer',
+                }}>
+                  <FileText size={18} />
+                  PDF file
+                  <input type="file" accept="application/pdf,.pdf" hidden onChange={e => {
+                    const f = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!f) return;
+                    const reader = new FileReader();
+                    reader.onload = () => setBusinessAdMedia({ name: f.name, dataUrl: String(reader.result || ''), type: 'pdf', mime: f.type || 'application/pdf' });
+                    reader.readAsDataURL(f);
+                  }} />
+                </label>
+              </div>
+              {businessAdMedia && (
+                <div style={{
+                  marginBottom: 12, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(0,0,0,0.1)',
+                  display: 'flex', alignItems: 'center', gap: 10, background: '#f7f9f9',
+                }}>
+                  {businessAdMedia.type === 'image' && (
+                    <img src={businessAdMedia.dataUrl} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
+                  )}
+                  {businessAdMedia.type === 'video' && (
+                    <video src={businessAdMedia.dataUrl} muted style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
+                  )}
+                  {businessAdMedia.type === 'pdf' && <FileText size={22} color="#1d9bf0" />}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, color: '#0a0a0a', fontWeight: 700, fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{businessAdMedia.name}</p>
+                    <p style={{ margin: '2px 0 0', color: '#888', fontSize: '0.68rem', textTransform: 'uppercase' }}>{businessAdMedia.type}</p>
+                  </div>
+                  <button type="button" onClick={() => setBusinessAdMedia(null)} style={{ border: 'none', background: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 8, width: 32, height: 32, cursor: 'pointer' }}>
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
               <p style={{ margin: '0 0 12px', color: '#888', fontSize: '0.72rem', lineHeight: 1.45 }}>
                 Paid placement between feed posts · 5 KD / month · deducted from Business balance
               </p>
@@ -15340,7 +15396,7 @@ export default function AddFriendPage() {
                   if (!user?.id) return;
                   const title = businessAdTitle.trim();
                   const body = businessAdBody.trim();
-                  if (!title && !body && !businessAdPdf) return;
+                  if (!title && !body && !businessAdMedia) return;
                   try {
                     const balKey = `stooorna_biz_balance_${user.id}`;
                     const bal = Number(localStorage.getItem(balKey) || '0') || 0;
@@ -15355,8 +15411,12 @@ export default function AddFriendPage() {
                       id: `ad-${Date.now()}`,
                       userId: String(user.id),
                       title, body,
-                      pdfUrl: businessAdPdf?.dataUrl || null,
-                      pdfName: businessAdPdf?.name || null,
+                      mediaUrl: businessAdMedia?.dataUrl || null,
+                      mediaType: businessAdMedia?.type || null,
+                      mediaName: businessAdMedia?.name || null,
+                      mediaMime: businessAdMedia?.mime || null,
+                      pdfUrl: businessAdMedia?.type === 'pdf' ? businessAdMedia.dataUrl : null,
+                      pdfName: businessAdMedia?.type === 'pdf' ? businessAdMedia.name : null,
                       createdAt: new Date().toISOString(),
                       expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
                     };
@@ -15367,7 +15427,7 @@ export default function AddFriendPage() {
                   } catch { /* */ }
                   setBusinessAdTitle('');
                   setBusinessAdBody('');
-                  setBusinessAdPdf(null);
+                  setBusinessAdMedia(null);
                   setBusinessAdsOpen(false);
                 }}
                 style={{
@@ -15855,7 +15915,22 @@ export default function AddFriendPage() {
                             key={`feed-ad-${ad.id}-${idx}`}
                             type="button"
                             onClick={() => {
-                              if (ad.pdfUrl) window.open(ad.pdfUrl, '_blank');
+                              const url = ad.mediaUrl || ad.pdfUrl;
+                              if (url && (ad.mediaType === 'video' || (ad.mediaMime || '').startsWith('video/'))) {
+                                const w = window.open('', '_blank');
+                                if (w) {
+                                  w.document.write(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${(ad.title || 'Ad').replace(/</g,'')}</title><style>body{margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh}video{max-width:100%;max-height:100vh}</style></head><body><video src="${url}" controls autoplay playsinline style="width:100%"></video></body></html>`);
+                                }
+                                return;
+                              }
+                              if (url && (ad.mediaType === 'image' || (ad.mediaMime || '').startsWith('image/'))) {
+                                const w = window.open('', '_blank');
+                                if (w) {
+                                  w.document.write(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${(ad.title || 'Ad').replace(/</g,'')}</title><style>body{margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh}img{max-width:100%;max-height:100vh;object-fit:contain}</style></head><body><img src="${url}" alt=""/></body></html>`);
+                                }
+                                return;
+                              }
+                              if (url) window.open(url, '_blank');
                               else if (ad.body) {
                                 const w = window.open('', '_blank');
                                 if (w) {
@@ -15872,6 +15947,15 @@ export default function AddFriendPage() {
                             <span style={{ display: 'inline-block', fontSize: '0.65rem', fontWeight: 900, color: '#1d9bf0', letterSpacing: '0.06em' }}>ADS</span>
                             <p style={{ margin: '6px 0 0', color: '#0a0a0a', fontWeight: 800, fontSize: '0.9rem' }}>{ad.title || 'Ad'}</p>
                             {ad.body ? <p style={{ margin: '4px 0 0', color: '#444', fontSize: '0.78rem', lineHeight: 1.4 }}>{String(ad.body).slice(0, 160)}</p> : null}
+                            {ad.mediaUrl && ad.mediaType === 'image' ? (
+                              <img src={ad.mediaUrl} alt="" style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 10, marginTop: 8 }} />
+                            ) : null}
+                            {ad.mediaUrl && ad.mediaType === 'video' ? (
+                              <video src={ad.mediaUrl} muted playsInline style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 10, marginTop: 8 }} />
+                            ) : null}
+                            {ad.mediaType === 'pdf' || ad.pdfUrl ? (
+                              <p style={{ margin: '6px 0 0', color: '#1d9bf0', fontSize: '0.72rem', fontWeight: 700 }}>PDF attached</p>
+                            ) : null}
                           </button>
                         );
                       }
