@@ -13115,6 +13115,7 @@ export default function AddFriendPage() {
           scrollbarWidth: 'none',
         }}>
           {!isFriendManagement && (
+        <>
         <div
           className="profile-header-expanded"
           style={{
@@ -13502,6 +13503,7 @@ export default function AddFriendPage() {
             );
           })}
         </div>
+        </>
           )}
 
           <AnimatePresence mode="wait">
