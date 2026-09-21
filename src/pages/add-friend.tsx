@@ -9112,6 +9112,23 @@ export default function AddFriendPage() {
   // ── Stories state ────────────────────────────────────────────────────────────
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
   const [viewerGroupIdx, setViewerGroupIdx] = useState<number | null>(null);
+  // ── Pull-down-to-open-stories (top of the profile feed) ────────────────────
+  // Pulling down past a small threshold while already at the top of the feed
+  // opens the next unseen story directly, skipping the strip, with a short
+  // pop/scale animation played first, then the full-screen viewer takes over.
+  const [storyPullDistance, setStoryPullDistance] = useState(0);
+  const [storyPullDragging, setStoryPullDragging] = useState(false);
+  const [storyPullOpening, setStoryPullOpening] = useState(false);
+  const storyPullStartY = useRef<number | null>(null);
+  const lastFeedScrollTopRef = useRef(0);
+  const profileContentScrollRef = useRef<HTMLDivElement | null>(null);
+  const STORY_PULL_THRESHOLD = 72;
+  const STORY_PULL_MAX = 130;
+  const pullTargetGroup = useMemo(() => {
+    const others = storyGroups.filter(g => g.userId !== user?.id);
+    if (others.length === 0) return null;
+    return others.find(g => g.items.some(it => !it.seen)) || others[0];
+  }, [storyGroups, user?.id]);
   const [storyUploading, setStoryUploading] = useState(false);
   const storyFileRef = useRef<HTMLInputElement>(null);
   // ref for adding extra media from inside the viewer
@@ -13366,12 +13383,111 @@ export default function AddFriendPage() {
 
         {/* ── Content ── */}
         <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
-        <div className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{
+        <div
+          ref={profileContentScrollRef}
+          className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain"
+          onScroll={e => {
+            // Reports scroll direction to the global bottom bar (see RootLayout's
+            // GlobalBottomNavigation) so it can hide while browsing further into
+            // the feed and reappear when scrolling back toward the top. Nothing
+            // else on this page reacts to this event.
+            const el = e.currentTarget;
+            const top = el.scrollTop;
+            const last = lastFeedScrollTopRef.current;
+            const delta = top - last;
+            if (Math.abs(delta) > 4) {
+              window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', {
+                detail: { dir: (delta > 0 && top > 24) ? 'down' : 'up' },
+              }));
+              lastFeedScrollTopRef.current = top;
+            }
+          }}
+          onTouchStart={e => {
+            if (pageTab !== 'profile' || storyPullOpening) {
+              storyPullStartY.current = null;
+              return;
+            }
+            const el = profileContentScrollRef.current;
+            if (!el || el.scrollTop > 0) {
+              storyPullStartY.current = null;
+              return;
+            }
+            storyPullStartY.current = e.touches[0].clientY;
+          }}
+          onTouchMove={e => {
+            if (storyPullStartY.current === null) return;
+            const el = profileContentScrollRef.current;
+            if (!el || el.scrollTop > 0) {
+              storyPullStartY.current = null;
+              setStoryPullDragging(false);
+              setStoryPullDistance(0);
+              return;
+            }
+            const delta = e.touches[0].clientY - storyPullStartY.current;
+            if (delta <= 0) {
+              setStoryPullDragging(false);
+              setStoryPullDistance(0);
+              return;
+            }
+            setStoryPullDragging(true);
+            setStoryPullDistance(Math.min(STORY_PULL_MAX, delta * 0.55));
+          }}
+          onTouchEnd={() => {
+            storyPullStartY.current = null;
+            setStoryPullDragging(false);
+            if (storyPullDistance >= STORY_PULL_THRESHOLD && pullTargetGroup) {
+              const idx = storyGroups.indexOf(pullTargetGroup);
+              setStoryPullOpening(true);
+              window.setTimeout(() => {
+                if (idx >= 0) setViewerGroupIdx(idx);
+                window.setTimeout(() => {
+                  setStoryPullOpening(false);
+                  setStoryPullDistance(0);
+                }, 260);
+              }, 320);
+            } else {
+              setStoryPullDistance(0);
+            }
+          }}
+          style={{
           WebkitOverflowScrolling: 'touch',
           willChange: 'scroll-position',
           contain: 'strict',
           scrollbarWidth: 'none',
         }}>
+          {(storyPullDragging || storyPullOpening || storyPullDistance > 0) && (
+            <div
+              aria-hidden
+              style={{
+                height: storyPullOpening ? 96 : storyPullDistance,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                overflow: 'hidden',
+                transition: storyPullDragging ? 'none' : 'height 260ms cubic-bezier(0.22,1,0.36,1)',
+              }}
+            >
+              <motion.div
+                animate={storyPullOpening
+                  ? { scale: [1, 1.4, 0], opacity: [1, 1, 0] }
+                  : { scale: Math.min(1, storyPullDistance / STORY_PULL_THRESHOLD), opacity: Math.min(1, storyPullDistance / 30) }}
+                transition={storyPullOpening ? { duration: 0.32, ease: 'easeInOut' } : { duration: 0.05 }}
+                style={{ width: 56, height: 56, borderRadius: '50%', position: 'relative' }}
+              >
+                <div style={{
+                  position: 'absolute', inset: 0, borderRadius: '50%',
+                  background: pullTargetGroup ? storyRingColor(pullTargetGroup.items, '#facc15', '#0ea5e9') : 'rgba(0,188,212,0.55)',
+                  padding: 3, boxSizing: 'border-box',
+                  boxShadow: storyPullDistance >= STORY_PULL_THRESHOLD ? '0 0 16px rgba(0,188,212,0.6)' : 'none',
+                  transition: 'box-shadow 180ms ease',
+                }}>
+                  <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
+                    {pullTargetGroup && (
+                      <UserAvatar name={pullTargetGroup.name} avatarUrl={pullTargetGroup.avatarUrl} size={50} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
           <AnimatePresence mode="wait">
 
             {/* ══ Post page — stories live in the header above; text posts sit directly under the

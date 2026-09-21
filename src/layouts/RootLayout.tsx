@@ -332,6 +332,25 @@ function GlobalBottomNavigation() {
   const [friendsPanelOpen, setFriendsPanelOpen] = useState(false);
   const [storyMediaOpen, setStoryMediaOpen] = useState(false);
   const settingsSheetOpen = location.pathname === '/settings' || location.pathname.startsWith('/settings');
+
+  // ── Auto-hide bottom bar on scroll ──────────────────────────────────────
+  // The feed's scroll container (add-friend.tsx) dispatches a direction event
+  // as the person scrolls. Scrolling further into the feed hides this bar so
+  // posts get the full screen; scrolling back toward the top brings it back.
+  // Purely local to the bar itself — nothing above it is ever affected.
+  const [navBarHidden, setNavBarHidden] = useState(false);
+  useEffect(() => {
+    const onFeedScroll = (e: Event) => {
+      const dir = (e as CustomEvent).detail?.dir as 'down' | 'up' | undefined;
+      if (dir === 'down') setNavBarHidden(true);
+      else if (dir === 'up') setNavBarHidden(false);
+    };
+    window.addEventListener('stooorna:feed-scroll', onFeedScroll);
+    return () => window.removeEventListener('stooorna:feed-scroll', onFeedScroll);
+  }, []);
+  useEffect(() => {
+    if (!location.pathname.startsWith('/add-friend')) setNavBarHidden(false);
+  }, [location.pathname]);
   useEffect(() => {
     const onOpen = () => setFriendsPanelOpen(true);
     const onClose = () => setFriendsPanelOpen(false);
@@ -2577,6 +2596,10 @@ function GlobalBottomNavigation() {
     background: 'linear-gradient(180deg, rgba(6,14,14,0.92) 0%, rgba(6,14,14,0.99) 100%)',
     boxSizing: 'border-box',
     borderTop: '1px solid rgba(0,188,212,0.12)',
+    transform: navBarHidden ? 'translateY(100%)' : 'translateY(0)',
+    opacity: navBarHidden ? 0 : 1,
+    pointerEvents: navBarHidden ? 'none' : 'auto',
+    transition: 'transform 260ms cubic-bezier(0.22,1,0.36,1), opacity 220ms ease',
   }}>
       <div style={{
       width: '100%',
