@@ -11445,19 +11445,20 @@ export default function AddFriendPage() {
   // ── Profile chrome expand/collapse (scroll-driven, Telegram-style) ─────────
   // true  = expanded: full story circle, stats, friends strip, products label
   // false = compact: small stories row + username/bio only; bottom nav hidden
-  // Profile header collapse is DOM-driven (like text-posts chrome) — no setState on scroll.
+  // Expanded profile chrome scrolls away natively. A fixed-height sticky compact bar
+  // appears when scrolled (DOM only — no setState, no sticky height change = no jank).
   const [headerOpen, setHeaderOpen] = useState(true);
   const headerOpenRef = useRef(true);
-  const profileHeaderRootRef = useRef<HTMLDivElement | null>(null);
+  const profileCompactBarRef = useRef<HTMLDivElement | null>(null);
   const profileScrollLastYRef = useRef(0);
   const profileScrollRafRef = useRef(0);
   function applyProfileHeaderOpen(open: boolean) {
     if (headerOpenRef.current === open) return;
     headerOpenRef.current = open;
-    const root = profileHeaderRootRef.current;
-    if (root) {
-      if (open) root.classList.remove('is-collapsed');
-      else root.classList.add('is-collapsed');
+    const bar = profileCompactBarRef.current;
+    if (bar) {
+      bar.style.display = open ? 'none' : 'flex';
+      bar.style.pointerEvents = open ? 'none' : 'auto';
     }
     try {
       window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: !open } }));
@@ -13101,9 +13102,9 @@ export default function AddFriendPage() {
             profileScrollRafRef.current = requestAnimationFrame(() => {
               profileScrollRafRef.current = 0;
               let next: boolean | null = null;
-              if (y <= 10) next = true;
-              else if (delta > 5) next = false;
-              else if (delta < -10) next = true;
+              if (y <= 20) next = true;
+              else if (delta > 6) next = false;
+              else if (delta < -8) next = true;
               if (next === null) return;
               applyProfileHeaderOpen(next);
             });
@@ -13115,38 +13116,14 @@ export default function AddFriendPage() {
         }}>
           {!isFriendManagement && (
         <div
-          ref={profileHeaderRootRef}
-          className="profile-header-root sticky top-0 z-20"
+          className="profile-header-expanded"
           style={{
-          position: 'sticky',
-          top: 0,
+          position: 'relative',
           paddingTop: 40,
           background: CLR_HEADER_BG,
-          backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
-          transition: 'padding-top 160ms ease',
         }}>
-          {/* Header */}
-          <style>{`
-            .profile-header-root.is-collapsed { padding-top: 6px !important; }
-            .profile-header-root.is-collapsed [data-expand-only] {
-              max-height: 0 !important; opacity: 0 !important; overflow: hidden !important;
-              margin: 0 !important; padding: 0 !important; border: none !important;
-              pointer-events: none !important; min-height: 0 !important;
-            }
-            .profile-header-root.is-collapsed [data-story-circle] {
-              width: 44px !important; height: 44px !important;
-            }
-            .profile-header-root.is-collapsed [data-compact-only] {
-              display: flex !important;
-            }
-            .profile-header-root.is-collapsed [data-expand-col] {
-              display: none !important;
-            }
-            .profile-header-root [data-story-circle] {
-              transition: width 160ms ease, height 160ms ease;
-            }
-          `}</style>
+          {/* Expanded header — scrolls away with content (not sticky) */}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
               non-interactive, matching the fog overlay's own transition). Opens a
@@ -13450,6 +13427,80 @@ export default function AddFriendPage() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Sticky compact stories bar — fixed height, shown only when scrolled (Telegram-style) */}
+        <div
+          ref={profileCompactBarRef}
+          className="profile-header-compact"
+          style={{
+            display: 'none',
+            position: 'sticky',
+            top: 0,
+            zIndex: 30,
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 12px',
+            background: CLR_HEADER_BG,
+            borderBottom: `1px solid ${CLR_NAV_BORDER}`,
+            backdropFilter: 'blur(14px)',
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            scrollbarWidth: 'none',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
+          <style>{`.profile-header-compact::-webkit-scrollbar{display:none}`}</style>
+          {user && (() => {
+            const myGroup = storyGroups.find(g => g.userId === user?.id);
+            return (
+              <motion.button
+                key="compact-my-story"
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                  if (myGroup) setViewerGroupIdx(storyGroups.indexOf(myGroup));
+                  else setPublishMenuOpen(true);
+                }}
+                style={{ width: 40, height: 40, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0 }}
+              >
+                <div style={{
+                  position: 'absolute', inset: 0, borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
+                  padding: 2, boxSizing: 'border-box',
+                }}>
+                  <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
+                    <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={36} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                  </div>
+                </div>
+              </motion.button>
+            );
+          })()}
+          {storyGroups.filter(g => {
+            if (g.userId === user?.id) return false;
+            return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
+          }).map((g) => {
+            const realIdx = storyGroups.indexOf(g);
+            const hasUnseen = g.items.some(it => !it.seen);
+            return (
+              <motion.button
+                key={'c-' + g.userId}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setViewerGroupIdx(realIdx)}
+                style={{ width: 40, height: 40, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0 }}
+              >
+                <div style={{
+                  position: 'absolute', inset: 0, borderRadius: '50%',
+                  background: storyRingColor(g.items, '#facc15', '#0ea5e9'),
+                  padding: 2, boxSizing: 'border-box',
+                  boxShadow: hasUnseen ? '0 0 6px rgba(250,204,21,0.4)' : 'none',
+                }}>
+                  <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
+                    <UserAvatar name={g.name} avatarUrl={g.avatarUrl} size={36} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                  </div>
+                </div>
+              </motion.button>
+            );
+          })}
         </div>
           )}
 
