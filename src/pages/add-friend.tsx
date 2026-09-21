@@ -15415,7 +15415,7 @@ export default function AddFriendPage() {
                   </button>
                 ))}
               </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: 12, minHeight: 160 }}>
+              <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: 12, minHeight: 160, maxHeight: '52vh' }}>
                 {(() => {
                   void feedAdsTick;
                   let list: any[] = [];
@@ -15451,29 +15451,54 @@ export default function AddFriendPage() {
                       </p>
                     );
                   }
-                  return showList.map(a => (
-                    <button
-                      key={a.id}
-                      type="button"
-                      onClick={() => { setMyAdsHubOpen(false); setFeedAdViewer(a); }}
-                      style={{
-                        width: '100%', textAlign: 'left', border: '1px solid rgba(234,179,8,0.3)',
-                        background: 'rgba(234,179,8,0.06)', borderRadius: 12, padding: 10, marginBottom: 8, cursor: 'pointer',
-                      }}
-                    >
-                      <p style={{ margin: 0, color: '#eab308', fontWeight: 800, fontSize: '0.82rem' }}>{a.title || 'Ad'}</p>
-                      {a.body ? <p style={{ margin: '4px 0 0', color: 'rgba(220,210,180,0.75)', fontSize: '0.72rem' }}>{String(a.body).slice(0, 80)}</p> : null}
-                      {a.mediaType === 'image' && a.mediaUrl ? (
-                        <img src={a.mediaUrl} alt="" style={{ width: '100%', maxHeight: 100, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />
-                      ) : null}
-                      {a.mediaType === 'video' && a.mediaUrl ? (
-                        <video src={a.mediaUrl} muted style={{ width: '100%', maxHeight: 100, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />
-                      ) : null}
-                      {(a.mediaType === 'pdf' || a.pdfUrl) ? (
-                        <p style={{ margin: '6px 0 0', color: '#eab308', fontSize: '0.7rem', fontWeight: 700 }}>PDF · tap to open</p>
-                      ) : null}
-                    </button>
-                  ));
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {showList.map((a, i) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => { setMyAdsHubOpen(false); setFeedAdViewer(a); }}
+                          style={{
+                            width: '100%', boxSizing: 'border-box', textAlign: 'left',
+                            border: '1px solid rgba(234,179,8,0.4)',
+                            background: 'rgba(234,179,8,0.07)', borderRadius: 10,
+                            padding: '8px 10px', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: 10,
+                          }}
+                        >
+                          <span style={{
+                            flexShrink: 0, minWidth: 22, height: 22, borderRadius: 6,
+                            background: 'rgba(234,179,8,0.25)', border: '1px solid rgba(234,179,8,0.55)',
+                            color: '#eab308', fontWeight: 900, fontSize: '0.7rem',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>{i + 1}</span>
+                          <div style={{
+                            width: 52, height: 40, borderRadius: 8, overflow: 'hidden', flexShrink: 0,
+                            background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(234,179,8,0.25)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {a.mediaType === 'image' && a.mediaUrl ? (
+                              <img src={a.mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : a.mediaType === 'video' && a.mediaUrl ? (
+                              <video src={a.mediaUrl} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <FileText size={16} color="#eab308" />
+                            )}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ margin: 0, color: '#eab308', fontWeight: 800, fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {a.title || 'Ad'}
+                            </p>
+                            {a.body ? (
+                              <p style={{ margin: '2px 0 0', color: 'rgba(220,210,180,0.7)', fontSize: '0.68rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {String(a.body).slice(0, 48)}
+                              </p>
+                            ) : null}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  );
                 })()}
               </div>
             </motion.div>
@@ -16132,13 +16157,16 @@ export default function AddFriendPage() {
                     onClick={() => setFeedAdViewer(ad)}
                     onKeyDown={e => { if (e.key === 'Enter') setFeedAdViewer(ad); }}
                     style={{
-                      width: '100%', textAlign: 'left', cursor: 'pointer',
+                      width: 'calc(100% - 20px)',
+                      maxWidth: '100%',
+                      textAlign: 'left', cursor: 'pointer',
                       padding: '12px 14px 14px',
                       background: 'linear-gradient(180deg, rgba(234,179,8,0.12) 0%, rgba(255,255,255,0.98) 40%)',
                       border: '2px solid #eab308',
                       borderRadius: 14,
-                      margin: '8px 10px',
+                      margin: '8px auto',
                       boxSizing: 'border-box',
+                      overflow: 'hidden',
                       boxShadow: '0 0 0 1px rgba(234,179,8,0.25), 0 8px 24px rgba(234,179,8,0.12)',
                     }}
                   >
@@ -16292,13 +16320,16 @@ export default function AddFriendPage() {
                             onClick={() => setFeedAdViewer(ad)}
                             onKeyDown={e => { if (e.key === 'Enter') setFeedAdViewer(ad); }}
                             style={{
-                              width: '100%', textAlign: 'left', cursor: 'pointer',
+                              width: 'calc(100% - 20px)',
+                              maxWidth: '100%',
+                              textAlign: 'left', cursor: 'pointer',
                               padding: '12px 14px 14px',
                               background: 'linear-gradient(180deg, rgba(234,179,8,0.12) 0%, rgba(255,255,255,0.98) 40%)',
                               border: '2px solid #eab308',
                               borderRadius: 14,
-                              margin: '8px 10px',
+                              margin: '8px auto',
                               boxSizing: 'border-box',
+                              overflow: 'hidden',
                               boxShadow: '0 0 0 1px rgba(234,179,8,0.25), 0 8px 24px rgba(234,179,8,0.12)',
                             }}
                           >
