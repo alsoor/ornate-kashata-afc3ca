@@ -13227,6 +13227,7 @@ export default function AddFriendPage() {
             </div>
           )}
           </div>
+          )}
 
             {/* Products header — fixed under stats (green line position) */}
             {pageTab === 'profile' && (
