@@ -5920,8 +5920,10 @@ export interface FriendStoryProfileProps {
   /** حساب شركة عام: يظهر اليوزر والمنشورات والبث للجميع بدون شرط صداقة.
    * اللايك والتعليق متاحان للمستخدمين المسجّلين (guestGuard كما في باقي التطبيق). */
   isCompanyProfile?: boolean;
+  /** When parent already knows this user is an accepted friend (e.g. opened from friends list). */
+  initialFriendAccepted?: boolean;
 }
-export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, onRepost, isCompanyProfile = false }: FriendStoryProfileProps) {
+export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, onRepost, isCompanyProfile = false, initialFriendAccepted = false }: FriendStoryProfileProps) {
   const navigate = useNavigate();
   const { user } = useSession();
   const liveActive = useLiveBroadcastActive(authorId);
@@ -5929,7 +5931,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [friendProfileMediaTab, setFriendProfileMediaTab] = useState<'videos' | 'photos'>('videos');
   const [loading, setLoading] = useState(true);
   const [avatarExpanded, setAvatarExpanded] = useState(false);
-  const [friendState, setFriendState] = useState<'none' | 'pending' | 'accepted'>('none');
+  const [friendState, setFriendState] = useState<'none' | 'pending' | 'accepted'>(initialFriendAccepted ? 'accepted' : 'none');
+  const [friendStateReady, setFriendStateReady] = useState(!!initialFriendAccepted);
   const [friendLoading, setFriendLoading] = useState(false);
   const [friendMenuOpen, setFriendMenuOpen] = useState(false);
   const [authorPosts, setAuthorPosts] = useState<PostItem[]>([]);
@@ -5948,19 +5951,35 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
     async function loadFriendState() {
       try {
         const response = await fetch('/api/friends', { credentials: 'include' });
-        if (!response.ok) return;
+        if (!response.ok) {
+          if (!cancelled) setFriendStateReady(true);
+          return;
+        }
         const data = await response.json();
         if (cancelled) return;
-        if ((data.accepted ?? []).some((friend: Friend) => friend.friendId === authorId)) {
+        if ((data.accepted ?? []).some((friend: Friend) => String(friend.friendId) === String(authorId))) {
           setFriendState('accepted');
-        } else if ((data.outgoing ?? []).some((request: { addresseeId?: string; userId?: string }) => (request.addresseeId ?? request.userId) === authorId)) {
+        } else if ((data.outgoing ?? []).some((request: { addresseeId?: string; userId?: string }) => String(request.addresseeId ?? request.userId) === String(authorId))) {
           setFriendState('pending');
+        } else {
+          setFriendState('none');
         }
       } catch { /* keep default */ }
+      finally {
+        if (!cancelled) setFriendStateReady(true);
+      }
+    }
+    // Reset while author changes so private lock does not flash incorrectly
+    if (!initialFriendAccepted) {
+      setFriendState('none');
+      setFriendStateReady(false);
+    } else {
+      setFriendState('accepted');
+      setFriendStateReady(true);
     }
     loadFriendState();
     return () => { cancelled = true; };
-  }, [authorId]);
+  }, [authorId, initialFriendAccepted]);
 
   async function requestFriendship() {
     if (friendState !== 'none' || friendLoading) return;
@@ -6088,7 +6107,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const coverUrl = profile?.coverUrl ?? null;
   const pinnedTrack = pinnedTrackFromProfile(profile);
   // الشركات عامة دائماً — لا تُخفى حتى لو وُسم الحساب خاصاً أو بدون صداقة
-  const isHiddenPrivate = !isCompanyProfile && !!profile?.isPrivate && friendState !== 'accepted';
+  // Wait until friend state is known to avoid a brief "Private account" flash for accepted friends
+  const isHiddenPrivate = friendStateReady && !isCompanyProfile && !!profile?.isPrivate && friendState !== 'accepted';
   // منشور هذا المستخدم المثبّت (إن وُجد) يظهر أولًا، والباقي تحته بترتيبه الطبيعي بدون تثبيت
   const sortedAuthorPosts = useMemo(() => {
     // الشركة: كل المنشورات/المنتجات بدون تبويب Video/Photo
@@ -16620,6 +16640,7 @@ export default function AddFriendPage() {
               </button>
 
               <div
+                ref={singlePostMediaScrollRef}
                 style={{ flex: 1, minHeight: 0, position: 'relative', background: '#000', touchAction: 'none', overflow: 'hidden' }}
                 onTouchStart={e => {
                   const t = e.changedTouches[0];
@@ -18289,6 +18310,7 @@ export default function AddFriendPage() {
             authorUsername={viewingProfile.username}
             authorAvatarUrl={viewingProfile.avatarUrl}
             isCompanyProfile={!!viewingProfile.isCompany}
+            initialFriendAccepted={friends.some(f => String(f.friendId) === String(viewingProfile.id))}
             onClose={() => {
               setViewingProfile(null);
               setUserShareChatPeer(null);
