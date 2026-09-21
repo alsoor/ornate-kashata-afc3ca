@@ -13073,12 +13073,43 @@ export default function AddFriendPage() {
       fontFamily: 'var(--font-sans)'
     }}>
 
-        {!isFriendManagement && <>
-        {/* ── Header ── */}
-        <div
-          className="sticky top-0 z-20 shrink-0"
+        {/* ── Content ── */}
+        <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
+                <div
+          className="profile-content-scroll flex flex-col px-0 pt-0 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain"
+          onScroll={(e) => {
+            if (pageTab !== 'profile') return;
+            const el = e.currentTarget;
+            const y = el.scrollTop;
+            const delta = y - profileScrollLastYRef.current;
+            profileScrollLastYRef.current = y;
+            if (profileScrollRafRef.current) return;
+            profileScrollRafRef.current = requestAnimationFrame(() => {
+              profileScrollRafRef.current = 0;
+              let next: boolean | null = null;
+              if (y <= 8) next = true;
+              else if (delta > 4) next = false;
+              else if (delta < -8) next = true;
+              if (next === null || next === headerOpenRef.current) return;
+              headerOpenRef.current = next;
+              setHeaderOpen(next);
+              try {
+                window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: !next } }));
+              } catch { /* */ }
+            });
+          }}
           style={{
-          position: 'relative',
+          WebkitOverflowScrolling: 'touch',
+          willChange: 'scroll-position',
+          scrollbarWidth: 'none',
+        }}>
+          {!isFriendManagement && (
+{/* ── Header ── */}
+        <div
+          className="sticky top-0 z-20"
+          style={{
+          position: 'sticky',
+          top: 0,
           paddingTop: headerOpen ? 40 : 6,
           background: CLR_HEADER_BG,
           backdropFilter: 'blur(14px)',
@@ -13392,38 +13423,8 @@ export default function AddFriendPage() {
             </div>
           )}
         </div>
-        </>}
+          )}
 
-        {/* ── Content ── */}
-        <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
-                <div
-          className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain"
-          onScroll={(e) => {
-            if (pageTab !== 'profile') return;
-            const el = e.currentTarget;
-            const y = el.scrollTop;
-            const delta = y - profileScrollLastYRef.current;
-            profileScrollLastYRef.current = y;
-            if (profileScrollRafRef.current) return;
-            profileScrollRafRef.current = requestAnimationFrame(() => {
-              profileScrollRafRef.current = 0;
-              let next: boolean | null = null;
-              if (y <= 8) next = true;
-              else if (delta > 4) next = false;
-              else if (delta < -8) next = true;
-              if (next === null || next === headerOpenRef.current) return;
-              headerOpenRef.current = next;
-              setHeaderOpen(next);
-              try {
-                window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: !next } }));
-              } catch { /* */ }
-            });
-          }}
-          style={{
-          WebkitOverflowScrolling: 'touch',
-          willChange: 'scroll-position',
-          scrollbarWidth: 'none',
-        }}>
           <AnimatePresence mode="wait">
 
             {/* ══ Post page — stories live in the header above; text posts sit directly under the
