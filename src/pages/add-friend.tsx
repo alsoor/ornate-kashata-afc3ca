@@ -11542,6 +11542,10 @@ export default function AddFriendPage() {
   const [headerOpen, setHeaderOpen] = useState(true);
   // Once true, the grabber's attention-drawing bounce animation stops for good.
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
+  // Swiping up over the posts grid while already at the top of the feed collapses
+  // the header too, same as tapping the grabber bar directly — both ways work.
+  const headerSwipeCloseTriggeredRef = useRef(false);
+  const HEADER_CLOSE_SWIPE_THRESHOLD = 40;
   // Sub-tab inside the Profile page, replacing the old STOOORNA divider: switches the content
   // strip below it between the text-posts feed and the video/photo grid — independently of
   // everything above (stories strip, header, etc. never move when this changes).
@@ -13533,6 +13537,7 @@ export default function AddFriendPage() {
             }
           }}
           onTouchStart={e => {
+            headerSwipeCloseTriggeredRef.current = false;
             if (pageTab !== 'profile' || storyPullOpening) {
               storyPullStartY.current = null;
               return;
@@ -13557,6 +13562,14 @@ export default function AddFriendPage() {
             if (delta <= 0) {
               setStoryPullDragging(false);
               setStoryPullDistance(0);
+              // Swiping up (finger moving toward the top) while already at the top of
+              // the feed, over the posts grid, closes the header — same effect as
+              // tapping the grabber bar. Fires once per gesture, past a small threshold.
+              if (headerOpen && !headerSwipeCloseTriggeredRef.current && Math.abs(delta) > HEADER_CLOSE_SWIPE_THRESHOLD) {
+                headerSwipeCloseTriggeredRef.current = true;
+                setHeaderOpen(false);
+                setHeaderHintSeen(true);
+              }
               return;
             }
             setStoryPullDragging(true);
@@ -13564,6 +13577,7 @@ export default function AddFriendPage() {
           }}
           onTouchEnd={() => {
             storyPullStartY.current = null;
+            headerSwipeCloseTriggeredRef.current = false;
             setStoryPullDragging(false);
             if (storyPullDistance >= STORY_PULL_THRESHOLD && pullTargetGroup) {
               const idx = storyGroups.indexOf(pullTargetGroup);
