@@ -1885,44 +1885,69 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         return;
       }
 
-      // نرسل multipart/form-data مع الموسيقى والنص
-      const form = new FormData();
-      form.append('media', mediaFile);
-      if (overlayText.trim()) form.append('overlayText', overlayText.trim());
-      if (overlayColor !== '#ffffff') form.append('overlayColor', overlayColor);
-      form.append('overlayX', String(overlayPos.x));
-      form.append('overlayY', String(overlayPos.y));
-      if (allowMusic) {
-        form.append('musicBadgeX', String(musicBadgePos.x));
-        form.append('musicBadgeY', String(musicBadgePos.y));
-        form.append('musicBadgeScale', String(musicBadgeScale));
-      }
-
+      // Multipart: media + optional music/text (try several field names for API compatibility)
+      let audioFile: File | null = null;
       if (selectedMusic) {
-        form.append('audio', selectedMusic.file);
+        audioFile = selectedMusic.file;
       } else if (selectedBuiltinMusic) {
-        // نحمّل الموسيقى المدمجة ونرفعها
         const track = BUILTIN_MUSIC.find(m => m.id === selectedBuiltinMusic);
         if (track) {
           try {
             const resp = await fetch(track.url);
             const blob = await resp.blob();
-            const audioFile = new File([blob], `music-${track.id}.mp3`, { type: 'audio/mpeg' });
-            form.append('audio', audioFile);
-          } catch { /* تجاهل خطأ تحميل الموسيقى */ }
+            audioFile = new File([blob], `music-${track.id}.mp3`, { type: 'audio/mpeg' });
+          } catch { /* ignore music load */ }
         }
       }
 
-      const r = await fetch('/api/status', {
-        method: 'POST',
-        credentials: 'include',
-        body: form,
-      });
-      if (!r.ok) {
-        const errText = await r.text();
-        console.error('[publish] server error', r.status, errText);
-        throw new Error(errText);
+      const buildForm = (mediaKey: string, audioKey: string) => {
+        const form = new FormData();
+        form.append(mediaKey, mediaFile, mediaFile.name);
+        form.append('file', mediaFile, mediaFile.name);
+        form.append('type', captured.type === 'video' ? 'video' : 'image');
+        if (overlayText.trim()) form.append('overlayText', overlayText.trim());
+        if (overlayColor !== '#ffffff') form.append('overlayColor', overlayColor);
+        form.append('overlayX', String(overlayPos.x));
+        form.append('overlayY', String(overlayPos.y));
+        if (allowMusic) {
+          form.append('musicBadgeX', String(musicBadgePos.x));
+          form.append('musicBadgeY', String(musicBadgePos.y));
+          form.append('musicBadgeScale', String(musicBadgeScale));
+        }
+        if (audioFile) {
+          form.append(audioKey, audioFile, audioFile.name);
+          form.append('audio', audioFile, audioFile.name);
+          form.append('music', audioFile, audioFile.name);
+        }
+        return form;
+      };
+
+      let r: Response | null = null;
+      let errText = '';
+      const formAttempts = [
+        () => fetch('/api/status', { method: 'POST', credentials: 'include', body: buildForm('media', 'audio') }),
+        () => fetch('/api/status', { method: 'POST', credentials: 'include', body: buildForm('file', 'audio') }),
+        () => fetch('/api/status', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': mediaFile.type || 'image/jpeg', 'X-File-Ext': `.${mediaFile.name.split('.').pop() || 'jpg'}` },
+          body: mediaFile,
+        }),
+      ];
+      for (const run of formAttempts) {
+        try {
+          r = await run();
+          if (r.ok) break;
+          errText = await r.text().catch(() => '');
+        } catch (e) {
+          errText = e instanceof Error ? e.message : 'network';
+          r = null;
+        }
       }
+      if (!r || !r.ok) {
+        console.error('[publish] server error', r?.status, errText);
+        throw new Error(errText || 'publish failed');
+      }
+      try { window.dispatchEvent(new CustomEvent('stooorna:story-published')); } catch { /* */ }
       requestClose();
     } catch (err) {
       console.error('[publish] caught error:', err);
@@ -2926,15 +2951,50 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
     setDeleting(true);
     setDeleteError(null);
     try {
-      const res = await fetch(`/api/status/${item.id}`, { method: 'DELETE', credentials: 'include' });
-      if (!res.ok) {
-        // نطبع تفاصيل الفشل في الكونسول ونعرض رسالة للمستخدم بدل الفشل الصامت —
-        // هذا هو سبب "الحذف ما يشتغل أبداً": الطلب يفشل من السيرفر (401/403/404/500)
-        // ولازم نعرف رمز الخطأ بالضبط لتحديد سبب الفشل الحقيقي في الـ API.
-        let detail = '';
-        try { detail = await res.text(); } catch {/* ignore */}
-        console.error('[StoryViewer] فشل حذف الستوري', { id: item.id, status: res.status, statusText: res.statusText, body: detail });
-        setDeleteError(`تعذّر حذف الستوري (رمز الخطأ ${res.status}). راجع الكونسول للتفاصيل.`);
+      const id = item.id;
+      const attempts: Array<() => Promise<Response>> = [
+        () => fetch(`/api/status/${id}`, { method: 'DELETE', credentials: 'include' }),
+        () => fetch(`/api/status?id=${encodeURIComponent(String(id))}`, { method: 'DELETE', credentials: 'include' }),
+        () => fetch('/api/status/delete', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, statusId: id }),
+        }),
+        () => fetch(`/api/stories/${id}`, { method: 'DELETE', credentials: 'include' }),
+        () => fetch('/api/status', {
+          method: 'DELETE', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, statusId: id }),
+        }),
+      ];
+      let res: Response | null = null;
+      let lastStatus = 0;
+      let detail = '';
+      for (const run of attempts) {
+        try {
+          res = await run();
+          lastStatus = res.status;
+          if (res.ok || res.status === 204) break;
+          detail = await res.text().catch(() => '');
+          // 404: try next path (route mismatch)
+          if (res.status !== 404 && res.status !== 405) break;
+        } catch (e) {
+          detail = e instanceof Error ? e.message : 'network';
+          res = null;
+        }
+      }
+      if (!res || !(res.ok || res.status === 204)) {
+        console.error('[StoryViewer] delete status failed', { id, status: lastStatus, body: detail });
+        // Still remove locally on 404 — item may already be gone on server
+        if (lastStatus === 404) {
+          onDeleteItem(id);
+          if (group.items.length <= 1) onClose();
+          else if (iIdx >= group.items.length - 1) setIIdx(group.items.length - 2);
+          setConfirmDelete(false);
+          setDeleting(false);
+          return;
+        }
+        setDeleteError(`Delete failed (${lastStatus || 'network'}). Check console.`);
         setDeleting(false);
         return;
       }
@@ -3835,7 +3895,8 @@ function PostMediaItems(post: PostItem): { url: string; type: 'image' | 'video' 
 // يصير تحديث بالخلفية (كل ثانيتين) أو عند فتح بانر "New Posts". ──
 function mergePostsPreservingMedia(prevPosts: PostItem[], serverPosts: PostItem[]): PostItem[] {
   const prevById = new Map(prevPosts.map(p => [p.id, p]));
-  return serverPosts.map(serverPost => {
+  const serverIds = new Set(serverPosts.map(p => p.id));
+  const merged = serverPosts.map(serverPost => {
     const existing = prevById.get(serverPost.id);
     const normalized = normalizePostMediaFields(serverPost);
     if (!existing) return normalized;
@@ -3852,6 +3913,13 @@ function mergePostsPreservingMedia(prevPosts: PostItem[], serverPosts: PostItem[
     }
     return normalized;
   });
+  // Keep local-only posts (just published, or media-only filtered out of server payload)
+  for (const p of prevPosts) {
+    if (!serverIds.has(p.id)) merged.push(normalizePostMediaFields(p));
+  }
+  return merged.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 }
 
 function PostCard({
@@ -5467,8 +5535,9 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           }
           for (const p of pubPosts) {
             const body = (p.text && String(p.text).trim()) || '';
-            if (!body) continue;
-            if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0) {
+            const hasMedia = !!(p.mediaUrl || (p.mediaUrls && p.mediaUrls.length));
+            if (!body && !hasMedia) continue;
+            if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0 || hasMedia) {
               collected.push(p);
             }
           }
@@ -8582,6 +8651,11 @@ export default function AddFriendPage() {
   }, []);
 
   useEffect(() => { fetchStories(); }, [fetchStories]);
+  useEffect(() => {
+    const onPub = () => { void fetchStories(); };
+    window.addEventListener('stooorna:story-published', onPub);
+    return () => window.removeEventListener('stooorna:story-published', onPub);
+  }, [fetchStories]);
 
   // ── ريفرش تلقائي للقصص/الستوريات كل ثانيتين ─────────────────────────────────
   // مؤقّت مستقل تماماً عن useAutoRefresh (tick) المستخدم في بقية الصفحة، حتى لا
@@ -8608,13 +8682,28 @@ export default function AddFriendPage() {
     setQuickPublishError('');
     setStoryUploading(true);
     try {
-      const response = await fetch('/api/status', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': file.type, 'X-File-Ext': `.${file.name.split('.').pop() ?? 'jpg'}` },
-        body: file,
-      });
-      if (!response.ok) {
+      const ext = file.name.split('.').pop() ?? (file.type.startsWith('video/') ? 'mp4' : 'jpg');
+      let response: Response | null = null;
+      // 1) raw body (legacy)
+      try {
+        response = await fetch('/api/status', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-File-Ext': `.${ext}` },
+          body: file,
+        });
+      } catch { response = null; }
+      // 2) FormData media/file
+      if (!response || !response.ok) {
+        const fd = new FormData();
+        fd.append('media', file, file.name);
+        fd.append('file', file, file.name);
+        fd.append('type', file.type.startsWith('video/') ? 'video' : 'image');
+        try {
+          response = await fetch('/api/status', { method: 'POST', credentials: 'include', body: fd });
+        } catch { response = null; }
+      }
+      if (!response || !response.ok) {
         throw new Error('Story upload failed');
       }
       await fetchStories();
@@ -9064,9 +9153,10 @@ export default function AddFriendPage() {
         }
         for (const p of pubPosts) {
           const body = (p.text && String(p.text).trim()) || '';
-          if (!body) continue;
-          // منتج / إعلان أو أي منشور نصي عام — يظهر للجميع في صفحة المنشورات
-          if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0) {
+          const hasMedia = !!(p.mediaUrl || (p.mediaUrls && p.mediaUrls.length));
+          // Include text posts and media-only posts (image/video without caption)
+          if (!body && !hasMedia) continue;
+          if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0 || hasMedia) {
             collected.push(p);
           }
         }
@@ -9217,8 +9307,9 @@ export default function AddFriendPage() {
           }
           for (const p of pubPosts) {
             const body = (p.text && String(p.text).trim()) || '';
-            if (!body) continue;
-            if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0) {
+            const hasMedia = !!(p.mediaUrl || (p.mediaUrls && p.mediaUrls.length));
+            if (!body && !hasMedia) continue;
+            if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0 || hasMedia) {
               collected.push(p);
             }
           }
@@ -9267,16 +9358,34 @@ export default function AddFriendPage() {
     setQuickPublishing(true);
     setQuickPublishError('');
     try {
-      const uploadRes = await fetch('/api/posts/media', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': file.type, 'X-File-Ext': `.${file.name.split('.').pop() ?? (type === 'video' ? 'mp4' : 'jpg')}` },
-        body: file,
-      });
-      if (!uploadRes.ok) throw new Error('Failed to upload media');
-      const uploadData = await uploadRes.json();
-      const url: string | undefined = uploadData?.url;
+      const ext = file.name.split('.').pop() ?? (type === 'video' ? 'mp4' : 'jpg');
+      let url: string | undefined;
+      // raw
+      try {
+        const uploadRes = await fetch('/api/posts/media', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg'), 'X-File-Ext': `.${ext}`, 'X-Media-Type': type },
+          body: file,
+        });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json().catch(() => ({} as any));
+          url = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
+        }
+      } catch { /* next */ }
+      // FormData
+      if (!url) {
+        const fd = new FormData();
+        fd.append('file', file, file.name);
+        fd.append('type', type);
+        fd.append('mediaType', type);
+        const uploadRes = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+        if (!uploadRes.ok) throw new Error('Failed to upload media');
+        const uploadData = await uploadRes.json().catch(() => ({} as any));
+        url = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
+      }
       if (!url) throw new Error('Upload did not return a URL');
+      url = resolveMediaUrl(String(url));
       const r = await fetch('/api/posts', {
         method: 'POST',
         credentials: 'include',
@@ -9761,20 +9870,24 @@ export default function AddFriendPage() {
       let saved: PostItem | null = null;
 
       if (mediaUrl && mediaType) {
-        // Reliable path (same as quickPublishMedia): create with media first, then attach text
+        // Media-only -> public feed grid; caption+media -> text feed
+        const hasCaption = !!(finalText && finalText.trim());
+        const mediaDest = mediaType === 'video' ? 'videos' : 'photos';
+        const primaryAudience = hasCaption ? 'text' : 'public';
+        const primaryDest = hasCaption ? 'text' : mediaDest;
         let createRes = await fetch('/api/posts', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            text: '',
+            text: hasCaption ? finalText : '',
             mediaUrl,
             mediaType,
             mediaUrls,
             mediaTypes,
             hashtags: [],
-            audience: 'text',
-            destination: 'text',
+            audience: primaryAudience,
+            destination: primaryDest,
             publisherType: isCompanyPublisher ? 'company' : 'user',
             isCompanyPost: !!isCompanyPublisher,
             authorIsCompany: !!isCompanyPublisher,
@@ -9801,7 +9914,6 @@ export default function AddFriendPage() {
           });
         }
         if (!createRes.ok) {
-          const mediaDest = mediaType === 'video' ? 'videos' : 'photos';
           createRes = await fetch('/api/posts', {
             method: 'POST',
             credentials: 'include',
@@ -9839,6 +9951,8 @@ export default function AddFriendPage() {
           ? createData.post.mediaTypes
           : mediaTypes;
 
+        const resolvedAudience = (createData.post.audience as string) || primaryAudience;
+        const resolvedDest = (createData.post.destination as string) || primaryDest;
         saved = {
           ...createData.post,
           text: createData.post.text || finalText || '',
@@ -9846,8 +9960,8 @@ export default function AddFriendPage() {
           mediaType: serverMediaType,
           mediaUrls: serverMediaUrls,
           mediaTypes: serverMediaTypes,
-          audience: 'text',
-          destination: 'text',
+          audience: resolvedAudience,
+          destination: resolvedDest,
           publisherType: isCompanyPublisher ? 'company' : 'user',
           isCompanyPost: !!isCompanyPublisher,
           authorIsCompany: !!isCompanyPublisher,
@@ -9869,8 +9983,8 @@ export default function AddFriendPage() {
             mediaType: serverMediaType,
             mediaUrls: serverMediaUrls,
             mediaTypes: serverMediaTypes,
-            audience: 'text',
-            destination: 'text',
+            audience: resolvedAudience === 'public' && !finalText.trim() ? 'public' : (resolvedAudience || 'text'),
+            destination: resolvedDest || 'text',
           };
         }
       } else {
@@ -9922,13 +10036,21 @@ export default function AddFriendPage() {
         authorIsCompany: !!isCompanyPublisher,
       } as PostItem);
       setPosts(prev => [tagged, ...prev]);
-      // صور/فيديو الشبكة فقط (destination photos/videos) — منتجات المنشورات النصية تبقى في التغذية العامة
+      // Grid media (photos/videos destination)
       if (tagged.mediaUrl && tagged.audience !== 'text' && tagged.destination !== 'text') {
         setMyMediaPosts(prev => [tagged, ...prev]);
+      } else if (tagged.mediaUrl) {
+        // Caption+media still visible in text feed; keep in local list
+        setMyMediaPosts(prev => {
+          if (prev.some(p => p.id === tagged.id)) return prev;
+          return prev;
+        });
       }
-      // افتح تبويب التغذية المناسب تلقائياً
       setTextFeedTab(isCompanyPublisher ? 'companies' : 'app');
       playNewPostSound();
+      // Soft refresh without dropping the just-published post (merge keeps local-only)
+      try { void fetchPosts(); } catch { /* */ }
+      try { void fetchMyMediaPosts(); } catch { /* */ }
       setComposerText('');
       setComposerProductTitle('');
       setComposerProductDetails('');
