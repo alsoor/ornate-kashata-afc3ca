@@ -13328,7 +13328,6 @@ export default function AddFriendPage() {
           )}
 
           {/* Actions row removed — text-posts button now lives in the header next to the globe. */}
-            </div>
           </div>
 
           {/* Content header — single Post section (hidden in compact scroll mode) */}
