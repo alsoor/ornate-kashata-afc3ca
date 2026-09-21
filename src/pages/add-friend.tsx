@@ -4214,15 +4214,46 @@ function BusinessHeadBadgeInline({ compact }: { compact?: boolean }) {
 }
 
 // ── PostCard — a single feed post: one card, paper-style text area, small expandable media ──
+function readLocalPostMediaCache(postId: number | string): { mediaUrls: string[]; mediaTypes: ('image' | 'video')[] } | null {
+  try {
+    const raw = localStorage.getItem(`stooorna_post_media_${postId}`);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (o && Array.isArray(o.mediaUrls) && o.mediaUrls.length) {
+      return {
+        mediaUrls: o.mediaUrls.map(String),
+        mediaTypes: Array.isArray(o.mediaTypes) ? o.mediaTypes : [],
+      };
+    }
+  } catch { /* */ }
+  return null;
+}
+
+function saveLocalPostMediaCache(postId: number | string, mediaUrls: string[], mediaTypes: ('image' | 'video')[]) {
+  try {
+    if (!mediaUrls?.length) return;
+    localStorage.setItem(`stooorna_post_media_${postId}`, JSON.stringify({ mediaUrls, mediaTypes }));
+  } catch { /* */ }
+}
+
 function PostMediaItems(post: PostItem): { url: string; type: 'image' | 'video' }[] {
-  if (post.mediaUrls?.length) {
-    return post.mediaUrls.map((url, index) => ({
+  let urls = post.mediaUrls?.length ? post.mediaUrls : null;
+  let types = post.mediaTypes;
+  if (!urls || urls.length <= 1) {
+    const cached = readLocalPostMediaCache(post.id);
+    if (cached && cached.mediaUrls.length > (urls?.length || 0)) {
+      urls = cached.mediaUrls;
+      types = cached.mediaTypes as any;
+    }
+  }
+  if (urls?.length) {
+    return urls.map((url, index) => ({
       url: resolveMediaUrl(url),
-      type: post.mediaTypes?.[index] === 'video' ? 'video' : 'image',
+      type: (types && types[index] === 'video') ? 'video' as const : 'image' as const,
     })).filter(m => !!m.url);
   }
   return post.mediaUrl
-    ? [{ url: resolveMediaUrl(post.mediaUrl), type: post.mediaType ?? 'image' }]
+    ? [{ url: resolveMediaUrl(post.mediaUrl), type: post.mediaType === 'video' ? 'video' : 'image' }]
     : [];
 }
 
@@ -9261,6 +9292,9 @@ export default function AddFriendPage() {
   const [singlePostMediaPage, setSinglePostMediaPage] = useState(0);
   const singlePostMediaScrollRef = useRef<HTMLDivElement | null>(null);
   const singlePostTouchRef = useRef<{ y: number; t: number } | null>(null);
+  const [textFeedSearchOpen, setTextFeedSearchOpen] = useState(false);
+  const [textFeedSearchQuery, setTextFeedSearchQuery] = useState('');
+  const textFeedSearchInputRef = useRef<HTMLInputElement | null>(null);
   function openSinglePostView(post: PostItem, fromProfile = false) {
     setAdDetailsOpen(false);
     setAdVideoPaused(false);
@@ -10454,13 +10488,19 @@ export default function AddFriendPage() {
 
         const resolvedAudience = (createData.post.audience as string) || primaryAudience;
         const resolvedDest = (createData.post.destination as string) || primaryDest;
+        const keepUrls = (mediaUrls.length >= (serverMediaUrls?.length || 0) && mediaUrls.length > 0)
+          ? mediaUrls
+          : (serverMediaUrls?.length ? serverMediaUrls : mediaUrls);
+        const keepTypes = (mediaTypes.length >= (serverMediaTypes?.length || 0) && mediaTypes.length > 0)
+          ? mediaTypes
+          : (serverMediaTypes?.length ? serverMediaTypes : mediaTypes);
         saved = {
           ...createData.post,
           text: createData.post.text || finalText || '',
-          mediaUrl: serverMediaUrl,
-          mediaType: serverMediaType,
-          mediaUrls: serverMediaUrls,
-          mediaTypes: serverMediaTypes,
+          mediaUrl: keepUrls[0] || serverMediaUrl,
+          mediaType: keepTypes[0] || serverMediaType,
+          mediaUrls: keepUrls,
+          mediaTypes: keepTypes,
           audience: resolvedAudience,
           destination: resolvedDest,
           publisherType: isCompanyPublisher ? 'company' : 'user',
@@ -10480,10 +10520,10 @@ export default function AddFriendPage() {
           saved = {
             ...saved,
             text: finalText,
-            mediaUrl: serverMediaUrl,
-            mediaType: serverMediaType,
-            mediaUrls: serverMediaUrls,
-            mediaTypes: serverMediaTypes,
+            mediaUrl: keepUrls[0] || serverMediaUrl,
+            mediaType: keepTypes[0] || serverMediaType,
+            mediaUrls: keepUrls,
+            mediaTypes: keepTypes,
             audience: resolvedAudience === 'public' && !finalText.trim() ? 'public' : (resolvedAudience || 'text'),
             destination: resolvedDest || 'text',
           };
@@ -10536,6 +10576,9 @@ export default function AddFriendPage() {
         isCompanyPost: !!isCompanyPublisher,
         authorIsCompany: !!isCompanyPublisher,
       } as PostItem);
+      if (tagged.mediaUrls && tagged.mediaUrls.length > 1) {
+        saveLocalPostMediaCache(tagged.id, tagged.mediaUrls, (tagged.mediaTypes || []) as ('image' | 'video')[]);
+      }
       setPosts(prev => [tagged, ...prev]);
       // Grid media (photos/videos destination)
       if (tagged.mediaUrl && tagged.audience !== 'text' && tagged.destination !== 'text') {
@@ -15527,7 +15570,13 @@ export default function AddFriendPage() {
                 )}
 
                 {composerMediaFiles.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <p style={{ margin: 0, color: '#536471', fontSize: '0.75rem', fontWeight: 700 }}>
+                      {composerMediaFiles.filter(x => x.type === 'image').length} image(s)
+                      {composerMediaFiles.some(x => x.type === 'video') ? ' + video' : ''}
+                      {composerMediaFiles.some(x => x.type === 'pdf') ? ' + pdf' : ''}
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {composerMediaFiles.map((item, idx) => (
                       <div key={idx} style={{ position: 'relative', width: 120, height: 120, borderRadius: 14, overflow: 'hidden', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {item.type === 'video' ? (
@@ -15553,6 +15602,7 @@ export default function AddFriendPage() {
                         </button>
                       </div>
                     ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -15575,30 +15625,45 @@ export default function AddFriendPage() {
                 <ImageIcon size={20} strokeWidth={2} />
                 <input
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic,image/*"
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/gif,image/*"
                   multiple
                   style={{ display: 'none' }}
                   onChange={e => {
-                    const files = Array.from(e.target.files ?? []);
+                    const list = e.target.files;
+                    const files = list ? Array.from(list) : [];
+                    e.target.value = '';
                     if (!files.length) return;
+                    const imagesOnly = files.filter(f => {
+                      const t = (f.type || '').toLowerCase();
+                      if (t.startsWith('video/')) return false;
+                      if (t === 'application/pdf') return false;
+                      if (t.startsWith('image/')) return true;
+                      return /\.(jpe?g|png|webp|heic|heif|gif|bmp)$/i.test(f.name || '');
+                    });
+                    if (!imagesOnly.length) {
+                      setComposerError('Select image files only');
+                      return;
+                    }
+                    setComposerError('');
                     setComposerMediaFiles(prev => {
-                      const existingImageCount = prev.filter(item => item.type === 'image').length;
-                      const remainingSlots = MAX_COMPOSER_IMAGES - existingImageCount;
+                      const base = prev.filter(item => item.type !== 'video');
+                      const existingImageCount = base.filter(item => item.type === 'image').length;
+                      const remainingSlots = Math.max(0, MAX_COMPOSER_IMAGES - existingImageCount);
                       if (remainingSlots <= 0) {
                         setComposerError(`Max ${MAX_COMPOSER_IMAGES} images`);
-                        return prev;
+                        return base;
                       }
-                      const accepted = files.slice(0, remainingSlots);
-                      return [
-                        ...prev,
+                      const accepted = imagesOnly.slice(0, remainingSlots);
+                      const next = [
+                        ...base,
                         ...accepted.map(file => ({
                           file,
                           type: 'image' as const,
                           preview: URL.createObjectURL(file),
                         })),
                       ];
+                      return next;
                     });
-                    e.target.value = '';
                   }}
                 />
               </label>
