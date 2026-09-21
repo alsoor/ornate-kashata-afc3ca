@@ -488,6 +488,24 @@ function productAdDisplayTitle(post: PostItem): string {
   return (post.text || '').split('\n')[0]?.trim().slice(0, 80) || 'إعلان';
 }
 
+/** True when post has real caption text (not media-only). Used to enable three-lines. */
+function postHasVisibleCaption(post: PostItem | null | undefined): boolean {
+  if (!post) return false;
+  const raw = (post.text || '').trim();
+  if (!raw) return false;
+  const ad = parseProductAd(raw);
+  if (ad) {
+    if ((ad.title || '').trim()) return true;
+    if ((ad.details || '').trim()) return true;
+    if ((ad.price || '').trim()) return true;
+    if ((ad.extras || []).some(x => (x || '').trim())) return true;
+    return false;
+  }
+  const cleaned = raw.replace(/\n*\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
+  return cleaned.length > 0;
+}
+
+
 /** استفسار عن منتج — يُرسل كرسالة شات للشركة ويظهر في صندوق شات الشركات */
 const PRODUCT_INQUIRY_PREFIX = '__PRODUCT_INQUIRY__';
 export type ProductInquiryPayload = {
@@ -3656,8 +3674,8 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
     : { cleanText: text, embeds: [] as { url: string; type: 'image' | 'video' }[], xStatusUrls: [] as string[] };
   const { cleanText, embeds, xStatusUrls } = extracted;
   if (!cleanText && embeds.length === 0 && xStatusUrls.length === 0) return null;
-  const COLLAPSE_AFTER_LINES = 10;
-  const PREVIEW_LINES = 4;
+  const COLLAPSE_AFTER_LINES = 5;
+  const PREVIEW_LINES = 5;
   const allLines = cleanText ? cleanText.split('\n') : [];
   const shouldCollapse = !!collapseLong && !!onMore && allLines.length > COLLAPSE_AFTER_LINES;
   const visibleText = shouldCollapse
@@ -3670,7 +3688,7 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
         <p style={{ color: textColor, fontSize: '0.78rem', fontWeight: bold ? 700 : undefined, lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: "'Alexandria', var(--font-sans), sans-serif" }}>
           {parts.map((part, i) => {
             if (part.startsWith('#')) {
-              return <button key={i} onClick={event => { event.stopPropagation(); onHashtag?.(part.slice(1)); }} style={{ color, fontWeight: 700, background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}>{part}</button>;
+              return <button key={i} onClick={event => { event.stopPropagation(); onHashtag?.(part.slice(1)); }} style={{ color: '#1d9bf0', fontWeight: 700, background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}>{part}</button>;
             }
             if (part.startsWith('@')) {
               return <span key={i} style={{ color: 'hsl(var(--primary))', fontWeight: 700 }}>{part}</span>;
@@ -4175,7 +4193,7 @@ function PostCard({
                     aria-label={media.type === 'video' ? 'فتح الفيديو' : 'فتح الصورة'}
                     style={{
                       position: 'relative', width: '100%', border: '3px solid #000', boxSizing: 'border-box', padding: 0,
-                      background: '#000', cursor: 'pointer', display: 'block',
+                      background: '#000', cursor: 'pointer', display: 'block', overflow: 'hidden', maxHeight: '48vh',
                     }}
                   >
                     {media.type === 'video' ? (
@@ -4187,13 +4205,13 @@ function PostCard({
                         playsInline
                         preload="metadata"
                         onClick={e => e.stopPropagation()}
-                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'contain', display: 'block', background: '#000' }}
+                        style={{ width: '100%', maxHeight: '48vh', objectFit: 'cover', display: 'block', background: '#000' }}
                       />
                     ) : (
                       <img
                         src={media.url}
                         alt=""
-                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'contain', display: 'block', background: '#000' }}
+                        style={{ width: '100%', maxHeight: '48vh', objectFit: 'cover', display: 'block', background: '#000' }}
                       />
                     )}
                   </button>
@@ -4333,13 +4351,16 @@ function PostCard({
             </div>
 
             <motion.button
-              whileTap={{ scale: 0.92 }}
-              onClick={e => { e.stopPropagation(); setProductDetailsOpen(true); }}
-              aria-label="تفاصيل المنتج"
+              whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
+              onClick={e => { e.stopPropagation(); if (postHasVisibleCaption(post)) setProductDetailsOpen(true); }}
+              aria-label="Details"
+              disabled={!postHasVisibleCaption(post)}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                 background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
-                borderRadius: 10, width: 44, height: 36, cursor: 'pointer', padding: 0,
+                borderRadius: 10, width: 44, height: 36,
+                cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
+                padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
               }}
             >
               <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
@@ -4424,13 +4445,16 @@ function PostCard({
           </div>
 
           <motion.button
-            whileTap={{ scale: 0.92 }}
-            onClick={e => { e.stopPropagation(); setProductDetailsOpen(true); }}
+            whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
+            onClick={e => { e.stopPropagation(); if (postHasVisibleCaption(post)) setProductDetailsOpen(true); }}
             aria-label="Details"
+            disabled={!postHasVisibleCaption(post)}
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
               background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
-              borderRadius: 10, width: 44, height: 36, cursor: 'pointer', padding: 0,
+              borderRadius: 10, width: 44, height: 36,
+              cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
+              padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
             }}
           >
             <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
@@ -4691,13 +4715,16 @@ function PostCard({
               </motion.button>
             </div>
             <motion.button
-              whileTap={{ scale: 0.92 }}
-              onClick={() => { setMediaLightbox(null); setProductDetailsOpen(true); }}
+              whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
+              onClick={() => { if (!postHasVisibleCaption(post)) return; setMediaLightbox(null); setProductDetailsOpen(true); }}
               aria-label="Details"
+              disabled={!postHasVisibleCaption(post)}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
                 background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
-                borderRadius: 12, width: 52, height: 44, cursor: 'pointer', padding: 0,
+                borderRadius: 12, width: 52, height: 44,
+                cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
+                padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
               }}
             >
               <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
@@ -9392,9 +9419,20 @@ export default function AddFriendPage() {
 
       const extractUploadUrl = async (res: Response): Promise<string | null> => {
         try {
-          const d = await res.json() as { url?: string; mediaUrl?: string; path?: string; fileUrl?: string };
-          const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path;
-          return u ? resolveMediaUrl(String(u)) : null;
+          const ct = (res.headers.get('content-type') || '').toLowerCase();
+          if (ct.includes('application/json')) {
+            const d = await res.json() as any;
+            const u =
+              d?.url || d?.mediaUrl || d?.fileUrl || d?.path ||
+              d?.data?.url || d?.data?.mediaUrl || d?.result?.url ||
+              d?.file?.url || d?.media?.url;
+            return u ? resolveMediaUrl(String(u)) : null;
+          }
+          const t = (await res.text()).trim();
+          if (t && (t.startsWith('http') || t.startsWith('/') || t.startsWith('blob:'))) {
+            return resolveMediaUrl(t.split(/\s/)[0]);
+          }
+          return null;
         } catch {
           return null;
         }
@@ -9634,8 +9672,46 @@ export default function AddFriendPage() {
             }
           }
 
+          // 3) Fallback endpoints (network / route differences)
           if (!uploadedUrl) {
-            lastUploadError = `Media upload failed${uploadRes ? ` (${uploadRes.status})` : ''} ${lastBody.slice(0, 100)}`;
+            const fallbacks: Array<() => Promise<Response>> = [
+              async () => {
+                const fd = new FormData();
+                fd.append('file', file, file.name || `media.${ext}`);
+                fd.append('type', mediaType);
+                return fetch('/api/upload', { method: 'POST', credentials: 'include', body: fd });
+              },
+              async () => {
+                const fd = new FormData();
+                fd.append('file', file, file.name || `media.${ext}`);
+                return fetch('/api/support/upload', { method: 'POST', credentials: 'include', body: fd });
+              },
+              async () => {
+                const fd = new FormData();
+                fd.append('media', file, file.name || `media.${ext}`);
+                fd.append('kind', mediaType);
+                return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+              },
+            ];
+            for (const run of fallbacks) {
+              try {
+                uploadRes = await run();
+                if (uploadRes.ok) {
+                  uploadedUrl = await extractUploadUrl(uploadRes);
+                  if (uploadedUrl) break;
+                } else {
+                  lastBody = await uploadRes.text().catch(() => '');
+                }
+              } catch (e) {
+                lastBody = e instanceof Error ? e.message : 'fallback fail';
+                uploadRes = null;
+              }
+            }
+          }
+
+          if (!uploadedUrl) {
+            const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+            lastUploadError = `Media upload failed${uploadRes ? ` (${uploadRes.status})` : ''} ${lastBody.slice(0, 80)} [${mediaType} ${sizeMb}MB]`.trim();
             console.error('[Post media upload]', lastUploadError);
             continue;
           }
@@ -12855,11 +12931,11 @@ export default function AddFriendPage() {
 
         <AnimatePresence>
           {hashtagView && (
-            <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 10195, background: 'hsl(var(--background))', overflowY: 'auto', paddingBottom: 28 }}>
-              <div style={{ position: 'sticky', top: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 10, padding: '16px 14px', background: 'hsl(var(--background))', borderBottom: '1px solid hsl(var(--border))' }}>
-                <button onClick={() => setHashtagView(null)} aria-label="رجوع" style={{ background: 'none', border: 'none', color: 'hsl(var(--foreground))', cursor: 'pointer', display: 'flex' }}><ArrowLeft size={22} /></button>
-                <Hash size={19} color="hsl(var(--primary))" />
-                <strong style={{ color: 'hsl(var(--foreground))', fontSize: '1rem' }}>{hashtagView.tag}</strong>
+            <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 10195, background: '#ffffff', overflowY: 'auto', paddingBottom: 28 }}>
+              <div style={{ position: 'sticky', top: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 10, padding: '16px 14px', background: '#ffffff', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+                <button onClick={() => setHashtagView(null)} aria-label="Close" style={{ background: 'none', border: 'none', color: '#0f1419', cursor: 'pointer', display: 'flex', width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: '50%' }}><X size={22} strokeWidth={2.2} /></button>
+                <Hash size={19} color="#1d9bf0" />
+                <strong style={{ color: '#0f1419', fontSize: '1rem' }}>#{hashtagView.tag}</strong>
               </div>
               {hashtagView.posts.length ? hashtagView.posts.map(post => (
                 <div key={post.id} style={{ margin: '12px 14px', padding: 14, borderRadius: 14, background: 'transparent', border: 'none' }}>
@@ -14607,6 +14683,8 @@ export default function AddFriendPage() {
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.96 }}
+                animate={composerPosting ? { scale: [1, 1.08, 1], boxShadow: ['0 0 0 0 rgba(29,155,240,0.5)', '0 0 0 12px rgba(29,155,240,0)', '0 0 0 0 rgba(29,155,240,0.35)'] } : { scale: 1, boxShadow: '0 0 0 0 rgba(29,155,240,0)' }}
+                transition={composerPosting ? { duration: 0.95, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
                 disabled={composerPosting || !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)}
                 onClick={() => void submitPost('text')}
                 style={{
@@ -14615,7 +14693,7 @@ export default function AddFriendPage() {
                     ? 'rgba(29,155,240,0.45)' : '#1d9bf0',
                   color: '#fff', fontWeight: 700, fontSize: '0.88rem',
                   cursor: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) ? 'default' : 'pointer',
-                  opacity: composerPosting ? 0.7 : 1,
+                  opacity: composerPosting ? 0.95 : 1,
                 }}
               >
                 {composerPosting ? '…' : 'نشر'}
@@ -14630,7 +14708,7 @@ export default function AddFriendPage() {
                   <input
                     value={composerProductTitle}
                     onChange={e => setComposerProductTitle(e.target.value)}
-                    placeholder={isCompanyPublisher ? 'رأس الموضوع — خط عريض' : 'رأس الموضوع'}
+                    placeholder=""
                     style={{
                       width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
                       padding: '12px 14px', fontSize: '1.05rem', fontWeight: 800, color: '#0a0a0a',
@@ -14643,7 +14721,7 @@ export default function AddFriendPage() {
                   <textarea
                     value={composerProductDetails}
                     onChange={e => setComposerProductDetails(e.target.value)}
-                    placeholder={isCompanyPublisher ? 'وصف الإعلان والتفاصيل الحقيقية للمنتج…' : 'تفاصيل الموضوع…'}
+                    placeholder=""
                     rows={5}
                     style={{
                       width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
@@ -15054,13 +15132,16 @@ export default function AddFriendPage() {
                 </div>
 
                 <motion.button
-                  whileTap={{ scale: 0.92 }}
-                  onClick={() => setAdDetailsOpen(true)}
-                  aria-label="تفاصيل المنتج"
+                  whileTap={{ scale: postHasVisibleCaption(livePost) ? 0.92 : 1 }}
+                  onClick={() => { if (postHasVisibleCaption(livePost)) setAdDetailsOpen(true); }}
+                  aria-label="Details"
+                  disabled={!postHasVisibleCaption(livePost)}
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
                     background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
-                    borderRadius: 12, width: 52, height: 44, cursor: 'pointer', padding: 0,
+                    borderRadius: 12, width: 52, height: 44,
+                    cursor: postHasVisibleCaption(livePost) ? 'pointer' : 'default',
+                    padding: 0, opacity: postHasVisibleCaption(livePost) ? 1 : 0.28,
                   }}
                 >
                   <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
