@@ -11442,39 +11442,15 @@ export default function AddFriendPage() {
   );
   const isFriendManagement = pageTab === 'add';
 
-  // Scroll-linked profile chrome (Telegram-style continuous motion):
-  // Expanded header stays in normal document flow and moves with the finger.
-  // Compact stories bar fades in at the top as the expanded block leaves the viewport.
-  // No display:none jumps and no scrollTop resets — motion stays continuous.
+  // Single story header in normal document flow — moves with the finger (no second compact clone).
+  // Only products bar is sticky; bottom nav hides after a short scroll.
   const [headerOpen, setHeaderOpen] = useState(true);
-  const profileExpandedRef = useRef<HTMLDivElement | null>(null);
-  const profileCompactBarRef = useRef<HTMLDivElement | null>(null);
   const profileProductsStickyRef = useRef<HTMLDivElement | null>(null);
-  const profileScrollLastYRef = useRef(0);
   const profileScrollRafRef = useRef(0);
   const profileNavHiddenRef = useRef(false);
 
   function applyProfileScrollProgress(y: number) {
-    // progress 0 = fully expanded at top, 1 = fully compact
-    const range = 140;
-    const p = Math.max(0, Math.min(1, y / range));
-    const expanded = profileExpandedRef.current;
-    if (expanded) {
-      // Keep layout height natural; only fade/slide slightly for polish
-      expanded.style.opacity = String(1 - p * 0.15);
-    }
-    const bar = profileCompactBarRef.current;
-    if (bar) {
-      const show = p > 0.35;
-      bar.style.opacity = show ? String(Math.min(1, (p - 0.35) / 0.35)) : '0';
-      bar.style.pointerEvents = show ? 'auto' : 'none';
-      bar.style.transform = show ? 'translate3d(0,0,0)' : 'translate3d(0,-8px,0)';
-    }
-    const products = profileProductsStickyRef.current;
-    if (products) {
-      products.style.top = p > 0.35 ? '52px' : '0px';
-    }
-    const hideNav = y > 48;
+    const hideNav = y > 40;
     if (hideNav !== profileNavHiddenRef.current) {
       profileNavHiddenRef.current = hideNav;
       try {
@@ -13129,16 +13105,14 @@ export default function AddFriendPage() {
           {!isFriendManagement && (
         <>
         <div
-          ref={profileExpandedRef}
           className="profile-header-expanded"
           style={{
-          display: 'block',
           position: 'relative',
           paddingTop: 40,
           background: CLR_HEADER_BG,
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
-          {/* Expanded header — scrolls with finger (Telegram continuous motion) */}
+          {/* Single profile header — scrolls natively with finger */}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
               non-interactive, matching the fog overlay's own transition). Opens a
@@ -13232,49 +13206,7 @@ export default function AddFriendPage() {
                 );
               })()}
 
-              {/* Compact mode (Telegram): friend stories sit immediately to the right of my story, left-aligned */}
-              {pageTab === 'profile' && (
-                <div
-                  className="header-stories-compact"
-                  data-compact-only
-                  style={{
-                    display: 'none', flexDirection: 'row', flexWrap: 'nowrap',
-                    gap: 8, overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0,
-                    scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
-                    alignItems: 'center', paddingInlineEnd: 8,
-                  }}
-                >
-                  <style>{`.header-stories-compact::-webkit-scrollbar{display:none}`}</style>
-                  {storyGroups.filter(g => {
-                    if (g.userId === user?.id) return false;
-                    return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
-                  }).map((g) => {
-                    const realIdx = storyGroups.indexOf(g);
-                    const hasUnseen = g.items.some(it => !it.seen);
-                    return (
-                      <motion.button
-                        key={g.userId}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => setViewerGroupIdx(realIdx)}
-                        style={{ width: 40, height: 40, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0 }}
-                      >
-                        <div style={{
-                          position: 'absolute', inset: 0, borderRadius: '50%',
-                          background: storyRingColor(g.items, '#facc15', '#0ea5e9'),
-                          padding: 2, boxSizing: 'border-box',
-                          boxShadow: hasUnseen ? '0 0 6px rgba(250,204,21,0.4)' : 'none',
-                        }}>
-                          <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
-                            <UserAvatar name={g.name} avatarUrl={g.avatarUrl} size={36} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
-                          </div>
-                        </div>
-                      </motion.button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* ── Username | Bio / stats — expanded only ── */}
+{/* ── Username | Bio / stats — expanded only ── */}
               <div data-expand-col style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 6, flex: 1 }}>
                 {/* Pinned track — shown right above my name/username, playable from here too. */}
                 {pinnedTrack && <PinnedTrackBar track={pinnedTrack} />}
@@ -13429,85 +13361,7 @@ export default function AddFriendPage() {
 
         </div>
 
-        {/* Sticky compact stories bar — fixed height, shown only when scrolled (Telegram-style) */}
-        <div
-          ref={profileCompactBarRef}
-          className="profile-header-compact"
-          style={{
-            display: 'flex',
-            position: 'sticky',
-            top: 0,
-            zIndex: 30,
-            alignItems: 'center',
-            gap: 10,
-            padding: '8px 12px',
-            background: CLR_HEADER_BG,
-            borderBottom: `1px solid ${CLR_NAV_BORDER}`,
-            backdropFilter: 'blur(14px)',
-            overflowX: 'auto',
-            overflowY: 'hidden',
-            scrollbarWidth: 'none',
-            WebkitOverflowScrolling: 'touch',
-            opacity: 0,
-            pointerEvents: 'none',
-            transform: 'translate3d(0,-8px,0)',
-            transition: 'opacity 120ms linear, transform 120ms linear',
-          }}
-        >
-          <style>{`.profile-header-compact::-webkit-scrollbar{display:none}`}</style>
-          {user && (() => {
-            const myGroup = storyGroups.find(g => g.userId === user?.id);
-            return (
-              <motion.button
-                key="compact-my-story"
-                whileTap={{ scale: 0.9 }}
-                onClick={() => {
-                  if (myGroup) setViewerGroupIdx(storyGroups.indexOf(myGroup));
-                  else setPublishMenuOpen(true);
-                }}
-                style={{ width: 40, height: 40, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0 }}
-              >
-                <div style={{
-                  position: 'absolute', inset: 0, borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
-                  padding: 2, boxSizing: 'border-box',
-                }}>
-                  <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
-                    <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={36} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
-                  </div>
-                </div>
-              </motion.button>
-            );
-          })()}
-          {storyGroups.filter(g => {
-            if (g.userId === user?.id) return false;
-            return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
-          }).map((g) => {
-            const realIdx = storyGroups.indexOf(g);
-            const hasUnseen = g.items.some(it => !it.seen);
-            return (
-              <motion.button
-                key={'c-' + g.userId}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setViewerGroupIdx(realIdx)}
-                style={{ width: 40, height: 40, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0 }}
-              >
-                <div style={{
-                  position: 'absolute', inset: 0, borderRadius: '50%',
-                  background: storyRingColor(g.items, '#facc15', '#0ea5e9'),
-                  padding: 2, boxSizing: 'border-box',
-                  boxShadow: hasUnseen ? '0 0 6px rgba(250,204,21,0.4)' : 'none',
-                }}>
-                  <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
-                    <UserAvatar name={g.name} avatarUrl={g.avatarUrl} size={36} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
-                  </div>
-                </div>
-              </motion.button>
-            );
-          })}
-        </div>
-
-        {/* Products / Post label — sticky under compact stories bar (stays visible while browsing grid) */}
+        {/* Products / Post label — sticky while browsing the grid */}
         {pageTab === 'profile' && (
           <div
             ref={profileProductsStickyRef}
@@ -13517,7 +13371,6 @@ export default function AddFriendPage() {
               zIndex: 28,
               padding: '0 0 0',
               background: CLR_HEADER_BG,
-              transition: 'top 120ms linear',
             }}
           >
             <div style={{
