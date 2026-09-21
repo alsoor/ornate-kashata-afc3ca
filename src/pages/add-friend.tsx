@@ -11449,10 +11449,6 @@ export default function AddFriendPage() {
   const headerOpenRef = useRef(true);
   const profileScrollLastYRef = useRef(0);
   const profileScrollRafRef = useRef(0);
-  const profileHeaderElRef = useRef<HTMLDivElement | null>(null);
-  const profileScrollElRef = useRef<HTMLDivElement | null>(null);
-  /** Ignore scroll-driven toggles briefly after a change (stops expand/collapse oscillation). */
-  const profileHeaderLockUntilRef = useRef(0);
   useEffect(() => {
     return () => {
       try { window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } })); } catch { /* */ }
@@ -13070,7 +13066,9 @@ export default function AddFriendPage() {
       <h1 className="sr-only">{pageTitle}</h1>
 
       <div className="flex flex-col" style={{
-      minHeight: '100dvh',
+      height: '100dvh',
+      maxHeight: '100dvh',
+      overflow: 'hidden',
       background: PAGE_BG,
       fontFamily: 'var(--font-sans)'
     }}>
@@ -13078,15 +13076,14 @@ export default function AddFriendPage() {
         {!isFriendManagement && <>
         {/* ── Header ── */}
         <div
-          ref={profileHeaderElRef}
-          className="sticky top-0 z-20"
+          className="sticky top-0 z-20 shrink-0"
           style={{
           position: 'relative',
           paddingTop: headerOpen ? 40 : 6,
           background: CLR_HEADER_BG,
           backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
-          transition: 'padding-top 180ms ease',
+          transition: 'padding-top 160ms ease',
         }}>
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
@@ -13399,48 +13396,27 @@ export default function AddFriendPage() {
 
         {/* ── Content ── */}
         <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
-        <div
-          ref={profileScrollElRef}
+                <div
           className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain"
           onScroll={(e) => {
             if (pageTab !== 'profile') return;
             const el = e.currentTarget;
             const y = el.scrollTop;
-            const prev = profileScrollLastYRef.current;
-            const delta = y - prev;
+            const delta = y - profileScrollLastYRef.current;
             profileScrollLastYRef.current = y;
-            if (Date.now() < profileHeaderLockUntilRef.current) return;
             if (profileScrollRafRef.current) return;
             profileScrollRafRef.current = requestAnimationFrame(() => {
               profileScrollRafRef.current = 0;
-              if (Date.now() < profileHeaderLockUntilRef.current) return;
-              const open = headerOpenRef.current;
               let next: boolean | null = null;
-              // Hysteresis: collapse only after real downward scroll; expand near top or strong upward
-              if (open) {
-                if (y > 48 && delta > 6) next = false;
-              } else {
-                if (y <= 12) next = true;
-                else if (delta < -14 && y < 120) next = true;
-              }
-              if (next === null || next === open) return;
-              const headerEl = profileHeaderElRef.current;
-              const hBefore = headerEl ? headerEl.offsetHeight : 0;
+              if (y <= 8) next = true;
+              else if (delta > 4) next = false;
+              else if (delta < -8) next = true;
+              if (next === null || next === headerOpenRef.current) return;
               headerOpenRef.current = next;
-              profileHeaderLockUntilRef.current = Date.now() + 420;
               setHeaderOpen(next);
               try {
                 window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: !next } }));
               } catch { /* */ }
-              // Keep visual position stable when sticky header height changes
-              requestAnimationFrame(() => {
-                const hAfter = headerEl ? headerEl.offsetHeight : 0;
-                const diff = hBefore - hAfter;
-                if (diff !== 0 && profileScrollElRef.current) {
-                  profileScrollElRef.current.scrollTop = Math.max(0, profileScrollElRef.current.scrollTop + diff);
-                  profileScrollLastYRef.current = profileScrollElRef.current.scrollTop;
-                }
-              });
             });
           }}
           style={{
