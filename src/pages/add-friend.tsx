@@ -5,7 +5,7 @@ import React from 'react';
 import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import UserAvatar from '@/components/UserAvatar';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, Bell, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, ChevronLeft, ChevronRight, Settings, Radio, Building2, LogIn } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, Bell, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn } from 'lucide-react';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -4734,59 +4734,16 @@ function PostCard({
               ))}
             </div>
 
-            {/* أسهم يمين/يسار + عداد الصفحات — تظهر فقط لو المنشور فيه أكثر من صورة/فيديو */}
+            {/* Page counter only (top) when post has multiple media items */}
             {mediaItems.length > 1 && (
-              <>
-                {mediaPage > 0 && (
-                  <motion.button
-                    whileTap={{ scale: 0.88 }}
-                    onClick={e => { e.stopPropagation(); goToMediaPage(mediaPage - 1); }}
-                    aria-label="الصورة السابقة"
-                    style={{
-                      position: 'absolute', top: '50%', left: 8, transform: 'translateY(-50%)',
-                      width: 30, height: 30, borderRadius: '50%',
-                      background: 'rgba(0,0,0,0.45)', border: 'none', color: '#fff', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
-                    }}
-                  >
-                    <ChevronLeft size={17} strokeWidth={2.4} />
-                  </motion.button>
-                )}
-                {mediaPage < mediaItems.length - 1 && (
-                  <motion.button
-                    whileTap={{ scale: 0.88 }}
-                    onClick={e => { e.stopPropagation(); goToMediaPage(mediaPage + 1); }}
-                    aria-label="الصورة التالية"
-                    style={{
-                      position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)',
-                      width: 30, height: 30, borderRadius: '50%',
-                      background: 'rgba(0,0,0,0.45)', border: 'none', color: '#fff', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
-                    }}
-                  >
-                    <ChevronRight size={17} strokeWidth={2.4} />
-                  </motion.button>
-                )}
-                <div style={{
-                  position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
-                  padding: '3px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.55)',
-                  color: '#fff', fontSize: '0.68rem', fontWeight: 700, zIndex: 2, letterSpacing: '0.02em',
-                }}>
-                  {mediaPage + 1}/{mediaItems.length}
-                </div>
-                <div style={{
-                  position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)',
-                  display: 'flex', alignItems: 'center', gap: 4, zIndex: 2,
-                }}>
-                  {mediaItems.map((_, dotIdx) => (
-                    <span key={dotIdx} style={{
-                      width: dotIdx === mediaPage ? 6 : 5, height: dotIdx === mediaPage ? 6 : 5, borderRadius: '50%',
-                      background: dotIdx === mediaPage ? '#fff' : 'rgba(255,255,255,0.45)',
-                      transition: 'all 0.15s',
-                    }} />
-                  ))}
-                </div>
-              </>
+              <div style={{
+                position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
+                padding: '3px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.55)',
+                color: '#fff', fontSize: '0.68rem', fontWeight: 700, zIndex: 2, letterSpacing: '0.02em',
+                pointerEvents: 'none',
+              }}>
+                {mediaPage + 1}/{mediaItems.length}
+              </div>
             )}
           </div>
         )}
@@ -16574,57 +16531,13 @@ export default function AddFriendPage() {
                       })}
                     </div>
                     {mediaItems.length > 1 && (
-                      <>
-                        <div style={{
-                          position: 'absolute', top: 'max(14px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)',
-                          padding: '4px 12px', borderRadius: 999, background: 'rgba(0,0,0,0.55)',
-                          color: '#fff', fontSize: '0.75rem', fontWeight: 800, zIndex: 4, pointerEvents: 'none',
-                        }}>
-                          {singlePostMediaPage + 1}/{mediaItems.length}
-                        </div>
-                        {singlePostMediaPage > 0 && (
-                          <button
-                            type="button"
-                            onClick={e => {
-                              e.stopPropagation();
-                              const el = singlePostMediaScrollRef.current;
-                              if (!el) return;
-                              const next = Math.max(0, singlePostMediaPage - 1);
-                              el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
-                              setSinglePostMediaPage(next);
-                            }}
-                            style={{
-                              position: 'absolute', top: '50%', left: 10, transform: 'translateY(-50%)',
-                              width: 34, height: 34, borderRadius: '50%', border: 'none',
-                              background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', zIndex: 4,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}
-                          >
-                            <ChevronLeft size={18} />
-                          </button>
-                        )}
-                        {singlePostMediaPage < mediaItems.length - 1 && (
-                          <button
-                            type="button"
-                            onClick={e => {
-                              e.stopPropagation();
-                              const el = singlePostMediaScrollRef.current;
-                              if (!el) return;
-                              const next = Math.min(mediaItems.length - 1, singlePostMediaPage + 1);
-                              el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
-                              setSinglePostMediaPage(next);
-                            }}
-                            style={{
-                              position: 'absolute', top: '50%', right: 10, transform: 'translateY(-50%)',
-                              width: 34, height: 34, borderRadius: '50%', border: 'none',
-                              background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', zIndex: 4,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}
-                          >
-                            <ChevronRight size={18} />
-                          </button>
-                        )}
-                      </>
+                      <div style={{
+                        position: 'absolute', top: 'max(14px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)',
+                        padding: '4px 12px', borderRadius: 999, background: 'rgba(0,0,0,0.55)',
+                        color: '#fff', fontSize: '0.75rem', fontWeight: 800, zIndex: 4, pointerEvents: 'none',
+                      }}>
+                        {singlePostMediaPage + 1}/{mediaItems.length}
+                      </div>
                     )}
                   </div>
                 ) : xUrls.length > 0 ? (
