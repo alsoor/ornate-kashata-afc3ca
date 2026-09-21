@@ -4122,23 +4122,14 @@ function PostCard({
           )}
         </div>
 
-        {/* نص فقط بدون وسائط */}
-        {/* إعلان منتج: لا نص فوق الصورة — العنوان والسعر والتفاصيل فقط داخل أيقونة الثلاث خطوط */}
+        {/* Text-only posts (no media): show caption on the card */}
         {!hasMedia && post.text && !isProductAd && (
           <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column' }}>
-            <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => onOpenPost(post)} />
+            <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => setProductDetailsOpen(true)} />
           </div>
         )}
 
-        {/* نص الناشر فوق الصورة/الفيديو — مخفي تمامًا لإعلان المنتج */}
-        {hasMedia && post.text && !isProductAd && (
-          <div style={{
-            background: 'transparent', border: 'none', borderRadius: 0, padding: '0 14px 10px', margin: 0,
-            display: 'flex', flexDirection: 'column',
-          }}>
-            <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => onOpenPost(post)} />
-          </div>
-        )}
+        {/* Media posts: caption is hidden on the card — open via the three-lines button only */}
 
         {/* Media — من اليمين لليسار بعرض الشاشة كاملاً. لو أكثر من عنصر واحد: معرض قابل
             للتصفح يمين/يسار (سحب أو أزرار الأسهم) مع عداد صفحات "1/N" زي انستغرام. */}
@@ -4179,12 +4170,7 @@ function PostCard({
                     type="button"
                     onClick={e => {
                       e.stopPropagation();
-                      // منتج أو شركة → الصفحة الجديدة وليس اللايتبوكس القديم (كومنت/ريبوست فقط)
-                      if (isProductAd || isCompanyAuthor) {
-                        onOpenPost(post);
-                        return;
-                      }
-                      setMediaLightbox(media);
+                      onOpenPost(post);
                     }}
                     aria-label={media.type === 'video' ? 'فتح الفيديو' : 'فتح الصورة'}
                     style={{
@@ -4439,7 +4425,7 @@ function PostCard({
 
           <motion.button
             whileTap={{ scale: 0.92 }}
-            onClick={e => { e.stopPropagation(); onOpenPost(post); }}
+            onClick={e => { e.stopPropagation(); setProductDetailsOpen(true); }}
             aria-label="Details"
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
@@ -4456,9 +4442,9 @@ function PostCard({
         </div>
         )}
 
-        {/* شيت تفاصيل المنتج — يصعد من الأسفل */}
+        {/* Caption / product details sheet — three lines only, does not open post page */}
         <AnimatePresence>
-          {(isProductAd || isCompanyAuthor) && productDetailsOpen && (
+          {productDetailsOpen && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -4669,58 +4655,59 @@ function PostCard({
             )}
           </div>
 
-          {/* شريط تحكّم أسفل الفيديو/الصورة: كتم الصوت + التعليقات + إعادة النشر */}
+          {/* Same action bar as public post card: like, comment, share, three-lines */}
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              display: 'flex', alignItems: 'center', gap: 22,
-              padding: '10px 16px', flexShrink: 0,
-              background: 'rgba(0,0,0,0.55)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '12px 20px calc(12px + env(safe-area-inset-bottom, 0px))', flexShrink: 0,
+              background: 'linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0.55))',
+              borderTop: '1px solid rgba(255,255,255,0.08)',
             }}
           >
-            {mediaLightbox.type === 'video' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 88 }}>
               <motion.button
-                whileTap={{ scale: 0.88 }}
-                onClick={() => setLightboxMuted(v => !v)}
-                aria-label={lightboxMuted ? 'تشغيل الصوت' : 'كتم الصوت'}
-                style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => onToggleLike(post)}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: post.likedByMe ? '#ef4444' : '#fff' }}
               >
-                {lightboxMuted ? <VolumeX size={19} strokeWidth={2} /> : <Volume2 size={19} strokeWidth={2} />}
+                <Heart size={22} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
+                <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{post.likesCount > 0 ? post.likesCount : ''}</span>
               </motion.button>
-            )}
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => (onOpenComments ?? onOpenPost)(post)}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
+              >
+                <MessageCircle size={22} strokeWidth={2} />
+                <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{post.commentsCount > 0 ? post.commentsCount : ''}</span>
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => onShare(post)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', padding: 4, color: '#fff' }}
+              >
+                <Send size={20} strokeWidth={2} />
+              </motion.button>
+            </div>
             <motion.button
-              whileTap={{ scale: 0.88 }}
-              onClick={() => (onOpenComments ?? onOpenPost)(post)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
-            >
-              <MessageCircle size={18} strokeWidth={2} />
-              <span style={{ fontSize: '0.74rem', fontWeight: 700 }}>{post.commentsCount > 0 ? post.commentsCount : ''}</span>
-            </motion.button>
-            <motion.button
-              whileTap={{ scale: 0.88 }}
-              onClick={() => onRepost(post)}
-              aria-label="إعادة نشر"
-              title="إعادة نشر"
-              style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: post.repostedByMe ? CLR_PRIMARY : '#fff' }}
-            >
-              <Repeat2 size={18} strokeWidth={2} />
-            </motion.button>
-          </div>
-
-          {post.text && (
-            <div
-              onClick={e => e.stopPropagation()}
+              whileTap={{ scale: 0.92 }}
+              onClick={() => { setMediaLightbox(null); setProductDetailsOpen(true); }}
+              aria-label="Details"
               style={{
-                padding: '12px 16px calc(14px + env(safe-area-inset-bottom, 0px))',
-                flexShrink: 0, maxHeight: '28vh', overflowY: 'auto',
-                background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.4))',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+                borderRadius: 12, width: 52, height: 44, cursor: 'pointer', padding: 0,
               }}
             >
-              <p style={{ color: '#fff', fontSize: '0.9rem', lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {post.text}
-              </p>
-            </div>
-          )}
+              <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+              <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+              <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+            </motion.button>
+            <div style={{ minWidth: 88 }} />
+          </div>
+
+
         </motion.div>,
         document.body
       )}
@@ -5846,44 +5833,49 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               )}
             </div>
 
-            {/* شريط تحكّم أسفل الفيديو/الصورة: كتم الصوت + فتح التعليقات */}
+            {/* Same bar as public post: like, comment — open full post for share/details */}
             <div
               onClick={e => e.stopPropagation()}
               style={{
-                display: 'flex', alignItems: 'center', gap: 22,
-                padding: '10px 16px calc(10px + env(safe-area-inset-bottom, 0px))', flexShrink: 0,
-                background: 'rgba(0,0,0,0.55)',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 20px calc(12px + env(safe-area-inset-bottom, 0px))', flexShrink: 0,
+                background: 'linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0.55))',
+                borderTop: '1px solid rgba(255,255,255,0.08)',
               }}
             >
-              {mediaLightbox.type === 'video' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 88 }}>
                 <motion.button
-                  whileTap={{ scale: 0.88 }}
-                  onClick={() => setLightboxMuted(v => !v)}
-                  aria-label={lightboxMuted ? 'تشغيل الصوت' : 'كتم الصوت'}
-                  style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => onToggleLike(mediaLightbox.post)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: mediaLightbox.post.likedByMe ? '#ef4444' : '#fff' }}
                 >
-                  {lightboxMuted ? <VolumeX size={19} strokeWidth={2} /> : <Volume2 size={19} strokeWidth={2} />}
+                  <Heart size={22} strokeWidth={2} fill={mediaLightbox.post.likedByMe ? '#ef4444' : 'none'} />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{mediaLightbox.post.likesCount > 0 ? mediaLightbox.post.likesCount : ''}</span>
                 </motion.button>
-              )}
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => onOpenPost(mediaLightbox.post)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
+                >
+                  <MessageCircle size={22} strokeWidth={2} />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{mediaLightbox.post.commentsCount > 0 ? mediaLightbox.post.commentsCount : ''}</span>
+                </motion.button>
+              </div>
               <motion.button
-                whileTap={{ scale: 0.88 }}
-                onClick={() => onOpenPost(mediaLightbox.post)}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
+                whileTap={{ scale: 0.92 }}
+                onClick={() => { setMediaLightbox(null); onOpenPost(mediaLightbox.post); }}
+                aria-label="Details"
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: 12, width: 52, height: 44, cursor: 'pointer', padding: 0,
+                }}
               >
-                <MessageCircle size={18} strokeWidth={2} />
-                <span style={{ fontSize: '0.74rem', fontWeight: 700 }}>{mediaLightbox.post.commentsCount > 0 ? mediaLightbox.post.commentsCount : ''}</span>
+                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
               </motion.button>
-              {onRepost && (
-                <motion.button
-                  whileTap={{ scale: 0.88 }}
-                  onClick={() => onRepost(mediaLightbox.post)}
-                  aria-label="إعادة نشر"
-                  title="إعادة نشر"
-                  style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: mediaLightbox.post.repostedByMe ? CLR_PRIMARY : '#fff' }}
-                >
-                  <Repeat2 size={18} strokeWidth={2} />
-                </motion.button>
-              )}
+              <div style={{ minWidth: 88 }} />
             </div>
           </motion.div>,
           document.body
