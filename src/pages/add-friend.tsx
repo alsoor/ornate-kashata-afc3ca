@@ -4236,6 +4236,35 @@ function saveLocalPostMediaCache(postId: number | string, mediaUrls: string[], m
   } catch { /* */ }
 }
 
+type MediaEngState = { likesCount: number; likedByMe: boolean; comments: PostComment[] };
+const MEDIA_ENG_STORAGE = 'stooorna_media_eng_v1';
+function mediaEngKey(postId: number | string, mediaIndex: number): string {
+  return `${postId}:${mediaIndex}`;
+}
+function loadAllMediaEng(): Record<string, MediaEngState> {
+  try {
+    const raw = localStorage.getItem(MEDIA_ENG_STORAGE);
+    const o = raw ? JSON.parse(raw) : {};
+    return o && typeof o === 'object' ? o : {};
+  } catch { return {}; }
+}
+function saveAllMediaEng(map: Record<string, MediaEngState>) {
+  try { localStorage.setItem(MEDIA_ENG_STORAGE, JSON.stringify(map)); } catch { /* */ }
+}
+function getMediaEng(postId: number | string, mediaIndex: number): MediaEngState {
+  const all = loadAllMediaEng();
+  const k = mediaEngKey(postId, mediaIndex);
+  return all[k] || { likesCount: 0, likedByMe: false, comments: [] };
+}
+let pendingFeedMediaIndex = 0;
+function setMediaEng(postId: number | string, mediaIndex: number, next: MediaEngState) {
+  const all = loadAllMediaEng();
+  all[mediaEngKey(postId, mediaIndex)] = next;
+  saveAllMediaEng(all);
+  try { window.dispatchEvent(new CustomEvent('stooorna:media-eng', { detail: { postId, mediaIndex, next } })); } catch { /* */ }
+}
+
+
 function PostMediaItems(post: PostItem): { url: string; type: 'image' | 'video' }[] {
   let urls = post.mediaUrls?.length ? post.mediaUrls : null;
   let types = post.mediaTypes;
@@ -4320,12 +4349,12 @@ function PostCard({
   // الحالية بين المستخدم الحالي وناشر هذا المنشور.
   followStatus: 'accepted' | 'pending' | 'none' | null;
   onFollow: (post: PostItem) => void;
-  onToggleLike: (post: PostItem) => void;
+  onToggleLike: (post: PostItem, mediaIndex?: number) => void;
   /** يزيد عند كل لايك لتشغيل أنيميشن الفقاعة */
   likeBurstKey?: number;
   onOpenPost: (post: PostItem) => void;
   /** Instagram-style comments sheet — only the comment icon should open this */
-  onOpenComments?: (post: PostItem) => void;
+  onOpenComments?: (post: PostItem, mediaIndex?: number) => void;
   onRequestDelete: (post: PostItem) => void;
   onRemoveMedia: (post: PostItem) => void;
   onHashtag: (tag: string) => void;
@@ -4376,7 +4405,22 @@ function PostCard({
   const [feedMuted, setFeedMuted] = useState<Record<number, boolean>>({});
   // ── معرض الصور المتعددة داخل المنشور — تنقل يمين/يسار + عداد صفحات (1/N) زي انستغرام ──
   const [mediaPage, setMediaPage] = useState(0);
+  const [cardEngTick, setCardEngTick] = useState(0);
   const mediaScrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const onEng = (e: Event) => {
+      const d = (e as CustomEvent).detail as { postId?: number } | undefined;
+      if (d && Number(d.postId) === Number(post.id)) setCardEngTick(t => t + 1);
+    };
+    window.addEventListener('stooorna:media-eng', onEng as EventListener);
+    return () => window.removeEventListener('stooorna:media-eng', onEng as EventListener);
+  }, [post.id]);
+  void cardEngTick;
+  const multiMedia = mediaItems.length > 1;
+  const pageEng = multiMedia ? getMediaEng(post.id, mediaPage) : null;
+  const cardLiked = pageEng ? pageEng.likedByMe : post.likedByMe;
+  const cardLikes = pageEng ? pageEng.likesCount : post.likesCount;
+  const cardComments = pageEng ? (pageEng.comments?.length || 0) : post.commentsCount;
   const productAd = parseProductAd(post.text);
   // Product UI (hamburger + details sheet) is only for company/business authors
   const isProductAd = !!productAd && !!isCompanyAuthor;
@@ -4624,9 +4668,11 @@ function PostCard({
                     type="button"
                     onClick={e => {
                       e.stopPropagation();
+                      setMediaPage(index);
+                      pendingFeedMediaIndex = index;
                       onOpenPost(post);
                     }}
-                    aria-label={media.type === 'video' ? 'فتح الفيديو' : 'فتح الصورة'}
+                    aria-label={media.type === 'video' ? 'Open video' : 'Open image'}
                     style={{
                       position: 'relative', width: '100%', border: '3px solid #000', boxSizing: 'border-box', padding: 0,
                       background: '#000', cursor: 'pointer', display: 'block', overflow: 'hidden', maxHeight: '48vh',
@@ -4640,8 +4686,13 @@ function PostCard({
                         loop
                         playsInline
                         preload="metadata"
-                        onClick={e => e.stopPropagation()}
-                        style={{ width: '100%', maxHeight: '48vh', objectFit: 'cover', display: 'block', background: '#000' }}
+                        onClick={e => {
+                          e.stopPropagation();
+                          pendingFeedMediaIndex = index;
+                          setMediaPage(index);
+                          onOpenPost(post);
+                        }}
+                        style={{ width: '100%', maxHeight: '48vh', objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }}
                       />
                     ) : (
                       <img
@@ -4754,20 +4805,20 @@ function PostCard({
             paddingTop: 12, paddingInline: hasMedia ? 14 : 0, gap: 8,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 72 }}>
-              <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post); }} style={{
+              <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post, multiMedia ? mediaPage : undefined); }} style={{
                 position: 'relative', display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
-                color: post.likedByMe ? '#ef4444' : '#000000',
+                color: cardLiked ? '#ef4444' : '#000000',
               }}>
-                <Heart size={18} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
-                <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.likesCount > 0 ? post.likesCount : ''}</span>
+                <Heart size={18} strokeWidth={2} fill={cardLiked ? '#ef4444' : 'none'} />
+                <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardLikes > 0 ? cardLikes : ''}</span>
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.88 }}
-                onClick={e => { e.stopPropagation(); (onOpenComments ?? onOpenPost)(post); }}
+                onClick={e => { e.stopPropagation(); if (onOpenComments) onOpenComments(post, multiMedia ? mediaPage : undefined); else onOpenPost(post); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}
               >
                 <MessageCircle size={18} strokeWidth={2} />
-                <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.commentsCount > 0 ? post.commentsCount : ''}</span>
+                <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardComments > 0 ? cardComments : ''}</span>
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.88 }}
@@ -4813,9 +4864,9 @@ function PostCard({
           paddingTop: 12, paddingInline: hasMedia ? 14 : 0, gap: 8,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 72 }}>
-            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post); }} style={{
+            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post, multiMedia ? mediaPage : undefined); }} style={{
               position: 'relative', display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
-              color: post.likedByMe ? '#ef4444' : '#000000', overflow: 'visible',
+              color: cardLiked ? '#ef4444' : '#000000', overflow: 'visible',
             }}>
               <span style={{ position: 'relative', width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                 <motion.span
@@ -4824,7 +4875,7 @@ function PostCard({
                   transition={{ duration: 0.42, ease: 'easeOut' }}
                   style={{ display: 'inline-flex' }}
                 >
-                  <Heart size={16} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
+                  <Heart size={16} strokeWidth={2} fill={cardLiked ? '#ef4444' : 'none'} />
                 </motion.span>
                 <AnimatePresence>
                   {likeBurstKey > 0 && (
@@ -4864,11 +4915,11 @@ function PostCard({
                   )}
                 </AnimatePresence>
               </span>
-              <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.likesCount > 0 ? post.likesCount : ''}</span>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardLikes > 0 ? cardLikes : ''}</span>
             </motion.button>
-            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); (onOpenComments ?? onOpenPost)(post); }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}>
+            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); if (onOpenComments) onOpenComments(post, multiMedia ? mediaPage : undefined); else onOpenPost(post); }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}>
               <MessageCircle size={15} strokeWidth={2} />
-              <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.commentsCount > 0 ? post.commentsCount : ''}</span>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardComments > 0 ? cardComments : ''}</span>
             </motion.button>
             <motion.button
               whileTap={{ scale: 0.88 }}
@@ -5119,19 +5170,19 @@ function PostCard({
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 88 }}>
               <motion.button
                 whileTap={{ scale: 0.9 }}
-                onClick={() => onToggleLike(post)}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: post.likedByMe ? '#ef4444' : '#fff' }}
+                onClick={() => onToggleLike(post, multiMedia ? mediaPage : undefined)}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: cardLiked ? '#ef4444' : '#fff' }}
               >
-                <Heart size={22} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
-                <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{post.likesCount > 0 ? post.likesCount : ''}</span>
+                <Heart size={22} strokeWidth={2} fill={cardLiked ? '#ef4444' : 'none'} />
+                <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{cardLikes > 0 ? cardLikes : ''}</span>
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.9 }}
-                onClick={() => (onOpenComments ?? onOpenPost)(post)}
+                onClick={() => { if (onOpenComments) onOpenComments(post, multiMedia ? mediaPage : undefined); else onOpenPost(post); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
               >
                 <MessageCircle size={22} strokeWidth={2} />
-                <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{post.commentsCount > 0 ? post.commentsCount : ''}</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{cardComments > 0 ? cardComments : ''}</span>
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.9 }}
@@ -6585,7 +6636,7 @@ function PostDetailPage({
   commentSending: boolean;
   onChangeCommentText: (v: string) => void;
   onSubmitComment: (parentCommentId?: number | null) => void;
-  onToggleLike: (post: PostItem) => void;
+  onToggleLike: (post: PostItem, mediaIndex?: number) => void;
   onRemoveMedia: (post: PostItem) => void;
   onRequestDelete: (post: PostItem) => void;
   onSaveMediaText: (post: PostItem, text: string) => Promise<void>;
@@ -6753,7 +6804,7 @@ function PostDetailPage({
             border: `1px solid ${CLR_POST_BORDER}`, borderRadius: 14,
             background: 'hsl(var(--muted))',
           }}>
-            <motion.button whileTap={{ scale: 0.88 }} onClick={() => onToggleLike(post)} style={{
+            <motion.button whileTap={{ scale: 0.88 }} onClick={() => onToggleLike(post, multiMedia ? mediaPage : undefined)} style={{
               display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
               color: post.likedByMe ? '#ef4444' : CLR_TEXT_DIM,
             }}>
@@ -9279,7 +9330,7 @@ export default function AddFriendPage() {
   }
 
   function closePostDetail() {
-    setOpenComments(null);
+    setOpenComments(null); setOpenCommentsMediaIndex(null);
   }
   // ── Single post view — full-screen product ad page (media fills screen; bottom bar:
   // like+share | details sheet | comments chat sheet). No repost / favorites. ──
@@ -9290,20 +9341,37 @@ export default function AddFriendPage() {
   const [adVideoPaused, setAdVideoPaused] = useState(false);
   const [singlePostChromeVisible, setSinglePostChromeVisible] = useState(true);
   const [singlePostMediaPage, setSinglePostMediaPage] = useState(0);
+  const pendingOpenMediaIndexRef = useRef(0);
   const singlePostMediaScrollRef = useRef<HTMLDivElement | null>(null);
   const singlePostTouchRef = useRef<{ y: number; t: number } | null>(null);
   const [textFeedSearchOpen, setTextFeedSearchOpen] = useState(false);
   const [textFeedSearchQuery, setTextFeedSearchQuery] = useState('');
   const textFeedSearchInputRef = useRef<HTMLInputElement | null>(null);
-  function openSinglePostView(post: PostItem, fromProfile = false) {
+  function openSinglePostView(post: PostItem, fromProfile = false, startMediaIndex?: number) {
     setAdDetailsOpen(false);
     setAdVideoPaused(false);
     setSinglePostChromeVisible(true);
-    setSinglePostMediaPage(0);
+    const items = PostMediaItems(post);
+    const raw = typeof startMediaIndex === 'number'
+      ? startMediaIndex
+      : (pendingFeedMediaIndex || pendingOpenMediaIndexRef.current || 0);
+    pendingFeedMediaIndex = 0;
+    pendingOpenMediaIndexRef.current = 0;
+    const idx = Math.max(0, Math.min(raw || 0, Math.max(0, items.length - 1)));
+    setSinglePostMediaPage(idx);
     setSinglePostFromProfile(!!fromProfile);
     setSinglePostView(post);
     try { recordPostView(post.id, post.authorId); } catch { /* */ }
   }
+
+  useEffect(() => {
+    if (!singlePostView) return;
+    const el = singlePostMediaScrollRef.current;
+    if (!el) return;
+    const w = el.clientWidth || 1;
+    el.scrollTo({ left: singlePostMediaPage * w, behavior: 'auto' });
+  }, [singlePostView?.id, singlePostMediaPage]);
+
   function closeSinglePostView() {
     setSinglePostView(null);
     setSinglePostFromProfile(false);
@@ -9339,8 +9407,15 @@ export default function AddFriendPage() {
   }
 
   const [postComments, setPostComments] = useState<Record<number, PostComment[]>>({});
+  const [openCommentsMediaIndex, setOpenCommentsMediaIndex] = useState<number | null>(null);
+  const [mediaEngTick, setMediaEngTick] = useState(0);
   const [commentText, setCommentText] = useState('');
   const [commentSending, setCommentSending] = useState(false);
+  useEffect(() => {
+    const onEng = () => setMediaEngTick(t => t + 1);
+    window.addEventListener('stooorna:media-eng', onEng as EventListener);
+    return () => window.removeEventListener('stooorna:media-eng', onEng as EventListener);
+  }, []);
   const [confirmDeletePost, setConfirmDeletePost] = useState<PostItem | null>(null);
   const [deletingPostId, setDeletingPostId] = useState<number | null>(null);
   const [hashtagView, setHashtagView] = useState<{ tag: string; posts: PostItem[] } | null>(null);
@@ -10611,9 +10686,24 @@ export default function AddFriendPage() {
     }
   }
 
-  async function toggleLike(post: PostItem) {
+  async function toggleLike(post: PostItem, mediaIndex?: number) {
     if (guestGuard()) return;
-    // أنيميشن فقاعة عند اللايك (خاصة عند الإضافة)
+    const items = PostMediaItems(post);
+    const usePerMedia = typeof mediaIndex === 'number' && items.length > 1 && mediaIndex >= 0 && mediaIndex < items.length;
+    if (usePerMedia) {
+      const cur = getMediaEng(post.id, mediaIndex!);
+      const next: MediaEngState = {
+        ...cur,
+        likedByMe: !cur.likedByMe,
+        likesCount: Math.max(0, cur.likesCount + (cur.likedByMe ? -1 : 1)),
+      };
+      setMediaEng(post.id, mediaIndex!, next);
+      setMediaEngTick(t => t + 1);
+      if (!cur.likedByMe) {
+        setLikeBubbleKey(prev => ({ ...prev, [post.id]: (prev[post.id] ?? 0) + 1 }));
+      }
+      return;
+    }
     if (!post.likedByMe) {
       setLikeBubbleKey(prev => ({ ...prev, [post.id]: (prev[post.id] ?? 0) + 1 }));
     }
@@ -11113,8 +11203,16 @@ export default function AddFriendPage() {
     } catch {/* optimistic removal already applied */}
   }
 
-  async function loadComments(post: PostItem) {
+  async function loadComments(post: PostItem, mediaIndex?: number) {
+    const items = PostMediaItems(post);
+    const usePerMedia = typeof mediaIndex === 'number' && items.length > 1 && mediaIndex >= 0 && mediaIndex < items.length;
     setOpenComments(post);
+    setOpenCommentsMediaIndex(usePerMedia ? mediaIndex! : null);
+    if (usePerMedia) {
+      const eng = getMediaEng(post.id, mediaIndex!);
+      setPostComments(prev => ({ ...prev, [post.id]: eng.comments || [] }));
+      return;
+    }
     if (postComments[post.id]) return;
     try {
       const r = await fetch(`/api/posts/${post.id}/comments`, { credentials: 'include' });
@@ -11122,7 +11220,7 @@ export default function AddFriendPage() {
         const d = await r.json() as { comments: PostComment[] };
         setPostComments(prev => ({ ...prev, [post.id]: d.comments ?? [] }));
       }
-    } catch {/* silent — starts with an empty thread */}
+    } catch {/* silent */}
   }
 
   async function submitComment(parentCommentId: number | null = null) {
@@ -11139,6 +11237,19 @@ export default function AddFriendPage() {
       parentCommentId,
       createdAt: new Date().toISOString(),
     };
+    const mediaIdx = openCommentsMediaIndex;
+    const items = PostMediaItems(post);
+    const usePerMedia = mediaIdx != null && items.length > 1 && mediaIdx >= 0 && mediaIdx < items.length;
+    if (usePerMedia) {
+      const cur = getMediaEng(post.id, mediaIdx!);
+      const nextComments = [...(cur.comments || []), optimistic];
+      setMediaEng(post.id, mediaIdx!, { ...cur, comments: nextComments });
+      setPostComments(prev => ({ ...prev, [post.id]: nextComments }));
+      setCommentText('');
+      setMediaEngTick(t => t + 1);
+      setCommentSending(false);
+      return;
+    }
     setPostComments(prev => ({ ...prev, [post.id]: [...(prev[post.id] ?? []), optimistic] }));
     setPosts(prev => prev.map(p => p.id === post.id ? { ...p, commentsCount: p.commentsCount + 1 } : p));
     setCommentText('');
@@ -16349,6 +16460,12 @@ export default function AddFriendPage() {
           const mediaItems = PostMediaItems(singlePostView);
           const xUrls = extractLinkMediaUrls(singlePostView.text);
           const livePost = posts.find(p => p.id === singlePostView.id) ?? singlePostView;
+          void mediaEngTick;
+          const multiMedia = mediaItems.length > 1;
+          const engForPage = multiMedia ? getMediaEng(livePost.id, singlePostMediaPage) : null;
+          const likeActive = engForPage ? engForPage.likedByMe : livePost.likedByMe;
+          const likeCount = engForPage ? engForPage.likesCount : livePost.likesCount;
+          const commentCount = engForPage ? (engForPage.comments?.length || 0) : livePost.commentsCount;
           return (
             <motion.div
               key="single-post-view"
@@ -16363,7 +16480,6 @@ export default function AddFriendPage() {
                 background: '#000', display: 'flex', flexDirection: 'column', overflow: 'hidden',
               }}
             >
-              {singlePostChromeVisible && (
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); closeSinglePostView(); }}
@@ -16399,7 +16515,7 @@ export default function AddFriendPage() {
                     else goAdjacentAuthorPost(-1);
                   }
                 }}
-                onClick={() => setSinglePostChromeVisible(v => !v)}
+                onClick={() => { /* chrome stays visible */ }}
               >
                 {mediaItems.length > 0 ? (
                   <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -16443,20 +16559,14 @@ export default function AddFriendPage() {
                                 playsInline
                                 muted={false}
                                 controls={false}
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  setSinglePostChromeVisible(v => !v);
-                                }}
+                                onClick={e => { e.stopPropagation(); }}
                                 style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000', cursor: 'pointer' }}
                               />
                             ) : (
                               <img
                                 src={media.url}
                                 alt=""
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  setSinglePostChromeVisible(v => !v);
-                                }}
+                                onClick={e => { e.stopPropagation(); }}
                                 style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
                               />
                             )}
@@ -16533,7 +16643,7 @@ export default function AddFriendPage() {
                 )}
               </div>
 
-              {singlePostChromeVisible && (
+              {true && (
               <div
                 onClick={e => e.stopPropagation()}
                 style={{
@@ -16547,19 +16657,19 @@ export default function AddFriendPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 88 }}>
                   <motion.button
                     whileTap={{ scale: 0.9 }}
-                    onClick={() => toggleLike(livePost)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: livePost.likedByMe ? '#ef4444' : '#fff' }}
+                    onClick={() => toggleLike(livePost, PostMediaItems(livePost).length > 1 ? singlePostMediaPage : undefined)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: likeActive ? '#ef4444' : '#fff' }}
                   >
-                    <Heart size={22} strokeWidth={2} fill={livePost.likedByMe ? '#ef4444' : 'none'} />
-                    <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{livePost.likesCount > 0 ? livePost.likesCount : ''}</span>
+                    <Heart size={22} strokeWidth={2} fill={likeActive ? '#ef4444' : 'none'} />
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{likeCount > 0 ? likeCount : ''}</span>
                   </motion.button>
                   <motion.button
                     whileTap={{ scale: 0.9 }}
-                    onClick={() => loadComments(livePost)}
+                    onClick={() => loadComments(livePost, PostMediaItems(livePost).length > 1 ? singlePostMediaPage : undefined)}
                     style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#fff' }}
                   >
                     <MessageCircle size={22} strokeWidth={2} />
-                    <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{livePost.commentsCount > 0 ? livePost.commentsCount : ''}</span>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{commentCount > 0 ? livePost.commentsCount : ''}</span>
                   </motion.button>
                   <motion.button
                     whileTap={{ scale: 0.9 }}
