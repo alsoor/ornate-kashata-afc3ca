@@ -16493,7 +16493,6 @@ export default function AddFriendPage() {
               >
                 <X size={18} strokeWidth={2.4} />
               </button>
-              )}
 
               <div
                 style={{ flex: 1, minHeight: 0, position: 'relative', background: '#000', touchAction: 'pan-y' }}
@@ -16643,7 +16642,6 @@ export default function AddFriendPage() {
                 )}
               </div>
 
-              {true && (
               <div
                 onClick={e => e.stopPropagation()}
                 style={{
@@ -16761,7 +16759,6 @@ export default function AddFriendPage() {
                   </motion.button>
                 </div>
               </div>
-              )}
 
               <AnimatePresence>
                 {adDetailsOpen && (
