@@ -16529,8 +16529,8 @@ export default function AddFriendPage() {
                       width: 'calc(100% - 20px)',
                       maxWidth: '100%',
                       textAlign: 'left', cursor: 'pointer',
-                      padding: '12px 14px 14px',
-                      background: 'linear-gradient(180deg, rgba(234,179,8,0.12) 0%, rgba(255,255,255,0.98) 40%)',
+                      padding: '10px 12px',
+                      background: 'linear-gradient(180deg, rgba(234,179,8,0.12) 0%, rgba(255,255,255,0.98) 55%)',
                       border: '2px solid #eab308',
                       borderRadius: 14,
                       margin: '8px auto',
@@ -16541,7 +16541,7 @@ export default function AddFriendPage() {
                   >
                     <span aria-hidden className="stooorna-ad-side-glow stooorna-ad-side-glow-left" />
                     <span aria-hidden className="stooorna-ad-side-glow stooorna-ad-side-glow-right" />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{
                         width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
                         border: '2px solid #eab308', background: '#111',
@@ -16564,57 +16564,29 @@ export default function AddFriendPage() {
                             background: '#eab308', borderRadius: 5, padding: '2px 7px', letterSpacing: '0.04em',
                           }}>Ads</span>
                         </div>
-                        {ad.title ? (
-                          <p style={{ margin: '2px 0 0', color: '#333', fontWeight: 700, fontSize: '0.78rem' }}>{ad.title}</p>
-                        ) : null}
+                        {(() => {
+                          void adClockTick;
+                          const ms = getAdCountdownMs(ad, Date.now());
+                          const phase = getAdPhase(ad, Date.now());
+                          if (phase !== 'live') return null;
+                          return (
+                            <p style={{
+                              margin: '3px 0 0', color: '#a16207', fontWeight: 800, fontSize: '0.72rem',
+                              letterSpacing: '0.02em',
+                            }}>
+                              Live · {formatCountdown(ms)}
+                            </p>
+                          );
+                        })()}
                       </div>
                     </div>
-                    {(() => {
-                      void adClockTick;
-                      const ms = getAdCountdownMs(ad, Date.now());
-                      const phase = getAdPhase(ad, Date.now());
-                      if (phase !== 'live') return null;
-                      return (
-                        <p style={{
-                          margin: '0 0 8px', color: '#a16207', fontWeight: 800, fontSize: '0.72rem',
-                          letterSpacing: '0.02em',
-                        }}>
-                          Live · {formatCountdown(ms)}
-                        </p>
-                      );
-                    })()}
-                    {ad.body ? (
-                      <p style={{ margin: '0 0 10px', color: '#222', fontSize: '0.84rem', lineHeight: 1.45 }}>
-                        {String(ad.body).slice(0, 220)}{String(ad.body).length > 220 ? '…' : ''}
-                      </p>
-                    ) : null}
-                    {ad.mediaUrl && ad.mediaType === 'image' ? (
-                      <img src={ad.mediaUrl} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 12 }} />
-                    ) : null}
-                    {ad.mediaUrl && ad.mediaType === 'video' ? (
-                      <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#000' }}>
-                        <video src={ad.mediaUrl} muted playsInline style={{ width: '100%', maxHeight: 220, objectFit: 'cover', display: 'block' }} />
-                        <div style={{
-                          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          background: 'rgba(0,0,0,0.25)',
-                        }}>
-                          <div style={{
-                            width: 48, height: 48, borderRadius: '50%', background: 'rgba(234,179,8,0.95)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          }}>
-                            <Play size={22} color="#0a0a0a" fill="#0a0a0a" />
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-                    {(ad.mediaType === 'pdf' || ad.pdfUrl) ? (
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12,
-                        background: 'rgba(234,179,8,0.1)', border: '1px dashed rgba(234,179,8,0.5)',
+                    {(ad.title || ad.body) ? (
+                      <p style={{
+                        margin: '8px 0 0', color: '#222', fontSize: '0.84rem', lineHeight: 1.35,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       }}>
-                        <FileText size={20} color="#eab308" />
-                        <span style={{ color: '#0a0a0a', fontWeight: 700, fontSize: '0.8rem' }}>{ad.mediaName || ad.pdfName || 'PDF document'}</span>
-                      </div>
+                        {String(ad.title || ad.body || '').trim()}
+                      </p>
                     ) : null}
                   </div>
                 );
@@ -16721,114 +16693,7 @@ export default function AddFriendPage() {
                     if (feedAds.length && (idx + 1) % 3 === 0) {
                       const ad = feedAds[Math.floor(idx / 3) % feedAds.length];
                       if (ad) {
-                                                nodes.push(
-                          <div
-                            key={`feed-ad-${ad.id}-${idx}`}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => {
-                              void (async () => {
-                                let full = { ...ad };
-                                if (!full.mediaUrl && !full.pdfUrl) {
-                                  const m = await stooornaAdMediaGet(String(ad.id));
-                                  if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
-                                }
-                                setFeedAdViewer(full);
-                              })();
-                            }}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') {
-                                void (async () => {
-                                  let full = { ...ad };
-                                  if (!full.mediaUrl && !full.pdfUrl) {
-                                    const m = await stooornaAdMediaGet(String(ad.id));
-                                    if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
-                                  }
-                                  setFeedAdViewer(full);
-                                })();
-                              }
-                            }}
-                            className="stooorna-feed-ad-card"
-                            style={{
-                              position: 'relative',
-                              width: 'calc(100% - 20px)',
-                              maxWidth: '100%',
-                              textAlign: 'left', cursor: 'pointer',
-                              padding: '12px 14px 14px',
-                              background: 'linear-gradient(180deg, rgba(234,179,8,0.12) 0%, rgba(255,255,255,0.98) 40%)',
-                              border: '2px solid #eab308',
-                              borderRadius: 14,
-                              margin: '8px auto',
-                              boxSizing: 'border-box',
-                              overflow: 'visible',
-                              boxShadow: '0 0 0 1px rgba(234,179,8,0.25), 0 8px 24px rgba(234,179,8,0.12)',
-                            }}
-                          >
-                            <span aria-hidden className="stooorna-ad-side-glow stooorna-ad-side-glow-left" />
-                            <span aria-hidden className="stooorna-ad-side-glow stooorna-ad-side-glow-right" />
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                              <div style={{
-                                width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
-                                border: '2px solid #eab308', background: '#111',
-                              }}>
-                                {ad.authorAvatarUrl ? (
-                                  <img src={ad.authorAvatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                ) : (
-                                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#eab308', fontWeight: 900, fontSize: '0.85rem' }}>
-                                    {(ad.authorUsername || ad.authorName || 'A').toString().replace(/^@/, '').slice(0, 1).toUpperCase()}
-                                  </div>
-                                )}
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                  <span style={{ color: '#0a0a0a', fontWeight: 800, fontSize: '0.88rem' }}>
-                                    @{String(ad.authorUsername || 'business').replace(/^@/, '')}
-                                  </span>
-                                  <span style={{
-                                    fontSize: '0.62rem', fontWeight: 900, color: '#0a0a0a',
-                                    background: '#eab308', borderRadius: 5, padding: '2px 7px', letterSpacing: '0.04em',
-                                  }}>Ads</span>
-                                </div>
-                                {ad.title ? (
-                                  <p style={{ margin: '2px 0 0', color: '#333', fontWeight: 700, fontSize: '0.78rem' }}>{ad.title}</p>
-                                ) : null}
-                              </div>
-                            </div>
-                            {ad.body ? (
-                              <p style={{ margin: '0 0 10px', color: '#222', fontSize: '0.84rem', lineHeight: 1.45 }}>
-                                {String(ad.body).slice(0, 220)}{String(ad.body).length > 220 ? '…' : ''}
-                              </p>
-                            ) : null}
-                            {ad.mediaUrl && ad.mediaType === 'image' ? (
-                              <img src={ad.mediaUrl} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 12 }} />
-                            ) : null}
-                            {ad.mediaUrl && ad.mediaType === 'video' ? (
-                              <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#000' }}>
-                                <video src={ad.mediaUrl} muted playsInline style={{ width: '100%', maxHeight: 220, objectFit: 'cover', display: 'block' }} />
-                                <div style={{
-                                  position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  background: 'rgba(0,0,0,0.25)',
-                                }}>
-                                  <div style={{
-                                    width: 48, height: 48, borderRadius: '50%', background: 'rgba(234,179,8,0.95)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  }}>
-                                    <Play size={22} color="#0a0a0a" fill="#0a0a0a" />
-                                  </div>
-                                </div>
-                              </div>
-                            ) : null}
-                            {(ad.mediaType === 'pdf' || ad.pdfUrl) && !ad.mediaUrl?.startsWith('data:image') ? (
-                              <div style={{
-                                display: 'flex', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12,
-                                background: 'rgba(234,179,8,0.1)', border: '1px dashed rgba(234,179,8,0.5)',
-                              }}>
-                                <FileText size={20} color="#eab308" />
-                                <span style={{ color: '#0a0a0a', fontWeight: 700, fontSize: '0.8rem' }}>{ad.mediaName || ad.pdfName || 'PDF document'}</span>
-                              </div>
-                            ) : null}
-                          </div>
-                        );
+                        nodes.push(renderFeedAdCard(ad, `feed-ad-${ad.id}-${idx}`));
                       }
                     }
                     return nodes;
