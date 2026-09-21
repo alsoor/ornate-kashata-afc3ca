@@ -11450,6 +11450,23 @@ export default function AddFriendPage() {
   const profileNavHiddenRef = useRef(false);
 
   function applyProfileScrollProgress(y: number) {
+    const products = profileProductsStickyRef.current;
+    if (products) {
+      // Hide products header completely once user scrolls the story chrome
+      if (y > 24) {
+        products.style.maxHeight = '0px';
+        products.style.opacity = '0';
+        products.style.overflow = 'hidden';
+        products.style.borderWidth = '0';
+        products.style.pointerEvents = 'none';
+      } else {
+        products.style.maxHeight = '48px';
+        products.style.opacity = '1';
+        products.style.overflow = 'hidden';
+        products.style.borderWidth = '';
+        products.style.pointerEvents = 'auto';
+      }
+    }
     const hideNav = y > 40;
     if (hideNav !== profileNavHiddenRef.current) {
       profileNavHiddenRef.current = hideNav;
@@ -13139,74 +13156,6 @@ export default function AddFriendPage() {
               The decorative Globe next to "Following" has been removed. */}
           {pageTab === 'profile' && (
             <div className="flex items-center" style={{ paddingBottom: 8, paddingInline: 20, gap: 14 }}>
-              {/* ── My story circle — same place as before ── */}
-              {user && (() => {
-                const myGroup = storyGroups.find(g => g.userId === user?.id);
-                const hasStory = !!myGroup && myGroup.items.length > 0;
-                const allSeen = hasStory && myGroup!.items.every(i => i.seen);
-                const storySz = 76;
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: -12, marginLeft: -6, flexShrink: 0 }}>
-                    <div data-story-circle style={{ width: storySz, height: storySz, position: 'relative' }}>
-                      <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => {
-                          if (myGroup) {
-                            setViewerGroupIdx(storyGroups.indexOf(myGroup));
-                          } else {
-                            setPublishMenuOpen(true);
-                          }
-                        }}
-                        disabled={storyUploading}
-                        data-story-circle
-                        style={{ width: storySz, height: storySz, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
-                      >
-                        {/* One fixed circular frame: the photo is clipped inside it and can never overflow. */}
-                        {/* إطار أزرق ثابت + صورة ثابتة */}
-                        <div style={{
-                          position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'hidden',
-                          background: 'hsl(var(--card))',
-                          border: hasStory ? '4px solid #0ea5e9' : '3px solid #0ea5e9',
-                          boxSizing: 'border-box',
-                          boxShadow: hasStory && !allSeen ? '0 0 10px rgba(14,165,233,0.45)' : '0 0 8px rgba(14,165,233,0.25)',
-                        }}>
-                          <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={68} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
-                        </div>
-                      </motion.button>
-                      {/* + badge — hidden in compact scroll mode via data-expand-only */}
-                      <motion.button
-                        data-expand-only
-                        whileTap={{ scale: 0.88 }}
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 2.4, repeat: Infinity, ease: 'linear' }}
-                        onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); }}
-                        disabled={storyUploading || quickPublishing}
-                        aria-label="Publish options"
-                        style={{
-                          position: 'absolute', bottom: 1, right: 1,
-                          width: 22, height: 22, borderRadius: '50%',
-                          background: '#ef4444',
-                          border: '2.5px solid hsl(var(--background))',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          padding: 0, cursor: 'pointer',
-                          boxShadow: '0 0 8px rgba(239,68,68,0.55)',
-                        }}
-                      >
-                        {storyUploading || quickPublishing
-                          ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
-                              style={{ width: 9, height: 9, borderRadius: '50%', border: '2px solid #fff', borderTopColor: 'transparent' }} />
-                          : <Plus size={12} strokeWidth={3} color="#fff" />
-                        }
-                      </motion.button>
-                    </div>
-                    <span data-expand-only style={{ fontSize: '0.58rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500 }}>
-                      قصتي
-                    </span>
-                  </div>
-                );
-              })()}
-
-{/* ── Username | Bio / stats — expanded only ── */}
               <div data-expand-col style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 6, flex: 1 }}>
                 {/* Pinned track — shown right above my name/username, playable from here too. */}
                 {pinnedTrack && <PinnedTrackBar track={pinnedTrack} />}
@@ -13304,6 +13253,74 @@ export default function AddFriendPage() {
                   alignItems: 'center',
                 }}
               >
+                  {/* My story — same horizontal row as friend stories */}
+              {/* ── My story circle — same place as before ── */}
+              {user && (() => {
+                const myGroup = storyGroups.find(g => g.userId === user?.id);
+                const hasStory = !!myGroup && myGroup.items.length > 0;
+                const allSeen = hasStory && myGroup!.items.every(i => i.seen);
+                const storySz = 76;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: -12, marginLeft: -6, flexShrink: 0 }}>
+                    <div data-story-circle style={{ width: storySz, height: storySz, position: 'relative' }}>
+                      <motion.button
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => {
+                          if (myGroup) {
+                            setViewerGroupIdx(storyGroups.indexOf(myGroup));
+                          } else {
+                            setPublishMenuOpen(true);
+                          }
+                        }}
+                        disabled={storyUploading}
+                        data-story-circle
+                        style={{ width: storySz, height: storySz, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
+                      >
+                        {/* One fixed circular frame: the photo is clipped inside it and can never overflow. */}
+                        {/* إطار أزرق ثابت + صورة ثابتة */}
+                        <div style={{
+                          position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'hidden',
+                          background: 'hsl(var(--card))',
+                          border: hasStory ? '4px solid #0ea5e9' : '3px solid #0ea5e9',
+                          boxSizing: 'border-box',
+                          boxShadow: hasStory && !allSeen ? '0 0 10px rgba(14,165,233,0.45)' : '0 0 8px rgba(14,165,233,0.25)',
+                        }}>
+                          <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={68} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                        </div>
+                      </motion.button>
+                      {/* + badge — hidden in compact scroll mode via data-expand-only */}
+                      <motion.button
+                        data-expand-only
+                        whileTap={{ scale: 0.88 }}
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 2.4, repeat: Infinity, ease: 'linear' }}
+                        onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); }}
+                        disabled={storyUploading || quickPublishing}
+                        aria-label="Publish options"
+                        style={{
+                          position: 'absolute', bottom: 1, right: 1,
+                          width: 22, height: 22, borderRadius: '50%',
+                          background: '#ef4444',
+                          border: '2.5px solid hsl(var(--background))',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          padding: 0, cursor: 'pointer',
+                          boxShadow: '0 0 8px rgba(239,68,68,0.55)',
+                        }}
+                      >
+                        {storyUploading || quickPublishing
+                          ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+                              style={{ width: 9, height: 9, borderRadius: '50%', border: '2px solid #fff', borderTopColor: 'transparent' }} />
+                          : <Plus size={12} strokeWidth={3} color="#fff" />
+                        }
+                      </motion.button>
+                    </div>
+                    <span data-expand-only style={{ fontSize: '0.58rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500 }}>
+                      قصتي
+                    </span>
+                  </div>
+                );
+              })()}
+
                 {/* ستوريات المستخدمين فقط في شريط الهيدر — الشركات في تبويب Company */}
                 {storyGroups.filter(g => {
                   if (g.userId === user?.id) return false;
@@ -13361,15 +13378,17 @@ export default function AddFriendPage() {
 
         </div>
 
-        {/* Products / Post label — sticky while browsing the grid */}
+        {/* Products / Post label — hides completely while scrolling (not sticky) */}
         {pageTab === 'profile' && (
           <div
             ref={profileProductsStickyRef}
             style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 28,
-              padding: '0 0 0',
+              position: 'relative',
+              zIndex: 10,
+              maxHeight: 48,
+              opacity: 1,
+              overflow: 'hidden',
+              transition: 'max-height 160ms ease, opacity 140ms ease',
               background: CLR_HEADER_BG,
             }}
           >
@@ -16971,6 +16990,9 @@ export default function AddFriendPage() {
                   70% { transform: scale(0.98); letter-spacing: 0.16em; filter: brightness(1.1); }
                 }
               `}</style>
+
+{/* ── Username | Bio / stats — expanded only ── */}
+
               {!textFeedSearchOpen ? (
                 <>
                   <button
