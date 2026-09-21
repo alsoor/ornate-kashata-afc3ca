@@ -9113,28 +9113,61 @@ export default function AddFriendPage() {
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
   const [viewerGroupIdx, setViewerGroupIdx] = useState<number | null>(null);
   // ── Pull-down-to-open-stories (top of the profile feed) ────────────────────
-  // Pulling down past a small threshold while already at the top of the feed
-  // opens the next unseen story directly, skipping the strip. On release, the
-  // small avatar grows in place into a full-screen rounded card (same start
-  // rect it was released at) over a darkened backdrop, then hands off to the
-  // real story viewer once the card finishes growing — the Telegram-style
-  // "expanding icon" transition.
+  // While already at the top of the feed, pulling down grows the actual next
+  // story's own media (not a placeholder) live, tracking the finger 1:1 — pull
+  // further, it gets bigger. Releasing past a threshold continues that same
+  // growth with a spring straight into full-screen, then hands off to the
+  // real story viewer. Releasing early shrinks it back down.
   const [storyPullDistance, setStoryPullDistance] = useState(0);
   const [storyPullDragging, setStoryPullDragging] = useState(false);
   const [storyPullOpening, setStoryPullOpening] = useState(false);
-  const [pullCardInitial, setPullCardInitial] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const storyPullStartY = useRef<number | null>(null);
   const lastFeedScrollTopRef = useRef(0);
   const profileContentScrollRef = useRef<HTMLDivElement | null>(null);
-  const pullIndicatorRef = useRef<HTMLDivElement | null>(null);
   const pullOpenIdxRef = useRef<number | null>(null);
   const STORY_PULL_THRESHOLD = 72;
   const STORY_PULL_MAX = 130;
+  const STORY_PULL_MIN_W = 60;
+  const STORY_PULL_GROW_W = 170;
+  const STORY_PULL_TOP = 78;
   const pullTargetGroup = useMemo(() => {
     const others = storyGroups.filter(g => g.userId !== user?.id);
     if (others.length === 0) return null;
     return others.find(g => g.items.some(it => !it.seen)) || others[0];
   }, [storyGroups, user?.id]);
+  const pullItem = useMemo(() => {
+    if (!pullTargetGroup) return null;
+    return pullTargetGroup.items.find(it => !it.seen) || pullTargetGroup.items[0] || null;
+  }, [pullTargetGroup]);
+  /** Live size/position for the growing preview box, driven directly by pull distance. */
+  const pullBoxStyle = useCallback((distance: number) => {
+    const t = Math.max(0, Math.min(1, distance / STORY_PULL_MAX));
+    const width = STORY_PULL_MIN_W + STORY_PULL_GROW_W * t;
+    const height = width * 1.55;
+    const radius = (width / 2) * (1 - t) + 22 * t;
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 360;
+    return {
+      top: STORY_PULL_TOP,
+      left: vw / 2 - width / 2,
+      width,
+      height,
+      borderRadius: radius,
+      opacity: Math.min(1, distance / 20),
+    };
+  }, []);
+  /** Final full-screen target once the pull is released past the threshold. */
+  const pullBoxFinalStyle = useCallback(() => {
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 360;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 640;
+    return {
+      top: vh * 0.06,
+      left: vw * 0.04,
+      width: vw * 0.92,
+      height: vh * 0.84,
+      borderRadius: 24,
+      opacity: 1,
+    };
+  }, []);
   const [storyUploading, setStoryUploading] = useState(false);
   const storyFileRef = useRef<HTMLInputElement>(null);
   // ref for adding extra media from inside the viewer
@@ -13443,11 +13476,10 @@ export default function AddFriendPage() {
             setStoryPullDragging(false);
             if (storyPullDistance >= STORY_PULL_THRESHOLD && pullTargetGroup) {
               const idx = storyGroups.indexOf(pullTargetGroup);
-              const rect = pullIndicatorRef.current?.getBoundingClientRect();
-              if (idx >= 0 && rect) {
+              if (idx >= 0) {
                 pullOpenIdxRef.current = idx;
-                setPullCardInitial({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
                 setStoryPullOpening(true);
+                return; // keep storyPullDistance — it's the release animation's start size
               }
             }
             setStoryPullDistance(0);
@@ -13459,39 +13491,41 @@ export default function AddFriendPage() {
           scrollbarWidth: 'none',
         }}>
           {(storyPullDragging || storyPullDistance > 0) && !storyPullOpening && (
-            <div
-              aria-hidden
-              style={{
-                height: storyPullDistance,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                overflow: 'hidden',
-                transition: storyPullDragging ? 'none' : 'height 260ms cubic-bezier(0.22,1,0.36,1)',
-              }}
-            >
-              <motion.div
-                ref={pullIndicatorRef}
-                animate={{
-                  scale: Math.min(1, storyPullDistance / STORY_PULL_THRESHOLD),
-                  opacity: Math.min(1, storyPullDistance / 30),
+            <>
+              <div
+                aria-hidden
+                style={{
+                  position: 'fixed', inset: 0, zIndex: 10304,
+                  background: 'rgba(4,10,10,0.6)',
+                  opacity: Math.min(1, storyPullDistance / STORY_PULL_MAX),
+                  pointerEvents: 'none',
+                  transition: storyPullDragging ? 'none' : 'opacity 220ms ease',
                 }}
-                transition={{ duration: 0.05 }}
-                style={{ width: 56, height: 56, borderRadius: '50%', position: 'relative' }}
+              />
+              <div
+                aria-hidden
+                style={{
+                  position: 'fixed', zIndex: 10305, overflow: 'hidden',
+                  background: '#0a1414',
+                  boxShadow: storyPullDistance >= STORY_PULL_THRESHOLD ? '0 0 22px rgba(0,188,212,0.55)' : '0 6px 20px rgba(0,0,0,0.35)',
+                  transition: storyPullDragging ? 'none' : 'all 220ms cubic-bezier(0.22,1,0.36,1)',
+                  pointerEvents: 'none',
+                  ...pullBoxStyle(storyPullDistance),
+                }}
               >
-                <div style={{
-                  position: 'absolute', inset: 0, borderRadius: '50%',
-                  background: pullTargetGroup ? storyRingColor(pullTargetGroup.items, '#facc15', '#0ea5e9') : 'rgba(0,188,212,0.55)',
-                  padding: 3, boxSizing: 'border-box',
-                  boxShadow: storyPullDistance >= STORY_PULL_THRESHOLD ? '0 0 16px rgba(0,188,212,0.6)' : 'none',
-                  transition: 'box-shadow 180ms ease',
-                }}>
-                  <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
-                    {pullTargetGroup && (
-                      <UserAvatar name={pullTargetGroup.name} avatarUrl={pullTargetGroup.avatarUrl} size={50} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
-                    )}
+                {pullItem ? (
+                  pullItem.mediaType === 'video' ? (
+                    <video src={pullItem.mediaUrl} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  ) : (
+                    <img src={pullItem.mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  )
+                ) : pullTargetGroup && (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: storyRingColor(pullTargetGroup.items, '#facc15', '#0ea5e9') }}>
+                    <UserAvatar name={pullTargetGroup.name} avatarUrl={pullTargetGroup.avatarUrl} size={40} style={{ border: 'none' }} />
                   </div>
-                </div>
-              </motion.div>
-            </div>
+                )}
+              </div>
+            </>
           )}
           <AnimatePresence mode="wait">
 
@@ -17694,22 +17728,22 @@ export default function AddFriendPage() {
 
       {/* قائمة Photo/Video للقصة أُلغيت — الفتح مباشرة من المعرض أو الكاميرا */}
 
-      {/* ── Pull-to-open expanding card — grows in place from the small avatar's
-          exact release position into a near-full-screen rounded card over a
-          darkened backdrop, Telegram-style, then hands off to the real
-          full-screen story viewer once it finishes growing. ── */}
+      {/* ── Pull-to-open growing story — continues the exact same live-tracked
+          box from the drag (see pullBoxStyle above) with a spring straight
+          into full-screen, showing the story's own real media the whole way,
+          then hands off to the real full-screen story viewer once it lands. ── */}
       <AnimatePresence>
-        {storyPullOpening && pullCardInitial && (
+        {storyPullOpening && (
           <motion.div
-            key="pull-card-backdrop"
+            key="pull-open-backdrop"
             aria-hidden
-            initial={{ opacity: 0 }}
+            initial={{ opacity: Math.min(1, storyPullDistance / STORY_PULL_MAX) }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.22 }}
             style={{
               position: 'fixed', inset: 0, zIndex: 10305,
-              background: 'rgba(4,10,10,0.6)',
+              background: 'rgba(4,10,10,0.72)',
               backdropFilter: 'blur(8px)',
               WebkitBackdropFilter: 'blur(8px)',
             }}
@@ -17717,62 +17751,36 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
       <AnimatePresence>
-        {storyPullOpening && pullCardInitial && (
+        {storyPullOpening && (
           <motion.div
-            key="pull-card"
-            initial={{
-              top: pullCardInitial.top,
-              left: pullCardInitial.left,
-              width: pullCardInitial.width,
-              height: pullCardInitial.height,
-              borderRadius: pullCardInitial.width / 2,
-              opacity: 1,
-            }}
-            animate={{
-              top: typeof window !== 'undefined' ? window.innerHeight * 0.06 : 40,
-              left: typeof window !== 'undefined' ? window.innerWidth * 0.04 : 16,
-              width: typeof window !== 'undefined' ? window.innerWidth * 0.92 : 320,
-              height: typeof window !== 'undefined' ? window.innerHeight * 0.82 : 500,
-              borderRadius: 26,
-              opacity: 1,
-            }}
-            exit={{ opacity: 0, transition: { duration: 0.12 } }}
+            key="pull-open-box"
+            initial={pullBoxStyle(storyPullDistance)}
+            animate={pullBoxFinalStyle()}
             transition={{ type: 'spring', stiffness: 300, damping: 30, mass: 0.9 }}
             onAnimationComplete={() => {
               if (pullOpenIdxRef.current !== null) setViewerGroupIdx(pullOpenIdxRef.current);
               setStoryPullOpening(false);
-              setPullCardInitial(null);
+              setStoryPullDistance(0);
               pullOpenIdxRef.current = null;
             }}
             style={{
               position: 'fixed',
               zIndex: 10306,
               overflow: 'hidden',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              gap: 10,
-              background: pullTargetGroup
-                ? storyRingColor(pullTargetGroup.items, 'linear-gradient(160deg, #d4a017, #92650a)', 'linear-gradient(160deg, #0ea5e9, #075985)')
-                : 'rgba(10,20,22,0.92)',
+              background: '#0a1414',
               boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
             }}
           >
-            {pullTargetGroup && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.6 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.14, duration: 0.2 }}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}
-              >
-                <UserAvatar
-                  name={pullTargetGroup.name}
-                  avatarUrl={pullTargetGroup.avatarUrl}
-                  size={84}
-                  style={{ border: '3px solid rgba(255,255,255,0.85)', boxShadow: '0 0 24px rgba(0,0,0,0.35)' }}
-                />
-                <span style={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>
-                  {pullTargetGroup.username ? `@${pullTargetGroup.username}` : pullTargetGroup.name}
-                </span>
-              </motion.div>
+            {pullItem ? (
+              pullItem.mediaType === 'video' ? (
+                <video src={pullItem.mediaUrl} muted autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              ) : (
+                <img src={pullItem.mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              )
+            ) : pullTargetGroup && (
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: storyRingColor(pullTargetGroup.items, '#facc15', '#0ea5e9') }}>
+                <UserAvatar name={pullTargetGroup.name} avatarUrl={pullTargetGroup.avatarUrl} size={72} />
+              </div>
             )}
           </motion.div>
         )}
