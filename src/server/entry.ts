@@ -94,7 +94,6 @@ import posts_id_comments_post_80 from "./api/posts/[id]/comments/POST";
 import posts_id_like_post_81 from "./api/posts/[id]/like/POST";
 import posts_id_repost_post_82 from "./api/posts/[id]/repost/POST";
 import posts_id_share_post_83 from "./api/posts/[id]/share/POST";
-import posts_id_view_post from "./api/posts/[id]/view/POST";
 import presence_get_84 from "./api/presence/GET";
 import presence_heartbeat_post_85 from "./api/presence/heartbeat/POST";
 import presence_visitors_post_86 from "./api/presence/visitors/POST";
@@ -336,6 +335,13 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(
+  '/airo-assets',
+  express.static('/shared-storage/public/assets', {
+    maxAge: '30d',
+    fallthrough: true,
+  }),
+);
 
 // Serve uploaded media (avatars, posts, covers) — Railway alternative to nginx alias
 // Files are written under /shared-storage/public/assets/uploads by API handlers
@@ -435,7 +441,6 @@ app.get("/api/posts/:id", posts_id_get_77);
 app.patch("/api/posts/:id/caption", posts_id_caption_patch_78);
 app.get("/api/posts/:id/comments", posts_id_comments_get_79);
 app.post("/api/posts/:id/comments", posts_id_comments_post_80);
-app.post("/api/posts/:id/view", posts_id_view_post);
 app.post("/api/posts/:id/like", posts_id_like_post_81);
 app.post("/api/posts/:id/repost", posts_id_repost_post_82);
 app.post("/api/posts/:id/share", posts_id_share_post_83);
