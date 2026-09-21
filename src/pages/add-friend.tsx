@@ -4810,10 +4810,16 @@ function PostCard({
                 <div
                   key={`${media.type}-${index}`}
                   style={{
-                    position: 'relative', width: '100%', minWidth: '100%', maxWidth: '100%',
-                    flexShrink: 0, flexGrow: 0, boxSizing: 'border-box',
+                    position: 'relative',
+                    flex: '0 0 100%',
+                    width: '100%',
+                    minWidth: '100%',
+                    maxWidth: '100%',
+                    boxSizing: 'border-box',
                     scrollSnapAlign: mediaItems.length > 1 ? 'start' : undefined,
                     scrollSnapStop: mediaItems.length > 1 ? 'always' : undefined,
+                    overflow: 'hidden',
+                    background: '#000',
                   }}
                 >
                   <button
@@ -6110,10 +6116,15 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
       transition={{ type: 'tween', duration: 0.32, ease: 'easeIn' }}
       style={{ position: 'fixed', inset: 0, zIndex: 10420, background: PAGE_BG, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
     >
-      {/* Fixed profile chrome — cover, avatar, stats, products/posts header stay put */}
+      {/* Fixed profile chrome — compact so logo/stats/Products sit higher, more room for posts */}
       <div style={{ flexShrink: 0, position: 'relative', zIndex: 3 }}>
-        {/* Cover photo + close */}
-        <div style={{ width: '100%', height: 130, position: 'relative', background: 'transparent' }}>
+        {/* Top bar: close + optional cover strip (short when no cover) */}
+        <div style={{
+          width: '100%',
+          height: coverUrl ? 72 : 'max(44px, calc(env(safe-area-inset-top, 0px) + 36px))',
+          position: 'relative',
+          background: 'transparent',
+        }}>
           {coverUrl && (
             <img
               src={coverUrl}
@@ -6128,7 +6139,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             onClick={onClose}
             aria-label="Close"
             style={{
-              position: 'absolute', top: 'max(18px, env(safe-area-inset-top, 0px))', insetInlineStart: 10, width: 32, height: 32, borderRadius: '50%',
+              position: 'absolute', top: 'max(10px, env(safe-area-inset-top, 0px))', insetInlineStart: 10, width: 32, height: 32, borderRadius: '50%',
               background: coverUrl ? 'rgba(0,0,0,0.25)' : 'rgba(0,188,212,0.12)',
               border: coverUrl ? 'none' : `1px solid ${CLR_PRIMARY_BORDER}`,
               color: coverUrl ? '#fff' : CLR_PRIMARY,
@@ -6140,7 +6151,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           </motion.button>
           {pinnedTrack && (
             <div style={{
-              position: 'absolute', left: 0, right: 0, bottom: 44,
+              position: 'absolute', left: 0, right: 0, bottom: 8,
               display: 'flex', justifyContent: 'center', zIndex: 2, pointerEvents: 'auto',
               padding: '0 16px',
             }}>
@@ -6154,18 +6165,22 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           )}
         </div>
 
-        {/* Avatar + stats */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: -40, paddingBottom: 6 }}>
+        {/* Avatar + stats — pulled up toward the green-circle level */}
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          marginTop: coverUrl ? -28 : -4,
+          paddingBottom: 2,
+        }}>
           <motion.button
             whileTap={{ scale: 0.94 }}
             onClick={() => setAvatarExpanded(true)}
-            style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', padding: 0, border: `3px solid ${PAGE_BG}`, cursor: 'pointer', background: '#000' }}
+            style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', padding: 0, border: `3px solid ${PAGE_BG}`, cursor: 'pointer', background: '#000' }}
           >
-            <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={80} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
+            <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={72} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
           </motion.button>
 
-          <p style={{ color: CLR_TEXT, fontSize: '0.9rem', fontWeight: 700, margin: '8px 0 0' }}>{name || username || '—'}</p>
-          {username && <p style={{ color: CLR_PRIMARY, fontSize: '0.75rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
+          <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: '6px 0 0' }}>{name || username || '—'}</p>
+          {username && <p style={{ color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
             {(isCompanyProfile || readBusinessApproved(authorId)) && (
               <span style={{
                 fontSize: '0.55rem', fontWeight: 900, color: '#0a0a0a',
@@ -6174,13 +6189,13 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             )}
           </p>}
           {profile?.bio && (
-            <p style={{ color: CLR_TEXT, opacity: 0.85, fontSize: '0.72rem', fontWeight: 500, margin: '6px 20px 0', textAlign: 'center', lineHeight: 1.5 }}>
+            <p style={{ color: CLR_TEXT, opacity: 0.85, fontSize: '0.7rem', fontWeight: 500, margin: '4px 20px 0', textAlign: 'center', lineHeight: 1.4 }}>
               {profile.bio}
             </p>
           )}
 
           {/* Post / Followers / Views / Likes */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
               <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.postsCount ?? authorPosts.length}</span>
               <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Post</span>
@@ -6207,8 +6222,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             </div>
           </div>
 
-          {/* حالة الصداقة (لا تظهر لصاحب البروفايل نفسه) + دخول البث الصوتي */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+          {/* Friend state + live broadcast */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
             {user?.id && String(user.id) !== String(authorId) && (
               friendState === 'accepted' ? (
                 <span aria-label="صديق" title="صديق" style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -6283,15 +6298,15 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           </div>
         ) : (
           <>
-            {/* Single Post section header — sticky with profile chrome */}
+            {/* Products / Post section header — sticky with profile chrome */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              padding: '10px 0', marginTop: 8,
+              padding: '7px 0', marginTop: 4,
               borderTop: `1px solid ${CLR_NAV_BORDER}`, borderBottom: `1px solid ${CLR_NAV_BORDER}`,
-              color: CLR_PRIMARY, fontSize: '0.78rem', fontWeight: 800,
+              color: CLR_PRIMARY, fontSize: '0.76rem', fontWeight: 800,
               background: CLR_TAB_ACTIVE,
             }}>
-              <FileText size={15} strokeWidth={2} />
+              <FileText size={14} strokeWidth={2} />
               {(isCompanyProfile || readBusinessApproved(authorId)) ? 'Products' : 'Post'}
             </div>
           </>
@@ -9458,7 +9473,7 @@ export default function AddFriendPage() {
   const [singlePostMediaPage, setSinglePostMediaPage] = useState(0);
   const pendingOpenMediaIndexRef = useRef(0);
   const singlePostMediaScrollRef = useRef<HTMLDivElement | null>(null);
-  const singlePostTouchRef = useRef<{ y: number; t: number } | null>(null);
+  const singlePostTouchRef = useRef<{ x: number; y: number; t: number } | null>(null);
   const [textFeedSearchOpen, setTextFeedSearchOpen] = useState(false);
   const [textFeedSearchQuery, setTextFeedSearchQuery] = useState('');
   const textFeedSearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -9478,14 +9493,6 @@ export default function AddFriendPage() {
     setSinglePostView(post);
     try { recordPostView(post.id, post.authorId); } catch { /* */ }
   }
-
-  useEffect(() => {
-    if (!singlePostView) return;
-    const el = singlePostMediaScrollRef.current;
-    if (!el) return;
-    const w = el.clientWidth || 1;
-    el.scrollTo({ left: singlePostMediaPage * w, behavior: 'auto' });
-  }, [singlePostView?.id, singlePostMediaPage]);
 
   function closeSinglePostView() {
     setSinglePostView(null);
@@ -16613,11 +16620,11 @@ export default function AddFriendPage() {
               </button>
 
               <div
-                style={{ flex: 1, minHeight: 0, position: 'relative', background: '#000', touchAction: 'pan-y' }}
+                style={{ flex: 1, minHeight: 0, position: 'relative', background: '#000', touchAction: 'none', overflow: 'hidden' }}
                 onTouchStart={e => {
                   const t = e.changedTouches[0];
                   if (!t) return;
-                  singlePostTouchRef.current = { y: t.clientY, t: Date.now() };
+                  singlePostTouchRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
                 }}
                 onTouchEnd={e => {
                   const start = singlePostTouchRef.current;
@@ -16625,9 +16632,20 @@ export default function AddFriendPage() {
                   if (!start) return;
                   const t = e.changedTouches[0];
                   if (!t) return;
+                  const dx = t.clientX - start.x;
                   const dy = t.clientY - start.y;
                   const dt = Date.now() - start.t;
-                  if (dt < 600 && Math.abs(dy) > 56) {
+                  if (dt >= 700) return;
+                  // Horizontal swipe switches media page (no native scroll = no ghost frames)
+                  if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.15) {
+                    if (mediaItems.length > 1) {
+                      if (dx < 0) setSinglePostMediaPage(p => Math.min(mediaItems.length - 1, p + 1));
+                      else setSinglePostMediaPage(p => Math.max(0, p - 1));
+                    }
+                    return;
+                  }
+                  // Vertical swipe moves to adjacent author post
+                  if (Math.abs(dy) > 56) {
                     if (dy < 0) goAdjacentAuthorPost(1);
                     else goAdjacentAuthorPost(-1);
                   }
@@ -16635,57 +16653,41 @@ export default function AddFriendPage() {
                 onClick={() => { /* chrome stays visible */ }}
               >
                 {mediaItems.length > 0 ? (
-                  <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-                    <div
-                      ref={singlePostMediaScrollRef}
-                      onScroll={e => {
-                        if (mediaItems.length <= 1) return;
-                        const el = e.currentTarget;
-                        if (!el.clientWidth) return;
-                        const idx = Math.round(el.scrollLeft / el.clientWidth);
-                        setSinglePostMediaPage(prev => (prev === idx ? prev : idx));
-                      }}
-                      onClick={e => e.stopPropagation()}
-                      style={{
-                        display: 'flex', flexDirection: 'row', width: '100%', height: '100%',
-                        direction: 'ltr',
-                        overflowX: mediaItems.length > 1 ? 'auto' : 'hidden',
-                        overflowY: 'hidden',
-                        scrollSnapType: mediaItems.length > 1 ? 'x mandatory' : undefined,
-                        WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
-                        overscrollBehaviorX: 'contain',
-                      }}
-                    >
-                      {mediaItems.map((media, index) => {
-                        const pdf = /\.pdf(\?|$)/i.test(media.url);
-                        return (
-                          <div
-                            key={`${media.type}-${index}-${media.url.slice(-12)}`}
-                            style={{
-                              width: '100%', minWidth: '100%', maxWidth: '100%', height: '100%',
-                              flexShrink: 0, flexGrow: 0, boxSizing: 'border-box',
-                              scrollSnapAlign: mediaItems.length > 1 ? 'start' : undefined,
-                              scrollSnapStop: mediaItems.length > 1 ? 'always' : undefined,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000',
-                              overflow: 'hidden',
-                            }}
-                          >
-                            {pdf ? (
-                              <iframe title="PDF" src={media.url} style={{ width: '100%', height: '100%', border: 'none', background: '#111' }} />
-                            ) : media.type === 'video' ? (
-                              <SinglePostVideoPlayer src={media.url} active={index === singlePostMediaPage} />
-                            ) : (
-                              <img
-                                src={media.url}
-                                alt=""
-                                onClick={e => { e.stopPropagation(); }}
-                                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', background: '#000' }}
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                  <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#000' }}>
+                    {mediaItems.map((media, index) => {
+                      const pdf = /\.pdf(\?|$)/i.test(media.url);
+                      const offset = index - singlePostMediaPage;
+                      // Only mount current +/- 1 to avoid leftover ghost frames
+                      if (Math.abs(offset) > 1) return null;
+                      return (
+                        <div
+                          key={`${media.type}-${index}-${media.url.slice(-12)}`}
+                          style={{
+                            position: 'absolute', inset: 0,
+                            transform: `translateX(${offset * 100}%)`,
+                            transition: 'transform 0.22s ease-out',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: '#000', overflow: 'hidden',
+                            willChange: 'transform',
+                            zIndex: offset === 0 ? 2 : 1,
+                          }}
+                        >
+                          {pdf ? (
+                            <iframe title="PDF" src={media.url} style={{ width: '100%', height: '100%', border: 'none', background: '#111' }} />
+                          ) : media.type === 'video' ? (
+                            <SinglePostVideoPlayer src={media.url} active={index === singlePostMediaPage} />
+                          ) : (
+                            <img
+                              src={media.url}
+                              alt=""
+                              draggable={false}
+                              onClick={e => { e.stopPropagation(); }}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', background: '#000', userSelect: 'none', pointerEvents: 'none' }}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
                     {mediaItems.length > 1 && (
                       <div style={{
                         position: 'absolute', top: 'max(14px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)',
