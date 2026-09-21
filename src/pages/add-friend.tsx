@@ -4365,102 +4365,94 @@ function PostCard({
             <div style={{ minWidth: 72 }} />
           </div>
         ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18, paddingTop: 10, paddingInline: hasMedia ? 14 : 0 }}>
-          <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post); }} style={{
-            position: 'relative', display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
-            color: post.likedByMe ? '#ef4444' : '#000000', overflow: 'visible',
-          }}>
-            <span style={{ position: 'relative', width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-              <motion.span
-                key={likeBurstKey}
-                animate={likeBurstKey ? { scale: [1, 1.35, 0.92, 1] } : { scale: 1 }}
-                transition={{ duration: 0.42, ease: 'easeOut' }}
-                style={{ display: 'inline-flex' }}
-              >
-                <Heart size={16} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
-              </motion.span>
-              <AnimatePresence>
-                {likeBurstKey > 0 && (
-                  <motion.span
-                    key={`bubble-${likeBurstKey}`}
-                    initial={{ opacity: 0.95, scale: 0.25 }}
-                    animate={{ opacity: 0, scale: 2.6 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.55, ease: 'easeOut' }}
-                    aria-hidden
-                    style={{
-                      position: 'absolute', left: '50%', top: '50%', width: 18, height: 18,
-                      marginLeft: -9, marginTop: -9, borderRadius: '50%',
-                      border: '2px solid #ef4444',
-                      boxShadow: '0 0 12px rgba(239,68,68,0.55)',
-                      pointerEvents: 'none',
-                    }}
-                  />
-                )}
-              </AnimatePresence>
-              <AnimatePresence>
-                {likeBurstKey > 0 && (
-                  <motion.span
-                    key={`bubble2-${likeBurstKey}`}
-                    initial={{ opacity: 0.7, scale: 0.4 }}
-                    animate={{ opacity: 0, scale: 3.4 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.7, ease: 'easeOut', delay: 0.05 }}
-                    aria-hidden
-                    style={{
-                      position: 'absolute', left: '50%', top: '50%', width: 14, height: 14,
-                      marginLeft: -7, marginTop: -7, borderRadius: '50%',
-                      background: 'rgba(239,68,68,0.25)',
-                      pointerEvents: 'none',
-                    }}
-                  />
-                )}
-              </AnimatePresence>
-            </span>
-            <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.likesCount > 0 ? post.likesCount : ''}</span>
-          </motion.button>
-          {PostMediaItems(post).length > 0 && (
-            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onDownload(post); }} style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }} aria-label="تنزيل">
-              <Download size={15} strokeWidth={2} />
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          paddingTop: 12, paddingInline: hasMedia ? 14 : 0, gap: 8,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 72 }}>
+            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post); }} style={{
+              position: 'relative', display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
+              color: post.likedByMe ? '#ef4444' : '#000000', overflow: 'visible',
+            }}>
+              <span style={{ position: 'relative', width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                <motion.span
+                  key={likeBurstKey}
+                  animate={likeBurstKey ? { scale: [1, 1.35, 0.92, 1] } : { scale: 1 }}
+                  transition={{ duration: 0.42, ease: 'easeOut' }}
+                  style={{ display: 'inline-flex' }}
+                >
+                  <Heart size={16} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
+                </motion.span>
+                <AnimatePresence>
+                  {likeBurstKey > 0 && (
+                    <motion.span
+                      key={`bubble-${likeBurstKey}`}
+                      initial={{ opacity: 0.95, scale: 0.25 }}
+                      animate={{ opacity: 0, scale: 2.6 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.55, ease: 'easeOut' }}
+                      aria-hidden
+                      style={{
+                        position: 'absolute', left: '50%', top: '50%', width: 18, height: 18,
+                        marginLeft: -9, marginTop: -9, borderRadius: '50%',
+                        border: '2px solid #ef4444',
+                        boxShadow: '0 0 12px rgba(239,68,68,0.55)',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  )}
+                </AnimatePresence>
+                <AnimatePresence>
+                  {likeBurstKey > 0 && (
+                    <motion.span
+                      key={`bubble2-${likeBurstKey}`}
+                      initial={{ opacity: 0.7, scale: 0.4 }}
+                      animate={{ opacity: 0, scale: 3.4 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.7, ease: 'easeOut', delay: 0.05 }}
+                      aria-hidden
+                      style={{
+                        position: 'absolute', left: '50%', top: '50%', width: 14, height: 14,
+                        marginLeft: -7, marginTop: -7, borderRadius: '50%',
+                        background: 'rgba(239,68,68,0.25)',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  )}
+                </AnimatePresence>
+              </span>
+              <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.likesCount > 0 ? post.likesCount : ''}</span>
             </motion.button>
-          )}
-          <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); (onOpenComments ?? onOpenPost)(post); }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}>
-            <MessageCircle size={15} strokeWidth={2} />
-            <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.commentsCount > 0 ? post.commentsCount : ''}</span>
-          </motion.button>
+            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); (onOpenComments ?? onOpenPost)(post); }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}>
+              <MessageCircle size={15} strokeWidth={2} />
+              <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{post.commentsCount > 0 ? post.commentsCount : ''}</span>
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.88 }}
+              onClick={e => { e.stopPropagation(); onShare(post); }}
+              aria-label="Share"
+              style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}
+            >
+              <Send size={15} strokeWidth={2} />
+            </motion.button>
+          </div>
 
           <motion.button
-            whileTap={{ scale: 0.88 }}
-            onClick={e => { e.stopPropagation(); onRepost(post); }}
-            aria-label="إعادة نشر"
-            title="إعادة نشر"
-            style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: post.repostedByMe ? 'hsl(var(--primary))' : '#000000' }}
+            whileTap={{ scale: 0.92 }}
+            onClick={e => { e.stopPropagation(); onOpenPost(post); }}
+            aria-label="Details"
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+              background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
+              borderRadius: 10, width: 44, height: 36, cursor: 'pointer', padding: 0,
+            }}
           >
-            <Repeat2 size={15} strokeWidth={2} />
+            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
           </motion.button>
-          <motion.button
-            whileTap={{ scale: 0.88 }}
-            onClick={e => { e.stopPropagation(); onToggleFavorite(post); }}
-            aria-label="إضافة إلى المفضلة"
-            title="إضافة إلى المفضلة"
-            style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: isFavorited(post.id) ? '#22c55e' : '#000000' }}
-          >
-            <Bookmark size={15} strokeWidth={2} fill={isFavorited(post.id) ? '#22c55e' : 'none'} />
-          </motion.button>
-          <motion.button
-            whileTap={{ scale: 0.88 }}
-            onClick={e => { e.stopPropagation(); onShare(post); }}
-            aria-label="إرسال المنشور للأصدقاء"
-            title="إرسال المنشور للأصدقاء"
-            style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}
-          >
-            <Send size={15} strokeWidth={2} />
-          </motion.button>
-          {followStatus === 'accepted' && (
-            <span title="متابَع" style={{ display: 'flex', alignItems: 'center' }}>
-              <Check size={14} strokeWidth={3} color="#000000" />
-            </span>
-          )}
+
+          <div style={{ minWidth: 72 }} />
         </div>
         )}
 
@@ -15090,25 +15082,48 @@ export default function AddFriendPage() {
                     type="button"
                     onClick={() => {
                       if (user && String(livePost.authorId) === String(user.id)) return;
+                      const isCo = !!(
+                        companies.some(c => String(c.id) === String(livePost.authorId))
+                        || isCompanyUserAccount({ id: livePost.authorId, username: livePost.authorUsername, name: livePost.authorName }, companies)
+                        || (livePost as any).publisherType === 'company'
+                        || (livePost as any).authorIsCompany === true
+                        || (livePost as any).isCompanyPost === true
+                      );
                       setViewingProfile({
                         id: livePost.authorId,
                         name: livePost.authorName,
                         username: livePost.authorUsername,
                         avatarUrl: livePost.authorAvatarUrl,
-                        isCompany: true,
+                        isCompany: isCo,
                       });
                     }}
-                    aria-label="بروفايل الشركة"
-                    title="بروفايل الشركة"
+                    aria-label="Profile"
+                    title="Profile"
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       width: 36, height: 36, borderRadius: 10,
                       background: 'rgba(0,188,212,0.18)',
                       border: '1px solid rgba(0,188,212,0.45)',
                       color: '#00BCD4', cursor: 'pointer', padding: 0, flexShrink: 0,
+                      overflow: 'hidden',
                     }}
                   >
-                    <Building2 size={18} strokeWidth={2.2} />
+                    {livePost.authorAvatarUrl ? (
+                      <img src={livePost.authorAvatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      (() => {
+                        const isCo = !!(
+                          companies.some(c => String(c.id) === String(livePost.authorId))
+                          || isCompanyUserAccount({ id: livePost.authorId, username: livePost.authorUsername, name: livePost.authorName }, companies)
+                          || (livePost as any).publisherType === 'company'
+                          || (livePost as any).authorIsCompany === true
+                          || (livePost as any).isCompanyPost === true
+                        );
+                        return isCo
+                          ? <Building2 size={18} strokeWidth={2.2} />
+                          : <Users size={18} strokeWidth={2.2} />;
+                      })()
+                    )}
                   </motion.button>
                 </div>
               </div>
