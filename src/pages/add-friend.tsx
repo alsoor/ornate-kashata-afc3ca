@@ -13104,7 +13104,6 @@ export default function AddFriendPage() {
           scrollbarWidth: 'none',
         }}>
           {!isFriendManagement && (
-{/* ── Header ── */}
         <div
           className="sticky top-0 z-20"
           style={{
@@ -13116,6 +13115,7 @@ export default function AddFriendPage() {
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
           transition: 'padding-top 160ms ease',
         }}>
+          {/* Header */}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
               non-interactive, matching the fog overlay's own transition). Opens a
