@@ -8884,6 +8884,15 @@ export default function AddFriendPage() {
   const [businessAdBody, setBusinessAdBody] = useState('');
   const [businessAdMedia, setBusinessAdMedia] = useState<{ name: string; dataUrl: string; type: 'image' | 'video' | 'pdf'; mime: string } | null>(null);
   const [composerBizHint, setComposerBizHint] = useState(false);
+  const [myAdsHubOpen, setMyAdsHubOpen] = useState(false);
+  const [myAdsHubTab, setMyAdsHubTab] = useState<'video' | 'photo' | 'pdf'>('video');
+  const [feedAdViewer, setFeedAdViewer] = useState<any | null>(null);
+  const [feedAdsTick, setFeedAdsTick] = useState(0);
+  useEffect(() => {
+    const onAds = () => setFeedAdsTick(x => x + 1);
+    window.addEventListener('stooorna:feed-ads', onAds);
+    return () => window.removeEventListener('stooorna:feed-ads', onAds);
+  }, []);
   const isBusinessUser = !!(user?.id && (() => { try { const raw = localStorage.getItem('stooorna_business_registry'); const list = raw ? JSON.parse(raw) : []; return Array.isArray(list) && list.some((x: any) => String(x.userId) === String(user.id) && x.status === 'approved'); } catch { return false; } })());
   // وضع النشر: اختيار فقط (لا يفتح المعرض) — Text | Photo | Video
   const [composerDestination, setComposerDestination] = useState<'text' | 'photos' | 'videos'>('text');
@@ -12560,6 +12569,22 @@ export default function AddFriendPage() {
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaLikesTotal}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
                   </div>
+                  {businessApproved && (
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => { setMyAdsHubTab('video'); setMyAdsHubOpen(true); }}
+                      aria-label="My Ads"
+                      style={{
+                        marginLeft: 4, width: 28, height: 28, borderRadius: '50%', border: '2px solid #eab308',
+                        background: 'rgba(234,179,8,0.2)', color: '#eab308', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                        boxShadow: '0 0 10px rgba(234,179,8,0.45)',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.55rem', fontWeight: 900, letterSpacing: '-0.02em' }}>Ads</span>
+                    </motion.button>
+                  )}
 
                 </div>
               </div>
@@ -15271,6 +15296,175 @@ export default function AddFriendPage() {
         )}
       </AnimatePresence>
 
+
+      {/* Feed Ad fullscreen viewer (ad-style, not like normal posts) */}
+      <AnimatePresence>
+        {feedAdViewer && (
+          <motion.div
+            key="feed-ad-viewer"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10600, background: 'rgba(0,0,0,0.92)',
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
+              paddingTop: 'max(12px, env(safe-area-inset-top))', borderBottom: '1px solid rgba(234,179,8,0.35)',
+            }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: '2px solid #eab308', flexShrink: 0, background: '#111',
+              }}>
+                {feedAdViewer.authorAvatarUrl ? (
+                  <img src={feedAdViewer.authorAvatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : null}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.9rem' }}>@{String(feedAdViewer.authorUsername || 'business').replace(/^@/, '')}</span>
+                  <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#0a0a0a', background: '#eab308', borderRadius: 4, padding: '2px 6px' }}>Ads</span>
+                </div>
+                {feedAdViewer.title ? <p style={{ margin: '2px 0 0', color: 'rgba(255,255,255,0.75)', fontSize: '0.75rem' }}>{feedAdViewer.title}</p> : null}
+              </div>
+              <button type="button" onClick={() => setFeedAdViewer(null)} style={{ border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', minHeight: 220 }}>
+                {feedAdViewer.mediaType === 'video' && feedAdViewer.mediaUrl ? (
+                  <video src={feedAdViewer.mediaUrl} controls autoPlay playsInline style={{ width: '100%', maxHeight: '55vh', background: '#000' }} />
+                ) : null}
+                {feedAdViewer.mediaType === 'image' && feedAdViewer.mediaUrl ? (
+                  <img src={feedAdViewer.mediaUrl} alt="" style={{ width: '100%', maxHeight: '55vh', objectFit: 'contain' }} />
+                ) : null}
+                {(feedAdViewer.mediaType === 'pdf' || feedAdViewer.pdfUrl) && (
+                  <div style={{ padding: 24, textAlign: 'center' }}>
+                    <FileText size={48} color="#eab308" />
+                    <p style={{ color: '#fff', marginTop: 12, fontWeight: 700 }}>{feedAdViewer.mediaName || feedAdViewer.pdfName || 'PDF'}</p>
+                    <a href={feedAdViewer.mediaUrl || feedAdViewer.pdfUrl} target="_blank" rel="noopener noreferrer" style={{
+                      display: 'inline-block', marginTop: 14, padding: '10px 18px', borderRadius: 10,
+                      background: '#eab308', color: '#0a0a0a', fontWeight: 900, textDecoration: 'none',
+                    }}>Open PDF</a>
+                  </div>
+                )}
+                {!feedAdViewer.mediaUrl && !feedAdViewer.pdfUrl && (
+                  <p style={{ color: 'rgba(255,255,255,0.5)' }}>No media</p>
+                )}
+              </div>
+              {(feedAdViewer.title || feedAdViewer.body) && (
+                <div style={{ padding: '16px 18px calc(20px + env(safe-area-inset-bottom))', background: 'linear-gradient(180deg, #111 0%, #0a0a0a 100%)', borderTop: '1px solid rgba(234,179,8,0.3)' }}>
+                  {feedAdViewer.title ? <p style={{ margin: '0 0 8px', color: '#eab308', fontWeight: 900, fontSize: '1rem' }}>{feedAdViewer.title}</p> : null}
+                  {feedAdViewer.body ? <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{feedAdViewer.body}</p> : null}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Business owner: My Ads hub (bubble center, yellow frame, Video | Photo | PDF) */}
+      <AnimatePresence>
+        {myAdsHubOpen && (
+          <motion.div
+            key="my-ads-hub"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10580, background: 'rgba(0,0,0,0.55)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            }}
+            onClick={() => setMyAdsHubOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: 'min(92vw, 380px)', maxHeight: '78vh', overflow: 'hidden',
+                background: 'linear-gradient(180deg, #0f1410 0%, #0a0e0c 100%)',
+                border: '2px solid #eab308', borderRadius: 18,
+                boxShadow: '0 0 0 1px rgba(234,179,8,0.2), 0 20px 50px rgba(0,0,0,0.55)',
+                display: 'flex', flexDirection: 'column',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderBottom: '1px solid rgba(234,179,8,0.35)' }}>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.95rem' }}>Ads</p>
+                <button type="button" onClick={() => setMyAdsHubOpen(false)} style={{ border: 'none', background: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
+              </div>
+              <div style={{ display: 'flex', borderBottom: '1px solid rgba(234,179,8,0.25)' }}>
+                {([
+                  { id: 'video' as const, label: 'Video' },
+                  { id: 'photo' as const, label: 'Photo' },
+                  { id: 'pdf' as const, label: 'PDF' },
+                ]).map((t, i) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setMyAdsHubTab(t.id)}
+                    style={{
+                      flex: 1, padding: '10px 4px', border: 'none', cursor: 'pointer',
+                      background: myAdsHubTab === t.id ? 'rgba(234,179,8,0.15)' : 'transparent',
+                      color: myAdsHubTab === t.id ? '#eab308' : 'rgba(200,190,150,0.7)',
+                      fontWeight: 800, fontSize: '0.78rem',
+                      borderRight: i < 2 ? '1px solid rgba(234,179,8,0.25)' : 'none',
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: 12, minHeight: 160 }}>
+                {(() => {
+                  void feedAdsTick;
+                  let list: any[] = [];
+                  try {
+                    const raw = localStorage.getItem('stooorna_feed_ads');
+                    list = raw ? JSON.parse(raw) : [];
+                    if (!Array.isArray(list)) list = [];
+                  } catch { list = []; }
+                  const uid = user?.id ? String(user.id) : '';
+                  const mine = list.filter(a => String(a.userId) === uid);
+                  const filtered = mine.filter(a => {
+                    if (myAdsHubTab === 'video') return a.mediaType === 'video';
+                    if (myAdsHubTab === 'photo') return a.mediaType === 'image';
+                    return a.mediaType === 'pdf' || !!a.pdfUrl;
+                  });
+                  if (!filtered.length) {
+                    return (
+                      <p style={{ margin: '24px 0', textAlign: 'center', color: 'rgba(200,190,150,0.55)', fontSize: '0.8rem' }}>
+                        No {myAdsHubTab} ads yet
+                      </p>
+                    );
+                  }
+                  return filtered.map(a => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => { setMyAdsHubOpen(false); setFeedAdViewer(a); }}
+                      style={{
+                        width: '100%', textAlign: 'left', border: '1px solid rgba(234,179,8,0.3)',
+                        background: 'rgba(234,179,8,0.06)', borderRadius: 12, padding: 10, marginBottom: 8, cursor: 'pointer',
+                      }}
+                    >
+                      <p style={{ margin: 0, color: '#eab308', fontWeight: 800, fontSize: '0.82rem' }}>{a.title || 'Ad'}</p>
+                      {a.body ? <p style={{ margin: '4px 0 0', color: 'rgba(220,210,180,0.75)', fontSize: '0.72rem' }}>{String(a.body).slice(0, 80)}</p> : null}
+                      {a.mediaType === 'image' && a.mediaUrl ? (
+                        <img src={a.mediaUrl} alt="" style={{ width: '100%', maxHeight: 100, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />
+                      ) : null}
+                      {a.mediaType === 'video' && a.mediaUrl ? (
+                        <video src={a.mediaUrl} muted style={{ width: '100%', maxHeight: 100, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />
+                      ) : null}
+                      {(a.mediaType === 'pdf' || a.pdfUrl) ? (
+                        <p style={{ margin: '6px 0 0', color: '#eab308', fontSize: '0.7rem', fontWeight: 700 }}>PDF · tap to open</p>
+                      ) : null}
+                    </button>
+                  ));
+                })()}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Business Ads composer sheet */}
       <AnimatePresence>
         {businessAdsOpen && (
@@ -15410,6 +15604,9 @@ export default function AddFriendPage() {
                     const ad = {
                       id: `ad-${Date.now()}`,
                       userId: String(user.id),
+                      authorName: (user as any).name || myUsername || 'Business',
+                      authorUsername: myUsername || (user as any).username || '',
+                      authorAvatarUrl: (user as any).image || (user as any).avatarUrl || null,
                       title, body,
                       mediaUrl: businessAdMedia?.dataUrl || null,
                       mediaType: businessAdMedia?.type || null,
@@ -15826,6 +16023,7 @@ export default function AddFriendPage() {
                   textFeedTab === 'companies' ? isCompanyPost(p) : !isCompanyPost(p)
                 );
                 const feedAds: any[] = (() => {
+                  void feedAdsTick;
                   try {
                     const raw = localStorage.getItem('stooorna_feed_ads');
                     const list = raw ? JSON.parse(raw) : [];
@@ -15833,8 +16031,91 @@ export default function AddFriendPage() {
                     return (Array.isArray(list) ? list : []).filter((a: any) => !a.expiresAt || new Date(a.expiresAt).getTime() > now);
                   } catch { return []; }
                 })();
+                const renderFeedAdCard = (ad: any, key: string) => (
+                  <div
+                    key={key}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setFeedAdViewer(ad)}
+                    onKeyDown={e => { if (e.key === 'Enter') setFeedAdViewer(ad); }}
+                    style={{
+                      width: '100%', textAlign: 'left', cursor: 'pointer',
+                      padding: '12px 14px 14px',
+                      background: 'linear-gradient(180deg, rgba(234,179,8,0.12) 0%, rgba(255,255,255,0.98) 40%)',
+                      border: '2px solid #eab308',
+                      borderRadius: 14,
+                      margin: '8px 10px',
+                      boxSizing: 'border-box',
+                      boxShadow: '0 0 0 1px rgba(234,179,8,0.25), 0 8px 24px rgba(234,179,8,0.12)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                      <div style={{
+                        width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
+                        border: '2px solid #eab308', background: '#111',
+                      }}>
+                        {ad.authorAvatarUrl ? (
+                          <img src={ad.authorAvatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#eab308', fontWeight: 900, fontSize: '0.85rem' }}>
+                            {(ad.authorUsername || ad.authorName || 'A').toString().replace(/^@/, '').slice(0, 1).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ color: '#0a0a0a', fontWeight: 800, fontSize: '0.88rem' }}>
+                            @{String(ad.authorUsername || 'business').replace(/^@/, '')}
+                          </span>
+                          <span style={{
+                            fontSize: '0.62rem', fontWeight: 900, color: '#0a0a0a',
+                            background: '#eab308', borderRadius: 5, padding: '2px 7px', letterSpacing: '0.04em',
+                          }}>Ads</span>
+                        </div>
+                        {ad.title ? (
+                          <p style={{ margin: '2px 0 0', color: '#333', fontWeight: 700, fontSize: '0.78rem' }}>{ad.title}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                    {ad.body ? (
+                      <p style={{ margin: '0 0 10px', color: '#222', fontSize: '0.84rem', lineHeight: 1.45 }}>
+                        {String(ad.body).slice(0, 220)}{String(ad.body).length > 220 ? '…' : ''}
+                      </p>
+                    ) : null}
+                    {ad.mediaUrl && ad.mediaType === 'image' ? (
+                      <img src={ad.mediaUrl} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 12 }} />
+                    ) : null}
+                    {ad.mediaUrl && ad.mediaType === 'video' ? (
+                      <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#000' }}>
+                        <video src={ad.mediaUrl} muted playsInline style={{ width: '100%', maxHeight: 220, objectFit: 'cover', display: 'block' }} />
+                        <div style={{
+                          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: 'rgba(0,0,0,0.25)',
+                        }}>
+                          <div style={{
+                            width: 48, height: 48, borderRadius: '50%', background: 'rgba(234,179,8,0.95)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            <Play size={22} color="#0a0a0a" fill="#0a0a0a" />
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    {(ad.mediaType === 'pdf' || ad.pdfUrl) ? (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12,
+                        background: 'rgba(234,179,8,0.1)', border: '1px dashed rgba(234,179,8,0.5)',
+                      }}>
+                        <FileText size={20} color="#eab308" />
+                        <span style={{ color: '#0a0a0a', fontWeight: 700, fontSize: '0.8rem' }}>{ad.mediaName || ad.pdfName || 'PDF document'}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                );
                 return feedPosts.length > 0 || feedAds.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {feedPosts.length === 0 && feedAds.map((ad: any) => renderFeedAdCard(ad, `only-ad-${ad.id}`))}
+                  {feedPosts.length > 0 && feedAds[0] ? renderFeedAdCard(feedAds[0], `top-ad-${feedAds[0].id}`) : null}
                   {feedPosts.flatMap((post, idx) => {
                     const nodes: React.ReactNode[] = [
                     <PostCard
@@ -15910,53 +16191,86 @@ export default function AddFriendPage() {
                     if (feedAds.length && (idx + 1) % 3 === 0) {
                       const ad = feedAds[Math.floor(idx / 3) % feedAds.length];
                       if (ad) {
-                        nodes.push(
-                          <button
+                                                nodes.push(
+                          <div
                             key={`feed-ad-${ad.id}-${idx}`}
-                            type="button"
-                            onClick={() => {
-                              const url = ad.mediaUrl || ad.pdfUrl;
-                              if (url && (ad.mediaType === 'video' || (ad.mediaMime || '').startsWith('video/'))) {
-                                const w = window.open('', '_blank');
-                                if (w) {
-                                  w.document.write(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${(ad.title || 'Ad').replace(/</g,'')}</title><style>body{margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh}video{max-width:100%;max-height:100vh}</style></head><body><video src="${url}" controls autoplay playsinline style="width:100%"></video></body></html>`);
-                                }
-                                return;
-                              }
-                              if (url && (ad.mediaType === 'image' || (ad.mediaMime || '').startsWith('image/'))) {
-                                const w = window.open('', '_blank');
-                                if (w) {
-                                  w.document.write(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${(ad.title || 'Ad').replace(/</g,'')}</title><style>body{margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh}img{max-width:100%;max-height:100vh;object-fit:contain}</style></head><body><img src="${url}" alt=""/></body></html>`);
-                                }
-                                return;
-                              }
-                              if (url) window.open(url, '_blank');
-                              else if (ad.body) {
-                                const w = window.open('', '_blank');
-                                if (w) {
-                                  w.document.write(`<pre style="font-family:sans-serif;padding:24px;white-space:pre-wrap">${(ad.title || '')}\n\n${ad.body || ''}</pre>`);
-                                }
-                              }
-                            }}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setFeedAdViewer(ad)}
+                            onKeyDown={e => { if (e.key === 'Enter') setFeedAdViewer(ad); }}
                             style={{
-                              width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
-                              padding: '14px 16px', background: 'linear-gradient(135deg, rgba(29,155,240,0.12), rgba(234,179,8,0.1))',
-                              borderBottom: '1px solid rgba(0,0,0,0.06)',
+                              width: '100%', textAlign: 'left', cursor: 'pointer',
+                              padding: '12px 14px 14px',
+                              background: 'linear-gradient(180deg, rgba(234,179,8,0.12) 0%, rgba(255,255,255,0.98) 40%)',
+                              border: '2px solid #eab308',
+                              borderRadius: 14,
+                              margin: '8px 10px',
+                              boxSizing: 'border-box',
+                              boxShadow: '0 0 0 1px rgba(234,179,8,0.25), 0 8px 24px rgba(234,179,8,0.12)',
                             }}
                           >
-                            <span style={{ display: 'inline-block', fontSize: '0.65rem', fontWeight: 900, color: '#1d9bf0', letterSpacing: '0.06em' }}>ADS</span>
-                            <p style={{ margin: '6px 0 0', color: '#0a0a0a', fontWeight: 800, fontSize: '0.9rem' }}>{ad.title || 'Ad'}</p>
-                            {ad.body ? <p style={{ margin: '4px 0 0', color: '#444', fontSize: '0.78rem', lineHeight: 1.4 }}>{String(ad.body).slice(0, 160)}</p> : null}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                              <div style={{
+                                width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
+                                border: '2px solid #eab308', background: '#111',
+                              }}>
+                                {ad.authorAvatarUrl ? (
+                                  <img src={ad.authorAvatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#eab308', fontWeight: 900, fontSize: '0.85rem' }}>
+                                    {(ad.authorUsername || ad.authorName || 'A').toString().replace(/^@/, '').slice(0, 1).toUpperCase()}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                  <span style={{ color: '#0a0a0a', fontWeight: 800, fontSize: '0.88rem' }}>
+                                    @{String(ad.authorUsername || 'business').replace(/^@/, '')}
+                                  </span>
+                                  <span style={{
+                                    fontSize: '0.62rem', fontWeight: 900, color: '#0a0a0a',
+                                    background: '#eab308', borderRadius: 5, padding: '2px 7px', letterSpacing: '0.04em',
+                                  }}>Ads</span>
+                                </div>
+                                {ad.title ? (
+                                  <p style={{ margin: '2px 0 0', color: '#333', fontWeight: 700, fontSize: '0.78rem' }}>{ad.title}</p>
+                                ) : null}
+                              </div>
+                            </div>
+                            {ad.body ? (
+                              <p style={{ margin: '0 0 10px', color: '#222', fontSize: '0.84rem', lineHeight: 1.45 }}>
+                                {String(ad.body).slice(0, 220)}{String(ad.body).length > 220 ? '…' : ''}
+                              </p>
+                            ) : null}
                             {ad.mediaUrl && ad.mediaType === 'image' ? (
-                              <img src={ad.mediaUrl} alt="" style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 10, marginTop: 8 }} />
+                              <img src={ad.mediaUrl} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 12 }} />
                             ) : null}
                             {ad.mediaUrl && ad.mediaType === 'video' ? (
-                              <video src={ad.mediaUrl} muted playsInline style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 10, marginTop: 8 }} />
+                              <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#000' }}>
+                                <video src={ad.mediaUrl} muted playsInline style={{ width: '100%', maxHeight: 220, objectFit: 'cover', display: 'block' }} />
+                                <div style={{
+                                  position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  background: 'rgba(0,0,0,0.25)',
+                                }}>
+                                  <div style={{
+                                    width: 48, height: 48, borderRadius: '50%', background: 'rgba(234,179,8,0.95)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  }}>
+                                    <Play size={22} color="#0a0a0a" fill="#0a0a0a" />
+                                  </div>
+                                </div>
+                              </div>
                             ) : null}
-                            {ad.mediaType === 'pdf' || ad.pdfUrl ? (
-                              <p style={{ margin: '6px 0 0', color: '#1d9bf0', fontSize: '0.72rem', fontWeight: 700 }}>PDF attached</p>
+                            {(ad.mediaType === 'pdf' || ad.pdfUrl) && !ad.mediaUrl?.startsWith('data:image') ? (
+                              <div style={{
+                                display: 'flex', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12,
+                                background: 'rgba(234,179,8,0.1)', border: '1px dashed rgba(234,179,8,0.5)',
+                              }}>
+                                <FileText size={20} color="#eab308" />
+                                <span style={{ color: '#0a0a0a', fontWeight: 700, fontSize: '0.8rem' }}>{ad.mediaName || ad.pdfName || 'PDF document'}</span>
+                              </div>
                             ) : null}
-                          </button>
+                          </div>
                         );
                       }
                     }
