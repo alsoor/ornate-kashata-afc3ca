@@ -11445,10 +11445,24 @@ export default function AddFriendPage() {
   // ── Profile chrome expand/collapse (scroll-driven, Telegram-style) ─────────
   // true  = expanded: full story circle, stats, friends strip, products label
   // false = compact: small stories row + username/bio only; bottom nav hidden
+  // Profile header collapse is DOM-driven (like text-posts chrome) — no setState on scroll.
   const [headerOpen, setHeaderOpen] = useState(true);
   const headerOpenRef = useRef(true);
+  const profileHeaderRootRef = useRef<HTMLDivElement | null>(null);
   const profileScrollLastYRef = useRef(0);
   const profileScrollRafRef = useRef(0);
+  function applyProfileHeaderOpen(open: boolean) {
+    if (headerOpenRef.current === open) return;
+    headerOpenRef.current = open;
+    const root = profileHeaderRootRef.current;
+    if (root) {
+      if (open) root.classList.remove('is-collapsed');
+      else root.classList.add('is-collapsed');
+    }
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: !open } }));
+    } catch { /* */ }
+  }
   useEffect(() => {
     return () => {
       try { window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } })); } catch { /* */ }
@@ -13087,15 +13101,11 @@ export default function AddFriendPage() {
             profileScrollRafRef.current = requestAnimationFrame(() => {
               profileScrollRafRef.current = 0;
               let next: boolean | null = null;
-              if (y <= 8) next = true;
-              else if (delta > 4) next = false;
-              else if (delta < -8) next = true;
-              if (next === null || next === headerOpenRef.current) return;
-              headerOpenRef.current = next;
-              setHeaderOpen(next);
-              try {
-                window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: !next } }));
-              } catch { /* */ }
+              if (y <= 10) next = true;
+              else if (delta > 5) next = false;
+              else if (delta < -10) next = true;
+              if (next === null) return;
+              applyProfileHeaderOpen(next);
             });
           }}
           style={{
@@ -13105,17 +13115,38 @@ export default function AddFriendPage() {
         }}>
           {!isFriendManagement && (
         <div
-          className="sticky top-0 z-20"
+          ref={profileHeaderRootRef}
+          className="profile-header-root sticky top-0 z-20"
           style={{
           position: 'sticky',
           top: 0,
-          paddingTop: headerOpen ? 40 : 6,
+          paddingTop: 40,
           background: CLR_HEADER_BG,
           backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
           transition: 'padding-top 160ms ease',
         }}>
           {/* Header */}
+          <style>{`
+            .profile-header-root.is-collapsed { padding-top: 6px !important; }
+            .profile-header-root.is-collapsed [data-expand-only] {
+              max-height: 0 !important; opacity: 0 !important; overflow: hidden !important;
+              margin: 0 !important; padding: 0 !important; border: none !important;
+              pointer-events: none !important; min-height: 0 !important;
+            }
+            .profile-header-root.is-collapsed [data-story-circle] {
+              width: 44px !important; height: 44px !important;
+            }
+            .profile-header-root.is-collapsed [data-compact-only] {
+              display: flex !important;
+            }
+            .profile-header-root.is-collapsed [data-expand-col] {
+              display: none !important;
+            }
+            .profile-header-root [data-story-circle] {
+              transition: width 160ms ease, height 160ms ease;
+            }
+          `}</style>
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
               non-interactive, matching the fog overlay's own transition). Opens a
@@ -13130,9 +13161,8 @@ export default function AddFriendPage() {
               Telegram-style: small stories strip + username/bio only. Never fully fog-hidden. */}
           <div style={{
             overflow: 'hidden',
-            paddingTop: headerOpen ? 12 : 6,
+            paddingTop: 12,
             position: 'relative',
-            transition: 'padding 220ms ease',
           }}>
 
           {/* Row 1 + Row 2: story circle + stats, then the friends' stories strip */}
@@ -13142,16 +13172,16 @@ export default function AddFriendPage() {
               (shared-posts / my story posts) button now lives in the unified nav row below, always visible.
               The decorative Globe next to "Following" has been removed. */}
           {pageTab === 'profile' && (
-            <div className="flex items-center" style={{ paddingBottom: headerOpen ? 8 : 4, paddingInline: headerOpen ? 20 : 12, gap: headerOpen ? 14 : 10, transition: 'padding 200ms ease, gap 200ms ease' }}>
+            <div className="flex items-center" style={{ paddingBottom: 8, paddingInline: 20, gap: 14 }}>
               {/* ── My story circle — same place as before ── */}
               {user && (() => {
                 const myGroup = storyGroups.find(g => g.userId === user?.id);
                 const hasStory = !!myGroup && myGroup.items.length > 0;
                 const allSeen = hasStory && myGroup!.items.every(i => i.seen);
-                const storySz = headerOpen ? 76 : 44;
+                const storySz = 76;
                 return (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: headerOpen ? -12 : 0, marginLeft: headerOpen ? -6 : 0, flexShrink: 0, transition: 'margin 200ms ease' }}>
-                    <div style={{ width: storySz, height: storySz, position: 'relative', transition: 'width 200ms ease, height 200ms ease' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: -12, marginLeft: -6, flexShrink: 0 }}>
+                    <div data-story-circle style={{ width: storySz, height: storySz, position: 'relative' }}>
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => {
@@ -13162,7 +13192,8 @@ export default function AddFriendPage() {
                           }
                         }}
                         disabled={storyUploading}
-                        style={{ width: storySz, height: storySz, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', transition: 'width 200ms ease, height 200ms ease' }}
+                        data-story-circle
+                        style={{ width: storySz, height: storySz, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
                       >
                         {/* One fixed circular frame: the photo is clipped inside it and can never overflow. */}
                         {/* إطار أزرق ثابت + صورة ثابتة */}
@@ -13176,9 +13207,9 @@ export default function AddFriendPage() {
                           <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={68} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
                         </div>
                       </motion.button>
-                      {/* + badge — hidden in compact scroll mode */}
-                      {headerOpen && (
+                      {/* + badge — hidden in compact scroll mode via data-expand-only */}
                       <motion.button
+                        data-expand-only
                         whileTap={{ scale: 0.88 }}
                         animate={{ rotate: 360 }}
                         transition={{ duration: 2.4, repeat: Infinity, ease: 'linear' }}
@@ -13201,23 +13232,21 @@ export default function AddFriendPage() {
                           : <Plus size={12} strokeWidth={3} color="#fff" />
                         }
                       </motion.button>
-                      )}
                     </div>
-                    {headerOpen && (
-                    <span style={{ fontSize: '0.58rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500 }}>
+                    <span data-expand-only style={{ fontSize: '0.58rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500 }}>
                       قصتي
                     </span>
-                    )}
                   </div>
                 );
               })()}
 
               {/* Compact mode (Telegram): friend stories sit immediately to the right of my story, left-aligned */}
-              {!headerOpen && pageTab === 'profile' && (
+              {pageTab === 'profile' && (
                 <div
                   className="header-stories-compact"
+                  data-compact-only
                   style={{
-                    display: 'flex', flexDirection: 'row', flexWrap: 'nowrap',
+                    display: 'none', flexDirection: 'row', flexWrap: 'nowrap',
                     gap: 8, overflowX: 'auto', overflowY: 'hidden', flex: 1, minWidth: 0,
                     scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
                     alignItems: 'center', paddingInlineEnd: 8,
@@ -13254,8 +13283,7 @@ export default function AddFriendPage() {
               )}
 
               {/* ── Username | Bio / stats — expanded only ── */}
-              {headerOpen && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 6, flex: 1 }}>
+              <div data-expand-col style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 6, flex: 1 }}>
                 {/* Pinned track — shown right above my name/username, playable from here too. */}
                 {pinnedTrack && <PinnedTrackBar track={pinnedTrack} />}
                 {(myUsername || myBio) && (
@@ -13330,12 +13358,11 @@ export default function AddFriendPage() {
 
                 </div>}
               </div>
-              )}
             </div>
           )}
 
           {/* Row 2: Friends' stories — expanded only (compact shows them left of header with my story) */}
-          {pageTab === 'profile' && headerOpen && (
+          {pageTab === 'profile' && (
             <>
               <style>{`
                 .header-stories::-webkit-scrollbar{display:none}
@@ -13344,6 +13371,7 @@ export default function AddFriendPage() {
               `}</style>
               <div
                 className="header-stories"
+                data-expand-only
                 style={{
                   display: 'flex', flexDirection: 'row', flexWrap: 'nowrap',
                   gap: 10, overflowX: 'auto', overflowY: 'hidden',
@@ -13364,7 +13392,7 @@ export default function AddFriendPage() {
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setViewerGroupIdx(realIdx)}
-                        style={{ width: headerOpen ? 60 : 40, height: headerOpen ? 60 : 40, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', transition: 'width 200ms ease, height 200ms ease' }}
+                        style={{ width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
                       >
                         {/* حلقة بلونين فقط: أصفر كامل ما دام في عنصر غير مُشاهَد،
                             وأزرق كامل (نفس أزرق دائرة "قصتي") بعد مشاهدة كل العناصر */}
@@ -13408,8 +13436,8 @@ export default function AddFriendPage() {
           </div>
 
           {/* Content header — single Post section (hidden in compact scroll mode) */}
-          {pageTab === 'profile' && headerOpen && (
-            <div style={{ padding: '0 0 8px' }}>
+          {pageTab === 'profile' && (
+            <div data-expand-only style={{ padding: '0 0 8px' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 padding: '9px 4px', marginBottom: 8,
