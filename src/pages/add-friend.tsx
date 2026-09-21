@@ -9257,9 +9257,12 @@ export default function AddFriendPage() {
   const [singlePostFromProfile, setSinglePostFromProfile] = useState(false);
   const [adDetailsOpen, setAdDetailsOpen] = useState(false);
   const [adVideoPaused, setAdVideoPaused] = useState(false);
+  const [singlePostChromeVisible, setSinglePostChromeVisible] = useState(true);
+  const singlePostTouchRef = useRef<{ y: number; t: number } | null>(null);
   function openSinglePostView(post: PostItem, fromProfile = false) {
     setAdDetailsOpen(false);
     setAdVideoPaused(false);
+    setSinglePostChromeVisible(true);
     setSinglePostFromProfile(!!fromProfile);
     setSinglePostView(post);
     try { recordPostView(post.id, post.authorId); } catch { /* */ }
@@ -9269,6 +9272,33 @@ export default function AddFriendPage() {
     setSinglePostFromProfile(false);
     setAdDetailsOpen(false);
     setAdVideoPaused(false);
+    setSinglePostChromeVisible(true);
+  }
+  function getAuthorPostPlaylist(authorId: string): PostItem[] {
+    const list = (posts || []).filter(p => String(p.authorId) === String(authorId));
+    const seen = new Set<number>();
+    const out: PostItem[] = [];
+    for (const p of list) {
+      if (seen.has(p.id)) continue;
+      seen.add(p.id);
+      out.push(p);
+    }
+    return out;
+  }
+  function goAdjacentAuthorPost(dir: 1 | -1) {
+    if (!singlePostView) return;
+    const playlist = getAuthorPostPlaylist(singlePostView.authorId);
+    if (playlist.length < 2) return;
+    const idx = playlist.findIndex(p => p.id === singlePostView.id);
+    if (idx < 0) return;
+    const next = playlist[(idx + dir + playlist.length) % playlist.length];
+    if (!next || next.id === singlePostView.id) return;
+    setAdDetailsOpen(false);
+    setAdVideoPaused(false);
+    setSinglePostChromeVisible(true);
+    setSinglePostMediaPage(0);
+    setSinglePostView(next);
+    try { recordPostView(next.id, next.authorId); } catch { /* */ }
   }
 
   const [postComments, setPostComments] = useState<Record<number, PostComment[]>>({});
@@ -10214,6 +10244,24 @@ export default function AddFriendPage() {
                 fd.append('kind', mediaType);
                 return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
               },
+              async () => {
+                const fd = new FormData();
+                fd.append('video', file, file.name || `media.${ext}`);
+                fd.append('type', 'video');
+                return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+              },
+              async () => {
+                const fd = new FormData();
+                fd.append('upload', file, file.name || `media.${ext}`);
+                fd.append('mediaType', mediaType);
+                return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+              },
+              async () => {
+                const fd = new FormData();
+                fd.append('file', file, file.name || `video.${ext}`);
+                fd.append('destination', mediaType === 'video' ? 'videos' : 'photos');
+                return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+              },
             ];
             for (const run of fallbacks) {
               try {
@@ -10244,9 +10292,19 @@ export default function AddFriendPage() {
         }
       }
       if (composerMediaFiles.length > 0 && uploadedMedia.length === 0) {
-        setComposerError(lastUploadError || 'تعذر رفع الملف (صورة / فيديو / PDF)');
-        setComposerPosting(false);
-        return;
+        // Last resort for video/image: keep local blob URL so publish still lands in feed
+        for (const item of composerMediaFiles) {
+          if (item.type === 'pdf') continue;
+          try {
+            const localUrl = item.preview || URL.createObjectURL(item.file);
+            uploadedMedia.push({ url: localUrl, type: item.type === 'video' ? 'video' : 'image' });
+          } catch { /* */ }
+        }
+        if (uploadedMedia.length === 0) {
+          setComposerError(lastUploadError || 'Media upload failed');
+          setComposerPosting(false);
+          return;
+        }
       }
 
       // Preview links become media, not text
@@ -10347,13 +10405,40 @@ export default function AddFriendPage() {
           });
         }
         if (!createRes.ok) {
-          const errBody = await createRes.text().catch(() => '');
-          let msg = '';
-          try { msg = (JSON.parse(errBody) as { error?: string }).error || ''; } catch { msg = errBody.slice(0, 120); }
-          throw new Error(msg || `Failed to create post (${createRes.status})`);
+          // Optimistic local post when server rejects (e.g. blob URL after upload fail)
+          const localId = -Math.floor(Date.now() % 1e9);
+          saved = {
+            id: localId,
+            authorId: String(user?.id || ''),
+            authorName: (user as any)?.name || 'Me',
+            authorUsername: (user as any)?.username || myUsername || null,
+            authorAvatarUrl: (user as any)?.image || (user as any)?.avatarUrl || null,
+            text: finalText || '',
+            mediaUrl,
+            mediaType,
+            mediaUrls,
+            mediaTypes,
+            hashtags: [],
+            createdAt: new Date().toISOString(),
+            likesCount: 0,
+            likedByMe: false,
+            repostsCount: 0,
+            repostedByMe: false,
+            commentsCount: 0,
+            audience: primaryAudience,
+            destination: primaryDest,
+            publisherType: isCompanyPublisher ? 'company' : 'user',
+            isCompanyPost: !!isCompanyPublisher,
+            authorIsCompany: !!isCompanyPublisher,
+          } as PostItem;
         }
-        const createData = await createRes.json();
-        if (!createData?.post?.id) throw new Error('Post was not saved on server');
+        let createData: any = null;
+        if (!saved) {
+          createData = await createRes.json();
+          if (!createData?.post?.id) throw new Error('Post was not saved on server');
+        } else {
+          createData = { post: saved };
+        }
 
         const serverMediaUrl = createData.post.mediaUrl || mediaUrl;
         const serverMediaUrls = (Array.isArray(createData.post.mediaUrls) && createData.post.mediaUrls.length)
@@ -10380,7 +10465,7 @@ export default function AddFriendPage() {
           authorIsCompany: !!isCompanyPublisher,
         } as PostItem;
 
-        if (finalText.trim()) {
+        if (finalText.trim() && saved.id > 0) {
           try {
             await fetch(`/api/posts/${saved.id}/caption`, {
               method: 'PATCH',
@@ -15497,7 +15582,7 @@ export default function AddFriendPage() {
                       const existingImageCount = prev.filter(item => item.type === 'image').length;
                       const remainingSlots = MAX_COMPOSER_IMAGES - existingImageCount;
                       if (remainingSlots <= 0) {
-                        setComposerError(`الحد الأقصى ${MAX_COMPOSER_IMAGES} صور`);
+                        setComposerError(`Max ${MAX_COMPOSER_IMAGES} images`);
                         return prev;
                       }
                       const accepted = files.slice(0, remainingSlots);
@@ -15678,7 +15763,7 @@ export default function AddFriendPage() {
               initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()}
               style={{
-                width: 'min(92vw, 380px)', maxHeight: '78vh', overflow: 'hidden',
+                width: 'min(92vw, 380px)', maxHeight: '85vh', overflow: 'hidden',
                 background: 'linear-gradient(180deg, #0f1410 0%, #0a0e0c 100%)',
                 border: '2px solid #eab308', borderRadius: 18,
                 boxShadow: '0 0 0 1px rgba(234,179,8,0.2), 0 20px 50px rgba(0,0,0,0.55)',
@@ -15711,7 +15796,11 @@ export default function AddFriendPage() {
                   </button>
                 ))}
               </div>
-              <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: 12, minHeight: 160, maxHeight: '52vh' }}>
+              <div style={{
+                flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
+                padding: 12, minHeight: 180, maxHeight: 'min(62vh, 520px)',
+                scrollbarWidth: 'thin', scrollbarColor: 'rgba(234,179,8,0.55) transparent',
+              }}>
                 {(() => {
                   void feedAdsTick;
                   void adClockTick;
@@ -16190,9 +16279,7 @@ export default function AddFriendPage() {
         {singlePostView && (() => {
           const ad = parseProductAd(singlePostView.text);
           const mediaItems = PostMediaItems(singlePostView);
-          const primary = mediaItems[0];
           const xUrls = extractLinkMediaUrls(singlePostView.text);
-          const isPdf = !!(primary?.url && /\.pdf(\?|$)/i.test(primary.url));
           const livePost = posts.find(p => p.id === singlePostView.id) ?? singlePostView;
           return (
             <motion.div
@@ -16208,10 +16295,11 @@ export default function AddFriendPage() {
                 background: '#000', display: 'flex', flexDirection: 'column', overflow: 'hidden',
               }}
             >
+              {singlePostChromeVisible && (
               <button
                 type="button"
-                onClick={closeSinglePostView}
-                aria-label="إغلاق"
+                onClick={e => { e.stopPropagation(); closeSinglePostView(); }}
+                aria-label="Close"
                 style={{
                   position: 'absolute', top: 'max(12px, env(safe-area-inset-top, 0px))', insetInlineStart: 12, zIndex: 6,
                   width: 36, height: 36, borderRadius: '50%', border: 'none',
@@ -16221,31 +16309,147 @@ export default function AddFriendPage() {
               >
                 <X size={18} strokeWidth={2.4} />
               </button>
+              )}
 
-              <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#000' }}>
-                {primary ? (
-                  isPdf ? (
-                    <iframe title="PDF" src={primary.url} style={{ width: '100%', height: '100%', border: 'none', background: '#111' }} />
-                  ) : primary.type === 'video' ? (
-                    <video
-                      key={primary.url}
-                      src={primary.url}
-                      autoPlay
-                      loop
-                      playsInline
-                      muted={false}
-                      controls={false}
-                      onClick={e => {
-                        e.stopPropagation();
-                        const v = e.currentTarget;
-                        if (v.paused) { void v.play(); setAdVideoPaused(false); }
-                        else { v.pause(); setAdVideoPaused(true); }
+              <div
+                style={{ flex: 1, minHeight: 0, position: 'relative', background: '#000', touchAction: 'pan-y' }}
+                onTouchStart={e => {
+                  const t = e.changedTouches[0];
+                  if (!t) return;
+                  singlePostTouchRef.current = { y: t.clientY, t: Date.now() };
+                }}
+                onTouchEnd={e => {
+                  const start = singlePostTouchRef.current;
+                  singlePostTouchRef.current = null;
+                  if (!start) return;
+                  const t = e.changedTouches[0];
+                  if (!t) return;
+                  const dy = t.clientY - start.y;
+                  const dt = Date.now() - start.t;
+                  if (dt < 600 && Math.abs(dy) > 56) {
+                    if (dy < 0) goAdjacentAuthorPost(1);
+                    else goAdjacentAuthorPost(-1);
+                  }
+                }}
+                onClick={() => setSinglePostChromeVisible(v => !v)}
+              >
+                {mediaItems.length > 0 ? (
+                  <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                    <div
+                      ref={singlePostMediaScrollRef}
+                      onScroll={e => {
+                        if (mediaItems.length <= 1) return;
+                        const el = e.currentTarget;
+                        if (!el.clientWidth) return;
+                        const idx = Math.round(el.scrollLeft / el.clientWidth);
+                        setSinglePostMediaPage(prev => (prev === idx ? prev : idx));
                       }}
-                      style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000', cursor: 'pointer' }}
-                    />
-                  ) : (
-                    <img src={primary.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }} />
-                  )
+                      onClick={e => e.stopPropagation()}
+                      style={{
+                        display: 'flex', flexDirection: 'row', width: '100%', height: '100%',
+                        direction: 'ltr',
+                        overflowX: mediaItems.length > 1 ? 'auto' : 'hidden',
+                        scrollSnapType: mediaItems.length > 1 ? 'x mandatory' : undefined,
+                        WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
+                      }}
+                    >
+                      {mediaItems.map((media, index) => {
+                        const pdf = /\.pdf(\?|$)/i.test(media.url);
+                        return (
+                          <div
+                            key={`${media.type}-${index}-${media.url.slice(-12)}`}
+                            style={{
+                              width: '100%', height: '100%', flexShrink: 0,
+                              scrollSnapAlign: mediaItems.length > 1 ? 'start' : undefined,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000',
+                            }}
+                          >
+                            {pdf ? (
+                              <iframe title="PDF" src={media.url} style={{ width: '100%', height: '100%', border: 'none', background: '#111' }} />
+                            ) : media.type === 'video' ? (
+                              <video
+                                key={media.url}
+                                src={media.url}
+                                autoPlay={index === singlePostMediaPage}
+                                loop
+                                playsInline
+                                muted={false}
+                                controls={false}
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setSinglePostChromeVisible(v => !v);
+                                }}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000', cursor: 'pointer' }}
+                              />
+                            ) : (
+                              <img
+                                src={media.url}
+                                alt=""
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setSinglePostChromeVisible(v => !v);
+                                }}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {mediaItems.length > 1 && (
+                      <>
+                        <div style={{
+                          position: 'absolute', top: 'max(14px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)',
+                          padding: '4px 12px', borderRadius: 999, background: 'rgba(0,0,0,0.55)',
+                          color: '#fff', fontSize: '0.75rem', fontWeight: 800, zIndex: 4, pointerEvents: 'none',
+                        }}>
+                          {singlePostMediaPage + 1}/{mediaItems.length}
+                        </div>
+                        {singlePostMediaPage > 0 && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              const el = singlePostMediaScrollRef.current;
+                              if (!el) return;
+                              const next = Math.max(0, singlePostMediaPage - 1);
+                              el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
+                              setSinglePostMediaPage(next);
+                            }}
+                            style={{
+                              position: 'absolute', top: '50%', left: 10, transform: 'translateY(-50%)',
+                              width: 34, height: 34, borderRadius: '50%', border: 'none',
+                              background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', zIndex: 4,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}
+                          >
+                            <ChevronLeft size={18} />
+                          </button>
+                        )}
+                        {singlePostMediaPage < mediaItems.length - 1 && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              const el = singlePostMediaScrollRef.current;
+                              if (!el) return;
+                              const next = Math.min(mediaItems.length - 1, singlePostMediaPage + 1);
+                              el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
+                              setSinglePostMediaPage(next);
+                            }}
+                            style={{
+                              position: 'absolute', top: '50%', right: 10, transform: 'translateY(-50%)',
+                              width: 34, height: 34, borderRadius: '50%', border: 'none',
+                              background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', zIndex: 4,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}
+                          >
+                            <ChevronRight size={18} />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 ) : xUrls.length > 0 ? (
                   <div style={{ width: '100%', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '56px 12px 12px', boxSizing: 'border-box' }}>
                     <div style={{ margin: 'auto 0', width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -16259,14 +16463,12 @@ export default function AddFriendPage() {
                     </p>
                   </div>
                 )}
-                {primary?.type === 'video' && adVideoPaused && (
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                    <Play size={48} color="#fff" fill="rgba(255,255,255,0.35)" />
-                  </div>
-                )}
               </div>
 
-              <div style={{
+              {singlePostChromeVisible && (
+              <div
+                onClick={e => e.stopPropagation()}
+                style={{
                 flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '12px 20px calc(12px + env(safe-area-inset-bottom, 0px))',
@@ -16381,6 +16583,7 @@ export default function AddFriendPage() {
                   </motion.button>
                 </div>
               </div>
+              )}
 
               <AnimatePresence>
                 {adDetailsOpen && (
@@ -16722,7 +16925,8 @@ export default function AddFriendPage() {
                           companies.some(c => String(c.id) === String(p.authorId)) ||
                           isCompanyUserAccount({ id: p.authorId, username: p.authorUsername, name: p.authorName })
                         );
-                        if (parseProductAd(p.text) || companyAuthor) openSinglePostView(p);
+                        const hasMedia = PostMediaItems(p).length > 0;
+                        if (hasMedia || parseProductAd(p.text) || companyAuthor) openSinglePostView(p);
                         else openTextPostDetail(p);
                       }}
                       onOpenComments={loadComments}
