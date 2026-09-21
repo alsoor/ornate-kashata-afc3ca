@@ -3969,6 +3969,74 @@ function getAdCountdownMs(a: any, now = Date.now()): number {
 }
 
 /** When 24h ends → 4h cooldown; when 4h ends → auto Publish another 24h until campaign ends */
+
+const AD_CLIMB_MS = 5 * 60 * 1000;
+
+function getAdCycleStartMs(a: any): number {
+  const t = new Date(a.lastAutoPublishAt || a.createdAt || 0).getTime();
+  return t || Date.now();
+}
+
+function getAdClimbCount(a: any, now = Date.now()): number {
+  const start = getAdCycleStartMs(a);
+  if (!start || now <= start) return 0;
+  return Math.floor((now - start) / AD_CLIMB_MS);
+}
+
+function getAdNextClimbMs(a: any, now = Date.now()): number {
+  const start = getAdCycleStartMs(a);
+  if (!start) return AD_CLIMB_MS;
+  const elapsed = Math.max(0, now - start);
+  const mod = elapsed % AD_CLIMB_MS;
+  return mod === 0 ? AD_CLIMB_MS : AD_CLIMB_MS - mod;
+}
+
+/** Insert index among posts: new posts stay above; every 5 min climb one older slot toward top */
+function getAdInsertIndex(ad: any, posts: any[], now = Date.now()): number {
+  const adCreated = new Date(ad.createdAt || 0).getTime() || now;
+  const climbs = getAdClimbCount(ad, now);
+  let newer = 0;
+  let older = 0;
+  for (const p of posts) {
+    const pt = new Date((p as any).createdAt || 0).getTime() || 0;
+    if (pt > adCreated) newer += 1;
+    else older += 1;
+  }
+  const olderAbove = Math.max(0, older - climbs);
+  return Math.min(posts.length, newer + olderAbove);
+}
+
+function buildFeedWithAds(posts: any[], ads: any[], now = Date.now()): Array<{ type: 'post'; post: any } | { type: 'ad'; ad: any }> {
+  const liveAds = (ads || []).filter((a) => isAdLive(a, now));
+  if (!liveAds.length) {
+    return posts.map((post) => ({ type: 'post' as const, post }));
+  }
+  // Place ads from lowest insert index first so later inserts shift correctly
+  const planned = liveAds
+    .map((ad) => ({ ad, index: getAdInsertIndex(ad, posts, now) }))
+    .sort((a, b) => a.index - b.index || String(a.ad.id).localeCompare(String(b.ad.id)));
+
+  const out: Array<{ type: 'post'; post: any } | { type: 'ad'; ad: any }> = [];
+  let pi = 0;
+  let ai = 0;
+  while (pi < posts.length || ai < planned.length) {
+    while (ai < planned.length && planned[ai].index <= pi) {
+      out.push({ type: 'ad', ad: planned[ai].ad });
+      ai += 1;
+    }
+    if (pi < posts.length) {
+      out.push({ type: 'post', post: posts[pi] });
+      pi += 1;
+    } else {
+      while (ai < planned.length) {
+        out.push({ type: 'ad', ad: planned[ai].ad });
+        ai += 1;
+      }
+    }
+  }
+  return out;
+}
+
 function processAdAutoRepublish(list: any[], now = Date.now()): { list: any[]; changed: boolean } {
   let changed = false;
   const next = (Array.isArray(list) ? list : []).map((a) => {
@@ -15739,14 +15807,16 @@ export default function AddFriendPage() {
                               {(() => {
                                 const phase = getAdPhase(a, Date.now());
                                 const ms = getAdCountdownMs(a, Date.now());
+                                const climbMs = getAdNextClimbMs(a, Date.now());
+                                const climbs = getAdClimbCount(a, Date.now());
                                 const label = phase === 'live'
-                                  ? `Live ${formatCountdown(ms)}`
+                                  ? `Live ${formatCountdown(ms)} · up in ${formatCountdown(climbMs)}`
                                   : phase === 'cooldown'
                                     ? `Next publish ${formatCountdown(ms)}`
                                     : 'Campaign ended';
                                 return (
-                                  <p style={{ margin: '2px 0 0', color: phase === 'live' ? '#eab308' : 'rgba(220,210,180,0.75)', fontSize: '0.65rem', fontWeight: 700 }}>
-                                    {label}
+                                  <p style={{ margin: '2px 0 0', color: phase === 'live' ? '#eab308' : 'rgba(220,210,180,0.75)', fontSize: '0.62rem', fontWeight: 700 }}>
+                                    {label}{phase === 'live' ? ` · #${climbs}` : ''}
                                   </p>
                                 );
                               })()}
@@ -15843,6 +15913,10 @@ export default function AddFriendPage() {
                       <p style={{ margin: '6px 0 0', color: 'rgba(200,190,150,0.65)', fontSize: '0.68rem' }}>Ends at: {formatAdEndsAt(a.endsAt || a.expiresAt)}</p>
                       <p style={{ margin: 0, color: 'rgba(200,190,150,0.65)', fontSize: '0.68rem' }}>Next publish: {formatAdEndsAt(a.nextEligibleAt)}</p>
                       <p style={{ margin: 0, color: 'rgba(200,190,150,0.65)', fontSize: '0.68rem' }}>Campaign until: {formatAdEndsAt(a.campaignEndsAt)}</p>
+                      <p style={{ margin: 0, color: '#eab308', fontSize: '0.68rem', fontWeight: 800 }}>
+                        Next climb up (1 user): {phase === 'live' ? formatCountdown(getAdNextClimbMs(a, Date.now())) : '—'}
+                      </p>
+                      <p style={{ margin: 0, color: 'rgba(200,190,150,0.65)', fontSize: '0.68rem' }}>Climbs this cycle: {getAdClimbCount(a, Date.now())}</p>
                       <p style={{ margin: 0, color: 'rgba(200,190,150,0.65)', fontSize: '0.68rem' }}>Type: {a.mediaType || 'text'}</p>
                     </div>
                     <button
@@ -16616,10 +16690,15 @@ export default function AddFriendPage() {
                 return feedPosts.length > 0 || feedAds.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {adGlowStyle}
-                  {feedPosts.length === 0 && feedAds.map((ad: any) => renderFeedAdCard(ad, `only-ad-${ad.id}`))}
-                  {feedPosts.length > 0 && feedAds[0] ? renderFeedAdCard(feedAds[0], `top-ad-${feedAds[0].id}`) : null}
-                  {feedPosts.flatMap((post, idx) => {
-                    const nodes: React.ReactNode[] = [
+                  {(() => {
+                    void adClockTick;
+                    const mixed = buildFeedWithAds(feedPosts, feedAds, Date.now());
+                    return mixed.map((item, idx) => {
+                      if (item.type === 'ad') {
+                        return renderFeedAdCard(item.ad, `mix-ad-${item.ad.id}-${idx}`);
+                      }
+                      const post = item.post;
+                      return (
                     <PostCard
                       key={post.repostKey ?? post.id}
                       post={post}
@@ -16689,15 +16768,9 @@ export default function AddFriendPage() {
                       isPinned={!!user && post.authorId === user.id && pinnedPostId === post.id}
                       onTogglePin={handleTogglePinPost}
                     />
-                    ];
-                    if (feedAds.length && (idx + 1) % 3 === 0) {
-                      const ad = feedAds[Math.floor(idx / 3) % feedAds.length];
-                      if (ad) {
-                        nodes.push(renderFeedAdCard(ad, `feed-ad-${ad.id}-${idx}`));
-                      }
-                    }
-                    return nodes;
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 32 }}>
