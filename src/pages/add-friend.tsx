@@ -1639,11 +1639,13 @@ function storyRingColor(items: StoryItem[], unseenColor: string, seenColor: stri
 // نقرتان متتاليتان على الشاشة = تبديل الكاميرا الأمامية/الخلفية، وأزرار التحكم
 // الوحيدة هي: فلاش وفلاتر متقدمة. بعد التصوير تظهر ثلاثة خيارات نصية:
 // نشر القصة / إعادة التصوير / إغلاق الكاميرا. الإغلاق ينزل الشاشة بأنيميشن للأسفل.
-type CameraFilterId = 'none' | 'beauty' | 'makeup' | 'glow' | 'warm' | 'cool' | 'vivid' | 'dramatic' | 'vintage' | 'fade' | 'bw';
+type CameraFilterId = 'none' | 'ai' | 'beauty' | 'makeup' | 'product' | 'glow' | 'warm' | 'cool' | 'vivid' | 'dramatic' | 'vintage' | 'fade' | 'bw';
 const CAMERA_FILTERS: { id: CameraFilterId; label: string; css: string }[] = [
   { id: 'none', label: 'Original', css: 'none' },
+  { id: 'ai', label: 'AI Beauty', css: 'brightness(1.08) contrast(0.96) saturate(1.08)' },
   { id: 'beauty', label: 'Beauty', css: 'brightness(1.08) contrast(0.94) saturate(1.08) blur(0.15px)' },
   { id: 'makeup', label: 'Makeup', css: 'brightness(1.1) contrast(1.04) saturate(1.22) hue-rotate(-6deg)' },
+  { id: 'product', label: 'AI Product', css: 'contrast(1.08) saturate(1.12) brightness(1.04)' },
   { id: 'glow', label: 'Glow', css: 'brightness(1.14) contrast(0.96) saturate(1.18)' },
   { id: 'warm', label: 'Warm', css: 'sepia(0.22) saturate(1.28) contrast(1.06) brightness(1.04)' },
   { id: 'cool', label: 'Cool', css: 'hue-rotate(168deg) saturate(1.12) brightness(1.04)' },
@@ -1766,6 +1768,15 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const [closing, setClosing] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    void import('@/lib/camera-ai-beauty').then(m => {
+      try {
+        (window as any).__stooornaAiBeauty = m;
+        m.initAiBeauty();
+      } catch { /* */ }
+    }).catch(() => {});
+  }, []);
 
   // ── شاشة تحرير القصة (نص + موسيقى) ─────────────────────────────────────────
   const [editMode, setEditMode] = useState(false);
@@ -2036,13 +2047,18 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             ctx.drawImage(video, srcX, srcY, srcW, srcH, dx, dy, dw, dh);
           }
           ctx.restore();
+          const aiMode = filter === 'ai' || filter === 'beauty' ? 'beauty' : filter === 'makeup' ? 'makeup' : filter === 'product' ? 'product' : 'off';
+          if (aiMode !== 'off') {
+            const ai = (window as any).__stooornaAiBeauty as { applyAiBeautyFrame?: Function } | undefined;
+            try { ai?.applyAiBeautyFrame?.(canvas, video, aiMode); } catch { /* */ }
+          }
         }
       }
       rafRef.current = requestAnimationFrame(draw);
     }
     rafRef.current = requestAnimationFrame(draw);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [activeFilterCss, facingMode, zoom]);
+  }, [activeFilterCss, facingMode, zoom, filter]);
 
   // محاولة تطبيق تكبير عتاد أقل من 1x (بعض الأجهزة تدعم zoom < 1 كقيد على نفس
   // المستشعر) — تُستخدم فقط كخيار احتياطي إن لم نجد جهاز عدسة واسعة منفصل.
