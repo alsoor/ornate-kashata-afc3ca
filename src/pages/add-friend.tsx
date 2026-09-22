@@ -13289,8 +13289,8 @@ export default function AddFriendPage() {
               aria-label="Story comments"
               style={{
                 position: 'absolute',
-                top: 'max(env(safe-area-inset-top,0px), 10px)',
-                right: 14,
+                top: 'max(env(safe-area-inset-top,0px), 96px)',
+                right: 24,
                 zIndex: 25,
                 width: 30, height: 30, borderRadius: '50%',
                 background: storyCommentThreads.filter(t => !t.read).length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.12)',
