@@ -19335,9 +19335,9 @@ export default function AddFriendPage() {
               </div>
               <button type="button" aria-label="Video call" onClick={() => {
                 if (!friendChatPeer) return;
-                window.dispatchEvent(new CustomEvent('stooorna:start-video-call', {
-                  detail: { friendId: friendChatPeer.friendId },
-                }));
+                const fid = friendChatPeer.friendId;
+                window.dispatchEvent(new CustomEvent('stooorna:start-video-call', { detail: { friendId: fid } }));
+                window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: fid, direct: true, video: true } }));
               }} style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Video size={19} />
               </button>
