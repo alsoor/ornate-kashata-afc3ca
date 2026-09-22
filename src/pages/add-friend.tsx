@@ -12481,7 +12481,6 @@ export default function AddFriendPage() {
   useEffect(() => {
     if (!textPostsPageOpen) {
       setTextPostsPlusOpen(false);
-      setStoryHomeSheetOpen(false);
     }
   }, [textPostsPageOpen]);
   useEffect(() => {
@@ -18129,7 +18128,7 @@ export default function AddFriendPage() {
               backfaceVisibility: 'hidden' as const,
             }}>
               <>
-                {/* Left: account profile avatar — opens the main account page from the left */}
+                {/* Left: account profile avatar — settings-style sheet over public posts, from the left */}
                 {user && (
                   <button
                     type="button"
@@ -18137,10 +18136,9 @@ export default function AddFriendPage() {
                       e.stopPropagation();
                       setTextPostsPlusOpen(false);
                       setViewingProfile(null);
-                      setStoryHomeSheetOpen(false);
-                      setAccountSlideFromLeft(true);
-                      try { sessionStorage.removeItem('stooorna_return_text_posts'); } catch { /* ignore */ }
-                      setTextPostsPageOpen(false);
+                      setAccountSlideFromLeft(false);
+                      try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
+                      setStoryHomeSheetOpen(true);
                     }}
                     aria-label="Open account page"
                     style={{
@@ -18420,7 +18418,7 @@ export default function AddFriendPage() {
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
-              transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
+              transition={{ duration: 0.34, ease: [0.32, 0.72, 0, 1] }}
               onClick={e => e.stopPropagation()}
               style={{
                 position: 'fixed',
@@ -18434,6 +18432,7 @@ export default function AddFriendPage() {
                 flexDirection: 'column',
                 overflow: 'hidden',
                 boxShadow: '16px 0 40px rgba(0,0,0,0.45)',
+                animation: 'stooornaAccountInFromLeft 0.34s cubic-bezier(0.32, 0.72, 0, 1)',
               }}
             >
               <div style={{
