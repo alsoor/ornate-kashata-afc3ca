@@ -12348,6 +12348,8 @@ export default function AddFriendPage() {
   const [friendChatText, setFriendChatText] = useState('');
   const [friendChatCallLogOpen, setFriendChatCallLogOpen] = useState(false);
   const [friendChatCallLogMenuOpen, setFriendChatCallLogMenuOpen] = useState(false);
+  const [storyRequestsBoxOpen, setStoryRequestsBoxOpen] = useState(false);
+  const [storyReqRespondingId, setStoryReqRespondingId] = useState<number | null>(null);
   const [friendChatStoryReplyTo, setFriendChatStoryReplyTo] = useState<ShareThreadMsg | null>(null);
   const friendChatInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [friendChatRecording, setFriendChatRecording] = useState(false);
@@ -13821,7 +13823,7 @@ export default function AddFriendPage() {
           {pageTab === 'profile' && (
             <motion.button
               whileTap={{ scale: 0.9 }}
-              onClick={() => { setTab('requests'); setPageTab('add'); }}
+              onClick={() => { setStoryRequestsBoxOpen(true); setQuery(''); }}
               aria-label="Friend requests"
               style={{
                 position: 'absolute',
@@ -18681,6 +18683,120 @@ export default function AddFriendPage() {
       {/* ── Friend chats — opened from the story-page bell: a white friends list, each row with a
           3-dot menu (Delete / Block), and a WhatsApp-style 1:1 chat screen per friend. ── */}
       <AnimatePresence>
+        {storyRequestsBoxOpen && (
+          <div
+            onClick={() => setStoryRequestsBoxOpen(false)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 12200,
+              background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 20,
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: '100%', maxWidth: 340,
+                background: 'rgba(12,18,18,0.96)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 18,
+                padding: '18px 16px 14px',
+                boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>Friend requests</span>
+                <button type="button" onClick={() => setStoryRequestsBoxOpen(false)}
+                  style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div style={{ position: 'relative', marginBottom: 12 }}>
+                <Search
+                  size={14}
+                  color="rgba(255,255,255,0.4)"
+                  style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', pointerEvents: 'none' }}
+                />
+                <input
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  placeholder="Search username"
+                  autoComplete="off"
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    padding: '10px 36px 10px 12px', borderRadius: 12,
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    color: '#fff', fontSize: '0.8rem', outline: 'none',
+                  }}
+                />
+              </div>
+              {query.trim().length >= 2 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
+                  {searching && <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Searching…</p>}
+                  {!searching && results.length === 0 && (
+                    <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>No users found</p>
+                  )}
+                  {results.map(u => (
+                    <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <UserAvatar name={u.name || u.username || '?'} avatarUrl={u.avatarUrl} size={36} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, color: '#fff', fontWeight: 700, fontSize: '0.82rem' }}>{u.name || u.username || 'User'}</p>
+                        {u.username ? <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>@{u.username}</p> : null}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={sending === u.id}
+                        onClick={() => void sendRequest(u.id)}
+                        style={{ height: 32, padding: '0 10px', borderRadius: 10, border: 'none', background: CLR_PRIMARY, color: '#041014', fontWeight: 800, fontSize: '0.72rem', cursor: 'pointer' }}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : incoming.length === 0 ? (
+                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.78rem', textAlign: 'center', padding: '20px 0', margin: 0 }}>No requests</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
+                  {incoming.map(req => (
+                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <UserAvatar name={req.name || req.username || '?'} avatarUrl={req.avatarUrl} size={36} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, color: '#fff', fontWeight: 700, fontSize: '0.82rem' }}>{req.name || req.username || 'User'}</p>
+                        {req.username ? <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>@{req.username}</p> : null}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={storyReqRespondingId === req.id}
+                        onClick={async () => {
+                          setStoryReqRespondingId(req.id);
+                          try { await respond(req.id, 'accept'); }
+                          finally { setStoryReqRespondingId(null); }
+                        }}
+                        style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(34,197,94,0.2)', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Check size={16} strokeWidth={2.6} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={storyReqRespondingId === req.id}
+                        onClick={async () => {
+                          setStoryReqRespondingId(req.id);
+                          try { await respond(req.id, 'reject'); }
+                          finally { setStoryReqRespondingId(null); }
+                        }}
+                        style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(239,68,68,0.18)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <X size={16} strokeWidth={2.6} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {friendChatListOpen && !friendChatPeer && (
           <motion.div
             key="friend-chat-list"
