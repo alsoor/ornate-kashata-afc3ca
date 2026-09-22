@@ -13751,6 +13751,22 @@ export default function AddFriendPage() {
       fontFamily: 'var(--font-sans)',
       animation: accountSlideFromLeft ? 'stooornaAccountInFromLeft 0.36s cubic-bezier(0.32, 0.72, 0, 1)' : undefined,
     }}>
+      <div
+        data-account-surface="1"
+        style={storyHomeSheetOpen && textPostsPageOpen ? {
+          position: 'fixed',
+          top: 0,
+          bottom: 0,
+          left: 0,
+          right: 42,
+          zIndex: 10692,
+          background: PAGE_BG,
+          overflow: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          boxShadow: '16px 0 40px rgba(0,0,0,0.45)',
+          animation: 'stooornaAccountInFromLeft 0.34s cubic-bezier(0.32, 0.72, 0, 1)',
+        } : undefined}
+      >
 
         {!isFriendManagement && <>
         {/* ── Header ── */}
@@ -17692,6 +17708,8 @@ export default function AddFriendPage() {
         })()}
       </AnimatePresence>
 
+      </div>
+
       {/* ── Text Posts Page — X أحمر متحرك بالأعلى + New Post تحتها بالمنتصف؛ الشريط السفلي مخفي ── */}
       <AnimatePresence>
       {textPostsPageOpen && (
@@ -18421,18 +18439,7 @@ export default function AddFriendPage() {
               transition={{ duration: 0.34, ease: [0.32, 0.72, 0, 1] }}
               onClick={e => e.stopPropagation()}
               style={{
-                position: 'fixed',
-                top: 0,
-                bottom: 0,
-                left: 0,
-                right: 42,
-                zIndex: 10691,
-                background: PAGE_BG,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-                boxShadow: '16px 0 40px rgba(0,0,0,0.45)',
-                animation: 'stooornaAccountInFromLeft 0.34s cubic-bezier(0.32, 0.72, 0, 1)',
+                display: 'none',
               }}
             >
               <div style={{
