@@ -19183,7 +19183,12 @@ export default function AddFriendPage() {
                   ) : null;
                 })()}
               </div>
-              <button type="button" aria-label="Video call" style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <button type="button" aria-label="Video call" onClick={() => {
+                if (!friendChatPeer) return;
+                window.dispatchEvent(new CustomEvent('stooorna:start-video-call', {
+                  detail: { friendId: friendChatPeer.friendId },
+                }));
+              }} style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Video size={19} />
               </button>
               <button
@@ -19667,7 +19672,17 @@ export default function AddFriendPage() {
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 20px' }}>
               {(() => {
-                const rows = user?.id ? loadCallLog(user.id) : [];
+                const uid = user?.id ? String(user.id) : '';
+                const voice = uid ? loadCallLog(uid) : [];
+                let video: ChatCallLogEntry[] = [];
+                try {
+                  const raw = localStorage.getItem('stooorna_video_call_log_' + uid);
+                  const list = raw ? JSON.parse(raw) : [];
+                  video = Array.isArray(list) ? list : [];
+                } catch { video = []; }
+                const rows = [...voice, ...video]
+                  .filter(r => !friendChatPeer || r.peerId === friendChatPeer.friendId)
+                  .sort((a, b) => b.at - a.at);
                 if (!rows.length) {
                   return <p style={{ color: '#888', textAlign: 'center', padding: 28 }}>No recent calls</p>;
                 }
