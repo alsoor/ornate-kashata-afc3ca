@@ -13292,13 +13292,13 @@ export default function AddFriendPage() {
                 top: 'max(env(safe-area-inset-top,0px), 96px)',
                 right: 24,
                 zIndex: 25,
-                width: 30, height: 30, borderRadius: '50%',
+                width: 28, height: 28, borderRadius: '50%',
                 background: storyCommentThreads.filter(t => !t.read).length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.12)',
-                border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                border: `2px solid ${CLR_PRIMARY_BORDER}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
               }}
             >
-              <Bell size={15} color={CLR_PRIMARY} strokeWidth={2.2} />
+              <Bell size={14} color={CLR_PRIMARY} strokeWidth={2.2} />
               {storyCommentThreads.filter(t => !t.read).length > 0 && (
                 <span style={{
                   position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, borderRadius: 8,
