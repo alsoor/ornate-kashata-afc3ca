@@ -3202,8 +3202,6 @@ function GlobalBottomNavigation() {
       position: 'relative',
     }}>
 
-        )}
-
         {/* Plus menu — Settings / Friends / Account live */}
         <div style={{
           position: 'absolute',
