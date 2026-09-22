@@ -398,6 +398,23 @@ function ScVoiceBubble({
     </div>;
 }
 
+
+function formatCompactCount(n: number | string | null | undefined): string {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v === 0) return '0';
+  const sign = v < 0 ? '-' : '';
+  const abs = Math.abs(v);
+  const fmt = (x: number, suffix: string) => {
+    const rounded = abs >= 10 ? Math.round(x) : Math.round(x * 10) / 10;
+    const text = String(rounded).replace(/\.0$/, '');
+    return sign + text + suffix;
+  };
+  if (abs < 1000) return sign + String(Math.round(abs));
+  if (abs < 1000000) return fmt(abs / 1000, 'K');
+  if (abs < 1000000000) return fmt(abs / 1000000, 'M');
+  return fmt(abs / 1000000000, 'B');
+}
+
 function formatVideoClock(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '0:00';
   const s = Math.floor(sec);
@@ -5917,16 +5934,16 @@ const MiniProfileModal = ({
                   {(isOwnProfile ? !followersVisible : (!isCompanyUserAccount(profile) && (!!profile?.isPrivate || profile?.followersVisible === false))) ? (
                     <Lock size={13} strokeWidth={2.2} color={CLR_TEXT_DIM} />
                   ) : (
-                    <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.followersCount ?? 0}</span>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(profile?.followersCount ?? 0)}</span>
                   )}
                   <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Followers</span>
                 </motion.button>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{resolveProfileViewsCount(profile as any, [])}</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(resolveProfileViewsCount(profile as any, []))}</span>
                   <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Views</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.likesCount ?? 0}</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(profile?.likesCount ?? 0)}</span>
                   <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Likes</span>
                 </div>
               </div>
@@ -6379,19 +6396,19 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               {(!isCompanyProfile && (!!profile?.isPrivate || profile?.followersVisible === false)) ? (
                 <Lock size={13} strokeWidth={2.2} color={CLR_TEXT_DIM} />
               ) : (
-                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.followersCount ?? 0}</span>
+                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(profile?.followersCount ?? 0)}</span>
               )}
               <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Followers</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
               <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>
-                {resolveProfileViewsCount(profile as any, authorPosts)}
+                {formatCompactCount(resolveProfileViewsCount(profile as any, authorPosts))}
               </span>
               <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Views</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
               <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>
-                {profile?.likesCount ?? authorPosts.reduce((sum, p) => sum + (p.likesCount ?? 0), 0)}
+                {formatCompactCount(profile?.likesCount ?? authorPosts.reduce((sum, p) => sum + (p.likesCount ?? 0), 0))}
               </span>
               <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Likes</span>
             </div>
@@ -6655,7 +6672,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: mediaLightbox.post.likedByMe ? '#ef4444' : '#fff' }}
                 >
                   <Heart size={22} strokeWidth={2} fill={mediaLightbox.post.likedByMe ? '#ef4444' : 'none'} />
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{mediaLightbox.post.likesCount > 0 ? mediaLightbox.post.likesCount : ''}</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{mediaLightbox.post.likesCount > 0 ? formatCompactCount(mediaLightbox.post.likesCount) : ''}</span>
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.9 }}
@@ -7126,7 +7143,7 @@ function PostDetailPage({
               color: post.likedByMe ? '#ef4444' : CLR_TEXT_DIM,
             }}>
               <Heart size={17} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
-              <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>{post.likesCount > 0 ? post.likesCount : 'إعجاب'}</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>{post.likesCount > 0 ? formatCompactCount(post.likesCount) : 'Like'}</span>
             </motion.button>
           </div>
 
@@ -8990,7 +9007,7 @@ function SharedPostThread({
               color: post.likedByMe ? '#ef4444' : CLR_TEXT_DIM,
             }}>
               <Heart size={16} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
-              <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>{post.likesCount > 0 ? post.likesCount : ''}</span>
+              <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>{post.likesCount > 0 ? formatCompactCount(post.likesCount) : ''}</span>
             </motion.button>
           </div>
         </div>
@@ -9208,7 +9225,7 @@ function StoryCommentThreadPage({
                     color: c.likedByMe ? '#ef4444' : CLR_TEXT_DIM,
                   }}>
                     <Heart size={12} strokeWidth={2} fill={c.likedByMe ? '#ef4444' : 'none'} />
-                    <span style={{ fontSize: '0.62rem', fontWeight: 600 }}>{c.likesCount > 0 ? c.likesCount : ''}</span>
+                    <span style={{ fontSize: '0.62rem', fontWeight: 600 }}>{c.likesCount > 0 ? formatCompactCount(c.likesCount) : ''}</span>
                   </motion.button>
                   {onChatWithAuthor && (
                     <button
@@ -14035,7 +14052,7 @@ export default function AddFriendPage() {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaPosts.length}</span>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(myMediaPosts.length)}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Post</span>
                   </div>
                   <motion.button
@@ -14046,18 +14063,18 @@ export default function AddFriendPage() {
                     {!followersVisible ? (
                       <Lock size={14} strokeWidth={2.2} color={CLR_TEXT_DIM} />
                     ) : (
-                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{friends.length}</span>
+                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(friends.length)}</span>
                     )}
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Followers</span>
                   </motion.button>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>
-                      {(() => { void viewsTick; return resolveProfileViewsCount(user as any, [...myMediaPosts, ...posts.filter(p => user && String(p.authorId) === String(user.id))]); })()}
+                      {(() => { void viewsTick; return formatCompactCount(resolveProfileViewsCount(user as any, [...myMediaPosts, ...posts.filter(p => user && String(p.authorId) === String(user.id))])); })()}
                     </span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Views</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaLikesTotal}</span>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(myMediaLikesTotal)}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
                   </div>
                   <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, flexShrink: 0 }}>
