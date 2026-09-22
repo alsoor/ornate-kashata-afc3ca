@@ -16980,12 +16980,13 @@ export default function AddFriendPage() {
                 onClick={e => e.stopPropagation()}
                 style={{
                 flexShrink: 0,
+                position: 'relative',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '12px 20px calc(12px + env(safe-area-inset-bottom, 0px))',
                 background: 'linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0.55))',
                 borderTop: '1px solid rgba(255,255,255,0.08)',
               }}>
-                {/* الترتيب: لايك → تعليقات → شير | تفاصيل | بروفايل الشركة */}
+                {/* order: like -> comments -> share | details (center) | close + profile */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 88 }}>
                   <motion.button
                     whileTap={{ scale: 0.9 }}
@@ -17030,36 +17031,37 @@ export default function AddFriendPage() {
                   aria-label="Details"
                   disabled={!postHasVisibleCaption(livePost)}
                   style={{
+                    position: 'absolute', left: '50%', transform: 'translateX(-50%)',
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
                     background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
                     borderRadius: 12, width: 52, height: 44,
                     cursor: postHasVisibleCaption(livePost) ? 'pointer' : 'default',
                     padding: 0, opacity: postHasVisibleCaption(livePost) ? 1 : 0.28,
+                    zIndex: 2,
                   }}
                 >
                   <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
                   <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
                   <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
                 </motion.button>
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              type="button"
-              onClick={(e) => { e.stopPropagation(); closeSinglePostView(); }}
-              aria-label="Close"
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
-                borderRadius: 12, width: 44, height: 44,
-                color: '#ef4444', cursor: 'pointer', padding: 0,
-                fontWeight: 900, fontSize: '1.2rem', lineHeight: 1, flexShrink: 0,
-                marginLeft: 22,
-              }}
-            >
-              X
-            </motion.button>
 
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 88, justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 88, justifyContent: 'flex-end' }}>
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); closeSinglePostView(); }}
+                    aria-label="Close"
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
+                      borderRadius: 12, width: 44, height: 44,
+                      color: '#ef4444', cursor: 'pointer', padding: 0,
+                      fontWeight: 900, fontSize: '1.2rem', lineHeight: 1, flexShrink: 0,
+                      marginRight: 6,
+                    }}
+                  >
+                    X
+                  </motion.button>
                   <motion.button
                     whileTap={{ scale: 0.9 }}
                     type="button"
