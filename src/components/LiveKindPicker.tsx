@@ -40,7 +40,10 @@ export default function LiveKindPicker({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 1200,
+        // Was 1200 — the app's fixed bottom navigation renders at zIndex 10200,
+        // so this sheet (and its "Camera live" row) was rendering underneath it
+        // and getting visually covered by the nav bar's own buttons/badges.
+        zIndex: 10500,
         background: 'rgba(0,0,0,0.55)',
         display: 'flex',
         alignItems: 'flex-end',
