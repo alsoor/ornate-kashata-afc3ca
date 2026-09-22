@@ -5407,6 +5407,7 @@ function PostCard({
                 borderRadius: 12, width: 44, height: 44,
                 color: '#ef4444', cursor: 'pointer', padding: 0,
                 fontWeight: 900, fontSize: '1.2rem', lineHeight: 1, flexShrink: 0,
+                marginLeft: 14,
               }}
             >
               X
@@ -6606,6 +6607,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 borderRadius: 12, width: 44, height: 44,
                 color: '#ef4444', cursor: 'pointer', padding: 0,
                 fontWeight: 900, fontSize: '1.2rem', lineHeight: 1, flexShrink: 0,
+                marginLeft: 14,
               }}
             >
               X
@@ -17050,6 +17052,7 @@ export default function AddFriendPage() {
                 borderRadius: 12, width: 44, height: 44,
                 color: '#ef4444', cursor: 'pointer', padding: 0,
                 fontWeight: 900, fontSize: '1.2rem', lineHeight: 1, flexShrink: 0,
+                marginLeft: 14,
               }}
             >
               X
