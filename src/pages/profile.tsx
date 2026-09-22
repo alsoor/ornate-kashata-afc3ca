@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Edit2, Check, X, Share2, Copy, QrCode, PlusCircle, Camera } from 'lucide-react';
+import { ArrowLeft, Edit2, Check, X, Share2, Copy, QrCode, PlusCircle, Camera, Radio } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import { useHeartbeat } from '@/hooks/usePresence';
 import UserAvatar from '@/components/UserAvatar';
@@ -42,6 +42,62 @@ function QRCodeImage({
     border: `1px solid ${T.primaryBorder}`
   }} />;
 }
+
+function readLocalActive(key: string): boolean {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return false;
+    const data = JSON.parse(raw) as { active?: boolean; at?: number };
+    if (!data?.active) return false;
+    if (data.at && Date.now() - data.at > 45_000) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+type LiveKind = 'voice' | 'camera' | null;
+
+function useOwnLive(hostId: string | null | undefined): LiveKind {
+  const [kind, setKind] = useState<LiveKind>(null);
+  useEffect(() => {
+    if (!hostId) {
+      setKind(null);
+      return;
+    }
+    let cancelled = false;
+    const apply = (v: LiveKind) => { if (!cancelled) setKind(v); };
+    const check = () => {
+      if (readLocalActive(`stooorna_livecam_active_${hostId}`)) apply('camera');
+      else if (readLocalActive(`stooorna_live_active_${hostId}`)) apply('voice');
+      else apply(null);
+    };
+    check();
+    const id = window.setInterval(check, 3000);
+    const onVoice = (e: Event) => {
+      const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean } | undefined;
+      if (!d || String(d.hostId) !== String(hostId)) return;
+      check();
+    };
+    const onCam = (e: Event) => {
+      const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean } | undefined;
+      if (!d || String(d.hostId) !== String(hostId)) return;
+      check();
+    };
+    window.addEventListener('stooorna:live-active', onVoice);
+    window.addEventListener('stooorna:livecam-active', onCam);
+    window.addEventListener('storage', check);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      window.removeEventListener('stooorna:live-active', onVoice);
+      window.removeEventListener('stooorna:livecam-active', onCam);
+      window.removeEventListener('storage', check);
+    };
+  }, [hostId]);
+  return kind;
+}
+
 export default function ProfilePage() {
   const navigate = useNavigate();
   const {
@@ -49,6 +105,7 @@ export default function ProfilePage() {
     isPending
   } = useSession();
   useHeartbeat(!!user);
+  const ownLiveKind = useOwnLive(user?.id ? String(user.id) : null);
   const [bio, setBio] = useState('');
   const [editingBio, setEditingBio] = useState(false);
   const [bioInput, setBioInput] = useState('');
@@ -250,6 +307,9 @@ export default function ProfilePage() {
       </Helmet>
       <h1 className="sr-only">My Profile</h1>
 
+      <style>{`@keyframes stooornaOwnLivePulse { 0%,100% { box-shadow: 0 0 0 3px #ef4444, 0 0 14px 4px rgba(239,68,68,0.5); } 50% { box-shadow: 0 0 0 5px #ef4444, 0 0 22px 8px rgba(239,68,68,0.3); } }`}</style>
+
+
       <div style={{
       minHeight: '100dvh',
       background: T.bg,
@@ -312,7 +372,66 @@ export default function ProfilePage() {
         }}>
             {/* Avatar + change photo (stays after upload) */}
             <div style={{ position: 'relative', width: 88, height: 88 }}>
-              <UserAvatar name={displayName} avatarUrl={avatarUrl} size={80} online={true} isSelf />
+              <div
+                style={{
+                  borderRadius: '50%',
+                  padding: ownLiveKind ? 3 : 0,
+                  boxShadow: ownLiveKind
+                    ? '0 0 0 3px #ef4444, 0 0 16px 4px rgba(239,68,68,0.5)'
+                    : undefined,
+                  animation: ownLiveKind ? 'stooornaOwnLivePulse 1s ease-in-out infinite' : undefined,
+                  cursor: ownLiveKind ? 'pointer' : undefined,
+                }}
+                onClick={() => {
+                  if (!ownLiveKind || !user?.id) return;
+                  const qs = new URLSearchParams({
+                    hostId: String(user.id),
+                    hostName: displayName,
+                    hostUsername: username || '',
+                    hostAvatar: avatarUrl || '',
+                  }).toString();
+                  navigate(ownLiveKind === 'camera' ? `/live-camera?${qs}` : `/live?${qs}`);
+                }}
+              >
+                <UserAvatar name={displayName} avatarUrl={avatarUrl} size={80} online={true} isSelf />
+              </div>
+              {ownLiveKind ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!user?.id) return;
+                    const qs = new URLSearchParams({
+                      hostId: String(user.id),
+                      hostName: displayName,
+                      hostUsername: username || '',
+                      hostAvatar: avatarUrl || '',
+                    }).toString();
+                    navigate(ownLiveKind === 'camera' ? `/live-camera?${qs}` : `/live?${qs}`);
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: -6,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 3,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    border: 'none',
+                    background: '#ef4444',
+                    color: '#fff',
+                    fontSize: 10,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '0 0 10px rgba(239,68,68,0.5)',
+                  }}
+                >
+                  <Radio size={11} strokeWidth={2.5} />
+                  {ownLiveKind === 'camera' ? 'Video Live' : 'Voice Live'}
+                </button>
+              ) : null}
               <input
                 ref={avatarInputRef}
                 type="file"

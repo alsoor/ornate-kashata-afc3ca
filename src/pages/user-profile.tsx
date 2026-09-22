@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Heart, MessageCircle, UserPlus, UserCheck, Play, Grid3X3 } from 'lucide-react';
+import { ArrowLeft, Heart, MessageCircle, UserPlus, UserCheck, Play, Grid3X3, Radio } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import { useHeartbeat } from '@/hooks/usePresence';
 import UserAvatar from '@/components/UserAvatar';
@@ -22,6 +22,9 @@ interface PublicProfile {
   lastSeenAt: string | null;
   isPrivate: boolean;
   nameColor?: string | null;
+  followersCount?: number;
+  likesCount?: number;
+  isCompany?: boolean;
 }
 interface UserPost {
   id: number;
@@ -44,6 +47,133 @@ function formatLastSeen(ts: string | null): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+
+function voiceChannelForHost(hostId: string): string {
+  const clean = String(hostId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+  if (clean) return `stooorna-live-${clean}`;
+  let h = 0;
+  const s = String(hostId || '');
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  const uid = Math.abs(h) % 100_000 || 1;
+  return `stooorna-live-${uid}`;
+}
+
+function camChannelForHost(hostId: string): string {
+  const clean = String(hostId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+  if (clean) return `stooorna-livecam-${clean}`;
+  let h = 0;
+  const s = String(hostId || '');
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  const uid = Math.abs(h) % 100_000 || 1;
+  return `stooorna-livecam-${uid}`;
+}
+
+function readLocalActive(key: string): boolean {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return false;
+    const data = JSON.parse(raw) as { active?: boolean; at?: number };
+    if (!data?.active) return false;
+    if (data.at && Date.now() - data.at > 45_000) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+type LiveKind = 'voice' | 'camera' | null;
+
+function useProfileLive(hostId: string | null | undefined): LiveKind {
+  const [kind, setKind] = useState<LiveKind>(null);
+
+  useEffect(() => {
+    if (!hostId) {
+      setKind(null);
+      return;
+    }
+    let cancelled = false;
+
+    const apply = (v: LiveKind) => {
+      if (!cancelled) setKind(v);
+    };
+
+    const checkLocal = (): LiveKind => {
+      if (readLocalActive(`stooorna_livecam_active_${hostId}`)) return 'camera';
+      if (readLocalActive(`stooorna_live_active_${hostId}`)) return 'voice';
+      return null;
+    };
+
+    const checkRoom = async () => {
+      const local = checkLocal();
+      if (local) {
+        apply(local);
+      }
+      // Camera channel first, then voice
+      try {
+        const camCh = camChannelForHost(hostId);
+        const rCam = await fetch(`/api/room?id=${encodeURIComponent(camCh)}`, { credentials: 'include' });
+        if (rCam.ok) {
+          const data = await rCam.json() as { members?: unknown[] };
+          const n = Array.isArray(data.members) ? data.members.length : 0;
+          if (n > 0) {
+            apply('camera');
+            return;
+          }
+        }
+      } catch { /* ignore */ }
+      try {
+        const voiceCh = voiceChannelForHost(hostId);
+        const r = await fetch(`/api/room?id=${encodeURIComponent(voiceCh)}`, { credentials: 'include' });
+        if (r.ok) {
+          const data = await r.json() as { members?: unknown[] };
+          const n = Array.isArray(data.members) ? data.members.length : 0;
+          if (n > 0) {
+            apply('voice');
+            return;
+          }
+        }
+      } catch { /* ignore */ }
+      apply(checkLocal());
+    };
+
+    checkRoom();
+    const interval = window.setInterval(checkRoom, 2500);
+
+    const onVoice = (e: Event) => {
+      const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean } | undefined;
+      if (!d || String(d.hostId) !== String(hostId)) return;
+      if (d.active) apply(checkLocal() || 'voice');
+      else void checkRoom();
+    };
+    const onCam = (e: Event) => {
+      const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean } | undefined;
+      if (!d || String(d.hostId) !== String(hostId)) return;
+      if (d.active) apply('camera');
+      else void checkRoom();
+    };
+    window.addEventListener('stooorna:live-active', onVoice);
+    window.addEventListener('stooorna:livecam-active', onCam);
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === `stooorna_live_active_${hostId}` || e.key === `stooorna_livecam_active_${hostId}`) {
+        void checkRoom();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('stooorna:live-active', onVoice);
+      window.removeEventListener('stooorna:livecam-active', onCam);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [hostId]);
+
+  return kind;
+}
+
+
 // ── Flashing glow ring for new-post indicator ─────────────────────────────────
 function NewPostGlow() {
   return <>
@@ -55,6 +185,14 @@ function NewPostGlow() {
         }
         .stooorna-new-post-glow {
           animation: stooorna-glow-pulse 1.2s ease-in-out infinite;
+          border-radius: 50%;
+        }
+        @keyframes stooorna-live-avatar-pulse {
+          0%, 100% { box-shadow: 0 0 0 3px #ef4444, 0 0 16px 4px rgba(239,68,68,0.55); }
+          50% { box-shadow: 0 0 0 5px #ef4444, 0 0 28px 10px rgba(239,68,68,0.35); }
+        }
+        .stooorna-live-avatar-glow {
+          animation: stooorna-live-avatar-pulse 1s ease-in-out infinite;
           border-radius: 50%;
         }
       `}</style>
@@ -200,6 +338,7 @@ export default function UserProfilePage() {
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [selectedPost, setSelectedPost] = useState<UserPost | null>(null);
+  const liveKind = useProfileLive(profile?.id);
 
   // Fetch profile
   useEffect(() => {
@@ -323,7 +462,7 @@ export default function UserProfilePage() {
         <meta property="og:url" content={`${SITE}/u/${profile.username}`} />
       </Helmet>
 
-      {hasNewPost && !isSupportProfile && <NewPostGlow />}
+      {<NewPostGlow />}
 
       <main className="flex flex-col bg-background" style={{
       height: '100dvh',
@@ -349,17 +488,74 @@ export default function UserProfilePage() {
             {/* Avatar + chat on the circle — Support is fully cyan/blue */}
             <div className="relative" style={{ display: 'inline-flex' }}>
               <div
-                className={!isSupportProfile && hasNewPost ? 'stooorna-new-post-glow' : ''}
+                className={
+                  liveKind
+                    ? 'stooorna-live-avatar-glow'
+                    : (!isSupportProfile && hasNewPost ? 'stooorna-new-post-glow' : '')
+                }
                 style={{
                   borderRadius: '50%',
-                  padding: isSupportProfile ? 4 : (hasNewPost ? 3 : 0),
-                  boxShadow: isSupportProfile
-                    ? `0 0 0 3px ${supportBlue}, 0 0 18px 6px rgba(0,188,212,0.45)`
-                    : undefined,
+                  padding: liveKind ? 4 : (isSupportProfile ? 4 : (hasNewPost ? 3 : 0)),
+                  boxShadow: liveKind
+                    ? undefined
+                    : (isSupportProfile
+                      ? `0 0 0 3px ${supportBlue}, 0 0 18px 6px rgba(0,188,212,0.45)`
+                      : undefined),
+                  cursor: liveKind ? 'pointer' : undefined,
                 }}
+                onClick={() => {
+                  if (!liveKind || !profile) return;
+                  const qs = new URLSearchParams({
+                    hostId: profile.id,
+                    hostName: profile.name || profile.username || 'Host',
+                    hostUsername: profile.username || '',
+                    hostAvatar: profile.avatarUrl || '',
+                  }).toString();
+                  navigate(liveKind === 'camera' ? `/live-camera?${qs}` : `/live?${qs}`);
+                }}
+                role={liveKind ? 'button' : undefined}
+                aria-label={liveKind ? 'Join live broadcast' : undefined}
               >
                 <UserAvatar name={profile.name || profile.username || '?'} avatarUrl={profile.avatarUrl} size={88} />
               </div>
+              {liveKind ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!profile) return;
+                    const qs = new URLSearchParams({
+                      hostId: profile.id,
+                      hostName: profile.name || profile.username || 'Host',
+                      hostUsername: profile.username || '',
+                      hostAvatar: profile.avatarUrl || '',
+                    }).toString();
+                    navigate(liveKind === 'camera' ? `/live-camera?${qs}` : `/live?${qs}`);
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '3px 10px',
+                    borderRadius: 999,
+                    border: 'none',
+                    background: '#ef4444',
+                    color: '#fff',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    letterSpacing: '0.04em',
+                    cursor: 'pointer',
+                    boxShadow: '0 0 12px rgba(239,68,68,0.55)',
+                    zIndex: 2,
+                  }}
+                >
+                  <Radio size={12} strokeWidth={2.5} />
+                  {liveKind === 'camera' ? 'Video Live' : 'Voice Live'}
+                </button>
+              ) : null}
               {/* Chat icon on the circle */}
               {(!isOwnProfile || isSupportProfile) && (
                 <button
@@ -392,8 +588,41 @@ export default function UserProfilePage() {
               )}
             </div>
 
+            {/* Live status button — visible to visitors when host is broadcasting */}
+            {liveKind ? (
+              <motion.button
+                type="button"
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                onClick={() => {
+                  if (!profile) return;
+                  const qs = new URLSearchParams({
+                    hostId: profile.id,
+                    hostName: profile.name || profile.username || 'Host',
+                    hostUsername: profile.username || '',
+                    hostAvatar: profile.avatarUrl || '',
+                  }).toString();
+                  navigate(liveKind === 'camera' ? `/live-camera?${qs}` : `/live?${qs}`);
+                }}
+                className="mt-2 px-5 py-2 rounded-full text-sm font-bold border-none cursor-pointer"
+                style={{
+                  background: 'rgba(239,68,68,0.15)',
+                  color: '#ef4444',
+                  border: '1.5px solid rgba(239,68,68,0.65)',
+                  boxShadow: '0 0 14px rgba(239,68,68,0.35)',
+                  animation: 'stooorna-live-avatar-pulse 1s ease-in-out infinite',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <Radio size={16} strokeWidth={2.4} />
+                {liveKind === 'camera' ? 'Video Live' : 'Voice Live'}
+              </motion.button>
+            ) : null}
+
             {/* New post badge */}
-            {hasNewPost && !isSupportProfile && <motion.div initial={{
+            {hasNewPost && !isSupportProfile && !liveKind && <motion.div initial={{
             opacity: 0,
             y: -4
           }} animate={{
@@ -442,15 +671,21 @@ export default function UserProfilePage() {
               </p>
             )}
 
-            {/* Stats — skip for support identity */}
+            {/* Stats — company: Post / Followers / Likes ; user: Followers / Likes (skip support) */}
             {!isSupportProfile && (
               <div className="flex items-center gap-8 mb-4">
+                {!!profile.isCompany && (
+                  <div className="flex flex-col items-center">
+                    <span className="text-foreground font-bold text-lg">{posts.length}</span>
+                    <span className="text-muted-foreground text-xs">Posts</span>
+                  </div>
+                )}
                 <div className="flex flex-col items-center">
-                  <span className="text-foreground font-bold text-lg">{posts.length}</span>
-                  <span className="text-muted-foreground text-xs">Posts</span>
+                  <span className="text-foreground font-bold text-lg">{profile.followersCount ?? 0}</span>
+                  <span className="text-muted-foreground text-xs">Followers</span>
                 </div>
-                <div className="flex flex-col items-center" aria-label={`${totalLikes} total likes`}>
-                  <span className="text-foreground font-bold text-lg">{totalLikes}</span>
+                <div className="flex flex-col items-center" aria-label={`${profile.likesCount ?? totalLikes} total likes`}>
+                  <span className="text-foreground font-bold text-lg">{profile.likesCount ?? totalLikes}</span>
                   <span className="text-muted-foreground text-xs">Likes</span>
                 </div>
               </div>
