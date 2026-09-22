@@ -1026,27 +1026,80 @@ export default function LiveCameraPage() {
   };
 
   const switchFacing = async () => {
-    if (!amHost || !camRef.current || !joined) return;
+    if (!amHost || !joined) return;
     const next = facingMode === 'user' ? 'environment' : 'user';
+    const client = clientRef.current;
+    const oldCam = camRef.current;
     try {
-      await (camRef.current as any).setDevice
-        ? undefined
-        : undefined;
-      await camRef.current.setEnabled(false);
-      camRef.current.stop();
-      camRef.current.close();
       const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
+
+      // Prefer setDevice on the same track (avoids dual-publish)
+      try {
+        const cameras = await AgoraRTC.getCameras();
+        const prefer = (label: string) => {
+          const l = label.toLowerCase();
+          if (next === 'environment') {
+            return l.includes('back') || l.includes('rear') || l.includes('environment') || l.includes('world');
+          }
+          return l.includes('front') || l.includes('user') || l.includes('face') || l.includes('facing');
+        };
+        const match = cameras.find((d: MediaDeviceInfo) => prefer(d.label || ''));
+        const fallback = cameras.find((d: MediaDeviceInfo) => {
+          if (!oldCam) return !!d.deviceId;
+          try {
+            const cur = (oldCam as any).getTrack?.()?.getSettings?.()?.deviceId;
+            return d.deviceId && d.deviceId !== cur;
+          } catch {
+            return !!d.deviceId;
+          }
+        });
+        const target = match || fallback;
+        if (oldCam && target?.deviceId && typeof (oldCam as any).setDevice === 'function') {
+          await (oldCam as any).setDevice(target.deviceId);
+          setFacingMode(next);
+          camOnRef.current = true;
+          setCamOn(true);
+          window.setTimeout(() => playLocalVideo(), 40);
+          setError('');
+          return;
+        }
+      } catch {
+        /* fall through to unpublish + recreate */
+      }
+
+      // Must unpublish the old video track before publishing a new one
+      if (client && oldCam) {
+        try {
+          await client.unpublish([oldCam]);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (oldCam) {
+        try {
+          oldCam.stop();
+        } catch {
+          /* ignore */
+        }
+        try {
+          oldCam.close();
+        } catch {
+          /* ignore */
+        }
+      }
+      camRef.current = null;
+
       const cam = await AgoraRTC.createCameraVideoTrack({
         facingMode: next,
         encoderConfig: '720p_2',
       });
       camRef.current = cam;
-      const client = clientRef.current;
       if (client) await client.publish([cam]);
       setFacingMode(next);
       camOnRef.current = true;
       setCamOn(true);
       window.setTimeout(() => playLocalVideo(), 40);
+      setError('');
     } catch (err: any) {
       setError(String(err?.message ?? err));
     }
