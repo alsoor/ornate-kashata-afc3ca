@@ -1697,6 +1697,11 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const [liveCenter, setLiveCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [liveMsgPeer, setLiveMsgPeer] = useState<{ id: string; name: string } | null>(null);
   const [liveMsgText, setLiveMsgText] = useState('');
+  const [liveShareOn, setLiveShareOn] = useState(() => {
+    try { return localStorage.getItem('stooorna_live_gps_share') !== '0'; } catch { return true; }
+  });
+  const [liveSearch, setLiveSearch] = useState('');
+  const [livePlace, setLivePlace] = useState('');
   const [respondingId, setRespondingId] = useState<number | null>(null);
   // بحث يوزرات داخل بكس طلبات الإضافة (بدون تغيير شكل البكس)
   const [camSearchQuery, setCamSearchQuery] = useState('');
@@ -1810,8 +1815,19 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         setLiveCenter({ lat: pin.lat, lng: pin.lng });
         try {
           const raw = JSON.parse(localStorage.getItem(key) || '{}') as Record<string, any>;
-          raw[myId] = pin;
+          if (liveShareOn) raw[myId] = pin;
+          else delete raw[myId];
           localStorage.setItem(key, JSON.stringify(raw));
+        } catch { /* */ }
+        try {
+          fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${pin.lat}&lon=${pin.lng}`, { headers: { 'Accept-Language': 'en' } })
+            .then(r => r.json())
+            .then(d => {
+              const a = d?.address || {};
+              const label = [a.suburb || a.neighbourhood || a.city_district, a.city || a.town || a.state, a.country].filter(Boolean).join(', ');
+              if (label) setLivePlace(label);
+            })
+            .catch(() => {});
         } catch { /* */ }
         readPins();
       }, () => {}, { enableHighAccuracy: true, maximumAge: 8000, timeout: 12000 });
@@ -1820,7 +1836,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
       window.clearInterval(iv);
       if (watchId != null) navigator.geolocation.clearWatch(watchId);
     };
-  }, [liveMapOpen, myId, userName, avatarUrl]);
+  }, [liveMapOpen, myId, userName, avatarUrl, liveShareOn]);
 
   useEffect(() => {
     void import('@/lib/camera-ai-beauty').then(m => {
@@ -2492,10 +2508,6 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <motion.button type="button" whileTap={{ scale: 0.92 }} onClick={() => setLiveMapOpen(true)}
-              style={{ height: 28, padding: '0 8px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(0,0,0,0.45)', color: '#fff', fontSize: '0.62rem', fontWeight: 800, cursor: 'pointer' }}>
-              Live Location
-            </motion.button>
             <div style={{
               width: 30, height: 30, borderRadius: '50%', overflow: 'hidden',
               border: '1.5px solid rgba(255,255,255,0.85)', background: '#222',
@@ -2509,6 +2521,10 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 </span>
               )}
             </div>
+            <motion.button type="button" whileTap={{ scale: 0.92 }} onClick={() => setLiveMapOpen(true)}
+              style={{ height: 28, padding: '0 8px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(0,0,0,0.45)', color: '#fff', fontSize: '0.62rem', fontWeight: 800, cursor: 'pointer' }}>
+              Live Location
+            </motion.button>
           </div>
 
           {isRecording ? (
@@ -2842,31 +2858,80 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 
 
         {liveMapOpen && (
-          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', inset: 0, zIndex: 20, background: '#0b1220', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', paddingTop: 'max(10px, env(safe-area-inset-top))' }}>
-              <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.9rem' }}>GPS Live</span>
-              <button type="button" onClick={() => { setLiveMapOpen(false); setLiveMsgPeer(null); }} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>X</button>
+          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', inset: 0, zIndex: 20, background: '#061018', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '10px 12px 8px', paddingTop: 'max(10px, env(safe-area-inset-top))' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.9rem', flex: 1 }}>GPS Live</span>
+                <button type="button" onClick={() => { setLiveMapOpen(false); setLiveMsgPeer(null); }} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>X</button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <Search size={14} color="rgba(255,255,255,0.55)" style={{ position: 'absolute', left: 10, top: 10 }} />
+                  <input
+                    value={liveSearch}
+                    onChange={e => setLiveSearch(e.target.value)}
+                    placeholder="Search username"
+                    style={{
+                      width: '100%', boxSizing: 'border-box', height: 36, borderRadius: 18,
+                      border: '1px solid rgba(0,188,212,0.35)', background: 'rgba(0,20,24,0.85)',
+                      color: '#fff', padding: '0 12px 0 30px', outline: 'none', fontSize: '0.82rem',
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !liveShareOn;
+                    setLiveShareOn(next);
+                    try { localStorage.setItem('stooorna_live_gps_share', next ? '1' : '0'); } catch { /* */ }
+                    if (!next && myId) {
+                      try {
+                        const raw = JSON.parse(localStorage.getItem('stooorna_live_gps_pins') || '{}') as Record<string, any>;
+                        delete raw[myId];
+                        localStorage.setItem('stooorna_live_gps_pins', JSON.stringify(raw));
+                      } catch { /* */ }
+                    }
+                  }}
+                  style={{
+                    width: 52, height: 30, borderRadius: 16, border: 'none', cursor: 'pointer',
+                    background: liveShareOn ? '#22c55e' : '#4b5563', position: 'relative', flexShrink: 0,
+                  }}
+                  aria-label={liveShareOn ? 'Hide my location' : 'Share my location'}
+                >
+                  <span style={{
+                    position: 'absolute', top: 3, left: liveShareOn ? 24 : 3,
+                    width: 24, height: 24, borderRadius: '50%', background: '#fff',
+                    transition: 'left 160ms ease',
+                  }} />
+                </button>
+              </div>
             </div>
-            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', margin: 10, borderRadius: 16, background: '#132033' }}>
+            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', margin: '0 10px 10px', borderRadius: 16, background: '#132033' }}>
               {(() => {
-                const all = livePins.length ? livePins : [];
-                const extra = liveFriends.map(f => all.find(p => p.id === f.id) || null).filter(Boolean) as typeof livePins;
-                const pins = extra.length ? extra : all;
-                const center = liveCenter || (pins[0] ? { lat: pins[0].lat, lng: pins[0].lng } : { lat: 29.3759, lng: 47.9774 });
-                const span = 0.08;
+                const q = liveSearch.trim().toLowerCase().replace(/^@/, '');
+                const all = livePins.filter(p => liveShareOn || p.id !== myId);
+                const pins = (all.length ? all : []).filter(p => !q || p.username.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || p.id === myId);
+                const focus = q ? pins.find(p => p.username.toLowerCase() === q || p.username.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)) : null;
+                const center = focus ? { lat: focus.lat, lng: focus.lng } : (liveCenter || (pins[0] ? { lat: pins[0].lat, lng: pins[0].lng } : { lat: 29.3759, lng: 47.9774 }));
+                const delta = 0.06;
+                const bbox = `${center.lng - delta}%2C${center.lat - delta}%2C${center.lng + delta}%2C${center.lat + delta}`;
                 const toXY = (lat: number, lng: number) => ({
-                  left: `${((lng - (center.lng - span)) / (span * 2)) * 100}%`,
-                  top: `${((center.lat + span - lat) / (span * 2)) * 100}%`,
+                  left: `${Math.max(6, Math.min(94, ((lng - (center.lng - delta)) / (delta * 2)) * 100))}%`,
+                  top: `${Math.max(6, Math.min(94, ((center.lat + delta - lat) / (delta * 2)) * 100))}%`,
                 });
                 return (
                   <>
-                    <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 40% 40%, #1d4e6b 0%, #0b1220 70%)' }} />
+                    <iframe
+                      title="live-map"
+                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${center.lat}%2C${center.lng}`}
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
+                    />
                     {pins.map(pin => {
                       const xy = toXY(pin.lat, pin.lng);
                       return (
-                        <button key={pin.id} type="button" onClick={() => setLiveMsgPeer({ id: pin.id, name: pin.name })} style={{
+                        <button key={pin.id} type="button" onClick={() => { setLiveCenter({ lat: pin.lat, lng: pin.lng }); setLiveMsgPeer({ id: pin.id, name: pin.username || pin.name }); }} style={{
                           position: 'absolute', left: xy.left, top: xy.top, transform: 'translate(-50%, -100%)',
-                          background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                          background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, zIndex: 2,
                         }}>
                           <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: '2px solid #22d3ee', background: '#111' }}>
                             {pin.avatarUrl ? <img src={pin.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: '#fff', fontSize: '0.7rem' }}>{pin.name.slice(0,1)}</span>}
@@ -2875,14 +2940,20 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                         </button>
                       );
                     })}
-                    {!pins.length && (
-                      <p style={{ position: 'absolute', left: 16, right: 16, top: '44%', color: 'rgba(255,255,255,0.7)', textAlign: 'center', fontSize: '0.82rem' }}>Waiting for GPS…</p>
+                    <button type="button" onClick={() => { if (liveCenter) setLiveSearch(''); }}
+                      style={{ position: 'absolute', right: 10, bottom: liveMsgPeer ? 118 : 14, zIndex: 3, border: 'none', borderRadius: 20, padding: '8px 12px', background: '#00BCD4', color: '#041018', fontWeight: 800, cursor: 'pointer' }}>
+                      My location
+                    </button>
+                    {livePlace && (
+                      <div style={{ position: 'absolute', left: 10, top: 10, zIndex: 3, background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 10, padding: '6px 10px', fontSize: '0.72rem', fontWeight: 700 }}>
+                        {livePlace}
+                      </div>
                     )}
                   </>
                 );
               })()}
               {liveMsgPeer && (
-                <div style={{ position: 'absolute', left: 12, right: 12, bottom: 12, background: 'rgba(8,14,22,0.96)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 12 }}>
+                <div style={{ position: 'absolute', left: 12, right: 12, bottom: 12, background: 'rgba(8,14,22,0.96)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 12, zIndex: 4 }}>
                   <p style={{ margin: '0 0 8px', color: '#fff', fontWeight: 700, fontSize: '0.82rem' }}>Message @{liveMsgPeer.name}</p>
                   <input value={liveMsgText} onChange={e => setLiveMsgText(e.target.value)} placeholder="Write a message" style={{ width: '100%', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: '#0f1722', color: '#fff', padding: '8px 10px', marginBottom: 8 }} />
                   <div style={{ display: 'flex', gap: 8 }}>
