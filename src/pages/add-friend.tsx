@@ -2976,7 +2976,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                   const dist = Math.hypot(vals[0].x - vals[1].x, vals[0].y - vals[1].y);
                   if (drag.startDist > 8) {
                     const ratio = dist / drag.startDist;
-                    const nz = Math.max(12, Math.min(19, drag.startZoom + Math.log2(ratio)));
+                    const nz = Math.max(2, Math.min(19, drag.startZoom + Math.log2(ratio)));
                     setLiveZoom(Math.round(nz * 10) / 10);
                   }
                 }
@@ -2998,7 +2998,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 const pins = livePins;
                 const center = liveFocus || liveCenter || (pins[0] ? { lat: pins[0].lat, lng: pins[0].lng } : { lat: 29.3759, lng: 47.9774 });
                 const z = Math.round(liveZoom);
-                const n = 2 ** z;
+                const globe = z <= 4;
+                const n = 2 ** Math.max(z, 1);
                 const lon2x = (lon: number) => ((lon + 180) / 360) * n;
                 const lat2y = (lat: number) => {
                   const sv = Math.sin(lat * Math.PI / 180);
@@ -3011,39 +3012,69 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 const tile = 256;
                 const tiles: { x: number; y: number }[] = [];
                 for (let y = ty - 3; y <= ty + 3; y++) for (let x = tx - 3; x <= tx + 3; x++) tiles.push({ x, y });
+                const pinXY = (pin: { lat: number; lng: number }) => {
+                  if (!globe) return { px: (lon2x(pin.lng) - cx) * tile, py: (lat2y(pin.lat) - cy) * tile, hide: false };
+                  const lat0 = center.lat * Math.PI / 180;
+                  const lng0 = center.lng * Math.PI / 180;
+                  const la = pin.lat * Math.PI / 180;
+                  const ln = pin.lng * Math.PI / 180;
+                  const x = Math.cos(la) * Math.sin(ln - lng0);
+                  const y = Math.cos(lat0) * Math.sin(la) - Math.sin(lat0) * Math.cos(la) * Math.cos(ln - lng0);
+                  const vis = Math.sin(lat0) * Math.sin(la) + Math.cos(lat0) * Math.cos(la) * Math.cos(ln - lng0);
+                  return { px: x * 150, py: -y * 150, hide: vis < 0 };
+                };
                 return (
                   <>
-                    {tiles.map(t => {
-                      if (t.x < 0 || t.y < 0 || t.x >= n || t.y >= n) return null;
-                      return (
-                        <img
-                          key={`${z}-${t.x}-${t.y}`}
-                          alt=""
-                          draggable={false}
-                          src={`https://tile.openstreetmap.org/${z}/${t.x}/${t.y}.png`}
-                          style={{
-                            position: 'absolute',
-                            left: `calc(50% + ${(t.x - cx) * tile}px)`,
-                            top: `calc(50% + ${(t.y - cy) * tile}px)`,
-                            width: tile, height: tile, pointerEvents: 'none',
-                          }}
-                        />
-                      );
-                    })}
+                    {globe ? (
+                      <div style={{ position: 'absolute', inset: 0, background: '#05060a' }}>
+                        <div style={{
+                          position: 'absolute', left: '50%', top: '50%', width: 320, height: 320, marginLeft: -160, marginTop: -160,
+                          borderRadius: '50%',
+                          background: 'radial-gradient(circle at 35% 32%, #9fd6ff 0%, #7dbf88 28%, #d7e27a 48%, #e8c07a 62%, #4aa3d8 78%, #16324a 100%)',
+                          boxShadow: '0 0 60px rgba(160,210,255,0.25), inset -18px -16px 40px rgba(0,0,0,0.35)',
+                        }} />
+                      </div>
+                    ) : (
+                      tiles.map(t => {
+                        if (t.x < 0 || t.y < 0 || t.x >= n || t.y >= n) return null;
+                        return (
+                          <img
+                            key={`${z}-${t.x}-${t.y}`}
+                            alt=""
+                            draggable={false}
+                            src={`https://tile.openstreetmap.org/${z}/${t.x}/${t.y}.png`}
+                            style={{
+                              position: 'absolute',
+                              left: `calc(50% + ${(t.x - cx) * tile}px)`,
+                              top: `calc(50% + ${(t.y - cy) * tile}px)`,
+                              width: tile, height: tile, pointerEvents: 'none',
+                              filter: 'saturate(0.42) brightness(1.14) contrast(0.9) sepia(0.08)',
+                            }}
+                          />
+                        );
+                      })
+                    )}
                     {pins.map(pin => {
-                      const px = (lon2x(pin.lng) - cx) * tile;
-                      const py = (lat2y(pin.lat) - cy) * tile;
+                      const { px, py, hide } = pinXY(pin);
+                      if (hide) return null;
+                      const heat = Math.max(70, 220 - z * 8);
                       return (
-                        <button key={pin.id} type="button" onClick={() => setLiveMsgPeer({ id: pin.id, name: pin.username || pin.name })} style={{
-                          position: 'absolute', left: `calc(50% + ${px}px)`, top: `calc(50% + ${py}px)`,
-                          transform: 'translate(-50%, -100%)', background: 'none', border: 'none', cursor: 'pointer',
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, zIndex: 2,
-                        }}>
-                          <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', border: '2px solid #007AFF', background: '#111', boxShadow: '0 3px 10px rgba(0,0,0,0.28)' }}>
-                            {pin.avatarUrl ? <img src={pin.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: '#fff' }}>{pin.name.slice(0,1)}</span>}
-                          </div>
-                          <span style={{ color: '#111', fontSize: '0.62rem', fontWeight: 800, background: 'rgba(255,255,255,0.94)', padding: '1px 6px', borderRadius: 8 }}>@{pin.username || pin.name}</span>
-                        </button>
+                        <div key={pin.id} style={{ position: 'absolute', left: `calc(50% + ${px}px)`, top: `calc(50% + ${py}px)`, transform: 'translate(-50%, -50%)', zIndex: 2, pointerEvents: 'none' }}>
+                          <div style={{
+                            position: 'absolute', left: '50%', top: '58%', width: heat, height: heat, marginLeft: -heat / 2, marginTop: -heat / 2,
+                            borderRadius: '50%', pointerEvents: 'none',
+                            background: 'radial-gradient(circle, rgba(255,70,50,0.38) 0%, rgba(255,200,60,0.22) 28%, rgba(80,220,170,0.16) 52%, transparent 72%)',
+                          }} />
+                          <button type="button" onClick={() => setLiveMsgPeer({ id: pin.id, name: pin.username || pin.name })} style={{
+                            position: 'relative', background: 'none', border: 'none', cursor: 'pointer',
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, pointerEvents: 'auto',
+                          }}>
+                            <div style={{ width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', border: '2px solid #fff', background: '#111', boxShadow: '0 4px 12px rgba(0,0,0,0.28)' }}>
+                              {pin.avatarUrl ? <img src={pin.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: '#fff' }}>{pin.name.slice(0,1)}</span>}
+                            </div>
+                            <span style={{ color: '#111', fontSize: '0.62rem', fontWeight: 800, background: 'rgba(255,255,255,0.94)', padding: '1px 6px', borderRadius: 8 }}>@{pin.username || pin.name}</span>
+                          </button>
+                        </div>
                       );
                     })}
                   </>
