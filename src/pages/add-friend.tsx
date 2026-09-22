@@ -2935,7 +2935,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               </div>
             </div>
             <div
-              style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#e6e9ee', touchAction: 'none' }}
+              style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#021a33', touchAction: 'none' }}
               onPointerDown={e => {
                 const focus = liveFocus || liveCenter || { lat: 29.3759, lng: 47.9774 };
                 const prev = liveDragRef.current;
@@ -3040,6 +3040,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                         transform: 'perspective(820px) rotateX(32deg) scale(1.18)',
                         transformOrigin: 'center 72%',
                         pointerEvents: 'none',
+                        background: '#021a33',
                       }}>
                         {tiles.map(t => {
                           if (t.x < 0 || t.y < 0 || t.x >= n || t.y >= n) return null;
@@ -3048,13 +3049,14 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                               key={`${z}-${t.x}-${t.y}`}
                               alt=""
                               draggable={false}
-                              src={`https://cartodb-basemaps-a.global.ssl.fastly.net/rastertiles/voyager/${z}/${t.x}/${t.y}.png`}
+                              src={`https://tile.openstreetmap.org/${z}/${t.x}/${t.y}.png`}
                               style={{
                                 position: 'absolute',
                                 left: `calc(50% + ${(t.x - cx) * tile}px)`,
                                 top: `calc(50% + ${(t.y - cy) * tile}px)`,
                                 width: tile, height: tile, pointerEvents: 'none',
-                                filter: 'saturate(1.28) sepia(0.18) hue-rotate(-6deg) brightness(1.08) contrast(1.06)',
+                                filter: 'invert(1) grayscale(1) contrast(1.25) brightness(1.2)',
+                                mixBlendMode: 'screen',
                               }}
                             />
                           );
