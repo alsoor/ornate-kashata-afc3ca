@@ -10,6 +10,7 @@ import PrivacyPage from './pages/privacy';
 import UserProfilePage from './pages/user-profile';
 import SharePage from './pages/share';
 import LivePage from './pages/live';
+import LiveCameraPage from './pages/live-camera';
 import FeedPage from './pages/feed';
 import DmPage from './pages/dm';
 import AuthPage from './pages/auth/AuthPage';
@@ -55,11 +56,14 @@ export const routes: RouteObject[] = [{
   path: '/live',
   element: <LivePage />
 }, {
+  path: '/live-camera',
+  element: <LiveCameraPage />
+}, {
   path: '/auth',
   element: <AuthPage />
 }, {
   path: '*',
   element: <NotFoundPage />
 }];
-export type Path = '/' | '/feed' | '/whisper' | '/settings' | '/add-friend' | '/chat' | '/room' | '/profile' | '/privacy' | '/u/:username' | '/live';
+export type Path = '/' | '/feed' | '/whisper' | '/settings' | '/add-friend' | '/chat' | '/room' | '/profile' | '/privacy' | '/u/:username' | '/live' | '/live-camera';
 export type Params = Record<string, string | undefined>;
