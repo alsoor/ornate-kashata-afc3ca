@@ -16987,7 +16987,7 @@ export default function AddFriendPage() {
                 borderTop: '1px solid rgba(255,255,255,0.08)',
               }}>
                 {/* order: like -> comments -> share | details (center) | close + profile */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 88 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 0 }}>
                   <motion.button
                     whileTap={{ scale: 0.9 }}
                     onClick={() => toggleLike(livePost, PostMediaItems(livePost).length > 1 ? singlePostMediaPage : undefined)}
@@ -17031,21 +17031,20 @@ export default function AddFriendPage() {
                   aria-label="Details"
                   disabled={!postHasVisibleCaption(livePost)}
                   style={{
-                    position: 'absolute', left: '50%', transform: 'translateX(-50%)',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                     background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
-                    borderRadius: 12, width: 52, height: 44,
+                    borderRadius: 10, width: 36, height: 36,
                     cursor: postHasVisibleCaption(livePost) ? 'pointer' : 'default',
                     padding: 0, opacity: postHasVisibleCaption(livePost) ? 1 : 0.28,
-                    zIndex: 2,
+                    flexShrink: 0,
                   }}
                 >
-                  <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
-                  <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
-                  <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
                 </motion.button>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 88, justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
                   <motion.button
                     whileTap={{ scale: 0.9 }}
                     type="button"
