@@ -928,6 +928,28 @@ function saveShareThread(a: string, b: string, postId: string | number, list: Sh
     window.dispatchEvent(new CustomEvent('stooorna:share-thread', { detail: { a, b, postId } }));
   } catch { /* */ }
 }
+
+const CALL_LOG_KEY = (uid: string) => `stooorna_call_log_${uid}`;
+type ChatCallLogEntry = {
+  id: string;
+  peerId: string;
+  peerName: string | null;
+  peerAvatar: string | null;
+  direction: 'in' | 'out';
+  status: 'missed' | 'answered';
+  at: number;
+};
+function loadCallLog(uid: string): ChatCallLogEntry[] {
+  try {
+    const raw = localStorage.getItem(CALL_LOG_KEY(uid));
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+function saveCallLog(uid: string, list: ChatCallLogEntry[]) {
+  try { localStorage.setItem(CALL_LOG_KEY(uid), JSON.stringify(list.slice(0, 200))); } catch { /* */ }
+}
+
 function pushShareThreadMsg(a: string, b: string, postId: string | number, msg: Omit<ShareThreadMsg, 'id' | 'at'> & { id?: string; at?: number }) {
   const list = loadShareThread(a, b, postId);
   if (msg.id && list.some(m => m.id === msg.id)) return list.find(m => m.id === msg.id)!;
@@ -12317,6 +12339,8 @@ export default function AddFriendPage() {
   const [friendChatPeer, setFriendChatPeer] = useState<Friend | null>(null);
   const [friendChatMsgs, setFriendChatMsgs] = useState<ShareThreadMsg[]>([]);
   const [friendChatText, setFriendChatText] = useState('');
+  const [friendChatCallLogOpen, setFriendChatCallLogOpen] = useState(false);
+  const [friendChatCallLogMenuOpen, setFriendChatCallLogMenuOpen] = useState(false);
   const [friendChatStoryReplyTo, setFriendChatStoryReplyTo] = useState<ShareThreadMsg | null>(null);
   const friendChatInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [friendChatRecording, setFriendChatRecording] = useState(false);
@@ -16420,7 +16444,7 @@ export default function AddFriendPage() {
                   opacity: composerPosting ? 0.95 : 1,
                 }}
               >
-                {composerPosting ? '…' : 'نشر'}
+                {composerPosting ? '…' : 'Post'}
               </motion.button>
             </div>
 
@@ -16579,48 +16603,7 @@ export default function AddFriendPage() {
                   />
                 </div>
                 )}
-                {/* حقول إضافية: للشركات فقط — أُزيلت من نشر المستخدم النصي */}
-                {isCompanyPublisher && composerProductExtras.map((extra, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <textarea
-                      value={extra}
-                      onChange={e => setComposerProductExtras(prev => prev.map((x, i) => i === idx ? e.target.value : x))}
-                      placeholder={`حقل إضافي ${idx + 1}`}
-                      rows={2}
-                      style={{
-                        flex: 1, boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
-                        padding: '10px 12px', fontSize: '0.88rem', color: '#1a1a1a',
-                        background: '#f7f9f9', outline: 'none', fontFamily: 'inherit', resize: 'vertical',
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setComposerProductExtras(prev => prev.filter((_, i) => i !== idx))}
-                      aria-label="حذف الحقل"
-                      style={{
-                        width: 36, height: 36, borderRadius: 10, border: 'none', flexShrink: 0,
-                        background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ))}
-                {isCompanyPublisher && (
-                <button
-                  type="button"
-                  onClick={() => setComposerProductExtras(prev => [...prev, ''])}
-                  style={{
-                    alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6,
-                    height: 36, padding: '0 14px', borderRadius: 10,
-                    border: '1.5px dashed rgba(29,155,240,0.45)', background: 'rgba(29,155,240,0.06)',
-                    color: '#1d9bf0', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer',
-                  }}
-                >
-                  <Plus size={16} strokeWidth={2.6} /> +
-                </button>
-                )}
+
 
                 {composerMediaFiles.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -18798,11 +18781,17 @@ export default function AddFriendPage() {
               </button>
               <button
                 type="button"
+                aria-label="Call history"
+                onClick={() => { setFriendChatCallLogOpen(true); setFriendChatCallLogMenuOpen(false); }}
+                style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              >
+                <Clock size={18} />
+              </button>
+              <button
+                type="button"
                 aria-label="Call"
                 onClick={() => {
                   if (!friendChatPeer) return;
-                  // Same home-call system as bottom "+" menu, but start immediately
-                  // with this chat peer only (no multi-select picker).
                   window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
                     detail: { friendId: friendChatPeer.friendId, direct: true },
                   }));
@@ -19235,6 +19224,61 @@ export default function AddFriendPage() {
 
       {/* Full-size profile photo viewer — opened from the friend-chat header avatar */}
       <AnimatePresence>
+        {friendChatCallLogOpen && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 10985, background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', paddingTop: 'max(12px, env(safe-area-inset-top))', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+              <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: 800, fontSize: 22 }}>Calls</p>
+              <div style={{ position: 'relative' }}>
+                <button type="button" onClick={() => setFriendChatCallLogMenuOpen(o => !o)} aria-label="Call menu" style={{ width: 36, height: 36, border: 'none', background: 'none', color: '#111', cursor: 'pointer' }}>
+                  <MoreVertical size={18} />
+                </button>
+                {friendChatCallLogMenuOpen && (
+                  <div style={{ position: 'absolute', right: 0, top: 40, background: '#fff', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 180, zIndex: 2 }}>
+                    <button type="button" onClick={() => {
+                      if (user?.id) saveCallLog(user.id, []);
+                      setFriendChatCallLogMenuOpen(false);
+                    }} style={{ width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 700, color: '#111' }}>
+                      Clear History
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button type="button" onClick={() => { setFriendChatCallLogOpen(false); setFriendChatCallLogMenuOpen(false); }} style={{ width: 36, height: 36, border: 'none', background: 'none', color: '#111', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ padding: '16px 18px 8px' }}>
+              <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#f2f2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                <Phone size={26} color="#666" />
+              </div>
+              <p style={{ margin: 0, color: '#111', fontWeight: 800, fontSize: 18 }}>Recent</p>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 20px' }}>
+              {(() => {
+                const rows = user?.id ? loadCallLog(user.id) : [];
+                if (!rows.length) {
+                  return <p style={{ color: '#888', textAlign: 'center', padding: 28 }}>No recent calls</p>;
+                }
+                return rows.map(row => (
+                  <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px' }}>
+                    <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', background: '#eee', flexShrink: 0 }}>
+                      {row.peerAvatar ? <img src={row.peerAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Phone size={18} color="#888" />}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontWeight: 800, color: row.status === 'missed' ? '#e11d48' : '#111', fontSize: 15 }}>{row.peerName || 'User'}</p>
+                      <p style={{ margin: 0, color: row.status === 'missed' ? '#e11d48' : '#16a34a', fontSize: 12, fontWeight: 600 }}>
+                        {row.status === 'missed' ? 'Missed call' : (row.direction === 'out' ? 'Outgoing' : 'Incoming')}
+                        {' · '}
+                        {new Date(row.at).toLocaleString()}
+                      </p>
+                    </div>
+                    <Phone size={18} color="#111" />
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        )}
         {friendChatAvatarViewerOpen && friendChatPeer && (
           <motion.div
             key="friend-chat-avatar-viewer"

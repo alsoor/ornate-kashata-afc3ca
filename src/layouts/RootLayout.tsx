@@ -1390,6 +1390,7 @@ function GlobalBottomNavigation() {
   const [homeCallLogMenuOpen, setHomeCallLogMenuOpen] = useState(false);
   const [homeCallLogTick, setHomeCallLogTick] = useState(0);
   const homeCallNoAnswerTimer = useRef<number | null>(null);
+  const homeCallSessionRef = useRef(0);
   const [homeCallFriends, setHomeCallFriends] = useState<HomeCallFriend[]>([]);
   const [homeCallSelected, setHomeCallSelected] = useState<Record<string, boolean>>({});
   const [pendingDirectCallId, setPendingDirectCallId] = useState<string | null>(null);
@@ -1515,7 +1516,7 @@ function GlobalBottomNavigation() {
       const ch = String(raw.channel);
       const lock = homeRingLockRef.current;
       if (lock.mode === 'answered' && (lock.channel === ch || Date.now() - lock.at < 120000)) return;
-      if (lock.mode === 'ignored' && lock.channel === ch && Date.now() - lock.at < 10000) return;
+      if (lock.mode === 'ignored' && Date.now() - lock.at < 60000) return;
       beginHomeIncoming({
         channel: String(raw.channel),
         hostId: String(raw.hostId || ''),
@@ -1644,6 +1645,12 @@ function GlobalBottomNavigation() {
   }
 
   async function leaveHomeGroupCall() {
+    homeCallSessionRef.current += 1;
+    if (homeCallNoAnswerTimer.current) {
+      window.clearTimeout(homeCallNoAnswerTimer.current);
+      homeCallNoAnswerTimer.current = null;
+    }
+    setPendingDirectCallId(null);
     if (homeCallPollRef.current) {
       window.clearInterval(homeCallPollRef.current);
       homeCallPollRef.current = null;
@@ -1681,6 +1688,15 @@ function GlobalBottomNavigation() {
       if (user?.id) {
         localStorage.removeItem(`stooorna_home_call_invite_${user.id}`);
         localStorage.removeItem('stooorna_home_call_active_invite');
+        for (const m of homeCallMembers) {
+          if (m.id && m.id !== user.id) {
+            try { localStorage.removeItem(`stooorna_home_call_invite_${m.id}`); } catch { /* */ }
+            void fetch('/api/room/leave', {
+              method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ roomId: `home_ring_${homeCallShortHash(m.id)}`, userId: user.id }),
+            });
+          }
+        }
       }
     } catch { /* */ }
     if (user?.id) {
@@ -1736,9 +1752,14 @@ function GlobalBottomNavigation() {
     for (const peer of picked) {
       try { localStorage.setItem(`stooorna_home_call_invite_${peer.id}`, JSON.stringify(invitePayload)); } catch { /* */ }
     }
-    window.setTimeout(() => setHomeCallPhase('connecting'), 900);
+    const session = ++homeCallSessionRef.current;
+    window.setTimeout(() => {
+      if (homeCallSessionRef.current !== session) return;
+      setHomeCallPhase('connecting');
+    }, 900);
     if (homeCallNoAnswerTimer.current) window.clearTimeout(homeCallNoAnswerTimer.current);
     homeCallNoAnswerTimer.current = window.setTimeout(() => {
+      if (homeCallSessionRef.current !== session) return;
       if (homeCallPhaseRef.current === 'live') return;
       const myId = user?.id;
       if (myId) {
