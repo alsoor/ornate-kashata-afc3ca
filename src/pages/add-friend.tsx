@@ -84,62 +84,109 @@ function readLocalLiveActive(hostId: string): boolean {
     if (!raw) return false;
     const data = JSON.parse(raw) as { active?: boolean; at?: number };
     if (!data?.active) return false;
-    if (data.at && Date.now() - data.at > 20_000) return false;
+    if (data.at && Date.now() - data.at > 45_000) return false;
     return true;
   } catch {
     return false;
   }
 }
 
-/** هل يوجد بث صوتي شغّال لهذا الحساب الآن؟ */
-function useLiveBroadcastActive(hostId: string | null | undefined): boolean {
-  const [active, setActive] = useState(false);
+function readLocalCamLiveActive(hostId: string): boolean {
+  try {
+    const raw = localStorage.getItem(`stooorna_livecam_active_${hostId}`);
+    if (!raw) return false;
+    const data = JSON.parse(raw) as { active?: boolean; at?: number };
+    if (!data?.active) return false;
+    if (data.at && Date.now() - data.at > 45_000) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function camChannelForHost(hostId: string): string {
+  const clean = String(hostId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+  if (clean) return `stooorna-livecam-${clean}`;
+  let h = 0;
+  const s = String(hostId || '');
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  const uid = Math.abs(h) % 100_000 || 1;
+  return `stooorna-livecam-${uid}`;
+}
+
+/** Voice or camera live for this host. Returns kind for UI labels. */
+function useLiveBroadcastKind(hostId: string | null | undefined): 'voice' | 'camera' | null {
+  const [kind, setKind] = useState<'voice' | 'camera' | null>(null);
 
   useEffect(() => {
     if (!hostId) {
-      setActive(false);
+      setKind(null);
       return;
     }
     let cancelled = false;
     const channel = liveChannelForHost(hostId);
+    const camChannel = camChannelForHost(hostId);
 
-    const apply = (v: boolean) => {
-      if (!cancelled) setActive(v);
+    const apply = (v: 'voice' | 'camera' | null) => {
+      if (!cancelled) setKind(v);
     };
 
-    const checkLocal = () => apply(readLocalLiveActive(hostId));
+    const checkLocal = (): 'voice' | 'camera' | null => {
+      if (readLocalCamLiveActive(hostId)) return 'camera';
+      if (readLocalLiveActive(hostId)) return 'voice';
+      return null;
+    };
 
     const checkRoom = async () => {
-      if (readLocalLiveActive(hostId)) {
-        apply(true);
-      }
+      const local = checkLocal();
+      if (local) apply(local);
+      try {
+        const rCam = await fetch(`/api/room?id=${encodeURIComponent(camChannel)}`, { credentials: 'include' });
+        if (rCam.ok) {
+          const data = await rCam.json() as { members?: unknown[] };
+          const n = Array.isArray(data.members) ? data.members.length : 0;
+          if (n > 0) {
+            apply('camera');
+            return;
+          }
+        }
+      } catch { /* ignore */ }
       try {
         const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
         if (!r.ok) {
-          checkLocal();
+          apply(checkLocal());
           return;
         }
         const data = await r.json() as { members?: unknown[] };
         const n = Array.isArray(data.members) ? data.members.length : 0;
-        if (n > 0) apply(true);
-        else apply(readLocalLiveActive(hostId));
+        if (n > 0) apply('voice');
+        else apply(checkLocal());
       } catch {
-        checkLocal();
+        apply(checkLocal());
       }
     };
 
     checkRoom();
-    const interval = window.setInterval(checkRoom, 4000);
+    const interval = window.setInterval(checkRoom, 2500);
 
     const onEvt = (e: Event) => {
-      const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean } | undefined;
+      const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean; kind?: string } | undefined;
       if (!d || !d.hostId) return;
-      if (String(d.hostId) === String(hostId)) apply(!!d.active);
+      if (String(d.hostId) !== String(hostId)) return;
+      if (!d.active) {
+        void checkRoom();
+        return;
+      }
+      if (d.kind === 'camera' || (e.type || '').includes('livecam')) apply('camera');
+      else apply(checkLocal() || 'voice');
     };
     window.addEventListener('stooorna:live-active', onEvt);
+    window.addEventListener('stooorna:livecam-active', onEvt);
 
     const onStorage = (e: StorageEvent) => {
-      if (e.key === `stooorna_live_active_${hostId}`) checkLocal();
+      if (e.key === `stooorna_live_active_${hostId}` || e.key === `stooorna_livecam_active_${hostId}`) {
+        void checkRoom();
+      }
     };
     window.addEventListener('storage', onStorage);
 
@@ -147,11 +194,17 @@ function useLiveBroadcastActive(hostId: string | null | undefined): boolean {
       cancelled = true;
       window.clearInterval(interval);
       window.removeEventListener('stooorna:live-active', onEvt);
+      window.removeEventListener('stooorna:livecam-active', onEvt);
       window.removeEventListener('storage', onStorage);
     };
   }, [hostId]);
 
-  return active;
+  return kind;
+}
+
+/** Whether voice or camera live is active for this host */
+function useLiveBroadcastActive(hostId: string | null | undefined): boolean {
+  return useLiveBroadcastKind(hostId) != null;
 }
 
 
@@ -5946,7 +5999,8 @@ export interface FriendStoryProfileProps {
 export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, onRepost, isCompanyProfile = false }: FriendStoryProfileProps) {
   const navigate = useNavigate();
   const { user } = useSession();
-  const liveActive = useLiveBroadcastActive(authorId);
+  const liveKind = useLiveBroadcastKind(authorId);
+  const liveActive = liveKind != null;
   const [profile, setProfile] = useState<MiniProfileData | null>(null);
   const [friendProfileMediaTab, setFriendProfileMediaTab] = useState<'videos' | 'photos'>('videos');
   const [loading, setLoading] = useState(true);
@@ -6275,9 +6329,10 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 });
                 if (username) qs.set('hostUsername', username);
                 if (avatarUrl) qs.set('hostAvatar', avatarUrl);
-                navigate(`/live?${qs.toString()}`);
+                const path = liveKind === 'camera' ? '/live-camera' : '/live';
+                navigate(`${path}?${qs.toString()}`);
               }}
-              aria-label="البث الصوتي"
+              aria-label={liveActive ? (liveKind === 'camera' ? 'Video Live' : 'Voice Live') : 'Voice Live'}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 padding: '8px 14px', borderRadius: 20,
@@ -6290,7 +6345,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               }}
             >
               <Radio size={15} strokeWidth={2.3} color={liveActive ? '#ef4444' : CLR_PRIMARY} />
-              {liveActive ? 'البث مباشر' : 'بث صوتي'}
+              {liveActive ? (liveKind === 'camera' ? 'Video Live' : 'Voice Live') : 'Voice Live'}
             </motion.button>
           </div>
         </div>
@@ -16814,6 +16869,7 @@ export default function AddFriendPage() {
               </button>
 
               <div
+                ref={singlePostMediaScrollRef}
                 style={{ flex: 1, minHeight: 0, position: 'relative', background: '#000', touchAction: 'none', overflow: 'hidden' }}
                 onTouchStart={e => {
                   const t = e.changedTouches[0];
