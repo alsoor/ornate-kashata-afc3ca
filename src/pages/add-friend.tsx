@@ -896,7 +896,21 @@ type ShareThreadMsg = {
   duration?: number | null;
   fileName?: string | null;
   at: number;
+  kind?: 'chat' | 'story-comment' | 'story-reply';
+  replyToId?: string | null;
+  replyToBody?: string | null;
 };
+function isStoryCommentMsg(m: ShareThreadMsg): boolean {
+  if (m.kind === 'story-comment') return true;
+  return m.type === 'text' && /^Story comment:\s*/i.test(m.body || '');
+}
+function isStoryReplyMsg(m: ShareThreadMsg): boolean {
+  if (m.kind === 'story-reply') return true;
+  return m.type === 'text' && /^Story reply:\s*/i.test(m.body || '');
+}
+function storyMsgPlainText(m: ShareThreadMsg): string {
+  return String(m.body || '').replace(/^Story comment:\s*/i, '').replace(/^Story reply:\s*/i, '');
+}
 const SHARE_THREAD_KEY = (a: string, b: string, postId: string | number) => {
   const [x, y] = [String(a), String(b)].sort();
   return `stooorna_share_thread_${x}_${y}_${postId}`;
@@ -925,6 +939,9 @@ function pushShareThreadMsg(a: string, b: string, postId: string | number, msg: 
     duration: msg.duration ?? null,
     fileName: msg.fileName ?? null,
     at: typeof msg.at === 'number' ? msg.at : Date.now(),
+    kind: msg.kind,
+    replyToId: msg.replyToId ?? null,
+    replyToBody: msg.replyToBody ?? null,
   };
   const merged = [...list, next].sort((x, y) => x.at - y.at);
   saveShareThread(a, b, postId, merged);
@@ -11349,6 +11366,7 @@ export default function AddFriendPage() {
                 fromId: c.authorId,
                 type: 'text',
                 body: `Story comment: ${c.text}`,
+                kind: 'story-comment',
                 at: Number.isFinite(at) ? at : Date.now(),
               });
               if (!thread.read) {
@@ -11466,6 +11484,7 @@ export default function AddFriendPage() {
         fromId: c.authorId,
         type: 'text',
         body: `Story comment: ${c.text}`,
+        kind: 'story-comment',
         at: Number.isFinite(at) ? at : Date.now(),
       });
     }
@@ -12290,6 +12309,8 @@ export default function AddFriendPage() {
   const [friendChatPeer, setFriendChatPeer] = useState<Friend | null>(null);
   const [friendChatMsgs, setFriendChatMsgs] = useState<ShareThreadMsg[]>([]);
   const [friendChatText, setFriendChatText] = useState('');
+  const [friendChatStoryReplyTo, setFriendChatStoryReplyTo] = useState<ShareThreadMsg | null>(null);
+  const friendChatInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [friendChatRecording, setFriendChatRecording] = useState(false);
   const [friendChatRecordSecs, setFriendChatRecordSecs] = useState(0);
   const [friendChatPendingVoice, setFriendChatPendingVoice] = useState<{ url: string; duration: number } | null>(null);
@@ -12315,6 +12336,7 @@ export default function AddFriendPage() {
     setFriendChatPeer(friend);
     setFriendChatMsgs(user ? loadShareThread(user.id, friend.friendId, 'direct') : []);
     setFriendChatText('');
+    setFriendChatStoryReplyTo(null);
     setFriendChatShowEmoji(false);
     setFriendChatShowAttach(false);
     setFriendChatPendingVoice(null);
@@ -18824,7 +18846,27 @@ export default function AddFriendPage() {
                         cursor: 'pointer',
                       }}
                     >
-                      {m.type === 'text' && <p style={{ margin: 0, color: '#111', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{m.body}</p>}
+                      {m.type === 'text' && isStoryReplyMsg(m) && (
+                        <div>
+                          <p style={{ margin: '0 0 6px', color: '#0f766e', fontSize: '0.68rem', fontWeight: 800 }}>Story reply</p>
+                          <div style={{
+                            marginBottom: 6, padding: '6px 8px', borderRadius: 8,
+                            background: 'rgba(18,140,126,0.1)', borderLeft: '3px solid #128C7E',
+                          }}>
+                            <p style={{ margin: 0, color: 'rgba(0,0,0,0.55)', fontSize: '0.72rem', whiteSpace: 'pre-wrap' }}>
+                              {m.replyToBody || 'Story comment'}
+                            </p>
+                          </div>
+                          <p style={{ margin: 0, color: '#111', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{storyMsgPlainText(m)}</p>
+                        </div>
+                      )}
+                      {m.type === 'text' && isStoryCommentMsg(m) && (
+                        <div>
+                          <p style={{ margin: '0 0 4px', color: '#0f766e', fontSize: '0.68rem', fontWeight: 800 }}>Story comment</p>
+                          <p style={{ margin: 0, color: '#111', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{storyMsgPlainText(m)}</p>
+                        </div>
+                      )}
+                      {m.type === 'text' && !isStoryCommentMsg(m) && !isStoryReplyMsg(m) && <p style={{ margin: 0, color: '#111', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{m.body}</p>}
                       {m.type === 'voice' && <audio src={m.body} controls style={{ width: 210, height: 36 }} />}
                       {m.type === 'image' && <img src={m.body} alt="" style={{ maxWidth: 220, borderRadius: 8, display: 'block' }} />}
                       {m.type === 'video' && <video src={m.body} controls style={{ maxWidth: 220, borderRadius: 8, display: 'block' }} />}
@@ -18847,6 +18889,35 @@ export default function AddFriendPage() {
                         </p>
                       )}
                     </div>
+                    {isStoryCommentMsg(m) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFriendChatStoryReplyTo(m);
+                          window.setTimeout(() => friendChatInputRef.current?.focus(), 30);
+                        }}
+                        aria-label="Reply to story comment"
+                        style={{
+                          alignSelf: user && m.fromId === user.id ? 'flex-end' : 'flex-start',
+                          width: '82%',
+                          maxWidth: 280,
+                          minHeight: 44,
+                          marginTop: -4,
+                          borderRadius: 12,
+                          border: '1.5px dashed rgba(18,140,126,0.45)',
+                          background: 'rgba(255,255,255,0.65)',
+                          cursor: 'pointer',
+                          padding: '10px 12px',
+                          textAlign: 'start',
+                          color: 'rgba(18,140,126,0.75)',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {''}
+                      </button>
+                    )}
                   </React.Fragment>
                 );
               })}
@@ -18857,7 +18928,30 @@ export default function AddFriendPage() {
               padding: '10px 12px max(12px, env(safe-area-inset-bottom))',
               background: '#ffffff', borderTop: '1px solid rgba(0,0,0,0.08)',
               display: 'flex', gap: 8, alignItems: 'center',
+              flexWrap: 'wrap',
             }}>
+              {friendChatStoryReplyTo && (
+                <div style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 10px',
+                  borderRadius: 10,
+                  background: 'rgba(18,140,126,0.08)',
+                  borderLeft: '3px solid #128C7E',
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, color: '#0f766e', fontSize: '0.68rem', fontWeight: 800 }}>Reply to story</p>
+                    <p style={{ margin: 0, color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {storyMsgPlainText(friendChatStoryReplyTo)}
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setFriendChatStoryReplyTo(null)} aria-label="Cancel story reply" style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', padding: 4 }}>
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
               <input
                 ref={friendChatFileRef}
                 type="file"
@@ -18992,12 +19086,25 @@ export default function AddFriendPage() {
                 ) : (
                   <>
                     <input
+                      ref={friendChatInputRef as any}
                       value={friendChatText}
                       onChange={e => setFriendChatText(e.target.value)}
                       onKeyDown={e => {
                         if (e.key === 'Enter' && !e.shiftKey && friendChatText.trim() && user && friendChatPeer) {
                           e.preventDefault();
-                          pushShareThreadMsg(user.id, friendChatPeer.friendId, 'direct', { fromId: user.id, type: 'text', body: friendChatText.trim() });
+                          if (friendChatStoryReplyTo) {
+                            pushShareThreadMsg(user.id, friendChatPeer.friendId, 'direct', {
+                              fromId: user.id,
+                              type: 'text',
+                              kind: 'story-reply',
+                              body: `Story reply: ${friendChatText.trim()}`,
+                              replyToId: friendChatStoryReplyTo.id,
+                              replyToBody: storyMsgPlainText(friendChatStoryReplyTo),
+                            });
+                            setFriendChatStoryReplyTo(null);
+                          } else {
+                            pushShareThreadMsg(user.id, friendChatPeer.friendId, 'direct', { fromId: user.id, type: 'text', body: friendChatText.trim() });
+                          }
                           setFriendChatMsgs(loadShareThread(user.id, friendChatPeer.friendId, 'direct'));
                           setFriendChatText('');
                         }
@@ -19060,7 +19167,19 @@ export default function AddFriendPage() {
                       type="button"
                       onClick={() => {
                         if (!user || !friendChatPeer) return;
-                        pushShareThreadMsg(user.id, friendChatPeer.friendId, 'direct', { fromId: user.id, type: 'text', body: friendChatText.trim() });
+                        if (friendChatStoryReplyTo) {
+                          pushShareThreadMsg(user.id, friendChatPeer.friendId, 'direct', {
+                            fromId: user.id,
+                            type: 'text',
+                            kind: 'story-reply',
+                            body: `Story reply: ${friendChatText.trim()}`,
+                            replyToId: friendChatStoryReplyTo.id,
+                            replyToBody: storyMsgPlainText(friendChatStoryReplyTo),
+                          });
+                          setFriendChatStoryReplyTo(null);
+                        } else {
+                          pushShareThreadMsg(user.id, friendChatPeer.friendId, 'direct', { fromId: user.id, type: 'text', body: friendChatText.trim() });
+                        }
                         setFriendChatMsgs(loadShareThread(user.id, friendChatPeer.friendId, 'direct'));
                         setFriendChatText('');
                       }}
@@ -19165,6 +19284,7 @@ export default function AddFriendPage() {
                   fromId: c.authorId,
                   type: 'text',
                   body: `Story comment: ${c.text}`,
+                  kind: 'story-comment',
                   at: c.createdAt ? new Date(c.createdAt).getTime() : Date.now(),
                 });
               }
