@@ -1746,6 +1746,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     }
   }
   const [flashOn, setFlashOn] = useState(false);
+  useEffect(() => { void applyTorch(flashOn); }, [flashOn, facingMode, zoom]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filter, setFilter] = useState<CameraFilterId>('none');
   // فقط 0.5x (عدسة واسعة) و1x (طبيعي) — أزلنا 2x/3x لأنهما بدون تكبير عتاد حقيقي
@@ -2141,15 +2142,21 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     takePhoto();
   }
 
-  async function toggleFlash() {
+  async function applyTorch(on: boolean) {
     const track = streamRef.current?.getVideoTracks()[0];
     if (!track) return;
-    const next = !flashOn;
     try {
-      await track.applyConstraints({ advanced: [{ torch: next } as unknown as MediaTrackConstraintSet] });
-    } catch { /* الفلاش غير مدعوم على هذا الجهاز — نتجاهل بصمت */ }
-    setFlashOn(next);
+      await track.applyConstraints({ advanced: [{ torch: on } as unknown as MediaTrackConstraintSet] });
+    } catch {
+      try { await track.applyConstraints({ torch: on } as unknown as MediaTrackConstraints); } catch { /* */ }
+    }
   }
+  async function toggleFlash() {
+    const next = !flashOn;
+    setFlashOn(next);
+    await applyTorch(next);
+  }
+
 
   function retake() {
     if (captured) URL.revokeObjectURL(captured.url);
@@ -2414,12 +2421,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             <div style={{ width: 36 }} />
           )}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <motion.button whileTap={{ scale: 0.9 }} onClick={() => void toggleFlash()}
-              style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              {flashOn ? <Zap size={16} color="#FFD54A" strokeWidth={2.2} /> : <ZapOff size={16} color="#fff" strokeWidth={2.2} />}
-            </motion.button>
-          </div>
+<div style={{ width: 32 }} />
         </div>
 
         {/* بوكس طلبات الإضافة + بحث يوزرات (نفس شكل البكس) */}
@@ -2606,101 +2608,54 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           </div>
         )}
 
-        {/* شريط فلاتر فوق الزوم والدائرة */}
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            position: 'absolute',
-            bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 150px)',
-            left: 0, right: 0, zIndex: 5,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-            pointerEvents: 'none',
-          }}
-        >
-          <motion.button
-            whileTap={{ scale: 0.92 }}
-            onClick={() => setFiltersOpen(v => !v)}
+        {filtersOpen && (
+          <div
+            onClick={e => e.stopPropagation()}
             style={{
-              pointerEvents: 'auto',
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '6px 12px', borderRadius: 18,
-              background: filtersOpen ? 'rgba(0,188,212,0.28)' : 'rgba(0,0,0,0.5)',
-              border: `1px solid ${filtersOpen ? 'rgba(0,188,212,0.55)' : 'rgba(255,255,255,0.28)'}`,
-              color: '#fff', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer',
+              position: 'absolute', left: 0, right: 64, zIndex: 6,
+              bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 168px)',
+              display: 'flex', gap: 7, overflowX: 'auto', padding: '0 12px',
+              WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
             }}
           >
-            <SlidersHorizontal size={13} strokeWidth={2.2} />
-            Filters{filter !== 'none' ? ` · ${CAMERA_FILTERS.find(f => f.id === filter)?.label ?? ''}` : ''}
+            {CAMERA_FILTERS.map(f => {
+              const active = filter === f.id;
+              return (
+                <button key={f.id} type="button" onClick={() => setFilter(f.id)} style={{
+                  flexShrink: 0, minWidth: 58, height: 30, borderRadius: 15, padding: '0 10px',
+                  background: active ? 'rgba(0,188,212,0.95)' : 'rgba(0,0,0,0.55)',
+                  border: active ? 'none' : '1px solid rgba(255,255,255,0.25)',
+                  color: active ? '#001417' : '#fff',
+                  fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                }}>{f.label}</button>
+              );
+            })}
+          </div>
+        )}
+
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            top: 'calc(max(env(safe-area-inset-top,0px), 6px) + 44px)',
+            right: 12,
+            zIndex: 6,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <motion.button whileTap={{ scale: 0.9 }} onClick={() => void toggleFlash()}
+            style={{ width: 40, height: 40, borderRadius: '50%', background: flashOn ? 'rgba(250,204,21,0.28)' : 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            {flashOn ? <Zap size={16} color="#FFD54A" strokeWidth={2.2} /> : <ZapOff size={16} color="#fff" strokeWidth={2.2} />}
           </motion.button>
-          {filtersOpen && (
-            <div style={{
-              pointerEvents: 'auto', width: '100%', overflowX: 'auto',
-              WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
-              display: 'flex', gap: 7, padding: '0 12px 2px',
-            }}>
-              {CAMERA_FILTERS.map(f => {
-                const active = filter === f.id;
-                return (
-                  <button key={f.id} type="button" onClick={() => setFilter(f.id)} style={{
-                    flexShrink: 0, minWidth: 58, height: 30, borderRadius: 15, padding: '0 10px',
-                    background: active ? 'rgba(0,188,212,0.95)' : 'rgba(0,0,0,0.55)',
-                    border: active ? 'none' : '1px solid rgba(255,255,255,0.25)',
-                    color: active ? '#001417' : '#fff',
-                    fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-                  }}>{f.label}</button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* زوم 0.5x / 1x — فوق دائرة التصوير */}
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            position: 'absolute',
-            bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 96px)',
-            left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, zIndex: 5,
-          }}
-        >
-          {([0.5, 1] as const).map(level => (
-            <motion.button
-              key={level}
-              whileTap={{ scale: 0.92 }}
-              onClick={() => setZoom(level)}
-              style={{
-                minWidth: 34, height: 34, borderRadius: '50%',
-                padding: '0 8px',
-                background: zoom === level ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.45)',
-                border: zoom === level ? 'none' : '1px solid rgba(255,255,255,0.35)',
-                color: zoom === level ? '#000' : '#fff',
-                fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >
-              {level === 1 ? '1x' : '0.5'}
-            </motion.button>
-          ))}
-        </div>
-
-        {/* دائرة التصوير + زر مكتبة الصور + زر إغلاق */}
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            position: 'absolute',
-            bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 58px)',
-            left: 0, right: 0, zIndex: 5,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
-            padding: '0 20px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 28, width: '100%' }}>
-          {/* زر مكتبة الصور — يفتح file picker */}
-          <label
-            aria-label="اختيار صورة من المكتبة"
-            className="cam-gallery-btn"
-          >
-            <Images size={20} strokeWidth={2.1} />
+          <motion.button whileTap={{ scale: 0.92 }} onClick={() => setFiltersOpen(v => !v)}
+            style={{ width: 40, height: 40, borderRadius: '50%', background: filtersOpen ? 'rgba(0,188,212,0.28)' : 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.28)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <SlidersHorizontal size={16} strokeWidth={2.2} />
+          </motion.button>
+          <label aria-label="Gallery" style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <Images size={16} strokeWidth={2.1} color="#fff" />
             <input
               type="file"
               accept="image/*,video/*"
@@ -2715,6 +2670,40 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               }}
             />
           </label>
+          <motion.button whileTap={{ scale: 0.9 }} onClick={requestClose} aria-label="Close camera"
+            style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.28)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <X size={18} strokeWidth={2.4} />
+          </motion.button>
+        </div>
+
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'absolute',
+            bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 18px)',
+            left: 0, right: 0, zIndex: 5,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            {([0.5, 1] as const).map(level => (
+              <motion.button
+                key={level}
+                whileTap={{ scale: 0.92 }}
+                onClick={() => setZoom(level)}
+                style={{
+                  minWidth: 34, height: 34, borderRadius: '50%',
+                  padding: '0 8px',
+                  background: zoom === level ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.45)',
+                  border: zoom === level ? 'none' : '1px solid rgba(255,255,255,0.35)',
+                  color: zoom === level ? '#000' : '#fff',
+                  fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer',
+                }}
+              >
+                {level === 1 ? '1x' : '0.5'}
+              </motion.button>
+            ))}
+          </div>
           <motion.button
             whileTap={{ scale: 0.92 }}
             onClick={handleShutterClick}
@@ -2724,31 +2713,14 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               border: `5px solid ${captureKind === 'video' || isRecording ? '#ef4444' : '#fff'}`,
               background: isRecording ? 'rgba(239,68,68,0.35)' : (captureKind === 'video' ? '#ef4444' : '#ffffff'),
               boxShadow: isRecording ? '0 0 0 4px rgba(239,68,68,0.25)' : '0 0 0 2px rgba(255,255,255,0.15)',
-              cursor: 'pointer', touchAction: 'none',
+              cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'border-color 0.15s, background 0.15s',
-              flexShrink: 0,
             }}
           >
             {isRecording && (
               <span style={{ width: 20, height: 20, borderRadius: 5, background: '#ef4444' }} />
             )}
           </motion.button>
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={requestClose}
-            aria-label="إغلاق الكاميرا"
-            style={{
-              width: 46, height: 46, borderRadius: '50%', flexShrink: 0,
-              background: 'rgba(0,0,0,0.55)',
-              border: '1px solid rgba(255,255,255,0.35)',
-              color: '#fff', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <X size={22} strokeWidth={2.4} />
-          </motion.button>
-          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <button type="button" onClick={() => { if (!isRecording) setCaptureKind('video'); }} style={{
               background: 'none', border: 'none', cursor: 'pointer',
