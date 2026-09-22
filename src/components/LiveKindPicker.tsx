@@ -1,7 +1,7 @@
 /**
  * Bottom-bar live picker.
- * Voice live stays on /live (public voice room untouched).
- * Camera live opens /live-camera for the current account only.
+ * Voice Live stays on /live (public voice room untouched).
+ * Video Live opens /live-camera for the current account only.
  */
 import React from 'react';
 import { useNavigate } from 'react-router';
@@ -41,7 +41,7 @@ export default function LiveKindPicker({
         position: 'fixed',
         inset: 0,
         // Was 1200 — the app's fixed bottom navigation renders at zIndex 10200,
-        // so this sheet (and its "Camera live" row) was rendering underneath it
+        // so this sheet (and its "Video Live" row) was rendering underneath it
         // and getting visually covered by the nav bar's own buttons/badges.
         zIndex: 10500,
         background: 'rgba(0,0,0,0.55)',
@@ -83,7 +83,7 @@ export default function LiveKindPicker({
           }}
         >
           <Mic size={18} color="#00BCD4" />
-          Voice live
+          Voice Live
         </button>
         <button
           type="button"
@@ -106,7 +106,7 @@ export default function LiveKindPicker({
           }}
         >
           <Video size={18} color="#ef4444" />
-          Camera live
+          Video Live
         </button>
       </div>
     </div>

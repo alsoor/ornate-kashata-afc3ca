@@ -930,7 +930,15 @@ export default function LiveCameraPage() {
           localStorage.setItem(`stooorna_livecam_active_${activeHost}`, payload);
           localStorage.setItem('stooorna_livecam_active_current', payload);
           window.dispatchEvent(new CustomEvent('stooorna:livecam-active', {
-            detail: { hostId: activeHost, active: true, channel: channelName, kind: 'camera' },
+            detail: {
+              hostId: activeHost,
+              active: true,
+              channel: channelName,
+              kind: 'camera',
+              hostName: hostName || myName,
+              hostUsername: hostUsername || myUsername,
+              hostAvatar: hostAvatar || myAvatar,
+            },
           }));
         }
       } catch {
@@ -972,6 +980,41 @@ export default function LiveCameraPage() {
   useEffect(() => {
     if (joined && amHost) playLocalVideo();
   }, [joined, amHost, playLocalVideo]);
+
+  // Keep presence alive for profile visitors (local + event)
+  useEffect(() => {
+    if (!joined || !amHost || !hostId) return;
+    const tick = () => {
+      try {
+        const payload = JSON.stringify({
+          hostId,
+          channel: channelName,
+          at: Date.now(),
+          active: true,
+          kind: 'camera',
+          hostName: hostName || myName,
+          hostUsername: hostUsername || myUsername,
+          hostAvatar: hostAvatar || myAvatar,
+        });
+        localStorage.setItem(`stooorna_livecam_active_${hostId}`, payload);
+        localStorage.setItem('stooorna_livecam_active_current', payload);
+        window.dispatchEvent(new CustomEvent('stooorna:livecam-active', {
+          detail: {
+            hostId,
+            active: true,
+            channel: channelName,
+            kind: 'camera',
+            hostName: hostName || myName,
+            hostUsername: hostUsername || myUsername,
+            hostAvatar: hostAvatar || myAvatar,
+          },
+        }));
+      } catch { /* ignore */ }
+    };
+    tick();
+    const id = window.setInterval(tick, 8000);
+    return () => window.clearInterval(id);
+  }, [joined, amHost, hostId, channelName, hostName, hostUsername, hostAvatar, myName, myUsername, myAvatar]);
 
   const toggleMic = async () => {
     if (!micRef.current || !joined) return;
