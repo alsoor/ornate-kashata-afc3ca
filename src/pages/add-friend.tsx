@@ -13850,34 +13850,6 @@ export default function AddFriendPage() {
           {pageTab === 'profile' && (
             <motion.button
               whileTap={{ scale: 0.9 }}
-              onClick={() => { setPageTab('profile'); setStoryRequestsBoxOpen(true); setStoryReqTab('requests'); setStoryReqQuery(''); }}
-              aria-label="Friend requests"
-              style={{
-                position: 'absolute',
-                top: 'max(env(safe-area-inset-top,0px), 14px)',
-                right: 20,
-                zIndex: 26,
-                width: 28, height: 28, borderRadius: '50%',
-                background: incoming.length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.2)',
-                border: `2px solid ${incoming.length > 0 ? '#ef4444' : CLR_PRIMARY}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                opacity: headerOpen ? 1 : 0,
-                pointerEvents: headerOpen ? 'auto' : 'none',
-              }}
-            >
-              <UserPlus size={13} color={incoming.length > 0 ? '#ef4444' : CLR_PRIMARY} strokeWidth={2.4} />
-              {incoming.length > 0 && (
-                <span style={{
-                  position: 'absolute', top: -4, right: -4, minWidth: 14, height: 14, borderRadius: 8,
-                  background: '#ef4444', color: '#fff', fontSize: '0.5rem', fontWeight: 800,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
-                }}>{incoming.length > 9 ? '9+' : incoming.length}</span>
-              )}
-            </motion.button>
-          )}
-          {pageTab === 'profile' && (
-            <motion.button
-              whileTap={{ scale: 0.9 }}
               onClick={() => setFriendChatListOpen(true)}
               aria-label={bellHasAlert ? (bellRinging ? 'Incoming call' : 'New message') : 'Story comments'}
               style={{
@@ -14096,23 +14068,46 @@ export default function AddFriendPage() {
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaLikesTotal}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
                   </div>
-                  {businessApproved && (
+                  <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    {businessApproved && (
+                      <motion.button
+                        type="button"
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => { setMyAdsHubTab('video'); setMyAdsHubOpen(true); }}
+                        aria-label="My Ads"
+                        style={{
+                          width: 28, height: 28, borderRadius: '50%', border: '2px solid #eab308',
+                          background: 'rgba(234,179,8,0.2)', color: '#eab308', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                          boxShadow: '0 0 10px rgba(234,179,8,0.45)',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.55rem', fontWeight: 900, letterSpacing: '-0.02em' }}>Ads</span>
+                      </motion.button>
+                    )}
                     <motion.button
                       type="button"
                       whileTap={{ scale: 0.9 }}
-                      onClick={() => { setMyAdsHubTab('video'); setMyAdsHubOpen(true); }}
-                      aria-label="My Ads"
+                      onClick={() => { setStoryRequestsBoxOpen(true); setStoryReqTab('requests'); setStoryReqQuery(''); }}
+                      aria-label="Friend requests"
                       style={{
-                        marginLeft: 'auto', width: 28, height: 28, borderRadius: '50%', border: '2px solid #eab308',
-                        background: 'rgba(234,179,8,0.2)', color: '#eab308', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-                        boxShadow: '0 0 10px rgba(234,179,8,0.45)',
-                        flexShrink: 0,
+                        width: 28, height: 28, borderRadius: '50%',
+                        background: incoming.length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.2)',
+                        border: `2px solid ${incoming.length > 0 ? '#ef4444' : CLR_PRIMARY}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                        padding: 0, position: 'relative', flexShrink: 0,
                       }}
                     >
-                      <span style={{ fontSize: '0.55rem', fontWeight: 900, letterSpacing: '-0.02em' }}>Ads</span>
+                      <UserPlus size={13} color={incoming.length > 0 ? '#ef4444' : CLR_PRIMARY} strokeWidth={2.4} />
+                      {incoming.length > 0 && (
+                        <span style={{
+                          position: 'absolute', top: -4, right: -4, minWidth: 14, height: 14, borderRadius: 8,
+                          background: '#ef4444', color: '#fff', fontSize: '0.5rem', fontWeight: 800,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
+                        }}>{incoming.length > 9 ? '9+' : incoming.length}</span>
+                      )}
                     </motion.button>
-                  )}
+                  </div>
 
                 </div>
               </div>
@@ -18724,14 +18719,15 @@ export default function AddFriendPage() {
               onClick={e => e.stopPropagation()}
               style={{
                 width: '100%', maxWidth: 340,
+                height: 420,
                 background: 'rgba(12,18,18,0.96)',
                 border: '1px solid rgba(255,255,255,0.12)',
                 borderRadius: 18,
                 padding: '18px 16px 14px',
                 boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
-                maxHeight: '78vh',
                 display: 'flex',
                 flexDirection: 'column',
+                boxSizing: 'border-box',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -18773,7 +18769,7 @@ export default function AddFriendPage() {
                       }}
                     />
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, overflowY: 'auto' }}>
                     {storyReqSearching && <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Searching…</p>}
                     {!storyReqSearching && storyReqQuery.trim().length < 2 && (
                       <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Type a username</p>
@@ -18805,7 +18801,7 @@ export default function AddFriendPage() {
                   </div>
                 </>
               ) : incoming.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '20px 10px 16px' }}>
+                <div style={{ textAlign: 'center', padding: '20px 10px 16px', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <div style={{
                     width: 48, height: 48, borderRadius: '50%', margin: '0 auto 12px',
                     background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)',
@@ -18817,7 +18813,7 @@ export default function AddFriendPage() {
                   <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', margin: '8px 0 0' }}>Search above or wait for incoming requests</p>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, overflowY: 'auto' }}>
                   {incoming.map(req => (
                     <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
                       <UserAvatar name={req.name || req.username || '?'} avatarUrl={req.avatarUrl ?? null} size={40} />
