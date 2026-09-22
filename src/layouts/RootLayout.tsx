@@ -653,9 +653,13 @@ function GlobalBottomNavigation() {
     window.addEventListener('stooorna:story-media-opened', onMediaOpen);
     window.addEventListener('stooorna:story-media-closed', onMediaClose);
     window.addEventListener('stooorna:close-story-media', onMediaClose);
-    const onLiveKind = () => {
+    const onLiveKind = (e: Event) => {
       setPlusMenuOpen(false);
       setLiveKindOpen(true);
+      const overPosts = !!(e as CustomEvent).detail?.overPosts;
+      try {
+        if (overPosts) sessionStorage.setItem('stooorna_return_text_posts', '1');
+      } catch { /* ignore */ }
     };
     window.addEventListener('stooorna:open-live-kind', onLiveKind);
     return () => {
@@ -3254,6 +3258,7 @@ function GlobalBottomNavigation() {
                   type="button"
                   onClick={() => {
                     setPlusMenuOpen(false);
+                    try { sessionStorage.removeItem('stooorna_return_text_posts'); } catch { /* ignore */ }
                     setLiveKindOpen(true);
                   }}
                   aria-label="Account live broadcast"
@@ -3384,6 +3389,21 @@ export default function RootLayout({
       navigate('/add-friend?tab=friends&openTextPosts=1', { replace: true });
     }
   }, [location.pathname, navigate]);
+
+  useEffect(() => {
+    const path = location.pathname || '';
+    const isLive = path === '/live' || path.startsWith('/live/') || path === '/live-camera' || path.startsWith('/live-camera');
+    if (isLive) return;
+    if (path !== '/add-friend' && !path.startsWith('/add-friend')) return;
+    try {
+      if (sessionStorage.getItem('stooorna_return_text_posts') !== '1') return;
+    } catch {
+      return;
+    }
+    const params = new URLSearchParams(location.search);
+    if (params.get('openTextPosts') === '1') return;
+    navigate('/add-friend?tab=friends&openTextPosts=1', { replace: true });
+  }, [location.pathname, location.search, navigate]);
 
   useEffect(() => {
     if (!session?.user) return;

@@ -11937,11 +11937,23 @@ export default function AddFriendPage() {
   // Also auto-opens when returning from the chat page's back button after chatting
   // from a profile opened inside this flow (see FriendStoryProfile's chat button),
   // via the ?openTextPosts=1 marker left in the URL before navigating to /chat.
-  const [textPostsPageOpen, setTextPostsPageOpen] = useState(
-    !user || searchParams.get('openTextPosts') === '1'
-  );
+  const [textPostsPageOpen, setTextPostsPageOpen] = useState(() => {
+    try {
+      if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('stooorna_return_text_posts') === '1') {
+        return true;
+      }
+    } catch { /* ignore */ }
+    return !user || searchParams.get('openTextPosts') === '1';
+  });
   // true when the panel was opened via URL navigation (no flash animation needed)
-  const textPostsOpenedFromUrl = useRef(!user || searchParams.get('openTextPosts') === '1');
+  const textPostsOpenedFromUrl = useRef((() => {
+    try {
+      if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('stooorna_return_text_posts') === '1') {
+        return true;
+      }
+    } catch { /* ignore */ }
+    return !user || searchParams.get('openTextPosts') === '1';
+  })());
   // قائمة الثلاث نقاط في هيدر صفحة المنشورات النصية (نشر بوست نصي من داخلها)
   const [_textPostsMenuOpen, setTextPostsMenuOpen] = useState(false);
   // سحب لتحديث — Stooorna ثابتة في الهيدر مع ذبذبة خفيفة فقط
@@ -12036,6 +12048,14 @@ export default function AddFriendPage() {
 
   // فتح من الشريط السفلي (أيقونة البوست) بدون أخطاء تنقّل
   useEffect(() => {
+    try {
+      if (sessionStorage.getItem('stooorna_return_text_posts') === '1') {
+        setTextPostsPageOpen(true);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
     if (searchParams.get('openTextPosts') === '1') {
       setTextPostsPageOpen(true);
       textPostsOpenedFromUrl.current = true;
@@ -12070,6 +12090,7 @@ export default function AddFriendPage() {
     // Guests stay locked in text posts — they have no story page to go back to
     const closeFromNav = () => {
       if (!user) return;
+      try { sessionStorage.removeItem('stooorna_return_text_posts'); } catch { /* ignore */ }
       setTextPostsPageOpen(false);
       setTextPostsMenuOpen(false);
     };
@@ -12431,14 +12452,21 @@ export default function AddFriendPage() {
     };
   });
   const [textPostsPlusOpen, setTextPostsPlusOpen] = useState(false);
-  /** Story page as right sheet over public posts (does not dismiss text posts) */
+  /** Story / account page sheet over public posts */
   const [storyHomeSheetOpen, setStoryHomeSheetOpen] = useState(false);
+  /** When true, public posts dismiss to the right while the account page enters from the left */
+  const [accountSlideFromLeft, setAccountSlideFromLeft] = useState(false);
   useEffect(() => {
     if (!textPostsPageOpen) {
       setTextPostsPlusOpen(false);
       setStoryHomeSheetOpen(false);
     }
   }, [textPostsPageOpen]);
+  useEffect(() => {
+    if (!accountSlideFromLeft) return;
+    const t = window.setTimeout(() => setAccountSlideFromLeft(false), 420);
+    return () => window.clearTimeout(t);
+  }, [accountSlideFromLeft]);
   useEffect(() => {
     if (searchParams.get('openChats') === '1' || searchParams.get('openFriendsPanel') === '1') {
       setFriendsPanelTab(user ? 'friends' : 'company');
@@ -13692,13 +13720,15 @@ export default function AddFriendPage() {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alexandria:wght@400;500;600;700&display=swap" />
+        <style>{`@keyframes stooornaAccountInFromLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }`}</style>
       </Helmet>
       <h1 className="sr-only">{pageTitle}</h1>
 
       <div className="flex flex-col" style={{
       minHeight: '100dvh',
       background: PAGE_BG,
-      fontFamily: 'var(--font-sans)'
+      fontFamily: 'var(--font-sans)',
+      animation: accountSlideFromLeft ? 'stooornaAccountInFromLeft 0.36s cubic-bezier(0.32, 0.72, 0, 1)' : undefined,
     }}>
 
         {!isFriendManagement && <>
@@ -17647,9 +17677,9 @@ export default function AddFriendPage() {
           <motion.div
             key="text-posts-page"
             initial={textPostsOpenedFromUrl.current ? false : { opacity: 0, y: -36 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: '100%' }}
-            transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            exit={accountSlideFromLeft ? { x: '100%', opacity: 1, y: 0 } : { opacity: 0, y: '100%' }}
+            transition={{ duration: 0.36, ease: [0.32, 0.72, 0, 1] }}
             style={{
               position: 'fixed',
               top: 0, left: 0, right: 0,
@@ -18077,18 +18107,20 @@ export default function AddFriendPage() {
               backfaceVisibility: 'hidden' as const,
             }}>
               <>
-                {/* Left: account profile avatar — opens story profile as right sheet */}
+                {/* Left: account profile avatar — opens the main account page from the left */}
                 {user && (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setTextPostsPlusOpen(false);
-                      // Settings-style right sheet over public posts — keep text posts open underneath
                       setViewingProfile(null);
-                      setStoryHomeSheetOpen(true);
+                      setStoryHomeSheetOpen(false);
+                      setAccountSlideFromLeft(true);
+                      try { sessionStorage.removeItem('stooorna_return_text_posts'); } catch { /* ignore */ }
+                      setTextPostsPageOpen(false);
                     }}
-                    aria-label="Open story page"
+                    aria-label="Open account page"
                     style={{
                       position: 'absolute',
                       left: 12,
@@ -18276,9 +18308,10 @@ export default function AddFriendPage() {
                             type="button"
                             onClick={() => {
                               setTextPostsPlusOpen(false);
+                              try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
                               try {
                                 window.dispatchEvent(new CustomEvent('stooorna:open-live-kind', {
-                                  detail: { overPosts: true },
+                                  detail: { overPosts: true, returnTo: 'text-posts' },
                                 }));
                               } catch { /* */ }
                             }}
@@ -18342,7 +18375,7 @@ export default function AddFriendPage() {
       )}
       </AnimatePresence>
 
-      {/* Story page as settings-style right sheet over public posts */}
+      {/* Account page sheet — slides in from the left over public posts */}
       <AnimatePresence>
         {storyHomeSheetOpen && textPostsPageOpen && (
           <>
@@ -18362,23 +18395,23 @@ export default function AddFriendPage() {
             />
             <motion.div
               key="story-home-sheet-panel"
-              initial={{ x: '100%' }}
+              initial={{ x: '-100%' }}
               animate={{ x: 0 }}
-              exit={{ x: '100%' }}
+              exit={{ x: '-100%' }}
               transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
               onClick={e => e.stopPropagation()}
               style={{
                 position: 'fixed',
                 top: 0,
                 bottom: 0,
-                right: 0,
-                left: 42,
+                left: 0,
+                right: 42,
                 zIndex: 10691,
                 background: PAGE_BG,
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
-                boxShadow: '-16px 0 40px rgba(0,0,0,0.45)',
+                boxShadow: '16px 0 40px rgba(0,0,0,0.45)',
               }}
             >
               <div style={{
