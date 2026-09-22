@@ -653,6 +653,11 @@ function GlobalBottomNavigation() {
     window.addEventListener('stooorna:story-media-opened', onMediaOpen);
     window.addEventListener('stooorna:story-media-closed', onMediaClose);
     window.addEventListener('stooorna:close-story-media', onMediaClose);
+    const onLiveKind = () => {
+      setPlusMenuOpen(false);
+      setLiveKindOpen(true);
+    };
+    window.addEventListener('stooorna:open-live-kind', onLiveKind);
     return () => {
       window.removeEventListener('stooorna:friends-panel-opened', onOpen);
       window.removeEventListener('stooorna:friends-panel-closed', onClose);
@@ -660,6 +665,7 @@ function GlobalBottomNavigation() {
       window.removeEventListener('stooorna:story-media-opened', onMediaOpen);
       window.removeEventListener('stooorna:story-media-closed', onMediaClose);
       window.removeEventListener('stooorna:close-story-media', onMediaClose);
+      window.removeEventListener('stooorna:open-live-kind', onLiveKind);
     };
   }, []);
   useEffect(() => {
@@ -1338,6 +1344,14 @@ function GlobalBottomNavigation() {
   };
   type HomeCallMember = HomeCallFriend & { joined?: boolean };
   const [homeCallPickerOpen, setHomeCallPickerOpen] = useState(false);
+  useEffect(() => {
+    const onHomeCall = () => {
+      setPlusMenuOpen(false);
+      setHomeCallPickerOpen(true);
+    };
+    window.addEventListener('stooorna:open-home-call-picker', onHomeCall);
+    return () => window.removeEventListener('stooorna:open-home-call-picker', onHomeCall);
+  }, []);
   const [homeCallFriends, setHomeCallFriends] = useState<HomeCallFriend[]>([]);
   const [homeCallSelected, setHomeCallSelected] = useState<Record<string, boolean>>({});
   const [homeCallPhase, setHomeCallPhase] = useState<'idle' | 'animating' | 'connecting' | 'live'>('idle');
@@ -3375,6 +3389,21 @@ export default function RootLayout({
   const isFullBleed = isFullScreenChat || isPrivacyPage || isVoiceRoom;
   const isSettingsPage = location.pathname === '/settings' || location.pathname.startsWith('/settings');
   const [settingsClosing, setSettingsClosing] = useState(false);
+  const [textPostsOverlayOpen, setTextPostsOverlayOpen] = useState(() => {
+    try {
+      return typeof document !== 'undefined' && document.body.classList.contains('stooorna-text-posts-open');
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    const onTextPosts = (e: Event) => {
+      const d = (e as CustomEvent).detail as { open?: boolean } | undefined;
+      setTextPostsOverlayOpen(!!d?.open);
+    };
+    window.addEventListener('stooorna:text-posts-state', onTextPosts);
+    return () => window.removeEventListener('stooorna:text-posts-state', onTextPosts);
+  }, []);
 
   const closeSettingsSheet = () => {
     if (settingsClosing) return;
@@ -3422,7 +3451,8 @@ export default function RootLayout({
             style={{
               position: 'fixed',
               inset: 0,
-              zIndex: 10150,
+              // Above public posts page (10300) when opened from its plus menu
+              zIndex: textPostsOverlayOpen ? 10680 : 10150,
               background: settingsClosing ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.32)',
               transition: 'background 0.32s ease',
             }}
