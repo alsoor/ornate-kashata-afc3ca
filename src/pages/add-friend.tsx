@@ -1622,18 +1622,19 @@ function storyRingColor(items: StoryItem[], unseenColor: string, seenColor: stri
 // نقرتان متتاليتان على الشاشة = تبديل الكاميرا الأمامية/الخلفية، وأزرار التحكم
 // الوحيدة هي: فلاش وفلاتر متقدمة. بعد التصوير تظهر ثلاثة خيارات نصية:
 // نشر القصة / إعادة التصوير / إغلاق الكاميرا. الإغلاق ينزل الشاشة بأنيميشن للأسفل.
-type CameraFilterId = 'none' | 'soft' | 'glow' | 'bw' | 'warm' | 'cool' | 'vivid' | 'dramatic' | 'vintage' | 'fade';
+type CameraFilterId = 'none' | 'beauty' | 'makeup' | 'glow' | 'warm' | 'cool' | 'vivid' | 'dramatic' | 'vintage' | 'fade' | 'bw';
 const CAMERA_FILTERS: { id: CameraFilterId; label: string; css: string }[] = [
-  { id: 'none', label: 'عادي', css: 'none' },
-  { id: 'soft', label: 'ناعم', css: 'brightness(1.08) contrast(0.92) saturate(1.05)' },
-  { id: 'glow', label: 'إشراق', css: 'brightness(1.12) contrast(0.95) saturate(1.12)' },
-  { id: 'bw', label: 'أبيض وأسود', css: 'grayscale(1) contrast(1.05)' },
-  { id: 'warm', label: 'دافئ', css: 'sepia(0.35) saturate(1.4) contrast(1.05)' },
-  { id: 'cool', label: 'بارد', css: 'hue-rotate(180deg) saturate(1.2)' },
-  { id: 'vivid', label: 'حيوي', css: 'saturate(1.6) contrast(1.15)' },
-  { id: 'dramatic', label: 'درامي', css: 'contrast(1.3) brightness(0.9) saturate(1.1)' },
-  { id: 'vintage', label: 'عتيق', css: 'sepia(0.5) contrast(0.9) brightness(1.05) saturate(0.85)' },
-  { id: 'fade', label: 'باهت', css: 'contrast(0.85) brightness(1.1) saturate(0.7)' },
+  { id: 'none', label: 'Original', css: 'none' },
+  { id: 'beauty', label: 'Beauty', css: 'brightness(1.08) contrast(0.94) saturate(1.08) blur(0.15px)' },
+  { id: 'makeup', label: 'Makeup', css: 'brightness(1.1) contrast(1.04) saturate(1.22) hue-rotate(-6deg)' },
+  { id: 'glow', label: 'Glow', css: 'brightness(1.14) contrast(0.96) saturate(1.18)' },
+  { id: 'warm', label: 'Warm', css: 'sepia(0.22) saturate(1.28) contrast(1.06) brightness(1.04)' },
+  { id: 'cool', label: 'Cool', css: 'hue-rotate(168deg) saturate(1.12) brightness(1.04)' },
+  { id: 'vivid', label: 'Vivid', css: 'saturate(1.55) contrast(1.14) brightness(1.03)' },
+  { id: 'dramatic', label: 'Drama', css: 'contrast(1.28) brightness(0.92) saturate(1.12)' },
+  { id: 'vintage', label: 'Vintage', css: 'sepia(0.42) contrast(0.94) brightness(1.04) saturate(0.88)' },
+  { id: 'fade', label: 'Fade', css: 'contrast(0.86) brightness(1.1) saturate(0.72)' },
+  { id: 'bw', label: 'B&W', css: 'grayscale(1) contrast(1.08)' },
 ];
 
 function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendRequests = [], onRespondFriendRequest, onOpenStoryComments, storyCommentUnread = 0, shareChatUnread = 0, allowMusic = true, publishLabel }: {
@@ -1665,13 +1666,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
 
-  // نقرتان متتاليتان على شاشة الكاميرا = تبديل أمامية/خلفية
   function handleVideoDoubleTap() {
-    const now = Date.now();
-    if (now - lastTapRef.current < 350) {
-      setFacingMode(m => m === 'environment' ? 'user' : 'environment');
-    }
-    lastTapRef.current = now;
+    // Double-tap flip disabled
   }
   const [requestsBoxOpen, setRequestsBoxOpen] = useState(false);
   const [respondingId, setRespondingId] = useState<number | null>(null);
@@ -1745,6 +1741,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const [ultraWideDeviceId, setUltraWideDeviceId] = useState<string | null>(null);
   const [backDeviceId, setBackDeviceId] = useState<string | null>(null);
   const [frontDeviceId, setFrontDeviceId] = useState<string | null>(null);
+  const [captureKind, setCaptureKind] = useState<'photo' | 'video'>('photo');
   const [isRecording, setIsRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [captured, setCaptured] = useState<{ url: string; blob: Blob; type: 'image' | 'video' } | null>(null);
@@ -2117,23 +2114,14 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     return () => clearInterval(interval);
   }, [isRecording]);
 
-  // نقرة قصيرة = صورة، ضغط مطوّل (فوق 320ms) = بدء تسجيل فيديو
-  function handlePressStart() {
+  function handleShutterClick() {
     if (captured) return;
-    pressTimerRef.current = setTimeout(() => {
-      pressTimerRef.current = null;
-      startRecording();
-    }, 320);
-  }
-  function handlePressEnd() {
-    if (captured) return;
-    if (pressTimerRef.current) {
-      clearTimeout(pressTimerRef.current);
-      pressTimerRef.current = null;
-      takePhoto();
-    } else if (isRecordingRef.current) {
-      stopRecording();
+    if (captureKind === 'video') {
+      if (isRecordingRef.current) stopRecording();
+      else startRecording();
+      return;
     }
+    takePhoto();
   }
 
   async function toggleFlash() {
@@ -2625,7 +2613,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             }}
           >
             <SlidersHorizontal size={13} strokeWidth={2.2} />
-            فلاتر{filter !== 'none' ? ` · ${CAMERA_FILTERS.find(f => f.id === filter)?.label ?? ''}` : ''}
+            Filters{filter !== 'none' ? ` · ${CAMERA_FILTERS.find(f => f.id === filter)?.label ?? ''}` : ''}
           </motion.button>
           {filtersOpen && (
             <div style={{
@@ -2683,12 +2671,13 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           onClick={e => e.stopPropagation()}
           style={{
             position: 'absolute',
-            bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 16px)',
+            bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 58px)',
             left: 0, right: 0, zIndex: 5,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 28,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
             padding: '0 20px',
           }}
         >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 28, width: '100%' }}>
           {/* زر مكتبة الصور — يفتح file picker */}
           <label
             aria-label="اختيار صورة من المكتبة"
@@ -2711,15 +2700,12 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           </label>
           <motion.button
             whileTap={{ scale: 0.92 }}
-            onPointerDown={handlePressStart}
-            onPointerUp={handlePressEnd}
-            onPointerCancel={handlePressEnd}
-            onPointerLeave={() => { if (isRecordingRef.current) stopRecording(); }}
-            aria-label={isRecording ? 'إيقاف التسجيل' : 'التقاط'}
+            onClick={handleShutterClick}
+            aria-label={isRecording ? 'Stop recording' : (captureKind === 'video' ? 'Record video' : 'Take photo')}
             style={{
               width: 72, height: 72, borderRadius: '50%',
-              border: `5px solid ${isRecording ? '#ef4444' : '#fff'}`,
-              background: isRecording ? 'rgba(239,68,68,0.35)' : 'transparent',
+              border: `5px solid ${captureKind === 'video' || isRecording ? '#ef4444' : '#fff'}`,
+              background: isRecording ? 'rgba(239,68,68,0.35)' : (captureKind === 'video' ? '#ef4444' : '#ffffff'),
               boxShadow: isRecording ? '0 0 0 4px rgba(239,68,68,0.25)' : '0 0 0 2px rgba(255,255,255,0.15)',
               cursor: 'pointer', touchAction: 'none',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -2745,6 +2731,20 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           >
             <X size={22} strokeWidth={2.4} />
           </motion.button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <button type="button" onClick={() => { if (!isRecording) setCaptureKind('video'); }} style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: captureKind === 'video' ? '#fff' : 'rgba(255,255,255,0.55)',
+              fontWeight: 800, fontSize: '0.82rem',
+            }}>Video</button>
+            <span style={{ width: 1, height: 14, background: 'rgba(255,255,255,0.35)' }} />
+            <button type="button" onClick={() => { if (!isRecording) setCaptureKind('photo'); }} style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: captureKind === 'photo' ? '#fff' : 'rgba(255,255,255,0.55)',
+              fontWeight: 800, fontSize: '0.82rem',
+            }}>Photo</button>
+          </div>
         </div>
       </div>
 
@@ -2866,9 +2866,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 <span className="orb-bar" />
               </div>
             )}
-            <motion.button whileTap={{ scale: 0.9 }} onClick={requestClose} aria-label="إغلاق" className="story-close-btn">
-              <X size={18} strokeWidth={2.4} />
-            </motion.button>
+            {null}
             {overlayText.trim() && (
               <div className="story-drag-hint">اسحب النص لتغيير موضعه</div>
             )}
@@ -2880,13 +2878,6 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           {error && <p className="story-edit-error">{error}</p>}
 
           <div className="story-preview-bar">
-            <motion.button whileTap={{ scale: 0.97 }} onClick={() => setEditMode(true)} className="story-edit-btn">
-              <PenLine size={15} strokeWidth={2.2} />
-              تحرير (نص + موسيقى)
-              {(overlayText.trim() || selectedMusic || selectedBuiltinMusic) && (
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'hsl(var(--primary))', display: 'inline-block' }} />
-              )}
-            </motion.button>
             <motion.button whileTap={{ scale: 0.97 }} disabled={publishing} onClick={() => void publish()} className="story-edit-publish-btn">
               {publishing ? 'جارِ النشر…' : (publishLabel || (allowMusic ? 'نشر قصة' : 'نشر إعلان للقصة'))}
             </motion.button>
@@ -14069,7 +14060,7 @@ export default function AddFriendPage() {
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{myMediaLikesTotal}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
                   </div>
-                  <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, flexShrink: 0 }}>
                     {businessApproved && (
                       <motion.button
                         type="button"
