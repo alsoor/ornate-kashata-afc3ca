@@ -2524,7 +2524,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               )}
             </div>
             <motion.button type="button" whileTap={{ scale: 0.92 }} onClick={() => setLiveMapOpen(true)}
-              style={{ height: 28, padding: '0 8px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(0,0,0,0.45)', color: '#fff', fontSize: '0.62rem', fontWeight: 800, cursor: 'pointer' }}>
+              style={{ height: 28, padding: '0 8px', borderRadius: 14, border: '1.5px solid #ef4444', background: 'rgba(0,0,0,0.45)', color: '#fff', fontSize: '0.62rem', fontWeight: 800, cursor: 'pointer' }}>
               Live Location
             </motion.button>
           </div>
@@ -2791,10 +2791,6 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               }}
             />
           </label>
-          <motion.button whileTap={{ scale: 0.9 }} onClick={requestClose} aria-label="Close camera"
-            style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.28)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <X size={18} strokeWidth={2.4} />
-          </motion.button>
         </div>
 
         <div
@@ -2825,6 +2821,17 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               </motion.button>
             ))}
           </div>
+          <motion.button whileTap={{ scale: 0.9 }} onClick={requestClose} aria-label="Close camera"
+            style={{
+              position: 'absolute',
+              right: 16,
+              bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 86px)',
+              width: 40, height: 40, borderRadius: '50%', zIndex: 6,
+              background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.28)', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}>
+            <X size={18} strokeWidth={2.4} />
+          </motion.button>
           <motion.button
             whileTap={{ scale: 0.92 }}
             onClick={handleShutterClick}
