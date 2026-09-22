@@ -899,7 +899,12 @@ type ShareThreadMsg = {
   kind?: 'chat' | 'story-comment' | 'story-reply';
   replyToId?: string | null;
   replyToBody?: string | null;
+  thumbUrl?: string | null;
 };
+function hasStoryReplyFromMe(msgs: ShareThreadMsg[], myId: string | undefined, targetId: string): boolean {
+  if (!myId) return false;
+  return msgs.some(x => (x.kind === 'story-reply' || isStoryReplyMsg(x)) && String(x.fromId) === String(myId) && String(x.replyToId || '') === String(targetId));
+}
 function isStoryCommentMsg(m: ShareThreadMsg): boolean {
   if (m.kind === 'story-comment') return true;
   return m.type === 'text' && /^Story comment:\s*/i.test(m.body || '');
@@ -2408,26 +2413,6 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               {flashOn ? <Zap size={16} color="#FFD54A" strokeWidth={2.2} /> : <ZapOff size={16} color="#fff" strokeWidth={2.2} />}
             </motion.button>
-            {/* Story-comments bell moved out of the camera to the story page header (top-right). */}
-            {/* Friend-add icon — friend requests land here */}
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setRequestsBoxOpen(true)}
-              aria-label="Friend requests"
-              style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}
-            >
-              <UserPlus size={16} color="#fff" strokeWidth={2.2} />
-              {friendRequests.length > 0 && (
-                <span style={{
-                  position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, borderRadius: 8,
-                  background: '#ef4444', color: '#fff', fontSize: '0.55rem', fontWeight: 800,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
-                  border: '1.5px solid #000',
-                }}>
-                  {friendRequests.length > 9 ? '9+' : friendRequests.length}
-                </span>
-              )}
-            </motion.button>
           </div>
         </div>
 
@@ -3383,9 +3368,6 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
               <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 40, right: 0, minWidth: 142, padding: 6, borderRadius: 12, background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', boxShadow: '0 12px 28px hsl(var(--background)/0.5)' }}>
                 <button onClick={() => { setStoryMenuOpen(false); onAddMedia(); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}>
                   <Plus size={16} color="hsl(var(--primary))" /> {isCompanyPublisher ? 'نشر إعلان للقصة' : 'نشر قصة'}
-                </button>
-                <button onClick={() => { setStoryMenuOpen(false); onOpenCamera(); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}>
-                  <Camera size={16} color="hsl(var(--primary))" /> {isCompanyPublisher ? 'نشر إعلان للقصة عبر' : 'نشر القصة عبر'}
                 </button>
                 <button onClick={() => { setStoryMenuOpen(false); setDeleteError(null); setConfirmDelete(true); }} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--destructive))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}>
                   <Trash2 size={16} /> حذف الحالة
@@ -11397,6 +11379,7 @@ export default function AddFriendPage() {
                 type: 'text',
                 body: `Story comment: ${c.text}`,
                 kind: 'story-comment',
+                thumbUrl: thread.mediaUrl || null,
                 at: Number.isFinite(at) ? at : Date.now(),
               });
               if (!thread.read) {
@@ -11515,6 +11498,7 @@ export default function AddFriendPage() {
         type: 'text',
         body: `Story comment: ${c.text}`,
         kind: 'story-comment',
+        thumbUrl: thread.mediaUrl || null,
         at: Number.isFinite(at) ? at : Date.now(),
       });
     }
@@ -11607,7 +11591,30 @@ export default function AddFriendPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ body: text, parentCommentId: null }),
       });
-      return response.ok;
+      if (!response.ok) return false;
+      if (user?.id) {
+        let ownerId: string | null = null;
+        let thumb: string | null = null;
+        for (const g of storyGroups) {
+          const item = (g.items || []).find((it: any) => Number(it.id) === Number(storyId));
+          if (item) {
+            ownerId = g.userId;
+            thumb = item.mediaUrl || null;
+            break;
+          }
+        }
+        if (ownerId && String(ownerId) !== String(user.id)) {
+          pushShareThreadMsg(user.id, ownerId, 'direct', {
+            fromId: user.id,
+            type: 'text',
+            kind: 'story-comment',
+            body: `Story comment: ${text}`,
+            thumbUrl: thumb,
+          });
+          try { window.dispatchEvent(new CustomEvent('stooorna:share-thread')); } catch { /* */ }
+        }
+      }
+      return true;
     } catch {
       return false;
     }
@@ -11827,7 +11834,7 @@ export default function AddFriendPage() {
   // Top-level page tab: Add (friend search/requests) | Profile (everything else — stories, text
   // posts and the media grid all live together on this one page now; the separate FEED tab was
   // merged into it, directly under the stories strip).
-  const [pageTab] = useState<'add' | 'profile'>(
+  const [pageTab, setPageTab] = useState<'add' | 'profile'>(
     (urlTab === 'search' || urlTab === 'requests') ? 'add' : 'profile'
   );
   const isFriendManagement = pageTab === 'add';
@@ -13814,6 +13821,34 @@ export default function AddFriendPage() {
           {pageTab === 'profile' && (
             <motion.button
               whileTap={{ scale: 0.9 }}
+              onClick={() => { setTab('requests'); setPageTab('add'); }}
+              aria-label="Friend requests"
+              style={{
+                position: 'absolute',
+                top: 'max(env(safe-area-inset-top,0px), 14px)',
+                right: 20,
+                zIndex: 26,
+                width: 28, height: 28, borderRadius: '50%',
+                background: incoming.length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.2)',
+                border: `2px solid ${incoming.length > 0 ? '#ef4444' : CLR_PRIMARY}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                opacity: headerOpen ? 1 : 0,
+                pointerEvents: headerOpen ? 'auto' : 'none',
+              }}
+            >
+              <UserPlus size={13} color={incoming.length > 0 ? '#ef4444' : CLR_PRIMARY} strokeWidth={2.4} />
+              {incoming.length > 0 && (
+                <span style={{
+                  position: 'absolute', top: -4, right: -4, minWidth: 14, height: 14, borderRadius: 8,
+                  background: '#ef4444', color: '#fff', fontSize: '0.5rem', fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
+                }}>{incoming.length > 9 ? '9+' : incoming.length}</span>
+              )}
+            </motion.button>
+          )}
+          {pageTab === 'profile' && (
+            <motion.button
+              whileTap={{ scale: 0.9 }}
               onClick={() => setFriendChatListOpen(true)}
               aria-label={bellHasAlert ? (bellRinging ? 'Incoming call' : 'New message') : 'Story comments'}
               style={{
@@ -14364,6 +14399,7 @@ export default function AddFriendPage() {
 
             {/* ══ ADD TAB: Search + Requests ══ */}
             {pageTab === 'add' && <motion.div key="add-tab" initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} className="flex flex-col gap-4">
+                <button type="button" onClick={() => setPageTab('profile')} style={{ alignSelf: 'flex-start', border: 'none', background: 'none', color: CLR_PRIMARY, fontWeight: 800, cursor: 'pointer', padding: '4px 0' }}>Back</button>
 
                 {/* Inner sub-tabs: Search | Requests */}
                 <div className="flex" style={{
@@ -18863,6 +18899,11 @@ export default function AddFriendPage() {
                       {m.type === 'text' && isStoryCommentMsg(m) && (
                         <div>
                           <p style={{ margin: '0 0 4px', color: '#0f766e', fontSize: '0.68rem', fontWeight: 800 }}>Story comment</p>
+                          {m.thumbUrl ? (
+                            String(m.thumbUrl).match(/\.(mp4|webm|mov|m4v)(\?|$)/i)
+                              ? <video src={m.thumbUrl} muted playsInline style={{ width: '100%', maxHeight: 160, borderRadius: 8, objectFit: 'cover', marginBottom: 6, background: '#000' }} />
+                              : <img src={m.thumbUrl} alt="" style={{ width: '100%', maxHeight: 160, borderRadius: 8, objectFit: 'cover', marginBottom: 6, display: 'block' }} />
+                          ) : null}
                           <p style={{ margin: 0, color: '#111', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{storyMsgPlainText(m)}</p>
                         </div>
                       )}
@@ -18897,7 +18938,7 @@ export default function AddFriendPage() {
                         </p>
                       )}
                     </div>
-                    {isStoryCommentMsg(m) && (
+                    {((isStoryCommentMsg(m) || isStoryReplyMsg(m)) && user && String(m.fromId) !== String(user.id) && !hasStoryReplyFromMe(friendChatMsgs, user.id, m.id)) && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -18905,7 +18946,7 @@ export default function AddFriendPage() {
                           setFriendChatStoryReplyTo(m);
                           window.setTimeout(() => friendChatInputRef.current?.focus(), 30);
                         }}
-                        aria-label="Reply to story comment"
+                        aria-label="Reply to story message"
                         style={{
                           alignSelf: user && m.fromId === user.id ? 'flex-end' : 'flex-start',
                           width: '82%',
@@ -19547,18 +19588,6 @@ export default function AddFriendPage() {
               >
                 <Plus size={18} color={CLR_PRIMARY} strokeWidth={2.2} />
                 <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{isCompanyPublisher ? 'نشر إعلان للقصة' : 'نشر قصة'}</span>
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={() => { setPublishMenuOpen(false); setCameraCaptureOpen(true); }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px',
-                  background: 'transparent', border: 'none',
-                  color: CLR_TEXT, cursor: 'pointer', textAlign: 'right', width: '100%',
-                }}
-              >
-                <Camera size={18} color={CLR_PRIMARY} strokeWidth={2.2} />
-                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{isCompanyPublisher ? 'نشر إعلان للقصة عبر' : 'نشر القصة عبر'}</span>
               </motion.button>
             </motion.div>
           </motion.div>
