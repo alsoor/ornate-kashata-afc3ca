@@ -11441,18 +11441,56 @@ export default function AddFriendPage() {
   const storyPullStartXRef = useRef(0);
   const profileFeedScrollRef = useRef<HTMLDivElement | null>(null);
 
-  function openFirstAvailableStory() {
+  type StoryFlyState = {
+    userId: string;
+    name: string;
+    avatarUrl: string | null;
+    groupIdx: number;
+    from: { left: number; top: number; width: number; height: number };
+  };
+  const [storyFly, setStoryFly] = useState<StoryFlyState | null>(null);
+  const [storyFlyAnim, setStoryFlyAnim] = useState(false);
+  const storyCircleRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  function pickPullStoryTarget() {
     const others = storyGroups.filter(g => {
       if (user?.id && g.userId === user.id) return false;
       return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
     });
-    if (!others.length) return false;
+    if (!others.length) return null;
     const unseen = others.find(g => g.items.some(it => !it.seen));
-    const target = unseen || others[0];
+    return unseen || others[0];
+  }
+
+  function openFirstAvailableStory() {
+    const target = pickPullStoryTarget();
+    if (!target) return false;
     const idx = storyGroups.indexOf(target);
     if (idx < 0) return false;
     setHeaderOpen(true);
-    setViewerGroupIdx(idx);
+    const el = storyCircleRefs.current[target.userId];
+    const rect = el?.getBoundingClientRect();
+    if (rect && rect.width > 0) {
+      setStoryFly({
+        userId: target.userId,
+        name: target.name,
+        avatarUrl: target.avatarUrl,
+        groupIdx: idx,
+        from: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+      });
+      setStoryFlyAnim(false);
+      // Next frame: animate toward StoryViewer avatar slot (top-left)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setStoryFlyAnim(true));
+      });
+      window.setTimeout(() => {
+        setViewerGroupIdx(idx);
+        setStoryFly(null);
+        setStoryFlyAnim(false);
+      }, 430);
+    } else {
+      setViewerGroupIdx(idx);
+    }
     return true;
   }
 
@@ -13415,14 +13453,23 @@ export default function AddFriendPage() {
                   return (
                     <div key={g.userId} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                       <motion.button
+                        ref={(node) => { storyCircleRefs.current[g.userId] = node; }}
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setViewerGroupIdx(realIdx)}
                         style={{
                           width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative',
-                          transform: storyPullProgress > 0 ? `scale(${1 + storyPullProgress * 0.28})` : undefined,
+                          transform: (() => {
+                            const target = pickPullStoryTarget();
+                            const isTarget = !!target && target.userId === g.userId && storyPullProgress > 0;
+                            if (!isTarget) return undefined;
+                            const scale = 1 + storyPullProgress * 0.42;
+                            const lift = storyPullProgress * 56;
+                            return `translateY(-${lift}px) scale(${scale})`;
+                          })(),
                           transformOrigin: 'center center',
                           transition: storyPullProgress > 0 ? 'none' : 'transform 0.22s ease',
-                          zIndex: storyPullProgress > 0.2 ? 5 : undefined,
+                          zIndex: (pickPullStoryTarget()?.userId === g.userId && storyPullProgress > 0) ? 8 : undefined,
+                          opacity: storyFly && storyFly.userId === g.userId ? 0 : 1,
                         }}
                       >
                         {/* حلقة بلونين فقط: أصفر كامل ما دام في عنصر غير مُشاهَد،
@@ -17734,6 +17781,34 @@ export default function AddFriendPage() {
 
       {/* ── Story Viewer ── */}
       <AnimatePresence>
+        {/* Telegram-style: avatar flies from story ring into viewer header slot */}
+        {storyFly && createPortal(
+          <div
+            aria-hidden
+            style={{
+              position: 'fixed',
+              left: storyFlyAnim ? 16 : storyFly.from.left,
+              top: storyFlyAnim ? 'calc(28px + env(safe-area-inset-top, 0px))' : storyFly.from.top,
+              width: storyFlyAnim ? 36 : storyFly.from.width,
+              height: storyFlyAnim ? 36 : storyFly.from.height,
+              borderRadius: '50%',
+              zIndex: 10320,
+              pointerEvents: 'none',
+              overflow: 'hidden',
+              boxShadow: storyFlyAnim ? '0 0 0 2px rgba(255,255,255,0.85)' : '0 8px 28px rgba(0,0,0,0.45)',
+              transition: 'left 0.4s cubic-bezier(0.22,1,0.36,1), top 0.4s cubic-bezier(0.22,1,0.36,1), width 0.4s cubic-bezier(0.22,1,0.36,1), height 0.4s cubic-bezier(0.22,1,0.36,1), box-shadow 0.35s ease',
+              background: '#0a1214',
+            }}
+          >
+            <UserAvatar
+              name={storyFly.name}
+              avatarUrl={storyFly.avatarUrl}
+              size={storyFlyAnim ? 36 : Math.round(storyFly.from.width)}
+              style={{ width: '100%', height: '100%', border: 'none', borderRadius: '50%', display: 'block' }}
+            />
+          </div>,
+          document.body
+        )}
         {viewerGroupIdx !== null && (
           <StoryViewer
             groups={storyGroups}
