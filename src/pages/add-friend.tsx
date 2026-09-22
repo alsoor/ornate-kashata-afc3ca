@@ -18040,19 +18040,13 @@ export default function AddFriendPage() {
                 type="button"
                 aria-label="Call"
                 onClick={() => {
-                  if (!friendChatPeer || !user) return;
-                  // Starts a direct 1:1 call with only this chat's peer — it does not
-                  // open the full friends-list call picker (that picker still lives
-                  // untouched behind the bottom "+" menu in RootLayout.tsx).
-                  const channel = `private_${shortChannelHash([user.id, friendChatPeer.friendId].sort().join('_'))}`;
-                  startCall({
-                    peerId: friendChatPeer.friendId,
-                    peerName: friendChatPeer.name ?? friendChatPeer.username ?? 'User',
-                    peerUsername: friendChatPeer.username ?? undefined,
-                    peerAvatar: friendChatPeer.avatarUrl ?? null,
-                    isConference: false,
-                    channel,
-                  });
+                  if (!friendChatPeer) return;
+                  // Opens the same working call sheet as the bottom "+" menu's Call
+                  // button (defined in RootLayout.tsx), pre-checking this friend —
+                  // it slides up from the bottom exactly like it does from there.
+                  window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
+                    detail: { friendId: friendChatPeer.friendId },
+                  }));
                 }}
                 style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
               >
