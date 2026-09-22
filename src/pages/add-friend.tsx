@@ -361,6 +361,9 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const seekingRef = useRef(false);
+  // Controls bar (seek/play/time/volume): auto-hides 2s after entering, tap brings it
+  // back; a tap while it's visible toggles play/pause instead of hiding it again.
+  const [controlsVisible, setControlsVisible] = useState(true);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -373,6 +376,13 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
       v.pause();
       setPlaying(false);
     }
+  }, [active, src]);
+
+  useEffect(() => {
+    if (!active) return;
+    setControlsVisible(true);
+    const t = window.setTimeout(() => setControlsVisible(false), 2000);
+    return () => window.clearTimeout(t);
   }, [active, src]);
 
   useEffect(() => {
@@ -415,7 +425,11 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
         loop
         muted={muted}
         controls={false}
-        onClick={e => { e.stopPropagation(); togglePlay(); }}
+        onClick={e => {
+          e.stopPropagation();
+          if (!controlsVisible) { setControlsVisible(true); return; }
+          togglePlay();
+        }}
         onTimeUpdate={() => {
           const v = videoRef.current;
           if (!v || seekingRef.current) return;
@@ -430,6 +444,7 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
         onEnded={() => setPlaying(false)}
         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }}
       />
+      {controlsVisible && (
       <div
         onClick={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
@@ -489,6 +504,7 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 }
