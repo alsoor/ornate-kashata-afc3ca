@@ -12350,6 +12350,33 @@ export default function AddFriendPage() {
   const [friendChatCallLogMenuOpen, setFriendChatCallLogMenuOpen] = useState(false);
   const [storyRequestsBoxOpen, setStoryRequestsBoxOpen] = useState(false);
   const [storyReqRespondingId, setStoryReqRespondingId] = useState<number | null>(null);
+  const [storyReqTab, setStoryReqTab] = useState<'search' | 'requests'>('requests');
+  const [storyReqQuery, setStoryReqQuery] = useState('');
+  const [storyReqResults, setStoryReqResults] = useState<SearchUser[]>([]);
+  const [storyReqSearching, setStoryReqSearching] = useState(false);
+  const [storyReqSendingId, setStoryReqSendingId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!storyRequestsBoxOpen) return;
+    const q = storyReqQuery.trim();
+    if (q.length < 2) {
+      setStoryReqResults([]);
+      setStoryReqSearching(false);
+      return;
+    }
+    setStoryReqSearching(true);
+    const t = window.setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`, { credentials: 'include' });
+        const data = await r.json();
+        setStoryReqResults(Array.isArray(data) ? data : []);
+      } catch {
+        setStoryReqResults([]);
+      } finally {
+        setStoryReqSearching(false);
+      }
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [storyReqQuery, storyRequestsBoxOpen]);
   const [friendChatStoryReplyTo, setFriendChatStoryReplyTo] = useState<ShareThreadMsg | null>(null);
   const friendChatInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [friendChatRecording, setFriendChatRecording] = useState(false);
@@ -13823,7 +13850,7 @@ export default function AddFriendPage() {
           {pageTab === 'profile' && (
             <motion.button
               whileTap={{ scale: 0.9 }}
-              onClick={() => { setStoryRequestsBoxOpen(true); setQuery(''); }}
+              onClick={() => { setPageTab('profile'); setStoryRequestsBoxOpen(true); setStoryReqTab('requests'); setStoryReqQuery(''); }}
               aria-label="Friend requests"
               style={{
                 position: 'absolute',
@@ -18687,7 +18714,7 @@ export default function AddFriendPage() {
           <div
             onClick={() => setStoryRequestsBoxOpen(false)}
             style={{
-              position: 'fixed', inset: 0, zIndex: 12200,
+              position: 'fixed', inset: 0, zIndex: 20050,
               background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               padding: 20,
@@ -18702,92 +18729,114 @@ export default function AddFriendPage() {
                 borderRadius: 18,
                 padding: '18px 16px 14px',
                 boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
+                maxHeight: '78vh',
+                display: 'flex',
+                flexDirection: 'column',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>Friend requests</span>
+                <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>Add friends</span>
                 <button type="button" onClick={() => setStoryRequestsBoxOpen(false)}
                   style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <X size={16} />
                 </button>
               </div>
-              <div style={{ position: 'relative', marginBottom: 12 }}>
-                <Search
-                  size={14}
-                  color="rgba(255,255,255,0.4)"
-                  style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', pointerEvents: 'none' }}
-                />
-                <input
-                  value={query}
-                  onChange={e => setQuery(e.target.value)}
-                  placeholder="Search username"
-                  autoComplete="off"
-                  style={{
-                    width: '100%', boxSizing: 'border-box',
-                    padding: '10px 36px 10px 12px', borderRadius: 12,
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    color: '#fff', fontSize: '0.8rem', outline: 'none',
-                  }}
-                />
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                <button type="button" onClick={() => setStoryReqTab('search')} style={{
+                  flex: 1, height: 34, borderRadius: 10, cursor: 'pointer', fontWeight: 800, fontSize: '0.75rem',
+                  border: storyReqTab === 'search' ? '1px solid rgba(0,188,212,0.55)' : '1px solid rgba(255,255,255,0.1)',
+                  background: storyReqTab === 'search' ? 'rgba(0,188,212,0.18)' : 'rgba(255,255,255,0.04)',
+                  color: storyReqTab === 'search' ? '#00BCD4' : 'rgba(255,255,255,0.7)',
+                }}>Search</button>
+                <button type="button" onClick={() => setStoryReqTab('requests')} style={{
+                  flex: 1, height: 34, borderRadius: 10, cursor: 'pointer', fontWeight: 800, fontSize: '0.75rem',
+                  border: storyReqTab === 'requests' ? '1px solid rgba(0,188,212,0.55)' : '1px solid rgba(255,255,255,0.1)',
+                  background: storyReqTab === 'requests' ? 'rgba(0,188,212,0.18)' : 'rgba(255,255,255,0.04)',
+                  color: storyReqTab === 'requests' ? '#00BCD4' : 'rgba(255,255,255,0.7)',
+                }}>Requests{incoming.length ? ` (${incoming.length})` : ''}</button>
               </div>
-              {query.trim().length >= 2 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
-                  {searching && <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Searching…</p>}
-                  {!searching && results.length === 0 && (
-                    <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>No users found</p>
-                  )}
-                  {results.map(u => (
-                    <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <UserAvatar name={u.name || u.username || '?'} avatarUrl={u.avatarUrl} size={36} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, color: '#fff', fontWeight: 700, fontSize: '0.82rem' }}>{u.name || u.username || 'User'}</p>
-                        {u.username ? <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>@{u.username}</p> : null}
+              {storyReqTab === 'search' ? (
+                <>
+                  <div style={{ position: 'relative', marginBottom: 12 }}>
+                    <Search size={14} color="rgba(255,255,255,0.4)" style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                    <input
+                      value={storyReqQuery}
+                      onChange={e => setStoryReqQuery(e.target.value)}
+                      placeholder="Search username"
+                      autoComplete="off"
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        padding: '10px 36px 10px 12px', borderRadius: 12,
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        color: '#fff', fontSize: '0.8rem', outline: 'none',
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
+                    {storyReqSearching && <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Searching…</p>}
+                    {!storyReqSearching && storyReqQuery.trim().length < 2 && (
+                      <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Type a username</p>
+                    )}
+                    {!storyReqSearching && storyReqQuery.trim().length >= 2 && storyReqResults.length === 0 && (
+                      <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>No users found</p>
+                    )}
+                    {storyReqResults.map(u => (
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        <UserAvatar name={u.name || u.username || '?'} avatarUrl={u.avatarUrl} size={40} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ margin: 0, color: '#fff', fontWeight: 700, fontSize: '0.82rem' }}>{u.name || u.username || 'User'}</p>
+                          {u.username ? <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>@{u.username}</p> : null}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={storyReqSendingId === u.id}
+                          onClick={async () => {
+                            setStoryReqSendingId(u.id);
+                            try { await sendRequest(u.id); }
+                            finally { setStoryReqSendingId(null); }
+                          }}
+                          style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(0,188,212,0.18)', color: '#00BCD4', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <UserPlus size={16} strokeWidth={2.4} />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        disabled={sending === u.id}
-                        onClick={() => void sendRequest(u.id)}
-                        style={{ height: 32, padding: '0 10px', borderRadius: 10, border: 'none', background: CLR_PRIMARY, color: '#041014', fontWeight: 800, fontSize: '0.72rem', cursor: 'pointer' }}
-                      >
-                        Add
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </>
               ) : incoming.length === 0 ? (
-                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.78rem', textAlign: 'center', padding: '20px 0', margin: 0 }}>No requests</p>
+                <div style={{ textAlign: 'center', padding: '20px 10px 16px' }}>
+                  <div style={{
+                    width: 48, height: 48, borderRadius: '50%', margin: '0 auto 12px',
+                    background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <UserPlus size={20} color="#ef4444" />
+                  </div>
+                  <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>No friend requests</p>
+                  <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', margin: '8px 0 0' }}>Search above or wait for incoming requests</p>
+                </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
                   {incoming.map(req => (
-                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <UserAvatar name={req.name || req.username || '?'} avatarUrl={req.avatarUrl} size={36} />
+                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <UserAvatar name={req.name || req.username || '?'} avatarUrl={req.avatarUrl ?? null} size={40} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ margin: 0, color: '#fff', fontWeight: 700, fontSize: '0.82rem' }}>{req.name || req.username || 'User'}</p>
                         {req.username ? <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>@{req.username}</p> : null}
                       </div>
-                      <button
-                        type="button"
-                        disabled={storyReqRespondingId === req.id}
-                        onClick={async () => {
-                          setStoryReqRespondingId(req.id);
-                          try { await respond(req.id, 'accept'); }
-                          finally { setStoryReqRespondingId(null); }
-                        }}
-                        style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(34,197,94,0.2)', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
+                      <button type="button" disabled={storyReqRespondingId === req.id} onClick={async () => {
+                        setStoryReqRespondingId(req.id);
+                        try { await respond(req.id, 'accept'); }
+                        finally { setStoryReqRespondingId(null); }
+                      }} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(34,197,94,0.2)', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Check size={16} strokeWidth={2.6} />
                       </button>
-                      <button
-                        type="button"
-                        disabled={storyReqRespondingId === req.id}
-                        onClick={async () => {
-                          setStoryReqRespondingId(req.id);
-                          try { await respond(req.id, 'reject'); }
-                          finally { setStoryReqRespondingId(null); }
-                        }}
-                        style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(239,68,68,0.18)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      >
+                      <button type="button" disabled={storyReqRespondingId === req.id} onClick={async () => {
+                        setStoryReqRespondingId(req.id);
+                        try { await respond(req.id, 'reject'); }
+                        finally { setStoryReqRespondingId(null); }
+                      }} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(239,68,68,0.18)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <X size={16} strokeWidth={2.6} />
                       </button>
                     </div>
