@@ -5238,24 +5238,7 @@ function PostCard({
             position: 'relative',
             zIndex: 6,
           }}>
-            <button
-              type="button"
-              onClick={e => { e.stopPropagation(); setMediaLightbox(null); }}
-              aria-label="Close"
-              style={{
-                border: 'none',
-                background: 'transparent',
-                color: '#ef4444',
-                cursor: 'pointer',
-                fontSize: '0.95rem',
-                fontWeight: 800,
-                letterSpacing: '0.02em',
-                padding: '6px 14px',
-                textShadow: '0 0 10px rgba(239,68,68,0.45)',
-              }}
-            >
-              Close
-            </button>
+            
 
             {/* ⋮ قائمة خيارات المنشور — تظهر داخل معاينة الفيديو/الصورة كاملة الشاشة، أعلى اليمين */}
             {isMine && (
@@ -5413,7 +5396,23 @@ function PostCard({
               <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
               <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
             </motion.button>
-            <div style={{ minWidth: 88 }} />
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setMediaLightbox(null); }}
+              aria-label="Close"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
+                borderRadius: 12, width: 44, height: 44,
+                color: '#ef4444', cursor: 'pointer', padding: 0,
+                fontWeight: 900, fontSize: '1.2rem', lineHeight: 1, flexShrink: 0,
+              }}
+            >
+              X
+            </motion.button>
+
+            <div style={{ minWidth: 40 }} />
           </div>
 
 
@@ -6529,24 +6528,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               position: 'relative',
               zIndex: 6,
             }}>
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); setMediaLightbox(null); }}
-                aria-label="Close"
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  color: '#ef4444',
-                  cursor: 'pointer',
-                  fontSize: '0.95rem',
-                  fontWeight: 800,
-                  letterSpacing: '0.02em',
-                  padding: '6px 14px',
-                  textShadow: '0 0 10px rgba(239,68,68,0.45)',
-                }}
-              >
-                Close
-              </button>
+              
             </div>
 
             <div
@@ -6613,6 +6595,22 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
                 <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
               </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setMediaLightbox(null); }}
+              aria-label="Close"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
+                borderRadius: 12, width: 44, height: 44,
+                color: '#ef4444', cursor: 'pointer', padding: 0,
+                fontWeight: 900, fontSize: '1.2rem', lineHeight: 1, flexShrink: 0,
+              }}
+            >
+              X
+            </motion.button>
+
               <div style={{ minWidth: 88 }} />
             </div>
           </motion.div>,
@@ -16879,25 +16877,7 @@ export default function AddFriendPage() {
                 background: '#000', display: 'flex', flexDirection: 'column', overflow: 'hidden',
               }}
             >
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); closeSinglePostView(); }}
-                aria-label="Close"
-                style={{
-                  position: 'absolute', top: 'max(12px, env(safe-area-inset-top, 0px))', left: '50%', transform: 'translateX(-50%)', zIndex: 6,
-                  border: 'none',
-                  background: 'transparent',
-                  color: '#ef4444',
-                  cursor: 'pointer',
-                  fontSize: '0.95rem',
-                  fontWeight: 800,
-                  letterSpacing: '0.02em',
-                  padding: '6px 14px',
-                  textShadow: '0 0 10px rgba(239,68,68,0.45)',
-                }}
-              >
-                Close
-              </button>
+              
 
               <div
                 ref={singlePostMediaScrollRef}
@@ -17059,6 +17039,22 @@ export default function AddFriendPage() {
                   <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
                   <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
                 </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); closeSinglePostView(); }}
+              aria-label="Close"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
+                borderRadius: 12, width: 44, height: 44,
+                color: '#ef4444', cursor: 'pointer', padding: 0,
+                fontWeight: 900, fontSize: '1.2rem', lineHeight: 1, flexShrink: 0,
+              }}
+            >
+              X
+            </motion.button>
+
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 88, justifyContent: 'flex-end' }}>
                   <motion.button
