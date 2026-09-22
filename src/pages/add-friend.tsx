@@ -11433,6 +11433,92 @@ export default function AddFriendPage() {
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
   const lastFeedScrollTopRef = useRef(0);
   const feedScrollRafRef = useRef(0);
+  // Telegram-style pull-down: scale story rings and open first available story
+  const [storyPullProgress, setStoryPullProgress] = useState(0);
+  const storyPullProgressRef = useRef(0);
+  const storyPullActiveRef = useRef(false);
+  const storyPullStartYRef = useRef(0);
+  const storyPullStartXRef = useRef(0);
+  const profileFeedScrollRef = useRef<HTMLDivElement | null>(null);
+
+  function openFirstAvailableStory() {
+    const others = storyGroups.filter(g => {
+      if (user?.id && g.userId === user.id) return false;
+      return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
+    });
+    if (!others.length) return false;
+    const unseen = others.find(g => g.items.some(it => !it.seen));
+    const target = unseen || others[0];
+    const idx = storyGroups.indexOf(target);
+    if (idx < 0) return false;
+    setHeaderOpen(true);
+    setViewerGroupIdx(idx);
+    return true;
+  }
+
+  function onProfileFeedTouchStart(e: React.TouchEvent<HTMLDivElement>) {
+    if (e.touches.length !== 1) return;
+    const el = profileFeedScrollRef.current;
+    if (!el || el.scrollTop > 2) {
+      storyPullActiveRef.current = false;
+      return;
+    }
+    storyPullActiveRef.current = true;
+    storyPullStartYRef.current = e.touches[0].clientY;
+    storyPullStartXRef.current = e.touches[0].clientX;
+  }
+
+  function onProfileFeedTouchMove(e: React.TouchEvent<HTMLDivElement>) {
+    if (!storyPullActiveRef.current || e.touches.length !== 1) return;
+    const el = profileFeedScrollRef.current;
+    if (!el || el.scrollTop > 2) {
+      storyPullActiveRef.current = false;
+      if (storyPullProgressRef.current !== 0) {
+        storyPullProgressRef.current = 0;
+        setStoryPullProgress(0);
+      }
+      return;
+    }
+    const dy = e.touches[0].clientY - storyPullStartYRef.current;
+    const dx = e.touches[0].clientX - storyPullStartXRef.current;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 12) {
+      storyPullActiveRef.current = false;
+      if (storyPullProgressRef.current !== 0) {
+        storyPullProgressRef.current = 0;
+        setStoryPullProgress(0);
+      }
+      return;
+    }
+    if (dy <= 0) {
+      if (storyPullProgressRef.current !== 0) {
+        storyPullProgressRef.current = 0;
+        setStoryPullProgress(0);
+      }
+      return;
+    }
+    // Resist after threshold for a rubber-band feel
+    const raw = Math.min(dy, 140);
+    const progress = Math.min(1, raw / 96);
+    storyPullProgressRef.current = progress;
+    setStoryPullProgress(progress);
+  }
+
+  function onProfileFeedTouchEnd() {
+    if (!storyPullActiveRef.current) {
+      if (storyPullProgressRef.current !== 0) {
+        storyPullProgressRef.current = 0;
+        setStoryPullProgress(0);
+      }
+      return;
+    }
+    storyPullActiveRef.current = false;
+    const shouldOpen = storyPullProgressRef.current >= 0.72;
+    storyPullProgressRef.current = 0;
+    setStoryPullProgress(0);
+    if (shouldOpen) {
+      openFirstAvailableStory();
+    }
+  }
 
   function handleProfileFeedScroll(e: React.UIEvent<HTMLDivElement>) {
     const el = e.currentTarget;
@@ -11442,18 +11528,22 @@ export default function AddFriendPage() {
     if (feedScrollRafRef.current) return;
     feedScrollRafRef.current = requestAnimationFrame(() => {
       feedScrollRafRef.current = 0;
-      // Collapse header when user scrolls down (swipe up on posts)
-      if (delta > 6 && current > 12) {
+      // Scroll down (finger swipe up) -> collapse header + hide bottom bar
+      if (delta > 4 && current > 8) {
         setHeaderOpen(false);
         setHeaderHintSeen(true);
         try {
           window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'down' } }));
         } catch { /* ignore */ }
-      } else if (delta < -6 || current <= 8) {
-        // Expand header when scrolling up near the top
-        if (current <= 24) {
-          setHeaderOpen(true);
-        }
+        return;
+      }
+      // Near top or strong scroll up -> show header + bottom bar
+      if (current <= 16) {
+        setHeaderOpen(true);
+        try {
+          window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'up' } }));
+        } catch { /* ignore */ }
+      } else if (delta < -10) {
         try {
           window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'up' } }));
         } catch { /* ignore */ }
@@ -13145,7 +13235,11 @@ export default function AddFriendPage() {
                           }
                         }}
                         disabled={storyUploading}
-                        style={{ width: 76, height: 76, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
+                        style={{
+                          width: 76, height: 76, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative',
+                          transform: storyPullProgress > 0 ? `scale(${1 + storyPullProgress * 0.18})` : undefined,
+                          transition: storyPullProgress > 0 ? 'none' : 'transform 0.22s ease',
+                        }}
                       >
                         {/* One fixed circular frame: the photo is clipped inside it and can never overflow. */}
                         {/* إطار أزرق ثابت + صورة ثابتة */}
@@ -13301,7 +13395,12 @@ export default function AddFriendPage() {
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setViewerGroupIdx(realIdx)}
-                        style={{ width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
+                        style={{
+                          width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative',
+                          transform: storyPullProgress > 0 ? `scale(${1 + storyPullProgress * 0.28})` : undefined,
+                          transition: storyPullProgress > 0 ? 'none' : 'transform 0.22s ease',
+                          zIndex: storyPullProgress > 0.2 ? 2 : undefined,
+                        }}
                       >
                         {/* حلقة بلونين فقط: أصفر كامل ما دام في عنصر غير مُشاهَد،
                             وأزرق كامل (نفس أزرق دائرة "قصتي") بعد مشاهدة كل العناصر */}
@@ -13393,8 +13492,13 @@ export default function AddFriendPage() {
         {/* ── Content ── */}
         <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
         <div
+          ref={profileFeedScrollRef}
           className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain"
           onScroll={handleProfileFeedScroll}
+          onTouchStart={onProfileFeedTouchStart}
+          onTouchMove={onProfileFeedTouchMove}
+          onTouchEnd={onProfileFeedTouchEnd}
+          onTouchCancel={onProfileFeedTouchEnd}
           style={{
           WebkitOverflowScrolling: 'touch',
           willChange: 'scroll-position',
