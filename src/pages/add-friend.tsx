@@ -9826,6 +9826,19 @@ export default function AddFriendPage() {
           }
         }
       } catch { /* optional public merge */ }
+      // Guarantee the signed-in publisher always sees their own posts in the public feed,
+      // even if the audience-scoped endpoints above happen to leave them out server-side.
+      try {
+        if (user?.id) {
+          const mineR = await fetch('/api/posts', { credentials: 'include' });
+          if (mineR.ok) {
+            const data = await mineR.json() as { posts: PostItem[] };
+            for (const p of (data.posts ?? [])) {
+              if (String(p.authorId) === String(user.id)) collected.push(p);
+            }
+          }
+        }
+      } catch { /* optional own-posts merge */ }
       const byId = new Map<number, PostItem>();
       for (const p of collected) byId.set(p.id, p);
       const merged = Array.from(byId.values()).sort(
@@ -9833,7 +9846,7 @@ export default function AddFriendPage() {
       );
       setPosts(prev => mergePostsPreservingMedia(prev, merged));
     } catch {/* silent — feed simply stays empty/local */}
-  }, []);
+  }, [user?.id]);
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
   // ── My media posts (video/photo) — recorded via the camera and now shown in my profile's
