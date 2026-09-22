@@ -3323,7 +3323,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
       initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }}
       animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }}
       exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }}
-      style={{ position: 'fixed', inset: 0, zIndex: 10750, background: 'hsl(var(--background))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 13000, background: 'hsl(var(--background))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       onClick={e => {
         const x = (e as React.MouseEvent).clientX;
         if (x < window.innerWidth * 0.35) goPrev(); else goNext();
@@ -5521,7 +5521,7 @@ function FollowersListModal({
         background: 'rgba(0,8,10,0.72)',
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
-        zIndex: 10300,
+        zIndex: 12120,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 20,
       }}
@@ -9605,6 +9605,7 @@ export default function AddFriendPage() {
     }
   }, []);
   const [showComposer, setShowComposer] = useState(false);
+  const [composerCameraForPost, setComposerCameraForPost] = useState(false);
   const [businessAdsOpen, setBusinessAdsOpen] = useState(false);
   const [businessAdTitle, setBusinessAdTitle] = useState('');
   const [businessAdBody, setBusinessAdBody] = useState('');
@@ -14275,7 +14276,7 @@ export default function AddFriendPage() {
                         <button
                           key={post.repostKey ?? post.id}
                           type="button"
-                          onClick={() => openSinglePostView(post)}
+                          onClick={() => openSinglePostView(post, true)}
                           aria-label={thumbUrl ? (isVideo ? 'فتح الفيديو' : 'فتح الصورة') : 'فتح المنشور'}
                           style={{
                             position: 'relative', width: '100%', aspectRatio: '1 / 1', overflow: 'hidden',
@@ -16373,7 +16374,7 @@ export default function AddFriendPage() {
             exit={{ opacity: 0, y: 24 }}
             transition={{ type: 'spring', stiffness: 420, damping: 36 }}
             style={{
-              position: 'fixed', inset: 0, zIndex: 10410,
+              position: 'fixed', inset: 0, zIndex: 12100,
               background: '#ffffff',
               display: 'flex', flexDirection: 'column',
             }}
@@ -16418,6 +16419,18 @@ export default function AddFriendPage() {
 
             {/* Body: company keeps title+details; regular user = single text area */}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 16px 8px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                <UserAvatar
+                  name={user?.name || (user as any)?.username || '?'}
+                  avatarUrl={(user as any)?.avatarUrl || (user as any)?.image || null}
+                  size={40}
+                />
+                {!isCompanyPublisher ? (
+                  <p style={{ margin: '8px 0 0', color: '#536471', fontSize: '1.05rem', fontWeight: 500 }}>What's happening?</p>
+                ) : (
+                  <p style={{ margin: '8px 0 0', color: '#536471', fontSize: '0.95rem', fontWeight: 700 }}>Product</p>
+                )}
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {isCompanyPublisher ? (
                 <>
@@ -16645,20 +16658,20 @@ export default function AddFriendPage() {
               )}
             </div>
 
-            {/* Bottom toolbar — image HQ / video ad / PDF */}
+            {/* Bottom toolbar — photo+video picker, camera, PDF (business), Ads */}
             <div style={{
               borderTop: '1px solid rgba(0,0,0,0.08)',
               padding: '10px 14px calc(12px + env(safe-area-inset-bottom, 0px))',
-              display: 'flex', alignItems: 'center', gap: 4,
+              display: 'flex', alignItems: 'center', gap: 6,
             }}>
               <label style={{
                 width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', color: '#1d9bf0',
-              }} title="صورة عالية الجودة">
-                <ImageIcon size={20} strokeWidth={2} />
+              }} title="Photo or video">
+                <Images size={20} strokeWidth={2} />
                 <input
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic,image/gif,image/*"
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/gif,image/*,video/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.m4v"
                   multiple
                   style={{ display: 'none' }}
                   onChange={e => {
@@ -16666,64 +16679,47 @@ export default function AddFriendPage() {
                     const files = list ? Array.from(list) : [];
                     e.target.value = '';
                     if (!files.length) return;
-                    const imagesOnly = files.filter(f => {
-                      const t = (f.type || '').toLowerCase();
-                      if (t.startsWith('video/')) return false;
-                      if (t === 'application/pdf') return false;
-                      if (t.startsWith('image/')) return true;
-                      return /\.(jpe?g|png|webp|heic|heif|gif|bmp)$/i.test(f.name || '');
-                    });
-                    if (!imagesOnly.length) {
-                      setComposerError('Select image files only');
-                      return;
-                    }
                     setComposerError('');
                     setComposerMediaFiles(prev => {
-                      const base = prev.filter(item => item.type !== 'video');
-                      const existingImageCount = base.filter(item => item.type === 'image').length;
-                      const remainingSlots = Math.max(0, MAX_COMPOSER_IMAGES - existingImageCount);
-                      if (remainingSlots <= 0) {
-                        setComposerError(`Max ${MAX_COMPOSER_IMAGES} images`);
-                        return base;
-                      }
-                      const accepted = imagesOnly.slice(0, remainingSlots);
-                      const next = [
-                        ...base,
-                        ...accepted.map(file => ({
+                      const next = [...prev];
+                      for (const file of files) {
+                        const t = (file.type || '').toLowerCase();
+                        if (t === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
+                          if (isCompanyPublisher) next.push({ file, type: 'pdf' as const, preview: URL.createObjectURL(file) });
+                          continue;
+                        }
+                        const isVid = t.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '');
+                        next.push({
                           file,
-                          type: 'image' as const,
+                          type: isVid ? 'video' as const : 'image' as const,
                           preview: URL.createObjectURL(file),
-                        })),
-                      ];
+                        });
+                      }
                       return next;
                     });
                   }}
                 />
               </label>
+              <button
+                type="button"
+                title="Camera"
+                onClick={() => {
+                  setComposerCameraForPost(true);
+                  setCameraCaptureOpen(true);
+                }}
+                style={{
+                  width: 40, height: 40, borderRadius: '50%', border: 'none',
+                  background: 'transparent', color: '#1d9bf0', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <Camera size={20} strokeWidth={2} />
+              </button>
+              {isCompanyPublisher && (
               <label style={{
                 width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', color: '#1d9bf0',
-              }} title="فيديو إعلاني">
-                <Video size={20} strokeWidth={2} />
-                <input
-                  type="file"
-                  accept="video/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.m4v"
-                  style={{ display: 'none' }}
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    setComposerMediaFiles(prev => [
-                      ...prev,
-                      { file, type: 'video' as const, preview: URL.createObjectURL(file) },
-                    ]);
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-              <label style={{
-                width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: '#1d9bf0',
-              }} title="ملف PDF">
+              }} title="PDF">
                 <FileText size={20} strokeWidth={2} />
                 <input
                   type="file"
@@ -16740,21 +16736,23 @@ export default function AddFriendPage() {
                   }}
                 />
               </label>
+              )}
               <div style={{ flex: 1 }} />
               {isBusinessUser && (
                 <button
                   type="button"
-                  onClick={() => setBusinessAdsOpen(true)}
+                  onClick={() => { setBusinessAdsOpen(true); }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'transparent',
                     color: '#1d9bf0', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer', padding: '6px 4px',
                   }}
                 >
                   <span style={{
-                    width: 22, height: 22, borderRadius: '50%', border: '1.5px solid #1d9bf0',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.95rem', lineHeight: 1,
-                  }}>+</span>
-                  Product Ad
+                    width: 22, height: 22, borderRadius: '50%', border: '1.5px solid #eab308',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', lineHeight: 1,
+                    background: '#eab308', color: '#0a0a0a', fontWeight: 900,
+                  }}>Ad</span>
+                  Ads
                 </button>
               )}
             </div>
@@ -16855,7 +16853,7 @@ export default function AddFriendPage() {
             key="my-ads-hub"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             style={{
-              position: 'fixed', inset: 0, zIndex: 10580, background: 'rgba(0,0,0,0.55)',
+              position: 'fixed', inset: 0, zIndex: 12130, background: 'rgba(0,0,0,0.55)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
             }}
             onClick={() => setMyAdsHubOpen(false)}
@@ -17131,7 +17129,7 @@ export default function AddFriendPage() {
           <motion.div
             key="biz-ads"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{ position: 'fixed', inset: 0, zIndex: 10450, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+            style={{ position: 'fixed', inset: 0, zIndex: 12140, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
             onClick={() => setBusinessAdsOpen(false)}
           >
             <motion.div
@@ -17400,7 +17398,7 @@ export default function AddFriendPage() {
               style={{
                 position: 'fixed', inset: 0,
                 // من البروفايل: فوق البروفايل (10420) — من الفيد: تحت البروفايل لو فُتح بروفايل فوقه
-                zIndex: singlePostFromProfile ? 10760 : 10380,
+                zIndex: singlePostFromProfile || storyHomeSheetOpen ? 12110 : 10380,
                 background: '#000', display: 'flex', flexDirection: 'column', overflow: 'hidden',
               }}
             >
@@ -19512,8 +19510,22 @@ export default function AddFriendPage() {
       <AnimatePresence>
         {cameraCaptureOpen && (
           <CameraStoryCapture
-            onClose={() => setCameraCaptureOpen(false)}
-            onPublish={async file => { await uploadStory(file); }}
+            onClose={() => { setCameraCaptureOpen(false); setComposerCameraForPost(false); }}
+            onPublish={async file => {
+              if (composerCameraForPost) {
+                const isVid = String(file.type || '').startsWith('video') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '');
+                setComposerMediaFiles(prev => [...prev, {
+                  file,
+                  type: isVid ? 'video' as const : 'image' as const,
+                  preview: URL.createObjectURL(file),
+                }]);
+                setComposerCameraForPost(false);
+                setCameraCaptureOpen(false);
+                setShowComposer(true);
+                return;
+              }
+              await uploadStory(file);
+            }}
             avatarUrl={(user as any)?.avatarUrl ?? (user as any)?.image ?? null}
             userName={user?.name ?? (user as any)?.username ?? null}
             friendRequests={incoming}
