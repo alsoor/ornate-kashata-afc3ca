@@ -13281,7 +13281,8 @@ export default function AddFriendPage() {
           backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
-          {/* Story-comments bell — top-right corner of the story page header, moved here from the camera */}
+          {/* Story-comments bell — top-right corner of the story page header, moved here from the camera.
+              Fades out together with the collapsible story header (same fog timing as below). */}
           {pageTab === 'profile' && (
             <motion.button
               whileTap={{ scale: 0.9 }}
@@ -13289,13 +13290,18 @@ export default function AddFriendPage() {
               aria-label="Story comments"
               style={{
                 position: 'absolute',
-                top: 'max(env(safe-area-inset-top,0px), 66px)',
+                top: 'max(env(safe-area-inset-top,0px), 58px)',
                 right: 20,
                 zIndex: 25,
                 width: 28, height: 28, borderRadius: '50%',
                 background: storyCommentThreads.filter(t => !t.read).length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.12)',
                 border: `2px solid ${CLR_PRIMARY_BORDER}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                opacity: headerOpen ? 1 : 0,
+                pointerEvents: headerOpen ? 'auto' : 'none',
+                transition: headerOpen
+                  ? 'opacity 240ms ease-out 200ms'
+                  : 'opacity 140ms ease-in',
               }}
             >
               <Bell size={14} color={CLR_PRIMARY} strokeWidth={2.2} />
