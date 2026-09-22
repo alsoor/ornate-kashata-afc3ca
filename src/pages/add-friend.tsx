@@ -6019,8 +6019,10 @@ export interface FriendStoryProfileProps {
   /** حساب شركة عام: يظهر اليوزر والمنشورات والبث للجميع بدون شرط صداقة.
    * اللايك والتعليق متاحان للمستخدمين المسجّلين (guestGuard كما في باقي التطبيق). */
   isCompanyProfile?: boolean;
+  /** Settings-style right sheet: slides from the right, leaves a left strip to dismiss */
+  sheetMode?: boolean;
 }
-export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, onRepost, isCompanyProfile = false }: FriendStoryProfileProps) {
+export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, onRepost, isCompanyProfile = false, sheetMode = false }: FriendStoryProfileProps) {
   const navigate = useNavigate();
   const { user } = useSession();
   const liveKind = useLiveBroadcastKind(authorId);
@@ -6210,11 +6212,69 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
     return copy;
   }, [authorPosts, profile?.pinnedPostId, friendProfileMediaTab, isCompanyProfile]);
 
-  return (
+  const sheetShell = sheetMode ? (
     <motion.div
-      initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }}
-      transition={{ type: 'tween', duration: 0.32, ease: 'easeIn' }}
-      style={{ position: 'fixed', inset: 0, zIndex: 10420, background: PAGE_BG, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      key="friend-story-sheet-backdrop"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.28 }}
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 10420,
+        background: 'rgba(0,0,0,0.32)',
+      }}
+    />
+  ) : null;
+
+  const panelMotion = sheetMode
+    ? {
+        initial: { x: '100%' },
+        animate: { x: 0 },
+        exit: { x: '100%' },
+        transition: { duration: 0.32, ease: [0.32, 0.72, 0, 1] as const },
+        style: {
+          position: 'fixed' as const,
+          top: 0,
+          bottom: 0,
+          right: 0,
+          left: 42,
+          zIndex: 10421,
+          background: PAGE_BG,
+          display: 'flex',
+          flexDirection: 'column' as const,
+          overflow: 'hidden',
+          boxShadow: '-16px 0 40px rgba(0,0,0,0.45)',
+        },
+      }
+    : {
+        initial: { opacity: 0, scale: 0.94, y: 20, borderRadius: 28 },
+        animate: { opacity: 1, scale: 1, y: 0, borderRadius: 0 },
+        exit: { opacity: 0, scale: 0.96, y: 12, borderRadius: 22 },
+        transition: { type: 'tween' as const, duration: 0.32, ease: 'easeIn' as const },
+        style: {
+          position: 'fixed' as const,
+          inset: 0,
+          zIndex: 10420,
+          background: PAGE_BG,
+          display: 'flex',
+          flexDirection: 'column' as const,
+          overflow: 'hidden',
+        },
+      };
+
+  return (
+    <>
+    {sheetShell}
+    <motion.div
+      initial={panelMotion.initial}
+      animate={panelMotion.animate}
+      exit={panelMotion.exit}
+      transition={panelMotion.transition}
+      onClick={sheetMode ? (e) => e.stopPropagation() : undefined}
+      style={panelMotion.style}
     >
       {/* Fixed profile chrome — compact so logo/stats/Products sit higher, more room for posts */}
       <div style={{ flexShrink: 0, position: 'relative', zIndex: 3 }}>
@@ -6642,6 +6702,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         )}
       </AnimatePresence>
     </motion.div>
+    </>
   );
 }
 
@@ -12274,7 +12335,7 @@ export default function AddFriendPage() {
   // ?openProfile=<id> marker (+ name/username/avatar) left in the URL before
   // navigating to /chat — mirrors the ?openTextPosts=1 pattern above.
   const [viewingProfile, setViewingProfile] = useState<{
-    id: string; name: string | null; username: string | null; avatarUrl: string | null; isCompany?: boolean;
+    id: string; name: string | null; username: string | null; avatarUrl: string | null; isCompany?: boolean; sheetMode?: boolean;
   } | null>(() => {
     const openProfileId = searchParams.get('openProfile');
     if (!openProfileId) return null;
@@ -12286,6 +12347,10 @@ export default function AddFriendPage() {
       isCompany: searchParams.get('openProfileCompany') === '1',
     };
   });
+  const [textPostsPlusOpen, setTextPostsPlusOpen] = useState(false);
+  useEffect(() => {
+    if (!textPostsPageOpen) setTextPostsPlusOpen(false);
+  }, [textPostsPageOpen]);
   useEffect(() => {
     if (searchParams.get('openChats') === '1' || searchParams.get('openFriendsPanel') === '1') {
       setFriendsPanelTab(user ? 'friends' : 'company');
@@ -17900,7 +17965,8 @@ export default function AddFriendPage() {
               })()}
             </div>
 
-            {/* هيدر سفلي: شركات = New Post بالمنتصف | أفراد = × للإغلاق بالمنتصف فقط */}
+            <style>{`@keyframes stooornaPlusFanIn { from { opacity: 0; transform: translateY(8px) scale(0.92); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
+            {/* Bottom chrome: profile (left) | New Post (center) | plus menu (right) */}
             <div
               ref={postsChromeBottomRef}
               style={{
@@ -17923,6 +17989,58 @@ export default function AddFriendPage() {
               backfaceVisibility: 'hidden' as const,
             }}>
               <>
+                {/* Left: account profile avatar — opens story profile as right sheet */}
+                {user && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTextPostsPlusOpen(false);
+                      setViewingProfile({
+                        id: String(user.id),
+                        name: (user as any).name ?? null,
+                        username: (user as any).username ?? null,
+                        avatarUrl: (user as any).avatarUrl || (user as any).image || null,
+                        isCompany: isCompanyPublisher,
+                        sheetMode: true,
+                      });
+                    }}
+                    aria-label="Open profile"
+                    style={{
+                      position: 'absolute',
+                      left: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      padding: 0,
+                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'rgba(0,188,212,0.18)',
+                      border: '1px solid rgba(0,188,212,0.45)',
+                      color: '#00BCD4',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      zIndex: 2,
+                    }}
+                  >
+                    {((user as any).avatarUrl || (user as any).image) ? (
+                      <img
+                        src={(user as any).avatarUrl || (user as any).image}
+                        alt=""
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }}
+                      />
+                    ) : isCompanyPublisher ? (
+                      <Building2 size={18} strokeWidth={2.2} />
+                    ) : (
+                      <Users size={18} strokeWidth={2.2} />
+                    )}
+                  </button>
+                )}
+
                 <motion.button
                   type="button"
                   whileTap={{ scale: 0.96 }}
@@ -17942,7 +18060,7 @@ export default function AddFriendPage() {
                     } catch { setComposerBizHint(false); }
                     window.setTimeout(() => setShowComposer(true), 0);
                   }}
-                  aria-label={!user ? 'تسجيل الدخول' : 'Create a text post'}
+                  aria-label={!user ? 'Sign in' : 'Create a text post'}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                     height: 40, minWidth: 120, padding: '0 18px', borderRadius: 20,
@@ -17955,31 +18073,157 @@ export default function AddFriendPage() {
                   }}
                 >
                   {!user ? <LogIn size={16} strokeWidth={2.4} /> : <PenLine size={16} strokeWidth={2.4} />}
-                  <span style={{ fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>{!user ? 'تسجيل الدخول' : 'New Post'}</span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>{!user ? 'Sign in' : 'New Post'}</span>
                 </motion.button>
-                <style>{`@keyframes stooornaRedXSpin { from { transform: translateY(-50%) rotate(0deg); } to { transform: translateY(-50%) rotate(360deg); } }`}</style>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setTextPostsMenuOpen(false);
-                    setTextPostsPageOpen(false);
-                  }}
-                  aria-label="إغلاق"
+
+                {/* Right: plus menu (same actions as bottom-bar plus) */}
+                <div
                   style={{
                     position: 'absolute',
-                    right: 12,
+                    right: 8,
                     top: '50%',
-                    width: 36, height: 36,
-                    border: 'none', background: 'none',
-                    color: '#ef4444', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    animation: 'stooornaRedXSpin 2.4s linear infinite',
-                    transformOrigin: 'center',
+                    transform: 'translateY(-50%)',
+                    width: 44,
+                    height: 40,
+                    zIndex: 3,
                   }}
                 >
-                  <X size={22} strokeWidth={2.6} />
-                </button>
+                  {textPostsPlusOpen && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="Close menu"
+                        onClick={() => setTextPostsPlusOpen(false)}
+                        style={{
+                          position: 'fixed', inset: 0, zIndex: 10210,
+                          background: 'transparent', border: 'none', cursor: 'default',
+                        }}
+                      />
+                      <div style={{
+                        position: 'absolute',
+                        bottom: 48,
+                        right: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 10,
+                        zIndex: 10220,
+                        animation: 'stooornaPlusFanIn 0.28s ease-out',
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTextPostsPlusOpen(false);
+                            navigate('/settings');
+                          }}
+                          aria-label="Settings"
+                          style={{
+                            width: 44, height: 44, borderRadius: '50%',
+                            border: '1px solid rgba(0,188,212,0.4)',
+                            background: 'rgba(6,20,22,0.96)',
+                            color: '#00BCD4',
+                            cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                          }}
+                        >
+                          <Settings size={20} strokeWidth={2.2} />
+                        </button>
+                        {user && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTextPostsPlusOpen(false);
+                              try {
+                                window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', {
+                                  detail: { tab: 'friends' },
+                                }));
+                              } catch { /* */ }
+                              setTextPostsMenuOpen(false);
+                              setTextPostsPageOpen(false);
+                            }}
+                            aria-label="Friends"
+                            style={{
+                              width: 44, height: 44, borderRadius: '50%',
+                              border: '1px solid rgba(0,188,212,0.4)',
+                              background: 'rgba(6,20,22,0.96)',
+                              color: '#00BCD4',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                            }}
+                          >
+                            <Users size={20} strokeWidth={2.2} />
+                          </button>
+                        )}
+                        {user && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTextPostsPlusOpen(false);
+                              const hostId = String(user.id);
+                              const qs = new URLSearchParams({
+                                hostId,
+                                hostName: String((user as any).name || (user as any).username || 'Host'),
+                                hostUsername: String((user as any).username || ''),
+                                hostAvatar: String((user as any).avatarUrl || (user as any).image || ''),
+                              }).toString();
+                              navigate(`/live?${qs}`);
+                            }}
+                            aria-label="Live broadcast"
+                            style={{
+                              width: 44, height: 44, borderRadius: '50%',
+                              border: '1px solid rgba(0,188,212,0.4)',
+                              background: 'rgba(6,20,22,0.96)',
+                              color: '#00BCD4',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                            }}
+                          >
+                            <Radio size={20} strokeWidth={2.2} />
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTextPostsPlusOpen(o => !o);
+                    }}
+                    aria-label="Open menu"
+                    aria-expanded={textPostsPlusOpen}
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      width: 44,
+                      height: 36,
+                      border: 'none',
+                      background: textPostsPlusOpen ? 'rgba(0,188,212,0.14)' : 'transparent',
+                      borderRadius: 12,
+                      color: textPostsPlusOpen ? '#00BCD4' : 'rgba(0,188,212,0.85)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 2,
+                      WebkitTapHighlightColor: 'transparent',
+                    }}
+                  >
+                    <span style={{
+                      display: 'flex',
+                      transition: 'transform 0.25s ease',
+                      transform: textPostsPlusOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+                      transformOrigin: 'center center',
+                    }}>
+                      <Plus size={26} strokeWidth={2.4} />
+                    </span>
+                  </button>
+                </div>
               </>
             </div>
           </motion.div>
@@ -19381,6 +19625,7 @@ export default function AddFriendPage() {
             authorUsername={viewingProfile.username}
             authorAvatarUrl={viewingProfile.avatarUrl}
             isCompanyProfile={!!viewingProfile.isCompany}
+            sheetMode={!!viewingProfile.sheetMode}
             onClose={() => {
               setViewingProfile(null);
               setUserShareChatPeer(null);
