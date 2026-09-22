@@ -11528,8 +11528,8 @@ export default function AddFriendPage() {
     if (feedScrollRafRef.current) return;
     feedScrollRafRef.current = requestAnimationFrame(() => {
       feedScrollRafRef.current = 0;
-      // Scroll down (finger swipe up) -> collapse header + hide bottom bar
-      if (delta > 4 && current > 8) {
+      // Finger swipe up (content scrolls down) -> collapse header AND hide bottom bar
+      if (delta > 2 && current > 4) {
         setHeaderOpen(false);
         setHeaderHintSeen(true);
         try {
@@ -11537,19 +11537,37 @@ export default function AddFriendPage() {
         } catch { /* ignore */ }
         return;
       }
-      // Near top or strong scroll up -> show header + bottom bar
-      if (current <= 16) {
+      // Only near the very top: expand header and show bottom bar
+      if (current <= 10) {
         setHeaderOpen(true);
-        try {
-          window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'up' } }));
-        } catch { /* ignore */ }
-      } else if (delta < -10) {
         try {
           window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'up' } }));
         } catch { /* ignore */ }
       }
     });
   }
+
+  function toggleHeaderOpen() {
+    setHeaderOpen(prev => {
+      const next = !prev;
+      setHeaderHintSeen(true);
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', {
+          detail: { dir: next ? 'up' : 'down' },
+        }));
+      } catch { /* ignore */ }
+      return next;
+    });
+  }
+
+  // Keep bottom nav in sync with header shutter (scroll or grabber)
+  useEffect(() => {
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', {
+        detail: { dir: headerOpen ? 'up' : 'down' },
+      }));
+    } catch { /* ignore */ }
+  }, [headerOpen]);
 
   // Sub-tab inside the Profile page, replacing the old STOOORNA divider: switches the content
   // strip below it between the text-posts feed and the video/photo grid — independently of
@@ -13235,11 +13253,7 @@ export default function AddFriendPage() {
                           }
                         }}
                         disabled={storyUploading}
-                        style={{
-                          width: 76, height: 76, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative',
-                          transform: storyPullProgress > 0 ? `scale(${1 + storyPullProgress * 0.18})` : undefined,
-                          transition: storyPullProgress > 0 ? 'none' : 'transform 0.22s ease',
-                        }}
+                        style={{ width: 76, height: 76, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
                       >
                         {/* One fixed circular frame: the photo is clipped inside it and can never overflow. */}
                         {/* إطار أزرق ثابت + صورة ثابتة */}
@@ -13447,7 +13461,7 @@ export default function AddFriendPage() {
           <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
             <motion.button
               whileTap={{ scale: 0.9 }}
-              onClick={() => { setHeaderOpen(o => !o); setHeaderHintSeen(true); }}
+              onClick={toggleHeaderOpen}
               aria-label={headerOpen ? 'Hide header' : 'Show header'}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
