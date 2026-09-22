@@ -1544,6 +1544,23 @@ function GlobalBottomNavigation() {
     };
   }, [user?.id, homeCallPhase, homeIncoming]);
 
+  // Bridge so other screens (e.g. the friend-chat header inside the bell-icon
+  // chat) can open this exact same call sheet instead of duplicating it —
+  // dispatch `stooorna:open-home-call-picker` with an optional `friendId` to
+  // have that friend pre-checked in the picker.
+  useEffect(() => {
+    const onOpenCallPicker = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { friendId?: string } | undefined;
+      setHomeCallPickerOpen(true);
+      if (detail?.friendId) {
+        const fid = detail.friendId;
+        setHomeCallSelected(s => ({ ...s, [fid]: true }));
+      }
+    };
+    window.addEventListener('stooorna:open-home-call-picker', onOpenCallPicker as EventListener);
+    return () => window.removeEventListener('stooorna:open-home-call-picker', onOpenCallPicker as EventListener);
+  }, []);
+
   function homeCallShortHash(input: string): string {
     let h1 = 0xdeadbeef ^ input.length;
     let h2 = 0x41c6ce57 ^ input.length;

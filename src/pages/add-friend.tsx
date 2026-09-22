@@ -18040,16 +18040,13 @@ export default function AddFriendPage() {
                 type="button"
                 aria-label="Call"
                 onClick={() => {
-                  if (!user || !friendChatPeer) return;
-                  const channel = `private_${shortChannelHash([user.id, friendChatPeer.friendId].sort().join('_'))}`;
-                  startCall({
-                    peerId: friendChatPeer.friendId,
-                    peerName: friendChatPeer.name ?? friendChatPeer.username ?? 'User',
-                    peerUsername: friendChatPeer.username ?? undefined,
-                    peerAvatar: friendChatPeer.avatarUrl ?? null,
-                    isConference: false,
-                    channel,
-                  });
+                  if (!friendChatPeer) return;
+                  // Opens the same working call sheet as the bottom "+" menu's Call
+                  // button (defined in RootLayout.tsx), pre-checking this friend —
+                  // it slides up from the bottom exactly like it does from there.
+                  window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
+                    detail: { friendId: friendChatPeer.friendId },
+                  }));
                 }}
                 style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
               >
@@ -18178,7 +18175,7 @@ export default function AddFriendPage() {
                 }}
               />
 
-              <div style={{ position: 'relative', flexShrink: 0 }}>
+              <div style={{ flexShrink: 0 }}>
                 <button
                   type="button"
                   onClick={() => { setFriendChatShowEmoji(v => !v); setFriendChatShowAttach(false); }}
@@ -18196,7 +18193,10 @@ export default function AddFriendPage() {
                       exit={{ opacity: 0, y: 8, scale: 0.95 }}
                       transition={{ duration: 0.15 }}
                       style={{
-                        position: 'absolute', bottom: 42, left: 0, zIndex: 40,
+                        // Centered over the whole message-input bar (not the tiny emoji
+                        // button) — the bar below is this panel's nearest `position:
+                        // relative` ancestor, so left/right/margin:auto centers it there.
+                        position: 'absolute', bottom: 42, left: 0, right: 0, margin: '0 auto', zIndex: 40,
                         background: '#ffffff', border: 'none', overflow: 'hidden',
                         borderRadius: 14, padding: 10, width: 224,
                         display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4,
