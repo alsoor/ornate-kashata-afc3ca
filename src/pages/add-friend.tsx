@@ -1645,7 +1645,7 @@ const CAMERA_FILTERS: { id: CameraFilterId; label: string; css: string }[] = [
   { id: 'ai', label: 'AI Beauty', css: 'brightness(1.08) contrast(0.96) saturate(1.08)' },
   { id: 'beauty', label: 'Beauty', css: 'brightness(1.08) contrast(0.94) saturate(1.08) blur(0.15px)' },
   { id: 'makeup', label: 'Makeup', css: 'brightness(1.1) contrast(1.04) saturate(1.22) hue-rotate(-6deg)' },
-  { id: 'product', label: 'AI Product', css: 'contrast(1.08) saturate(1.12) brightness(1.04)' },
+  { id: 'product', label: 'Product', css: 'contrast(1.08) saturate(1.12) brightness(1.04)' },
   { id: 'glow', label: 'Glow', css: 'brightness(1.14) contrast(0.96) saturate(1.18)' },
   { id: 'warm', label: 'Warm', css: 'sepia(0.22) saturate(1.28) contrast(1.06) brightness(1.04)' },
   { id: 'cool', label: 'Cool', css: 'hue-rotate(168deg) saturate(1.12) brightness(1.04)' },
@@ -1656,12 +1656,15 @@ const CAMERA_FILTERS: { id: CameraFilterId; label: string; css: string }[] = [
   { id: 'bw', label: 'B&W', css: 'grayscale(1) contrast(1.08)' },
 ];
 
-function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendRequests = [], onRespondFriendRequest, onOpenStoryComments, storyCommentUnread = 0, shareChatUnread = 0, allowMusic = true, publishLabel }: {
+function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendRequests = [], onRespondFriendRequest, onOpenStoryComments, storyCommentUnread = 0, shareChatUnread = 0, allowMusic = true, publishLabel, liveFriends = [], myId, onSendLiveChat }: {
   onClose: () => void;
   onPublish: (file: File) => Promise<void> | void;
   avatarUrl?: string | null;
   userName?: string | null;
   friendRequests?: IncomingRequest[];
+  liveFriends?: { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null }[];
+  myId?: string | null;
+  onSendLiveChat?: (friendId: string, text: string) => void;
   onRespondFriendRequest?: (id: number, action: 'accept' | 'reject') => void | Promise<void>;
   /** جرس التنبيهات داخل الكاميرا — تعليقات الأصدقاء على الستوري */
   onOpenStoryComments?: () => void;
@@ -1689,6 +1692,11 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     // Double-tap flip disabled
   }
   const [requestsBoxOpen, setRequestsBoxOpen] = useState(false);
+  const [liveMapOpen, setLiveMapOpen] = useState(false);
+  const [livePins, setLivePins] = useState<{ id: string; name: string; username: string; avatarUrl: string | null; lat: number; lng: number }[]>([]);
+  const [liveCenter, setLiveCenter] = useState<{ lat: number; lng: number } | null>(null);
+  const [liveMsgPeer, setLiveMsgPeer] = useState<{ id: string; name: string } | null>(null);
+  const [liveMsgText, setLiveMsgText] = useState('');
   const [respondingId, setRespondingId] = useState<number | null>(null);
   // بحث يوزرات داخل بكس طلبات الإضافة (بدون تغيير شكل البكس)
   const [camSearchQuery, setCamSearchQuery] = useState('');
@@ -1767,6 +1775,52 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const [closing, setClosing] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!liveMapOpen) return;
+    const key = 'stooorna_live_gps_pins';
+    const readPins = () => {
+      try {
+        const raw = JSON.parse(localStorage.getItem(key) || '{}') as Record<string, any>;
+        const list = Object.values(raw).filter(p => p && typeof p.lat === 'number' && Date.now() - Number(p.at || 0) < 30 * 60 * 1000) as any[];
+        setLivePins(list.map(p => ({
+          id: String(p.id),
+          name: String(p.name || 'User'),
+          username: String(p.username || ''),
+          avatarUrl: p.avatarUrl ?? null,
+          lat: Number(p.lat),
+          lng: Number(p.lng),
+        })));
+      } catch { /* */ }
+    };
+    readPins();
+    const iv = window.setInterval(readPins, 4000);
+    let watchId: number | null = null;
+    if (navigator.geolocation && myId) {
+      watchId = navigator.geolocation.watchPosition((pos) => {
+        const pin = {
+          id: myId,
+          name: userName || 'You',
+          username: '',
+          avatarUrl: avatarUrl ?? null,
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          at: Date.now(),
+        };
+        setLiveCenter({ lat: pin.lat, lng: pin.lng });
+        try {
+          const raw = JSON.parse(localStorage.getItem(key) || '{}') as Record<string, any>;
+          raw[myId] = pin;
+          localStorage.setItem(key, JSON.stringify(raw));
+        } catch { /* */ }
+        readPins();
+      }, () => {}, { enableHighAccuracy: true, maximumAge: 8000, timeout: 12000 });
+    }
+    return () => {
+      window.clearInterval(iv);
+      if (watchId != null) navigator.geolocation.clearWatch(watchId);
+    };
+  }, [liveMapOpen, myId, userName, avatarUrl]);
 
   useEffect(() => {
     void import('@/lib/camera-ai-beauty').then(m => {
@@ -2438,6 +2492,10 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <motion.button type="button" whileTap={{ scale: 0.92 }} onClick={() => setLiveMapOpen(true)}
+              style={{ height: 28, padding: '0 8px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(0,0,0,0.45)', color: '#fff', fontSize: '0.62rem', fontWeight: 800, cursor: 'pointer' }}>
+              Live Location
+            </motion.button>
             <div style={{
               width: 30, height: 30, borderRadius: '50%', overflow: 'hidden',
               border: '1.5px solid rgba(255,255,255,0.85)', background: '#222',
@@ -2656,10 +2714,11 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              position: 'absolute', left: 10, right: 62, zIndex: 6,
-              bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 196px)',
-              display: 'flex', gap: 7, overflowX: 'auto', padding: '0 4px 4px',
-              WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
+              position: 'absolute', left: 10, right: 58, zIndex: 6,
+              bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 200px)',
+              display: 'flex', flexWrap: 'wrap', gap: 7, overflow: 'visible',
+              padding: '0 8px 8px 0',
+              boxSizing: 'border-box',
             }}
           >
             {CAMERA_FILTERS.map(f => {
@@ -2780,6 +2839,66 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           </div>
         </div>
       </div>
+
+
+        {liveMapOpen && (
+          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', inset: 0, zIndex: 20, background: '#0b1220', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', paddingTop: 'max(10px, env(safe-area-inset-top))' }}>
+              <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.9rem' }}>GPS Live</span>
+              <button type="button" onClick={() => { setLiveMapOpen(false); setLiveMsgPeer(null); }} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>X</button>
+            </div>
+            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', margin: 10, borderRadius: 16, background: '#132033' }}>
+              {(() => {
+                const all = livePins.length ? livePins : [];
+                const extra = liveFriends.map(f => all.find(p => p.id === f.id) || null).filter(Boolean) as typeof livePins;
+                const pins = extra.length ? extra : all;
+                const center = liveCenter || (pins[0] ? { lat: pins[0].lat, lng: pins[0].lng } : { lat: 29.3759, lng: 47.9774 });
+                const span = 0.08;
+                const toXY = (lat: number, lng: number) => ({
+                  left: `${((lng - (center.lng - span)) / (span * 2)) * 100}%`,
+                  top: `${((center.lat + span - lat) / (span * 2)) * 100}%`,
+                });
+                return (
+                  <>
+                    <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 40% 40%, #1d4e6b 0%, #0b1220 70%)' }} />
+                    {pins.map(pin => {
+                      const xy = toXY(pin.lat, pin.lng);
+                      return (
+                        <button key={pin.id} type="button" onClick={() => setLiveMsgPeer({ id: pin.id, name: pin.name })} style={{
+                          position: 'absolute', left: xy.left, top: xy.top, transform: 'translate(-50%, -100%)',
+                          background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                        }}>
+                          <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: '2px solid #22d3ee', background: '#111' }}>
+                            {pin.avatarUrl ? <img src={pin.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: '#fff', fontSize: '0.7rem' }}>{pin.name.slice(0,1)}</span>}
+                          </div>
+                          <span style={{ color: '#fff', fontSize: '0.62rem', fontWeight: 700, background: 'rgba(0,0,0,0.55)', padding: '1px 6px', borderRadius: 8 }}>@{pin.username || pin.name}</span>
+                        </button>
+                      );
+                    })}
+                    {!pins.length && (
+                      <p style={{ position: 'absolute', left: 16, right: 16, top: '44%', color: 'rgba(255,255,255,0.7)', textAlign: 'center', fontSize: '0.82rem' }}>Waiting for GPS…</p>
+                    )}
+                  </>
+                );
+              })()}
+              {liveMsgPeer && (
+                <div style={{ position: 'absolute', left: 12, right: 12, bottom: 12, background: 'rgba(8,14,22,0.96)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 12 }}>
+                  <p style={{ margin: '0 0 8px', color: '#fff', fontWeight: 700, fontSize: '0.82rem' }}>Message @{liveMsgPeer.name}</p>
+                  <input value={liveMsgText} onChange={e => setLiveMsgText(e.target.value)} placeholder="Write a message" style={{ width: '100%', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: '#0f1722', color: '#fff', padding: '8px 10px', marginBottom: 8 }} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" onClick={() => setLiveMsgPeer(null)} style={{ flex: 1, borderRadius: 10, border: 'none', padding: 8, cursor: 'pointer' }}>Cancel</button>
+                    <button type="button" onClick={() => {
+                      if (!liveMsgText.trim()) return;
+                      onSendLiveChat?.(liveMsgPeer.id, liveMsgText.trim());
+                      setLiveMsgText('');
+                      setLiveMsgPeer(null);
+                    }} style={{ flex: 1, borderRadius: 10, border: 'none', background: '#22d3ee', fontWeight: 800, padding: 8, cursor: 'pointer' }}>Send</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       {/* معاينة بعد التصوير */}
       {captured && (
@@ -19813,6 +19932,12 @@ export default function AddFriendPage() {
             shareChatUnread={userShareInbox.filter(x => !x.read).length}
             allowMusic={!isCompanyPublisher}
             publishLabel={isCompanyPublisher ? 'نشر إعلان للقصة' : 'نشر قصة'}
+            myId={user?.id ?? null}
+            liveFriends={friends.map(f => ({ id: f.friendId, name: f.name, username: f.username, avatarUrl: f.avatarUrl }))}
+            onSendLiveChat={(friendId, text) => {
+              if (!user?.id) return;
+              pushShareThreadMsg(user.id, friendId, 'direct', { fromId: user.id, type: 'text', body: text });
+            }}
             onOpenStoryComments={() => {
               // إظهار Story + Chat معاً؛ إن وُجدت مشاركات غير مقروءة يُفضَّل Chat
               setSharedInboxStoryOnly(false);
