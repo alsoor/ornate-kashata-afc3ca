@@ -929,6 +929,38 @@ function pushShareThreadMsg(a: string, b: string, postId: string | number, msg: 
   return next;
 }
 
+// ── Chat header / message timestamp helpers (friend chat) ──────────────────
+function formatLastSeen(value: number | string): string {
+  const ts = typeof value === 'number' ? value : new Date(value).getTime();
+  if (!Number.isFinite(ts)) return '';
+  const now = Date.now();
+  const diffMin = Math.floor((now - ts) / 60000);
+  if (diffMin < 1) return 'last seen just now';
+  if (diffMin < 60) return `last seen ${diffMin}m ago`;
+  const date = new Date(ts);
+  const today = new Date();
+  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  if (date.toDateString() === today.toDateString()) return `last seen today at ${time}`;
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return `last seen yesterday at ${time}`;
+  if (now - ts < 6 * 24 * 60 * 60 * 1000) return `last seen ${date.toLocaleDateString('en-US', { weekday: 'long' })} at ${time}`;
+  return `last seen ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+}
+function formatMsgTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+function formatDayLabel(ts: number): string {
+  const date = new Date(ts);
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  if (today.getTime() - date.getTime() < 6 * 24 * 60 * 60 * 1000) return date.toLocaleDateString('en-US', { weekday: 'long' });
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+}
+
 // ── Shared-posts inbox types — posts someone sent me via the share sheet ──────
 interface SharedPostComment {
   id: number;
@@ -12008,9 +12040,18 @@ export default function AddFriendPage() {
   const [friendChatShowEmoji, setFriendChatShowEmoji] = useState(false);
   const [friendChatShowAttach, setFriendChatShowAttach] = useState(false);
   const [friendChatAvatarViewerOpen, setFriendChatAvatarViewerOpen] = useState(false);
+  // Which message currently has its AM/PM timestamp revealed (toggled by a single tap).
+  const [friendChatOpenTimeId, setFriendChatOpenTimeId] = useState<string | null>(null);
   const friendChatRecRef = useRef<MediaRecorder | null>(null);
   const friendChatChunksRef = useRef<Blob[]>([]);
   const friendChatRecordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Guards against the record-button race condition: getUserMedia() is async, so a
+  // fast tap could fire start() and stop()/cancel() before the mic permission even
+  // resolves. friendChatRecStartingRef blocks overlapping start calls; friendChatRecCancelledRef
+  // lets a cancel that happens *during* that pending permission request take effect
+  // as soon as the stream arrives, instead of the recording starting on its own.
+  const friendChatRecStartingRef = useRef(false);
+  const friendChatRecCancelledRef = useRef(false);
   const friendChatFileRef = useRef<HTMLInputElement | null>(null);
   const friendChatVideoRef = useRef<HTMLInputElement | null>(null);
   const friendChatDocRef = useRef<HTMLInputElement | null>(null);
@@ -12024,8 +12065,20 @@ export default function AddFriendPage() {
     setFriendChatRecordSecs(0);
   }
   async function friendChatStartRecording() {
+    // Ignore a second tap while a start is already in flight, and never start
+    // again once we're already recording.
+    if (friendChatRecStartingRef.current || friendChatRecRef.current) return;
+    friendChatRecStartingRef.current = true;
+    friendChatRecCancelledRef.current = false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // The user tapped cancel while the permission prompt/mic was still resolving —
+      // discard the stream immediately instead of letting recording start on its own.
+      if (friendChatRecCancelledRef.current) {
+        friendChatRecCancelledRef.current = false;
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
@@ -12038,6 +12091,9 @@ export default function AddFriendPage() {
       setFriendChatRecordSecs(0);
       friendChatRecordTimerRef.current = setInterval(() => setFriendChatRecordSecs(s => s + 1), 1000);
     } catch { /* microphone permission denied */ }
+    finally {
+      friendChatRecStartingRef.current = false;
+    }
   }
   async function friendChatStopRecording() {
     if (friendChatRecordTimerRef.current) {
@@ -12045,7 +12101,14 @@ export default function AddFriendPage() {
       friendChatRecordTimerRef.current = null;
     }
     const recorder = friendChatRecRef.current;
-    if (!recorder) return;
+    if (!recorder) {
+      // Cancel arrived before the mic permission resolved — flag it so the
+      // pending start() call discards the stream instead of recording.
+      friendChatRecCancelledRef.current = true;
+      setFriendChatRecording(false);
+      setFriendChatRecordSecs(0);
+      return;
+    }
     const secs = friendChatRecordSecs;
     await new Promise<void>(resolve => {
       recorder.onstop = () => resolve();
@@ -12065,6 +12128,27 @@ export default function AddFriendPage() {
     }
     const url = URL.createObjectURL(blob);
     setFriendChatPendingVoice({ url, duration: secs });
+  }
+  // Cancels an in-progress recording outright (the trash icon shown while recording) —
+  // discards the audio instead of stopping into the send/preview state.
+  function friendChatCancelActiveRecording() {
+    if (friendChatRecordTimerRef.current) {
+      clearInterval(friendChatRecordTimerRef.current);
+      friendChatRecordTimerRef.current = null;
+    }
+    const recorder = friendChatRecRef.current;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onstop = () => { recorder.stream.getTracks().forEach(t => t.stop()); };
+      if (recorder.state !== 'inactive') recorder.stop();
+      friendChatRecRef.current = null;
+    } else {
+      // Still waiting on getUserMedia() — make sure it doesn't start recording once it resolves.
+      friendChatRecCancelledRef.current = true;
+    }
+    friendChatChunksRef.current = [];
+    setFriendChatRecording(false);
+    setFriendChatRecordSecs(0);
   }
   function friendChatCancelPendingVoice() {
     if (friendChatPendingVoice) URL.revokeObjectURL(friendChatPendingVoice.url);
@@ -17924,20 +18008,51 @@ export default function AddFriendPage() {
                 aria-label="View profile photo"
                 style={{ background: 'none', border: 'none', padding: 0, flexShrink: 0, display: 'flex', cursor: friendChatPeer.avatarUrl ? 'pointer' : 'default' }}
               >
-                <UserAvatar name={friendChatPeer.name ?? friendChatPeer.username ?? '?'} avatarUrl={friendChatPeer.avatarUrl} size={36} />
+                <UserAvatar name={friendChatPeer.name ?? friendChatPeer.username ?? '?'} avatarUrl={friendChatPeer.avatarUrl} size={36} online={presence[friendChatPeer.friendId]?.online} />
               </button>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, color: '#111', fontWeight: 800, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {friendChatPeer.name ?? friendChatPeer.username ?? 'User'}
                 </p>
-                {friendChatPeer.username && (
-                  <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.68rem' }}>@{friendChatPeer.username}</p>
-                )}
+                {(() => {
+                  // Presence fields beyond `online` (typing / lastSeen) are read defensively —
+                  // they render the moment the presence hook/backend supplies them, and fall
+                  // back to the username line when it doesn't have them yet.
+                  const peerPresence = presence[friendChatPeer.friendId] as { online?: boolean; typing?: boolean; lastSeen?: number | string | null } | undefined;
+                  if (peerPresence?.typing) {
+                    return <p style={{ margin: 0, color: '#128C7E', fontSize: '0.68rem', fontWeight: 700 }}>typing…</p>;
+                  }
+                  if (peerPresence?.online) {
+                    return <p style={{ margin: 0, color: '#128C7E', fontSize: '0.68rem', fontWeight: 600 }}>Online</p>;
+                  }
+                  if (peerPresence?.lastSeen) {
+                    return <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.68rem' }}>{formatLastSeen(peerPresence.lastSeen)}</p>;
+                  }
+                  return friendChatPeer.username ? (
+                    <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.68rem' }}>@{friendChatPeer.username}</p>
+                  ) : null;
+                })()}
               </div>
               <button type="button" aria-label="Video call" style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Video size={19} />
               </button>
-              <button type="button" aria-label="Call" style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <button
+                type="button"
+                aria-label="Call"
+                onClick={() => {
+                  if (!user || !friendChatPeer) return;
+                  const channel = `private_${shortChannelHash([user.id, friendChatPeer.friendId].sort().join('_'))}`;
+                  startCall({
+                    peerId: friendChatPeer.friendId,
+                    peerName: friendChatPeer.name ?? friendChatPeer.username ?? 'User',
+                    peerUsername: friendChatPeer.username ?? undefined,
+                    peerAvatar: friendChatPeer.avatarUrl ?? null,
+                    isConference: false,
+                    channel,
+                  });
+                }}
+                style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              >
                 <Phone size={18} />
               </button>
               <button type="button" aria-label="Options" onClick={() => setOpenActionMenu(friendChatPeer.id)} style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -17946,7 +18061,6 @@ export default function AddFriendPage() {
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10, background: 'linear-gradient(180deg, #e9f0dd 0%, #f4efd9 100%)' }}>
-              <div style={{ alignSelf: 'center', background: '#ffffff', color: 'rgba(0,0,0,0.55)', fontSize: '0.72rem', fontWeight: 700, padding: '4px 12px', borderRadius: 10 }}>Today</div>
               <div style={{ alignSelf: 'center', maxWidth: 320, background: 'rgba(255,244,214,0.9)', color: 'rgba(60,50,10,0.8)', fontSize: '0.72rem', textAlign: 'center', padding: '10px 14px', borderRadius: 10, lineHeight: 1.5 }}>
                 Messages are private between you and {friendChatPeer.name ?? friendChatPeer.username ?? 'this user'}.
               </div>
@@ -17961,27 +18075,58 @@ export default function AddFriendPage() {
                     </div>
                   </div>
                 </div>
-              ) : friendChatMsgs.map(m => (
-                <div key={m.id} style={{
-                  alignSelf: user && m.fromId === user.id ? 'flex-end' : 'flex-start',
-                  maxWidth: '82%',
-                  padding: '8px 10px',
-                  borderRadius: 12,
-                  background: user && m.fromId === user.id ? '#dcf8c6' : '#ffffff',
-                  boxShadow: '0 1px 1px rgba(0,0,0,0.08)',
-                }}>
-                  {m.type === 'text' && <p style={{ margin: 0, color: '#111', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{m.body}</p>}
-                  {m.type === 'voice' && <audio src={m.body} controls style={{ width: 210, height: 36 }} />}
-                  {m.type === 'image' && <img src={m.body} alt="" style={{ maxWidth: 220, borderRadius: 8, display: 'block' }} />}
-                  {m.type === 'video' && <video src={m.body} controls style={{ maxWidth: 220, borderRadius: 8, display: 'block' }} />}
-                  {m.type === 'file' && (
-                    <a href={m.body} download={m.fileName ?? undefined} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#111', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600 }}>
-                      <FileText size={18} color="#128C7E" />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{m.fileName ?? 'File'}</span>
-                    </a>
-                  )}
-                </div>
-              ))}
+              ) : friendChatMsgs.map((m, i) => {
+                const prev = friendChatMsgs[i - 1];
+                const showDaySeparator = !prev || new Date(prev.at).toDateString() !== new Date(m.at).toDateString();
+                const timeOpen = friendChatOpenTimeId === m.id;
+                return (
+                  <React.Fragment key={m.id}>
+                    {showDaySeparator && (
+                      <div style={{ alignSelf: 'center', background: '#ffffff', color: 'rgba(0,0,0,0.55)', fontSize: '0.72rem', fontWeight: 700, padding: '4px 12px', borderRadius: 10 }}>
+                        {formatDayLabel(m.at)}
+                      </div>
+                    )}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setFriendChatOpenTimeId(id => id === m.id ? null : m.id)}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setFriendChatOpenTimeId(id => id === m.id ? null : m.id); }}
+                      style={{
+                        alignSelf: user && m.fromId === user.id ? 'flex-end' : 'flex-start',
+                        maxWidth: '82%',
+                        padding: '8px 10px',
+                        borderRadius: 12,
+                        background: user && m.fromId === user.id ? '#dcf8c6' : '#ffffff',
+                        boxShadow: '0 1px 1px rgba(0,0,0,0.08)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {m.type === 'text' && <p style={{ margin: 0, color: '#111', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{m.body}</p>}
+                      {m.type === 'voice' && <audio src={m.body} controls style={{ width: 210, height: 36 }} />}
+                      {m.type === 'image' && <img src={m.body} alt="" style={{ maxWidth: 220, borderRadius: 8, display: 'block' }} />}
+                      {m.type === 'video' && <video src={m.body} controls style={{ maxWidth: 220, borderRadius: 8, display: 'block' }} />}
+                      {m.type === 'file' && (
+                        <a
+                          href={m.body}
+                          download={m.fileName ?? undefined}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#111', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600 }}
+                        >
+                          <FileText size={18} color="#128C7E" />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>{m.fileName ?? 'File'}</span>
+                        </a>
+                      )}
+                      {timeOpen && (
+                        <p style={{ margin: '4px 0 0', color: 'rgba(0,0,0,0.45)', fontSize: '0.65rem', textAlign: 'end' }}>
+                          {formatMsgTime(m.at)}
+                        </p>
+                      )}
+                    </div>
+                  </React.Fragment>
+                );
+              })}
             </div>
 
             <div style={{
@@ -18052,7 +18197,7 @@ export default function AddFriendPage() {
                       transition={{ duration: 0.15 }}
                       style={{
                         position: 'absolute', bottom: 42, left: 0, zIndex: 40,
-                        background: '#ffffff', border: '1px solid rgba(0,0,0,0.1)',
+                        background: '#ffffff', border: 'none', overflow: 'hidden',
                         borderRadius: 14, padding: 10, width: 224,
                         display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4,
                         boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
@@ -18063,7 +18208,7 @@ export default function AddFriendPage() {
                           key={emo}
                           type="button"
                           onClick={() => setFriendChatText(t => t + emo)}
-                          style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: 4, lineHeight: 1 }}
+                          style={{ border: 'none', outline: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: 4, lineHeight: 1 }}
                         >
                           {emo}
                         </button>
@@ -18096,6 +18241,27 @@ export default function AddFriendPage() {
                     >
                       <Send size={15} />
                     </button>
+                  </div>
+                ) : friendChatRecording ? (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <button
+                      type="button"
+                      onClick={friendChatCancelActiveRecording}
+                      aria-label="Cancel recording"
+                      style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(239,68,68,0.12)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <motion.div
+                        animate={{ opacity: [1, 0.3, 1] }}
+                        transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut' as const }}
+                        style={{ width: 9, height: 9, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }}
+                      />
+                      <span style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 600 }}>
+                        {Math.floor(friendChatRecordSecs / 60)}:{String(friendChatRecordSecs % 60).padStart(2, '0')}
+                      </span>
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -18163,38 +18329,7 @@ export default function AddFriendPage() {
 
               {!friendChatPendingVoice && (
                 <div style={{ position: 'relative', flexShrink: 0 }}>
-                  <AnimatePresence>
-                    {friendChatRecording && (
-                      <motion.div
-                        key="friend-chat-recording-badge"
-                        initial={{ opacity: 0, scale: 0.6 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.6 }}
-                        style={{
-                          position: 'absolute', bottom: 50, right: -4, zIndex: 40,
-                          width: 64, height: 64, borderRadius: '50%',
-                          background: '#ef4444', display: 'flex', flexDirection: 'column',
-                          alignItems: 'center', justifyContent: 'center', gap: 3,
-                          boxShadow: '0 6px 18px rgba(239,68,68,0.45)',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 18 }}>
-                          {Array.from({ length: 5 }, (_, i) => (
-                            <motion.div
-                              key={i}
-                              animate={{ scaleY: [0.3, 1, 0.3] }}
-                              transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.08, ease: 'easeInOut' as const }}
-                              style={{ width: 3, height: 16, borderRadius: 2, background: '#fff', transformOrigin: 'center' }}
-                            />
-                          ))}
-                        </div>
-                        <span style={{ color: '#fff', fontSize: '0.6rem', fontWeight: 700 }}>
-                          {Math.floor(friendChatRecordSecs / 60)}:{String(friendChatRecordSecs % 60).padStart(2, '0')}
-                        </span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  {friendChatText.trim() ? (
+                  {friendChatText.trim() && !friendChatRecording ? (
                     <button
                       type="button"
                       onClick={() => {
@@ -18208,14 +18343,21 @@ export default function AddFriendPage() {
                     >
                       <Send size={17} />
                     </button>
+                  ) : friendChatRecording ? (
+                    <button
+                      type="button"
+                      onClick={() => void friendChatStopRecording()}
+                      aria-label="Stop recording"
+                      style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', flexShrink: 0, background: '#128C7E', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Check size={18} />
+                    </button>
                   ) : (
                     <button
                       type="button"
-                      onPointerDown={() => void friendChatStartRecording()}
-                      onPointerUp={() => { if (friendChatRecording) void friendChatStopRecording(); }}
-                      onPointerLeave={() => { if (friendChatRecording) void friendChatStopRecording(); }}
-                      aria-label={friendChatRecording ? 'Recording…' : 'Record voice message'}
-                      style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', flexShrink: 0, background: friendChatRecording ? '#ef4444' : '#128C7E', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      onClick={() => void friendChatStartRecording()}
+                      aria-label="Record voice message"
+                      style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', flexShrink: 0, background: '#128C7E', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     >
                       <Mic size={17} />
                     </button>
