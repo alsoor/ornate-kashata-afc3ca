@@ -1705,6 +1705,12 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const [liveZoom, setLiveZoom] = useState(16);
   const [liveFocus, setLiveFocus] = useState<{ lat: number; lng: number } | null>(null);
   const [liveMapSrc, setLiveMapSrc] = useState('');
+  const liveDragRef = useRef<{
+    pts: Record<number, { x: number; y: number }>;
+    startFocus: { lat: number; lng: number };
+    startZoom: number;
+    startDist: number;
+  } | null>(null);
   const [respondingId, setRespondingId] = useState<number | null>(null);
   // بحث يوزرات داخل بكس طلبات الإضافة (بدون تغيير شكل البكس)
   const [camSearchQuery, setCamSearchQuery] = useState('');
@@ -2494,23 +2500,18 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           display: 'flex', justifyContent: 'center', zIndex: 7, pointerEvents: 'none',
         }}>
           <span style={{
-            padding: '4px 14px', borderRadius: 999,
-            background: captureKind === 'video' ? 'rgba(239,68,68,0.88)' : 'rgba(255,255,255,0.9)',
-            color: captureKind === 'video' ? '#fff' : '#111',
-            fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.08em',
-          }}>{captureKind === 'video' ? 'VIDEO' : 'PHOTO'}</span>
-        </div>
-        {isRecording && (
-          <div style={{
-            position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 42px)', left: 0, right: 0,
-            display: 'flex', justifyContent: 'center', zIndex: 7, pointerEvents: 'none',
+            padding: isRecording ? '6px 14px 7px' : '5px 12px', borderRadius: 16,
+            background: captureKind === 'video' || isRecording ? 'rgba(239,68,68,0.92)' : 'rgba(255,255,255,0.9)',
+            color: captureKind === 'video' || isRecording ? '#fff' : '#111',
+            fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.06em',
+            display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2, lineHeight: 1.1,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.55)', borderRadius: 20, padding: '4px 10px' }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444' }} />
-              <span style={{ color: '#fff', fontSize: '0.74rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{mm}:{ss}</span>
-            </div>
-          </div>
-        )}
+            <span>{captureKind === 'video' || isRecording ? 'VIDEO' : 'PHOTO'}</span>
+            {isRecording && (
+              <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.7rem', fontWeight: 800 }}>{mm}:{ss}</span>
+            )}
+          </span>
+        </div>
 
         {/* ── شريط علوي مضغوط ليتناسب مع الأزرار ── */}
         <div
@@ -2825,17 +2826,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               </motion.button>
             ))}
           </div>
-          <motion.button whileTap={{ scale: 0.9 }} onClick={requestClose} aria-label="Close camera"
-            style={{
-              position: 'absolute',
-              right: 16,
-              bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 86px)',
-              width: 40, height: 40, borderRadius: '50%', zIndex: 6,
-              background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.28)', color: '#fff',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-            }}>
-            <X size={18} strokeWidth={2.4} />
-          </motion.button>
+          <div style={{ width: '100%', position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 72 }}>
           <motion.button
             whileTap={{ scale: 0.92 }}
             onClick={handleShutterClick}
@@ -2853,6 +2844,19 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               <span style={{ width: 20, height: 20, borderRadius: 5, background: '#ef4444' }} />
             )}
           </motion.button>
+          <motion.button whileTap={{ scale: 0.9 }} onClick={requestClose} aria-label="Close camera"
+            style={{
+              position: 'absolute',
+              right: 16,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: 40, height: 40, borderRadius: '50%', zIndex: 6,
+              background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.28)', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}>
+            <X size={18} strokeWidth={2.4} />
+          </motion.button>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <button type="button" onClick={() => { if (!isRecording) setCaptureKind('video'); }} style={{
               background: 'none', border: 'none', cursor: 'pointer',
@@ -2890,7 +2894,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                       if (hit) {
                         setLiveFocus({ lat: hit.lat, lng: hit.lng });
                         setLiveZoom(19);
-                        setLiveMapSrc(`https://www.google.com/maps?q=${hit.lat},${hit.lng}&z=19&hl=en&output=embed`);
+                        setLiveFocus({ lat: hit.lat, lng: hit.lng });
+                        setLiveZoom(18);
                         setLiveMsgPeer(null);
                       }
                     }}
@@ -2929,38 +2934,128 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 </button>
               </div>
             </div>
-            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#dce3ea' }}>
-              {liveMapSrc ? (
-                <iframe
-                  title="google-live-map"
-                  src={liveMapSrc}
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
-                  allow="geolocation"
-                />
-              ) : (
-                <p style={{ color: '#333', textAlign: 'center', marginTop: 80 }}>Getting location…</p>
-              )}
-              <div style={{ position: 'absolute', left: 0, right: 0, top: 8, display: 'flex', gap: 8, overflowX: 'auto', padding: '0 10px', zIndex: 3 }}>
-                {livePins.filter(p => liveShareOn || p.id !== myId).map(pin => (
-                  <button key={pin.id} type="button" onClick={() => {
-                    setLiveFocus({ lat: pin.lat, lng: pin.lng });
-                    setLiveMapSrc(`https://www.google.com/maps?q=${pin.lat},${pin.lng}&z=19&hl=en&output=embed`);
-                    setLiveMsgPeer({ id: pin.id, name: pin.username || pin.name });
-                  }} style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.72)', border: 'none', borderRadius: 20, padding: '4px 8px 4px 4px', cursor: 'pointer' }}>
-                    <div style={{ width: 28, height: 28, borderRadius: '50%', overflow: 'hidden', background: '#222' }}>
-                      {pin.avatarUrl ? <img src={pin.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: '#fff', fontSize: 11 }}>{pin.name.slice(0,1)}</span>}
-                    </div>
-                    <span style={{ color: '#fff', fontSize: '0.68rem', fontWeight: 700 }}>@{pin.username || pin.name}</span>
-                  </button>
-                ))}
-              </div>
+            <div
+              style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#e6e9ee', touchAction: 'none' }}
+              onPointerDown={e => {
+                const focus = liveFocus || liveCenter || { lat: 29.3759, lng: 47.9774 };
+                const prev = liveDragRef.current;
+                const pts = { ...(prev?.pts || {}) };
+                pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+                const vals = Object.values(pts);
+                liveDragRef.current = {
+                  pts,
+                  startFocus: focus,
+                  startZoom: liveZoom,
+                  startDist: vals.length >= 2 ? Math.hypot(vals[0].x - vals[1].x, vals[0].y - vals[1].y) : 0,
+                };
+                try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* */ }
+              }}
+              onPointerMove={e => {
+                const drag = liveDragRef.current;
+                if (!drag || !drag.pts[e.pointerId]) return;
+                const old = { ...drag.pts };
+                drag.pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+                const ids = Object.keys(drag.pts).map(Number);
+                if (ids.length === 1) {
+                  const p0 = Object.values(old)[0];
+                  const p1 = Object.values(drag.pts)[0];
+                  const dx = p1.x - p0.x;
+                  const dy = p1.y - p0.y;
+                  const z = liveZoom;
+                  const n = 2 ** z;
+                  const dLng = -(dx / 256) * (360 / n);
+                  const lat = drag.startFocus.lat;
+                  const merc = Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 180 / 2));
+                  const merc2 = merc - (dy / 256) * (2 * Math.PI / n);
+                  const lat2 = (2 * Math.atan(Math.exp(merc2)) - Math.PI / 2) * 180 / Math.PI;
+                  const next = { lat: Math.max(-85, Math.min(85, lat2)), lng: drag.startFocus.lng + dLng };
+                  drag.startFocus = next;
+                  setLiveFocus(next);
+                } else if (ids.length >= 2) {
+                  const vals = Object.values(drag.pts);
+                  const dist = Math.hypot(vals[0].x - vals[1].x, vals[0].y - vals[1].y);
+                  if (drag.startDist > 8) {
+                    const ratio = dist / drag.startDist;
+                    const nz = Math.max(12, Math.min(19, drag.startZoom + Math.log2(ratio)));
+                    setLiveZoom(Math.round(nz * 10) / 10);
+                  }
+                }
+              }}
+              onPointerUp={e => {
+                const drag = liveDragRef.current;
+                if (!drag) return;
+                delete drag.pts[e.pointerId];
+                if (!Object.keys(drag.pts).length) liveDragRef.current = null;
+              }}
+              onPointerCancel={e => {
+                const drag = liveDragRef.current;
+                if (!drag) return;
+                delete drag.pts[e.pointerId];
+                if (!Object.keys(drag.pts).length) liveDragRef.current = null;
+              }}
+            >
+              {(() => {
+                const pins = livePins;
+                const center = liveFocus || liveCenter || (pins[0] ? { lat: pins[0].lat, lng: pins[0].lng } : { lat: 29.3759, lng: 47.9774 });
+                const z = Math.round(liveZoom);
+                const n = 2 ** z;
+                const lon2x = (lon: number) => ((lon + 180) / 360) * n;
+                const lat2y = (lat: number) => {
+                  const sv = Math.sin(lat * Math.PI / 180);
+                  return (1 - Math.log((1 + sv) / (1 - sv)) / (2 * Math.PI)) / 2 * n;
+                };
+                const cx = lon2x(center.lng);
+                const cy = lat2y(center.lat);
+                const tx = Math.floor(cx);
+                const ty = Math.floor(cy);
+                const tile = 256;
+                const tiles: { x: number; y: number }[] = [];
+                for (let y = ty - 3; y <= ty + 3; y++) for (let x = tx - 3; x <= tx + 3; x++) tiles.push({ x, y });
+                return (
+                  <>
+                    {tiles.map(t => {
+                      if (t.x < 0 || t.y < 0 || t.x >= n || t.y >= n) return null;
+                      return (
+                        <img
+                          key={`${z}-${t.x}-${t.y}`}
+                          alt=""
+                          draggable={false}
+                          src={`https://tile.openstreetmap.org/${z}/${t.x}/${t.y}.png`}
+                          style={{
+                            position: 'absolute',
+                            left: `calc(50% + ${(t.x - cx) * tile}px)`,
+                            top: `calc(50% + ${(t.y - cy) * tile}px)`,
+                            width: tile, height: tile, pointerEvents: 'none',
+                          }}
+                        />
+                      );
+                    })}
+                    {pins.map(pin => {
+                      const px = (lon2x(pin.lng) - cx) * tile;
+                      const py = (lat2y(pin.lat) - cy) * tile;
+                      return (
+                        <button key={pin.id} type="button" onClick={() => setLiveMsgPeer({ id: pin.id, name: pin.username || pin.name })} style={{
+                          position: 'absolute', left: `calc(50% + ${px}px)`, top: `calc(50% + ${py}px)`,
+                          transform: 'translate(-50%, -100%)', background: 'none', border: 'none', cursor: 'pointer',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, zIndex: 2,
+                        }}>
+                          <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', border: '2px solid #007AFF', background: '#111', boxShadow: '0 3px 10px rgba(0,0,0,0.28)' }}>
+                            {pin.avatarUrl ? <img src={pin.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: '#fff' }}>{pin.name.slice(0,1)}</span>}
+                          </div>
+                          <span style={{ color: '#111', fontSize: '0.62rem', fontWeight: 800, background: 'rgba(255,255,255,0.94)', padding: '1px 6px', borderRadius: 8 }}>@{pin.username || pin.name}</span>
+                        </button>
+                      );
+                    })}
+                  </>
+                );
+              })()}
               <button
                 type="button"
                 aria-label="Go to my location"
                 onClick={() => {
                   if (!liveCenter) return;
                   setLiveFocus(liveCenter);
-                  setLiveMapSrc(`https://www.google.com/maps?q=${liveCenter.lat},${liveCenter.lng}&z=19&hl=en&output=embed`);
+                  setLiveZoom(18);
                   setLiveMsgPeer(null);
                 }}
                 style={{
