@@ -1844,8 +1844,13 @@ function GlobalBottomNavigation() {
           } catch { /* */ }
         }));
       }
-    } catch { /* اتصال جزئي عبر الغرفة حتى لو فشل أغورا */ }
-    setHomeCallPhase('live'); if (homeCallNoAnswerTimer.current) { window.clearTimeout(homeCallNoAnswerTimer.current); homeCallNoAnswerTimer.current = null; };
+    } catch { /* partial room connect even if Agora fails */ }
+    if (homeCallSessionRef.current !== session) return;
+    setHomeCallPhase('live');
+    if (homeCallNoAnswerTimer.current) {
+      window.clearTimeout(homeCallNoAnswerTimer.current);
+      homeCallNoAnswerTimer.current = null;
+    }
     const poll = async () => {
       try {
         const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
@@ -2093,8 +2098,12 @@ function GlobalBottomNavigation() {
     if (invite.hostId && !members.some(m => m.id === invite.hostId)) members.push(host);
     setHomeCallChannel(channel);
     setHomeCallMembers(members);
+    const session = ++homeCallSessionRef.current;
     setHomeCallPhase('animating');
-    window.setTimeout(() => setHomeCallPhase('connecting'), 400);
+    window.setTimeout(() => {
+      if (homeCallSessionRef.current !== session) return;
+      setHomeCallPhase('connecting');
+    }, 400);
     try {
       await fetch('/api/room/join', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
@@ -2139,7 +2148,12 @@ function GlobalBottomNavigation() {
         }));
       }
     } catch { /* */ }
-    setHomeCallPhase('live'); if (homeCallNoAnswerTimer.current) { window.clearTimeout(homeCallNoAnswerTimer.current); homeCallNoAnswerTimer.current = null; };
+    if (homeCallSessionRef.current !== session) return;
+    setHomeCallPhase('live');
+    if (homeCallNoAnswerTimer.current) {
+      window.clearTimeout(homeCallNoAnswerTimer.current);
+      homeCallNoAnswerTimer.current = null;
+    }
     const poll = async () => {
       try {
         const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
