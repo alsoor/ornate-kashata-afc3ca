@@ -3151,8 +3151,12 @@ function GlobalBottomNavigation() {
               }
               return rows.map(row => (
                 <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px' }}>
-                  <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', background: '#eee', flexShrink: 0 }}>
-                    {row.peerAvatar ? <img src={row.peerAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Phone size={18} color="#888" />}
+                  <div style={{
+                    width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
+                    background: row.status === 'answered' ? '#22c55e' : (row.status === 'missed' && row.direction === 'in' ? '#ef4444' : '#9ca3af'),
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Phone size={18} color="#fff" strokeWidth={2.3} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontWeight: 800, color: row.status === 'missed' ? '#e11d48' : '#111', fontSize: 15 }}>{row.peerName || 'User'}</p>
