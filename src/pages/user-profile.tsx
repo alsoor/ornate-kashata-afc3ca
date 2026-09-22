@@ -22,9 +22,6 @@ interface PublicProfile {
   lastSeenAt: string | null;
   isPrivate: boolean;
   nameColor?: string | null;
-  followersCount?: number;
-  likesCount?: number;
-  isCompany?: boolean;
 }
 interface UserPost {
   id: number;
@@ -445,21 +442,15 @@ export default function UserProfilePage() {
               </p>
             )}
 
-            {/* Stats — company: Post / Followers / Likes ; user: Followers / Likes (skip support) */}
+            {/* Stats — skip for support identity */}
             {!isSupportProfile && (
               <div className="flex items-center gap-8 mb-4">
-                {!!profile.isCompany && (
-                  <div className="flex flex-col items-center">
-                    <span className="text-foreground font-bold text-lg">{posts.length}</span>
-                    <span className="text-muted-foreground text-xs">Posts</span>
-                  </div>
-                )}
                 <div className="flex flex-col items-center">
-                  <span className="text-foreground font-bold text-lg">{profile.followersCount ?? 0}</span>
-                  <span className="text-muted-foreground text-xs">Followers</span>
+                  <span className="text-foreground font-bold text-lg">{posts.length}</span>
+                  <span className="text-muted-foreground text-xs">Posts</span>
                 </div>
-                <div className="flex flex-col items-center" aria-label={`${profile.likesCount ?? totalLikes} total likes`}>
-                  <span className="text-foreground font-bold text-lg">{profile.likesCount ?? totalLikes}</span>
+                <div className="flex flex-col items-center" aria-label={`${totalLikes} total likes`}>
+                  <span className="text-foreground font-bold text-lg">{totalLikes}</span>
                   <span className="text-muted-foreground text-xs">Likes</span>
                 </div>
               </div>
