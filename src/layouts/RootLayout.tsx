@@ -1,7 +1,7 @@
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollRestoration, useLocation, useNavigate } from "react-router";
-import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus, Image as ImageIcon, Video, PenLine } from 'lucide-react';
+import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus, Image as ImageIcon, Video, PenLine, MoreVertical, Clock } from 'lucide-react';
 import HomepageSameAsJsonLd from '@/components/HomepageSameAsJsonLd';
 import Website from '@/layouts/Website';
 import LiveKindPicker from '@/components/LiveKindPicker';
@@ -566,6 +566,44 @@ function loadShareThread(a: string, b: string, postId: string | number = 'share'
     return Array.isArray(list) ? list : [];
   } catch { return []; }
 }
+
+const HOME_CALL_NO_ANSWER_MS = 18000;
+type CallLogEntry = {
+  id: string;
+  peerId: string;
+  peerName: string | null;
+  peerAvatar: string | null;
+  direction: 'in' | 'out';
+  status: 'missed' | 'answered';
+  at: number;
+};
+const CALL_LOG_KEY = (uid: string) => `stooorna_call_log_${uid}`;
+function loadCallLog(uid: string): CallLogEntry[] {
+  try {
+    const raw = localStorage.getItem(CALL_LOG_KEY(uid));
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+function saveCallLog(uid: string, list: CallLogEntry[]) {
+  try { localStorage.setItem(CALL_LOG_KEY(uid), JSON.stringify(list.slice(0, 200))); } catch { /* */ }
+}
+function pushCallLog(uid: string, entry: Omit<CallLogEntry, 'id'>) {
+  if (!uid || !entry.peerId) return;
+  const list = loadCallLog(uid);
+  const next: CallLogEntry = { ...entry, id: `call-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` };
+  saveCallLog(uid, [next, ...list.filter(x => !(x.peerId === entry.peerId && Math.abs(x.at - entry.at) < 4000))]);
+}
+function recordMissedCallChat(a: string, b: string, fromId: string) {
+  if (!a || !b) return;
+  pushShareThreadMsg(a, b, 'direct', { fromId, type: 'text', body: 'Missed call' });
+}
+function isFreshHomeInvite(raw: any): boolean {
+  const at = Number(raw?.at || 0);
+  if (!at) return false;
+  return Date.now() - at <= HOME_CALL_NO_ANSWER_MS;
+}
+
 function pushShareThreadMsg(a: string, b: string, postId: string | number, msg: Omit<ShareThreadMsg, 'id' | 'at'>) {
   const list = loadShareThread(a, b, postId);
   list.push({ ...msg, id: `stm-${Date.now()}`, at: Date.now() });
@@ -1348,10 +1386,16 @@ function GlobalBottomNavigation() {
   };
   type HomeCallMember = HomeCallFriend & { joined?: boolean };
   const [homeCallPickerOpen, setHomeCallPickerOpen] = useState(false);
+  const [homeCallLogOpen, setHomeCallLogOpen] = useState(false);
+  const [homeCallLogMenuOpen, setHomeCallLogMenuOpen] = useState(false);
+  const [homeCallLogTick, setHomeCallLogTick] = useState(0);
+  const homeCallNoAnswerTimer = useRef<number | null>(null);
   const [homeCallFriends, setHomeCallFriends] = useState<HomeCallFriend[]>([]);
   const [homeCallSelected, setHomeCallSelected] = useState<Record<string, boolean>>({});
   const [pendingDirectCallId, setPendingDirectCallId] = useState<string | null>(null);
   const [homeCallPhase, setHomeCallPhase] = useState<'idle' | 'animating' | 'connecting' | 'live'>('idle');
+  const homeCallPhaseRef = useRef(homeCallPhase);
+  useEffect(() => { homeCallPhaseRef.current = homeCallPhase; }, [homeCallPhase]);
   const [homeCallMembers, setHomeCallMembers] = useState<HomeCallMember[]>([]);
   const [homeCallMuted, setHomeCallMuted] = useState(false);
   const [homeCallSpeakerOn, setHomeCallSpeakerOn] = useState(true);
@@ -1461,6 +1505,13 @@ function GlobalBottomNavigation() {
     if (!user?.id) return;
     const applyInvite = (raw: any) => {
       if (!raw?.channel || raw.hostId === user.id) return;
+      if (!isFreshHomeInvite(raw)) {
+        try {
+          localStorage.removeItem(`stooorna_home_call_invite_${user.id}`);
+          localStorage.removeItem('stooorna_home_call_active_invite');
+        } catch { /* */ }
+        return;
+      }
       const ch = String(raw.channel);
       const lock = homeRingLockRef.current;
       if (lock.mode === 'answered' && (lock.channel === ch || Date.now() - lock.at < 120000)) return;
@@ -1686,6 +1737,31 @@ function GlobalBottomNavigation() {
       try { localStorage.setItem(`stooorna_home_call_invite_${peer.id}`, JSON.stringify(invitePayload)); } catch { /* */ }
     }
     window.setTimeout(() => setHomeCallPhase('connecting'), 900);
+    if (homeCallNoAnswerTimer.current) window.clearTimeout(homeCallNoAnswerTimer.current);
+    homeCallNoAnswerTimer.current = window.setTimeout(() => {
+      if (homeCallPhaseRef.current === 'live') return;
+      const myId = user?.id;
+      if (myId) {
+        for (const peer of picked) {
+          recordMissedCallChat(myId, peer.id, myId);
+          pushCallLog(myId, {
+            peerId: peer.id,
+            peerName: peer.name ?? null,
+            peerAvatar: peer.avatarUrl ?? null,
+            direction: 'out',
+            status: 'missed',
+            at: Date.now(),
+          });
+          try { localStorage.removeItem(`stooorna_home_call_invite_${peer.id}`); } catch { /* */ }
+          void fetch('/api/room/leave', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId: `home_ring_${homeCallShortHash(peer.id)}`, userId: myId }),
+          });
+        }
+        setHomeCallLogTick(x => x + 1);
+      }
+      void leaveHomeGroupCall();
+    }, HOME_CALL_NO_ANSWER_MS);
     try {
       await fetch('/api/room/join', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
@@ -1748,7 +1824,7 @@ function GlobalBottomNavigation() {
         }));
       }
     } catch { /* اتصال جزئي عبر الغرفة حتى لو فشل أغورا */ }
-    setHomeCallPhase('live');
+    setHomeCallPhase('live'); if (homeCallNoAnswerTimer.current) { window.clearTimeout(homeCallNoAnswerTimer.current); homeCallNoAnswerTimer.current = null; };
     const poll = async () => {
       try {
         const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
@@ -1899,9 +1975,31 @@ function GlobalBottomNavigation() {
     stopHomeIncomingRing();
     playHomeIncomingRing();
     homeRingTimer.current = window.setInterval(() => playHomeIncomingRing(), 2600);
+    if (homeCallNoAnswerTimer.current) window.clearTimeout(homeCallNoAnswerTimer.current);
+    homeCallNoAnswerTimer.current = window.setTimeout(() => {
+      const hostId = invite.hostId;
+      const myId = user?.id;
+      ignoreHomeIncoming();
+      if (myId && hostId) {
+        recordMissedCallChat(myId, hostId, hostId);
+        pushCallLog(myId, {
+          peerId: hostId,
+          peerName: invite.hostName ?? null,
+          peerAvatar: invite.hostAvatar ?? null,
+          direction: 'in',
+          status: 'missed',
+          at: Date.now(),
+        });
+        setHomeCallLogTick(x => x + 1);
+      }
+    }, HOME_CALL_NO_ANSWER_MS);
   }
 
   function ignoreHomeIncoming() {
+    if (homeCallNoAnswerTimer.current) {
+      window.clearTimeout(homeCallNoAnswerTimer.current);
+      homeCallNoAnswerTimer.current = null;
+    }
     stopHomeIncomingRing();
     homeRingLockRef.current = { mode: 'ignored', channel: homeIncoming?.channel || '', at: Date.now() };
     setHomeIncoming(null);
@@ -1944,6 +2042,10 @@ function GlobalBottomNavigation() {
       if (!channel || channel === invite.channel) channel = pair;
     }
     homeRingLockRef.current = { mode: 'answered', channel, at: Date.now() };
+    if (homeCallNoAnswerTimer.current) {
+      window.clearTimeout(homeCallNoAnswerTimer.current);
+      homeCallNoAnswerTimer.current = null;
+    }
     stopHomeIncomingRing();
     setHomeIncoming(null);
     try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
@@ -2016,7 +2118,7 @@ function GlobalBottomNavigation() {
         }));
       }
     } catch { /* */ }
-    setHomeCallPhase('live');
+    setHomeCallPhase('live'); if (homeCallNoAnswerTimer.current) { window.clearTimeout(homeCallNoAnswerTimer.current); homeCallNoAnswerTimer.current = null; };
     const poll = async () => {
       try {
         const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
@@ -2721,6 +2823,9 @@ function GlobalBottomNavigation() {
             marginBottom: 10, flexShrink: 0, gap: 8,
           }}>
             <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, fontSize: '0.88rem' }}>Call</p>
+            <button type="button" onClick={() => { setHomeCallLogOpen(true); setHomeCallLogMenuOpen(false); }} aria-label="Call history" style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(0,188,212,0.35)', background: 'rgba(0,188,212,0.1)', color: '#00BCD4', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Clock size={16} />
+            </button>
             <button type="button" onClick={() => setHomeCallPickerOpen(false)} style={{
               width: 28, height: 28, borderRadius: '50%', border: 'none',
               background: 'rgba(255,255,255,0.08)', color: '#00BCD4', cursor: 'pointer',
@@ -2934,6 +3039,66 @@ function GlobalBottomNavigation() {
   {userListPanel}
   {miniChatOverlay}
   {homeCallOverlay}
+
+      {homeCallLogOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10980, background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', paddingTop: 'max(12px, env(safe-area-inset-top))', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+            <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: 800, fontSize: 22 }}>Calls</p>
+            <button type="button" aria-label="Search" style={{ width: 36, height: 36, border: 'none', background: 'none', color: '#111', cursor: 'pointer' }}><Clock size={18} /></button>
+            <div style={{ position: 'relative' }}>
+              <button type="button" onClick={() => setHomeCallLogMenuOpen(o => !o)} aria-label="Call menu" style={{ width: 36, height: 36, border: 'none', background: 'none', color: '#111', cursor: 'pointer' }}>
+                <MoreVertical size={18} />
+              </button>
+              {homeCallLogMenuOpen && (
+                <div style={{ position: 'absolute', right: 0, top: 40, background: '#fff', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 180, zIndex: 2 }}>
+                  <button type="button" onClick={() => {
+                    if (user?.id) saveCallLog(user.id, []);
+                    setHomeCallLogTick(x => x + 1);
+                    setHomeCallLogMenuOpen(false);
+                  }} style={{ width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 700, color: '#111' }}>
+                    Clear History
+                  </button>
+                </div>
+              )}
+            </div>
+            <button type="button" onClick={() => { setHomeCallLogOpen(false); setHomeCallLogMenuOpen(false); }} style={{ width: 36, height: 36, border: 'none', background: 'none', color: '#111', cursor: 'pointer' }}>
+              <X size={18} />
+            </button>
+          </div>
+          <div style={{ padding: '16px 18px 8px' }}>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#f2f2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+              <Phone size={26} color="#666" />
+            </div>
+            <p style={{ margin: 0, color: '#111', fontWeight: 800, fontSize: 18 }}>Recent</p>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 20px' }}>
+            {(() => {
+              void homeCallLogTick;
+              const rows = user?.id ? loadCallLog(user.id) : [];
+              if (!rows.length) {
+                return <p style={{ color: '#888', textAlign: 'center', padding: 28 }}>No recent calls</p>;
+              }
+              return rows.map(row => (
+                <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px' }}>
+                  <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', background: '#eee', flexShrink: 0 }}>
+                    {row.peerAvatar ? <img src={row.peerAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Phone size={18} color="#888" />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontWeight: 800, color: row.status === 'missed' ? '#e11d48' : '#111', fontSize: 15 }}>{row.peerName || 'User'}</p>
+                    <p style={{ margin: 0, color: row.status === 'missed' ? '#e11d48' : '#16a34a', fontSize: 12, fontWeight: 600 }}>
+                      {row.status === 'missed' ? 'Missed call' : (row.direction === 'out' ? 'Outgoing' : 'Incoming')}
+                      {' · '}
+                      {new Date(row.at).toLocaleString()}
+                    </p>
+                  </div>
+                  <Phone size={18} color="#111" />
+                </div>
+              ));
+            })()}
+          </div>
+        </div>
+      )}
+
   <nav aria-label="Main navigation" style={{
     position: 'fixed',
     left: 0,

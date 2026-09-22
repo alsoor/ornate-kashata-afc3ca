@@ -7678,12 +7678,19 @@ function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string 
         const roomData = await roomRes.json() as { members?: GlobeVoiceMember[] };
         const members = roomData.members ?? [];
         const callerActive = members.some(m => m.userId !== myUserId);
-        if (callerActive && !incomingCallState.ringing) {
+        let inviteFresh = false;
+        try {
+          const raw = localStorage.getItem(`stooorna_home_call_invite_${myUserId}`);
+          const parsed = raw ? JSON.parse(raw) : null;
+          const at = Number(parsed?.at || 0);
+          inviteFresh = !!at && Date.now() - at <= 18000;
+        } catch { inviteFresh = false; }
+        if (callerActive && inviteFresh && !incomingCallState.ringing) {
           const label = visitor.name || visitor.username || null;
           setIncomingCallState({ ringing: true, channel, callerId: visitor.userId, callerLabel: label, isPrivate: true, ringSilenced: false });
           startGlobalIncomingRing();
-          notifyIncomingCallSystem(label || 'صديق');
-        } else if (!callerActive && incomingCallState.ringing && incomingCallState.channel === channel) {
+          notifyIncomingCallSystem(label || 'Friend');
+        } else if ((!callerActive || !inviteFresh) && incomingCallState.ringing && incomingCallState.channel === channel) {
           stopGlobalIncomingRing();
           setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
         }
@@ -18870,7 +18877,15 @@ export default function AddFriendPage() {
                           <p style={{ margin: 0, color: '#111', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{storyMsgPlainText(m)}</p>
                         </div>
                       )}
-                      {m.type === 'text' && !isStoryCommentMsg(m) && !isStoryReplyMsg(m) && <p style={{ margin: 0, color: '#111', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{m.body}</p>}
+                      {m.type === 'text' && !isStoryCommentMsg(m) && !isStoryReplyMsg(m) && (
+                        <p style={{
+                          margin: 0,
+                          color: String(m.body || '').trim().toLowerCase() === 'missed call' ? '#e11d48' : '#111',
+                          fontSize: '0.85rem',
+                          fontWeight: String(m.body || '').trim().toLowerCase() === 'missed call' ? 800 : 400,
+                          whiteSpace: 'pre-wrap',
+                        }}>{m.body}</p>
+                      )}
                       {m.type === 'voice' && <audio src={m.body} controls style={{ width: 210, height: 36 }} />}
                       {m.type === 'image' && <img src={m.body} alt="" style={{ maxWidth: 220, borderRadius: 8, display: 'block' }} />}
                       {m.type === 'video' && <video src={m.body} controls style={{ maxWidth: 220, borderRadius: 8, display: 'block' }} />}
