@@ -14211,7 +14211,7 @@ export default function AddFriendPage() {
         return <motion.div key="friend-action-menu-overlay" initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} onClick={() => setOpenActionMenu(null)} style={{
           position: 'fixed',
           inset: 0,
-          zIndex: 90,
+          zIndex: 10900,
           background: 'rgba(0,0,0,0.55)',
           backdropFilter: 'blur(3px)',
           display: 'flex',
@@ -15298,7 +15298,7 @@ export default function AddFriendPage() {
         {confirmRemoveFriend !== null && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 60,
+        zIndex: 10910,
         background: 'rgba(0,0,0,0.75)',
         backdropFilter: 'blur(8px)',
         display: 'flex',
@@ -15632,7 +15632,7 @@ export default function AddFriendPage() {
         {confirmBlockFriend !== null && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 60,
+        zIndex: 10910,
         background: 'rgba(0,0,0,0.75)',
         backdropFilter: 'blur(8px)',
         display: 'flex',
