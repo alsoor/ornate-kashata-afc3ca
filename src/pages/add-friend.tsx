@@ -16097,7 +16097,10 @@ export default function AddFriendPage() {
               initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()}
               style={{
-                width: 'min(92vw, 380px)', maxHeight: '85vh', overflow: 'hidden',
+                width: 'min(92vw, 380px)',
+                height: 'min(70vh, 560px)',
+                maxHeight: '70vh',
+                overflow: 'hidden',
                 background: 'linear-gradient(180deg, #0f1410 0%, #0a0e0c 100%)',
                 border: '2px solid #eab308', borderRadius: 18,
                 boxShadow: '0 0 0 1px rgba(234,179,8,0.2), 0 20px 50px rgba(0,0,0,0.55)',
@@ -16131,9 +16134,14 @@ export default function AddFriendPage() {
                 ))}
               </div>
               <div style={{
-                flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
-                padding: 12, minHeight: 180, maxHeight: 'min(62vh, 520px)',
-                scrollbarWidth: 'thin', scrollbarColor: 'rgba(234,179,8,0.55) transparent',
+                flex: 1,
+                minHeight: 0,
+                overflowY: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                overscrollBehavior: 'contain',
+                padding: 12,
+                scrollbarWidth: 'thin',
+                scrollbarColor: 'rgba(234,179,8,0.55) transparent',
               }}>
                 {(() => {
                   void feedAdsTick;
@@ -16142,18 +16150,12 @@ export default function AddFriendPage() {
                   try { list = loadFeedAdsMeta(); } catch { list = []; }
                   const uid = user?.id ? String(user.id) : '';
                   const mine = list.filter(a => String(a.userId) === uid);
-                  const filtered = mine.filter(a => {
-                    if (myAdsHubTab === 'video') return a.mediaType === 'video' || (!a.mediaType && !a.pdfUrl && (a.title || a.body));
-                    if (myAdsHubTab === 'photo') return a.mediaType === 'image' || (!a.mediaType && !a.pdfUrl && (a.title || a.body));
-                    return a.mediaType === 'pdf' || !!a.pdfUrl || (!a.mediaType && !a.mediaUrl && (a.title || a.body));
-                  });
-                  // Prefer media-matched first; text-only ads still appear so hub is never empty after publish
-                  const matched = mine.filter(a => {
+                  // Media-only: each tab lists ads that have the matching attachment
+                  const showList = mine.filter(a => {
                     if (myAdsHubTab === 'video') return a.mediaType === 'video';
                     if (myAdsHubTab === 'photo') return a.mediaType === 'image';
                     return a.mediaType === 'pdf' || !!a.pdfUrl;
                   });
-                  const showList = matched.length ? matched : filtered;
                   if (!showList.length) {
                     return (
                       <p style={{ margin: '24px 0', textAlign: 'center', color: 'rgba(200,190,150,0.55)', fontSize: '0.8rem' }}>
@@ -16477,12 +16479,12 @@ export default function AddFriendPage() {
               </p>
               <button
                 type="button"
-                disabled={adPublishing || (!businessAdTitle.trim() && !businessAdBody.trim() && !businessAdMedia)}
+                disabled={adPublishing || !businessAdMedia}
                 onClick={() => {
                   if (!user?.id || adPublishing) return;
+                  if (!businessAdMedia) return;
                   const title = businessAdTitle.trim();
                   const body = businessAdBody.trim();
-                  if (!title && !body && !businessAdMedia) return;
                   setAdPublishing(true);
                   setAdPublishProgress(0);
                   const steps = [12, 28, 45, 62, 78, 90, 100];
@@ -16567,8 +16569,8 @@ export default function AddFriendPage() {
                 style={{
                   position: 'relative', width: '100%', padding: 14, borderRadius: 12, border: 'none',
                   background: '#1d9bf0', color: '#fff', fontWeight: 900, fontSize: '0.92rem',
-                  cursor: adPublishing ? 'default' : 'pointer', overflow: 'hidden',
-                  opacity: (!businessAdTitle.trim() && !businessAdBody.trim() && !businessAdMedia) ? 0.55 : 1,
+                  cursor: (adPublishing || !businessAdMedia) ? 'default' : 'pointer', overflow: 'hidden',
+                  opacity: (adPublishing || !businessAdMedia) ? 0.45 : 1,
                 }}
               >
                 <span
