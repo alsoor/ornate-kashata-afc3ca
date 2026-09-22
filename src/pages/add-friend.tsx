@@ -2500,6 +2500,17 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.08em',
           }}>{captureKind === 'video' ? 'VIDEO' : 'PHOTO'}</span>
         </div>
+        {isRecording && (
+          <div style={{
+            position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 42px)', left: 0, right: 0,
+            display: 'flex', justifyContent: 'center', zIndex: 7, pointerEvents: 'none',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.55)', borderRadius: 20, padding: '4px 10px' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444' }} />
+              <span style={{ color: '#fff', fontSize: '0.74rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{mm}:{ss}</span>
+            </div>
+          </div>
+        )}
 
         {/* ── شريط علوي مضغوط ليتناسب مع الأزرار ── */}
         <div
@@ -2532,17 +2543,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             </motion.button>
           </div>
 
-          {isRecording ? (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.5)',
-              borderRadius: 20, padding: '4px 10px',
-            }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444' }} />
-              <span style={{ color: '#fff', fontSize: '0.74rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{mm}:{ss}</span>
-            </div>
-          ) : (
-            <div style={{ width: 36 }} />
-          )}
+          <div style={{ width: 36 }} />
 
 <div style={{ width: 32 }} />
         </div>
