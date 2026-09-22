@@ -1702,6 +1702,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   });
   const [liveSearch, setLiveSearch] = useState('');
   const [livePlace, setLivePlace] = useState('');
+  const [liveZoom, setLiveZoom] = useState(16);
+  const [liveFocus, setLiveFocus] = useState<{ lat: number; lng: number } | null>(null);
   const [respondingId, setRespondingId] = useState<number | null>(null);
   // بحث يوزرات داخل بكس طلبات الإضافة (بدون تغيير شكل البكس)
   const [camSearchQuery, setCamSearchQuery] = useState('');
@@ -2858,8 +2860,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 
 
         {liveMapOpen && (
-          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', inset: 0, zIndex: 20, background: '#061018', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '10px 12px 8px', paddingTop: 'max(10px, env(safe-area-inset-top))' }}>
+          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', inset: 0, zIndex: 20, background: '#E8EEF3', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '10px 12px 8px', paddingTop: 'max(10px, env(safe-area-inset-top))', background: '#061018' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.9rem', flex: 1 }}>GPS Live</span>
                 <button type="button" onClick={() => { setLiveMapOpen(false); setLiveMsgPeer(null); }} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>X</button>
@@ -2870,6 +2872,16 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                   <input
                     value={liveSearch}
                     onChange={e => setLiveSearch(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key !== 'Enter') return;
+                      const q = liveSearch.trim().toLowerCase().replace(/^@/, '');
+                      const hit = livePins.find(p => p.username.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
+                      if (hit) {
+                        setLiveFocus({ lat: hit.lat, lng: hit.lng });
+                        setLiveZoom(18);
+                        setLiveMsgPeer(null);
+                      }
+                    }}
                     placeholder="Search username"
                     style={{
                       width: '100%', boxSizing: 'border-box', height: 36, borderRadius: 18,
@@ -2906,56 +2918,87 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 </button>
               </div>
             </div>
-            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', margin: '0 10px 10px', borderRadius: 16, background: '#132033' }}>
+            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#D5DEE6' }}>
               {(() => {
-                const q = liveSearch.trim().toLowerCase().replace(/^@/, '');
-                const all = livePins.filter(p => liveShareOn || p.id !== myId);
-                const pins = (all.length ? all : []).filter(p => !q || p.username.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || p.id === myId);
-                const focus = q ? pins.find(p => p.username.toLowerCase() === q || p.username.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)) : null;
-                const center = focus ? { lat: focus.lat, lng: focus.lng } : (liveCenter || (pins[0] ? { lat: pins[0].lat, lng: pins[0].lng } : { lat: 29.3759, lng: 47.9774 }));
-                const delta = 0.06;
-                const bbox = `${center.lng - delta}%2C${center.lat - delta}%2C${center.lng + delta}%2C${center.lat + delta}`;
-                const toXY = (lat: number, lng: number) => ({
-                  left: `${Math.max(6, Math.min(94, ((lng - (center.lng - delta)) / (delta * 2)) * 100))}%`,
-                  top: `${Math.max(6, Math.min(94, ((center.lat + delta - lat) / (delta * 2)) * 100))}%`,
-                });
+                const pins = livePins.filter(p => liveShareOn || p.id !== myId);
+                const center = liveFocus || liveCenter || (pins[0] ? { lat: pins[0].lat, lng: pins[0].lng } : { lat: 29.3759, lng: 47.9774 });
+                const z = liveZoom;
+                const n = 2 ** z;
+                const lon2x = (lon: number) => ((lon + 180) / 360) * n;
+                const lat2y = (lat: number) => {
+                  const s = Math.sin(lat * Math.PI / 180);
+                  return (1 - Math.log((1 + s) / (1 - s)) / (2 * Math.PI)) / 2 * n;
+                };
+                const cx = lon2x(center.lng);
+                const cy = lat2y(center.lat);
+                const tx = Math.floor(cx);
+                const ty = Math.floor(cy);
+                const tile = 256;
+                const tiles: { x: number; y: number }[] = [];
+                for (let y = ty - 2; y <= ty + 2; y++) {
+                  for (let x = tx - 2; x <= tx + 2; x++) tiles.push({ x, y });
+                }
                 return (
                   <>
-                    <iframe
-                      title="live-map"
-                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${center.lat}%2C${center.lng}`}
-                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}
-                    />
+                    <div style={{ position: 'absolute', inset: 0 }}>
+                      {tiles.map(t => {
+                        if (t.x < 0 || t.y < 0 || t.x >= n || t.y >= n) return null;
+                        const left = (t.x - cx) * tile + 50 * (typeof window !== 'undefined' ? window.innerWidth / 100 : 2);
+                        const top = (t.y - cy) * tile + 50 * (typeof window !== 'undefined' ? window.innerHeight / 120 : 2);
+                        return (
+                          <img
+                            key={`${z}-${t.x}-${t.y}`}
+                            alt=""
+                            draggable={false}
+                            src={`https://basemaps.cartocdn.com/rastertiles/voyager/${z}/${t.x}/${t.y}.png`}
+                            style={{ position: 'absolute', left: `calc(50% + ${(t.x - cx) * tile}px)`, top: `calc(50% + ${(t.y - cy) * tile}px)`, width: tile, height: tile, pointerEvents: 'none' }}
+                          />
+                        );
+                      })}
+                    </div>
                     {pins.map(pin => {
-                      const xy = toXY(pin.lat, pin.lng);
+                      const px = (lon2x(pin.lng) - cx) * tile;
+                      const py = (lat2y(pin.lat) - cy) * tile;
                       return (
-                        <button key={pin.id} type="button" onClick={() => { setLiveCenter({ lat: pin.lat, lng: pin.lng }); setLiveMsgPeer({ id: pin.id, name: pin.username || pin.name }); }} style={{
-                          position: 'absolute', left: xy.left, top: xy.top, transform: 'translate(-50%, -100%)',
-                          background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, zIndex: 2,
+                        <button key={pin.id} type="button" onClick={() => setLiveMsgPeer({ id: pin.id, name: pin.username || pin.name })} style={{
+                          position: 'absolute', left: `calc(50% + ${px}px)`, top: `calc(50% + ${py}px)`,
+                          transform: 'translate(-50%, -100%)', background: 'none', border: 'none', cursor: 'pointer',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, zIndex: 2,
                         }}>
-                          <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: '2px solid #22d3ee', background: '#111' }}>
+                          <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: '2px solid #007AFF', background: '#111', boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
                             {pin.avatarUrl ? <img src={pin.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: '#fff', fontSize: '0.7rem' }}>{pin.name.slice(0,1)}</span>}
                           </div>
-                          <span style={{ color: '#fff', fontSize: '0.62rem', fontWeight: 700, background: 'rgba(0,0,0,0.55)', padding: '1px 6px', borderRadius: 8 }}>@{pin.username || pin.name}</span>
+                          <span style={{ color: '#111', fontSize: '0.62rem', fontWeight: 700, background: 'rgba(255,255,255,0.92)', padding: '1px 6px', borderRadius: 8 }}>@{pin.username || pin.name}</span>
                         </button>
                       );
                     })}
-                    <button type="button" onClick={() => { if (liveCenter) setLiveSearch(''); }}
-                      style={{ position: 'absolute', right: 10, bottom: liveMsgPeer ? 118 : 14, zIndex: 3, border: 'none', borderRadius: 20, padding: '8px 12px', background: '#00BCD4', color: '#041018', fontWeight: 800, cursor: 'pointer' }}>
-                      My location
+                    <button
+                      type="button"
+                      aria-label="Go to my location"
+                      onClick={() => {
+                        if (liveCenter) {
+                          setLiveFocus(liveCenter);
+                          setLiveZoom(18);
+                          setLiveSearch('');
+                          setLiveMsgPeer(null);
+                        }
+                      }}
+                      style={{
+                        position: 'absolute', right: 14, bottom: liveMsgPeer ? 126 : 18, zIndex: 3,
+                        width: 44, height: 44, borderRadius: '50%', border: 'none',
+                        background: '#fff', boxShadow: '0 2px 10px rgba(0,0,0,0.18)', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#007AFF', boxShadow: '0 0 0 4px rgba(0,122,255,0.25)' }} />
                     </button>
-                    {livePlace && (
-                      <div style={{ position: 'absolute', left: 10, top: 10, zIndex: 3, background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 10, padding: '6px 10px', fontSize: '0.72rem', fontWeight: 700 }}>
-                        {livePlace}
-                      </div>
-                    )}
                   </>
                 );
               })()}
               {liveMsgPeer && (
-                <div style={{ position: 'absolute', left: 12, right: 12, bottom: 12, background: 'rgba(8,14,22,0.96)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: 12, zIndex: 4 }}>
-                  <p style={{ margin: '0 0 8px', color: '#fff', fontWeight: 700, fontSize: '0.82rem' }}>Message @{liveMsgPeer.name}</p>
-                  <input value={liveMsgText} onChange={e => setLiveMsgText(e.target.value)} placeholder="Write a message" style={{ width: '100%', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: '#0f1722', color: '#fff', padding: '8px 10px', marginBottom: 8 }} />
+                <div style={{ position: 'absolute', left: 12, right: 12, bottom: 12, background: 'rgba(255,255,255,0.97)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 14, padding: 12, zIndex: 4 }}>
+                  <p style={{ margin: '0 0 8px', color: '#111', fontWeight: 700, fontSize: '0.82rem' }}>Message @{liveMsgPeer.name}</p>
+                  <input value={liveMsgText} onChange={e => setLiveMsgText(e.target.value)} placeholder="Write a message" style={{ width: '100%', borderRadius: 10, border: '1px solid rgba(0,0,0,0.12)', background: '#f4f4f4', color: '#111', padding: '8px 10px', marginBottom: 8 }} />
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button type="button" onClick={() => setLiveMsgPeer(null)} style={{ flex: 1, borderRadius: 10, border: 'none', padding: 8, cursor: 'pointer' }}>Cancel</button>
                     <button type="button" onClick={() => {
@@ -2963,7 +3006,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                       onSendLiveChat?.(liveMsgPeer.id, liveMsgText.trim());
                       setLiveMsgText('');
                       setLiveMsgPeer(null);
-                    }} style={{ flex: 1, borderRadius: 10, border: 'none', background: '#22d3ee', fontWeight: 800, padding: 8, cursor: 'pointer' }}>Send</button>
+                    }} style={{ flex: 1, borderRadius: 10, border: 'none', background: '#007AFF', color: '#fff', fontWeight: 800, padding: 8, cursor: 'pointer' }}>Send</button>
                   </div>
                 </div>
               )}
