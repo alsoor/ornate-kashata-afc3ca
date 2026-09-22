@@ -17996,16 +17996,23 @@ export default function AddFriendPage() {
                     onClick={(e) => {
                       e.stopPropagation();
                       setTextPostsPlusOpen(false);
-                      setViewingProfile({
-                        id: String(user.id),
-                        name: (user as any).name ?? null,
-                        username: (user as any).username ?? null,
-                        avatarUrl: (user as any).avatarUrl || (user as any).image || null,
-                        isCompany: isCompanyPublisher,
-                        sheetMode: true,
-                      });
+                      // Reveal the home story page (stories + video/photo posts), not visitor profile
+                      setViewingProfile(null);
+                      setTextPostsMenuOpen(false);
+                      setTextPostsPageOpen(false);
+                      try {
+                        window.dispatchEvent(new CustomEvent('stooorna:text-posts-state', { detail: { open: false } }));
+                        document.body.classList.remove('stooorna-text-posts-open');
+                      } catch { /* */ }
+                      try {
+                        const u = new URL(window.location.href);
+                        if (u.searchParams.get('openTextPosts') === '1') {
+                          u.searchParams.delete('openTextPosts');
+                          window.history.replaceState({}, '', u.pathname + (u.searchParams.toString() ? '?' + u.searchParams.toString() : '') + u.hash);
+                        }
+                      } catch { /* */ }
                     }}
-                    aria-label="Open profile"
+                    aria-label="Open story page"
                     style={{
                       position: 'absolute',
                       left: 12,
@@ -18107,13 +18114,17 @@ export default function AddFriendPage() {
                         flexDirection: 'column',
                         alignItems: 'center',
                         gap: 10,
-                        zIndex: 10220,
+                        zIndex: 10620,
                         animation: 'stooornaPlusFanIn 0.28s ease-out',
                       }}>
                         <button
                           type="button"
                           onClick={() => {
                             setTextPostsPlusOpen(false);
+                            // Open settings sheet on top of public posts (do not close text posts)
+                            try {
+                              window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts'));
+                            } catch { /* */ }
                             navigate('/settings');
                           }}
                           aria-label="Settings"
@@ -18134,13 +18145,15 @@ export default function AddFriendPage() {
                             type="button"
                             onClick={() => {
                               setTextPostsPlusOpen(false);
+                              // Open friends panel over public posts (keep text posts open)
+                              setFriendsPanelTab('friends');
+                              setNamesBarOpen(true);
                               try {
+                                window.dispatchEvent(new CustomEvent('stooorna:friends-panel-opened'));
                                 window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', {
-                                  detail: { tab: 'friends' },
+                                  detail: { tab: 'friends', overPosts: true },
                                 }));
                               } catch { /* */ }
-                              setTextPostsMenuOpen(false);
-                              setTextPostsPageOpen(false);
                             }}
                             aria-label="Friends"
                             style={{
@@ -18161,14 +18174,37 @@ export default function AddFriendPage() {
                             type="button"
                             onClick={() => {
                               setTextPostsPlusOpen(false);
-                              const hostId = String(user.id);
-                              const qs = new URLSearchParams({
-                                hostId,
-                                hostName: String((user as any).name || (user as any).username || 'Host'),
-                                hostUsername: String((user as any).username || ''),
-                                hostAvatar: String((user as any).avatarUrl || (user as any).image || ''),
-                              }).toString();
-                              navigate(`/live?${qs}`);
+                              // Open call picker over public posts
+                              try {
+                                window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
+                                  detail: { overPosts: true },
+                                }));
+                              } catch { /* */ }
+                            }}
+                            aria-label="Call"
+                            style={{
+                              width: 44, height: 44, borderRadius: '50%',
+                              border: '1px solid rgba(0,188,212,0.4)',
+                              background: 'rgba(6,20,22,0.96)',
+                              color: '#00BCD4',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                            }}
+                          >
+                            <Phone size={20} strokeWidth={2.2} />
+                          </button>
+                        )}
+                        {user && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTextPostsPlusOpen(false);
+                              try {
+                                window.dispatchEvent(new CustomEvent('stooorna:open-live-kind', {
+                                  detail: { overPosts: true },
+                                }));
+                              } catch { /* */ }
                             }}
                             aria-label="Live broadcast"
                             style={{
@@ -19331,7 +19367,9 @@ export default function AddFriendPage() {
               if (next.has('openFriendsPanel')) { next.delete('openFriendsPanel'); setSearchParams(next, { replace: true }); }
             }}
             style={{
-              position: 'fixed', inset: 0, zIndex: 10080,
+              position: 'fixed', inset: 0,
+              // Above public posts page (10300) when opened from its plus menu
+              zIndex: textPostsPageOpen ? 10650 : 10080,
               background: 'rgba(0,0,0,0.45)',
               display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
               padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
