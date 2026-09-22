@@ -13290,12 +13290,13 @@ export default function AddFriendPage() {
               aria-label="Story comments"
               style={{
                 position: 'absolute',
-                top: 'max(env(safe-area-inset-top,0px), 58px)',
+                top: 'max(env(safe-area-inset-top,0px), 50px)',
                 right: 20,
                 zIndex: 25,
                 width: 28, height: 28, borderRadius: '50%',
-                background: storyCommentThreads.filter(t => !t.read).length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.12)',
-                border: `2px solid ${CLR_PRIMARY_BORDER}`,
+                background: storyCommentThreads.filter(t => !t.read).length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.2)',
+                border: `2px solid ${CLR_PRIMARY}`,
+                boxShadow: '0 0 10px rgba(0,188,212,0.45)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
                 opacity: headerOpen ? 1 : 0,
                 pointerEvents: headerOpen ? 'auto' : 'none',
