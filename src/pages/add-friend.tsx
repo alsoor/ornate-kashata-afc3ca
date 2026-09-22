@@ -7354,6 +7354,32 @@ function subscribeIncomingCall(listener: () => void) {
   return () => { incomingCallListeners.delete(listener); };
 }
 
+// ── Message-alert state ("bell chat" unread) ────────────────────────────────
+// Same store pattern as IncomingCallState above, but flags an unread direct
+// message instead of a live call. Populated by <GlobalMessageAlertWatcher/>
+// (mounted once at the page root, see AddFriendPage's return), which listens
+// for the 'stooorna:share-thread' event that saveShareThread already dispatches
+// whenever a direct-chat thread changes — no extra backend call needed.
+type MessageAlertState = {
+  active: boolean;
+  fromId: string | null;
+};
+let messageAlertState: MessageAlertState = { active: false, fromId: null };
+const messageAlertListeners = new Set<() => void>();
+function getMessageAlertSnapshot(): MessageAlertState { return messageAlertState; }
+function setMessageAlertState(patch: Partial<MessageAlertState>) {
+  messageAlertState = { ...messageAlertState, ...patch };
+  messageAlertListeners.forEach(listener => listener());
+}
+function subscribeMessageAlert(listener: () => void) {
+  messageAlertListeners.add(listener);
+  return () => { messageAlertListeners.delete(listener); };
+}
+// Clears the alert once the user actually opens the chat it came from.
+function clearMessageAlertFor(peerId: string) {
+  if (messageAlertState.fromId === peerId) setMessageAlertState({ active: false, fromId: null });
+}
+
 // حلقة رنين مستقلة على مستوى الموديول (منفصلة عن ringIntervalRef اللي جوه GlobeVoiceControl،
 // لأن ذاك يشتغل بس إذا كان في instance من GlobeVoiceControl متركّب بالشاشة). هذي تشتغل طول
 // ما الصفحة مفتوحة، بغض النظر عن أي تبويب/شاشة داخلية أنت فيها.
@@ -7463,51 +7489,82 @@ async function answerIncomingCallGlobally(myUserId: string, myUserName: string |
 function GlobalIncomingCallBanner({ myUserId, myUserName }: { myUserId: string | null; myUserName: string | null }) {
   const incoming = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
   const activeState = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
-  if (!incoming.ringing || activeState.joined || !myUserId) return null;
+  const visible = incoming.ringing && !activeState.joined && !!myUserId;
   return (
-    <div style={{
-      position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 8px)', left: '50%', transform: 'translateX(-50%)',
-      zIndex: 10500, display: 'flex', alignItems: 'center', gap: 10,
-      background: 'rgba(10,26,26,0.94)', border: '1px solid rgba(34,197,94,0.55)',
-      borderRadius: 999, padding: '6px 8px 6px 12px', boxShadow: '0 4px 18px rgba(34,197,94,0.25)',
-      backdropFilter: 'blur(6px)',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 16 }} aria-hidden="true">
-        {[0, 1, 2, 3, 4].map(i => (
-          <span key={i} style={{
-            width: 3, height: '100%', borderRadius: 2, background: '#22c55e',
-            transformOrigin: 'center',
-            animation: `globeVoiceWave 0.6s ease-in-out ${i * 0.09}s infinite alternate`,
+    <AnimatePresence>
+      {visible && (
+        // Rises up into view from below the screen edge (rather than just fading in),
+        // so it reads as the call surfacing to meet the answer icon, not just appearing.
+        <motion.div
+          key="incoming-call-banner"
+          initial={{ opacity: 0, x: '-50%', y: 56, scale: 0.9 }}
+          animate={{ opacity: 1, x: '-50%', y: 0, scale: 1 }}
+          exit={{ opacity: 0, x: '-50%', y: 40, scale: 0.92 }}
+          transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+          style={{
+            position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 8px)', left: '50%',
+            zIndex: 10500, padding: 2, borderRadius: 999,
+          }}
+        >
+          <style>{`
+            @keyframes incomingCallBorderSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+            @keyframes incomingCallAnswerPulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34,197,94,0.55); } 50% { transform: scale(1.14); box-shadow: 0 0 0 9px rgba(34,197,94,0); } }
+            @keyframes incomingCallAnswerShake { 0%, 100% { transform: rotate(0deg); } 20% { transform: rotate(-16deg); } 40% { transform: rotate(14deg); } 60% { transform: rotate(-9deg); } 80% { transform: rotate(7deg); } }
+          `}</style>
+          {/* Red light chasing around the frame — the visual cue that this box is an
+              incoming call, separate from the steady green "already in a call" banner. */}
+          <div aria-hidden="true" style={{
+            position: 'absolute', inset: 0, borderRadius: 999,
+            background: 'conic-gradient(from 0deg, transparent 0%, #ef4444 12%, transparent 30%)',
+            animation: 'incomingCallBorderSpin 1.6s linear infinite',
           }} />
-        ))}
-      </div>
-      <span style={{ color: '#fff', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-        {incoming.callerLabel || 'مكالمة واردة'}
-      </span>
-      <button
-        onClick={() => { void answerIncomingCallGlobally(myUserId, myUserName); }}
-        aria-label="رد"
-        title="رد"
-        style={{
-          width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
-          background: '#22c55e', color: '#06171a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}
-      >
-        <Phone size={13} strokeWidth={2.6} />
-      </button>
-      <button
-        onClick={() => setIncomingCallState({ ringSilenced: !incoming.ringSilenced })}
-        aria-label={incoming.ringSilenced ? 'إلغاء الميوت' : 'ميوت الرنة'}
-        title={incoming.ringSilenced ? 'إلغاء الميوت' : 'ميوت الرنة'}
-        style={{
-          width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
-          background: incoming.ringSilenced ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.1)',
-          color: incoming.ringSilenced ? '#22c55e' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}
-      >
-        {incoming.ringSilenced ? <MicOff size={13} strokeWidth={2.3} /> : <Mic size={13} strokeWidth={2.3} />}
-      </button>
-    </div>
+          <div style={{
+            position: 'relative', display: 'flex', alignItems: 'center', gap: 10,
+            background: 'rgba(10,26,26,0.96)', borderRadius: 999, padding: '6px 8px 6px 12px',
+            boxShadow: '0 4px 18px rgba(239,68,68,0.3)', backdropFilter: 'blur(6px)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 16 }} aria-hidden="true">
+              {[0, 1, 2, 3, 4].map(i => (
+                <span key={i} style={{
+                  width: 3, height: '100%', borderRadius: 2, background: '#22c55e',
+                  transformOrigin: 'center',
+                  animation: `globeVoiceWave 0.6s ease-in-out ${i * 0.09}s infinite alternate`,
+                }} />
+              ))}
+            </div>
+            <span style={{ color: '#fff', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+              {incoming.callerLabel || 'مكالمة واردة'}
+            </span>
+            <button
+              onClick={() => { void answerIncomingCallGlobally(myUserId as string, myUserName); }}
+              aria-label="رد"
+              title="رد"
+              style={{
+                width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
+                background: '#22c55e', color: '#06171a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                animation: 'incomingCallAnswerPulse 1.1s ease-in-out infinite',
+              }}
+            >
+              <span style={{ display: 'flex', animation: 'incomingCallAnswerShake 1.1s ease-in-out infinite' }}>
+                <Phone size={13} strokeWidth={2.6} />
+              </span>
+            </button>
+            <button
+              onClick={() => setIncomingCallState({ ringSilenced: !incoming.ringSilenced })}
+              aria-label={incoming.ringSilenced ? 'إلغاء الميوت' : 'ميوت الرنة'}
+              title={incoming.ringSilenced ? 'إلغاء الميوت' : 'ميوت الرنة'}
+              style={{
+                width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
+                background: incoming.ringSilenced ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.1)',
+                color: incoming.ringSilenced ? '#22c55e' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}
+            >
+              {incoming.ringSilenced ? <MicOff size={13} strokeWidth={2.3} /> : <Mic size={13} strokeWidth={2.3} />}
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -7555,6 +7612,33 @@ function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string 
     void poll();
     const interval = window.setInterval(() => { void poll(); }, 3000);
     return () => { cancelled = true; window.clearInterval(interval); };
+  }, [myUserId]);
+  return null;
+}
+
+// Watches every direct-chat thread this user is part of for a message that just
+// arrived from the other side (not one I sent myself), and flags it in
+// messageAlertState so the bell + the matching friend-chat row can react to it
+// without the friend-chat screen needing to be open. Invisible, mounted once at
+// the page root next to GlobalIncomingCallWatcher, same lightweight pattern.
+function GlobalMessageAlertWatcher({ myUserId }: { myUserId: string | null }) {
+  useEffect(() => {
+    if (!myUserId) return;
+    const onThreadChange = (e: Event) => {
+      const detail = (e as CustomEvent<{ a: string; b: string; postId: string | number }>).detail;
+      if (!detail) return;
+      const { a, b, postId } = detail;
+      if (a !== myUserId && b !== myUserId) return; // not one of my threads
+      const peerId = a === myUserId ? b : a;
+      const thread = loadShareThread(a, b, postId);
+      const last = thread[thread.length - 1];
+      if (!last || last.fromId === myUserId) return; // that was my own message, not incoming
+      if (Date.now() - last.at > 8000) return; // stale/old event, not a fresh arrival
+      setMessageAlertState({ active: true, fromId: peerId });
+      try { navigator.vibrate?.([120, 80, 120]); } catch {}
+    };
+    window.addEventListener('stooorna:share-thread', onThreadChange);
+    return () => window.removeEventListener('stooorna:share-thread', onThreadChange);
   }, [myUserId]);
   return null;
 }
@@ -9872,6 +9956,21 @@ export default function AddFriendPage() {
   const [sharedCommentSending, setSharedCommentSending] = useState(false);
   const knownShareIdsRef = useRef<Set<number> | null>(null);
 
+  // ── Bell alert state — an incoming call or an unread direct message, both of which
+  //    should light the bell up red and shake it, on top of the story-comment badge
+  //    it already carries below. ──
+  const bellIncomingCall = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
+  const bellMessageAlert = useSyncExternalStore(subscribeMessageAlert, getMessageAlertSnapshot, getMessageAlertSnapshot);
+  const bellRinging = bellIncomingCall.ringing;
+  const bellHasAlert = bellRinging || bellMessageAlert.active;
+  const bellWasAlertRef = useRef(false);
+  useEffect(() => {
+    if (bellHasAlert && !bellWasAlertRef.current) {
+      try { navigator.vibrate?.([150, 90, 150]); } catch {}
+    }
+    bellWasAlertRef.current = bellHasAlert;
+  }, [bellHasAlert]);
+
   // ── Story-comment inbox — comments friends left on my stories (section 2 of the FEED-row box) ──
   const [storyCommentThreads, setStoryCommentThreads] = useState<StoryCommentThread[]>([]);
   const [storyCommentThreadsLoading, setStoryCommentThreadsLoading] = useState(false);
@@ -12063,6 +12162,7 @@ export default function AddFriendPage() {
     setFriendChatShowAttach(false);
     setFriendChatPendingVoice(null);
     setFriendChatRecordSecs(0);
+    clearMessageAlertFor(friend.friendId); // reading the chat clears its red-border alert
   }
   async function friendChatStartRecording() {
     // Ignore a second tap while a start is already in flight, and never start
@@ -13422,6 +13522,7 @@ export default function AddFriendPage() {
       <GlobalCallBanner />
       <GlobalIncomingCallBanner myUserId={user?.id ?? null} myUserName={user?.name ?? user?.email ?? null} />
       <GlobalIncomingCallWatcher myUserId={user?.id ?? null} myUserName={user?.name ?? user?.email ?? null} />
+      <GlobalMessageAlertWatcher myUserId={user?.id ?? null} />
       <Helmet>
         <title>Chat | Stooorna</title>
         <meta name="description" content="Find friends, send requests, and manage your contacts on Stooorna — the real-time voice and whisper app." />
@@ -13462,26 +13563,37 @@ export default function AddFriendPage() {
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={() => setFriendChatListOpen(true)}
-              aria-label="Story comments"
+              aria-label={bellHasAlert ? (bellRinging ? 'Incoming call' : 'New message') : 'Story comments'}
               style={{
                 position: 'absolute',
                 top: 'max(env(safe-area-inset-top,0px), 50px)',
                 right: 20,
                 zIndex: 25,
                 width: 28, height: 28, borderRadius: '50%',
-                background: storyCommentThreads.filter(t => !t.read).length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.2)',
-                border: `2px solid ${CLR_PRIMARY}`,
-                boxShadow: '0 0 10px rgba(0,188,212,0.45)',
+                background: bellHasAlert || storyCommentThreads.filter(t => !t.read).length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.2)',
+                border: `2px solid ${bellHasAlert ? '#ef4444' : CLR_PRIMARY}`,
+                boxShadow: bellHasAlert ? '0 0 12px rgba(239,68,68,0.6)' : '0 0 10px rgba(0,188,212,0.45)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
                 opacity: headerOpen ? 1 : 0,
                 pointerEvents: headerOpen ? 'auto' : 'none',
                 transition: headerOpen
                   ? 'opacity 240ms ease-out 200ms'
                   : 'opacity 140ms ease-in',
+                animation: bellHasAlert ? 'stooornaBellShake 0.9s ease-in-out infinite' : 'none',
               }}
             >
-              <Bell size={14} color={CLR_PRIMARY} strokeWidth={2.2} />
-              {storyCommentThreads.filter(t => !t.read).length > 0 && (
+              <style>{`
+                @keyframes stooornaBellShake {
+                  0%, 100% { transform: rotate(0deg); }
+                  15% { transform: rotate(-16deg); }
+                  30% { transform: rotate(13deg); }
+                  45% { transform: rotate(-9deg); }
+                  60% { transform: rotate(7deg); }
+                  75% { transform: rotate(-4deg); }
+                }
+              `}</style>
+              <Bell size={14} color={bellHasAlert ? '#ef4444' : CLR_PRIMARY} strokeWidth={2.2} />
+              {(bellHasAlert || storyCommentThreads.filter(t => !t.read).length > 0) && (
                 <span style={{
                   position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, borderRadius: 8,
                   background: '#ef4444',
@@ -13490,7 +13602,11 @@ export default function AddFriendPage() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
                   border: '1.5px solid #000',
                 }}>
-                  {storyCommentThreads.filter(t => !t.read).length > 9 ? '9+' : storyCommentThreads.filter(t => !t.read).length}
+                  {bellRinging
+                    ? '•'
+                    : (storyCommentThreads.filter(t => !t.read).length + (bellMessageAlert.active ? 1 : 0)) > 9
+                      ? '9+'
+                      : storyCommentThreads.filter(t => !t.read).length + (bellMessageAlert.active ? 1 : 0)}
                 </span>
               )}
             </motion.button>
@@ -17949,37 +18065,63 @@ export default function AddFriendPage() {
               <p style={{ margin: 0, color: '#111', fontWeight: 800, fontSize: '1rem', flex: 1 }}>Chats</p>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {friends.length ? friends.map(friend => (
-                <div key={friend.friendId} style={{
-                  position: 'relative', display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 12px', borderRadius: 14,
-                  background: '#f5f6f7', border: '1px solid rgba(0,0,0,0.06)',
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => openFriendChat(friend)}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'start', minWidth: 0 }}
-                  >
-                    <UserAvatar name={friend.name ?? friend.username ?? 'User'} avatarUrl={friend.avatarUrl} size={44} />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <p style={{ margin: 0, color: '#111', fontWeight: 700, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {friend.name ?? friend.username ?? 'User'}
-                      </p>
-                      {friend.username && (
-                        <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.75rem' }}>@{friend.username}</p>
-                      )}
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Options"
-                    onClick={() => setOpenActionMenu(friend.id)}
-                    style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent', color: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
-                  >
-                    <MoreVertical size={18} />
-                  </button>
+              {friends.length ? friends.map(friend => {
+                // Row-level alert: this friend is calling right now, or left an
+                // unread direct message — either way the row gets a red light
+                // running around its frame the moment the list is opened.
+                const rowRinging = bellRinging && bellIncomingCall.callerId === friend.friendId;
+                const rowUnreadMsg = bellMessageAlert.active && bellMessageAlert.fromId === friend.friendId;
+                const rowAlert = rowRinging || rowUnreadMsg;
+                return (
+                <div key={friend.friendId} style={{ position: 'relative', borderRadius: 14, padding: rowAlert ? 2 : 0 }}>
+                  {rowAlert && (
+                    <>
+                      <style>{`@keyframes stooornaChatRowBorderSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                      {/* Red light running around the row's frame — same rotating-conic-gradient
+                          trick used by the incoming-call banner, scoped to just this row. */}
+                      <div aria-hidden="true" style={{
+                        position: 'absolute', inset: 0, borderRadius: 14,
+                        background: 'conic-gradient(from 0deg, transparent 0%, #ef4444 14%, transparent 32%)',
+                        animation: 'stooornaChatRowBorderSpin 1.5s linear infinite',
+                      }} />
+                    </>
+                  )}
+                  <div style={{
+                    position: 'relative', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 12px', borderRadius: 12,
+                    background: '#f5f6f7', border: rowAlert ? 'none' : '1px solid rgba(0,0,0,0.06)',
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => openFriendChat(friend)}
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'start', minWidth: 0 }}
+                    >
+                      <UserAvatar name={friend.name ?? friend.username ?? 'User'} avatarUrl={friend.avatarUrl} size={44} />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <p style={{ margin: 0, color: '#111', fontWeight: 700, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {friend.name ?? friend.username ?? 'User'}
+                        </p>
+                        {rowRinging ? (
+                          <p style={{ margin: 0, color: '#ef4444', fontSize: '0.75rem', fontWeight: 700 }}>Calling…</p>
+                        ) : rowUnreadMsg ? (
+                          <p style={{ margin: 0, color: '#ef4444', fontSize: '0.75rem', fontWeight: 700 }}>New message</p>
+                        ) : friend.username ? (
+                          <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.75rem' }}>@{friend.username}</p>
+                        ) : null}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Options"
+                      onClick={() => setOpenActionMenu(friend.id)}
+                      style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent', color: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                    >
+                      <MoreVertical size={18} />
+                    </button>
+                  </div>
                 </div>
-              )) : (
+                );
+              }) : (
                 <p style={{ color: 'rgba(0,0,0,0.4)', textAlign: 'center', padding: 30, fontSize: '0.85rem' }}>No friends added yet</p>
               )}
             </div>
