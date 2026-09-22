@@ -2049,7 +2049,21 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           const aiMode = filter === 'ai' || filter === 'beauty' ? 'beauty' : filter === 'makeup' ? 'makeup' : filter === 'product' ? 'product' : 'off';
           if (aiMode !== 'off') {
             const ai = (window as any).__stooornaAiBeauty as { applyAiBeautyFrame?: Function } | undefined;
-            try { ai?.applyAiBeautyFrame?.(canvas, video, aiMode); } catch { /* */ }
+            let applied = false;
+            try {
+              if (ai?.applyAiBeautyFrame) { ai.applyAiBeautyFrame(canvas, video, aiMode); applied = true; }
+            } catch { applied = false; }
+            if (!applied) {
+              ctx.save();
+              ctx.filter = aiMode === 'makeup'
+                ? 'brightness(1.12) contrast(1.06) saturate(1.22) blur(0.35px)'
+                : aiMode === 'product'
+                  ? 'contrast(1.14) saturate(1.18) brightness(1.06)'
+                  : 'brightness(1.1) contrast(1.04) saturate(1.12) blur(0.45px)';
+              ctx.globalAlpha = 0.55;
+              ctx.drawImage(canvas, 0, 0);
+              ctx.restore();
+            }
           }
         }
       }
@@ -2387,16 +2401,30 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               ? `scaleX(${zoom === 0.5 ? -1 : -(1 / 0.7)}) scaleY(${zoom === 0.5 ? 1 : 1 / 0.7})`
               : zoom === 0.5 ? 'none' : `scale(${1 / 0.7})`,
             transformOrigin: 'center center',
-            filter: activeFilterCss === 'none' ? 'none' : activeFilterCss,
+            filter: (filter === 'ai' || filter === 'beauty' || filter === 'makeup' || filter === 'product') ? 'none' : (activeFilterCss === 'none' ? 'none' : activeFilterCss),
+            opacity: (filter === 'ai' || filter === 'beauty' || filter === 'makeup' || filter === 'product') ? 0 : 1,
             transition: 'transform 0.2s ease',
           }}
         />
         <canvas
           ref={canvasRef}
           style={{
-            position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none',
+            position: 'absolute', inset: 0, width: '100%', height: '100%',
+            objectFit: 'cover', pointerEvents: 'none',
+            opacity: (filter === 'ai' || filter === 'beauty' || filter === 'makeup' || filter === 'product') ? 1 : 0,
           }}
         />
+        <div style={{
+          position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', left: 0, right: 0,
+          display: 'flex', justifyContent: 'center', zIndex: 7, pointerEvents: 'none',
+        }}>
+          <span style={{
+            padding: '4px 14px', borderRadius: 999,
+            background: captureKind === 'video' ? 'rgba(239,68,68,0.88)' : 'rgba(255,255,255,0.9)',
+            color: captureKind === 'video' ? '#fff' : '#111',
+            fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.08em',
+          }}>{captureKind === 'video' ? 'VIDEO' : 'PHOTO'}</span>
+        </div>
 
         {/* ── شريط علوي مضغوط ليتناسب مع الأزرار ── */}
         <div
@@ -2628,9 +2656,9 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              position: 'absolute', left: 0, right: 64, zIndex: 6,
-              bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 168px)',
-              display: 'flex', gap: 7, overflowX: 'auto', padding: '0 12px',
+              position: 'absolute', left: 10, right: 62, zIndex: 6,
+              bottom: 'calc(max(env(safe-area-inset-bottom,0px), 12px) + 196px)',
+              display: 'flex', gap: 7, overflowX: 'auto', padding: '0 4px 4px',
               WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none',
             }}
           >
