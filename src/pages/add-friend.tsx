@@ -8080,6 +8080,343 @@ function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string 
   return null;
 }
 
+function videoCallChannelForPair(a: string, b: string): string {
+  const pair = [String(a || ''), String(b || '')].sort().join('_');
+  return `stooorna-vid_${shortChannelHash(pair)}`.slice(0, 64);
+}
+
+type FriendVideoCallSession = {
+  role: 'caller' | 'callee';
+  peerId: string;
+  peerName: string | null;
+  peerAvatar: string | null;
+  channel: string;
+};
+
+function writeVideoCallInvite(toUserId: string, payload: Record<string, unknown>) {
+  try {
+    localStorage.setItem(`stooorna_vidcall_invite_${toUserId}`, JSON.stringify({ ...payload, at: Date.now() }));
+    window.dispatchEvent(new CustomEvent('stooorna:video-call-invite', { detail: { toUserId, ...payload } }));
+  } catch { /* ignore */ }
+}
+
+function clearVideoCallInvite(toUserId: string) {
+  try { localStorage.removeItem(`stooorna_vidcall_invite_${toUserId}`); } catch { /* ignore */ }
+}
+
+function FriendVideoCallStage({
+  userId,
+  userName,
+  session,
+  onClose,
+}: {
+  userId: string;
+  userName: string | null;
+  session: FriendVideoCallSession;
+  onClose: () => void;
+}) {
+  const localElRef = useRef<HTMLDivElement | null>(null);
+  const remoteElRef = useRef<HTMLDivElement | null>(null);
+  const clientRef = useRef<IAgoraRTCClient | null>(null);
+  const localTracksRef = useRef<{ mic?: IMicrophoneAudioTrack; cam?: any }>({});
+  const [seconds, setSeconds] = useState(0);
+  const [connected, setConnected] = useState(false);
+  const [camOn, setCamOn] = useState(true);
+  const [micOn, setMicOn] = useState(true);
+  const [speakerOn, setSpeakerOn] = useState(true);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [status, setStatus] = useState(session.role === 'caller' ? 'Calling…' : 'Connecting…');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const t0 = Date.now();
+    const id = window.setInterval(() => setSeconds(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await fetch('/api/room/join', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId: session.channel, userId, name: userName }),
+        });
+        const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
+        const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
+        clientRef.current = client;
+        client.on('user-published', async (remoteUser: IAgoraRTCRemoteUser, mediaType: string) => {
+          try {
+            await client.subscribe(remoteUser, mediaType as any);
+            if (mediaType === 'video') {
+              remoteUser.videoTrack?.play(remoteElRef.current!);
+              if (!cancelled) { setConnected(true); setStatus('Live'); }
+            }
+            if (mediaType === 'audio') remoteUser.audioTrack?.play();
+          } catch (e) {
+            console.warn('[FriendVideoCall] subscribe skipped', e);
+          }
+        });
+        client.on('user-unpublished', (remoteUser: IAgoraRTCRemoteUser, mediaType: string) => {
+          if (mediaType === 'video') remoteUser.videoTrack?.stop();
+          if (mediaType === 'audio') remoteUser.audioTrack?.stop();
+        });
+        client.on('user-left', () => {
+          if (!cancelled) setStatus('Peer left');
+        });
+        const tokenResponse = await fetch(`/api/call/token?channel=${encodeURIComponent(session.channel)}&uid=${encodeURIComponent(userId)}`, { credentials: 'include' });
+        if (!tokenResponse.ok) throw new Error('Video token unavailable');
+        const tokenData = await tokenResponse.json() as { token: string; uid: number };
+        await client.join(AGORA_APP_ID, session.channel, tokenData.token, tokenData.uid);
+        const [micTrack, camTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
+          { encoderConfig: 'speech_standard' },
+          { encoderConfig: '720p_1', facingMode }
+        );
+        if (cancelled) {
+          micTrack.stop(); camTrack.stop();
+          micTrack.close(); camTrack.close();
+          return;
+        }
+        localTracksRef.current = { mic: micTrack, cam: camTrack };
+        camTrack.play(localElRef.current!);
+        await client.publish([micTrack, camTrack]);
+        if (session.role === 'caller') {
+          writeVideoCallInvite(session.peerId, {
+            fromId: userId,
+            fromName: userName,
+            channel: session.channel,
+            kind: 'video',
+          });
+        }
+        if (!cancelled) setStatus(session.role === 'caller' ? 'Calling…' : 'Live');
+      } catch (err) {
+        console.error('[FriendVideoCall] start failed', err);
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to start video call');
+      }
+    })();
+    return () => {
+      cancelled = true;
+      void (async () => {
+        try {
+          const tracks = localTracksRef.current;
+          tracks.mic?.stop(); tracks.cam?.stop();
+          tracks.mic?.close(); tracks.cam?.close();
+          localTracksRef.current = {};
+          const client = clientRef.current;
+          if (client) {
+            await client.unpublish().catch(() => {});
+            await client.leave().catch(() => {});
+            client.removeAllListeners();
+          }
+          clientRef.current = null;
+          await fetch('/api/room/leave', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId: session.channel, userId }),
+          }).catch(() => {});
+          clearVideoCallInvite(session.peerId);
+          window.dispatchEvent(new CustomEvent('stooorna:video-call-ended', { detail: { channel: session.channel } }));
+        } catch { /* ignore */ }
+      })();
+    };
+  }, [session.channel, session.peerId, session.role, userId, userName]);
+
+  async function flipCamera() {
+    const next = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(next);
+    const cam = localTracksRef.current.cam;
+    try {
+      if (cam && typeof cam.setDevice === 'function') {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cams = devices.filter(d => d.kind === 'videoinput');
+        const prefer = cams.find(d => (d.label || '').toLowerCase().includes(next === 'environment' ? 'back' : 'front')) || cams[cams.length > 1 ? 1 : 0];
+        if (prefer) await cam.setDevice(prefer.deviceId);
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function hangup() {
+    onClose();
+  }
+
+  const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const ss = String(seconds % 60).padStart(2, '0');
+
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 12000, background: '#111', color: '#fff' }}>
+      <div ref={remoteElRef} style={{ position: 'absolute', inset: 0, background: '#1a1a1a' }} />
+      {!connected && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, pointerEvents: 'none' }}>
+          <UserAvatar name={session.peerName || '?'} avatarUrl={session.peerAvatar} size={88} />
+          <p style={{ margin: 0, fontWeight: 800, fontSize: '1.05rem' }}>{session.peerName || 'Friend'}</p>
+          <p style={{ margin: 0, opacity: 0.75, fontSize: '0.85rem' }}>{error || status}</p>
+        </div>
+      )}
+      <div style={{ position: 'absolute', top: 14, left: 14, right: 14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', zIndex: 3 }}>
+        <button type="button" onClick={hangup} aria-label="Minimize" style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer' }}>
+          <ArrowLeft size={18} />
+        </button>
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ margin: 0, fontWeight: 800, fontSize: '0.95rem' }}>My Live</p>
+          <p style={{ margin: 0, fontSize: '0.72rem', opacity: 0.85 }}>{mm}:{ss}</p>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button type="button" aria-label="Invite" style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff' }}>
+            <Users size={18} />
+          </button>
+          <button type="button" onClick={() => void flipCamera()} aria-label="Flip camera" style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer' }}>
+            <Repeat2 size={18} />
+          </button>
+          <button type="button" aria-label="Flash" style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff' }}>
+            <Zap size={18} />
+          </button>
+        </div>
+      </div>
+      <div
+        ref={localElRef}
+        style={{
+          position: 'absolute',
+          right: 16,
+          bottom: 110,
+          width: 132,
+          height: 186,
+          borderRadius: 16,
+          overflow: 'hidden',
+          background: '#222',
+          border: '2px solid rgba(255,255,255,0.35)',
+          zIndex: 4,
+        }}
+      />
+      <div style={{ position: 'absolute', left: 16, right: 16, bottom: 22, display: 'flex', justifyContent: 'center', zIndex: 5 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(20,20,20,0.88)', borderRadius: 999, padding: '10px 14px' }}>
+          <button type="button" aria-label="More" style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff' }}>
+            <MoreVertical size={18} />
+          </button>
+          <button type="button" aria-label="Toggle camera" onClick={() => {
+            const next = !camOn;
+            setCamOn(next);
+            try { localTracksRef.current.cam?.setEnabled(next); } catch { /* ignore */ }
+          }} style={{ width: 52, height: 52, borderRadius: '50%', border: 'none', background: camOn ? '#fff' : 'rgba(255,255,255,0.12)', color: camOn ? '#111' : '#fff', cursor: 'pointer' }}>
+            <Video size={20} />
+          </button>
+          <button type="button" aria-label="Speaker" onClick={() => setSpeakerOn(v => !v)} style={{ width: 52, height: 52, borderRadius: '50%', border: 'none', background: speakerOn ? '#fff' : 'rgba(255,255,255,0.12)', color: speakerOn ? '#111' : '#fff', cursor: 'pointer' }}>
+            {speakerOn ? <Volume2 size={20} /> : <VolumeX size={20} />}
+          </button>
+          <button type="button" aria-label="Mute" onClick={() => {
+            const next = !micOn;
+            setMicOn(next);
+            try { localTracksRef.current.mic?.setEnabled(next); } catch { /* ignore */ }
+          }} style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: micOn ? '#fff' : '#ef4444', cursor: 'pointer' }}>
+            {micOn ? <Mic size={18} /> : <MicOff size={18} />}
+          </button>
+          <button type="button" aria-label="Hang up" onClick={hangup} style={{ width: 52, height: 52, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer' }}>
+            <PhoneOff size={20} />
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function FriendVideoCallController({
+  userId,
+  userName,
+}: {
+  userId: string | null;
+  userName: string | null;
+}) {
+  const [session, setSession] = useState<FriendVideoCallSession | null>(null);
+  const [incoming, setIncoming] = useState<FriendVideoCallSession | null>(null);
+
+  useEffect(() => {
+    if (!userId) return;
+    const onStart = (e: Event) => {
+      const d = (e as CustomEvent).detail as { friendId?: string; peerId?: string; peerName?: string; peerAvatar?: string | null } | undefined;
+      const peerId = String(d?.friendId || d?.peerId || '');
+      if (!peerId || !userId) return;
+      setIncoming(null);
+      setSession({
+        role: 'caller',
+        peerId,
+        peerName: d?.peerName ?? null,
+        peerAvatar: d?.peerAvatar ?? null,
+        channel: videoCallChannelForPair(userId, peerId),
+      });
+    };
+    const onInvite = (e: Event) => {
+      const d = (e as CustomEvent).detail as { toUserId?: string; fromId?: string; fromName?: string; channel?: string } | undefined;
+      if (!d || d.toUserId !== userId || !d.fromId || !d.channel) return;
+      if (session) return;
+      setIncoming({
+        role: 'callee',
+        peerId: d.fromId,
+        peerName: d.fromName ?? null,
+        peerAvatar: null,
+        channel: d.channel,
+      });
+      try { playIncomingCallRing(); } catch { /* ignore */ }
+    };
+    const onEnded = () => {
+      setIncoming(null);
+    };
+    window.addEventListener('stooorna:start-video-call', onStart);
+    window.addEventListener('stooorna:video-call-invite', onInvite);
+    window.addEventListener('stooorna:video-call-ended', onEnded);
+    const poll = window.setInterval(() => {
+      try {
+        const raw = localStorage.getItem(`stooorna_vidcall_invite_${userId}`);
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as { fromId?: string; fromName?: string; channel?: string; at?: number };
+        if (!parsed?.fromId || !parsed.channel) return;
+        if (Date.now() - Number(parsed.at || 0) > 25000) return;
+        if (session) return;
+        setIncoming(cur => cur || {
+          role: 'callee',
+          peerId: parsed.fromId!,
+          peerName: parsed.fromName ?? null,
+          peerAvatar: null,
+          channel: parsed.channel!,
+        });
+      } catch { /* ignore */ }
+    }, 1500);
+    return () => {
+      window.removeEventListener('stooorna:start-video-call', onStart);
+      window.removeEventListener('stooorna:video-call-invite', onInvite);
+      window.removeEventListener('stooorna:video-call-ended', onEnded);
+      window.clearInterval(poll);
+    };
+  }, [userId, session]);
+
+  if (!userId) return null;
+  return (
+    <>
+      {incoming && !session && (
+        createPortal(
+          <div style={{ position: 'fixed', inset: 0, zIndex: 11950, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 'min(360px, 92vw)', background: '#0d1a1c', border: '1px solid rgba(0,188,212,0.3)', borderRadius: 20, padding: 22, textAlign: 'center' }}>
+              <p style={{ margin: '0 0 6px', color: '#00BCD4', fontWeight: 800 }}>Incoming video call</p>
+              <p style={{ margin: '0 0 18px', color: 'rgba(220,240,240,0.85)' }}>{incoming.peerName || 'Friend'}</p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="button" onClick={() => { clearVideoCallInvite(userId); setIncoming(null); }} style={{ flex: 1, padding: 12, borderRadius: 12, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Decline</button>
+                <button type="button" onClick={() => { setSession(incoming); setIncoming(null); }} style={{ flex: 1, padding: 12, borderRadius: 12, border: 'none', background: '#22c55e', color: '#041018', fontWeight: 800, cursor: 'pointer' }}>Accept</button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      )}
+      {session && (
+        <FriendVideoCallStage
+          userId={userId}
+          userName={userName}
+          session={session}
+          onClose={() => { setSession(null); clearVideoCallInvite(session.peerId); clearVideoCallInvite(userId); }}
+        />
+      )}
+    </>
+  );
+}
+
 // Watches every direct-chat thread this user is part of for a message that just
 // arrived from the other side (not one I sent myself), and flags it in
 // messageAlertState so the bell + the matching friend-chat row can react to it
@@ -14165,6 +14502,7 @@ export default function AddFriendPage() {
       <GlobalCallBanner />
       <GlobalIncomingCallBanner myUserId={user?.id ?? null} myUserName={user?.name ?? user?.email ?? null} />
       <GlobalIncomingCallWatcher myUserId={user?.id ?? null} myUserName={user?.name ?? user?.email ?? null} />
+      <FriendVideoCallController userId={user?.id ?? null} userName={user?.name ?? user?.email ?? null} />
       <GlobalMessageAlertWatcher myUserId={user?.id ?? null} />
       <Helmet>
         <title>Chat | Stooorna</title>
@@ -19344,8 +19682,15 @@ export default function AddFriendPage() {
               <button type="button" aria-label="Video call" onClick={() => {
                 if (!friendChatPeer) return;
                 const fid = friendChatPeer.friendId;
-                window.dispatchEvent(new CustomEvent('stooorna:start-video-call', { detail: { friendId: fid } }));
-                window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: fid, direct: true, video: true } }));
+                window.dispatchEvent(new CustomEvent('stooorna:start-video-call', {
+                  detail: {
+                    friendId: fid,
+                    peerId: fid,
+                    peerName: friendChatPeer.name ?? friendChatPeer.username ?? null,
+                    peerAvatar: friendChatPeer.avatarUrl ?? null,
+                    video: true,
+                  }
+                }));
               }} style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Video size={19} />
               </button>
