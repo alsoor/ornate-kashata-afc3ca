@@ -914,8 +914,9 @@ function saveShareThread(a: string, b: string, postId: string | number, list: Sh
     window.dispatchEvent(new CustomEvent('stooorna:share-thread', { detail: { a, b, postId } }));
   } catch { /* */ }
 }
-function pushShareThreadMsg(a: string, b: string, postId: string | number, msg: Omit<ShareThreadMsg, 'id' | 'at'> & { id?: string }) {
+function pushShareThreadMsg(a: string, b: string, postId: string | number, msg: Omit<ShareThreadMsg, 'id' | 'at'> & { id?: string; at?: number }) {
   const list = loadShareThread(a, b, postId);
+  if (msg.id && list.some(m => m.id === msg.id)) return list.find(m => m.id === msg.id)!;
   const next: ShareThreadMsg = {
     id: msg.id || `stm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     fromId: msg.fromId,
@@ -923,9 +924,10 @@ function pushShareThreadMsg(a: string, b: string, postId: string | number, msg: 
     body: msg.body,
     duration: msg.duration ?? null,
     fileName: msg.fileName ?? null,
-    at: Date.now(),
+    at: typeof msg.at === 'number' ? msg.at : Date.now(),
   };
-  saveShareThread(a, b, postId, [...list, next]);
+  const merged = [...list, next].sort((x, y) => x.at - y.at);
+  saveShareThread(a, b, postId, merged);
   return next;
 }
 
@@ -3304,7 +3306,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
       initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }}
       animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }}
       exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }}
-      style={{ position: 'fixed', inset: 0, zIndex: 10310, background: 'hsl(var(--background))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 10750, background: 'hsl(var(--background))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       onClick={e => {
         const x = (e as React.MouseEvent).clientX;
         if (x < window.innerWidth * 0.35) goPrev(); else goNext();
@@ -11325,8 +11327,44 @@ export default function AddFriendPage() {
       }
       knownStoryThreadIdsRef.current = new Set(fresh.map(t => t.storyId));
       setStoryCommentThreads(fresh);
+
+      // Mirror each story comment into the 1:1 friend chat (bell chat) for that author
+      const myId = user?.id;
+      if (myId) {
+        for (const thread of fresh) {
+          try {
+            const cr = await fetch(`/api/status/${thread.storyId}/comments`, { credentials: 'include' });
+            if (!cr.ok) continue;
+            const cd = await cr.json() as { comments: StoryComment[] };
+            const comments = cd.comments ?? [];
+            setStoryThreadComments(prev => ({ ...prev, [thread.storyId]: comments }));
+            for (const c of comments) {
+              if (!c.authorId || String(c.authorId) === String(myId)) continue;
+              const msgId = `story-cmt-${c.id}`;
+              const existing = loadShareThread(myId, c.authorId, 'direct');
+              if (existing.some(m => m.id === msgId)) continue;
+              const at = c.createdAt ? new Date(c.createdAt).getTime() : Date.now();
+              pushShareThreadMsg(myId, c.authorId, 'direct', {
+                id: msgId,
+                fromId: c.authorId,
+                type: 'text',
+                body: `Story comment: ${c.text}`,
+                at: Number.isFinite(at) ? at : Date.now(),
+              });
+              if (!thread.read) {
+                try {
+                  setMessageAlertState({ active: true, fromId: c.authorId });
+                } catch { /* */ }
+              }
+            }
+          } catch { /* continue next thread */ }
+        }
+        try {
+          window.dispatchEvent(new CustomEvent('stooorna:share-thread'));
+        } catch { /* */ }
+      }
     } catch {/* silent — badge simply stays at its last known count */}
-  }, []);
+  }, [user?.id]);
   const storyThreadsLoadedOnceRef = useRef(false);
   useEffect(() => {
     if (!user) return;
@@ -11394,25 +11432,62 @@ export default function AddFriendPage() {
   }
 
   async function handleOpenStoryCommentThread(thread: StoryCommentThread) {
-    // StoryCommentThreadPage shares the same layer as the inbox box itself — close the box first
-    // so the thread (with its comments) is actually the thing visible on top instead of being
-    // hidden underneath the drawer's much higher z-index until the drawer is manually closed.
+    // Route story comments into the bell 1:1 friend chat (not a separate visitor thread page)
     setSharedInboxOpen(false);
-    setOpenStoryCommentThread(thread);
+    setSharedInboxStoryOnly(false);
+    setOpenStoryCommentThread(null);
     if (!thread.read) {
       setStoryCommentThreads(prev => prev.map(t => t.storyId === thread.storyId ? { ...t, read: true } : t));
       try {
         await fetch(`/api/status/${thread.storyId}/comments/read`, { method: 'POST', credentials: 'include' });
-      } catch {/* silent — will simply re-mark on next fetch */}
+      } catch {/* silent */}
     }
-    if (storyThreadComments[thread.storyId]) return;
+    let comments = storyThreadComments[thread.storyId] ?? [];
     try {
       const r = await fetch(`/api/status/${thread.storyId}/comments`, { credentials: 'include' });
       if (r.ok) {
         const d = await r.json() as { comments: StoryComment[] };
-        setStoryThreadComments(prev => ({ ...prev, [thread.storyId]: d.comments ?? [] }));
+        comments = d.comments ?? [];
+        setStoryThreadComments(prev => ({ ...prev, [thread.storyId]: comments }));
       }
-    } catch {/* silent — starts with an empty thread */}
+    } catch {/* silent */}
+    const myId = user?.id;
+    if (!myId) return;
+    let lastAuthor: StoryComment | null = null;
+    for (const c of comments) {
+      if (!c.authorId || String(c.authorId) === String(myId)) continue;
+      lastAuthor = c;
+      const msgId = `story-cmt-${c.id}`;
+      const existing = loadShareThread(myId, c.authorId, 'direct');
+      if (existing.some(m => m.id === msgId)) continue;
+      const at = c.createdAt ? new Date(c.createdAt).getTime() : Date.now();
+      pushShareThreadMsg(myId, c.authorId, 'direct', {
+        id: msgId,
+        fromId: c.authorId,
+        type: 'text',
+        body: `Story comment: ${c.text}`,
+        at: Number.isFinite(at) ? at : Date.now(),
+      });
+    }
+    const authorId = lastAuthor?.authorId
+      || (thread.lastComment as any)?.authorId
+      || null;
+    if (!authorId) {
+      setFriendChatListOpen(true);
+      return;
+    }
+    const friendMatch = friends.find(f => String(f.friendId) === String(authorId));
+    const peer: Friend = friendMatch || {
+      id: 0,
+      friendId: String(authorId),
+      name: lastAuthor?.authorName ?? thread.lastComment?.authorName ?? null,
+      username: null,
+      email: null,
+      avatarUrl: lastAuthor?.authorAvatarUrl ?? null,
+      since: null,
+    };
+    setFriendChatListOpen(true);
+    openFriendChat(peer);
   }
 
   async function submitStoryThreadComment(parentCommentId: number | null = null) {
@@ -12225,6 +12300,14 @@ export default function AddFriendPage() {
     setFriendChatRecordSecs(0);
     clearMessageAlertFor(friend.friendId); // reading the chat clears its red-border alert
   }
+  useEffect(() => {
+    if (!user?.id || !friendChatPeer) return;
+    const refresh = () => {
+      setFriendChatMsgs(loadShareThread(user.id, friendChatPeer.friendId, 'direct'));
+    };
+    window.addEventListener('stooorna:share-thread', refresh);
+    return () => window.removeEventListener('stooorna:share-thread', refresh);
+  }, [user?.id, friendChatPeer?.friendId]);
   async function friendChatStartRecording() {
     // Ignore a second tap while a start is already in flight, and never start
     // again once we're already recording.
@@ -12348,8 +12431,13 @@ export default function AddFriendPage() {
     };
   });
   const [textPostsPlusOpen, setTextPostsPlusOpen] = useState(false);
+  /** Story page as right sheet over public posts (does not dismiss text posts) */
+  const [storyHomeSheetOpen, setStoryHomeSheetOpen] = useState(false);
   useEffect(() => {
-    if (!textPostsPageOpen) setTextPostsPlusOpen(false);
+    if (!textPostsPageOpen) {
+      setTextPostsPlusOpen(false);
+      setStoryHomeSheetOpen(false);
+    }
   }, [textPostsPageOpen]);
   useEffect(() => {
     if (searchParams.get('openChats') === '1' || searchParams.get('openFriendsPanel') === '1') {
@@ -17245,7 +17333,7 @@ export default function AddFriendPage() {
               style={{
                 position: 'fixed', inset: 0,
                 // من البروفايل: فوق البروفايل (10420) — من الفيد: تحت البروفايل لو فُتح بروفايل فوقه
-                zIndex: singlePostFromProfile ? 10450 : 10380,
+                zIndex: singlePostFromProfile ? 10760 : 10380,
                 background: '#000', display: 'flex', flexDirection: 'column', overflow: 'hidden',
               }}
             >
@@ -17996,21 +18084,9 @@ export default function AddFriendPage() {
                     onClick={(e) => {
                       e.stopPropagation();
                       setTextPostsPlusOpen(false);
-                      // Reveal the home story page (stories + video/photo posts), not visitor profile
+                      // Settings-style right sheet over public posts — keep text posts open underneath
                       setViewingProfile(null);
-                      setTextPostsMenuOpen(false);
-                      setTextPostsPageOpen(false);
-                      try {
-                        window.dispatchEvent(new CustomEvent('stooorna:text-posts-state', { detail: { open: false } }));
-                        document.body.classList.remove('stooorna-text-posts-open');
-                      } catch { /* */ }
-                      try {
-                        const u = new URL(window.location.href);
-                        if (u.searchParams.get('openTextPosts') === '1') {
-                          u.searchParams.delete('openTextPosts');
-                          window.history.replaceState({}, '', u.pathname + (u.searchParams.toString() ? '?' + u.searchParams.toString() : '') + u.hash);
-                        }
-                      } catch { /* */ }
+                      setStoryHomeSheetOpen(true);
                     }}
                     aria-label="Open story page"
                     style={{
@@ -18266,6 +18342,202 @@ export default function AddFriendPage() {
       )}
       </AnimatePresence>
 
+      {/* Story page as settings-style right sheet over public posts */}
+      <AnimatePresence>
+        {storyHomeSheetOpen && textPostsPageOpen && (
+          <>
+            <motion.div
+              key="story-home-sheet-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.28 }}
+              onClick={() => setStoryHomeSheetOpen(false)}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 10690,
+                background: 'rgba(0,0,0,0.32)',
+              }}
+            />
+            <motion.div
+              key="story-home-sheet-panel"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                position: 'fixed',
+                top: 0,
+                bottom: 0,
+                right: 0,
+                left: 42,
+                zIndex: 10691,
+                background: PAGE_BG,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                boxShadow: '-16px 0 40px rgba(0,0,0,0.45)',
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '12px 14px',
+                paddingTop: 'max(12px, env(safe-area-inset-top))',
+                borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
+                background: 'rgba(6,14,14,0.96)',
+                flexShrink: 0,
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setStoryHomeSheetOpen(false)}
+                  aria-label="Close"
+                  style={{
+                    width: 36, height: 36, borderRadius: '50%', border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    background: CLR_PRIMARY_FAINT, color: CLR_PRIMARY, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <X size={18} strokeWidth={2.2} />
+                </button>
+                <p style={{ margin: 0, color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.95rem', flex: 1 }}>Story</p>
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                {/* Stories strip */}
+                <div style={{
+                  display: 'flex', gap: 12, padding: '14px 14px 8px', overflowX: 'auto',
+                  borderBottom: `1px solid ${CLR_NAV_BORDER}`,
+                }}>
+                  {user && (() => {
+                    const myGroup = storyGroups.find(g => g.userId === user.id);
+                    const hasStory = !!myGroup && myGroup.items.length > 0;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (myGroup) setViewerGroupIdx(storyGroups.indexOf(myGroup));
+                          else setPublishMenuOpen(true);
+                        }}
+                        style={{
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                          background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: 0,
+                        }}
+                      >
+                        <div style={{
+                          width: 64, height: 64, borderRadius: '50%', overflow: 'hidden',
+                          border: hasStory ? '3px solid #0ea5e9' : '2px solid rgba(0,188,212,0.45)',
+                          boxSizing: 'border-box',
+                        }}>
+                          <UserAvatar
+                            name={user.name ?? ''}
+                            avatarUrl={(user as any)?.avatarUrl ?? null}
+                            size={58}
+                            style={{ width: '100%', height: '100%', border: 'none', borderRadius: '50%' }}
+                          />
+                        </div>
+                        <span style={{ fontSize: '0.62rem', color: CLR_TEXT_DIM, fontWeight: 600 }}>My story</span>
+                      </button>
+                    );
+                  })()}
+                  {storyGroups.filter(g => user && g.userId !== user.id).map(g => {
+                    const idx = storyGroups.indexOf(g);
+                    const allSeen = g.items.every(i => i.seen);
+                    return (
+                      <button
+                        key={g.userId}
+                        type="button"
+                        onClick={() => setViewerGroupIdx(idx)}
+                        style={{
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                          background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: 0,
+                        }}
+                      >
+                        <div style={{
+                          width: 64, height: 64, borderRadius: '50%', overflow: 'hidden',
+                          border: allSeen ? '2px solid rgba(0,188,212,0.35)' : '3px solid #0ea5e9',
+                          boxSizing: 'border-box',
+                        }}>
+                          <UserAvatar
+                            name={g.name || g.username || '?'}
+                            avatarUrl={g.avatarUrl}
+                            size={58}
+                            style={{ width: '100%', height: '100%', border: 'none', borderRadius: '50%' }}
+                          />
+                        </div>
+                        <span style={{
+                          fontSize: '0.62rem', color: CLR_TEXT_DIM, fontWeight: 600, maxWidth: 64,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {g.name || g.username || 'User'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Own video / photo posts grid */}
+                <div style={{ padding: '12px 0 24px' }}>
+                  {(() => {
+                    const myPosts = (typeof combinedFeedPosts !== 'undefined' ? combinedFeedPosts : posts).filter(
+                      (p: PostItem) => user && String(p.authorId) === String(user.id)
+                    );
+                    if (!myPosts.length) {
+                      return (
+                        <p style={{ color: CLR_TEXT_DIM, textAlign: 'center', padding: 32, fontSize: '0.85rem' }}>
+                          No posts yet
+                        </p>
+                      );
+                    }
+                    return (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
+                        {myPosts.map((post: PostItem) => {
+                          const thumbUrl = post.mediaUrls?.[0] ?? post.mediaUrl;
+                          const isVideo = (post.mediaTypes?.[0] ?? post.mediaType) === 'video';
+                          return (
+                            <button
+                              key={post.repostKey ?? post.id}
+                              type="button"
+                              onClick={() => openSinglePostView(post, true)}
+                              style={{
+                                position: 'relative', width: '100%', aspectRatio: '1 / 1', overflow: 'hidden',
+                                border: 'none', padding: 0, background: thumbUrl ? '#000' : CLR_CARD_BG, cursor: 'pointer',
+                              }}
+                            >
+                              {thumbUrl ? (
+                                isVideo ? (
+                                  <video src={thumbUrl} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                )
+                              ) : (
+                                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}>
+                                  <p style={{ margin: 0, color: CLR_TEXT_DIM, fontSize: '0.65rem', textAlign: 'center', overflow: 'hidden' }}>
+                                    {(post.text || '').slice(0, 40)}
+                                  </p>
+                                </div>
+                              )}
+                              {isVideo && (
+                                <span style={{ position: 'absolute', top: 6, right: 6, color: '#fff' }}>
+                                  <Play size={14} fill="#fff" />
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* ── Shared-Posts Inbox — posts other users sent me via the share sheet ── */}
       <AnimatePresence>
         {sharedInboxOpen && (
@@ -18463,11 +18735,10 @@ export default function AddFriendPage() {
                 aria-label="Call"
                 onClick={() => {
                   if (!friendChatPeer) return;
-                  // Opens the same working call sheet as the bottom "+" menu's Call
-                  // button (defined in RootLayout.tsx), pre-checking this friend —
-                  // it slides up from the bottom exactly like it does from there.
+                  // Same home-call system as bottom "+" menu, but start immediately
+                  // with this chat peer only (no multi-select picker).
                   window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
-                    detail: { friendId: friendChatPeer.friendId },
+                    detail: { friendId: friendChatPeer.friendId, direct: true },
                   }));
                 }}
                 style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
@@ -18840,12 +19111,32 @@ export default function AddFriendPage() {
             onToggleLike={toggleStoryCommentLike}
             onClose={() => setOpenStoryCommentThread(null)}
             onChatWithAuthor={(c) => {
-              // أغلق الطبقات (تعليقات + صندوق الوارد + الكاميرا) ثم افتح الشات مع صاحب التعليق
               setOpenStoryCommentThread(null);
               setSharedInboxOpen(false);
               setSharedInboxStoryOnly(false);
               setCameraCaptureOpen(false);
-              openShareMiniChat({ id: c.authorId, name: c.authorName, avatarUrl: c.authorAvatarUrl });
+              const friendMatch = friends.find(f => String(f.friendId) === String(c.authorId));
+              const peer: Friend = friendMatch || {
+                id: 0,
+                friendId: String(c.authorId),
+                name: c.authorName ?? null,
+                username: null,
+                email: null,
+                avatarUrl: c.authorAvatarUrl ?? null,
+                since: null,
+              };
+              if (user?.id && c.text) {
+                const msgId = `story-cmt-${c.id}`;
+                pushShareThreadMsg(user.id, c.authorId, 'direct', {
+                  id: msgId,
+                  fromId: c.authorId,
+                  type: 'text',
+                  body: `Story comment: ${c.text}`,
+                  at: c.createdAt ? new Date(c.createdAt).getTime() : Date.now(),
+                });
+              }
+              setFriendChatListOpen(true);
+              openFriendChat(peer);
             }}
           />
         )}

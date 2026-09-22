@@ -1344,16 +1344,9 @@ function GlobalBottomNavigation() {
   };
   type HomeCallMember = HomeCallFriend & { joined?: boolean };
   const [homeCallPickerOpen, setHomeCallPickerOpen] = useState(false);
-  useEffect(() => {
-    const onHomeCall = () => {
-      setPlusMenuOpen(false);
-      setHomeCallPickerOpen(true);
-    };
-    window.addEventListener('stooorna:open-home-call-picker', onHomeCall);
-    return () => window.removeEventListener('stooorna:open-home-call-picker', onHomeCall);
-  }, []);
   const [homeCallFriends, setHomeCallFriends] = useState<HomeCallFriend[]>([]);
   const [homeCallSelected, setHomeCallSelected] = useState<Record<string, boolean>>({});
+  const [pendingDirectCallId, setPendingDirectCallId] = useState<string | null>(null);
   const [homeCallPhase, setHomeCallPhase] = useState<'idle' | 'animating' | 'connecting' | 'live'>('idle');
   const [homeCallMembers, setHomeCallMembers] = useState<HomeCallMember[]>([]);
   const [homeCallMuted, setHomeCallMuted] = useState(false);
@@ -1558,13 +1551,20 @@ function GlobalBottomNavigation() {
     };
   }, [user?.id, homeCallPhase, homeIncoming]);
 
-  // Bridge so other screens (e.g. the friend-chat header inside the bell-icon
-  // chat) can open this exact same call sheet instead of duplicating it —
-  // dispatch `stooorna:open-home-call-picker` with an optional `friendId` to
-  // have that friend pre-checked in the picker.
+  // Bridge so other screens can open this call sheet.
+  // detail.friendId pre-checks a friend; detail.direct + friendId starts the call immediately.
   useEffect(() => {
     const onOpenCallPicker = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { friendId?: string } | undefined;
+      const detail = (e as CustomEvent).detail as { friendId?: string; direct?: boolean } | undefined;
+      setPlusMenuOpen(false);
+      if (detail?.friendId && detail?.direct) {
+        const fid = String(detail.friendId);
+        setHomeCallSelected({ [fid]: true });
+        setHomeCallPickerOpen(false);
+        setPendingDirectCallId(fid);
+        return;
+      }
+      setPendingDirectCallId(null);
       setHomeCallPickerOpen(true);
       if (detail?.friendId) {
         const fid = detail.friendId;
@@ -1637,9 +1637,21 @@ function GlobalBottomNavigation() {
     }
   }
 
-  async function startHomeGroupCall() {
+  async function startHomeGroupCall(overrideFriendIds?: string[]) {
     if (!user?.id) return;
-    const picked = homeCallFriends.filter(f => homeCallSelected[f.id]);
+    const ids = overrideFriendIds?.length
+      ? overrideFriendIds
+      : Object.keys(homeCallSelected).filter(id => homeCallSelected[id]);
+    let picked = homeCallFriends.filter(f => ids.includes(f.id));
+    if (!picked.length && ids.length) {
+      // Peer may not be in the cached friends list yet — still start 1:1
+      picked = ids.map(id => ({
+        id,
+        name: 'User',
+        username: null as string | null,
+        avatarUrl: null as string | null,
+      }));
+    }
     if (!picked.length) return;
     const me: HomeCallMember = {
       id: user.id,
@@ -1748,6 +1760,17 @@ function GlobalBottomNavigation() {
     void poll();
     homeCallPollRef.current = window.setInterval(poll, 3000);
   }
+
+  // Direct 1:1 call from chat header: start immediately with that peer only
+  useEffect(() => {
+    if (!pendingDirectCallId || !user?.id) return;
+    if (homeCallPhase !== 'idle') return;
+    const fid = pendingDirectCallId;
+    setPendingDirectCallId(null);
+    setHomeCallSelected({ [fid]: true });
+    // Enrich name/avatar from loaded friends when available
+    void startHomeGroupCall([fid]);
+  }, [pendingDirectCallId, user?.id, homeCallPhase]);
 
   useEffect(() => {
     if (!user?.id || !homeCallChannel || (homeCallPhase !== 'live' && homeCallPhase !== 'connecting')) return;
@@ -3410,7 +3433,8 @@ export default function RootLayout({
     setSettingsClosing(true);
     window.setTimeout(() => {
       setSettingsClosing(false);
-      navigate('/add-friend?tab=friends');
+      // Public posts is the primary app page — always return there
+      navigate('/add-friend?tab=friends&openTextPosts=1');
     }, 320);
   };
 
