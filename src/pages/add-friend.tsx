@@ -14160,8 +14160,7 @@ export default function AddFriendPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 6, flex: 1 }}>
                 {/* Pinned track — shown right above my name/username, playable from here too. */}
                 {pinnedTrack && <PinnedTrackBar track={pinnedTrack} />}
-                {(myUsername || myBio) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, paddingRight: 52 }}>
                     {myUsername && (
                       <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         @{myUsername}
@@ -14174,16 +14173,12 @@ export default function AddFriendPage() {
                         )}
                       </span>
                     )}
-                    {myUsername && myBio && (
-                      <span style={{ fontSize: '0.78rem', fontWeight: 400, color: '#ffffff', opacity: 0.5 }}>|</span>
-                    )}
                     {myBio && (
-                      <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#ffffff', lineHeight: 1.4 }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 500, color: 'rgba(255,255,255,0.82)', lineHeight: 1.35, maxWidth: '100%', wordBreak: 'break-word' }}>
                         {myBio}
                       </span>
                     )}
-                  </div>
-                )}
+                </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>

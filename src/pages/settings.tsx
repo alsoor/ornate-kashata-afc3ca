@@ -7211,10 +7211,10 @@ export default function SettingsPage() {
                       <p style={{
                     color: T.textMuted,
                     fontSize: '0.62rem',
-                    letterSpacing: '0.2em',
-                    textTransform: 'uppercase',
+                    letterSpacing: (businessRow?.status === 'approved' || isPublicBusinessAccount({ id: user?.id, username: profileUsername, email: user?.email })) ? '0.02em' : '0.2em',
+                    textTransform: (businessRow?.status === 'approved' || isPublicBusinessAccount({ id: user?.id, username: profileUsername, email: user?.email })) ? 'none' : 'uppercase',
                     fontWeight: 500
-                  }}>Bio</p>
+                  }}>{(businessRow?.status === 'approved' || isPublicBusinessAccount({ id: user?.id, username: profileUsername, email: user?.email })) ? 'What is a business activity?' : 'BIO'}</p>
                       {!editingBio && <motion.button whileTap={{
                     scale: 0.9
                   }} onClick={() => {
@@ -7239,7 +7239,7 @@ export default function SettingsPage() {
                   }} exit={{
                     opacity: 0
                   }}>
-                          <textarea value={bioInput} onChange={e => setBioInput(e.target.value.slice(0, 160))} rows={3} placeholder="Write something about yourself…" style={{
+                          <textarea value={bioInput} onChange={e => setBioInput(e.target.value.slice(0, 160))} rows={3} placeholder={(businessRow?.status === 'approved' || isPublicBusinessAccount({ id: user?.id, username: profileUsername, email: user?.email })) ? 'Describe your business activity' : 'Write something about yourself'} style={{
                       width: '100%',
                       resize: 'none',
                       padding: '9px 11px',
