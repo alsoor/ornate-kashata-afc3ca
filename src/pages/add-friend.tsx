@@ -2333,33 +2333,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               {flashOn ? <Zap size={16} color="#FFD54A" strokeWidth={2.2} /> : <ZapOff size={16} color="#fff" strokeWidth={2.2} />}
             </motion.button>
-            {/* جرس — تعليقات الستوري فقط */}
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => onOpenStoryComments?.()}
-              aria-label="Story comments"
-              style={{
-                width: 32, height: 32, borderRadius: '50%',
-                background: storyCommentUnread > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,0,0,0.35)',
-                border: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative',
-              }}
-            >
-              <Bell size={16} color="#fff" strokeWidth={2.2} />
-              {storyCommentUnread > 0 && (
-                <span style={{
-                  position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, borderRadius: 8,
-                  background: '#ef4444',
-                  color: '#fff',
-                  fontSize: '0.55rem', fontWeight: 800,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
-                  border: '1.5px solid #000',
-                }}>
-                  {storyCommentUnread > 9 ? '9+' : storyCommentUnread}
-                </span>
-              )}
-            </motion.button>
-            {/* أيقونة الإضافة — طلبات الصداقة تصل هنا (بجانب الجرس) */}
+            {/* Story-comments bell moved out of the camera to the story page header (top-right). */}
+            {/* Friend-add icon — friend requests land here */}
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={() => setRequestsBoxOpen(true)}
@@ -13306,6 +13281,38 @@ export default function AddFriendPage() {
           backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
+          {/* Story-comments bell — top-right corner of the story page header, moved here from the camera */}
+          {pageTab === 'profile' && (
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => { setSharedInboxStoryOnly(false); setSharedInboxOpen(true); }}
+              aria-label="Story comments"
+              style={{
+                position: 'absolute',
+                top: 'max(env(safe-area-inset-top,0px), 10px)',
+                right: 14,
+                zIndex: 25,
+                width: 30, height: 30, borderRadius: '50%',
+                background: storyCommentThreads.filter(t => !t.read).length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.12)',
+                border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              }}
+            >
+              <Bell size={15} color={CLR_PRIMARY} strokeWidth={2.2} />
+              {storyCommentThreads.filter(t => !t.read).length > 0 && (
+                <span style={{
+                  position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, borderRadius: 8,
+                  background: '#ef4444',
+                  color: '#fff',
+                  fontSize: '0.55rem', fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
+                  border: '1.5px solid #000',
+                }}>
+                  {storyCommentThreads.filter(t => !t.read).length > 9 ? '9+' : storyCommentThreads.filter(t => !t.read).length}
+                </span>
+              )}
+            </motion.button>
+          )}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
               non-interactive, matching the fog overlay's own transition). Opens a
