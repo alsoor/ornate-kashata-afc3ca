@@ -17054,9 +17054,9 @@ export default function AddFriendPage() {
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
-                      borderRadius: 12, width: 44, height: 44,
+                      borderRadius: 10, width: 36, height: 36,
                       color: '#ef4444', cursor: 'pointer', padding: 0,
-                      fontWeight: 900, fontSize: '1.2rem', lineHeight: 1, flexShrink: 0,
+                      fontWeight: 900, fontSize: '1rem', lineHeight: 1, flexShrink: 0,
                       marginRight: 6,
                     }}
                   >
