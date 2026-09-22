@@ -11425,14 +11425,42 @@ export default function AddFriendPage() {
   const isFriendManagement = pageTab === 'add';
 
   // ── Header show/hide toggle ────────────────────────────────────────────────
-  // A small grabber bar sits right above the Video|Post|Photo switcher. Tapping it
-  // collapses the entire header above it (avatar/stats row, stories strip, new-post
-  // and inbox icons) like a shutter, so only the three sections + feed are visible
-  // and scrollable. Tapping again brings the header back down exactly as it was —
-  // this is a manual toggle only, not tied to scrolling.
+  // Grabber bar above the content switcher: tap toggles the header (avatar/stats,
+  // stories strip, new-post + inbox) like a shutter. Swiping up on the posts feed
+  // also collapses it; scrolling back to the top expands it again.
   const [headerOpen, setHeaderOpen] = useState(true);
   // Once true, the grabber's attention-drawing bounce animation stops for good.
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
+  const lastFeedScrollTopRef = useRef(0);
+  const feedScrollRafRef = useRef(0);
+
+  function handleProfileFeedScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    const current = el.scrollTop;
+    const delta = current - lastFeedScrollTopRef.current;
+    lastFeedScrollTopRef.current = current;
+    if (feedScrollRafRef.current) return;
+    feedScrollRafRef.current = requestAnimationFrame(() => {
+      feedScrollRafRef.current = 0;
+      // Collapse header when user scrolls down (swipe up on posts)
+      if (delta > 6 && current > 12) {
+        setHeaderOpen(false);
+        setHeaderHintSeen(true);
+        try {
+          window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'down' } }));
+        } catch { /* ignore */ }
+      } else if (delta < -6 || current <= 8) {
+        // Expand header when scrolling up near the top
+        if (current <= 24) {
+          setHeaderOpen(true);
+        }
+        try {
+          window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'up' } }));
+        } catch { /* ignore */ }
+      }
+    });
+  }
+
   // Sub-tab inside the Profile page, replacing the old STOOORNA divider: switches the content
   // strip below it between the text-posts feed and the video/photo grid — independently of
   // everything above (stories strip, header, etc. never move when this changes).
@@ -13065,9 +13093,9 @@ export default function AddFriendPage() {
           {/* Animated radar (text posts) button - now in the bottom bar (RootLayout) */}
 
 
-          {/* ── Everything above the Video|Post|Photo switcher (music button, avatar/stats
+          {/* ── Everything above the content switcher (music button, avatar/stats
               row, stories strip, new-post + inbox icons) collapses together as one shutter,
-              toggled only by the grabber bar below — never by scrolling. A dark blurred fog
+              toggled by the grabber bar or by swiping up on the posts feed. A dark blurred fog
               overlay covers it first, so nothing is ever seen half-cut mid-collapse — closing
               fogs it over immediately then the space shrinks away behind the fog; opening
               expands the space first, then the fog lifts to reveal everything cleanly. ── */}
@@ -13315,15 +13343,13 @@ export default function AddFriendPage() {
             </div>
           </div>
 
-          {/* ── Header show/hide grabber — sits exactly above the Video|Post|Photo switcher.
-              Tapping it toggles the whole header above it open/closed like a shutter.
-              It bounces gently up/down on a loop until the user taps it once, to draw the
-              eye toward the feature — then it settles down and stays still. ── */}
+          {/* ── Header show/hide grabber — sits above the content switcher.
+              Tap toggles header open/closed. Swipe-up on posts also collapses it. ── */}
           <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={() => { setHeaderOpen(o => !o); setHeaderHintSeen(true); }}
-              aria-label={headerOpen ? 'إخفاء الهيدر' : 'إظهار الهيدر'}
+              aria-label={headerOpen ? 'Hide header' : 'Show header'}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
                 padding: '8px 30px',
@@ -13366,11 +13392,15 @@ export default function AddFriendPage() {
 
         {/* ── Content ── */}
         <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
-        <div className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{
+        <div
+          className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain"
+          onScroll={handleProfileFeedScroll}
+          style={{
           WebkitOverflowScrolling: 'touch',
           willChange: 'scroll-position',
           contain: 'strict',
           scrollbarWidth: 'none',
+          touchAction: 'pan-y',
         }}>
           <AnimatePresence mode="wait">
 
