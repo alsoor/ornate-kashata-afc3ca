@@ -361,9 +361,6 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const seekingRef = useRef(false);
-  // Controls bar (seek/play/time/volume): auto-hides 2s after entering, tap brings it
-  // back; a tap while it's visible toggles play/pause instead of hiding it again.
-  const [controlsVisible, setControlsVisible] = useState(true);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -377,19 +374,6 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
       setPlaying(false);
     }
   }, [active, src]);
-
-  useEffect(() => {
-    if (!active) return;
-    setControlsVisible(true);
-  }, [active, src]);
-
-  // Re-arms every time the bar becomes visible again (entry or tap-to-show),
-  // so it keeps auto-hiding after 2s each time, not just on first entry.
-  useEffect(() => {
-    if (!active || !controlsVisible) return;
-    const t = window.setTimeout(() => setControlsVisible(false), 2000);
-    return () => window.clearTimeout(t);
-  }, [active, controlsVisible]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -431,11 +415,7 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
         loop
         muted={muted}
         controls={false}
-        onClick={e => {
-          e.stopPropagation();
-          if (!controlsVisible) { setControlsVisible(true); return; }
-          togglePlay();
-        }}
+        onClick={e => { e.stopPropagation(); togglePlay(); }}
         onTimeUpdate={() => {
           const v = videoRef.current;
           if (!v || seekingRef.current) return;
@@ -450,7 +430,6 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
         onEnded={() => setPlaying(false)}
         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }}
       />
-      {controlsVisible && (
       <div
         onClick={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
@@ -510,7 +489,6 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
           </button>
         </div>
       </div>
-      )}
     </div>
   );
 }
@@ -9848,19 +9826,6 @@ export default function AddFriendPage() {
           }
         }
       } catch { /* optional public merge */ }
-      // Guarantee the signed-in publisher always sees their own posts in the public feed,
-      // even if the audience-scoped endpoints above happen to leave them out server-side.
-      try {
-        if (user?.id) {
-          const mineR = await fetch('/api/posts', { credentials: 'include' });
-          if (mineR.ok) {
-            const data = await mineR.json() as { posts: PostItem[] };
-            for (const p of (data.posts ?? [])) {
-              if (String(p.authorId) === String(user.id)) collected.push(p);
-            }
-          }
-        }
-      } catch { /* optional own-posts merge */ }
       const byId = new Map<number, PostItem>();
       for (const p of collected) byId.set(p.id, p);
       const merged = Array.from(byId.values()).sort(
@@ -9868,7 +9833,7 @@ export default function AddFriendPage() {
       );
       setPosts(prev => mergePostsPreservingMedia(prev, merged));
     } catch {/* silent — feed simply stays empty/local */}
-  }, [user?.id]);
+  }, []);
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
   // ── My media posts (video/photo) — recorded via the camera and now shown in my profile's
