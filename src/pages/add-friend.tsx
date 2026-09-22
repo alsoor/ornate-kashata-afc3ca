@@ -5216,11 +5216,15 @@ function PostCard({
       </motion.div>
 
       {/* Fullscreen media — يمين/يسار كامل الشاشة + النص أعلى أو أسفل */}
-      {mediaLightbox && typeof document !== 'undefined' && createPortal(
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+        {mediaLightbox ? (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          key="feed-media-lightbox"
+          initial={{ y: 0, opacity: 1 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: '100%', opacity: 0.85 }}
+          transition={{ duration: 0.38, ease: [0.32, 0.72, 0, 1] }}
           onClick={() => setMediaLightbox(null)}
           style={{
             position: 'fixed', inset: 0, zIndex: 10500, background: '#000',
@@ -5231,17 +5235,26 @@ function PostCard({
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: 'max(10px, env(safe-area-inset-top, 0px)) 12px 8px',
             flexShrink: 0,
+            position: 'relative',
+            zIndex: 6,
           }}>
             <button
               type="button"
-              onClick={() => setMediaLightbox(null)}
+              onClick={e => { e.stopPropagation(); setMediaLightbox(null); }}
+              aria-label="Close"
               style={{
-                width: 36, height: 36, borderRadius: '50%', border: 'none',
-                background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: 'none',
+                background: 'transparent',
+                color: '#ef4444',
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                fontWeight: 800,
+                letterSpacing: '0.02em',
+                padding: '6px 14px',
+                textShadow: '0 0 10px rgba(239,68,68,0.45)',
               }}
             >
-              <X size={18} strokeWidth={2.4} />
+              Close
             </button>
 
             {/* ⋮ قائمة خيارات المنشور — تظهر داخل معاينة الفيديو/الصورة كاملة الشاشة، أعلى اليمين */}
@@ -5404,7 +5417,9 @@ function PostCard({
           </div>
 
 
-        </motion.div>,
+        </motion.div>
+        ) : null}
+        </AnimatePresence>,
         document.body
       )}
     </>
@@ -6496,9 +6511,11 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
       <AnimatePresence>
         {mediaLightbox && typeof document !== 'undefined' && createPortal(
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            key="friend-media-lightbox"
+            initial={{ y: 0, opacity: 1 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: '100%', opacity: 0.85 }}
+            transition={{ duration: 0.38, ease: [0.32, 0.72, 0, 1] }}
             onClick={() => setMediaLightbox(null)}
             style={{
               position: 'fixed', inset: 0, zIndex: 10450, background: '#000',
@@ -6506,21 +6523,29 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             }}
           >
             <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
               padding: 'max(10px, env(safe-area-inset-top, 0px)) 12px 8px',
               flexShrink: 0,
+              position: 'relative',
+              zIndex: 6,
             }}>
               <button
                 type="button"
-                onClick={() => setMediaLightbox(null)}
-                aria-label="إغلاق"
+                onClick={e => { e.stopPropagation(); setMediaLightbox(null); }}
+                aria-label="Close"
                 style={{
-                  width: 36, height: 36, borderRadius: '50%', border: 'none',
-                  background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#ef4444',
+                  cursor: 'pointer',
+                  fontSize: '0.95rem',
+                  fontWeight: 800,
+                  letterSpacing: '0.02em',
+                  padding: '6px 14px',
+                  textShadow: '0 0 10px rgba(239,68,68,0.45)',
                 }}
               >
-                <X size={18} strokeWidth={2.4} />
+                Close
               </button>
             </div>
 
@@ -16843,10 +16868,10 @@ export default function AddFriendPage() {
           return (
             <motion.div
               key="single-post-view"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.22 }}
+              initial={{ y: 0, opacity: 1 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: '100%', opacity: 0.85 }}
+              transition={{ duration: 0.38, ease: [0.32, 0.72, 0, 1] }}
               style={{
                 position: 'fixed', inset: 0,
                 // من البروفايل: فوق البروفايل (10420) — من الفيد: تحت البروفايل لو فُتح بروفايل فوقه
@@ -16859,13 +16884,19 @@ export default function AddFriendPage() {
                 onClick={e => { e.stopPropagation(); closeSinglePostView(); }}
                 aria-label="Close"
                 style={{
-                  position: 'absolute', top: 'max(12px, env(safe-area-inset-top, 0px))', insetInlineStart: 12, zIndex: 6,
-                  width: 36, height: 36, borderRadius: '50%', border: 'none',
-                  background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  position: 'absolute', top: 'max(12px, env(safe-area-inset-top, 0px))', left: '50%', transform: 'translateX(-50%)', zIndex: 6,
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#ef4444',
+                  cursor: 'pointer',
+                  fontSize: '0.95rem',
+                  fontWeight: 800,
+                  letterSpacing: '0.02em',
+                  padding: '6px 14px',
+                  textShadow: '0 0 10px rgba(239,68,68,0.45)',
                 }}
               >
-                <X size={18} strokeWidth={2.4} />
+                Close
               </button>
 
               <div
