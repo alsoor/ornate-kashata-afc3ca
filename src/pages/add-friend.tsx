@@ -13212,7 +13212,11 @@ export default function AddFriendPage() {
             gridTemplateRows: headerOpen ? '1fr' : '0fr',
             transition: 'grid-template-rows 320ms cubic-bezier(0.22,1,0.36,1)',
           }}>
-            <div style={{ overflow: 'hidden', paddingTop: 12, position: 'relative' }}>
+            <div style={{
+              overflow: storyPullProgress > 0 ? 'visible' : 'hidden',
+              paddingTop: 12,
+              position: 'relative',
+            }}>
               {/* Fog overlay */}
               <div aria-hidden style={{
                 position: 'absolute', inset: 0, zIndex: 6,
@@ -13391,9 +13395,13 @@ export default function AddFriendPage() {
                 className="header-stories"
                 style={{
                   display: 'flex', flexDirection: 'row', flexWrap: 'nowrap',
-                  gap: 10, overflowX: 'auto', overflowY: 'hidden',
+                  gap: 10,
+                  overflowX: 'auto',
+                  overflowY: storyPullProgress > 0 ? 'visible' : 'hidden',
                   scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
-                  padding: '2px 14px 10px',
+                  padding: storyPullProgress > 0
+                    ? `${8 + Math.round(storyPullProgress * 14)}px 14px ${10 + Math.round(storyPullProgress * 10)}px`
+                    : '2px 14px 10px',
                   alignItems: 'center',
                 }}
               >
@@ -13412,8 +13420,9 @@ export default function AddFriendPage() {
                         style={{
                           width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative',
                           transform: storyPullProgress > 0 ? `scale(${1 + storyPullProgress * 0.28})` : undefined,
+                          transformOrigin: 'center center',
                           transition: storyPullProgress > 0 ? 'none' : 'transform 0.22s ease',
-                          zIndex: storyPullProgress > 0.2 ? 2 : undefined,
+                          zIndex: storyPullProgress > 0.2 ? 5 : undefined,
                         }}
                       >
                         {/* حلقة بلونين فقط: أصفر كامل ما دام في عنصر غير مُشاهَد،
