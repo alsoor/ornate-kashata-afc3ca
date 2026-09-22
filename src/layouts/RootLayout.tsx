@@ -4,6 +4,7 @@ import { ScrollRestoration, useLocation, useNavigate } from "react-router";
 import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus, Image as ImageIcon, Video, PenLine } from 'lucide-react';
 import HomepageSameAsJsonLd from '@/components/HomepageSameAsJsonLd';
 import Website from '@/layouts/Website';
+import LiveKindPicker from '@/components/LiveKindPicker';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useSession } from '@/lib/auth/auth-client';
 import { useNotificationCounts } from '@/hooks/useNotificationCounts';
@@ -329,6 +330,7 @@ function GlobalBottomNavigation() {
   /** فقاعات النقر — مرة واحدة عند الضغط ثم تُزال تلقائياً (لا تتكرر كل ثانية) */
   const [navBubble, setNavBubble] = useState<Record<string, number>>({});
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [liveKindOpen, setLiveKindOpen] = useState(false);
   const [friendsPanelOpen, setFriendsPanelOpen] = useState(false);
   const [storyMediaOpen, setStoryMediaOpen] = useState(false);
   const settingsSheetOpen = location.pathname === '/settings' || location.pathname.startsWith('/settings');
@@ -1772,7 +1774,7 @@ function GlobalBottomNavigation() {
   // إخفاء الشريط تلقائياً داخل أي شات (فردي أو سري أو دعم)، أو عند فتح نافذة كتابة منشور جديد،
   // أو عند فتح شيت "إرسال المنشور إلى الأصدقاء" — وإرجاعه تلقائياً عند الخروج من كل حالة
   // إخفاء الشريط السفلي أيضاً أثناء صفحة البوست النصي
-  const isVoiceRoom = location.pathname === '/live' || location.pathname.startsWith('/live/');
+  const isVoiceRoom = location.pathname === '/live' || location.pathname.startsWith('/live/') || location.pathname === '/live-camera' || location.pathname.startsWith('/live-camera');
   const isPrivacyPage = location.pathname === '/privacy' || location.pathname.startsWith('/privacy/');
   const miniChatOverlay = miniChat && user ? (
     <div style={{
@@ -2909,14 +2911,7 @@ function GlobalBottomNavigation() {
                   type="button"
                   onClick={() => {
                     setPlusMenuOpen(false);
-                    const qs = new URLSearchParams({
-                      hostId: String(user.id),
-                      hostName: String((user as any).name || (user as any).username || 'Host'),
-                    });
-                    if ((user as any).username) qs.set('hostUsername', String((user as any).username));
-                    const av = (user as any).avatarUrl || (user as any).image;
-                    if (av) qs.set('hostAvatar', String(av));
-                    navigate('/live?' + qs.toString());
+                    setLiveKindOpen(true);
                   }}
                   aria-label="Account live broadcast"
                   style={{
@@ -3014,6 +3009,16 @@ function GlobalBottomNavigation() {
       </div>
 
     </nav>
+  {user ? (
+    <LiveKindPicker
+      open={liveKindOpen}
+      onClose={() => setLiveKindOpen(false)}
+      hostId={String(user.id)}
+      hostName={String((user as any).name || (user as any).username || 'Host')}
+      hostUsername={(user as any).username ?? null}
+      hostAvatar={(user as any).avatarUrl || (user as any).image || null}
+    />
+  ) : null}
   </>
 
   );
@@ -3059,7 +3064,7 @@ export default function RootLayout({
   // لذلك نلغي هذا الحجز تحديدًا بهذه الصفحات.
   const isFullScreenChat = location.pathname === '/chat';
   const isPrivacyPage = location.pathname === '/privacy' || location.pathname.startsWith('/privacy/');
-  const isVoiceRoom = location.pathname === '/live' || location.pathname.startsWith('/live/');
+  const isVoiceRoom = location.pathname === '/live' || location.pathname.startsWith('/live/') || location.pathname === '/live-camera' || location.pathname.startsWith('/live-camera');
   const isFullBleed = isFullScreenChat || isPrivacyPage || isVoiceRoom;
   const isSettingsPage = location.pathname === '/settings' || location.pathname.startsWith('/settings');
   const [settingsClosing, setSettingsClosing] = useState(false);
