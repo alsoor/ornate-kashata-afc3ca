@@ -13854,7 +13854,7 @@ export default function AddFriendPage() {
               aria-label={bellHasAlert ? (bellRinging ? 'Incoming call' : 'New message') : 'Story comments'}
               style={{
                 position: 'absolute',
-                top: 'max(env(safe-area-inset-top,0px), 50px)',
+                top: 'max(6px, env(safe-area-inset-top, 0px))',
                 right: 20,
                 zIndex: 25,
                 width: 28, height: 28, borderRadius: '50%',
