@@ -3035,31 +3035,24 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                         }} />
                       </div>
                     ) : (
-                      <div style={{
-                        position: 'absolute', inset: '-18% -8% -4%',
-                        transform: 'perspective(820px) rotateX(32deg) scale(1.18)',
-                        transformOrigin: 'center 72%',
-                        pointerEvents: 'none',
-                      }}>
-                        {tiles.map(t => {
-                          if (t.x < 0 || t.y < 0 || t.x >= n || t.y >= n) return null;
-                          return (
-                            <img
-                              key={`${z}-${t.x}-${t.y}`}
-                              alt=""
-                              draggable={false}
-                              src={`https://cartodb-basemaps-a.global.ssl.fastly.net/rastertiles/voyager/${z}/${t.x}/${t.y}.png`}
-                              style={{
-                                position: 'absolute',
-                                left: `calc(50% + ${(t.x - cx) * tile}px)`,
-                                top: `calc(50% + ${(t.y - cy) * tile}px)`,
-                                width: tile, height: tile, pointerEvents: 'none',
-                                filter: 'saturate(1.28) sepia(0.18) hue-rotate(-6deg) brightness(1.08) contrast(1.06)',
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
+                      tiles.map(t => {
+                        if (t.x < 0 || t.y < 0 || t.x >= n || t.y >= n) return null;
+                        return (
+                          <img
+                            key={`${z}-${t.x}-${t.y}`}
+                            alt=""
+                            draggable={false}
+                            src={`https://tile.openstreetmap.org/${z}/${t.x}/${t.y}.png`}
+                            style={{
+                              position: 'absolute',
+                              left: `calc(50% + ${(t.x - cx) * tile}px)`,
+                              top: `calc(50% + ${(t.y - cy) * tile}px)`,
+                              width: tile, height: tile, pointerEvents: 'none',
+                              filter: 'saturate(0.42) brightness(1.14) contrast(0.9) sepia(0.08)',
+                            }}
+                          />
+                        );
+                      })
                     )}
                     {pins.map(pin => {
                       const { px, py, hide } = pinXY(pin);
