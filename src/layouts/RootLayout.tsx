@@ -576,6 +576,7 @@ type CallLogEntry = {
   direction: 'in' | 'out';
   status: 'missed' | 'answered';
   at: number;
+  durationSec?: number;
 };
 const CALL_LOG_KEY = (uid: string) => `stooorna_call_log_${uid}`;
 function loadCallLog(uid: string): CallLogEntry[] {
@@ -1391,6 +1392,7 @@ function GlobalBottomNavigation() {
   const [homeCallLogTick, setHomeCallLogTick] = useState(0);
   const homeCallNoAnswerTimer = useRef<number | null>(null);
   const homeCallSessionRef = useRef(0);
+  const homeCallLiveStartedAt = useRef<number | null>(null);
   const [homeCallFriends, setHomeCallFriends] = useState<HomeCallFriend[]>([]);
   const [homeCallSelected, setHomeCallSelected] = useState<Record<string, boolean>>({});
   const [pendingDirectCallId, setPendingDirectCallId] = useState<string | null>(null);
@@ -1645,12 +1647,44 @@ function GlobalBottomNavigation() {
   }
 
   async function leaveHomeGroupCall() {
+    const endedPhase = homeCallPhaseRef.current;
+    const endedMembers = homeCallMembers.slice();
+    const endedAt = Date.now();
+    const durationSec = homeCallLiveStartedAt.current
+      ? Math.max(1, Math.round((endedAt - homeCallLiveStartedAt.current) / 1000))
+      : 0;
+    homeCallLiveStartedAt.current = null;
     homeCallSessionRef.current += 1;
     if (homeCallNoAnswerTimer.current) {
       window.clearTimeout(homeCallNoAnswerTimer.current);
       homeCallNoAnswerTimer.current = null;
     }
     setPendingDirectCallId(null);
+    if (user?.id && endedPhase !== 'idle') {
+      const peers = endedMembers.filter(m => m.id && m.id !== user.id);
+      for (const peer of peers) {
+        recordMissedCallChat(user.id, peer.id, user.id);
+        pushCallLog(user.id, {
+          peerId: peer.id,
+          peerName: peer.name ?? null,
+          peerAvatar: peer.avatarUrl ?? null,
+          direction: 'out',
+          status: endedPhase === 'live' ? 'answered' : 'missed',
+          at: endedAt,
+          durationSec: endedPhase === 'live' ? durationSec : undefined,
+        });
+        pushCallLog(peer.id, {
+          peerId: user.id,
+          peerName: (user as any).name ?? (user as any).username ?? null,
+          peerAvatar: (user as any).avatarUrl ?? (user as any).image ?? null,
+          direction: 'in',
+          status: endedPhase === 'live' ? 'answered' : 'missed',
+          at: endedAt,
+          durationSec: endedPhase === 'live' ? durationSec : undefined,
+        });
+      }
+      setHomeCallLogTick(x => x + 1);
+    }
     if (homeCallPollRef.current) {
       window.clearInterval(homeCallPollRef.current);
       homeCallPollRef.current = null;
@@ -1847,6 +1881,7 @@ function GlobalBottomNavigation() {
     } catch { /* partial room connect even if Agora fails */ }
     if (homeCallSessionRef.current !== session) return;
     setHomeCallPhase('live');
+    if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
     if (homeCallNoAnswerTimer.current) {
       window.clearTimeout(homeCallNoAnswerTimer.current);
       homeCallNoAnswerTimer.current = null;
@@ -2150,6 +2185,7 @@ function GlobalBottomNavigation() {
     } catch { /* */ }
     if (homeCallSessionRef.current !== session) return;
     setHomeCallPhase('live');
+    if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
     if (homeCallNoAnswerTimer.current) {
       window.clearTimeout(homeCallNoAnswerTimer.current);
       homeCallNoAnswerTimer.current = null;
@@ -3121,7 +3157,8 @@ function GlobalBottomNavigation() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontWeight: 800, color: row.status === 'missed' ? '#e11d48' : '#111', fontSize: 15 }}>{row.peerName || 'User'}</p>
                     <p style={{ margin: 0, color: row.status === 'missed' ? '#e11d48' : '#16a34a', fontSize: 12, fontWeight: 600 }}>
-                      {row.status === 'missed' ? 'Missed call' : (row.direction === 'out' ? 'Outgoing' : 'Incoming')}
+                      {row.status === 'missed' && row.direction === 'in' ? 'Missed call' : row.status === 'missed' && row.direction === 'out' ? 'Call ended' : (row.direction === 'out' ? 'Outgoing' : 'Incoming')}
+                      {row.durationSec ? ` · ${Math.floor(row.durationSec / 60)}:${String(row.durationSec % 60).padStart(2, '0')}` : ''}
                       {' · '}
                       {new Date(row.at).toLocaleString()}
                     </p>

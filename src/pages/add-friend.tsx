@@ -943,6 +943,7 @@ type ChatCallLogEntry = {
   direction: 'in' | 'out';
   status: 'missed' | 'answered';
   at: number;
+  durationSec?: number;
 };
 function loadCallLog(uid: string): ChatCallLogEntry[] {
   try {
@@ -13854,7 +13855,7 @@ export default function AddFriendPage() {
               aria-label={bellHasAlert ? (bellRinging ? 'Incoming call' : 'New message') : 'Story comments'}
               style={{
                 position: 'absolute',
-                top: 'max(6px, env(safe-area-inset-top, 0px))',
+                top: 'max(34px, calc(env(safe-area-inset-top, 0px) + 28px))',
                 right: 20,
                 zIndex: 25,
                 width: 28, height: 28, borderRadius: '50%',
@@ -19469,7 +19470,8 @@ export default function AddFriendPage() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ margin: 0, fontWeight: 800, color: row.status === 'missed' ? '#e11d48' : '#111', fontSize: 15 }}>{row.peerName || 'User'}</p>
                       <p style={{ margin: 0, color: row.status === 'missed' ? '#e11d48' : '#16a34a', fontSize: 12, fontWeight: 600 }}>
-                        {row.status === 'missed' ? 'Missed call' : (row.direction === 'out' ? 'Outgoing' : 'Incoming')}
+                        {row.status === 'missed' && row.direction === 'in' ? 'Missed call' : row.status === 'missed' && row.direction === 'out' ? 'Call ended' : (row.direction === 'out' ? 'Outgoing' : 'Incoming')}
+                        {row.durationSec ? ` · ${Math.floor(row.durationSec / 60)}:${String(row.durationSec % 60).padStart(2, '0')}` : ''}
                         {' · '}
                         {new Date(row.at).toLocaleString()}
                       </p>
