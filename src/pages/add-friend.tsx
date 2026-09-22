@@ -381,9 +381,15 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
   useEffect(() => {
     if (!active) return;
     setControlsVisible(true);
+  }, [active, src]);
+
+  // Re-arms every time the bar becomes visible again (entry or tap-to-show),
+  // so it keeps auto-hiding after 2s each time, not just on first entry.
+  useEffect(() => {
+    if (!active || !controlsVisible) return;
     const t = window.setTimeout(() => setControlsVisible(false), 2000);
     return () => window.clearTimeout(t);
-  }, [active, src]);
+  }, [active, controlsVisible]);
 
   useEffect(() => {
     const v = videoRef.current;
