@@ -7328,7 +7328,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 </>
               )
             )}
-            <motion.button
+{liveActive && (
+                        <motion.button
               type="button"
               whileTap={{ scale: 0.95 }}
               animate={liveActive ? { opacity: [1, 0.45, 1] } : { opacity: 1 }}
@@ -7358,6 +7359,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               <Radio size={15} strokeWidth={2.3} color={liveActive ? '#ef4444' : CLR_PRIMARY} />
               {liveActive ? (liveKind === 'camera' ? 'Video Live' : 'Voice Live') : 'Voice Live'}
             </motion.button>
+            )}
           </div>
         </div>
 
@@ -15681,12 +15683,37 @@ export default function AddFriendPage() {
       setConfirmBlockFriend(null);
     }
   }
+  async function openSecretChatDirect(chat: SecretChat) {
+    if (!chat?.id) return;
+    try {
+      const mr = await fetch(`/api/secret-chat/messages?chatId=${chat.id}`, {
+        credentials: 'include'
+      });
+      const msgs = await mr.json();
+      setChatMessages(Array.isArray(msgs) ? msgs : []);
+      scLastCountRef.current[chat.id] = Array.isArray(msgs) ? msgs.length : 0;
+      setScUnreadChats(s => {
+        const n = new Set(s);
+        n.delete(chat.id);
+        return n;
+      });
+      fetch('/api/secret-chat/mark-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ chatId: chat.id }),
+      }).catch(() => {});
+      setActiveChat(chat);
+      setOpeningChat(null);
+      setOpenPin('');
+      setFriendChatListOpen(false);
+      setShowNewSecret(false);
+    } catch (e) {
+      console.error('[SecretChat] open failed', e);
+    }
+  }
   async function createSecretChat() {
     if (!scName.trim()) return;
-    if (!/^\d{4,8}$/.test(scPin)) {
-      setScError('PIN يجب أن يكون 4-8 أرقام');
-      return;
-    }
     setScCreating(true);
     setScError('');
     try {
@@ -15698,13 +15725,13 @@ export default function AddFriendPage() {
         credentials: 'include',
         body: JSON.stringify({
           name: scName.trim(),
-          pin: scPin,
+          pin: '0000',
           memberIds: scSelectedMembers
         })
       });
       const data = await r.json();
       if (!r.ok) {
-        setScError(data?.error ?? 'فشل الإنشاء');
+        setScError(data?.error ?? 'Create failed');
         return;
       }
       await loadSecretChats();
@@ -15713,6 +15740,10 @@ export default function AddFriendPage() {
       setScPin('');
       setScSelectedMembers([]);
       setScError('');
+      const created = (data && (data.chat || data)) as SecretChat | undefined;
+      if (created && created.id) {
+        void openSecretChatDirect(created);
+      }
     } catch (e) {
       setScError(String(e));
     } finally {
@@ -17161,7 +17192,7 @@ export default function AddFriendPage() {
                   <X size={18} />
                 </motion.button>
               </div>
-              <input type="text" value={scName} onChange={e => setScName(e.target.value)} placeholder="اسم الدردشة السرية…" style={{
+              <input type="text" value={scName} onChange={e => setScName(e.target.value)} placeholder="Secret chat name" style={{
             width: '100%',
             background: CLR_INPUT_BG,
             border: `1px solid ${CLR_PRIMARY_BORDER}`,
@@ -17173,42 +17204,7 @@ export default function AddFriendPage() {
             fontFamily: 'var(--font-sans)',
             direction: 'rtl'
           }} />
-              <div style={{
-            position: 'relative'
-          }}>
-                <KeyRound size={13} style={{
-              position: 'absolute',
-              right: 12,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: CLR_PRIMARY_DIM
-            }} />
-                <input type={scPinVisible ? 'text' : 'password'} inputMode="numeric" maxLength={8} value={scPin} onChange={e => setScPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="PIN (4-8 أرقام)" style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              background: CLR_INPUT_BG,
-              border: `1px solid ${CLR_PRIMARY_BORDER}`,
-              borderRadius: 10,
-              padding: '11px 36px 11px 36px',
-              color: CLR_TEXT,
-              fontSize: '0.9rem',
-              outline: 'none',
-              letterSpacing: '0.2em',
-              direction: 'ltr'
-            }} />
-                <button onClick={() => setScPinVisible(v => !v)} style={{
-              position: 'absolute',
-              left: 10,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: CLR_TEXT_DIM
-            }}>
-                  {scPinVisible ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              </div>
+
               <div>
                 <p style={{
               color: CLR_TEXT_DIM,
@@ -17216,7 +17212,7 @@ export default function AddFriendPage() {
               letterSpacing: '0.2em',
               textTransform: 'uppercase',
               marginBottom: 8
-            }}>أضف أصدقاء</p>
+            }}>Add friends</p>
                 <div style={{
               display: 'flex',
               flexDirection: 'column',
@@ -17265,7 +17261,7 @@ export default function AddFriendPage() {
                 fontSize: '0.8rem',
                 textAlign: 'center',
                 padding: '16px 0'
-              }}>أضف أصدقاء أولاً</p>}
+              }}>Add friends first</p>}
                 </div>
               </div>
               <motion.button whileTap={{
@@ -17299,7 +17295,7 @@ export default function AddFriendPage() {
 
       {/* ── PIN Gate Modal ── */}
       <AnimatePresence>
-        {openingChat && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
+        {false && openingChat && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
         inset: 0,
         zIndex: 10920,
@@ -20649,15 +20645,15 @@ export default function AddFriendPage() {
                             aria-label="New post"
                             style={{
                               width: 44, height: 44, borderRadius: '50%',
-                              border: '1px solid rgba(234,179,8,0.65)',
-                              background: 'rgba(234,179,8,0.14)',
-                              color: '#eab308',
+                              border: '1px solid rgba(0,188,212,0.55)',
+                              background: '#00BCD4',
+                              color: '#ffffff',
                               cursor: 'pointer',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                              boxShadow: '0 4px 16px rgba(0,188,212,0.35)',
                             }}
                           >
-                            <PenLine size={20} strokeWidth={2.2} />
+                            <PenLine size={20} strokeWidth={2.2} color="#ffffff" />
                           </button>
                         )}
                       </div>
@@ -21179,10 +21175,7 @@ export default function AddFriendPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setOpeningChat(sc);
-                        setOpenPin('');
-                        setOpenPinError('');
-                        setFriendChatListOpen(false);
+                        void openSecretChatDirect(sc);
                       }}
                       style={{
                         flex: 1, display: 'flex', alignItems: 'center', gap: 12,
@@ -21204,7 +21197,7 @@ export default function AddFriendPage() {
                           {sc.name || 'Secret chat'}
                         </p>
                         <p style={{ margin: '2px 0 0', color: 'rgba(0,0,0,0.45)', fontSize: '0.72rem' }}>
-                          {typeof (sc as any).member_count === 'number' ? `${(sc as any).member_count} members` : 'Locked · PIN required'}
+                          {typeof (sc as any).member_count === 'number' ? `${(sc as any).member_count} members` : 'Tap to open'}
                         </p>
                       </div>
                     </button>

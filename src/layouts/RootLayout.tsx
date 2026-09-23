@@ -3684,7 +3684,7 @@ function GlobalBottomNavigation() {
                   <Radio size={20} strokeWidth={2.2} />
                 </button>
                 )}
-                {/* New Post — yellow pen, opens text composer */}
+                {/* New Post — blue button, white pen, opens text composer */}
                 {user && (
                 <button
                   type="button"
@@ -3701,15 +3701,15 @@ function GlobalBottomNavigation() {
                   aria-label="New post"
                   style={{
                     width: 44, height: 44, borderRadius: '50%',
-                    border: '1px solid rgba(234,179,8,0.65)',
-                    background: 'rgba(234,179,8,0.14)',
-                    color: '#eab308',
+                    border: '1px solid rgba(0,188,212,0.55)',
+                    background: '#00BCD4',
+                    color: '#ffffff',
                     cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                    boxShadow: '0 4px 16px rgba(0,188,212,0.35)',
                   }}
                 >
-                  <PenLine size={20} strokeWidth={2.2} />
+                  <PenLine size={20} strokeWidth={2.2} color="#ffffff" />
                 </button>
                 )}
               </div>
