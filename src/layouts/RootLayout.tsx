@@ -1417,58 +1417,6 @@ function GlobalBottomNavigation() {
   const [homeCallPhase, setHomeCallPhase] = useState<'idle' | 'animating' | 'connecting' | 'live'>('idle');
   const homeCallPhaseRef = useRef(homeCallPhase);
   useEffect(() => { homeCallPhaseRef.current = homeCallPhase; }, [homeCallPhase]);
-  useEffect(() => {
-    if (homeCallPhase !== 'live') {
-      if (homeCallPhase === 'idle') setHomeCallElapsedSec(0);
-      return;
-    }
-    if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
-    const tick = () => {
-      const start = homeCallLiveStartedAt.current || Date.now();
-      setHomeCallElapsedSec(Math.max(0, Math.floor((Date.now() - start) / 1000)));
-    };
-    tick();
-    const id = window.setInterval(tick, 1000);
-    return () => window.clearInterval(id);
-  }, [homeCallPhase]);
-
-  // Remote party ended the call — close local UI
-  useEffect(() => {
-    if (homeCallPhase !== 'connecting' && homeCallPhase !== 'live') return;
-    const channel = homeCallChannel;
-    if (!channel) return;
-    const onEnd = (detail: { channel?: string } | null) => {
-      if (!detail?.channel) return;
-      if (String(detail.channel) !== String(channel)) return;
-      void leaveHomeGroupCall({ remote: true });
-    };
-    const onEvt = (e: Event) => {
-      const d = (e as CustomEvent).detail as { channel?: string } | undefined;
-      onEnd(d || null);
-    };
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key || !e.newValue) return;
-      if (e.key === `stooorna_call_ended_${channel}`) {
-        try { onEnd(JSON.parse(e.newValue)); } catch { /* */ }
-      }
-    };
-    window.addEventListener('stooorna:home-call-ended', onEvt as EventListener);
-    window.addEventListener('storage', onStorage);
-    const pollEnd = window.setInterval(() => {
-      try {
-        const raw = localStorage.getItem(`stooorna_call_ended_${channel}`);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.at && Date.now() - Number(parsed.at) < 120000) onEnd(parsed);
-        }
-      } catch { /* */ }
-    }, 2000);
-    return () => {
-      window.removeEventListener('stooorna:home-call-ended', onEvt as EventListener);
-      window.removeEventListener('storage', onStorage);
-      window.clearInterval(pollEnd);
-    };
-  }, [homeCallPhase, homeCallChannel]);
 
   const [homeCallMembers, setHomeCallMembers] = useState<HomeCallMember[]>([]);
   const [homeCallMuted, setHomeCallMuted] = useState(false);
@@ -1884,6 +1832,59 @@ function GlobalBottomNavigation() {
       });
     }
   }
+
+  useEffect(() => {
+    if (homeCallPhase !== 'live') {
+      if (homeCallPhase === 'idle') setHomeCallElapsedSec(0);
+      return;
+    }
+    if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
+    const tick = () => {
+      const start = homeCallLiveStartedAt.current || Date.now();
+      setHomeCallElapsedSec(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [homeCallPhase]);
+
+  // Remote party ended the call — close local UI
+  useEffect(() => {
+    if (homeCallPhase !== 'connecting' && homeCallPhase !== 'live') return;
+    const channel = homeCallChannel;
+    if (!channel) return;
+    const onEnd = (detail: { channel?: string } | null) => {
+      if (!detail?.channel) return;
+      if (String(detail.channel) !== String(channel)) return;
+      void leaveHomeGroupCall({ remote: true });
+    };
+    const onEvt = (e: Event) => {
+      const d = (e as CustomEvent).detail as { channel?: string } | undefined;
+      onEnd(d || null);
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || !e.newValue) return;
+      if (e.key === `stooorna_call_ended_${channel}`) {
+        try { onEnd(JSON.parse(e.newValue)); } catch { /* */ }
+      }
+    };
+    window.addEventListener('stooorna:home-call-ended', onEvt as EventListener);
+    window.addEventListener('storage', onStorage);
+    const pollEnd = window.setInterval(() => {
+      try {
+        const raw = localStorage.getItem(`stooorna_call_ended_${channel}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.at && Date.now() - Number(parsed.at) < 120000) onEnd(parsed);
+        }
+      } catch { /* */ }
+    }, 2000);
+    return () => {
+      window.removeEventListener('stooorna:home-call-ended', onEvt as EventListener);
+      window.removeEventListener('storage', onStorage);
+      window.clearInterval(pollEnd);
+    };
+  }, [homeCallPhase, homeCallChannel]);
 
   async function startHomeGroupCall(overrideFriendIds?: string[], asVideo = false) {
     if (!user?.id) return;
