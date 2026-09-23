@@ -444,9 +444,142 @@ app.post("/api/posts/:id/comments", posts_id_comments_post_80);
 app.post("/api/posts/:id/like", posts_id_like_post_81);
 app.post("/api/posts/:id/repost", posts_id_repost_post_82);
 app.post("/api/posts/:id/share", posts_id_share_post_83);
-app.get("/api/presence", presence_get_84);
-app.post("/api/presence/heartbeat", presence_heartbeat_post_85);
+
+// ── Live GPS pin store (inlined — same process / single VPS) ─────────────────
+const LIVE_GPS_TTL_MS = 30 * 60 * 1000;
+function liveGpsStore(): Map<string, any> {
+  const g = globalThis as typeof globalThis & { __stooornaLiveGpsPins?: Map<string, any> };
+  if (!g.__stooornaLiveGpsPins) g.__stooornaLiveGpsPins = new Map();
+  return g.__stooornaLiveGpsPins;
+}
+function liveGpsPrune() {
+  const now = Date.now();
+  const m = liveGpsStore();
+  for (const [id, p] of m) {
+    if (!p || now - Number(p.at || 0) > LIVE_GPS_TTL_MS) m.delete(id);
+  }
+}
+function upsertLiveGpsPin(pin: { id: string; name?: string; username?: string; avatarUrl?: unknown; lat: number; lng: number }) {
+  if (!pin || !pin.id) return;
+  const id = String(pin.id);
+  liveGpsStore().set(id, {
+    id,
+    name: String(pin.name || "User"),
+    username: String(pin.username || "").replace(/^@/, ""),
+    avatarUrl: pin.avatarUrl ?? null,
+    lat: Number(pin.lat),
+    lng: Number(pin.lng),
+    at: Date.now(),
+  });
+}
+function removeLiveGpsPin(userId: string) {
+  if (!userId) return;
+  liveGpsStore().delete(String(userId));
+}
+function listLiveGpsPins() {
+  liveGpsPrune();
+  return Array.from(liveGpsStore().values()).filter(
+    (p) => p && typeof p.lat === "number" && typeof p.lng === "number",
+  );
+}
+
+// Presence: shared in-memory store so all clients see each other online (same Node process / single VPS)
+const PRESENCE_TTL_MS = 45_000;
+function presenceStore(): Map<string, { at: number; name?: string | null; username?: string | null }> {
+  const g = globalThis as typeof globalThis & { __stooornaPresence?: Map<string, { at: number; name?: string | null; username?: string | null }> };
+  if (!g.__stooornaPresence) g.__stooornaPresence = new Map();
+  return g.__stooornaPresence;
+}
+function presencePrune() {
+  const now = Date.now();
+  const m = presenceStore();
+  for (const [id, row] of m) {
+    if (!row || now - Number(row.at || 0) > PRESENCE_TTL_MS) m.delete(id);
+  }
+}
+app.get("/api/presence", (req, res) => {
+  try {
+    presencePrune();
+    const raw = String(req.query.ids || req.query.userIds || "");
+    const ids = raw.split(",").map((s) => s.trim()).filter(Boolean);
+    const m = presenceStore();
+    const out: Record<string, { online: boolean; lastSeen?: number }> = {};
+    if (ids.length) {
+      for (const id of ids) {
+        const row = m.get(String(id));
+        const online = !!(row && Date.now() - Number(row.at || 0) <= PRESENCE_TTL_MS);
+        out[String(id)] = { online, lastSeen: row?.at };
+      }
+    } else {
+      for (const [id, row] of m) {
+        out[String(id)] = { online: true, lastSeen: row.at };
+      }
+    }
+    // Multiple shapes for client compatibility (hook may read any of these)
+    res.json({ ...out, users: out, presence: out });
+  } catch (e) {
+    res.status(500).json({ error: "presence_get_failed" });
+  }
+});
+app.post("/api/presence/heartbeat", (req, res) => {
+  try {
+    const body = (req.body || {}) as Record<string, unknown>;
+    const id = String(body.userId || body.id || body.viewerId || "").trim();
+    if (!id) {
+      res.status(400).json({ error: "userId_required" });
+      return;
+    }
+    presencePrune();
+    presenceStore().set(id, {
+      at: Date.now(),
+      name: body.name != null ? String(body.name) : null,
+      username: body.username != null ? String(body.username) : null,
+    });
+    res.json({ ok: true, ttlMs: PRESENCE_TTL_MS });
+  } catch (e) {
+    res.status(500).json({ error: "presence_heartbeat_failed" });
+  }
+});
 app.post("/api/presence/visitors", presence_visitors_post_86);
+
+// Live GPS pins — shared across requests (same Node process / single VPS)
+app.get("/api/live-gps", (_req, res) => {
+  try {
+    const pins = listLiveGpsPins();
+    res.json({ pins });
+  } catch (e) {
+    res.status(500).json({ pins: [], error: "live_gps_get_failed" });
+  }
+});
+app.post("/api/live-gps", (req, res) => {
+  try {
+    const body = (req.body || {}) as Record<string, unknown>;
+    if (body.clear === true || body.clear === "true") {
+      const clearId = String(body.id || body.userId || "").trim();
+      if (clearId) removeLiveGpsPin(clearId);
+      res.json({ ok: true, cleared: true });
+      return;
+    }
+    const id = String(body.id || body.userId || "").trim();
+    const lat = Number(body.lat);
+    const lng = Number(body.lng);
+    if (!id || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      res.status(400).json({ error: "id_lat_lng_required" });
+      return;
+    }
+    upsertLiveGpsPin({
+      id,
+      name: body.name != null ? String(body.name) : "User",
+      username: body.username != null ? String(body.username) : "",
+      avatarUrl: body.avatarUrl ?? null,
+      lat,
+      lng,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: "live_gps_post_failed" });
+  }
+});
 app.delete("/api/push/subscribe", push_subscribe_delete_87);
 app.post("/api/push/subscribe", push_subscribe_post_88);
 app.get("/api/push/vapid-public-key", push_vapid_public_key_get_89);

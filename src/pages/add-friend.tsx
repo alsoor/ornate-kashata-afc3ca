@@ -1993,7 +1993,12 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           }
         }
       } catch { /* */ }
-      mergePins(bucket);
+      const friendIdSet = new Set((liveFriends || []).map(f => String(f.id)));
+      if (myId) friendIdSet.add(String(myId));
+      const filtered = friendIdSet.size
+        ? bucket.filter(p => p && friendIdSet.has(String(p.id)))
+        : bucket;
+      mergePins(filtered);
     };
     void readPins();
     const iv = window.setInterval(() => { void readPins(); }, 5000);
@@ -2026,6 +2031,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               credentials: 'include',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
+                id: pin.id,
                 lat: pin.lat,
                 lng: pin.lng,
                 name: pin.name,
@@ -2040,7 +2046,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               method: 'POST',
               credentials: 'include',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ clear: true }),
+              body: JSON.stringify({ clear: true, id: myId }),
             });
           } catch { /* */ }
         }
@@ -2060,7 +2066,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
       window.clearInterval(iv);
       if (watchId != null) navigator.geolocation.clearWatch(watchId);
     };
-  }, [liveMapOpen, myId, userName, avatarUrl, liveShareOn]);
+  }, [liveMapOpen, myId, userName, avatarUrl, liveShareOn, liveFriends]);
 
   useEffect(() => {
     if (!liveMapOpen) {
@@ -3157,7 +3163,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                         void fetch('/api/live-gps', {
                           method: 'POST', credentials: 'include',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ clear: true }),
+                          body: JSON.stringify({ clear: true, id: myId }),
                         });
                       } catch { /* */ }
                       setLivePins(prev => prev.filter(p => String(p.id) !== String(myId)));
@@ -14208,6 +14214,26 @@ export default function AddFriendPage() {
   const incomingIds = incoming.map(r => r.requesterId);
   const allVisibleIds = Array.from(new Set([...friendIds, ...resultIds, ...incomingIds]));
   const presence = usePresenceQuery(allVisibleIds);
+  // Heartbeat so friends see this user as online (shared presence store on server)
+  useEffect(() => {
+    if (!user?.id) return;
+    const beat = () => {
+      void fetch('/api/presence/heartbeat', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          id: user.id,
+          name: user.name ?? null,
+          username: (user as any).username ?? null,
+        }),
+      }).catch(() => {});
+    };
+    beat();
+    const iv = window.setInterval(beat, 15_000);
+    return () => window.clearInterval(iv);
+  }, [user?.id, user?.name]);
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('stooorna:secret-chat-state', {
       detail: {
