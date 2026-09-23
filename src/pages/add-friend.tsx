@@ -1867,6 +1867,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const [liveCenter, setLiveCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [liveMsgPeer, setLiveMsgPeer] = useState<{ id: string; name: string } | null>(null);
   const [liveMsgText, setLiveMsgText] = useState('');
+  const [liveMeToast, setLiveMeToast] = useState(false);
+  const liveMeToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [liveShareOn, setLiveShareOn] = useState(() => {
     try { return localStorage.getItem('stooorna_live_gps_share') !== '0'; } catch { return true; }
   });
@@ -3561,7 +3563,16 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                               ? 'radial-gradient(circle, rgba(34,197,94,0.45) 0%, rgba(0,188,212,0.2) 40%, transparent 70%)'
                               : 'radial-gradient(circle, rgba(255,70,50,0.38) 0%, rgba(255,200,60,0.22) 28%, rgba(80,220,170,0.16) 52%, transparent 72%)',
                           }} />
-                          <button type="button" onClick={() => setLiveMsgPeer({ id: pin.id, name: pin.username || pin.name })} style={{
+                          <button type="button" onClick={() => {
+                            if (String(pin.id) === String(myId || '')) {
+                              setLiveMsgPeer(null);
+                              setLiveMeToast(true);
+                              if (liveMeToastTimerRef.current) clearTimeout(liveMeToastTimerRef.current);
+                              liveMeToastTimerRef.current = setTimeout(() => setLiveMeToast(false), 2200);
+                              return;
+                            }
+                            setLiveMsgPeer({ id: pin.id, name: pin.username || pin.name });
+                          }} style={{
                             pointerEvents: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
                           }}>
@@ -3610,7 +3621,19 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               >
                 <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#007AFF', boxShadow: '0 0 0 4px rgba(0,122,255,0.25)' }} />
               </button>
-              {liveMsgPeer && (
+              {liveMeToast && (
+                <div style={{
+                  position: 'absolute', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 6,
+                  padding: '12px 18px', borderRadius: 14,
+                  background: 'rgba(6,20,24,0.96)', border: '1.5px solid rgba(0,188,212,0.45)',
+                  color: '#fff', fontWeight: 800, fontSize: '0.9rem',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
+                  pointerEvents: 'none',
+                }}>
+                  it's Me ☺️
+                </div>
+              )}
+              {liveMsgPeer && String(liveMsgPeer.id) !== String(myId || '') && (
                 <div style={{ position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 4, borderRadius: 14, overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
                   <div style={{ background: '#111', color: '#fff', fontWeight: 800, fontSize: '0.84rem', padding: '10px 12px' }}>
                     @{liveMsgPeer.name}
@@ -8383,6 +8406,23 @@ function subscribeMessageAlert(listener: () => void) {
 // Clears the alert once the user actually opens the chat it came from.
 function clearMessageAlertFor(peerId: string) {
   if (messageAlertState.fromId === peerId) setMessageAlertState({ active: false, fromId: null });
+}
+/** Clear every unread message alert so the outer bell badge turns off. */
+function clearAllMessageAlerts() {
+  setMessageAlertState({ active: false, fromId: null });
+  try {
+    void fetch('/api/messages/read-all', { method: 'POST', credentials: 'include' });
+  } catch { /* ignore */ }
+  try {
+    void fetch('/api/messages/unread/clear', { method: 'POST', credentials: 'include' });
+  } catch { /* ignore */ }
+  try {
+    void fetch('/api/messages/mark-all-read', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true }),
+    });
+  } catch { /* ignore */ }
 }
 
 // حلقة رنين مستقلة على مستوى الموديول (منفصلة عن ringIntervalRef اللي جوه GlobeVoiceControl،
@@ -20989,6 +21029,39 @@ export default function AddFriendPage() {
                 <X size={20} />
               </button>
               <p style={{ margin: 0, color: '#111', fontWeight: 800, fontSize: '1rem', flex: 1 }}>Chats</p>
+              <button
+                type="button"
+                onClick={() => {
+                  clearAllMessageAlerts();
+                  try {
+                    if (user?.id) {
+                      const list = loadUserShareInbox(user.id).map(x => ({ ...x, read: true }));
+                      saveUserShareInbox(user.id, list);
+                      setUserShareInbox(list);
+                    }
+                  } catch { /* ignore */ }
+                  try {
+                    setStoryCommentThreads(prev => prev.map(t => ({ ...t, read: true })));
+                  } catch { /* ignore */ }
+                  try {
+                    setPostCommentThreads(prev => prev.map(t => ({ ...t, read: true })));
+                  } catch { /* ignore */ }
+                }}
+                aria-label="Read all messages"
+                style={{
+                  border: '1px solid rgba(18,140,126,0.35)',
+                  background: 'rgba(18,140,126,0.1)',
+                  color: '#0f766e',
+                  borderRadius: 10,
+                  padding: '6px 10px',
+                  fontWeight: 800,
+                  fontSize: '0.72rem',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Read All Message
+              </button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {friends.length ? friends.map(friend => {
