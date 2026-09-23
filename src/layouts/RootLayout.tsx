@@ -1563,6 +1563,13 @@ function GlobalBottomNavigation() {
       try {
         const raw = localStorage.getItem(`stooorna_home_call_invite_${user.id}`);
         if (raw) applyInvite(JSON.parse(raw));
+        try {
+          const invRes = await fetch(`/api/call/invite?userId=${encodeURIComponent(user.id)}`, { credentials: 'include' });
+          if (invRes.ok) {
+            const invData = await invRes.json() as { invite?: any };
+            if (invData?.invite) applyInvite(invData.invite);
+          }
+        } catch { /* */ }
         const active = localStorage.getItem('stooorna_home_call_active_invite');
         if (active) {
           const parsed = JSON.parse(active);
@@ -1763,6 +1770,12 @@ function GlobalBottomNavigation() {
       if (user?.id) {
         localStorage.removeItem(`stooorna_home_call_invite_${user.id}`);
         localStorage.removeItem('stooorna_home_call_active_invite');
+        try {
+          void fetch('/api/call/invite/clear', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id }),
+          });
+        } catch { /* */ }
         for (const m of homeCallMembers) {
           if (m.id && m.id !== user.id) {
             try { localStorage.removeItem(`stooorna_home_call_invite_${m.id}`); } catch { /* */ }
@@ -1828,6 +1841,21 @@ function GlobalBottomNavigation() {
     } catch { /* */ }
     for (const peer of picked) {
       try { localStorage.setItem(`stooorna_home_call_invite_${peer.id}`, JSON.stringify(invitePayload)); } catch { /* */ }
+      try {
+        void fetch('/api/call/invite', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            toUserId: peer.id,
+            channel: invitePayload.channel,
+            video: !!(invitePayload as any).video,
+            kind: (invitePayload as any).video ? 'video' : 'voice',
+            hostId: invitePayload.hostId,
+            hostName: invitePayload.hostName,
+            hostAvatar: invitePayload.hostAvatar,
+            members: invitePayload.members,
+          }),
+        });
+      } catch { /* */ }
     }
     const session = ++homeCallSessionRef.current;
     window.setTimeout(() => {
@@ -2069,6 +2097,21 @@ function GlobalBottomNavigation() {
     for (const peer of targets) {
       try { localStorage.setItem(`stooorna_home_call_invite_${peer.id}`, JSON.stringify(invitePayload)); } catch { /* */ }
       try {
+        void fetch('/api/call/invite', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            toUserId: peer.id,
+            channel: invitePayload.channel,
+            video: !!(invitePayload as any).video,
+            kind: (invitePayload as any).video ? 'video' : 'voice',
+            hostId: invitePayload.hostId,
+            hostName: invitePayload.hostName,
+            hostAvatar: invitePayload.hostAvatar,
+            members: invitePayload.members,
+          }),
+        });
+      } catch { /* */ }
+      try {
         await fetch('/api/profile-visit/heartbeat', {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2230,6 +2273,12 @@ function GlobalBottomNavigation() {
       if (user?.id) {
         localStorage.removeItem(`stooorna_home_call_invite_${user.id}`);
         localStorage.removeItem('stooorna_home_call_active_invite');
+        try {
+          void fetch('/api/call/invite/clear', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id }),
+          });
+        } catch { /* */ }
         void fetch('/api/room/leave', {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ roomId: `home_ring_${homeCallShortHash(user.id)}`, userId: user.id }),

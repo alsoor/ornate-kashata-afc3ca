@@ -8334,6 +8334,21 @@ function writeVideoCallInvite(toUserId: string, payload: Record<string, unknown>
         kind: 'video',
       },
     }));
+    try {
+      void fetch('/api/call/invite', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toUserId,
+          channel: payload.channel,
+          video: true,
+          kind: 'video',
+          hostId: payload.fromId,
+          hostName: payload.fromName ?? null,
+          hostAvatar: null,
+          members: [],
+        }),
+      });
+    } catch { /* ignore */ }
   } catch { /* ignore */ }
 }
 
