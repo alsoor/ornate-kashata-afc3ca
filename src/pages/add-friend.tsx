@@ -8219,18 +8219,38 @@ function FriendVideoCallStage({
         if (!tokenResponse.ok) throw new Error('Video token unavailable');
         const tokenData = await tokenResponse.json() as { token: string; uid: number };
         await client.join(AGORA_APP_ID, session.channel, tokenData.token, tokenData.uid);
-        const [micTrack, camTrack] = await AgoraRTC.createMicrophoneAndCameraTracks(
-          { encoderConfig: 'speech_standard' },
-          { encoderConfig: '720p_1', facingMode }
-        );
+        // Mic first, then camera — avoids double-lock / NOT_READABLE when another
+        // session briefly held the device. If camera fails, continue audio-only.
+        let micTrack: IMicrophoneAudioTrack | null = null;
+        let camTrack: any = null;
+        try {
+          micTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' });
+        } catch (micErr) {
+          throw micErr;
+        }
+        try {
+          camTrack = await AgoraRTC.createCameraVideoTrack({
+            encoderConfig: '720p_1',
+            facingMode,
+          } as any);
+        } catch (camErr) {
+          console.warn('[FriendVideoCall] camera unavailable, audio-only', camErr);
+          if (!cancelled) {
+            setError('Camera busy or blocked — audio only');
+            setCamOn(false);
+          }
+        }
         if (cancelled) {
-          micTrack.stop(); camTrack.stop();
-          micTrack.close(); camTrack.close();
+          try { micTrack?.stop(); micTrack?.close(); } catch { /* */ }
+          try { camTrack?.stop(); camTrack?.close(); } catch { /* */ }
           return;
         }
-        localTracksRef.current = { mic: micTrack, cam: camTrack };
-        camTrack.play(localElRef.current!);
-        await client.publish([micTrack, camTrack]);
+        localTracksRef.current = { mic: micTrack || undefined, cam: camTrack || undefined };
+        if (camTrack && localElRef.current) {
+          try { camTrack.play(localElRef.current); } catch { /* */ }
+        }
+        const toPublish = [micTrack, camTrack].filter(Boolean) as any[];
+        if (toPublish.length) await client.publish(toPublish);
         if (!cancelled) setStatus(session.role === 'caller' ? 'Calling…' : 'Live');
       } catch (err) {
         console.error('[FriendVideoCall] start failed', err);
@@ -19995,6 +20015,8 @@ export default function AddFriendPage() {
                     peerName: friendChatPeer.name ?? friendChatPeer.username ?? null,
                     peerAvatar: friendChatPeer.avatarUrl ?? null,
                     video: true,
+                    handledBy: 'friend-video',
+                    skipHomeCall: true,
                   }
                 }));
               }} style={{
