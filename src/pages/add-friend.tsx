@@ -8698,7 +8698,7 @@ function GlobalIncomingCallBanner({ myUserId, myUserName }: { myUserId: string |
     return () => window.removeEventListener('stooorna:answer-home-incoming', onAnswer);
   }, [myUserId, myUserName]);
   const activeState = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
-  const visible = false; // full-screen incoming is handled in RootLayout
+  const visible = incoming.ringing && !activeState.joined && !!myUserId;
   return (
     <AnimatePresence>
       {visible && (
@@ -21118,12 +21118,12 @@ export default function AddFriendPage() {
                 onClick={() => setShowNewSecret(true)}
                 aria-label="New secret chat"
                 style={{
-                  width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(0,188,212,0.35)',
-                  background: 'rgba(0,188,212,0.1)', color: '#00BCD4', cursor: 'pointer',
+                  width: 34, height: 34, borderRadius: '50%', border: '2px solid #111',
+                  background: '#ffffff', color: '#111', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}
               >
-                <Plus size={18} strokeWidth={2.4} />
+                <Plus size={18} strokeWidth={2.6} color="#111" />
               </button>
               <button
                 type="button"
@@ -21155,9 +21155,9 @@ export default function AddFriendPage() {
                 }}
                 aria-label="Read all messages"
                 style={{
-                  border: '1px solid rgba(18,140,126,0.35)',
-                  background: 'rgba(18,140,126,0.1)',
-                  color: '#0f766e',
+                  border: '1.5px solid #ef4444',
+                  background: '#ef4444',
+                  color: '#ffffff',
                   borderRadius: 10,
                   padding: '6px 10px',
                   fontWeight: 800,
@@ -21178,7 +21178,7 @@ export default function AddFriendPage() {
                     position: 'relative', display: 'flex', alignItems: 'center', gap: 12,
                     padding: '12px 10px', borderRadius: 14,
                     background: 'rgba(0,188,212,0.06)',
-                    border: '1px solid rgba(0,188,212,0.18)',
+                    border: '1.5px solid #111',
                   }}>
                     <button
                       type="button"
@@ -21194,7 +21194,7 @@ export default function AddFriendPage() {
                       <div style={{
                         width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
                         background: 'rgba(0,188,212,0.15)',
-                        border: '2px solid rgba(0,188,212,0.4)',
+                        border: '2px solid #111',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         color: '#00BCD4',
                       }}>
@@ -21212,14 +21212,27 @@ export default function AddFriendPage() {
                     <button
                       type="button"
                       aria-label="Chat actions"
-                      onClick={() => setOpenActionMenu(`sc-${sc.id}`)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenActionMenu(prev => prev === `sc-${sc.id}` ? null : `sc-${sc.id}`);
+                      }}
                       style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent', color: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
                     >
                       <MoreVertical size={18} />
                     </button>
                   </div>
                   {openActionMenu === `sc-${sc.id}` && (
+                    <>
                     <div
+                      role="presentation"
+                      onClick={() => setOpenActionMenu(null)}
+                      style={{
+                        position: 'fixed', inset: 0, zIndex: 4,
+                        background: 'transparent',
+                      }}
+                    />
+                    <div
+                      onClick={(e) => e.stopPropagation()}
                       style={{
                         position: 'absolute', right: 8, top: 48, zIndex: 5,
                         background: '#fff', border: '1px solid rgba(0,0,0,0.1)',
@@ -21257,6 +21270,7 @@ export default function AddFriendPage() {
                         Cancel
                       </button>
                     </div>
+                    </>
                   )}
                 </div>
                 );
