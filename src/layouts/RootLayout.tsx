@@ -1699,6 +1699,21 @@ function GlobalBottomNavigation() {
     const endedMembers = homeCallMembers.slice();
     const endedChannel = homeCallChannel;
     const endedAt = Date.now();
+    // Instant UI close for both local and remote — do not wait for Agora teardown
+    homeCallPhaseRef.current = 'idle';
+    setHomeCallPhase('idle');
+    setHomeCallMinimized(false);
+    setHomeIncoming(null);
+    setHomeIncomingExpanded(false);
+    setHomeCallChannel(null);
+    setHomeCallMembers([]);
+    setHomeCallElapsedSec(0);
+    setHomeCallPickerOpen(false);
+    stopHomeIncomingRing();
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
+      window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring'));
+    } catch { /* */ }
     const durationSec = homeCallLiveStartedAt.current
       ? Math.max(1, Math.round((endedAt - homeCallLiveStartedAt.current) / 1000))
       : 0;
@@ -1886,7 +1901,7 @@ function GlobalBottomNavigation() {
           if (parsed?.at && Date.now() - Number(parsed.at) < 120000) onEnd(parsed);
         }
       } catch { /* */ }
-    }, 2000);
+    }, 400);
     return () => {
       window.removeEventListener('stooorna:home-call-ended', onEvt as EventListener);
       window.removeEventListener('storage', onStorage);
@@ -2498,6 +2513,9 @@ function GlobalBottomNavigation() {
   }
 
   function ignoreHomeIncoming() {
+    const inviteSnap = homeIncoming;
+    const endedAt = Date.now();
+    const channel = String(inviteSnap?.channel || '').trim();
     try {
       window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
     } catch { /* */ }
@@ -2507,11 +2525,23 @@ function GlobalBottomNavigation() {
       homeCallNoAnswerTimer.current = null;
     }
     stopHomeIncomingRing();
-    homeRingLockRef.current = { mode: 'ignored', channel: homeIncoming?.channel || '', at: Date.now() };
+    homeRingLockRef.current = { mode: 'ignored', channel: channel || homeIncoming?.channel || '', at: endedAt };
     setHomeIncomingExpanded(false);
     setHomeIncoming(null);
+    setHomeCallPhase('idle');
+    setHomeCallMinimized(false);
+    setHomeCallChannel(null);
+    setHomeCallMembers([]);
     try {
       window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring'));
+      window.dispatchEvent(new CustomEvent('stooorna:call-declined', { detail: { channel, at: endedAt } }));
+      // Signal caller immediately so their connecting UI closes at the same moment
+      if (channel) {
+        const payload = { channel, by: user?.id || '', at: endedAt, reason: 'declined' };
+        try { localStorage.setItem(`stooorna_call_ended_${channel}`, JSON.stringify(payload)); } catch { /* */ }
+        try { window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: payload })); } catch { /* */ }
+        try { window.dispatchEvent(new StorageEvent('storage', { key: `stooorna_call_ended_${channel}`, newValue: JSON.stringify(payload) })); } catch { /* */ }
+      }
       if (user?.id) {
         localStorage.removeItem(`stooorna_home_call_invite_${user.id}`);
         localStorage.removeItem('stooorna_home_call_active_invite');
@@ -2525,6 +2555,19 @@ function GlobalBottomNavigation() {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ roomId: `home_ring_${homeCallShortHash(user.id)}`, userId: user.id }),
         });
+        // Missed call into 1:1 chat when declining
+        if (inviteSnap?.hostId) {
+          recordMissedCallChat(user.id, inviteSnap.hostId, inviteSnap.hostId);
+          pushCallLog(user.id, {
+            peerId: inviteSnap.hostId,
+            peerName: inviteSnap.hostName ?? null,
+            peerAvatar: inviteSnap.hostAvatar ?? null,
+            direction: 'in',
+            status: 'missed',
+            at: endedAt,
+          });
+          setHomeCallLogTick(x => x + 1);
+        }
       }
     } catch { /* */ }
   }

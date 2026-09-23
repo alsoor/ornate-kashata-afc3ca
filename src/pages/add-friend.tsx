@@ -8727,7 +8727,9 @@ function GlobalIncomingCallBanner({ myUserId, myUserName }: { myUserId: string |
     return () => window.removeEventListener('stooorna:answer-home-incoming', onAnswer);
   }, [myUserId, myUserName]);
   const activeState = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
-  const visible = incoming.ringing && !activeState.joined && !!myUserId;
+  // Disabled: only the WhatsApp-style heads-up banner in RootLayout should show for incoming calls.
+  const visible = false && incoming.ringing && !activeState.joined && !!myUserId;
+  void activeState;
   return (
     <AnimatePresence>
       {visible && (
@@ -21158,62 +21160,33 @@ export default function AddFriendPage() {
                       markLocalPostThreadsRead(String(user.id), postIds);
                     }
                   } catch { /* ignore */ }
-                  try {
-                    setStoryCommentThreads(prev => prev.map(t => ({ ...t, read: true })));
-                  } catch { /* ignore */ }
-                  try {
-                    setPostCommentThreads(prev => prev.map(t => ({ ...t, read: true })));
-                  } catch { /* ignore */ }
-                  try {
-                    setSharedInbox(prev => prev.map(s => ({ ...s, read: true })));
-                  } catch { /* ignore */ }
-                  try {
-                    setPostInteractions(prev => prev.map(p => ({ ...p, read: true })));
-                  } catch { /* ignore */ }
+                  try { setStoryCommentThreads(prev => prev.map(t => ({ ...t, read: true }))); } catch { /* ignore */ }
+                  try { setPostCommentThreads(prev => prev.map(t => ({ ...t, read: true }))); } catch { /* ignore */ }
+                  try { setSharedInbox(prev => prev.map(s => ({ ...s, read: true }))); } catch { /* ignore */ }
+                  try { setPostInteractions(prev => prev.map(p => ({ ...p, read: true }))); } catch { /* ignore */ }
                 }}
                 aria-label="Read all messages"
                 style={{
-                  border: '1.5px solid #ef4444',
-                  background: '#ef4444',
-                  color: '#ffffff',
-                  borderRadius: 10,
-                  padding: '6px 10px',
-                  fontWeight: 800,
-                  fontSize: '0.72rem',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
+                  border: '1.5px solid #ef4444', background: '#ef4444', color: '#ffffff',
+                  borderRadius: 10, padding: '6px 10px', fontWeight: 800, fontSize: '0.72rem',
+                  cursor: 'pointer', whiteSpace: 'nowrap',
                 }}
               >
                 Read All
               </button>
             </div>
             <div style={{ padding: '8px 14px 4px', background: '#ffffff' }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                background: '#f0f2f5', borderRadius: 10, padding: '8px 12px',
-              }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f0f2f5', borderRadius: 10, padding: '8px 12px' }}>
                 <Search size={16} color="rgba(0,0,0,0.45)" />
-                <input
-                  type="search"
-                  placeholder="Search..."
-                  value={storyReqQuery}
+                <input type="search" placeholder="Search..." value={storyReqQuery}
                   onChange={e => setStoryReqQuery(e.target.value)}
-                  style={{
-                    flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                    fontSize: '0.88rem', color: '#111', fontFamily: 'inherit',
-                  }}
+                  style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: '0.88rem', color: '#111', fontFamily: 'inherit' }}
                 />
               </div>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', background: '#ffffff' }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 14,
-                padding: '12px 16px', borderBottom: '1px solid rgba(0,0,0,0.04)',
-              }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
-                  background: '#f0f2f5', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+                <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: '#f0f2f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Inbox size={20} color="rgba(0,0,0,0.45)" />
                 </div>
                 <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: 600, fontSize: '0.95rem' }}>Archived</p>
@@ -21223,9 +21196,7 @@ export default function AddFriendPage() {
                 const q = (storyReqQuery || '').trim().toLowerCase();
                 const list = (friends || []).filter(f => {
                   if (!q) return true;
-                  const name = String(f.name || '').toLowerCase();
-                  const un = String(f.username || '').toLowerCase();
-                  return name.includes(q) || un.includes(q);
+                  return String(f.name || '').toLowerCase().includes(q) || String(f.username || '').toLowerCase().includes(q);
                 });
                 const ranked = list.map(f => {
                   const msgs = user ? loadShareThread(user.id, f.friendId, 'direct') : [];
@@ -21234,78 +21205,29 @@ export default function AddFriendPage() {
                   return { f, last, unread, at: last?.at ?? 0 };
                 }).sort((a, b) => b.at - a.at);
                 if (!ranked.length) {
-                  return (
-                    <p style={{ color: 'rgba(0,0,0,0.4)', textAlign: 'center', padding: 40, fontSize: '0.88rem' }}>
-                      No friends yet. Add friends to start chatting.
-                    </p>
-                  );
+                  return <p style={{ color: 'rgba(0,0,0,0.4)', textAlign: 'center', padding: 40, fontSize: '0.88rem' }}>No friends yet. Add friends to start chatting.</p>;
                 }
                 return ranked.map(({ f, last, unread, at }) => {
                   const online = !!(presence[f.friendId] as any)?.online;
                   const preview = last
-                    ? (last.type === 'voice' ? 'Voice message'
-                      : last.type === 'image' ? 'Photo'
-                      : last.type === 'video' ? 'Video'
-                      : last.type === 'file' ? 'File'
-                      : String(last.body || '').slice(0, 60))
+                    ? (last.type === 'voice' ? 'Voice message' : last.type === 'image' ? 'Photo' : last.type === 'video' ? 'Video' : last.type === 'file' ? 'File' : String(last.body || '').slice(0, 60))
                     : 'Tap to chat';
                   const timeLabel = at ? formatMsgTime(at) : '';
                   return (
-                    <button
-                      key={f.friendId}
-                      type="button"
-                      onClick={() => openFriendChat(f)}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', gap: 14,
-                        padding: '12px 16px', border: 'none', background: 'transparent',
-                        cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid rgba(0,0,0,0.04)',
-                      }}
-                    >
+                    <button key={f.friendId} type="button" onClick={() => openFriendChat(f)}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
                       <div style={{ position: 'relative', flexShrink: 0 }}>
                         <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl} size={52} />
-                        <span
-                          aria-hidden
-                          style={{
-                            position: 'absolute', right: 1, bottom: 1, width: 12, height: 12, borderRadius: '50%',
-                            border: '2px solid #fff',
-                            background: online ? '#22c55e' : '#9ca3af',
-                          }}
-                        />
+                        <span aria-hidden style={{ position: 'absolute', right: 1, bottom: 1, width: 12, height: 12, borderRadius: '50%', border: '2px solid #fff', background: online ? '#22c55e' : '#9ca3af' }} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <p style={{
-                            margin: 0, flex: 1, color: '#111', fontWeight: unread > 0 ? 800 : 600,
-                            fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>
-                            {f.name || f.username || 'User'}
-                          </p>
-                          {timeLabel ? (
-                            <span style={{
-                              color: unread > 0 ? '#25D366' : 'rgba(0,0,0,0.45)',
-                              fontSize: '0.72rem', fontWeight: unread > 0 ? 700 : 500, flexShrink: 0,
-                            }}>
-                              {timeLabel}
-                            </span>
-                          ) : null}
+                          <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: unread > 0 ? 800 : 600, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'User'}</p>
+                          {timeLabel ? <span style={{ color: unread > 0 ? '#25D366' : 'rgba(0,0,0,0.45)', fontSize: '0.72rem', fontWeight: unread > 0 ? 700 : 500, flexShrink: 0 }}>{timeLabel}</span> : null}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                          <p style={{
-                            margin: 0, flex: 1, color: unread > 0 ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.45)',
-                            fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            fontWeight: unread > 0 ? 600 : 400,
-                          }}>
-                            {preview}
-                          </p>
-                          {unread > 0 ? (
-                            <span style={{
-                              minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px',
-                              background: '#25D366', color: '#fff', fontSize: '0.7rem', fontWeight: 800,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                            }}>
-                              {unread > 99 ? '99+' : unread}
-                            </span>
-                          ) : null}
+                          <p style={{ margin: 0, flex: 1, color: unread > 0 ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.45)', fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: unread > 0 ? 600 : 400 }}>{preview}</p>
+                          {unread > 0 ? <span style={{ minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px', background: '#25D366', color: '#fff', fontSize: '0.7rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{unread > 99 ? '99+' : unread}</span> : null}
                         </div>
                       </div>
                     </button>
@@ -21515,33 +21437,16 @@ export default function AddFriendPage() {
                         if (friendChatReactMsgId === m.id) { setFriendChatReactMsgId(null); return; }
                         setFriendChatOpenTimeId(id => id === m.id ? null : m.id);
                       }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setFriendChatReactMsgId(m.id);
-                        setFriendChatOpenTimeId(m.id);
-                      }}
+                      onContextMenu={(e) => { e.preventDefault(); setFriendChatReactMsgId(m.id); setFriendChatOpenTimeId(m.id); }}
                       onPointerDown={(e) => {
                         const target = e.currentTarget as any;
                         if (target._fcLpTimer) window.clearTimeout(target._fcLpTimer);
-                        target._fcLpTimer = window.setTimeout(() => {
-                          target._fcLpFired = true;
-                          setFriendChatReactMsgId(m.id);
-                          setFriendChatOpenTimeId(m.id);
-                        }, 450);
+                        target._fcLpTimer = window.setTimeout(() => { target._fcLpFired = true; setFriendChatReactMsgId(m.id); setFriendChatOpenTimeId(m.id); }, 450);
                         target._fcLpFired = false;
                       }}
-                      onPointerUp={(e) => {
-                        const target = e.currentTarget as any;
-                        if (target._fcLpTimer) { window.clearTimeout(target._fcLpTimer); target._fcLpTimer = null; }
-                      }}
-                      onPointerLeave={(e) => {
-                        const target = e.currentTarget as any;
-                        if (target._fcLpTimer) { window.clearTimeout(target._fcLpTimer); target._fcLpTimer = null; }
-                      }}
-                      onPointerCancel={(e) => {
-                        const target = e.currentTarget as any;
-                        if (target._fcLpTimer) { window.clearTimeout(target._fcLpTimer); target._fcLpTimer = null; }
-                      }}
+                      onPointerUp={(e) => { const target = e.currentTarget as any; if (target._fcLpTimer) { window.clearTimeout(target._fcLpTimer); target._fcLpTimer = null; } }}
+                      onPointerLeave={(e) => { const target = e.currentTarget as any; if (target._fcLpTimer) { window.clearTimeout(target._fcLpTimer); target._fcLpTimer = null; } }}
+                      onPointerCancel={(e) => { const target = e.currentTarget as any; if (target._fcLpTimer) { window.clearTimeout(target._fcLpTimer); target._fcLpTimer = null; } }}
                       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setFriendChatOpenTimeId(id => id === m.id ? null : m.id); }}
                       style={{
                         position: 'relative',
@@ -21555,67 +21460,21 @@ export default function AddFriendPage() {
                       }}
                     >
                       {friendChatReactMsgId === m.id && user && (
-                        <div
-                          onClick={e => e.stopPropagation()}
-                          style={{
-                            position: 'absolute',
-                            top: -44,
-                            left: user && m.fromId === user.id ? 'auto' : 0,
-                            right: user && m.fromId === user.id ? 0 : 'auto',
-                            zIndex: 20,
-                            display: 'flex', gap: 4,
-                            padding: '6px 8px',
-                            borderRadius: 24,
-                            background: '#ffffff',
-                            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-                            border: '1px solid rgba(0,0,0,0.08)',
-                          }}
-                        >
+                        <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: -44, left: user && m.fromId === user.id ? 'auto' : 0, right: user && m.fromId === user.id ? 0 : 'auto', zIndex: 20, display: 'flex', gap: 4, padding: '6px 8px', borderRadius: 24, background: '#ffffff', boxShadow: '0 4px 16px rgba(0,0,0,0.18)', border: '1px solid rgba(0,0,0,0.08)' }}>
                           {FRIEND_CHAT_REACT_EMOJIS.map(em => (
-                            <button
-                              key={em}
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!user || !friendChatPeer) return;
-                                const next = toggleMsgReaction(user.id, friendChatPeer.friendId, 'direct', m.id, user.id, em);
-                                setFriendChatMsgs(next);
-                                setFriendChatReactMsgId(null);
-                              }}
-                              style={{
-                                width: 34, height: 34, borderRadius: '50%', border: 'none',
-                                background: 'transparent', fontSize: '1.25rem', cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              }}
-                            >
-                              {em}
-                            </button>
+                            <button key={em} type="button" onClick={(e) => {
+                              e.stopPropagation();
+                              if (!user || !friendChatPeer) return;
+                              setFriendChatMsgs(toggleMsgReaction(user.id, friendChatPeer.friendId, 'direct', m.id, user.id, em));
+                              setFriendChatReactMsgId(null);
+                            }} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'transparent', fontSize: '1.25rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{em}</button>
                           ))}
                         </div>
                       )}
                       {Array.isArray(m.reactions) && m.reactions.length > 0 && (
-                        <div style={{
-                          position: 'absolute',
-                          bottom: -12,
-                          left: user && m.fromId === user.id ? 'auto' : 8,
-                          right: user && m.fromId === user.id ? 8 : 'auto',
-                          zIndex: 5,
-                          display: 'flex', gap: 2,
-                          padding: '2px 6px',
-                          borderRadius: 12,
-                          background: '#ffffff',
-                          boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
-                          border: '1px solid rgba(0,0,0,0.06)',
-                        }}>
-                          {Object.entries(
-                            m.reactions.reduce((acc: Record<string, number>, r) => {
-                              acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-                              return acc;
-                            }, {} as Record<string, number>)
-                          ).map(([em, cnt]) => (
-                            <span key={em} style={{ fontSize: '0.75rem', lineHeight: 1.2 }}>
-                              {em}{cnt > 1 ? <span style={{ fontSize: '0.65rem', color: 'rgba(0,0,0,0.5)', marginLeft: 1 }}>{cnt}</span> : null}
-                            </span>
+                        <div style={{ position: 'absolute', bottom: -12, left: user && m.fromId === user.id ? 'auto' : 8, right: user && m.fromId === user.id ? 8 : 'auto', zIndex: 5, display: 'flex', gap: 2, padding: '2px 6px', borderRadius: 12, background: '#ffffff', boxShadow: '0 1px 4px rgba(0,0,0,0.12)', border: '1px solid rgba(0,0,0,0.06)' }}>
+                          {Object.entries(m.reactions.reduce((acc: Record<string, number>, r) => { acc[r.emoji] = (acc[r.emoji] || 0) + 1; return acc; }, {} as Record<string, number>)).map(([em, cnt]) => (
+                            <span key={em} style={{ fontSize: '0.75rem', lineHeight: 1.2 }}>{em}{cnt > 1 ? <span style={{ fontSize: '0.65rem', color: 'rgba(0,0,0,0.5)', marginLeft: 1 }}>{cnt}</span> : null}</span>
                           ))}
                         </div>
                       )}
