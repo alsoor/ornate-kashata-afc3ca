@@ -1824,7 +1824,7 @@ const CAMERA_FILTERS: { id: CameraFilterId; label: string; css: string }[] = [
   { id: 'bw', label: 'B&W', css: 'grayscale(1) contrast(1.08)' },
 ];
 
-function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendRequests = [], onRespondFriendRequest, onOpenStoryComments, storyCommentUnread = 0, shareChatUnread = 0, allowMusic = true, publishLabel, liveFriends = [], myId, onSendLiveChat }: {
+function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendRequests = [], onRespondFriendRequest, onOpenStoryComments, storyCommentUnread = 0, shareChatUnread = 0, allowMusic = true, publishLabel, liveFriends = [], myId, onSendLiveChat, startWithLiveMap = false }: {
   onClose: () => void;
   onPublish: (file: File) => Promise<void> | void;
   avatarUrl?: string | null;
@@ -1843,6 +1843,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   /** الأفراد: موسيقى + نص؛ الشركات: بدون موسيقى (تعليق/نص فقط) */
   allowMusic?: boolean;
   publishLabel?: string;
+  /** Open GPS live map immediately (from Settings map-pin entry) */
+  startWithLiveMap?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1860,7 +1862,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     // Double-tap flip disabled
   }
   const [requestsBoxOpen, setRequestsBoxOpen] = useState(false);
-  const [liveMapOpen, setLiveMapOpen] = useState(false);
+  const [liveMapOpen, setLiveMapOpen] = useState(!!startWithLiveMap);
   const [livePins, setLivePins] = useState<{ id: string; name: string; username: string; avatarUrl: string | null; lat: number; lng: number; at?: number }[]>([]);
   const [liveCenter, setLiveCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [liveMsgPeer, setLiveMsgPeer] = useState<{ id: string; name: string } | null>(null);
@@ -2953,10 +2955,6 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 </span>
               )}
             </div>
-            <motion.button type="button" whileTap={{ scale: 0.92 }} onClick={() => setLiveMapOpen(true)}
-              style={{ height: 28, padding: '0 8px', borderRadius: 14, border: '1.5px solid #ef4444', background: 'rgba(0,0,0,0.45)', color: '#fff', fontSize: '0.62rem', fontWeight: 800, cursor: 'pointer' }}>
-              Live Location
-            </motion.button>
           </div>
 
           <div style={{ width: 36 }} />
@@ -3294,7 +3292,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             <div style={{ padding: '10px 12px 8px', paddingTop: 'max(10px, env(safe-area-inset-top))', background: '#061018', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.9rem', flex: 1 }}>GPS Live</span>
-                <button type="button" onClick={() => { setLiveMapOpen(false); setLiveMsgPeer(null); }} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>X</button>
+                <button type="button" onClick={() => { setLiveMapOpen(false); setLiveMsgPeer(null); if (startWithLiveMap) onClose(); }} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>X</button>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ flex: 1, position: 'relative' }}>
@@ -8345,8 +8343,13 @@ if (typeof window !== 'undefined') {
       try { playIncomingCallRing(); } catch { /* */ }
       try { navigator.vibrate?.([300, 180, 300, 180]); } catch { /* */ }
     } else {
+      stopGlobalIncomingRing();
       setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
     }
+  }) as EventListener);
+  window.addEventListener('stooorna:call-answered', (() => {
+    stopGlobalIncomingRing();
+    setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
   }) as EventListener);
 }
 
@@ -8485,9 +8488,23 @@ async function answerIncomingCallGlobally(myUserId: string, myUserName: string |
       try {
         await client.subscribe(remoteUser, 'audio');
         remoteUser.audioTrack?.play();
+        setActiveCallState({ answered: true });
+        stopGlobalIncomingRing();
+        try {
+          window.dispatchEvent(new CustomEvent('stooorna:call-answered', { detail: { channel } }));
+          window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
+        } catch { /* ignore */ }
       } catch (subscribeError) {
         console.warn('[GlobalIncomingCall] audio subscription skipped', subscribeError);
       }
+    });
+    client.on('user-joined', () => {
+      setActiveCallState({ answered: true });
+      stopGlobalIncomingRing();
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:call-answered', { detail: { channel } }));
+        window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
+      } catch { /* ignore */ }
     });
     client.on('user-unpublished', (remoteUser: IAgoraRTCRemoteUser) => remoteUser.audioTrack?.stop());
     client.on('user-left', (remoteUser: IAgoraRTCRemoteUser) => remoteUser.audioTrack?.stop());
@@ -8499,6 +8516,10 @@ async function answerIncomingCallGlobally(myUserId: string, myUserName: string |
 
     globeVoiceJoinedRef.current = true;
     setActiveCallState({ joined: true, answered: false, muted: false, channel, userId: myUserId, isPrivate, peerLabel: callerLabel });
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:call-answered', { detail: { channel } }));
+      window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
+    } catch { /* ignore */ }
 
     const micTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' });
     globeVoiceMicTrackRef.current = micTrack;
@@ -8522,6 +8543,33 @@ async function answerIncomingCallGlobally(myUserId: string, myUserName: string |
 
 // بانر المكالمة الواردة — نفس شكل ومكان GlobalCallBanner بالضبط (نفس المستطيل)، لكن
 // بالأخضر وبدون زر إنهاء: بس "رد" + "ميوت". يظهر فقط إذا كان في رنين ولسا ما دخلت مكالمة.
+/** Decline / ignore an incoming call without joining. Stops ring on this device and clears invite. */
+async function declineIncomingCallGlobally(myUserId: string | null) {
+  const { channel } = incomingCallState;
+  suppressIncomingRing(60_000);
+  stopGlobalIncomingRing();
+  setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+  try {
+    if (myUserId) {
+      localStorage.removeItem(`stooorna_home_call_invite_${myUserId}`);
+      localStorage.removeItem(`stooorna_vidcall_invite_${myUserId}`);
+    }
+  } catch { /* ignore */ }
+  try {
+    if (myUserId && channel) {
+      void fetch('/api/call/invite', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clear: true, toUserId: myUserId, userId: myUserId, channel, declined: true }),
+      });
+    }
+  } catch { /* ignore */ }
+  try {
+    window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
+    window.dispatchEvent(new CustomEvent('stooorna:video-call-ended'));
+    window.dispatchEvent(new CustomEvent('stooorna:call-declined', { detail: { channel } }));
+  } catch { /* ignore */ }
+}
+
 function GlobalIncomingCallBanner({ myUserId, myUserName }: { myUserId: string | null; myUserName: string | null }) {
   const incoming = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
   useEffect(() => {
@@ -8945,9 +8993,18 @@ function FriendVideoCallStage({
     };
     ringOnce();
     const id = window.setInterval(ringOnce, 2600);
+    const onAnswered = () => {
+      alive = false;
+      window.clearInterval(id);
+      try { navigator.vibrate?.(0); } catch { /* ignore */ }
+    };
+    window.addEventListener('stooorna:call-answered', onAnswered);
+    window.addEventListener('stooorna:video-call-ended', onAnswered);
     return () => {
       alive = false;
       window.clearInterval(id);
+      window.removeEventListener('stooorna:call-answered', onAnswered);
+      window.removeEventListener('stooorna:video-call-ended', onAnswered);
     };
   }, [session.role, connected]);
 
@@ -9277,9 +9334,20 @@ function FriendVideoCallController({
     };
     tick();
     const id = window.setInterval(tick, 2600);
+    const onStop = () => {
+      alive = false;
+      window.clearInterval(id);
+      try { navigator.vibrate?.(0); } catch { /* ignore */ }
+    };
+    window.addEventListener('stooorna:call-answered', onStop);
+    window.addEventListener('stooorna:video-call-ended', onStop);
+    window.addEventListener('stooorna:call-declined', onStop);
     return () => {
       alive = false;
       window.clearInterval(id);
+      window.removeEventListener('stooorna:call-answered', onStop);
+      window.removeEventListener('stooorna:video-call-ended', onStop);
+      window.removeEventListener('stooorna:call-declined', onStop);
     };
   }, [incoming]);
 
@@ -11289,6 +11357,7 @@ export default function AddFriendPage() {
   const [publishMenuOpen, setPublishMenuOpen] = useState(false);
   // فتح الكاميرا المدمجة لالتقاط ونشر القصة مباشرة
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
+  const [cameraStartWithLiveMap, setCameraStartWithLiveMap] = useState(false);
   // إخفاء الشريط السفلي أثناء الكاميرا
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('stooorna:story-camera-state', { detail: { open: cameraCaptureOpen } }));
@@ -11318,6 +11387,28 @@ export default function AddFriendPage() {
     window.addEventListener('stooorna:open-story-camera', openStoryCamera);
     return () => window.removeEventListener('stooorna:open-story-camera', openStoryCamera);
   }, []);
+
+  // Settings map-pin entry → open GPS live map (removed from camera chrome)
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('liveMap') === '1' || sp.get('panel') === 'live-map') {
+        setCameraStartWithLiveMap(true);
+        setCameraCaptureOpen(true);
+        sp.delete('liveMap');
+        if (sp.get('panel') === 'live-map') sp.delete('panel');
+        const q = sp.toString();
+        window.history.replaceState({}, '', window.location.pathname + (q ? '?' + q : '') + window.location.hash);
+      }
+    } catch { /* */ }
+    const onOpenLiveMap = () => {
+      setCameraStartWithLiveMap(true);
+      setCameraCaptureOpen(true);
+    };
+    window.addEventListener('stooorna:open-live-map', onOpenLiveMap);
+    return () => window.removeEventListener('stooorna:open-live-map', onOpenLiveMap);
+  }, []);
+
 
   // Fetch stories
   const knownStoryItemIdsRef = useRef<Set<number> | null>(null);
@@ -14489,6 +14580,8 @@ export default function AddFriendPage() {
     };
   });
   const [textPostsPlusOpen, setTextPostsPlusOpen] = useState(false);
+  const incomingCallUi = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
+  const plusCallPressRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; long: boolean }>({ timer: null, long: false });
   /** Story / account page sheet over public posts */
   const [storyHomeSheetOpen, setStoryHomeSheetOpen] = useState(false);
   /** When true, public posts dismiss to the right while the account page enters from the left */
@@ -20127,7 +20220,9 @@ export default function AddFriendPage() {
               })()}
             </div>
 
-            <style>{`@keyframes stooornaPlusFanIn { from { opacity: 0; transform: translateY(8px) scale(0.92); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
+            <style>{`@keyframes stooornaPlusFanIn { from { opacity: 0; transform: translateY(8px) scale(0.92); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes stooornaPlusCallShake { 0%, 100% { transform: translateY(-50%) rotate(0deg); } 15% { transform: translateY(-50%) rotate(-12deg) scale(1.06); } 30% { transform: translateY(-50%) rotate(10deg) scale(1.06); } 45% { transform: translateY(-50%) rotate(-8deg); } 60% { transform: translateY(-50%) rotate(8deg); } 75% { transform: translateY(-50%) rotate(-4deg); } }
+@keyframes stooornaPlusCallPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.55); } 50% { box-shadow: 0 0 0 10px rgba(34,197,94,0); } }`}</style>
             {/* Bottom chrome: profile (left) | New Post (center) | plus menu (right) */}
             <div
               ref={postsChromeBottomRef}
@@ -20321,30 +20416,76 @@ export default function AddFriendPage() {
                           </button>
                         )}
                         {user && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTextPostsPlusOpen(false);
-                              // Open call picker over public posts
-                              try {
-                                window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
-                                  detail: { overPosts: true },
-                                }));
-                              } catch { /* */ }
-                            }}
-                            aria-label="Call"
-                            style={{
-                              width: 44, height: 44, borderRadius: '50%',
-                              border: '1px solid rgba(0,188,212,0.4)',
-                              background: 'rgba(6,20,22,0.96)',
-                              color: '#00BCD4',
-                              cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                            }}
-                          >
-                            <Phone size={20} strokeWidth={2.2} />
-                          </button>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, position: 'relative' }}>
+                            {incomingCallUi.ringing && (
+                              <span style={{
+                                position: 'absolute', right: 50, top: '50%', transform: 'translateY(-50%)',
+                                maxWidth: 140, padding: '6px 8px', borderRadius: 10,
+                                background: 'rgba(6,20,22,0.96)', border: '1px solid rgba(34,197,94,0.45)',
+                                color: 'rgba(200,230,230,0.92)', fontSize: '0.62rem', fontWeight: 700,
+                                lineHeight: 1.35, textAlign: 'center', pointerEvents: 'none',
+                                boxShadow: '0 4px 14px rgba(0,0,0,0.4)', whiteSpace: 'normal',
+                              }}>
+                                Tap to answer. Long-press to ignore.
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onPointerDown={() => {
+                                if (!incomingCallUi.ringing) return;
+                                plusCallPressRef.current.long = false;
+                                if (plusCallPressRef.current.timer) clearTimeout(plusCallPressRef.current.timer);
+                                plusCallPressRef.current.timer = setTimeout(() => {
+                                  plusCallPressRef.current.long = true;
+                                  void declineIncomingCallGlobally(user?.id ?? null);
+                                  setTextPostsPlusOpen(false);
+                                }, 550);
+                              }}
+                              onPointerUp={() => {
+                                if (plusCallPressRef.current.timer) {
+                                  clearTimeout(plusCallPressRef.current.timer);
+                                  plusCallPressRef.current.timer = null;
+                                }
+                              }}
+                              onPointerLeave={() => {
+                                if (plusCallPressRef.current.timer) {
+                                  clearTimeout(plusCallPressRef.current.timer);
+                                  plusCallPressRef.current.timer = null;
+                                }
+                              }}
+                              onClick={() => {
+                                if (plusCallPressRef.current.long) {
+                                  plusCallPressRef.current.long = false;
+                                  return;
+                                }
+                                if (incomingCallUi.ringing) {
+                                  setTextPostsPlusOpen(false);
+                                  void answerIncomingCallGlobally(user.id, user.name ?? (user as any).username ?? null);
+                                  return;
+                                }
+                                setTextPostsPlusOpen(false);
+                                try {
+                                  window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
+                                    detail: { overPosts: true },
+                                  }));
+                                } catch { /* */ }
+                              }}
+                              aria-label={incomingCallUi.ringing ? 'Answer call' : 'Call'}
+                              title={incomingCallUi.ringing ? 'Tap to answer · Long-press to ignore' : 'Call'}
+                              style={{
+                                width: 44, height: 44, borderRadius: '50%',
+                                border: incomingCallUi.ringing ? '1.5px solid #22c55e' : '1px solid rgba(0,188,212,0.4)',
+                                background: incomingCallUi.ringing ? 'rgba(34,197,94,0.22)' : 'rgba(6,20,22,0.96)',
+                                color: incomingCallUi.ringing ? '#22c55e' : '#00BCD4',
+                                cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                boxShadow: incomingCallUi.ringing ? '0 0 16px rgba(34,197,94,0.45)' : '0 4px 16px rgba(0,0,0,0.45)',
+                                animation: incomingCallUi.ringing ? 'stooornaPlusCallPulse 1.1s ease-in-out infinite' : undefined,
+                              }}
+                            >
+                              <Phone size={20} strokeWidth={2.2} />
+                            </button>
+                          </div>
                         )}
                         {user && (
                           <button
@@ -20381,7 +20522,7 @@ export default function AddFriendPage() {
                       e.stopPropagation();
                       setTextPostsPlusOpen(o => !o);
                     }}
-                    aria-label="Open menu"
+                    aria-label={incomingCallUi.ringing ? 'Incoming call menu' : 'Open menu'}
                     aria-expanded={textPostsPlusOpen}
                     style={{
                       position: 'absolute',
@@ -20390,16 +20531,19 @@ export default function AddFriendPage() {
                       transform: 'translateY(-50%)',
                       width: 44,
                       height: 36,
-                      border: 'none',
-                      background: textPostsPlusOpen ? 'rgba(0,188,212,0.14)' : 'transparent',
+                      border: incomingCallUi.ringing ? '1.5px solid #22c55e' : 'none',
+                      background: incomingCallUi.ringing
+                        ? 'rgba(34,197,94,0.22)'
+                        : (textPostsPlusOpen ? 'rgba(0,188,212,0.14)' : 'transparent'),
                       borderRadius: 12,
-                      color: textPostsPlusOpen ? '#00BCD4' : 'rgba(0,188,212,0.85)',
+                      color: incomingCallUi.ringing ? '#22c55e' : (textPostsPlusOpen ? '#00BCD4' : 'rgba(0,188,212,0.85)'),
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       zIndex: 2,
                       WebkitTapHighlightColor: 'transparent',
+                      animation: incomingCallUi.ringing ? 'stooornaPlusCallShake 0.7s ease-in-out infinite, stooornaPlusCallPulse 1.1s ease-in-out infinite' : undefined,
                     }}
                   >
                     <span style={{
@@ -21893,7 +22037,8 @@ export default function AddFriendPage() {
       <AnimatePresence>
         {cameraCaptureOpen && (
           <CameraStoryCapture
-            onClose={() => { setCameraCaptureOpen(false); setComposerCameraForPost(false); }}
+            onClose={() => { setCameraCaptureOpen(false); setComposerCameraForPost(false); setCameraStartWithLiveMap(false); }}
+            startWithLiveMap={cameraStartWithLiveMap}
             onPublish={async file => {
               if (composerCameraForPost) {
                 const isVid = String(file.type || '').startsWith('video') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '');

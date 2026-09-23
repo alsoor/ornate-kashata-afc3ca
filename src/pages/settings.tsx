@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, Briefcase, Menu, ChevronDown, AlertTriangle, FileText } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, Briefcase, Menu, ChevronDown, AlertTriangle, FileText, MapPin } from 'lucide-react';
 import { useSession, signOut, signIn, signUp } from '@/lib/auth/auth-client';
 import { usePresenceQuery } from '@/hooks/usePresence';
 
@@ -6435,11 +6435,38 @@ export default function SettingsPage() {
         ease: 'easeInOut'
       }} />
 
-        {/* Header — Settings title + Support icon on the far right */}
+        {/* Header — map pin (GPS live) left + Settings title + Support icon right */}
         <div className="flex items-center justify-between px-5 pt-10 pb-4 z-10" style={{
         borderBottom: `1px solid ${T.navBorder}`
       }}>
-          <div style={{ width: 36 }} />
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.88 }}
+            onClick={() => {
+              try {
+                window.dispatchEvent(new CustomEvent('stooorna:open-live-map'));
+              } catch { /* */ }
+              navigate('/add-friend?liveMap=1');
+            }}
+            title="Map"
+            aria-label="Open live map"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(239,68,68,0.12)',
+              border: '1.5px solid #ef4444',
+              color: '#ef4444',
+              cursor: 'pointer',
+              boxShadow: '0 0 12px rgba(239,68,68,0.25)',
+              padding: 0,
+            }}
+          >
+            <MapPin size={18} strokeWidth={2.4} />
+          </motion.button>
           <p style={{
           letterSpacing: '0.3em',
           fontSize: '0.7rem',
