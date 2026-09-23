@@ -20827,6 +20827,7 @@ export default function AddFriendPage() {
                 const rowRinging = bellRinging && bellIncomingCall.callerId === friend.friendId;
                 const rowUnreadMsg = bellMessageAlert.active && bellMessageAlert.fromId === friend.friendId;
                 const rowAlert = rowRinging || rowUnreadMsg;
+                const rowPresence = presence[friend.friendId] as { online?: boolean; lastSeen?: number | string | null } | undefined;
                 return (
                 <div key={friend.friendId} style={{ position: 'relative', borderRadius: 14, padding: rowAlert ? 2 : 0 }}>
                   {rowAlert && (
@@ -20851,7 +20852,17 @@ export default function AddFriendPage() {
                       onClick={() => openFriendChat(friend)}
                       style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'start', minWidth: 0 }}
                     >
-                      <UserAvatar name={friend.name ?? friend.username ?? 'User'} avatarUrl={friend.avatarUrl} size={44} />
+                      <span style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
+                        <UserAvatar name={friend.name ?? friend.username ?? 'User'} avatarUrl={friend.avatarUrl} size={44} online={!!rowPresence?.online} />
+                        <span
+                          aria-hidden
+                          style={{
+                            position: 'absolute', right: 0, bottom: 0, width: 12, height: 12, borderRadius: '50%',
+                            border: '2px solid #fff',
+                            background: rowPresence?.online ? '#22c55e' : '#ef4444',
+                          }}
+                        />
+                      </span>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <p style={{ margin: 0, color: '#111', fontWeight: 700, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {friend.name ?? friend.username ?? 'User'}
@@ -20860,6 +20871,12 @@ export default function AddFriendPage() {
                           <p style={{ margin: 0, color: '#ef4444', fontSize: '0.75rem', fontWeight: 700 }}>Calling…</p>
                         ) : rowUnreadMsg ? (
                           <p style={{ margin: 0, color: '#ef4444', fontSize: '0.75rem', fontWeight: 700 }}>New message</p>
+                        ) : rowPresence?.online ? (
+                          <p style={{ margin: 0, color: '#22c55e', fontSize: '0.72rem', fontWeight: 700 }}>Online</p>
+                        ) : rowPresence?.lastSeen ? (
+                          <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {formatLastSeen(rowPresence.lastSeen as number | string)}
+                          </p>
                         ) : friend.username ? (
                           <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.75rem' }}>@{friend.username}</p>
                         ) : null}
