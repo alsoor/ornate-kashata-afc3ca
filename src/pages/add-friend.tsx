@@ -8145,15 +8145,46 @@ function FriendVideoCallStage({
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!connected) {
+      setSeconds(0);
+      return;
+    }
     const t0 = Date.now();
+    setSeconds(0);
     const id = window.setInterval(() => setSeconds(Math.floor((Date.now() - t0) / 1000)), 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [connected]);
+
+  // Outgoing ring for caller until peer answers; stop when connected or closed
+  useEffect(() => {
+    if (session.role !== 'caller' || connected) return;
+    let alive = true;
+    const ringOnce = () => {
+      if (!alive) return;
+      try { playIncomingCallRing(); } catch { /* ignore */ }
+      try { navigator.vibrate?.([200, 120, 200]); } catch { /* ignore */ }
+    };
+    ringOnce();
+    const id = window.setInterval(ringOnce, 2600);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [session.role, connected]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        // Notify peer immediately so they get ring/vibration even before local media is ready
+        if (session.role === 'caller') {
+          writeVideoCallInvite(session.peerId, {
+            fromId: userId,
+            fromName: userName,
+            channel: session.channel,
+            kind: 'video',
+          });
+        }
         await fetch('/api/room/join', {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ roomId: session.channel, userId, name: userName }),
@@ -8168,7 +8199,11 @@ function FriendVideoCallStage({
               remoteUser.videoTrack?.play(remoteElRef.current!);
               if (!cancelled) { setConnected(true); setStatus('Live'); }
             }
-            if (mediaType === 'audio') remoteUser.audioTrack?.play();
+            if (mediaType === 'audio') {
+              remoteUser.audioTrack?.play();
+              // Peer answered (audio up) — start duration even if video frame is still negotiating
+              if (!cancelled) { setConnected(true); setStatus('Live'); }
+            }
           } catch (e) {
             console.warn('[FriendVideoCall] subscribe skipped', e);
           }
@@ -8196,14 +8231,6 @@ function FriendVideoCallStage({
         localTracksRef.current = { mic: micTrack, cam: camTrack };
         camTrack.play(localElRef.current!);
         await client.publish([micTrack, camTrack]);
-        if (session.role === 'caller') {
-          writeVideoCallInvite(session.peerId, {
-            fromId: userId,
-            fromName: userName,
-            channel: session.channel,
-            kind: 'video',
-          });
-        }
         if (!cancelled) setStatus(session.role === 'caller' ? 'Calling…' : 'Live');
       } catch (err) {
         console.error('[FriendVideoCall] start failed', err);
@@ -8299,7 +8326,9 @@ function FriendVideoCallStage({
         </button>
         <div style={{ textAlign: 'center', pointerEvents: 'none', paddingTop: 6 }}>
           <p style={{ margin: 0, fontWeight: 800, fontSize: '0.95rem', lineHeight: 1.2 }}>My Live</p>
-          <p style={{ margin: 0, fontSize: '0.72rem', opacity: 0.85, lineHeight: 1.2 }}>{mm}:{ss}</p>
+          <p style={{ margin: 0, fontSize: '0.72rem', opacity: 0.85, lineHeight: 1.2 }}>
+            {connected ? `${mm}:${ss}` : (error || status || 'Calling…')}
+          </p>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'auto' }}>
           <button type="button" aria-label="Invite" style={{
@@ -8438,6 +8467,23 @@ function FriendVideoCallController({
     return () => { if (getVideoIncomingSnap() === incoming) setVideoIncomingSnap(null); };
   }, [incoming]);
 
+  // Continuous ring + vibration while video invite is pending (same cadence as voice calls)
+  useEffect(() => {
+    if (!incoming) return;
+    let alive = true;
+    const tick = () => {
+      if (!alive) return;
+      try { playIncomingCallRing(); } catch { /* ignore */ }
+      try { navigator.vibrate?.([300, 200, 300, 200]); } catch { /* ignore */ }
+    };
+    tick();
+    const id = window.setInterval(tick, 2600);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [incoming]);
+
   useEffect(() => {
     if (!userId) return;
     const onStart = (e: Event) => {
@@ -8466,6 +8512,8 @@ function FriendVideoCallController({
         channel: d.channel,
       });
       try { playIncomingCallRing(); } catch { /* ignore */ }
+      try { navigator.vibrate?.([300, 200, 300, 200]); } catch { /* ignore */ }
+      try { notifyIncomingCallSystem(d.fromName || 'Friend'); } catch { /* ignore */ }
     };
     const onEnded = () => {
       setIncoming(null);
@@ -8489,12 +8537,18 @@ function FriendVideoCallController({
         if (!parsed?.fromId || !parsed.channel) return;
         if (Date.now() - Number(parsed.at || 0) > 25000) return;
         if (session) return;
-        setIncoming(cur => cur || {
-          role: 'callee',
-          peerId: parsed.fromId!,
-          peerName: parsed.fromName ?? null,
-          peerAvatar: null,
-          channel: parsed.channel!,
+        setIncoming(cur => {
+          if (cur) return cur;
+          try { playIncomingCallRing(); } catch { /* ignore */ }
+          try { navigator.vibrate?.([300, 200, 300, 200]); } catch { /* ignore */ }
+          try { notifyIncomingCallSystem(parsed.fromName || 'Friend'); } catch { /* ignore */ }
+          return {
+            role: 'callee',
+            peerId: parsed.fromId!,
+            peerName: parsed.fromName ?? null,
+            peerAvatar: null,
+            channel: parsed.channel!,
+          };
         });
       } catch { /* ignore */ }
     }, 1500);
@@ -14794,7 +14848,7 @@ export default function AddFriendPage() {
         {/* ── Header ── */}
         <div className="sticky top-0 z-20" style={{
           position: 'relative',
-          paddingTop: 40,
+          paddingTop: 'max(40px, calc(env(safe-area-inset-top, 0px) + 28px))',
           background: CLR_HEADER_BG,
           backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
@@ -14808,8 +14862,8 @@ export default function AddFriendPage() {
               aria-label={bellHasAlert ? (bellRinging ? 'Incoming call' : 'New message') : 'Story comments'}
               style={{
                 position: 'absolute',
-                top: 'max(34px, calc(env(safe-area-inset-top, 0px) + 28px))',
-                right: 20,
+                top: 'max(12px, calc(env(safe-area-inset-top, 0px) + 8px))',
+                right: 16,
                 zIndex: 25,
                 width: 28, height: 28, borderRadius: '50%',
                 background: bellHasAlert || storyCommentThreads.filter(t => !t.read).length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.2)',
@@ -15017,7 +15071,7 @@ export default function AddFriendPage() {
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(myMediaLikesTotal)}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
                   </div>
-                  <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+                  <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 12, flexShrink: 0, position: 'relative', zIndex: 2, minWidth: 36, paddingTop: 2 }}>
                     {businessApproved && (
                       <motion.button
                         type="button"
