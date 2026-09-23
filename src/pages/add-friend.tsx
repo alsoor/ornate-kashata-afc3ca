@@ -7811,6 +7811,35 @@ function subscribeIncomingCall(listener: () => void) {
   return () => { incomingCallListeners.delete(listener); };
 }
 
+// Bridge from RootLayout + button home-call ring system
+if (typeof window !== 'undefined') {
+  window.addEventListener('stooorna:incoming-call-ui', ((e: Event) => {
+    const d = (e as CustomEvent).detail as {
+      ringing?: boolean;
+      channel?: string | null;
+      hostId?: string | null;
+      hostName?: string | null;
+      video?: boolean;
+      kind?: string;
+    } | undefined;
+    if (!d) return;
+    if (d.ringing) {
+      setIncomingCallState({
+        ringing: true,
+        channel: d.channel || null,
+        callerId: d.hostId || null,
+        callerLabel: d.hostName || null,
+        isPrivate: true,
+        ringSilenced: false,
+      });
+      try { playIncomingCallRing(); } catch { /* */ }
+      try { navigator.vibrate?.([300, 180, 300, 180]); } catch { /* */ }
+    } else {
+      setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+    }
+  }) as EventListener);
+}
+
 // ── Message-alert state ("bell chat" unread) ────────────────────────────────
 // Same store pattern as IncomingCallState above, but flags an unread direct
 // message instead of a live call. Populated by <GlobalMessageAlertWatcher/>
@@ -8095,8 +8124,33 @@ type FriendVideoCallSession = {
 
 function writeVideoCallInvite(toUserId: string, payload: Record<string, unknown>) {
   try {
-    localStorage.setItem(`stooorna_vidcall_invite_${toUserId}`, JSON.stringify({ ...payload, at: Date.now() }));
-    window.dispatchEvent(new CustomEvent('stooorna:video-call-invite', { detail: { toUserId, ...payload } }));
+    const at = Date.now();
+    localStorage.setItem(`stooorna_vidcall_invite_${toUserId}`, JSON.stringify({ ...payload, at }));
+    window.dispatchEvent(new CustomEvent('stooorna:video-call-invite', { detail: { toUserId, ...payload, at } }));
+    // Same ring path as the home + call button (cross-tab + RootLayout poll)
+    const homeInvite = {
+      channel: payload.channel,
+      hostId: payload.fromId,
+      hostName: payload.fromName ?? null,
+      hostAvatar: null,
+      members: [],
+      video: true,
+      at,
+    };
+    localStorage.setItem(`stooorna_home_call_invite_${toUserId}`, JSON.stringify(homeInvite));
+    window.dispatchEvent(new CustomEvent('stooorna:home-group-call', {
+      detail: { ...homeInvite, inviteeIds: [toUserId] },
+    }));
+    window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', {
+      detail: {
+        ringing: true,
+        channel: payload.channel,
+        hostId: payload.fromId,
+        hostName: payload.fromName ?? null,
+        video: true,
+        kind: 'video',
+      },
+    }));
   } catch { /* ignore */ }
 }
 
@@ -14868,65 +14922,12 @@ export default function AddFriendPage() {
         {/* ── Header ── */}
         <div className="sticky top-0 z-20" style={{
           position: 'relative',
-          paddingTop: 'max(40px, calc(env(safe-area-inset-top, 0px) + 28px))',
+          paddingTop: 'max(16px, calc(env(safe-area-inset-top, 0px) + 8px))',
           background: CLR_HEADER_BG,
           backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
-          {/* Story-comments bell — top-right corner of the story page header, moved here from the camera.
-              Fades out together with the collapsible story header (same fog timing as below). */}
-          {pageTab === 'profile' && (
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setFriendChatListOpen(true)}
-              aria-label={bellHasAlert ? (bellRinging ? 'Incoming call' : 'New message') : 'Story comments'}
-              style={{
-                position: 'absolute',
-                top: 'max(12px, calc(env(safe-area-inset-top, 0px) + 8px))',
-                right: 16,
-                zIndex: 25,
-                width: 28, height: 28, borderRadius: '50%',
-                background: bellHasAlert || storyCommentThreads.filter(t => !t.read).length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.2)',
-                border: `2px solid ${bellHasAlert ? '#ef4444' : CLR_PRIMARY}`,
-                boxShadow: bellHasAlert ? '0 0 12px rgba(239,68,68,0.6)' : '0 0 10px rgba(0,188,212,0.45)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                opacity: headerOpen ? 1 : 0,
-                pointerEvents: headerOpen ? 'auto' : 'none',
-                transition: headerOpen
-                  ? 'opacity 240ms ease-out 200ms'
-                  : 'opacity 140ms ease-in',
-                animation: bellHasAlert ? 'stooornaBellShake 0.9s ease-in-out infinite' : 'none',
-              }}
-            >
-              <style>{`
-                @keyframes stooornaBellShake {
-                  0%, 100% { transform: rotate(0deg); }
-                  15% { transform: rotate(-16deg); }
-                  30% { transform: rotate(13deg); }
-                  45% { transform: rotate(-9deg); }
-                  60% { transform: rotate(7deg); }
-                  75% { transform: rotate(-4deg); }
-                }
-              `}</style>
-              <Bell size={14} color={bellHasAlert ? '#ef4444' : CLR_PRIMARY} strokeWidth={2.2} />
-              {(bellHasAlert || storyCommentThreads.filter(t => !t.read).length > 0) && (
-                <span style={{
-                  position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, borderRadius: 8,
-                  background: '#ef4444',
-                  color: '#fff',
-                  fontSize: '0.55rem', fontWeight: 800,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
-                  border: '1.5px solid #000',
-                }}>
-                  {bellRinging
-                    ? '•'
-                    : (storyCommentThreads.filter(t => !t.read).length + (bellMessageAlert.active ? 1 : 0)) > 9
-                      ? '9+'
-                      : storyCommentThreads.filter(t => !t.read).length + (bellMessageAlert.active ? 1 : 0)}
-                </span>
-              )}
-            </motion.button>
-          )}
+          {/* Profile bell lives in the right icon column above Ads (not absolute top). */}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
               non-interactive, matching the fog overlay's own transition). Opens a
@@ -15092,6 +15093,52 @@ export default function AddFriendPage() {
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
                   </div>
                   <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 12, flexShrink: 0, position: 'relative', zIndex: 2, minWidth: 36, paddingTop: 2 }}>
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => setFriendChatListOpen(true)}
+                      aria-label={bellHasAlert ? (bellRinging ? 'Incoming call' : 'New message') : 'Notifications'}
+                      style={{
+                        width: 28, height: 28, borderRadius: '50%',
+                        background: bellRinging
+                          ? 'rgba(34,197,94,0.28)'
+                          : (bellHasAlert || storyCommentThreads.filter(t => !t.read).length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.2)'),
+                        border: `2px solid ${bellRinging ? '#22c55e' : (bellHasAlert ? '#ef4444' : CLR_PRIMARY)}`,
+                        boxShadow: bellRinging
+                          ? '0 0 14px rgba(34,197,94,0.65)'
+                          : (bellHasAlert ? '0 0 12px rgba(239,68,68,0.6)' : '0 0 10px rgba(0,188,212,0.45)'),
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                        padding: 0, position: 'relative', flexShrink: 0,
+                        animation: bellHasAlert ? 'stooornaBellShake 0.55s ease-in-out infinite' : 'none',
+                      }}
+                    >
+                      <style>{`
+                        @keyframes stooornaBellShake {
+                          0%, 100% { transform: rotate(0deg) scale(1); }
+                          20% { transform: rotate(-14deg) scale(1.08); }
+                          40% { transform: rotate(12deg) scale(1.08); }
+                          60% { transform: rotate(-10deg) scale(1.05); }
+                          80% { transform: rotate(8deg) scale(1.05); }
+                        }
+                      `}</style>
+                      <Bell size={14} color={bellRinging ? '#22c55e' : (bellHasAlert ? '#ef4444' : CLR_PRIMARY)} strokeWidth={2.2} />
+                      {(bellHasAlert || storyCommentThreads.filter(t => !t.read).length > 0) && (
+                        <span style={{
+                          position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, borderRadius: 8,
+                          background: bellRinging ? '#22c55e' : '#ef4444',
+                          color: '#fff',
+                          fontSize: '0.55rem', fontWeight: 800,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
+                          border: '1.5px solid #000',
+                        }}>
+                          {bellRinging
+                            ? '•'
+                            : (storyCommentThreads.filter(t => !t.read).length + (bellMessageAlert.active ? 1 : 0)) > 9
+                              ? '9+'
+                              : storyCommentThreads.filter(t => !t.read).length + (bellMessageAlert.active ? 1 : 0)}
+                        </span>
+                      )}
+                    </motion.button>
                     {businessApproved && (
                       <motion.button
                         type="button"
@@ -20045,19 +20092,36 @@ export default function AddFriendPage() {
               >
                 <Clock size={18} />
               </button>
+              {(() => {
+                const voiceRing = !!(bellRinging && bellIncomingCall.callerId && String(bellIncomingCall.callerId) === String(friendChatPeer.friendId));
+                return (
               <button
                 type="button"
-                aria-label="Call"
+                aria-label={voiceRing ? 'Answer call' : 'Call'}
                 onClick={() => {
                   if (!friendChatPeer) return;
+                  if (voiceRing) {
+                    window.dispatchEvent(new CustomEvent('stooorna:answer-home-incoming'));
+                    return;
+                  }
                   window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
                     detail: { friendId: friendChatPeer.friendId, direct: true },
                   }));
                 }}
-                style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                style={{
+                  background: voiceRing ? 'rgba(34,197,94,0.16)' : 'none',
+                  border: voiceRing ? '1.5px solid #22c55e' : 'none',
+                  color: voiceRing ? '#22c55e' : '#111',
+                  cursor: 'pointer',
+                  width: 32, height: 32, borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  animation: voiceRing ? 'stooornaVidShake 0.55s ease-in-out infinite' : 'none',
+                }}
               >
-                <Phone size={18} />
+                <Phone size={18} color={voiceRing ? '#22c55e' : 'currentColor'} />
               </button>
+                );
+              })()}
               <button type="button" aria-label="Options" onClick={() => setOpenActionMenu(friendChatPeer.id)} style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <MoreVertical size={19} />
               </button>

@@ -567,7 +567,7 @@ function loadShareThread(a: string, b: string, postId: string | number = 'share'
   } catch { return []; }
 }
 
-const HOME_CALL_NO_ANSWER_MS = 18000;
+const HOME_CALL_NO_ANSWER_MS = 45000;
 type CallLogEntry = {
   id: string;
   peerId: string;
@@ -1544,6 +1544,7 @@ function GlobalBottomNavigation() {
         hostName: raw.hostName ?? null,
         hostAvatar: raw.hostAvatar ?? null,
         members: Array.isArray(raw.members) ? raw.members : [],
+        video: !!raw.video,
       });
     };
     const onLocal = (e: Event) => {
@@ -1627,6 +1628,15 @@ function GlobalBottomNavigation() {
       window.clearInterval(interval);
     };
   }, [user?.id, homeCallPhase, homeIncoming]);
+
+  // Answer from chat header Phone / Video when already ringing
+  useEffect(() => {
+    const onAnswer = () => {
+      if (homeIncoming && homeCallPhase === 'idle') void answerHomeIncoming();
+    };
+    window.addEventListener('stooorna:answer-home-incoming', onAnswer);
+    return () => window.removeEventListener('stooorna:answer-home-incoming', onAnswer);
+  }, [homeIncoming, homeCallPhase]);
 
   // Bridge so other screens can open this call sheet.
   // detail.friendId pre-checks a friend; detail.direct + friendId starts the call immediately.
@@ -2093,26 +2103,46 @@ function GlobalBottomNavigation() {
 
   function playHomeIncomingRing() {
     try {
-      const Ctx: typeof AudioContext | undefined = (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (!Ctx) return;
-      const ctx = new Ctx();
-      const notes = [523.25, 659.25, 783.99, 1046.5];
-      notes.forEach((freq, i) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.value = freq;
-        const t = ctx.currentTime + i * 0.09;
-        gain.gain.setValueAtTime(0.0001, t);
-        gain.gain.exponentialRampToValueAtTime(0.22, t + 0.03);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(t);
-        osc.stop(t + 0.18);
-      });
+      const w = window as any;
+      const Ctx: typeof AudioContext | undefined = w.AudioContext || w.webkitAudioContext;
+      if (Ctx) {
+        if (!w.__stooornaRingCtx) w.__stooornaRingCtx = new Ctx();
+        const ctx: AudioContext = w.__stooornaRingCtx;
+        if (ctx.state === 'suspended') void ctx.resume();
+        const notes = [523.25, 659.25, 783.99, 1046.5];
+        const base = ctx.currentTime;
+        notes.forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          const t = base + i * 0.09;
+          gain.gain.setValueAtTime(0.0001, t);
+          gain.gain.exponentialRampToValueAtTime(0.28, t + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.2);
+        });
+        // Second trill
+        notes.forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          const t = base + 0.42 + i * 0.09;
+          gain.gain.setValueAtTime(0.0001, t);
+          gain.gain.exponentialRampToValueAtTime(0.24, t + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.2);
+        });
+      }
     } catch { /* */ }
-    try { navigator.vibrate?.([280, 160, 280, 160]); } catch { /* */ }
+    try { navigator.vibrate?.([300, 180, 300, 180, 300]); } catch { /* */ }
   }
 
   function stopHomeIncomingRing() {
@@ -2122,7 +2152,7 @@ function GlobalBottomNavigation() {
     }
   }
 
-  function beginHomeIncoming(invite: { channel: string; hostId: string; hostName: string | null; hostAvatar: string | null; members: HomeCallMember[] }) {
+  function beginHomeIncoming(invite: { channel: string; hostId: string; hostName: string | null; hostAvatar: string | null; members: HomeCallMember[]; video?: boolean }) {
     if (homeCallPhase !== 'idle') return;
     const lock = homeRingLockRef.current;
     if (lock.mode === 'answered') return;
@@ -2131,6 +2161,38 @@ function GlobalBottomNavigation() {
     stopHomeIncomingRing();
     playHomeIncomingRing();
     homeRingTimer.current = window.setInterval(() => playHomeIncomingRing(), 2600);
+    // Broadcast so bell / chat icons (add-friend) mirror the + ring system
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', {
+        detail: {
+          ringing: true,
+          channel: invite.channel,
+          hostId: invite.hostId,
+          hostName: invite.hostName,
+          hostAvatar: invite.hostAvatar,
+          video: !!(invite as any).video,
+          kind: (invite as any).video ? 'video' : 'voice',
+        },
+      }));
+    } catch { /* */ }
+    try {
+      if (typeof Notification !== 'undefined') {
+        const label = invite.hostName || 'Friend';
+        const show = () => {
+          if (Notification.permission !== 'granted') return;
+          const n = new Notification('Incoming call', {
+            body: `${label} is calling you`,
+            tag: 'stooorna-incoming-call',
+            requireInteraction: true,
+          });
+          n.onclick = () => { try { window.focus(); } catch { /* */ } n.close(); };
+        };
+        if (Notification.permission === 'granted') show();
+        else if (Notification.permission !== 'denied') {
+          void Notification.requestPermission().then(p => { if (p === 'granted') show(); });
+        }
+      }
+    } catch { /* */ }
     if (homeCallNoAnswerTimer.current) window.clearTimeout(homeCallNoAnswerTimer.current);
     homeCallNoAnswerTimer.current = window.setTimeout(() => {
       const hostId = invite.hostId;
@@ -2152,6 +2214,10 @@ function GlobalBottomNavigation() {
   }
 
   function ignoreHomeIncoming() {
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
+    } catch { /* */ }
+
     if (homeCallNoAnswerTimer.current) {
       window.clearTimeout(homeCallNoAnswerTimer.current);
       homeCallNoAnswerTimer.current = null;
@@ -2203,6 +2269,9 @@ function GlobalBottomNavigation() {
       homeCallNoAnswerTimer.current = null;
     }
     stopHomeIncomingRing();
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
+    } catch { /* */ }
     homeCallVideoRef.current = !!(invite as any).video;
     setHomeCallIsVideo(!!(invite as any).video);
     setHomeIncoming(null);
