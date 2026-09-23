@@ -1714,6 +1714,9 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const [liveSearchLoading, setLiveSearchLoading] = useState(false);
   const [liveHighlightId, setLiveHighlightId] = useState<string | null>(null);
   const liveSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const livePinsRef = useRef(livePins);
+  const liveSearchFocusedRef = useRef(false);
+  useEffect(() => { livePinsRef.current = livePins; }, [livePins]);
   const [livePlace, setLivePlace] = useState('');
   const [liveZoom, setLiveZoom] = useState(16);
   const [liveFocus, setLiveFocus] = useState<{ lat: number; lng: number } | null>(null);
@@ -1725,16 +1728,44 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     startDist: number;
   } | null>(null);
 
-  const runLiveUserSearch = async (query: string) => {
+  const runLiveUserSearch = async (query: string, opts?: { focus?: boolean }) => {
     const q = query.trim().toLowerCase().replace(/^@/, '');
     if (q.length < 2) {
       setLiveSearchHits([]);
       setLiveHighlightId(null);
       setLiveSearchLoading(false);
+      liveSearchFocusedRef.current = false;
       return;
     }
     setLiveSearchLoading(true);
     try {
+      // Refresh pins from server so cross-device sharers are visible
+      try {
+        const pr = await fetch('/api/live-gps', { credentials: 'include' });
+        if (pr.ok) {
+          const pd = await pr.json() as { pins?: any[] };
+          const serverPins = Array.isArray(pd.pins) ? pd.pins : [];
+          if (serverPins.length) {
+            const mapped = serverPins
+              .filter(p => p && typeof p.lat === 'number')
+              .map(p => ({
+                id: String(p.id),
+                name: String(p.name || 'User'),
+                username: String(p.username || '').replace(/^@/, ''),
+                avatarUrl: p.avatarUrl ?? null,
+                lat: Number(p.lat),
+                lng: Number(p.lng),
+                at: Number(p.at || Date.now()),
+              }));
+            const byId = new Map(livePinsRef.current.map(p => [String(p.id), p]));
+            for (const p of mapped) byId.set(String(p.id), p);
+            const merged = Array.from(byId.values());
+            livePinsRef.current = merged;
+            setLivePins(merged);
+          }
+        }
+      } catch { /* keep local pins */ }
+
       const r = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`, { credentials: 'include' });
       const data = await r.json();
       const users = (Array.isArray(data) ? data : []) as Array<{
@@ -1743,11 +1774,17 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         username?: string | null;
         avatarUrl?: string | null;
       }>;
-      const pinById = new Map(livePins.map(p => [String(p.id), p]));
+      const pinsNow = livePinsRef.current;
+      const pinById = new Map(pinsNow.map(p => [String(p.id), p]));
       const pinByUser = new Map(
-        livePins
+        pinsNow
           .filter(p => p.username)
-          .map(p => [p.username.toLowerCase().replace(/^@/, ''), p]),
+          .map(p => [String(p.username).toLowerCase().replace(/^@/, ''), p]),
+      );
+      const pinByName = new Map(
+        pinsNow
+          .filter(p => p.name)
+          .map(p => [String(p.name).toLowerCase(), p]),
       );
       const now = Date.now();
       const hits = users
@@ -1755,14 +1792,18 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         .map(u => {
           const id = String(u.id);
           const uname = String(u.username || '').toLowerCase().replace(/^@/, '');
-          const pin = pinById.get(id) || (uname ? pinByUser.get(uname) : undefined);
-          const fresh = !!(pin && pin.at && now - Number(pin.at) < 30 * 60 * 1000);
+          const nname = String(u.name || '').toLowerCase();
+          const pin =
+            pinById.get(id)
+            || (uname ? pinByUser.get(uname) : undefined)
+            || (nname ? pinByName.get(nname) : undefined);
+          const fresh = !!(pin && (!pin.at || now - Number(pin.at) < 30 * 60 * 1000));
           const sharing = !!pin && fresh;
           return {
             id,
             name: String(u.name || u.username || 'User'),
             username: String(u.username || ''),
-            avatarUrl: u.avatarUrl ?? null,
+            avatarUrl: u.avatarUrl ?? pin?.avatarUrl ?? null,
             sharing,
             online: sharing,
             lat: pin?.lat,
@@ -1770,23 +1811,25 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           };
         });
       setLiveSearchHits(hits);
-      // Prefer first user who is sharing location
+
+      const shouldFocus = opts?.focus !== false && !liveSearchFocusedRef.current;
       const focusHit = hits.find(h => h.sharing && h.lat != null && h.lng != null) || null;
       if (focusHit && focusHit.lat != null && focusHit.lng != null) {
         setLiveHighlightId(focusHit.id);
-        setLiveFocus({ lat: focusHit.lat, lng: focusHit.lng });
-        setLiveZoom(19);
-        setLiveMsgPeer(null);
-      } else {
-        setLiveHighlightId(null);
+        if (shouldFocus || opts?.focus === true) {
+          setLiveFocus({ lat: focusHit.lat, lng: focusHit.lng });
+          setLiveZoom(19);
+          setLiveMsgPeer(null);
+          liveSearchFocusedRef.current = true;
+        }
       }
     } catch {
       setLiveSearchHits([]);
-      setLiveHighlightId(null);
     } finally {
       setLiveSearchLoading(false);
     }
   };
+
   const [respondingId, setRespondingId] = useState<number | null>(null);
   // بحث يوزرات داخل بكس طلبات الإضافة (بدون تغيير شكل البكس)
   const [camSearchQuery, setCamSearchQuery] = useState('');
@@ -1869,30 +1912,51 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   useEffect(() => {
     if (!liveMapOpen) return;
     const key = 'stooorna_live_gps_pins';
-    const readPins = () => {
-      try {
-        const raw = JSON.parse(localStorage.getItem(key) || '{}') as Record<string, any>;
-        const list = Object.values(raw).filter(p => p && typeof p.lat === 'number' && Date.now() - Number(p.at || 0) < 30 * 60 * 1000) as any[];
-        setLivePins(list.map(p => ({
+    const mergePins = (incoming: any[]) => {
+      const byId = new Map(livePinsRef.current.map(p => [String(p.id), p]));
+      for (const p of incoming) {
+        if (!p || typeof p.lat !== 'number') continue;
+        byId.set(String(p.id), {
           id: String(p.id),
           name: String(p.name || 'User'),
-          username: String(p.username || ''),
+          username: String(p.username || '').replace(/^@/, ''),
           avatarUrl: p.avatarUrl ?? null,
           lat: Number(p.lat),
           lng: Number(p.lng),
-          at: Number(p.at || 0) || undefined,
-        })));
+          at: Number(p.at || Date.now()),
+        });
+      }
+      const next = Array.from(byId.values()).filter(
+        p => p && Date.now() - Number(p.at || 0) < 30 * 60 * 1000,
+      );
+      livePinsRef.current = next;
+      setLivePins(next);
+    };
+    const readPins = async () => {
+      try {
+        const raw = JSON.parse(localStorage.getItem(key) || '{}') as Record<string, any>;
+        const localList = Object.values(raw).filter(
+          (p: any) => p && typeof p.lat === 'number' && Date.now() - Number(p.at || 0) < 30 * 60 * 1000,
+        );
+        mergePins(localList as any[]);
+      } catch { /* */ }
+      try {
+        const r = await fetch('/api/live-gps', { credentials: 'include' });
+        if (r.ok) {
+          const d = await r.json() as { pins?: any[] };
+          if (Array.isArray(d.pins)) mergePins(d.pins);
+        }
       } catch { /* */ }
     };
-    readPins();
-    const iv = window.setInterval(readPins, 4000);
+    void readPins();
+    const iv = window.setInterval(() => { void readPins(); }, 5000);
     let watchId: number | null = null;
     if (navigator.geolocation && myId) {
       watchId = navigator.geolocation.watchPosition((pos) => {
         const pin = {
           id: myId,
           name: userName || 'You',
-          username: '',
+          username: String((userName || '').replace(/^@/, '')),
           avatarUrl: avatarUrl ?? null,
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
@@ -1907,6 +1971,32 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           else delete raw[myId];
           localStorage.setItem(key, JSON.stringify(raw));
         } catch { /* */ }
+        if (liveShareOn) {
+          mergePins([pin]);
+          try {
+            void fetch('/api/live-gps', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                lat: pin.lat,
+                lng: pin.lng,
+                name: pin.name,
+                username: pin.username,
+                avatarUrl: pin.avatarUrl,
+              }),
+            });
+          } catch { /* */ }
+        } else {
+          try {
+            void fetch('/api/live-gps', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ clear: true }),
+            });
+          } catch { /* */ }
+        }
         try {
           fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${pin.lat}&lon=${pin.lng}`, { headers: { 'Accept-Language': 'en' } })
             .then(r => r.json())
@@ -1917,7 +2007,6 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             })
             .catch(() => {});
         } catch { /* */ }
-        readPins();
       }, () => {}, { enableHighAccuracy: true, maximumAge: 8000, timeout: 12000 });
     }
     return () => {
@@ -1932,6 +2021,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
       setLiveSearchHits([]);
       setLiveHighlightId(null);
       setLiveSearchLoading(false);
+      liveSearchFocusedRef.current = false;
       return;
     }
     if (liveSearchDebounceRef.current) clearTimeout(liveSearchDebounceRef.current);
@@ -1940,15 +2030,18 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
       setLiveSearchHits([]);
       setLiveHighlightId(null);
       setLiveSearchLoading(false);
+      liveSearchFocusedRef.current = false;
       return;
     }
+    // Reset focus gate when the query text changes
+    liveSearchFocusedRef.current = false;
     liveSearchDebounceRef.current = setTimeout(() => {
-      void runLiveUserSearch(q);
-    }, 350);
+      void runLiveUserSearch(q, { focus: true });
+    }, 400);
     return () => {
       if (liveSearchDebounceRef.current) clearTimeout(liveSearchDebounceRef.current);
     };
-  }, [liveSearch, liveMapOpen, livePins, myId]);
+  }, [liveSearch, liveMapOpen]);
 
   useEffect(() => {
     void import('@/lib/camera-ai-beauty').then(m => {
@@ -2990,7 +3083,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                     onChange={e => setLiveSearch(e.target.value)}
                     onKeyDown={e => {
                       if (e.key !== 'Enter') return;
-                      void runLiveUserSearch(liveSearch);
+                      liveSearchFocusedRef.current = false;
+                      void runLiveUserSearch(liveSearch, { focus: true });
                     }}
                     placeholder="Search username"
                     style={{
@@ -3012,6 +3106,14 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                         delete raw[myId];
                         localStorage.setItem('stooorna_live_gps_pins', JSON.stringify(raw));
                       } catch { /* */ }
+                      try {
+                        void fetch('/api/live-gps', {
+                          method: 'POST', credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ clear: true }),
+                        });
+                      } catch { /* */ }
+                      setLivePins(prev => prev.filter(p => String(p.id) !== String(myId)));
                     }
                   }}
                   style={{
