@@ -3242,7 +3242,7 @@ function GlobalBottomNavigation() {
         </div>
       )}
 
-      {homeCallPickerOpen && homeCallPhase === 'idle' && (      {homeCallPickerOpen && homeCallPhase === 'idle' && (
+      {homeCallPickerOpen && homeCallPhase === 'idle' && (
         <div
           onClick={() => setHomeCallPickerOpen(false)}
           style={{
@@ -3533,7 +3533,6 @@ function GlobalBottomNavigation() {
         </div>
       )}
     </div>
-  ) : null;
   ) : null;
 
   return (
