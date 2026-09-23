@@ -920,7 +920,35 @@ type ShareThreadMsg = {
   place?: string | null;
   lat?: number | null;
   lng?: number | null;
+  reactions?: { emoji: string; fromId: string }[];
 };
+
+const FRIEND_CHAT_REACT_EMOJIS = ['❤️', '😂', '😮', '😢', '🙏', '👍', '🔥', '👏'];
+
+function toggleMsgReaction(
+  a: string,
+  b: string,
+  postId: string | number,
+  msgId: string,
+  fromId: string,
+  emoji: string,
+): ShareThreadMsg[] {
+  const list = loadShareThread(a, b, postId);
+  const next = list.map((m) => {
+    if (m.id !== msgId) return m;
+    const reactions = Array.isArray(m.reactions) ? [...m.reactions] : [];
+    const idx = reactions.findIndex((r) => String(r.fromId) === String(fromId) && r.emoji === emoji);
+    if (idx >= 0) {
+      reactions.splice(idx, 1);
+      return { ...m, reactions };
+    }
+    const filtered = reactions.filter((r) => String(r.fromId) !== String(fromId));
+    filtered.push({ emoji, fromId });
+    return { ...m, reactions: filtered };
+  });
+  saveShareThread(a, b, postId, next);
+  return next;
+}
 function isLiveLocationMsg(m: ShareThreadMsg): boolean {
   if (m.kind === 'live-location') return true;
   return m.type === 'text' && /^Live Location:/i.test(m.body || '');
@@ -1018,6 +1046,7 @@ function pushShareThreadMsg(
     kind: msg.kind,
     replyToId: msg.replyToId ?? null,
     replyToBody: msg.replyToBody ?? null,
+    reactions: msg.reactions ?? [],
   };
   const merged = [...list, next].sort((x, y) => x.at - y.at);
   saveShareThread(a, b, postId, merged);
@@ -14477,8 +14506,9 @@ export default function AddFriendPage() {
   const [friendChatListOpen, setFriendChatListOpen] = useState(false);
   useEffect(() => {
     if (!friendChatListOpen || !user) return;
-    void loadSecretChats();
+    void loadFriends();
   }, [friendChatListOpen, user?.id]);
+  const [friendChatReactMsgId, setFriendChatReactMsgId] = useState<string | null>(null);
   const [friendChatPeer, setFriendChatPeer] = useState<Friend | null>(null);
   const [friendChatTypingTick, setFriendChatTypingTick] = useState(0);
   const incomingVideoCall = useSyncExternalStore(subscribeVideoIncomingSnap, getVideoIncomingSnap, getVideoIncomingSnap);
@@ -21112,19 +21142,7 @@ export default function AddFriendPage() {
               <button type="button" onClick={() => setFriendChatListOpen(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <X size={20} />
               </button>
-              <p style={{ margin: 0, color: '#111', fontWeight: 800, fontSize: '1rem', flex: 1 }}>Secret Chats</p>
-              <button
-                type="button"
-                onClick={() => setShowNewSecret(true)}
-                aria-label="New secret chat"
-                style={{
-                  width: 34, height: 34, borderRadius: '50%', border: '2px solid #111',
-                  background: '#ffffff', color: '#111', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                }}
-              >
-                <Plus size={18} strokeWidth={2.6} color="#111" />
-              </button>
+              <p style={{ margin: 0, color: '#111', fontWeight: 800, fontSize: '1.15rem', flex: 1 }}>Chats</p>
               <button
                 type="button"
                 onClick={() => {
@@ -21166,117 +21184,134 @@ export default function AddFriendPage() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                Read All Message
+                Read All
               </button>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {secretChats.length ? secretChats.map(sc => {
-                const isCreator = user && String((sc as any).created_by || (sc as any).createdBy || '') === String(user.id);
-                return (
-                <div key={sc.id} style={{ position: 'relative', borderRadius: 14 }}>
-                  <div style={{
-                    position: 'relative', display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '12px 10px', borderRadius: 14,
-                    background: 'rgba(0,188,212,0.06)',
-                    border: '1.5px solid #111',
-                  }}>
+            <div style={{ padding: '8px 14px 4px', background: '#ffffff' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: '#f0f2f5', borderRadius: 10, padding: '8px 12px',
+              }}>
+                <Search size={16} color="rgba(0,0,0,0.45)" />
+                <input
+                  type="search"
+                  placeholder="Search..."
+                  value={storyReqQuery}
+                  onChange={e => setStoryReqQuery(e.target.value)}
+                  style={{
+                    flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                    fontSize: '0.88rem', color: '#111', fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', background: '#ffffff' }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 14,
+                padding: '12px 16px', borderBottom: '1px solid rgba(0,0,0,0.04)',
+              }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
+                  background: '#f0f2f5', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Inbox size={20} color="rgba(0,0,0,0.45)" />
+                </div>
+                <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: 600, fontSize: '0.95rem' }}>Archived</p>
+                <span style={{ color: 'rgba(0,0,0,0.4)', fontSize: '0.85rem' }}>0</span>
+              </div>
+              {(() => {
+                const q = (storyReqQuery || '').trim().toLowerCase();
+                const list = (friends || []).filter(f => {
+                  if (!q) return true;
+                  const name = String(f.name || '').toLowerCase();
+                  const un = String(f.username || '').toLowerCase();
+                  return name.includes(q) || un.includes(q);
+                });
+                const ranked = list.map(f => {
+                  const msgs = user ? loadShareThread(user.id, f.friendId, 'direct') : [];
+                  const last = msgs.length ? msgs[msgs.length - 1] : null;
+                  const unread = msgs.filter(m => user && String(m.fromId) !== String(user.id) && !(m as any).read).length;
+                  return { f, last, unread, at: last?.at ?? 0 };
+                }).sort((a, b) => b.at - a.at);
+                if (!ranked.length) {
+                  return (
+                    <p style={{ color: 'rgba(0,0,0,0.4)', textAlign: 'center', padding: 40, fontSize: '0.88rem' }}>
+                      No friends yet. Add friends to start chatting.
+                    </p>
+                  );
+                }
+                return ranked.map(({ f, last, unread, at }) => {
+                  const online = !!(presence[f.friendId] as any)?.online;
+                  const preview = last
+                    ? (last.type === 'voice' ? 'Voice message'
+                      : last.type === 'image' ? 'Photo'
+                      : last.type === 'video' ? 'Video'
+                      : last.type === 'file' ? 'File'
+                      : String(last.body || '').slice(0, 60))
+                    : 'Tap to chat';
+                  const timeLabel = at ? formatMsgTime(at) : '';
+                  return (
                     <button
+                      key={f.friendId}
                       type="button"
-                      onClick={() => {
-                        void openSecretChatDirect(sc);
-                      }}
+                      onClick={() => openFriendChat(f)}
                       style={{
-                        flex: 1, display: 'flex', alignItems: 'center', gap: 12,
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        textAlign: 'left', padding: 0, minWidth: 0,
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 14,
+                        padding: '12px 16px', border: 'none', background: 'transparent',
+                        cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid rgba(0,0,0,0.04)',
                       }}
                     >
-                      <div style={{
-                        width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-                        background: 'rgba(0,188,212,0.15)',
-                        border: '2px solid #111',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#00BCD4',
-                      }}>
-                        <Lock size={18} strokeWidth={2.2} />
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl} size={52} />
+                        <span
+                          aria-hidden
+                          style={{
+                            position: 'absolute', right: 1, bottom: 1, width: 12, height: 12, borderRadius: '50%',
+                            border: '2px solid #fff',
+                            background: online ? '#22c55e' : '#9ca3af',
+                          }}
+                        />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, color: '#0a1a1a', fontWeight: 800, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {sc.name || 'Secret chat'}
-                        </p>
-                        <p style={{ margin: '2px 0 0', color: 'rgba(0,0,0,0.45)', fontSize: '0.72rem' }}>
-                          {typeof (sc as any).member_count === 'number' ? `${(sc as any).member_count} members` : 'Tap to open'}
-                        </p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <p style={{
+                            margin: 0, flex: 1, color: '#111', fontWeight: unread > 0 ? 800 : 600,
+                            fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            {f.name || f.username || 'User'}
+                          </p>
+                          {timeLabel ? (
+                            <span style={{
+                              color: unread > 0 ? '#25D366' : 'rgba(0,0,0,0.45)',
+                              fontSize: '0.72rem', fontWeight: unread > 0 ? 700 : 500, flexShrink: 0,
+                            }}>
+                              {timeLabel}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                          <p style={{
+                            margin: 0, flex: 1, color: unread > 0 ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.45)',
+                            fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            fontWeight: unread > 0 ? 600 : 400,
+                          }}>
+                            {preview}
+                          </p>
+                          {unread > 0 ? (
+                            <span style={{
+                              minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px',
+                              background: '#25D366', color: '#fff', fontSize: '0.7rem', fontWeight: 800,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                            }}>
+                              {unread > 99 ? '99+' : unread}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </button>
-                    <button
-                      type="button"
-                      aria-label="Chat actions"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOpenActionMenu(prev => prev === `sc-${sc.id}` ? null : `sc-${sc.id}`);
-                      }}
-                      style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent', color: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
-                    >
-                      <MoreVertical size={18} />
-                    </button>
-                  </div>
-                  {openActionMenu === `sc-${sc.id}` && (
-                    <>
-                    <div
-                      role="presentation"
-                      onClick={() => setOpenActionMenu(null)}
-                      style={{
-                        position: 'fixed', inset: 0, zIndex: 4,
-                        background: 'transparent',
-                      }}
-                    />
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        position: 'absolute', right: 8, top: 48, zIndex: 5,
-                        background: '#fff', border: '1px solid rgba(0,0,0,0.1)',
-                        borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                        minWidth: 160, overflow: 'hidden',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOpenActionMenu(null);
-                          setConfirmLeaveChat(sc);
-                        }}
-                        style={{ width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 8 }}
-                      >
-                        <LogOut size={15} /> Leave
-                      </button>
-                      {isCreator && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOpenActionMenu(null);
-                            setConfirmDeleteChat(sc);
-                          }}
-                          style={{ width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 700, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 8 }}
-                        >
-                          <Trash2 size={15} /> Delete
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setOpenActionMenu(null)}
-                        style={{ width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 600, color: 'rgba(0,0,0,0.5)' }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                    </>
-                  )}
-                </div>
-                );
-              }) : (
-                <p style={{ color: 'rgba(0,0,0,0.4)', textAlign: 'center', padding: 30, fontSize: '0.85rem' }}>No secret chats yet. Tap + to create one.</p>
-              )}
+                  );
+                });
+              })()}
             </div>
           </motion.div>
         )}
@@ -21294,7 +21329,7 @@ export default function AddFriendPage() {
               padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
               background: '#ffffff', borderBottom: '1px solid rgba(0,0,0,0.08)',
             }}>
-              <button type="button" onClick={() => { setFriendChatPeer(null); setFriendChatAvatarViewerOpen(false); }} aria-label="Back" style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button type="button" onClick={() => { setFriendChatPeer(null); setFriendChatAvatarViewerOpen(false); setFriendChatReactMsgId(null); }} aria-label="Back" style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <ArrowLeft size={20} />
               </button>
               <button
@@ -21476,9 +21511,40 @@ export default function AddFriendPage() {
                     <div
                       role="button"
                       tabIndex={0}
-                      onClick={() => setFriendChatOpenTimeId(id => id === m.id ? null : m.id)}
+                      onClick={() => {
+                        if (friendChatReactMsgId === m.id) { setFriendChatReactMsgId(null); return; }
+                        setFriendChatOpenTimeId(id => id === m.id ? null : m.id);
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setFriendChatReactMsgId(m.id);
+                        setFriendChatOpenTimeId(m.id);
+                      }}
+                      onPointerDown={(e) => {
+                        const target = e.currentTarget as any;
+                        if (target._fcLpTimer) window.clearTimeout(target._fcLpTimer);
+                        target._fcLpTimer = window.setTimeout(() => {
+                          target._fcLpFired = true;
+                          setFriendChatReactMsgId(m.id);
+                          setFriendChatOpenTimeId(m.id);
+                        }, 450);
+                        target._fcLpFired = false;
+                      }}
+                      onPointerUp={(e) => {
+                        const target = e.currentTarget as any;
+                        if (target._fcLpTimer) { window.clearTimeout(target._fcLpTimer); target._fcLpTimer = null; }
+                      }}
+                      onPointerLeave={(e) => {
+                        const target = e.currentTarget as any;
+                        if (target._fcLpTimer) { window.clearTimeout(target._fcLpTimer); target._fcLpTimer = null; }
+                      }}
+                      onPointerCancel={(e) => {
+                        const target = e.currentTarget as any;
+                        if (target._fcLpTimer) { window.clearTimeout(target._fcLpTimer); target._fcLpTimer = null; }
+                      }}
                       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setFriendChatOpenTimeId(id => id === m.id ? null : m.id); }}
                       style={{
+                        position: 'relative',
                         alignSelf: user && m.fromId === user.id ? 'flex-end' : 'flex-start',
                         maxWidth: '82%',
                         padding: '8px 10px',
@@ -21488,6 +21554,72 @@ export default function AddFriendPage() {
                         cursor: 'pointer',
                       }}
                     >
+                      {friendChatReactMsgId === m.id && user && (
+                        <div
+                          onClick={e => e.stopPropagation()}
+                          style={{
+                            position: 'absolute',
+                            top: -44,
+                            left: user && m.fromId === user.id ? 'auto' : 0,
+                            right: user && m.fromId === user.id ? 0 : 'auto',
+                            zIndex: 20,
+                            display: 'flex', gap: 4,
+                            padding: '6px 8px',
+                            borderRadius: 24,
+                            background: '#ffffff',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+                            border: '1px solid rgba(0,0,0,0.08)',
+                          }}
+                        >
+                          {FRIEND_CHAT_REACT_EMOJIS.map(em => (
+                            <button
+                              key={em}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!user || !friendChatPeer) return;
+                                const next = toggleMsgReaction(user.id, friendChatPeer.friendId, 'direct', m.id, user.id, em);
+                                setFriendChatMsgs(next);
+                                setFriendChatReactMsgId(null);
+                              }}
+                              style={{
+                                width: 34, height: 34, borderRadius: '50%', border: 'none',
+                                background: 'transparent', fontSize: '1.25rem', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}
+                            >
+                              {em}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {Array.isArray(m.reactions) && m.reactions.length > 0 && (
+                        <div style={{
+                          position: 'absolute',
+                          bottom: -12,
+                          left: user && m.fromId === user.id ? 'auto' : 8,
+                          right: user && m.fromId === user.id ? 8 : 'auto',
+                          zIndex: 5,
+                          display: 'flex', gap: 2,
+                          padding: '2px 6px',
+                          borderRadius: 12,
+                          background: '#ffffff',
+                          boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+                          border: '1px solid rgba(0,0,0,0.06)',
+                        }}>
+                          {Object.entries(
+                            m.reactions.reduce((acc: Record<string, number>, r) => {
+                              acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                              return acc;
+                            }, {} as Record<string, number>)
+                          ).map(([em, cnt]) => (
+                            <span key={em} style={{ fontSize: '0.75rem', lineHeight: 1.2 }}>
+                              {em}{cnt > 1 ? <span style={{ fontSize: '0.65rem', color: 'rgba(0,0,0,0.5)', marginLeft: 1 }}>{cnt}</span> : null}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
                       {m.type === 'text' && isStoryReplyMsg(m) && (
                         <div>
                           <p style={{ margin: '0 0 6px', color: '#0f766e', fontSize: '0.68rem', fontWeight: 800 }}>Story reply</p>
