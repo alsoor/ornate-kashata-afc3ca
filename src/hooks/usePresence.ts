@@ -7,6 +7,10 @@ export interface PresenceInfo {
   userId: string;
   online: boolean;
   lastSeenAt: string | null;
+  /** True while this user is actively typing (set via the heartbeat typing signal). */
+  typing?: boolean;
+  /** The peer id this user is currently typing to, when `typing` is true. */
+  typingTo?: string | null;
 }
 
 /** Send heartbeat every 20s while mounted */
