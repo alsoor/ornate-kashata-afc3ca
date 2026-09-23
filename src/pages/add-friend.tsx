@@ -1693,7 +1693,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   }
   const [requestsBoxOpen, setRequestsBoxOpen] = useState(false);
   const [liveMapOpen, setLiveMapOpen] = useState(false);
-  const [livePins, setLivePins] = useState<{ id: string; name: string; username: string; avatarUrl: string | null; lat: number; lng: number }[]>([]);
+  const [livePins, setLivePins] = useState<{ id: string; name: string; username: string; avatarUrl: string | null; lat: number; lng: number; at?: number }[]>([]);
   const [liveCenter, setLiveCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [liveMsgPeer, setLiveMsgPeer] = useState<{ id: string; name: string } | null>(null);
   const [liveMsgText, setLiveMsgText] = useState('');
@@ -1701,6 +1701,19 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     try { return localStorage.getItem('stooorna_live_gps_share') !== '0'; } catch { return true; }
   });
   const [liveSearch, setLiveSearch] = useState('');
+  const [liveSearchHits, setLiveSearchHits] = useState<{
+    id: string;
+    name: string;
+    username: string;
+    avatarUrl: string | null;
+    sharing: boolean;
+    online: boolean;
+    lat?: number;
+    lng?: number;
+  }[]>([]);
+  const [liveSearchLoading, setLiveSearchLoading] = useState(false);
+  const [liveHighlightId, setLiveHighlightId] = useState<string | null>(null);
+  const liveSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [livePlace, setLivePlace] = useState('');
   const [liveZoom, setLiveZoom] = useState(16);
   const [liveFocus, setLiveFocus] = useState<{ lat: number; lng: number } | null>(null);
@@ -1711,6 +1724,69 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     startZoom: number;
     startDist: number;
   } | null>(null);
+
+  const runLiveUserSearch = async (query: string) => {
+    const q = query.trim().toLowerCase().replace(/^@/, '');
+    if (q.length < 2) {
+      setLiveSearchHits([]);
+      setLiveHighlightId(null);
+      setLiveSearchLoading(false);
+      return;
+    }
+    setLiveSearchLoading(true);
+    try {
+      const r = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`, { credentials: 'include' });
+      const data = await r.json();
+      const users = (Array.isArray(data) ? data : []) as Array<{
+        id?: string;
+        name?: string | null;
+        username?: string | null;
+        avatarUrl?: string | null;
+      }>;
+      const pinById = new Map(livePins.map(p => [String(p.id), p]));
+      const pinByUser = new Map(
+        livePins
+          .filter(p => p.username)
+          .map(p => [p.username.toLowerCase().replace(/^@/, ''), p]),
+      );
+      const now = Date.now();
+      const hits = users
+        .filter(u => u && u.id && String(u.id) !== String(myId || ''))
+        .map(u => {
+          const id = String(u.id);
+          const uname = String(u.username || '').toLowerCase().replace(/^@/, '');
+          const pin = pinById.get(id) || (uname ? pinByUser.get(uname) : undefined);
+          const fresh = !!(pin && pin.at && now - Number(pin.at) < 30 * 60 * 1000);
+          const sharing = !!pin && fresh;
+          return {
+            id,
+            name: String(u.name || u.username || 'User'),
+            username: String(u.username || ''),
+            avatarUrl: u.avatarUrl ?? null,
+            sharing,
+            online: sharing,
+            lat: pin?.lat,
+            lng: pin?.lng,
+          };
+        });
+      setLiveSearchHits(hits);
+      // Prefer first user who is sharing location
+      const focusHit = hits.find(h => h.sharing && h.lat != null && h.lng != null) || null;
+      if (focusHit && focusHit.lat != null && focusHit.lng != null) {
+        setLiveHighlightId(focusHit.id);
+        setLiveFocus({ lat: focusHit.lat, lng: focusHit.lng });
+        setLiveZoom(19);
+        setLiveMsgPeer(null);
+      } else {
+        setLiveHighlightId(null);
+      }
+    } catch {
+      setLiveSearchHits([]);
+      setLiveHighlightId(null);
+    } finally {
+      setLiveSearchLoading(false);
+    }
+  };
   const [respondingId, setRespondingId] = useState<number | null>(null);
   // بحث يوزرات داخل بكس طلبات الإضافة (بدون تغيير شكل البكس)
   const [camSearchQuery, setCamSearchQuery] = useState('');
@@ -1804,6 +1880,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           avatarUrl: p.avatarUrl ?? null,
           lat: Number(p.lat),
           lng: Number(p.lng),
+          at: Number(p.at || 0) || undefined,
         })));
       } catch { /* */ }
     };
@@ -1848,6 +1925,30 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
       if (watchId != null) navigator.geolocation.clearWatch(watchId);
     };
   }, [liveMapOpen, myId, userName, avatarUrl, liveShareOn]);
+
+  useEffect(() => {
+    if (!liveMapOpen) {
+      setLiveSearch('');
+      setLiveSearchHits([]);
+      setLiveHighlightId(null);
+      setLiveSearchLoading(false);
+      return;
+    }
+    if (liveSearchDebounceRef.current) clearTimeout(liveSearchDebounceRef.current);
+    const q = liveSearch.trim();
+    if (q.length < 2) {
+      setLiveSearchHits([]);
+      setLiveHighlightId(null);
+      setLiveSearchLoading(false);
+      return;
+    }
+    liveSearchDebounceRef.current = setTimeout(() => {
+      void runLiveUserSearch(q);
+    }, 350);
+    return () => {
+      if (liveSearchDebounceRef.current) clearTimeout(liveSearchDebounceRef.current);
+    };
+  }, [liveSearch, liveMapOpen, livePins, myId]);
 
   useEffect(() => {
     void import('@/lib/camera-ai-beauty').then(m => {
@@ -2889,15 +2990,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                     onChange={e => setLiveSearch(e.target.value)}
                     onKeyDown={e => {
                       if (e.key !== 'Enter') return;
-                      const q = liveSearch.trim().toLowerCase().replace(/^@/, '');
-                      const hit = livePins.find(p => p.username.toLowerCase().includes(q) || p.name.toLowerCase().includes(q));
-                      if (hit) {
-                        setLiveFocus({ lat: hit.lat, lng: hit.lng });
-                        setLiveZoom(19);
-                        setLiveFocus({ lat: hit.lat, lng: hit.lng });
-                        setLiveZoom(18);
-                        setLiveMsgPeer(null);
-                      }
+                      void runLiveUserSearch(liveSearch);
                     }}
                     placeholder="Search username"
                     style={{
@@ -2933,6 +3026,66 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                   }} />
                 </button>
               </div>
+              {(liveSearch.trim().length >= 2) && (
+                <div style={{
+                  marginTop: 8, maxHeight: 140, overflowY: 'auto',
+                  borderRadius: 12, border: '1px solid rgba(0,188,212,0.25)',
+                  background: 'rgba(0,12,16,0.92)',
+                }}>
+                  {liveSearchLoading && (
+                    <p style={{ margin: 0, padding: '10px 12px', color: 'rgba(200,230,230,0.7)', fontSize: '0.78rem' }}>Searching…</p>
+                  )}
+                  {!liveSearchLoading && liveSearchHits.length === 0 && (
+                    <p style={{ margin: 0, padding: '10px 12px', color: 'rgba(200,230,230,0.55)', fontSize: '0.78rem' }}>No users found</p>
+                  )}
+                  {!liveSearchLoading && liveSearchHits.map(hit => (
+                    <button
+                      key={hit.id}
+                      type="button"
+                      onClick={() => {
+                        if (hit.sharing && hit.lat != null && hit.lng != null) {
+                          setLiveHighlightId(hit.id);
+                          setLiveFocus({ lat: hit.lat, lng: hit.lng });
+                          setLiveZoom(19);
+                          setLiveMsgPeer(null);
+                        } else {
+                          setLiveHighlightId(null);
+                        }
+                      }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 10px', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.06)',
+                        background: liveHighlightId === hit.id ? 'rgba(34,197,94,0.12)' : 'transparent',
+                        cursor: 'pointer', textAlign: 'left',
+                      }}
+                    >
+                      <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
+                        <div style={{
+                          width: 36, height: 36, borderRadius: '50%', overflow: 'hidden',
+                          border: `2px solid ${hit.sharing ? '#22c55e' : '#ef4444'}`, background: '#111',
+                        }}>
+                          {hit.avatarUrl
+                            ? <img src={hit.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : <span style={{ color: '#fff', fontSize: 12, display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>{(hit.name || '?')[0]}</span>}
+                        </div>
+                        <span style={{
+                          position: 'absolute', right: -1, bottom: -1, width: 11, height: 11, borderRadius: '50%',
+                          background: hit.online ? '#22c55e' : '#ef4444',
+                          border: '2px solid #061018',
+                        }} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {hit.name}
+                        </p>
+                        <p style={{ margin: 0, color: 'rgba(200,230,230,0.55)', fontSize: '0.68rem' }}>
+                          @{hit.username || 'user'} · {hit.sharing ? 'On map' : 'Location off'}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div
               style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#d9e7c8', touchAction: 'none' }}
@@ -3066,21 +3219,51 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                       const { px, py, hide } = pinXY(pin);
                       if (hide) return null;
                       const heat = Math.max(70, 220 - z * 8);
+                      const isMe = String(pin.id) === String(myId || '');
+                      const isHighlight = !!(liveHighlightId && String(pin.id) === String(liveHighlightId));
+                      const lift = isHighlight ? -36 : 0;
+                      const zPin = isHighlight ? 12 : (isMe ? 6 : 2);
+                      const online = !!(pin.at && Date.now() - Number(pin.at) < 30 * 60 * 1000);
                       return (
-                        <div key={pin.id} style={{ position: 'absolute', left: `calc(50% + ${px}px)`, top: `calc(50% + ${py}px)`, transform: 'translate(-50%, -50%)', zIndex: 2, pointerEvents: 'none' }}>
+                        <div key={pin.id} style={{
+                          position: 'absolute',
+                          left: `calc(50% + ${px}px)`,
+                          top: `calc(50% + ${py + lift}px)`,
+                          transform: 'translate(-50%, -50%)',
+                          zIndex: zPin,
+                          pointerEvents: 'none',
+                        }}>
                           <div style={{
                             position: 'absolute', left: '50%', top: '58%', width: heat, height: heat, marginLeft: -heat / 2, marginTop: -heat / 2,
                             borderRadius: '50%', pointerEvents: 'none',
-                            background: 'radial-gradient(circle, rgba(255,70,50,0.38) 0%, rgba(255,200,60,0.22) 28%, rgba(80,220,170,0.16) 52%, transparent 72%)',
+                            background: isHighlight
+                              ? 'radial-gradient(circle, rgba(34,197,94,0.45) 0%, rgba(0,188,212,0.2) 40%, transparent 70%)'
+                              : 'radial-gradient(circle, rgba(255,70,50,0.38) 0%, rgba(255,200,60,0.22) 28%, rgba(80,220,170,0.16) 52%, transparent 72%)',
                           }} />
                           <button type="button" onClick={() => setLiveMsgPeer({ id: pin.id, name: pin.username || pin.name })} style={{
-                            position: 'relative', background: 'none', border: 'none', cursor: 'pointer',
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, pointerEvents: 'auto',
+                            pointerEvents: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
                           }}>
-                            <div style={{ width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', border: '2px solid #fff', background: '#111', boxShadow: '0 4px 12px rgba(0,0,0,0.28)' }}>
-                              {pin.avatarUrl ? <img src={pin.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: '#fff' }}>{pin.name.slice(0,1)}</span>}
+                            <div style={{ position: 'relative', width: 42, height: 42 }}>
+                              <div style={{
+                                width: 42, height: 42, borderRadius: '50%', overflow: 'hidden',
+                                border: isHighlight ? '2.5px solid #22c55e' : '2px solid #fff',
+                                background: '#111', boxShadow: '0 4px 12px rgba(0,0,0,0.28)',
+                              }}>
+                                {pin.avatarUrl ? <img src={pin.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: '#fff' }}>{pin.name.slice(0,1)}</span>}
+                              </div>
+                              <span style={{
+                                position: 'absolute', right: -1, bottom: -1, width: 12, height: 12, borderRadius: '50%',
+                                background: online ? '#22c55e' : '#ef4444',
+                                border: '2px solid #fff',
+                              }} />
                             </div>
-                            <span style={{ color: '#111', fontSize: '0.62rem', fontWeight: 800, background: 'rgba(255,255,255,0.94)', padding: '1px 6px', borderRadius: 8 }}>@{pin.username || pin.name}</span>
+                            <span style={{
+                              fontSize: '0.62rem', fontWeight: 800,
+                              background: isHighlight ? 'rgba(34,197,94,0.95)' : 'rgba(255,255,255,0.94)',
+                              color: isHighlight ? '#041018' : '#111',
+                              padding: '1px 6px', borderRadius: 8,
+                            }}>@{pin.username || pin.name}</span>
                           </button>
                         </div>
                       );
