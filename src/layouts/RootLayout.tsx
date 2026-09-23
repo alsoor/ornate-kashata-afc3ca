@@ -1967,7 +1967,15 @@ function GlobalBottomNavigation() {
 
   useEffect(() => {
     const onVideo = (ev: Event) => {
-      const friendId = String((ev as CustomEvent).detail?.friendId || '');
+      const d = (ev as CustomEvent).detail || {};
+      // Friend chat video is handled by FriendVideoCallController on /add-friend.
+      // Do not open a second Agora camera session here (causes NOT_READABLE).
+      if (d.handledBy === 'friend-video' || d.skipHomeCall) return;
+      try {
+        const path = window.location.pathname || '';
+        if (path === '/add-friend' || path.startsWith('/add-friend')) return;
+      } catch { /* ignore */ }
+      const friendId = String(d.friendId || d.peerId || '');
       if (!friendId || !user?.id) return;
       pendingVideoRef.current = true;
       setHomeCallSelected({ [friendId]: true });
@@ -1977,11 +1985,10 @@ function GlobalBottomNavigation() {
     };
     window.addEventListener('stooorna:start-video-call', onVideo as EventListener);
     return () => window.removeEventListener('stooorna:start-video-call', onVideo as EventListener);
-  }, [user?.id]);
+  }, [user?.id, homeCallPhase]);
 
   useEffect(() => {
     if (!homeCallIsVideo || homeCallPhase === 'idle') return;
-    let extra: MediaStream | null = null;
     const bind = () => {
       try { homeCallCamRef.current?.play?.(localVideoRef.current || undefined); } catch { /* */ }
       try {
@@ -1994,27 +2001,10 @@ function GlobalBottomNavigation() {
     };
     bind();
     const t = window.setInterval(bind, 800);
-    (async () => {
-      await new Promise(r => setTimeout(r, 250));
-      const el = localVideoRef.current;
-      if (!el) return;
-      if (el.querySelector('video')) return;
-      try {
-        extra = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-        const v = document.createElement('video');
-        v.autoplay = true;
-        v.muted = true;
-        v.playsInline = true;
-        v.srcObject = extra;
-        v.style.width = '100%';
-        v.style.height = '100%';
-        v.style.objectFit = 'cover';
-        el.appendChild(v);
-      } catch { /* */ }
-    })();
+    // Do not open a second getUserMedia stream — Agora already owns the camera.
+    // A second stream causes NOT_READABLE on many mobile browsers.
     return () => {
       window.clearInterval(t);
-      try { extra?.getTracks().forEach(tr => tr.stop()); } catch { /* */ }
     };
   }, [homeCallIsVideo, homeCallPhase]);
 
@@ -2956,36 +2946,9 @@ function GlobalBottomNavigation() {
 
 
 
-  const homeVideoOverlay = (homeCallIsVideo && homeCallPhase !== 'idle') ? (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 2147483646, background: '#000' }}>
-      <div ref={remoteVideoRef} id="stooorna-video-stage" style={{ position: 'absolute', inset: 0, background: '#111', overflow: 'hidden' }}>
-        <p style={{ position: 'absolute', inset: 0, margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.55)', fontWeight: 700, pointerEvents: 'none' }}>Waiting for video…</p>
-      </div>
-      <div
-        ref={localVideoRef}
-        onPointerDown={e => {
-          const startX = e.clientX, startY = e.clientY, ox = pipPos.x, oy = pipPos.y;
-          const move = (ev: PointerEvent) => setPipPos({ x: Math.max(8, ox + ev.clientX - startX), y: Math.max(8, oy + ev.clientY - startY) });
-          const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
-          window.addEventListener('pointermove', move);
-          window.addEventListener('pointerup', up);
-        }}
-        style={{
-          position: 'absolute', left: pipPos.x, top: pipPos.y, width: 118, height: 168,
-          borderRadius: 14, overflow: 'hidden', border: '2px solid #fff', background: '#222', zIndex: 3, touchAction: 'none',
-        }}
-      />
-      <div style={{ position: 'absolute', top: 16, left: 0, right: 0, textAlign: 'center', color: '#fff', fontWeight: 700, zIndex: 4 }}>
-        {homeCallPhase === 'live' ? 'Video call' : 'Calling…'}
-      </div>
-      <button type="button" onClick={() => { void leaveHomeGroupCall(); }} style={{
-        position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)',
-        width: 64, height: 64, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', zIndex: 4,
-      }}>
-        <PhoneOff size={22} color="#fff" />
-      </button>
-    </div>
-  ) : null;
+  // Video UI is handled by FriendVideoCallStage on /add-friend (My Live).
+  // Do not mount a second full-screen "Waiting for video" layer on top of it.
+  const homeVideoOverlay = null;
 
   const homeCallOverlay = (homeCallPickerOpen || homeCallPhase !== 'idle') && !homeCallIsVideo ? (
     <div style={{
