@@ -8698,7 +8698,7 @@ function GlobalIncomingCallBanner({ myUserId, myUserName }: { myUserId: string |
     return () => window.removeEventListener('stooorna:answer-home-incoming', onAnswer);
   }, [myUserId, myUserName]);
   const activeState = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
-  const visible = incoming.ringing && !activeState.joined && !!myUserId;
+  const visible = false; // full-screen incoming is handled in RootLayout
   return (
     <AnimatePresence>
       {visible && (

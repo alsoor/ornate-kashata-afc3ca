@@ -1430,6 +1430,7 @@ function GlobalBottomNavigation() {
     channel: string;
     hostId: string;
     hostName: string | null;
+    hostUsername?: string | null;
     hostAvatar: string | null;
     members: HomeCallMember[];
   } | null>(null);
@@ -1542,6 +1543,7 @@ function GlobalBottomNavigation() {
         channel: String(raw.channel),
         hostId: String(raw.hostId || ''),
         hostName: raw.hostName ?? null,
+        hostUsername: raw.hostUsername ?? raw.username ?? (Array.isArray(raw.members) ? (raw.members.find((m: any) => String(m.id) === String(raw.hostId || ''))?.username) : null) ?? null,
         hostAvatar: raw.hostAvatar ?? null,
         members: Array.isArray(raw.members) ? raw.members : [],
         video: !!raw.video,
@@ -1829,7 +1831,7 @@ function GlobalBottomNavigation() {
     setHomeCallMembers([me, ...others]);
     setHomeCallPickerOpen(false);
     setHomeCallPhase('animating');
-    const invitePayload = { channel, hostId: user.id, hostName: me.name, hostAvatar: me.avatarUrl, members: [me, ...others], at: Date.now(), video: homeCallVideoRef.current };
+    const invitePayload = { channel, hostId: user.id, hostName: me.name, hostUsername: me.username, hostAvatar: me.avatarUrl, members: [me, ...others], at: Date.now(), video: homeCallVideoRef.current };
     window.dispatchEvent(new CustomEvent('stooorna:home-group-call', {
       detail: { ...invitePayload, inviteeIds: picked.map(p => p.id) },
     }));
@@ -2219,7 +2221,7 @@ function GlobalBottomNavigation() {
     }
   }, [homeCallPhase, homeCallChannel, user?.id]);
 
-  function beginHomeIncoming(invite: { channel: string; hostId: string; hostName: string | null; hostAvatar: string | null; members: HomeCallMember[]; video?: boolean }) {
+  function beginHomeIncoming(invite: { channel: string; hostId: string; hostName: string | null; hostUsername?: string | null; hostAvatar: string | null; members: HomeCallMember[]; video?: boolean }) {
     if (homeCallPhase !== 'idle') return;
     const lock = homeRingLockRef.current;
     if (lock.mode === 'answered') return;
@@ -2396,7 +2398,9 @@ function GlobalBottomNavigation() {
     const host: HomeCallMember = {
       id: invite.hostId,
       name: invite.hostName,
-      username: null,
+      username: (invite as any).hostUsername
+        ?? invite.members?.find((m: any) => String(m.id) === String(invite.hostId))?.username
+        ?? null,
       avatarUrl: invite.hostAvatar,
       joined: true,
     };
@@ -2583,8 +2587,8 @@ function GlobalBottomNavigation() {
     <div style={{
       position: 'fixed',
       top: 0, left: 0, right: 0,
-      bottom: 'calc(52px + env(safe-area-inset-bottom))',
-      zIndex: 10380,
+      bottom: (homeCallPhase === 'connecting' || homeCallPhase === 'live' || homeIncoming) ? 0 : 'calc(52px + env(safe-area-inset-bottom))',
+      zIndex: (homeCallPhase === 'connecting' || homeCallPhase === 'live' || homeIncoming) ? 10990 : 10380,
       background: 'radial-gradient(ellipse 70% 60% at 50% 30%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)',
       display: 'flex', flexDirection: 'column',
     }}>
@@ -3125,14 +3129,105 @@ function GlobalBottomNavigation() {
   // Do not mount a second full-screen "Waiting for video" layer on top of it.
   const homeVideoOverlay = null;
 
+  const peerOnCall = (() => {
+    const others = homeCallMembers.filter(m => m.id !== user?.id);
+    const joined = others.find(m => m.joined) || others[0];
+    if (joined) return joined;
+    if (homeIncoming) {
+      return {
+        id: homeIncoming.hostId,
+        name: homeIncoming.hostName,
+        username: (homeIncoming as any).hostUsername ?? homeIncoming.members?.find((m: any) => m.id === homeIncoming.hostId)?.username ?? null,
+        avatarUrl: homeIncoming.hostAvatar,
+        joined: false,
+      } as HomeCallMember;
+    }
+    return null;
+  })();
+
+  const homeIncomingOverlay = homeIncoming && homeCallPhase === 'idle' && !homeCallIsVideo ? (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 10960,
+      background: 'radial-gradient(ellipse 80% 70% at 50% 20%, #1a0a2e 0%, #0d1520 45%, #0a0e14 100%)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      paddingTop: 'max(env(safe-area-inset-top, 0px), 28px)',
+      paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 36px)',
+      boxSizing: 'border-box',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: 600, marginBottom: 28 }}>
+        <Phone size={14} strokeWidth={2.2} />
+        <span>Incoming call</span>
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '0 24px', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{
+          width: 140, height: 140, borderRadius: '50%', overflow: 'hidden',
+          border: '3px solid rgba(255,255,255,0.2)',
+          boxShadow: '0 0 40px rgba(34,197,94,0.25)',
+          background: 'rgba(255,255,255,0.08)',
+          animation: 'stooornaHomeRingShake 0.9s ease-in-out infinite',
+        }}>
+          {homeIncoming.hostAvatar ? (
+            <img src={homeIncoming.hostAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 48, fontWeight: 800, color: '#fff' }}>
+              {(homeIncoming.hostName || '?')[0]}
+            </div>
+          )}
+        </div>
+        <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: 28, textAlign: 'center', letterSpacing: 0.2 }}>
+          {homeIncoming.hostName || 'Friend'}
+        </p>
+        {(() => {
+          const un = (homeIncoming as any).hostUsername
+            || homeIncoming.members?.find((m: any) => String(m.id) === String(homeIncoming.hostId))?.username
+            || null;
+          return un ? (
+            <p style={{ margin: 0, color: 'rgba(200,210,230,0.75)', fontSize: 16, fontWeight: 600 }}>@{String(un).replace(/^@/, '')}</p>
+          ) : null;
+        })()}
+        <p style={{ margin: '8px 0 0', color: 'rgba(180,190,210,0.55)', fontSize: 13 }}>Voice call</p>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 64, width: '100%', padding: '0 32px' }}>
+        <button
+          type="button"
+          onClick={() => { void answerHomeIncoming(); }}
+          aria-label="Answer"
+          style={{
+            width: 72, height: 72, borderRadius: '50%', border: 'none',
+            background: '#22c55e', color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 6px 24px rgba(34,197,94,0.45)',
+          }}
+        >
+          <Phone size={30} strokeWidth={2.2} color="#fff" />
+        </button>
+        <button
+          type="button"
+          onClick={() => ignoreHomeIncoming()}
+          aria-label="Decline"
+          style={{
+            width: 72, height: 72, borderRadius: '50%', border: 'none',
+            background: '#ef4444', color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 6px 24px rgba(239,68,68,0.4)',
+          }}
+        >
+          <PhoneOff size={30} strokeWidth={2.2} color="#fff" />
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   const homeCallOverlay = (homeCallPickerOpen || homeCallPhase !== 'idle') && !homeCallIsVideo ? (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 10950,
       background: homeCallPhase === 'animating'
         ? 'radial-gradient(ellipse 60% 50% at 50% 80%, rgba(0,188,212,0.35), rgba(6,14,14,0.92) 70%)'
-        : 'rgba(6,10,12,0.55)',
+        : (homeCallPhase === 'connecting' || homeCallPhase === 'live')
+          ? '#0b0f14'
+          : 'rgba(6,10,12,0.55)',
       display: 'flex', flexDirection: 'column',
-      justifyContent: 'flex-end',
+      justifyContent: (homeCallPhase === 'connecting' || homeCallPhase === 'live') ? 'stretch' : 'flex-end',
       animation: homeCallPhase === 'animating' ? 'stooornaHomeCallIn 0.9s ease-out' : undefined,
     }}>
       {homeCallPhase === 'animating' && (
@@ -3143,11 +3238,11 @@ function GlobalBottomNavigation() {
             boxShadow: '0 0 28px rgba(0,188,212,0.55)',
             animation: 'stooornaFeedOrbit 1.1s linear infinite',
           }} />
-          <p style={{ color: '#00BCD4', fontWeight: 800, margin: 0 }}>جاري الدخول للمكالمة…</p>
+          <p style={{ color: '#00BCD4', fontWeight: 800, margin: 0 }}>Connecting…</p>
         </div>
       )}
 
-      {homeCallPickerOpen && homeCallPhase === 'idle' && (
+      {homeCallPickerOpen && homeCallPhase === 'idle' && (      {homeCallPickerOpen && homeCallPhase === 'idle' && (
         <div
           onClick={() => setHomeCallPickerOpen(false)}
           style={{
@@ -3240,152 +3335,198 @@ function GlobalBottomNavigation() {
         </div>
       )}
 
+
       {(homeCallPhase === 'connecting' || homeCallPhase === 'live') && (
         <div style={{
-          background: '#fff',
-          borderTopLeftRadius: 18, borderTopRightRadius: 18,
-          padding: '18px 16px calc(18px + env(safe-area-inset-bottom))',
-          boxShadow: '0 -8px 30px rgba(0,0,0,0.18)',
-          animation: 'stooornaHomeCallSheet 0.38s cubic-bezier(0.32,0.72,0,1)',
+          flex: 1, display: 'flex', flexDirection: 'column',
+          background: 'radial-gradient(ellipse 100% 80% at 50% 0%, #1a2433 0%, #0b0f14 55%)',
           position: 'relative',
+          overflow: 'hidden',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, direction: 'ltr' }}>
-            <button type="button" onClick={() => setHomeCallMembersOpen(o => !o)} style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: '#f3f4f6', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#111' }} aria-label="الموجودون">
-              <Users size={18} />
+          <div aria-hidden style={{
+            position: 'absolute', inset: 0, opacity: 0.07, pointerEvents: 'none',
+            backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M10 10h8v8h-8zM30 30h8v8h-8z\' fill=\'%23fff\' fill-opacity=\'0.4\'/%3E%3C/svg%3E")',
+          }} />
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: 'max(env(safe-area-inset-top, 0px), 12px) 14px 8px',
+            position: 'relative', zIndex: 2,
+          }}>
+            <button type="button" onClick={() => { /* keep call full screen */ }} aria-label="Expand" style={{
+              width: 40, height: 40, borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
             </button>
-            <div style={{ textAlign: 'center', flex: 1, padding: '0 8px' }}>
-              <p style={{ margin: 0, fontWeight: 800, color: '#111', fontSize: 16 }}>
-                {(() => {
-                  const me = homeCallMembers.find(m => m.id === user?.id);
-                  const joinedOthers = homeCallMembers.filter(m => m.id !== user?.id && m.joined);
-                  const hostName = me?.name || me?.username || 'أنت';
-                  if (!joinedOthers.length) return hostName;
-                  return [hostName, ...joinedOthers.map(m => m.name || m.username || 'مستخدم')].join(' · ');
-                })()}
+            <div style={{ textAlign: 'center', flex: 1, minWidth: 0, padding: '0 8px' }}>
+              <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: 17, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                {peerOnCall ? (peerOnCall.name || peerOnCall.username || 'Call') : 'My Live'}
+                <span style={{ color: '#ef4444', fontSize: 14 }}>&#10084;</span>
               </p>
-              <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>{homeCallPhase === 'live' ? 'مكالمة صوتية' : 'جاري الاتصال…'}</p>
+              <p style={{ margin: '2px 0 0', color: 'rgba(180,200,220,0.55)', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                End-to-end encrypted
+              </p>
             </div>
-            <span style={{ width: 40 }} />
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 22, padding: '10px 0 18px', flexWrap: 'wrap', direction: 'ltr' }}>
-            {homeCallMembers.filter(m => m.joined || m.id === user?.id).map(m => (
-              <div key={m.id} style={{ textAlign: 'center', minWidth: 80 }}>
-                <div style={{ position: 'relative', width: 76, height: 76, margin: '0 auto 8px' }}>
-                  <div style={{
-                    width: 76, height: 76, borderRadius: '50%', overflow: 'hidden',
-                    background: '#eee',
-                  }}>
-                    {m.avatarUrl ? <img src={m.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (m.name || '?')[0]}
-                  </div>
-                  {homeCallMuted && m.id === user?.id && (
-                    <span style={{
-                      position: 'absolute',
-                      right: -4,
-                      bottom: -4,
-                      width: 32,
-                      height: 32,
-                      borderRadius: '50%',
-                      background: '#111',
-                      border: '3px solid #fff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
-                    }}>
-                      <MicOff size={16} strokeWidth={2.6} color="#fff" />
-                    </span>
-                  )}
-                </div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: m.id === user?.id ? '#e11d48' : '#111' }}>{m.id === user?.id ? 'You' : (m.name || m.username)}</span>
-              </div>
-            ))}
-            <button type="button" onClick={() => { void notifyHomeCallAgain(); }} style={{ textAlign: 'center', minWidth: 72, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-              <div style={{
-                width: 72, height: 72, borderRadius: '50%', margin: '0 auto 6px',
-                background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34,
-              }}>
-                ??
-              </div>
-              <span style={{ fontSize: 13, color: '#6b7280' }}>Notify group</span>
+            <button type="button" onClick={() => setHomeCallMembersOpen(o => !o)} aria-label="Participants" style={{
+              width: 40, height: 40, borderRadius: '50%', border: 'none',
+              background: homeCallMembersOpen ? 'rgba(0,188,212,0.25)' : 'rgba(255,255,255,0.08)',
+              color: '#fff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Users size={18} strokeWidth={2.2} />
             </button>
           </div>
-
-          {homeCallEmojiBurst && (
-            <div style={{ position: 'absolute', left: '50%', top: 20, transform: 'translateX(-50%)', fontSize: 42, animation: 'stooornaNavBubble 1s ease-out' }}>{homeCallEmojiBurst}</div>
-          )}
 
           {homeCallMembersOpen && (
             <div style={{
-              position: 'absolute', top: 56, left: 12, right: 12, background: '#fff',
-              border: '1px solid #e5e7eb', borderRadius: 14, padding: 10, zIndex: 3, maxHeight: 200, overflowY: 'auto',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+              position: 'absolute', top: 64, right: 12, left: 12, zIndex: 5,
+              background: 'rgba(12,18,24,0.96)', border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 16, padding: 12, maxHeight: 240, overflowY: 'auto',
+              boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
             }}>
+              <p style={{ margin: '0 0 10px', color: 'rgba(200,220,230,0.7)', fontSize: 12, fontWeight: 700 }}>In this call</p>
               {homeCallMembers.map(m => (
-                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 4px', direction: 'rtl' }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: m.joined ? '#22c55e' : '#d1d5db', flexShrink: 0 }} />
-                  <span style={{ fontSize: 14, fontWeight: 700, color: '#111', flex: 1, textAlign: 'right' }}>{m.name || m.username || 'مستخدم'}</span>
-                  <span style={{ fontSize: 12, color: '#4b5563', flexShrink: 0 }}>{m.joined ? 'في المكالمة' : 'يُدعى…'}</span>
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', background: 'rgba(255,255,255,0.1)', flexShrink: 0 }}>
+                    {m.avatarUrl ? <img src={m.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800 }}>{(m.name || '?')[0]}</div>
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, color: '#fff', fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {m.id === user?.id ? 'You' : (m.name || m.username || 'User')}
+                    </p>
+                    {m.username ? (
+                      <p style={{ margin: 0, color: 'rgba(160,190,200,0.65)', fontSize: 12 }}>@{String(m.username).replace(/^@/, '')}</p>
+                    ) : null}
+                  </div>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: m.joined ? '#22c55e' : '#6b7280', flexShrink: 0 }} />
                 </div>
               ))}
             </div>
           )}
 
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, position: 'relative', zIndex: 1, padding: '0 20px' }}>
+            <div style={{
+              width: 168, height: 168, borderRadius: '50%', overflow: 'hidden',
+              border: '3px solid rgba(255,255,255,0.15)',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.45)',
+              background: 'rgba(255,255,255,0.06)',
+            }}>
+              {peerOnCall?.avatarUrl ? (
+                <img src={peerOnCall.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 56, fontWeight: 800, color: '#fff' }}>
+                  {(peerOnCall?.name || peerOnCall?.username || '?')[0]}
+                </div>
+              )}
+            </div>
+            <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: 22, textAlign: 'center' }}>
+              {peerOnCall ? (peerOnCall.name || peerOnCall.username || 'Friend') : 'Connecting…'}
+            </p>
+            {peerOnCall?.username ? (
+              <p style={{ margin: 0, color: 'rgba(180,200,220,0.7)', fontSize: 14, fontWeight: 600 }}>@{String(peerOnCall.username).replace(/^@/, '')}</p>
+            ) : null}
+            <p style={{ margin: 0, color: homeCallPhase === 'live' ? '#22c55e' : 'rgba(180,200,220,0.55)', fontSize: 13, fontWeight: 600 }}>
+              {homeCallPhase === 'live' ? 'Connected' : 'Calling…'}
+            </p>
+          </div>
+
+          {homeCallEmojiBurst && (
+            <div style={{ position: 'absolute', left: '50%', top: '28%', transform: 'translateX(-50%)', fontSize: 42, zIndex: 4, animation: 'stooornaNavBubble 1s ease-out' }}>{homeCallEmojiBurst}</div>
+          )}
+
           {homeCallEmojiOpen && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 12 }}>
-              {['??', '??', '??', '??', '??', '??'].map(em => (
-                <button key={em} type="button" onClick={() => sendHomeCallEmoji(em)} style={{ width: 40, height: 40, borderRadius: 20, border: '1px solid #eee', background: '#fff', fontSize: 20, cursor: 'pointer' }}>{em}</button>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 8, position: 'relative', zIndex: 3 }}>
+              {['😀', '😂', '❤️', '🔥', '👍', '🎉'].map(em => (
+                <button key={em} type="button" onClick={() => sendHomeCallEmoji(em)} style={{ width: 40, height: 40, borderRadius: 20, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.08)', fontSize: 20, cursor: 'pointer' }}>{em}</button>
               ))}
             </div>
           )}
 
           <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            direction: 'ltr',
-            width: '100%',
+            padding: '12px 20px max(env(safe-area-inset-bottom, 0px), 20px)',
+            position: 'relative', zIndex: 2,
           }}>
             <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 12,
-              background: '#fff',
-              border: '1px solid #eceff1',
-              borderRadius: 999,
-              padding: '8px 10px',
-              boxShadow: '0 6px 18px rgba(0,0,0,0.08)',
+              background: 'rgba(20,28,36,0.92)',
+              borderRadius: 24,
+              padding: '16px 12px 18px',
+              border: '1px solid rgba(255,255,255,0.08)',
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr 1fr',
+              gap: 8,
+              alignItems: 'start',
             }}>
-              <button type="button" onClick={toggleHomeCallSpeaker} aria-label="السماعة" style={{
-                width: 52, height: 52, borderRadius: '50%', border: 'none',
-                background: homeCallSpeakerOn ? '#111' : '#eceff1',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              <button type="button" onClick={toggleHomeCallSpeaker} style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#fff',
               }}>
-                {homeCallSpeakerOn
-                  ? <Volume2 size={22} strokeWidth={2.3} color="#fff" />
-                  : <VolumeX size={22} strokeWidth={2.3} color="#111" />}
+                <span style={{
+                  width: 52, height: 52, borderRadius: '50%',
+                  background: homeCallSpeakerOn ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {homeCallSpeakerOn ? <Volume2 size={22} strokeWidth={2.2} /> : <VolumeX size={22} strokeWidth={2.2} />}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(220,230,240,0.85)' }}>Speaker</span>
               </button>
-              <button type="button" onClick={toggleHomeCallMute} aria-label="كتم" style={{
-                width: 52, height: 52, borderRadius: '50%', border: 'none',
-                background: homeCallMuted ? '#111' : '#eceff1',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              <button type="button" onClick={toggleHomeCallMute} style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#fff',
               }}>
-                {homeCallMuted ? <MicOff size={22} strokeWidth={2.3} color="#fff" /> : <Mic size={22} strokeWidth={2.3} color="#111" />}
+                <span style={{
+                  width: 52, height: 52, borderRadius: '50%',
+                  background: homeCallMuted ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.08)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {homeCallMuted ? <MicOff size={22} strokeWidth={2.2} /> : <Mic size={22} strokeWidth={2.2} />}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(220,230,240,0.85)' }}>Mute</span>
               </button>
-              <button type="button" onClick={() => setHomeCallEmojiOpen(o => !o)} aria-label="إيموجي" style={{
-                width: 52, height: 52, borderRadius: '50%', border: 'none',
-                background: '#eceff1',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              <button type="button" onClick={() => {
+                const peer = peerOnCall;
+                if (!peer || peer.id === user?.id) {
+                  setHomeCallEmojiOpen(o => !o);
+                  return;
+                }
+                openFriendPeerChat({
+                  id: peer.id,
+                  name: peer.name,
+                  username: peer.username,
+                  avatarUrl: peer.avatarUrl,
+                  lastMessage: '',
+                  at: Date.now(),
+                  unread: 0,
+                });
+              }} style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#fff',
               }}>
-                <Smile size={22} strokeWidth={2.3} color="#111" />
+                <span style={{
+                  width: 52, height: 52, borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.08)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <MessageCircle size={22} strokeWidth={2.2} />
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(220,230,240,0.85)' }}>Chat</span>
               </button>
-              <button type="button" onClick={() => { void leaveHomeGroupCall(); }} aria-label="إنهاء المكالمة" style={{
-                width: 52, height: 52, borderRadius: '50%', border: 'none',
-                background: '#e11d48',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              <button type="button" onClick={() => { void leaveHomeGroupCall(); }} style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#fff',
               }}>
-                <PhoneOff size={22} strokeWidth={2.3} color="#fff" />
+                <span style={{
+                  width: 52, height: 52, borderRadius: '50%',
+                  background: '#ef4444',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
+                }}>
+                  <PhoneOff size={22} strokeWidth={2.2} color="#fff" />
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(220,230,240,0.85)' }}>End</span>
               </button>
             </div>
           </div>
@@ -3393,13 +3534,14 @@ function GlobalBottomNavigation() {
       )}
     </div>
   ) : null;
+  ) : null;
 
   return (
   <>
   {companyListPanel}
   {userListPanel}
   {miniChatOverlay}
-  {homeVideoOverlay}{homeCallOverlay}
+  {homeVideoOverlay}{homeIncomingOverlay}{homeCallOverlay}
 
       {homeCallLogOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 10980, background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
