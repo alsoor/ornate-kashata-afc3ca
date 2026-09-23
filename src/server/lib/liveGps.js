@@ -1,52 +1,74 @@
 /**
- * In-memory live GPS pin store (cross-device signaling).
- * TTL 30 minutes. Single process; swap to Redis for multi-instance later.
+ * Live GPS pin store — shared across requests on the same Node process.
+ * Uses globalThis so hot-reload / multi-import does not wipe pins.
+ * Also mirrors to a temp file when the filesystem is writable (single VPS).
  */
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 const TTL_MS = 30 * 60 * 1000;
+const FILE = path.join(os.tmpdir(), 'stooorna-live-gps-pins.json');
 
-/** @type {Map<string, any>} */
-const pins = new Map();
+function store() {
+  const g = globalThis;
+  if (!g.__stooornaLiveGpsPins) {
+    g.__stooornaLiveGpsPins = new Map();
+    try {
+      if (fs.existsSync(FILE)) {
+        const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+        if (raw && typeof raw === 'object') {
+          for (const [id, p] of Object.entries(raw)) {
+            if (p && typeof p.lat === 'number') g.__stooornaLiveGpsPins.set(String(id), p);
+          }
+        }
+      }
+    } catch { /* */ }
+  }
+  return g.__stooornaLiveGpsPins;
+}
+
+function persist() {
+  try {
+    const obj = {};
+    for (const [id, p] of store()) obj[id] = p;
+    fs.writeFileSync(FILE, JSON.stringify(obj));
+  } catch { /* serverless may block fs */ }
+}
 
 function prune() {
   const now = Date.now();
-  for (const [id, p] of pins) {
-    if (!p || now - Number(p.at || 0) > TTL_MS) pins.delete(id);
+  const m = store();
+  for (const [id, p] of m) {
+    if (!p || now - Number(p.at || 0) > TTL_MS) m.delete(id);
   }
 }
 
-/**
- * @param {object} pin
- */
 export function upsertLiveGpsPin(pin) {
   if (!pin || !pin.id) return;
   const id = String(pin.id);
-  const at = Date.now();
-  pins.set(id, {
+  const row = {
     id,
     name: String(pin.name || 'User'),
     username: String(pin.username || '').replace(/^@/, ''),
     avatarUrl: pin.avatarUrl ?? null,
     lat: Number(pin.lat),
     lng: Number(pin.lng),
-    at,
-  });
+    at: Date.now(),
+  };
+  store().set(id, row);
+  persist();
 }
 
-/**
- * @param {string} userId
- */
 export function removeLiveGpsPin(userId) {
   if (!userId) return;
-  pins.delete(String(userId));
+  store().delete(String(userId));
+  persist();
 }
 
-/**
- * @returns {any[]}
- */
 export function listLiveGpsPins() {
   prune();
-  return Array.from(pins.values()).filter(
+  return Array.from(store().values()).filter(
     p => p && typeof p.lat === 'number' && typeof p.lng === 'number',
   );
 }

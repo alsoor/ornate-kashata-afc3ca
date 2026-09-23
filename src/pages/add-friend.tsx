@@ -1787,29 +1787,65 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           .map(p => [String(p.name).toLowerCase(), p]),
       );
       const now = Date.now();
-      const hits = users
-        .filter(u => u && u.id && String(u.id) !== String(myId || ''))
-        .map(u => {
-          const id = String(u.id);
-          const uname = String(u.username || '').toLowerCase().replace(/^@/, '');
-          const nname = String(u.name || '').toLowerCase();
-          const pin =
-            pinById.get(id)
-            || (uname ? pinByUser.get(uname) : undefined)
-            || (nname ? pinByName.get(nname) : undefined);
-          const fresh = !!(pin && (!pin.at || now - Number(pin.at) < 30 * 60 * 1000));
-          const sharing = !!pin && fresh;
-          return {
-            id,
-            name: String(u.name || u.username || 'User'),
-            username: String(u.username || ''),
-            avatarUrl: u.avatarUrl ?? pin?.avatarUrl ?? null,
-            sharing,
-            online: sharing,
-            lat: pin?.lat,
-            lng: pin?.lng,
-          };
+      const seen = new Set<string>();
+      const hits: {
+        id: string;
+        name: string;
+        username: string;
+        avatarUrl: string | null;
+        sharing: boolean;
+        online: boolean;
+        lat?: number;
+        lng?: number;
+      }[] = [];
+
+      for (const u of users) {
+        if (!u || !u.id || String(u.id) === String(myId || '')) continue;
+        const id = String(u.id);
+        const uname = String(u.username || '').toLowerCase().replace(/^@/, '');
+        const nname = String(u.name || '').toLowerCase();
+        const pin =
+          pinById.get(id)
+          || (uname ? pinByUser.get(uname) : undefined)
+          || (nname ? pinByName.get(nname) : undefined);
+        const fresh = !!(pin && (!pin.at || now - Number(pin.at) < 30 * 60 * 1000));
+        const sharing = !!pin && fresh;
+        seen.add(id);
+        hits.push({
+          id,
+          name: String(u.name || u.username || 'User'),
+          username: String(u.username || ''),
+          avatarUrl: u.avatarUrl ?? pin?.avatarUrl ?? null,
+          sharing,
+          online: sharing,
+          lat: pin?.lat,
+          lng: pin?.lng,
         });
+      }
+
+      // Pins already on the map that match the query (even if users/search missed them)
+      for (const pin of pinsNow) {
+        if (String(pin.id) === String(myId || '')) continue;
+        if (seen.has(String(pin.id))) continue;
+        const uname = String(pin.username || '').toLowerCase().replace(/^@/, '');
+        const nname = String(pin.name || '').toLowerCase();
+        if (!uname.includes(q) && !nname.includes(q) && !String(pin.id).toLowerCase().includes(q)) continue;
+        const fresh = !pin.at || now - Number(pin.at) < 30 * 60 * 1000;
+        if (!fresh) continue;
+        hits.push({
+          id: String(pin.id),
+          name: String(pin.name || pin.username || 'User'),
+          username: String(pin.username || ''),
+          avatarUrl: pin.avatarUrl ?? null,
+          sharing: true,
+          online: true,
+          lat: pin.lat,
+          lng: pin.lng,
+        });
+      }
+
+      // Sort: sharing first
+      hits.sort((a, b) => Number(b.sharing) - Number(a.sharing));
       setLiveSearchHits(hits);
 
       const shouldFocus = opts?.focus !== false && !liveSearchFocusedRef.current;
@@ -1912,19 +1948,25 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   useEffect(() => {
     if (!liveMapOpen) return;
     const key = 'stooorna_live_gps_pins';
+    const normalizePin = (p: any) => {
+      if (!p || typeof p.lat !== 'number' || typeof p.lng !== 'number') return null;
+      return {
+        id: String(p.id),
+        name: String(p.name || p.username || 'User'),
+        username: String(p.username || '').replace(/^@/, ''),
+        avatarUrl: p.avatarUrl ?? null,
+        lat: Number(p.lat),
+        lng: Number(p.lng),
+        at: Number(p.at || Date.now()),
+      };
+    };
     const mergePins = (incoming: any[]) => {
       const byId = new Map(livePinsRef.current.map(p => [String(p.id), p]));
-      for (const p of incoming) {
-        if (!p || typeof p.lat !== 'number') continue;
-        byId.set(String(p.id), {
-          id: String(p.id),
-          name: String(p.name || 'User'),
-          username: String(p.username || '').replace(/^@/, ''),
-          avatarUrl: p.avatarUrl ?? null,
-          lat: Number(p.lat),
-          lng: Number(p.lng),
-          at: Number(p.at || Date.now()),
-        });
+      for (const raw of incoming) {
+        const p = normalizePin(raw);
+        if (!p) continue;
+        const prev = byId.get(p.id);
+        if (!prev || Number(p.at) >= Number(prev.at || 0)) byId.set(p.id, p);
       }
       const next = Array.from(byId.values()).filter(
         p => p && Date.now() - Number(p.at || 0) < 30 * 60 * 1000,
@@ -1933,20 +1975,25 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
       setLivePins(next);
     };
     const readPins = async () => {
+      const bucket: any[] = [];
       try {
         const raw = JSON.parse(localStorage.getItem(key) || '{}') as Record<string, any>;
-        const localList = Object.values(raw).filter(
-          (p: any) => p && typeof p.lat === 'number' && Date.now() - Number(p.at || 0) < 30 * 60 * 1000,
-        );
-        mergePins(localList as any[]);
+        for (const p of Object.values(raw)) {
+          if (p && typeof (p as any).lat === 'number' && Date.now() - Number((p as any).at || 0) < 30 * 60 * 1000) {
+            bucket.push(p);
+          }
+        }
       } catch { /* */ }
       try {
         const r = await fetch('/api/live-gps', { credentials: 'include' });
         if (r.ok) {
           const d = await r.json() as { pins?: any[] };
-          if (Array.isArray(d.pins)) mergePins(d.pins);
+          if (Array.isArray(d.pins)) {
+            for (const p of d.pins) bucket.push(p);
+          }
         }
       } catch { /* */ }
+      mergePins(bucket);
     };
     void readPins();
     const iv = window.setInterval(() => { void readPins(); }, 5000);

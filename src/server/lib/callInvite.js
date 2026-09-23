@@ -1,62 +1,78 @@
 /**
- * In-memory call-invite signaling.
- * Keys: invitee userId -> latest invite payload.
- * TTL: 45 seconds (matches client ring window).
- *
- * Note: works on a single server process. For multi-instance, swap to Redis later.
+ * Call-invite store — shared across requests on the same Node process.
+ * Uses globalThis + optional temp-file mirror (single VPS).
  */
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 const TTL_MS = 45_000;
+const FILE = path.join(os.tmpdir(), 'stooorna-call-invites.json');
 
-/** @type {Map<string, { payload: any, expiresAt: number }>} */
-const invites = new Map();
+function store() {
+  const g = globalThis;
+  if (!g.__stooornaCallInvites) {
+    g.__stooornaCallInvites = new Map();
+    try {
+      if (fs.existsSync(FILE)) {
+        const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+        if (raw && typeof raw === 'object') {
+          for (const [id, row] of Object.entries(raw)) {
+            if (row && row.payload) g.__stooornaCallInvites.set(String(id), row);
+          }
+        }
+      }
+    } catch { /* */ }
+  }
+  return g.__stooornaCallInvites;
+}
+
+function persist() {
+  try {
+    const obj = {};
+    for (const [id, row] of store()) obj[id] = row;
+    fs.writeFileSync(FILE, JSON.stringify(obj));
+  } catch { /* */ }
+}
 
 function prune() {
   const now = Date.now();
-  for (const [k, v] of invites) {
-    if (v.expiresAt <= now) invites.delete(k);
+  const m = store();
+  for (const [k, v] of m) {
+    if (!v || Number(v.expiresAt || 0) <= now) m.delete(k);
   }
 }
 
-/**
- * @param {string} toUserId
- * @param {object} payload
- */
 export function setCallInvite(toUserId, payload) {
   if (!toUserId) return;
   prune();
-  invites.set(String(toUserId), {
+  store().set(String(toUserId), {
     payload: { ...payload, at: Number(payload.at) || Date.now() },
     expiresAt: Date.now() + TTL_MS,
   });
+  persist();
 }
 
-/**
- * @param {string} toUserId
- * @returns {object | null}
- */
 export function getCallInvite(toUserId) {
   if (!toUserId) return null;
   prune();
-  const row = invites.get(String(toUserId));
+  const row = store().get(String(toUserId));
   if (!row) return null;
-  if (row.expiresAt <= Date.now()) {
-    invites.delete(String(toUserId));
+  if (Number(row.expiresAt || 0) <= Date.now()) {
+    store().delete(String(toUserId));
+    persist();
     return null;
   }
   return row.payload;
 }
 
-/**
- * @param {string} toUserId
- * @param {string} [channel]
- */
 export function clearCallInvite(toUserId, channel) {
   if (!toUserId) return;
-  const row = invites.get(String(toUserId));
+  const row = store().get(String(toUserId));
   if (!row) return;
   if (channel && row.payload?.channel && String(row.payload.channel) !== String(channel)) return;
-  invites.delete(String(toUserId));
+  store().delete(String(toUserId));
+  persist();
 }
 
 export function callInviteTtlMs() {
