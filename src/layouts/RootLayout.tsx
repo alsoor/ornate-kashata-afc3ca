@@ -1417,6 +1417,59 @@ function GlobalBottomNavigation() {
   const [homeCallPhase, setHomeCallPhase] = useState<'idle' | 'animating' | 'connecting' | 'live'>('idle');
   const homeCallPhaseRef = useRef(homeCallPhase);
   useEffect(() => { homeCallPhaseRef.current = homeCallPhase; }, [homeCallPhase]);
+  useEffect(() => {
+    if (homeCallPhase !== 'live') {
+      if (homeCallPhase === 'idle') setHomeCallElapsedSec(0);
+      return;
+    }
+    if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
+    const tick = () => {
+      const start = homeCallLiveStartedAt.current || Date.now();
+      setHomeCallElapsedSec(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [homeCallPhase]);
+
+  // Remote party ended the call — close local UI
+  useEffect(() => {
+    if (homeCallPhase !== 'connecting' && homeCallPhase !== 'live') return;
+    const channel = homeCallChannel;
+    if (!channel) return;
+    const onEnd = (detail: { channel?: string } | null) => {
+      if (!detail?.channel) return;
+      if (String(detail.channel) !== String(channel)) return;
+      void leaveHomeGroupCall({ remote: true });
+    };
+    const onEvt = (e: Event) => {
+      const d = (e as CustomEvent).detail as { channel?: string } | undefined;
+      onEnd(d || null);
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || !e.newValue) return;
+      if (e.key === `stooorna_call_ended_${channel}`) {
+        try { onEnd(JSON.parse(e.newValue)); } catch { /* */ }
+      }
+    };
+    window.addEventListener('stooorna:home-call-ended', onEvt as EventListener);
+    window.addEventListener('storage', onStorage);
+    const pollEnd = window.setInterval(() => {
+      try {
+        const raw = localStorage.getItem(`stooorna_call_ended_${channel}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.at && Date.now() - Number(parsed.at) < 120000) onEnd(parsed);
+        }
+      } catch { /* */ }
+    }, 2000);
+    return () => {
+      window.removeEventListener('stooorna:home-call-ended', onEvt as EventListener);
+      window.removeEventListener('storage', onStorage);
+      window.clearInterval(pollEnd);
+    };
+  }, [homeCallPhase, homeCallChannel]);
+
   const [homeCallMembers, setHomeCallMembers] = useState<HomeCallMember[]>([]);
   const [homeCallMuted, setHomeCallMuted] = useState(false);
   const [homeCallSpeakerOn, setHomeCallSpeakerOn] = useState(true);
@@ -1424,6 +1477,8 @@ function GlobalBottomNavigation() {
   const [homeCallEmojiBurst, setHomeCallEmojiBurst] = useState<string | null>(null);
   const [homeCallEmojiFrom, setHomeCallEmojiFrom] = useState<string | null>(null);
   const [homeCallMembersOpen, setHomeCallMembersOpen] = useState(false);
+  const [homeCallMinimized, setHomeCallMinimized] = useState(false);
+  const [homeCallElapsedSec, setHomeCallElapsedSec] = useState(0);
   const [homeCallChannel, setHomeCallChannel] = useState<string | null>(null);
   const [homeIncoming, setHomeIncoming] = useState<{
     video?: boolean;
@@ -1685,15 +1740,45 @@ function GlobalBottomNavigation() {
     return (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
   }
 
-  async function leaveHomeGroupCall() {
+  async function leaveHomeGroupCall(opts?: { remote?: boolean }) {
+    const remoteEnd = !!opts?.remote;
     const endedPhase = homeCallPhaseRef.current;
     const endedMembers = homeCallMembers.slice();
+    const endedChannel = homeCallChannel;
     const endedAt = Date.now();
     const durationSec = homeCallLiveStartedAt.current
       ? Math.max(1, Math.round((endedAt - homeCallLiveStartedAt.current) / 1000))
       : 0;
     homeCallLiveStartedAt.current = null;
     homeCallSessionRef.current += 1;
+    // Notify remote party so their UI closes automatically
+    if (!remoteEnd && endedChannel && user?.id) {
+      try {
+        const payload = { channel: endedChannel, by: user.id, at: endedAt };
+        localStorage.setItem(`stooorna_call_ended_${endedChannel}`, JSON.stringify(payload));
+        window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: payload }));
+        window.dispatchEvent(new StorageEvent('storage', { key: `stooorna_call_ended_${endedChannel}`, newValue: JSON.stringify(payload) }));
+        for (const m of endedMembers) {
+          if (!m.id || m.id === user.id) continue;
+          try {
+            localStorage.setItem(`stooorna_home_call_invite_${m.id}`, JSON.stringify({ ended: true, channel: endedChannel, at: endedAt }));
+            localStorage.removeItem(`stooorna_home_call_invite_${m.id}`);
+          } catch { /* */ }
+          try {
+            void fetch('/api/call/invite', {
+              method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ clear: true, toUserId: m.id, userId: m.id, channel: endedChannel, ended: true }),
+            });
+          } catch { /* */ }
+          try {
+            void fetch('/api/room/leave', {
+              method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ roomId: endedChannel, userId: user.id, endRoom: true }),
+            });
+          } catch { /* */ }
+        }
+      } catch { /* */ }
+    }
     if (homeCallNoAnswerTimer.current) {
       window.clearTimeout(homeCallNoAnswerTimer.current);
       homeCallNoAnswerTimer.current = null;
@@ -1753,6 +1838,8 @@ function GlobalBottomNavigation() {
       });
     }
     setHomeCallPhase('idle');
+    setHomeCallMinimized(false);
+    setHomeCallElapsedSec(0);
     setHomeCallIsVideo(false);
     homeCallVideoRef.current = false;
     try { homeCallCamRef.current?.stop?.(); homeCallCamRef.current?.close?.(); } catch { /* */ }
@@ -1942,6 +2029,14 @@ function GlobalBottomNavigation() {
           if (mediaType === 'video') {
             requestAnimationFrame(() => { try { remoteUser.videoTrack?.play(remoteVideoRef.current || undefined); } catch { /* */ } });
           }
+          if (homeCallPhaseRef.current === 'connecting') {
+            setHomeCallPhase('live');
+            if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
+            if (homeCallNoAnswerTimer.current) {
+              window.clearTimeout(homeCallNoAnswerTimer.current);
+              homeCallNoAnswerTimer.current = null;
+            }
+          }
         } catch { /* */ }
       });
       const tokenResponse = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(user.id)}`, { credentials: 'include' });
@@ -1970,12 +2065,8 @@ function GlobalBottomNavigation() {
       }
     } catch { /* partial room connect even if Agora fails */ }
     if (homeCallSessionRef.current !== session) return;
-    setHomeCallPhase('live');
-    if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
-    if (homeCallNoAnswerTimer.current) {
-      window.clearTimeout(homeCallNoAnswerTimer.current);
-      homeCallNoAnswerTimer.current = null;
-    }
+    // Stay on connecting (Ringing) until the other party joins the room
+    setHomeCallPhase('connecting');
     const poll = async () => {
       try {
         const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
@@ -1986,6 +2077,21 @@ function GlobalBottomNavigation() {
           ...m,
           joined: m.id === user.id || remote.some(x => String(x.userId || x.id) === m.id),
         })));
+        const others = remote.filter(x => String(x.userId || x.id) !== String(user.id));
+        if (others.length > 0 && homeCallPhaseRef.current === 'connecting') {
+          setHomeCallPhase('live');
+          if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
+          if (homeCallNoAnswerTimer.current) {
+            window.clearTimeout(homeCallNoAnswerTimer.current);
+            homeCallNoAnswerTimer.current = null;
+          }
+        }
+        if (homeCallPhaseRef.current === 'live' && others.length === 0) {
+          const started = homeCallLiveStartedAt.current;
+          if (started && Date.now() - started > 8000) {
+            void leaveHomeGroupCall({ remote: true });
+          }
+        }
       } catch { /* */ }
     };
     void poll();
@@ -2442,9 +2548,25 @@ function GlobalBottomNavigation() {
           if (mediaType === 'video') {
             requestAnimationFrame(() => { try { remoteUser.videoTrack?.play(remoteVideoRef.current || undefined); } catch { /* */ } });
           }
+          if (homeCallPhaseRef.current === 'connecting') {
+            setHomeCallPhase('live');
+            if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
+            if (homeCallNoAnswerTimer.current) {
+              window.clearTimeout(homeCallNoAnswerTimer.current);
+              homeCallNoAnswerTimer.current = null;
+            }
+          }
         } catch { /* */ }
       });
       client.on('user-unpublished', (remoteUser: any) => remoteUser.audioTrack?.stop?.());
+      client.on('user-left', () => {
+        try {
+          const remotes = client.remoteUsers || [];
+          if (remotes.length === 0 && homeCallPhaseRef.current === 'live') {
+            void leaveHomeGroupCall({ remote: true });
+          }
+        } catch { /* */ }
+      });
       const tokenResponse = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(user.id)}`, { credentials: 'include' });
       if (tokenResponse.ok) {
         const tokenData = await tokenResponse.json() as { token: string; uid: number };
@@ -2471,12 +2593,8 @@ function GlobalBottomNavigation() {
       }
     } catch { /* */ }
     if (homeCallSessionRef.current !== session) return;
-    setHomeCallPhase('live');
-    if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
-    if (homeCallNoAnswerTimer.current) {
-      window.clearTimeout(homeCallNoAnswerTimer.current);
-      homeCallNoAnswerTimer.current = null;
-    }
+    // Stay on connecting (Ringing) until the other party joins the room
+    setHomeCallPhase('connecting');
     const poll = async () => {
       try {
         const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
@@ -2487,6 +2605,21 @@ function GlobalBottomNavigation() {
           ...m,
           joined: m.id === user.id || remote.some(x => String(x.userId || x.id) === m.id),
         })));
+        const others = remote.filter(x => String(x.userId || x.id) !== String(user.id));
+        if (others.length > 0 && homeCallPhaseRef.current === 'connecting') {
+          setHomeCallPhase('live');
+          if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
+          if (homeCallNoAnswerTimer.current) {
+            window.clearTimeout(homeCallNoAnswerTimer.current);
+            homeCallNoAnswerTimer.current = null;
+          }
+        }
+        if (homeCallPhaseRef.current === 'live' && others.length === 0) {
+          const started = homeCallLiveStartedAt.current;
+          if (started && Date.now() - started > 8000) {
+            void leaveHomeGroupCall({ remote: true });
+          }
+        }
       } catch { /* */ }
     };
     void poll();
@@ -3145,6 +3278,21 @@ function GlobalBottomNavigation() {
     return null;
   })();
 
+  const formatCallDuration = (sec: number) => {
+    const s = Math.max(0, Math.floor(sec));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    const h = Math.floor(m / 60);
+    if (h > 0) return `${h}:${String(m % 60).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+    return `${m}:${String(r).padStart(2, '0')}`;
+  };
+
+  const homeCallStatusLabel = homeCallPhase === 'live'
+    ? formatCallDuration(homeCallElapsedSec)
+    : homeCallPhase === 'connecting'
+      ? 'Ringing…'
+      : '';
+
   const homeIncomingOverlay = homeIncoming && homeCallPhase === 'idle' && !homeCallIsVideo ? (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 10960,
@@ -3221,7 +3369,9 @@ function GlobalBottomNavigation() {
   const homeCallOverlay = (homeCallPickerOpen || homeCallPhase !== 'idle') && !homeCallIsVideo ? (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 10950,
-      background: homeCallPhase === 'animating'
+      background: homeCallMinimized
+        ? 'transparent'
+        : homeCallPhase === 'animating'
         ? 'radial-gradient(ellipse 60% 50% at 50% 80%, rgba(0,188,212,0.35), rgba(6,14,14,0.92) 70%)'
         : (homeCallPhase === 'connecting' || homeCallPhase === 'live')
           ? '#0b0f14'
@@ -3229,6 +3379,7 @@ function GlobalBottomNavigation() {
       display: 'flex', flexDirection: 'column',
       justifyContent: (homeCallPhase === 'connecting' || homeCallPhase === 'live') ? 'stretch' : 'flex-end',
       animation: homeCallPhase === 'animating' ? 'stooornaHomeCallIn 0.9s ease-out' : undefined,
+      pointerEvents: homeCallMinimized ? 'none' : 'auto',
     }}>
       {homeCallPhase === 'animating' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14 }}>
@@ -3336,7 +3487,7 @@ function GlobalBottomNavigation() {
       )}
 
 
-      {(homeCallPhase === 'connecting' || homeCallPhase === 'live') && (
+      {(homeCallPhase === 'connecting' || homeCallPhase === 'live') && !homeCallMinimized && (
         <div style={{
           flex: 1, display: 'flex', flexDirection: 'column',
           background: 'radial-gradient(ellipse 100% 80% at 50% 0%, #1a2433 0%, #0b0f14 55%)',
@@ -3352,7 +3503,7 @@ function GlobalBottomNavigation() {
             padding: 'max(env(safe-area-inset-top, 0px), 12px) 14px 8px',
             position: 'relative', zIndex: 2,
           }}>
-            <button type="button" onClick={() => { /* keep call full screen */ }} aria-label="Expand" style={{
+            <button type="button" onClick={() => setHomeCallMinimized(true)} aria-label="Minimize call" style={{
               width: 40, height: 40, borderRadius: '50%', border: 'none',
               background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -3429,8 +3580,8 @@ function GlobalBottomNavigation() {
             {peerOnCall?.username ? (
               <p style={{ margin: 0, color: 'rgba(180,200,220,0.7)', fontSize: 14, fontWeight: 600 }}>@{String(peerOnCall.username).replace(/^@/, '')}</p>
             ) : null}
-            <p style={{ margin: 0, color: homeCallPhase === 'live' ? '#22c55e' : 'rgba(180,200,220,0.55)', fontSize: 13, fontWeight: 600 }}>
-              {homeCallPhase === 'live' ? 'Connected' : 'Calling…'}
+            <p style={{ margin: 0, color: homeCallPhase === 'live' ? '#22c55e' : 'rgba(180,200,220,0.55)', fontSize: 13, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+              {homeCallStatusLabel || (homeCallPhase === 'live' ? formatCallDuration(homeCallElapsedSec) : 'Ringing…')}
             </p>
           </div>
 
@@ -3488,19 +3639,19 @@ function GlobalBottomNavigation() {
               </button>
               <button type="button" onClick={() => {
                 const peer = peerOnCall;
-                if (!peer || peer.id === user?.id) {
-                  setHomeCallEmojiOpen(o => !o);
-                  return;
-                }
-                openFriendPeerChat({
-                  id: peer.id,
-                  name: peer.name,
-                  username: peer.username,
-                  avatarUrl: peer.avatarUrl,
-                  lastMessage: '',
-                  at: Date.now(),
-                  unread: 0,
-                });
+                if (!peer || peer.id === user?.id) return;
+                const friendId = String(peer.id);
+                try {
+                  window.dispatchEvent(new CustomEvent('stooorna:open-friend-chat', {
+                    detail: {
+                      friendId,
+                      peerName: peer.name ?? null,
+                      peerUsername: peer.username ?? null,
+                      peerAvatar: peer.avatarUrl ?? null,
+                    },
+                  }));
+                } catch { /* */ }
+                setHomeCallMinimized(true);
               }} style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
                 background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#fff',
@@ -3530,6 +3681,63 @@ function GlobalBottomNavigation() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {(homeCallPhase === 'connecting' || homeCallPhase === 'live') && homeCallMinimized && (
+        <div
+          style={{
+            position: 'fixed',
+            left: 12,
+            right: 12,
+            bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))',
+            zIndex: 10955,
+            background: 'rgba(12,18,24,0.96)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 16,
+            padding: '10px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            boxShadow: '0 8px 28px rgba(0,0,0,0.45)',
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+          }}
+          onClick={() => setHomeCallMinimized(false)}
+        >
+          <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', background: 'rgba(255,255,255,0.1)', flexShrink: 0 }}>
+            {peerOnCall?.avatarUrl ? (
+              <img src={peerOnCall.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800 }}>
+                {(peerOnCall?.name || '?')[0]}
+              </div>
+            )}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {peerOnCall?.name || peerOnCall?.username || 'Call'}
+            </p>
+            <p style={{ margin: 0, color: homeCallPhase === 'live' ? '#22c55e' : 'rgba(180,200,220,0.65)', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+              {homeCallStatusLabel || 'Ringing…'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setHomeCallMinimized(false); }}
+            aria-label="Expand call"
+            style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void leaveHomeGroupCall(); }}
+            aria-label="End call"
+            style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <PhoneOff size={16} color="#fff" />
+          </button>
         </div>
       )}
     </div>

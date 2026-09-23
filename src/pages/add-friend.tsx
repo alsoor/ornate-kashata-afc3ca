@@ -14552,7 +14552,7 @@ export default function AddFriendPage() {
   }
   useEffect(() => {
     const onOpenFromCall = (e: Event) => {
-      const d = (e as CustomEvent).detail as { friendId?: string; peerName?: string | null; peerAvatar?: string | null } | undefined;
+      const d = (e as CustomEvent).detail as { friendId?: string; peerName?: string | null; peerUsername?: string | null; peerAvatar?: string | null } | undefined;
       const friendId = String(d?.friendId || '');
       if (!friendId) return;
       const existing = friends.find(f => String(f.friendId) === friendId);
@@ -14560,7 +14560,7 @@ export default function AddFriendPage() {
         id: 0,
         friendId,
         name: d?.peerName ?? null,
-        username: null,
+        username: d?.peerUsername ?? null,
         email: null,
         avatarUrl: d?.peerAvatar ?? null,
         since: null,
