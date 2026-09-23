@@ -8213,15 +8213,34 @@ function stopGlobalIncomingRing() {
     window.clearInterval(globalRingIntervalRef);
     globalRingIntervalRef = null;
   }
+  try { navigator.vibrate?.(0); } catch { /* ignore */ }
 }
+/** After answer/reject, suppress auto-ring for a short window so poll cannot restart the tone. */
+let incomingRingSuppressUntil = 0;
+function suppressIncomingRing(ms = 60000) {
+  incomingRingSuppressUntil = Date.now() + ms;
+  stopGlobalIncomingRing();
+}
+
 function startGlobalIncomingRing() {
+  if (Date.now() < incomingRingSuppressUntil) return;
+  if (activeCallState.joined || globeVoiceJoinedRef.current) return;
   if (globalRingIntervalRef != null) return;
   if (!incomingCallState.ringSilenced) {
     playIncomingCallRing();
     try { navigator.vibrate?.([300, 200, 300, 200]); } catch {}
   }
   globalRingIntervalRef = window.setInterval(() => {
-    if (incomingCallState.ringSilenced) return; // ميوت: نوقف الصوت والرجفة بس نخلي البانر شغال
+    if (Date.now() < incomingRingSuppressUntil) return;
+    if (activeCallState.joined || globeVoiceJoinedRef.current) {
+      stopGlobalIncomingRing();
+      return;
+    }
+    if (incomingCallState.ringSilenced) return;
+    if (!incomingCallState.ringing) {
+      stopGlobalIncomingRing();
+      return;
+    }
     playIncomingCallRing();
     try { navigator.vibrate?.([300, 200, 300, 200]); } catch {}
   }, 2600);
@@ -8254,10 +8273,25 @@ function notifyIncomingCallSystem(callerLabel: string) {
 // نفس الـ refs العامة اللي يستخدمها endActiveCallGlobally/toggleActiveCallMute فوق،
 // بدل ما يحتاج instance من GlobeVoiceControl يكون متركّب بالشاشة عشان يرد.
 async function answerIncomingCallGlobally(myUserId: string, myUserName: string | null) {
-  const { channel, callerLabel, isPrivate } = incomingCallState;
+  const { channel, callerLabel, isPrivate, callerId } = incomingCallState;
   if (!channel) return;
+  // Stop ring immediately and clear invite so pollers cannot restart it
+  suppressIncomingRing(60_000);
   stopGlobalIncomingRing();
   setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+  try {
+    localStorage.removeItem(`stooorna_home_call_invite_${myUserId}`);
+    localStorage.removeItem(`stooorna_vidcall_invite_${myUserId}`);
+  } catch { /* ignore */ }
+  try {
+    void fetch('/api/call/invite', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clear: true, toUserId: myUserId, userId: myUserId, channel }),
+    });
+  } catch { /* ignore */ }
+  try {
+    window.dispatchEvent(new CustomEvent('stooorna:video-call-ended'));
+  } catch { /* ignore */ }
   try {
     const register = await fetch('/api/room/join', {
       method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
@@ -8312,6 +8346,15 @@ async function answerIncomingCallGlobally(myUserId: string, myUserName: string |
 // بالأخضر وبدون زر إنهاء: بس "رد" + "ميوت". يظهر فقط إذا كان في رنين ولسا ما دخلت مكالمة.
 function GlobalIncomingCallBanner({ myUserId, myUserName }: { myUserId: string | null; myUserName: string | null }) {
   const incoming = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
+  useEffect(() => {
+    const onAnswer = () => {
+      if (!myUserId) return;
+      if (!incomingCallState.ringing && !incomingCallState.channel) return;
+      void answerIncomingCallGlobally(myUserId, myUserName);
+    };
+    window.addEventListener('stooorna:answer-home-incoming', onAnswer);
+    return () => window.removeEventListener('stooorna:answer-home-incoming', onAnswer);
+  }, [myUserId, myUserName]);
   const activeState = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
   const visible = incoming.ringing && !activeState.joined && !!myUserId;
   return (
@@ -8402,8 +8445,14 @@ function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string 
     if (!myUserId) return;
     let cancelled = false;
     const poll = async () => {
-      // Already in a call — skip new ring detection
-      if (activeCallState.joined) return;
+      // Already in a call or actively joining — never re-start ring
+      if (activeCallState.joined || globeVoiceJoinedRef.current || Date.now() < incomingRingSuppressUntil) {
+        if (incomingCallState.ringing) {
+          stopGlobalIncomingRing();
+          setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+        }
+        return;
+      }
       try {
         // Primary path: server-side invite (works cross-device / cross-user)
         let serverInvite: {
@@ -9105,6 +9154,8 @@ function FriendVideoCallController({
       if (!parsed?.fromId || !parsed.channel) return;
       if (Date.now() - Number(parsed.at || 0) > 45000) return;
       if (session) return;
+      if (Date.now() < incomingRingSuppressUntil) return;
+      if (activeCallState.joined || globeVoiceJoinedRef.current) return;
       setIncoming(cur => {
         if (cur) return cur;
         try { playIncomingCallRing(); } catch { /* ignore */ }
@@ -9231,10 +9282,25 @@ function FriendVideoCallController({
               <button type="button" onClick={() => {
                 setConfirmAnswer(false);
                 setConnecting(true);
+                // Stop all ringing immediately on answer
+                suppressIncomingRing(60_000);
+                stopGlobalIncomingRing();
+                setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+                try {
+                  if (userId) {
+                    localStorage.removeItem(`stooorna_home_call_invite_${userId}`);
+                    localStorage.removeItem(`stooorna_vidcall_invite_${userId}`);
+                    void fetch('/api/call/invite', {
+                      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ clear: true, toUserId: userId, userId, channel: incoming?.channel }),
+                    });
+                  }
+                } catch { /* ignore */ }
+                const accepted = incoming;
+                setIncoming(null);
+                setVideoIncomingSnap(null);
                 window.setTimeout(() => {
-                  setSession(incoming);
-                  setIncoming(null);
-                  setVideoIncomingSnap(null);
+                  if (accepted) setSession(accepted);
                   setConnecting(false);
                 }, 3000);
               }} style={{ flex: 1, padding: 12, borderRadius: 12, border: 'none', background: '#22c55e', color: '#041018', fontWeight: 800, cursor: 'pointer' }}>Answer</button>
