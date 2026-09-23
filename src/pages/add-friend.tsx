@@ -922,6 +922,7 @@ type ShareThreadMsg = {
   lat?: number | null;
   lng?: number | null;
   reactions?: { emoji: string; fromId: string }[];
+  read?: boolean;
 };
 
 const FRIEND_CHAT_REACT_EMOJIS = ['❤️', '😂', '😮', '😢', '🙏', '👍', '🔥', '👏'];
@@ -1138,7 +1139,11 @@ async function syncDirectThreadDown(meId: string, peerId: string) {
   const localById = new Map(localThread.map(m => [m.id, m] as const));
   const serverRows = fetchedRows.map(m => {
     const prev = localById.get(m.id);
-    return prev?.reactions?.length ? { ...m, reactions: prev.reactions } : m;
+    if (!prev) return m;
+    const extra: Partial<ShareThreadMsg> = {};
+    if (prev.reactions?.length) extra.reactions = prev.reactions;
+    if (prev.read) extra.read = true;
+    return Object.keys(extra).length ? { ...m, ...extra } : m;
   });
   const serverIds = new Set(serverRows.map(m => m.id));
   // Keep any local-only message (e.g. one just sent, still waiting on its
@@ -8539,6 +8544,46 @@ function clearAllMessageAlerts(opts?: { userId?: string | null; storyIds?: Array
   } catch { /* ignore */ }
 }
 
+/** Marks every incoming message of one direct thread as read in the local copy
+ *  (the flag the chat-list unread badge counts). Written straight to storage,
+ *  without firing the share-thread event, so it can never re-arm the bell. */
+function markDirectThreadReadLocal(meId: string, peerId: string) {
+  try {
+    const list = loadShareThread(meId, peerId, 'direct');
+    if (!list.some(m => String(m.fromId) !== String(meId) && !m.read)) return;
+    const next = list.map(m => (String(m.fromId) !== String(meId) ? { ...m, read: true } : m));
+    localStorage.setItem(SHARE_THREAD_KEY(meId, peerId, 'direct'), JSON.stringify(next.slice(-200)));
+  } catch { /* ignore */ }
+}
+
+/** Read All for direct chats: clears the unread badge of every friend right away, then
+ *  asks the server to mark those threads read (GET /api/messages?with=... marks incoming
+ *  messages read) so the counts stay at zero after the next refresh. Messages are kept. */
+async function markAllDirectThreadsRead(meId: string, friendIds: string[], onChange: () => void) {
+  const local = new Set(friendIds.map(String));
+  local.forEach(pid => markDirectThreadReadLocal(meId, pid));
+  onChange();
+  const ids = new Set(local);
+  try {
+    const r = await fetch('/api/messages/unread', { credentials: 'include' });
+    if (r.ok) {
+      const d = await r.json() as { bySender?: Record<string, number> };
+      for (const [senderId, count] of Object.entries(d.bySender || {})) {
+        if (Number(count) > 0) ids.add(String(senderId));
+      }
+    }
+  } catch { /* offline */ }
+  for (const pid of ids) {
+    try {
+      await syncDirectThreadDown(meId, pid);
+      markDirectThreadReadLocal(meId, pid);
+    } catch { /* next friend */ }
+  }
+  // The server counts are now zero, so stop holding the bell back after a short grace period
+  suppressMessageAlerts(7000);
+  onChange();
+}
+
 // حلقة رنين مستقلة على مستوى الموديول (منفصلة عن ringIntervalRef اللي جوه GlobeVoiceControl،
 // لأن ذاك يشتغل بس إذا كان في instance من GlobeVoiceControl متركّب بالشاشة). هذي تشتغل طول
 // ما الصفحة مفتوحة، بغض النظر عن أي تبويب/شاشة داخلية أنت فيها.
@@ -14590,6 +14635,7 @@ export default function AddFriendPage() {
     setFriendChatPendingVoice(null);
     setFriendChatRecordSecs(0);
     clearMessageAlertFor(friend.friendId); // reading the chat clears its red-border alert
+    if (user?.id) markDirectThreadReadLocal(String(user.id), friend.friendId); // ...and its unread badge in the chat list
   }
   useEffect(() => {
     const onOpenFromCall = (e: Event) => {
@@ -21173,6 +21219,9 @@ export default function AddFriendPage() {
                   try { setPostCommentThreads(prev => prev.map(t => ({ ...t, read: true }))); } catch { /* ignore */ }
                   try { setSharedInbox(prev => prev.map(s => ({ ...s, read: true }))); } catch { /* ignore */ }
                   try { setPostInteractions(prev => prev.map(p => ({ ...p, read: true }))); } catch { /* ignore */ }
+                  if (user?.id) {
+                    void markAllDirectThreadsRead(String(user.id), (friends || []).map(f => f.friendId), () => setFriendChatTypingTick(n => n + 1));
+                  }
                 }}
                 aria-label="Read all messages"
                 style={{
@@ -21194,13 +21243,6 @@ export default function AddFriendPage() {
               </div>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', background: '#ffffff' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
-                <div style={{ width: 48, height: 48, borderRadius: '50%', flexShrink: 0, background: '#f0f2f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Inbox size={20} color="rgba(0,0,0,0.45)" />
-                </div>
-                <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: 600, fontSize: '0.95rem' }}>Archived</p>
-                <span style={{ color: 'rgba(0,0,0,0.4)', fontSize: '0.85rem' }}>0</span>
-              </div>
               {(() => {
                 const q = (storyReqQuery || '').trim().toLowerCase();
                 const list = (friends || []).filter(f => {

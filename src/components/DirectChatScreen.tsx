@@ -64,6 +64,7 @@ interface DirectMsg {
   replyToBody?: string | null;
   at: number;
   readAt?: number | null;
+  read?: boolean;
   reactions?: { emoji: string; fromId: string }[];
 }
 
@@ -173,7 +174,13 @@ async function pullDown(meId: string, peerId: string) {
   const localById = new Map(local.map(m => [m.id, m] as const));
   const serverRows = fetched.map(m => {
     const prev = localById.get(m.id);
-    return prev?.reactions?.length ? { ...m, reactions: prev.reactions } : m;
+    const incoming = String(m.fromId) !== String(meId);
+    return {
+      ...m,
+      ...(prev?.reactions?.length ? { reactions: prev.reactions } : {}),
+      // The thread is open on screen, so everything the other person sent counts as read
+      ...(incoming ? { read: true } : {}),
+    };
   });
   const serverIds = new Set(serverRows.map(m => m.id));
   // A message that was just sent can show up from the server before its local copy
@@ -258,8 +265,6 @@ function toggleReaction(meId: string, peerId: string, msgId: string, emoji: stri
 }
 
 // ─── Small formatting helpers ───────────────────────────────────────────
-const REACT_EMOJIS = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
-
 const EMOJI_PANEL = (
   '😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 😉 😍 🥰 😘 😗 😋 😜 🤪 😎 🤩 🥳 😏 😒 😞 😔 😟 😕 🙁 😣 ' +
   '😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤔 🤭 🤫 😶 😐 😑 😬 🙄 😯 ' +
@@ -374,20 +379,33 @@ function VoiceBubble({ url, duration, isMe }: { url: string; duration: number | 
   );
 }
 
-// ─── Reaction picker (long-press popup, WhatsApp style) ─────────────────
-function ReactionPicker({ onPick }: { onPick: (emoji: string) => void }) {
+// ─── Reaction picker (long-press popup) ─────────────────────────────────
+// A horizontally scrollable strip: it never grows wider than the screen, and the
+// person can swipe it sideways to reach every emoji.
+const REACT_EMOJIS = [
+  '❤️', '😂', '😮', '😢', '🙏', '👍', '👎', '🔥', '😍', '😡', '🎉', '👏',
+  '😊', '🤔', '😭', '💯', '😎', '🥰', '🤣', '😘', '💔', '🙌', '😱', '🥳',
+];
+
+function ReactionPicker({ onPick, align }: { onPick: (emoji: string) => void; align: 'left' | 'right' }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 6, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6, scale: 0.9 }}
+      className="dcs-strip"
+      initial={{ opacity: 0, y: 6, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6, scale: 0.95 }}
+      onClick={e => e.stopPropagation()}
       style={{
-        display: 'flex', gap: 4, background: '#fff', borderRadius: 24, padding: '6px 8px',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.25)', position: 'absolute', bottom: '100%', marginBottom: 6, zIndex: 20,
-      }}
+        position: 'absolute', bottom: '100%', marginBottom: 4, [align]: 10, zIndex: 20,
+        maxWidth: 'calc(100% - 20px)', display: 'flex', alignItems: 'center', gap: 2,
+        background: '#fff', borderRadius: 26, padding: '6px 8px',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+        overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x',
+        scrollbarWidth: 'none',
+      } as React.CSSProperties}
     >
       {REACT_EMOJIS.map(em => (
-        <motion.button key={em} type="button" whileTap={{ scale: 1.4 }} whileHover={{ scale: 1.25 }}
+        <motion.button key={em} type="button" whileTap={{ scale: 1.3 }}
           onClick={() => onPick(em)}
-          style={{ border: 'none', background: 'none', fontSize: '1.35rem', cursor: 'pointer', padding: 2, lineHeight: 1 }}>
+          style={{ border: 'none', background: 'none', fontSize: '1.45rem', cursor: 'pointer', padding: '2px 5px', lineHeight: 1, flexShrink: 0 }}>
           {em}
         </motion.button>
       ))}
@@ -429,7 +447,7 @@ function Bubble({
   const isMedia = msg.type === 'image' || msg.type === 'video';
 
   return (
-    <div style={{ position: 'relative', display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', marginBottom: grouped.length ? 14 : 4, padding: '0 10px' }}>
+    <div style={{ position: 'relative', display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', marginBottom: grouped.length ? 14 : 4, padding: '0 10px', boxSizing: 'border-box', width: '100%', overflow: 'visible' }}>
       {/* Reply hint revealed while dragging */}
       <motion.div
         aria-hidden
@@ -442,6 +460,16 @@ function Bubble({
         <Reply size={16} />
       </motion.div>
 
+      {/* Reaction picker lives outside the draggable bubble so it can be scrolled sideways */}
+      <AnimatePresence>
+        {showPickerFor === msg.id && (
+          <ReactionPicker
+            align={isMe ? 'right' : 'left'}
+            onPick={(em) => { onReact(msg.id, em); setShowPickerFor(null); }}
+          />
+        )}
+      </AnimatePresence>
+
       <motion.div
         drag="x"
         dragConstraints={{ left: 0, right: 0 }}
@@ -451,13 +479,9 @@ function Bubble({
         onDragEnd={(_, info) => { if (info.offset.x > 56) onReply(msg); }}
         onMouseDown={startPress} onMouseUp={cancelPress} onMouseLeave={cancelPress}
         onTouchStart={startPress} onTouchEnd={cancelPress}
-        style={{ x, position: 'relative', maxWidth: '75%' }}
+        onContextMenu={e => e.preventDefault()}
+        style={{ x, position: 'relative', maxWidth: '75%', minWidth: 0 }}
       >
-        <AnimatePresence>
-          {showPickerFor === msg.id && (
-            <ReactionPicker onPick={(em) => { onReact(msg.id, em); setShowPickerFor(null); }} />
-          )}
-        </AnimatePresence>
 
         <div style={{
           background: isMe ? C.bubbleMe : C.bubbleThem,
@@ -796,9 +820,13 @@ export default function DirectChatScreen({
   return (
     <motion.div
       initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 24 }}
-      style={{ position: 'fixed', inset: 0, zIndex: 10860, display: 'flex', flexDirection: 'column', background: C.bg }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10860, display: 'flex', flexDirection: 'column', background: C.bg,
+        width: '100%', maxWidth: '100vw', overflow: 'hidden',
+      }}
       onClick={() => { setShowPickerFor(null); setShowPlus(false); }}
     >
+      <style>{'.dcs-strip::-webkit-scrollbar { display: none; }'}</style>
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
@@ -832,7 +860,7 @@ export default function DirectChatScreen({
       </div>
 
       {/* Messages */}
-      <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '10px 0' }}>
+      <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'contain', padding: '10px 0' }}>
         {sections.map(sec => (
           <div key={sec.label}>
             <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }}>
