@@ -998,7 +998,13 @@ function saveCallLog(uid: string, list: ChatCallLogEntry[]) {
   try { localStorage.setItem(CALL_LOG_KEY(uid), JSON.stringify(list.slice(0, 200))); } catch { /* */ }
 }
 
-function pushShareThreadMsg(a: string, b: string, postId: string | number, msg: Omit<ShareThreadMsg, 'id' | 'at'> & { id?: string; at?: number }) {
+function pushShareThreadMsg(
+  a: string,
+  b: string,
+  postId: string | number,
+  msg: Omit<ShareThreadMsg, 'id' | 'at'> & { id?: string; at?: number },
+  opts?: { skipSync?: boolean }
+) {
   const list = loadShareThread(a, b, postId);
   if (msg.id && list.some(m => m.id === msg.id)) return list.find(m => m.id === msg.id)!;
   const next: ShareThreadMsg = {
@@ -1015,7 +1021,114 @@ function pushShareThreadMsg(a: string, b: string, postId: string | number, msg: 
   };
   const merged = [...list, next].sort((x, y) => x.at - y.at);
   saveShareThread(a, b, postId, merged);
+  // Ship text messages in the real 1:1 "direct" thread to the actual
+  // /api/messages backend (see below) so they leave this browser at all.
+  // Every other thread kind (a post-share mini chat, a story reply, ...)
+  // keeps postId values the messages table has no concept of, so those
+  // stay local-only exactly as before — nothing to sync them against yet.
+  // `opts.skipSync` is set when this call is itself just replaying a row
+  // the server already gave us, so we don't POST it straight back out.
+  if (!opts?.skipSync && postId === 'direct' && next.type === 'text' && next.fromId === a) {
+    void syncDirectTextMessage(a, b, next.id, next.body);
+  }
   return next;
+}
+
+// ── Direct-message server sync ──────────────────────────────────────────────
+// loadShareThread/saveShareThread above only touch this browser's
+// localStorage. That's fine for instant local echo, but on its own it means
+// a message never actually leaves the sender's device: two different people
+// on two different browsers each have their own private copy of "the same"
+// thread that never talks to the other one. That's the root cause of direct
+// messages (and the bell/message-alert dot fed by the same store) not
+// reaching the other side.
+//
+// The app already has a real backend for exactly this ("/api/messages",
+// GET/POST, plus "/api/messages/unread" for badge counts) — the friend-chat
+// screen just never called it. The pieces below wire it in:
+//   - syncDirectTextMessage: POSTs an outgoing "direct" text message, then
+//     swaps its optimistic local id for the server-assigned one.
+//   - syncDirectThreadDown / loadDirectThreadFromServer: pull the full
+//     conversation with a peer and write it into local storage via
+//     saveShareThread, which re-fires 'stooorna:share-thread' — the existing
+//     listener on the open friend-chat screen already reacts to that event,
+//     so no change is needed there.
+//   - DirectMessageSyncWatcher (near GlobalMessageAlertWatcher below) polls
+//     /api/messages/unread so the bell lights up for a message that arrived
+//     from the peer's own device, not just one sent from this browser.
+type ApiDirectMessageRow = {
+  id: number;
+  senderId: string;
+  receiverId: string;
+  type: string;
+  body: string;
+  duration: number | null;
+  readAt: string | null;
+  createdAt: string;
+};
+
+function mapApiDirectMessage(row: ApiDirectMessageRow): ShareThreadMsg {
+  return {
+    id: `db-${row.id}`,
+    fromId: row.senderId,
+    type: (row.type as ShareThreadMsg['type']) || 'text',
+    body: row.body,
+    duration: row.duration ?? null,
+    fileName: null,
+    at: new Date(row.createdAt).getTime(),
+    kind: undefined,
+    replyToId: null,
+    replyToBody: null,
+  };
+}
+
+async function loadDirectThreadFromServer(peerId: string): Promise<ShareThreadMsg[] | null> {
+  try {
+    const r = await fetch(`/api/messages?with=${encodeURIComponent(peerId)}`, { credentials: 'include' });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!Array.isArray(rows)) return null;
+    return rows.map(mapApiDirectMessage);
+  } catch {
+    return null;
+  }
+}
+
+// Pulls the full server-side history with `peerId` and writes it into the
+// local "direct" thread. Note: the GET endpoint marks incoming messages as
+// read as a side effect (same as opening the thread always has), so this is
+// only meant to be called while that thread is actually open on screen —
+// see the friend-chat polling effect near openFriendChat.
+async function syncDirectThreadDown(meId: string, peerId: string) {
+  const serverRows = await loadDirectThreadFromServer(peerId);
+  if (!serverRows) return; // offline/failed — leave the local cache as-is
+  const serverIds = new Set(serverRows.map(m => m.id));
+  // Keep any local-only message (e.g. one just sent, still waiting on its
+  // POST to resolve) that the server doesn't know about yet, so it doesn't
+  // flicker out of the chat while the request is in flight.
+  const localOnly = loadShareThread(meId, peerId, 'direct').filter(m => !serverIds.has(m.id) && !m.id.startsWith('db-'));
+  const merged = [...serverRows, ...localOnly].sort((x, y) => x.at - y.at);
+  saveShareThread(meId, peerId, 'direct', merged);
+}
+
+async function syncDirectTextMessage(meId: string, peerId: string, localMsgId: string, body: string) {
+  try {
+    const r = await fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ receiverId: peerId, body }),
+    });
+    if (!r.ok) return;
+    const data = await r.json() as { id?: number };
+    if (typeof data.id !== 'number') return;
+    // Swap the optimistic local id for the server-confirmed one so the next
+    // full-history sync recognises this message as already present instead
+    // of appending a duplicate copy of it next to the optimistic one.
+    const list = loadShareThread(meId, peerId, 'direct');
+    const patched = list.map(m => (m.id === localMsgId ? { ...m, id: `db-${data.id}` } : m));
+    saveShareThread(meId, peerId, 'direct', patched);
+  } catch { /* offline — message stays local-only until the next successful send */ }
 }
 
 // ── Chat header / message timestamp helpers (friend chat) ──────────────────
@@ -8242,7 +8355,13 @@ if (typeof window !== 'undefined') {
 // message instead of a live call. Populated by <GlobalMessageAlertWatcher/>
 // (mounted once at the page root, see AddFriendPage's return), which listens
 // for the 'stooorna:share-thread' event that saveShareThread already dispatches
-// whenever a direct-chat thread changes — no extra backend call needed.
+// whenever a direct-chat thread changes.
+//
+// That event only fires inside the browser tab that changed the thread, so on
+// its own this only reacts to messages *you* just sent, not ones a peer sent
+// from their own device — <DirectMessageSyncWatcher/> (below) is what pulls
+// those in from the server and replays them through the same local store, so
+// this listener ends up firing for incoming messages too.
 type MessageAlertState = {
   active: boolean;
   fromId: string | null;
@@ -9442,6 +9561,55 @@ function GlobalMessageAlertWatcher({ myUserId }: { myUserId: string | null }) {
     };
     window.addEventListener('stooorna:share-thread', onThreadChange);
     return () => window.removeEventListener('stooorna:share-thread', onThreadChange);
+  }, [myUserId]);
+  return null;
+}
+
+// Polls the real backend (GET /api/messages/unread — per-sender unread
+// counts, doesn't mark anything as read) so the bell lights up for a message
+// that arrived from the peer's own device, not just one sent from this
+// browser tab. Deliberately does NOT fetch message content here: the only
+// endpoint that returns message bodies (GET /api/messages?with=peerId) marks
+// those messages read as a side effect, which should only happen once the
+// person actually opens that chat (see the polling effect near
+// openFriendChat, which calls syncDirectThreadDown while a friend chat is
+// on screen). Mounted once at the page root, same lightweight pattern as
+// GlobalIncomingCallWatcher.
+function DirectMessageSyncWatcher({ myUserId }: { myUserId: string | null }) {
+  const lastCountsRef = useRef<Record<string, number>>({});
+  const primedRef = useRef(false);
+  useEffect(() => {
+    if (!myUserId) return;
+    let cancelled = false;
+    lastCountsRef.current = {};
+    primedRef.current = false;
+    async function poll() {
+      try {
+        const r = await fetch('/api/messages/unread', { credentials: 'include' });
+        if (!r.ok || cancelled) return;
+        const data = await r.json() as { bySender?: Record<string, number> };
+        const bySender = data.bySender || {};
+        // Skip the very first poll's results — those are unread counts that
+        // already existed before this tab opened, not a fresh arrival, so
+        // don't ring the bell for them. Just record the baseline instead.
+        if (primedRef.current) {
+          for (const [senderId, count] of Object.entries(bySender)) {
+            if (count > (lastCountsRef.current[senderId] || 0)) {
+              setMessageAlertState({ active: true, fromId: senderId });
+              try { navigator.vibrate?.([120, 80, 120]); } catch { /* */ }
+            }
+          }
+        }
+        lastCountsRef.current = bySender;
+        primedRef.current = true;
+      } catch { /* offline — try again next tick */ }
+    }
+    poll();
+    const interval = window.setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, [myUserId]);
   return null;
 }
@@ -14154,6 +14322,27 @@ export default function AddFriendPage() {
     return () => window.removeEventListener('stooorna:share-thread', refresh);
   }, [user?.id, friendChatPeer?.friendId]);
 
+  // Pull the real conversation with this peer from the server while their
+  // chat is open, so a message they sent from their own device shows up
+  // here too. This writes into local storage via saveShareThread (inside
+  // syncDirectThreadDown), which fires 'stooorna:share-thread' — caught by
+  // the refresh listener right above, so friendChatMsgs updates the same
+  // way it already does for a locally-sent message. GET /api/messages
+  // marks incoming messages read, which is correct here since the thread is
+  // genuinely on screen (see DirectMessageSyncWatcher for the badge-only
+  // poll used everywhere else, which deliberately avoids that side effect).
+  useEffect(() => {
+    if (!user?.id || !friendChatPeer?.friendId) return;
+    let cancelled = false;
+    const pull = () => { if (!cancelled) void syncDirectThreadDown(user.id, friendChatPeer.friendId); };
+    pull();
+    const iv = window.setInterval(pull, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(iv);
+    };
+  }, [user?.id, friendChatPeer?.friendId]);
+
   // Poll peer typing for the open friend chat header ("Type....")
   useEffect(() => {
     if (!user?.id || !friendChatPeer?.friendId) return;
@@ -15572,6 +15761,7 @@ export default function AddFriendPage() {
       <GlobalIncomingCallWatcher myUserId={user?.id ?? null} myUserName={user?.name ?? user?.email ?? null} />
       <FriendVideoCallController userId={user?.id ?? null} userName={user?.name ?? user?.email ?? null} />
       <GlobalMessageAlertWatcher myUserId={user?.id ?? null} />
+      <DirectMessageSyncWatcher myUserId={user?.id ?? null} />
       <Helmet>
         <title>Chat | Stooorna</title>
         <meta name="description" content="Find friends, send requests, and manage your contacts on Stooorna — the real-time voice and whisper app." />
