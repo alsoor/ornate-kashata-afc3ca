@@ -580,6 +580,98 @@ app.post("/api/live-gps", (req, res) => {
     res.status(500).json({ error: "live_gps_post_failed" });
   }
 });
+
+// ── Call invite store (cross-device ring / notify) ───────────────────────────
+const CALL_INVITE_TTL_MS = 45_000;
+function callInviteStore(): Map<string, { payload: any; expiresAt: number }> {
+  const g = globalThis as typeof globalThis & { __stooornaCallInvites?: Map<string, { payload: any; expiresAt: number }> };
+  if (!g.__stooornaCallInvites) g.__stooornaCallInvites = new Map();
+  return g.__stooornaCallInvites;
+}
+function callInvitePrune() {
+  const now = Date.now();
+  const m = callInviteStore();
+  for (const [k, v] of m) {
+    if (!v || Number(v.expiresAt || 0) <= now) m.delete(k);
+  }
+}
+function setCallInvite(toUserId: string, payload: Record<string, unknown>) {
+  if (!toUserId) return;
+  callInvitePrune();
+  callInviteStore().set(String(toUserId), {
+    payload: { ...payload, at: Number(payload.at) || Date.now() },
+    expiresAt: Date.now() + CALL_INVITE_TTL_MS,
+  });
+}
+function getCallInvite(toUserId: string) {
+  if (!toUserId) return null;
+  callInvitePrune();
+  const row = callInviteStore().get(String(toUserId));
+  if (!row) return null;
+  if (Number(row.expiresAt || 0) <= Date.now()) {
+    callInviteStore().delete(String(toUserId));
+    return null;
+  }
+  return row.payload;
+}
+function clearCallInvite(toUserId: string, channel?: string) {
+  if (!toUserId) return;
+  const row = callInviteStore().get(String(toUserId));
+  if (!row) return;
+  if (channel && row.payload?.channel && String(row.payload.channel) !== String(channel)) return;
+  callInviteStore().delete(String(toUserId));
+}
+
+app.get("/api/call/invite", (req, res) => {
+  try {
+    const userId = String(req.query.userId || req.query.toUserId || "").trim();
+    if (!userId) {
+      res.status(400).json({ invite: null, error: "userId_required" });
+      return;
+    }
+    const payload = getCallInvite(userId);
+    res.json({ invite: payload, ttlMs: CALL_INVITE_TTL_MS });
+  } catch (e) {
+    res.status(500).json({ invite: null, error: "call_invite_get_failed" });
+  }
+});
+
+app.post("/api/call/invite", (req, res) => {
+  try {
+    const body = (req.body || {}) as Record<string, unknown>;
+    const toUserId = String(body.toUserId || body.to || "").trim();
+    if (body.clear === true || body.clear === "true") {
+      const clearId = String(body.toUserId || body.userId || body.id || "").trim();
+      clearCallInvite(clearId, body.channel != null ? String(body.channel) : undefined);
+      res.json({ ok: true, cleared: true });
+      return;
+    }
+    if (!toUserId) {
+      res.status(400).json({ error: "toUserId_required" });
+      return;
+    }
+    const channel = String(body.channel || "").trim();
+    if (!channel) {
+      res.status(400).json({ error: "channel_required" });
+      return;
+    }
+    const payload = {
+      channel,
+      video: !!(body.video || body.kind === "video"),
+      kind: String(body.kind || (body.video ? "video" : "voice")),
+      hostId: body.hostId != null ? String(body.hostId) : (body.fromId != null ? String(body.fromId) : null),
+      hostName: body.hostName != null ? String(body.hostName) : (body.fromName != null ? String(body.fromName) : null),
+      hostAvatar: body.hostAvatar ?? null,
+      members: Array.isArray(body.members) ? body.members : [],
+      at: Date.now(),
+    };
+    setCallInvite(toUserId, payload);
+    res.json({ ok: true, ttlMs: CALL_INVITE_TTL_MS });
+  } catch (e) {
+    res.status(500).json({ error: "call_invite_post_failed" });
+  }
+});
+
 app.delete("/api/push/subscribe", push_subscribe_delete_87);
 app.post("/api/push/subscribe", push_subscribe_post_88);
 app.get("/api/push/vapid-public-key", push_vapid_public_key_get_89);

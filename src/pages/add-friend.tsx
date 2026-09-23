@@ -8402,46 +8402,123 @@ function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string 
     if (!myUserId) return;
     let cancelled = false;
     const poll = async () => {
-      // أنا أصلاً بمكالمة (رديت أو أنا البادئ) — ما فيه داعي أدوّر على رنين جديد
+      // Already in a call — skip new ring detection
       if (activeCallState.joined) return;
       try {
-        const r = await fetch(`/api/profile-visit/visitors?ownerId=${encodeURIComponent(myUserId)}`, { credentials: 'include' });
-        if (!r.ok || cancelled) return;
-        const d = await r.json() as { visitors?: GlobeVoiceMember[] };
-        const visitor = (d.visitors ?? [])[0];
-        if (!visitor) {
-          if (incomingCallState.ringing) {
-            stopGlobalIncomingRing();
-            setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+        // Primary path: server-side invite (works cross-device / cross-user)
+        let serverInvite: {
+          channel?: string;
+          hostId?: string | null;
+          hostName?: string | null;
+          video?: boolean;
+          kind?: string;
+          at?: number;
+        } | null = null;
+        try {
+          const ir = await fetch(`/api/call/invite?userId=${encodeURIComponent(myUserId)}`, { credentials: 'include' });
+          if (ir.ok) {
+            const idata = await ir.json() as { invite?: typeof serverInvite };
+            if (idata?.invite && idata.invite.channel) {
+              const at = Number(idata.invite.at || 0);
+              if (!at || Date.now() - at <= 45000) serverInvite = idata.invite;
+            }
           }
-          return;
-        }
-        const channel = `private_${shortChannelHash([myUserId, visitor.userId].sort().join('_'))}`;
-        const roomRes = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
-        if (!roomRes.ok || cancelled) return;
-        const roomData = await roomRes.json() as { members?: GlobeVoiceMember[] };
-        const members = roomData.members ?? [];
-        const callerActive = members.some(m => m.userId !== myUserId);
-        let inviteFresh = false;
+        } catch { /* ignore */ }
+
+        // Fallback: localStorage (same device / tab) + profile-visit
+        let localInvite: typeof serverInvite = null;
         try {
           const raw = localStorage.getItem(`stooorna_home_call_invite_${myUserId}`);
           const parsed = raw ? JSON.parse(raw) : null;
           const at = Number(parsed?.at || 0);
-          inviteFresh = !!at && Date.now() - at <= 18000;
-        } catch { inviteFresh = false; }
-        if (callerActive && inviteFresh && !incomingCallState.ringing) {
-          const label = visitor.name || visitor.username || null;
-          setIncomingCallState({ ringing: true, channel, callerId: visitor.userId, callerLabel: label, isPrivate: true, ringSilenced: false });
-          startGlobalIncomingRing();
-          notifyIncomingCallSystem(label || 'Friend');
-        } else if ((!callerActive || !inviteFresh) && incomingCallState.ringing && incomingCallState.channel === channel) {
+          if (parsed?.channel && at && Date.now() - at <= 18000) localInvite = parsed;
+        } catch { /* ignore */ }
+
+        const invite = serverInvite || localInvite;
+        if (invite?.channel && invite.hostId && String(invite.hostId) !== String(myUserId)) {
+          const channel = String(invite.channel);
+          if (!incomingCallState.ringing || incomingCallState.channel !== channel) {
+            const label = invite.hostName || null;
+            setIncomingCallState({
+              ringing: true,
+              channel,
+              callerId: String(invite.hostId),
+              callerLabel: label,
+              isPrivate: true,
+              ringSilenced: false,
+            });
+            startGlobalIncomingRing();
+            notifyIncomingCallSystem(label || 'Friend');
+            // Mirror to localStorage so other UI paths see it
+            try {
+              localStorage.setItem(`stooorna_home_call_invite_${myUserId}`, JSON.stringify({
+                ...invite,
+                at: Number(invite.at) || Date.now(),
+              }));
+            } catch { /* ignore */ }
+            // Video invites also surface video incoming UI
+            if (invite.video || invite.kind === 'video') {
+              try {
+                window.dispatchEvent(new CustomEvent('stooorna:video-call-invite', {
+                  detail: {
+                    fromId: invite.hostId,
+                    fromName: invite.hostName ?? null,
+                    channel,
+                    at: Number(invite.at) || Date.now(),
+                  },
+                }));
+                localStorage.setItem(`stooorna_vidcall_invite_${myUserId}`, JSON.stringify({
+                  fromId: invite.hostId,
+                  fromName: invite.hostName ?? null,
+                  channel,
+                  at: Number(invite.at) || Date.now(),
+                }));
+              } catch { /* ignore */ }
+            }
+          }
+          return;
+        }
+
+        // Legacy fallback: profile-visit + room membership
+        try {
+          const r = await fetch(`/api/profile-visit/visitors?ownerId=${encodeURIComponent(myUserId)}`, { credentials: 'include' });
+          if (r.ok && !cancelled) {
+            const d = await r.json() as { visitors?: GlobeVoiceMember[] };
+            const visitor = (d.visitors ?? [])[0];
+            if (visitor) {
+              const channel = `private_${shortChannelHash([myUserId, visitor.userId].sort().join('_'))}`;
+              const roomRes = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
+              if (roomRes.ok && !cancelled) {
+                const roomData = await roomRes.json() as { members?: GlobeVoiceMember[] };
+                const members = roomData.members ?? [];
+                const callerActive = members.some(m => m.userId !== myUserId);
+                let inviteFresh = false;
+                try {
+                  const raw = localStorage.getItem(`stooorna_home_call_invite_${myUserId}`);
+                  const parsed = raw ? JSON.parse(raw) : null;
+                  const at = Number(parsed?.at || 0);
+                  inviteFresh = !!at && Date.now() - at <= 18000;
+                } catch { inviteFresh = false; }
+                if (callerActive && inviteFresh && !incomingCallState.ringing) {
+                  const label = visitor.name || visitor.username || null;
+                  setIncomingCallState({ ringing: true, channel, callerId: visitor.userId, callerLabel: label, isPrivate: true, ringSilenced: false });
+                  startGlobalIncomingRing();
+                  notifyIncomingCallSystem(label || 'Friend');
+                  return;
+                }
+              }
+            }
+          }
+        } catch { /* ignore */ }
+
+        if (incomingCallState.ringing) {
           stopGlobalIncomingRing();
           setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
         }
       } catch {}
     };
     void poll();
-    const interval = window.setInterval(() => { void poll(); }, 3000);
+    const interval = window.setInterval(() => { void poll(); }, 2000);
     return () => { cancelled = true; window.clearInterval(interval); };
   }, [myUserId]);
   return null;
@@ -8509,7 +8586,75 @@ function writeVideoCallInvite(toUserId: string, payload: Record<string, unknown>
 
 function clearVideoCallInvite(toUserId: string) {
   try { localStorage.removeItem(`stooorna_vidcall_invite_${toUserId}`); } catch { /* ignore */ }
+  try { localStorage.removeItem(`stooorna_home_call_invite_${toUserId}`); } catch { /* ignore */ }
+  try {
+    void fetch('/api/call/invite', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clear: true, toUserId, userId: toUserId }),
+    });
+  } catch { /* ignore */ }
 }
+
+/** Push a voice/video call invite to the server so the callee rings on any device. */
+function postServerCallInvite(toUserId: string, payload: {
+  channel: string;
+  hostId: string;
+  hostName?: string | null;
+  hostAvatar?: string | null;
+  video?: boolean;
+  kind?: string;
+}) {
+  if (!toUserId || !payload.channel || !payload.hostId) return;
+  const at = Date.now();
+  const homeInvite = {
+    channel: payload.channel,
+    hostId: payload.hostId,
+    hostName: payload.hostName ?? null,
+    hostAvatar: payload.hostAvatar ?? null,
+    members: [] as unknown[],
+    video: !!payload.video,
+    kind: payload.kind || (payload.video ? 'video' : 'voice'),
+    at,
+  };
+  try {
+    localStorage.setItem(`stooorna_home_call_invite_${toUserId}`, JSON.stringify(homeInvite));
+  } catch { /* ignore */ }
+  try {
+    void fetch('/api/call/invite', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toUserId, ...homeInvite }),
+    });
+  } catch { /* ignore */ }
+}
+
+// Bridge: when home/plus call picker starts a direct call, also notify server for ring
+if (typeof window !== 'undefined') {
+  window.addEventListener('stooorna:home-group-call', ((e: Event) => {
+    const d = (e as CustomEvent).detail as {
+      channel?: string;
+      hostId?: string;
+      hostName?: string | null;
+      hostAvatar?: string | null;
+      video?: boolean;
+      kind?: string;
+      inviteeIds?: string[];
+      at?: number;
+    } | undefined;
+    if (!d?.channel || !d.hostId || !Array.isArray(d.inviteeIds)) return;
+    for (const to of d.inviteeIds) {
+      if (!to || String(to) === String(d.hostId)) continue;
+      postServerCallInvite(String(to), {
+        channel: String(d.channel),
+        hostId: String(d.hostId),
+        hostName: d.hostName ?? null,
+        hostAvatar: d.hostAvatar ?? null,
+        video: !!d.video,
+        kind: d.kind || (d.video ? 'video' : 'voice'),
+      });
+    }
+  }) as EventListener);
+}
+
 
 
 type VideoIncomingSnap = FriendVideoCallSession | null;
@@ -8956,28 +9101,57 @@ function FriendVideoCallController({
     window.addEventListener('stooorna:video-call-ended', onEnded);
     window.addEventListener('stooorna:video-call-minimize', onMinimize);
     window.addEventListener('stooorna:video-call-restore', onRestore);
+    const applyIncoming = (parsed: { fromId?: string; fromName?: string; channel?: string; at?: number }) => {
+      if (!parsed?.fromId || !parsed.channel) return;
+      if (Date.now() - Number(parsed.at || 0) > 45000) return;
+      if (session) return;
+      setIncoming(cur => {
+        if (cur) return cur;
+        try { playIncomingCallRing(); } catch { /* ignore */ }
+        try { navigator.vibrate?.([300, 200, 300, 200]); } catch { /* ignore */ }
+        try { notifyIncomingCallSystem(parsed.fromName || 'Friend'); } catch { /* ignore */ }
+        return {
+          role: 'callee',
+          peerId: parsed.fromId!,
+          peerName: parsed.fromName ?? null,
+          peerAvatar: null,
+          channel: parsed.channel!,
+        };
+      });
+    };
     const poll = window.setInterval(() => {
       try {
         const raw = localStorage.getItem(`stooorna_vidcall_invite_${userId}`);
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as { fromId?: string; fromName?: string; channel?: string; at?: number };
-        if (!parsed?.fromId || !parsed.channel) return;
-        if (Date.now() - Number(parsed.at || 0) > 25000) return;
-        if (session) return;
-        setIncoming(cur => {
-          if (cur) return cur;
-          try { playIncomingCallRing(); } catch { /* ignore */ }
-          try { navigator.vibrate?.([300, 200, 300, 200]); } catch { /* ignore */ }
-          try { notifyIncomingCallSystem(parsed.fromName || 'Friend'); } catch { /* ignore */ }
-          return {
-            role: 'callee',
-            peerId: parsed.fromId!,
-            peerName: parsed.fromName ?? null,
-            peerAvatar: null,
-            channel: parsed.channel!,
-          };
-        });
+        if (raw) {
+          const parsed = JSON.parse(raw) as { fromId?: string; fromName?: string; channel?: string; at?: number };
+          applyIncoming(parsed);
+        }
       } catch { /* ignore */ }
+      void (async () => {
+        try {
+          const r = await fetch(`/api/call/invite?userId=${encodeURIComponent(userId)}`, { credentials: 'include' });
+          if (!r.ok) return;
+          const d = await r.json() as { invite?: { channel?: string; hostId?: string; hostName?: string | null; video?: boolean; kind?: string; at?: number } };
+          const inv = d?.invite;
+          if (!inv?.channel || !inv.hostId) return;
+          if (!(inv.video || inv.kind === 'video')) return;
+          if (String(inv.hostId) === String(userId)) return;
+          applyIncoming({
+            fromId: String(inv.hostId),
+            fromName: inv.hostName ?? null,
+            channel: String(inv.channel),
+            at: Number(inv.at) || Date.now(),
+          });
+          try {
+            localStorage.setItem(`stooorna_vidcall_invite_${userId}`, JSON.stringify({
+              fromId: inv.hostId,
+              fromName: inv.hostName ?? null,
+              channel: inv.channel,
+              at: Number(inv.at) || Date.now(),
+            }));
+          } catch { /* ignore */ }
+        } catch { /* ignore */ }
+      })();
     }, 1500);
     return () => {
       window.removeEventListener('stooorna:start-video-call', onStart);
