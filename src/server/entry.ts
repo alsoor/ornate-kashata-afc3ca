@@ -485,8 +485,8 @@ function listLiveGpsPins() {
 
 // Presence: shared in-memory store so all clients see each other online (same Node process / single VPS)
 const PRESENCE_TTL_MS = 45_000;
-function presenceStore(): Map<string, { at: number; name?: string | null; username?: string | null }> {
-  const g = globalThis as typeof globalThis & { __stooornaPresence?: Map<string, { at: number; name?: string | null; username?: string | null }> };
+function presenceStore(): Map<string, { at: number; name?: string | null; username?: string | null; typing?: boolean; typingTo?: string | null; typingAt?: number }> {
+  const g = globalThis as typeof globalThis & { __stooornaPresence?: Map<string, { at: number; name?: string | null; username?: string | null; typing?: boolean; typingTo?: string | null; typingAt?: number }> };
   if (!g.__stooornaPresence) g.__stooornaPresence = new Map();
   return g.__stooornaPresence;
 }
@@ -508,7 +508,13 @@ app.get("/api/presence", (req, res) => {
       for (const id of ids) {
         const row = m.get(String(id));
         const online = !!(row && Date.now() - Number(row.at || 0) <= PRESENCE_TTL_MS);
-        out[String(id)] = { online, lastSeen: row?.at };
+        const typingFresh = !!(row?.typing && row.typingAt && Date.now() - Number(row.typingAt) < 5000);
+        out[String(id)] = {
+          online,
+          lastSeen: row?.at,
+          typing: typingFresh,
+          typingTo: row?.typingTo ?? null,
+        };
       }
     } else {
       for (const [id, row] of m) {
@@ -530,10 +536,14 @@ app.post("/api/presence/heartbeat", (req, res) => {
       return;
     }
     presencePrune();
+    const typing = body.typing === true || body.typing === 'true';
     presenceStore().set(id, {
       at: Date.now(),
       name: body.name != null ? String(body.name) : null,
       username: body.username != null ? String(body.username) : null,
+      typing,
+      typingTo: body.typingTo != null ? String(body.typingTo) : null,
+      typingAt: typing ? Date.now() : undefined,
     });
     res.json({ ok: true, ttlMs: PRESENCE_TTL_MS });
   } catch (e) {

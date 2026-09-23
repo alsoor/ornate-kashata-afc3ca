@@ -913,11 +913,36 @@ type ShareThreadMsg = {
   duration?: number | null;
   fileName?: string | null;
   at: number;
-  kind?: 'chat' | 'story-comment' | 'story-reply';
+  kind?: 'chat' | 'story-comment' | 'story-reply' | 'live-location' | 'live-location-reply';
   replyToId?: string | null;
   replyToBody?: string | null;
   thumbUrl?: string | null;
+  place?: string | null;
+  lat?: number | null;
+  lng?: number | null;
 };
+function isLiveLocationMsg(m: ShareThreadMsg): boolean {
+  if (m.kind === 'live-location') return true;
+  return m.type === 'text' && /^Live Location:/i.test(m.body || '');
+}
+function isLiveLocationReplyMsg(m: ShareThreadMsg): boolean {
+  if (m.kind === 'live-location-reply') return true;
+  return m.type === 'text' && /^Live Location reply:/i.test(m.body || '');
+}
+function liveLocationPlainText(m: ShareThreadMsg): string {
+  return String(m.body || '')
+    .replace(/^Live Location reply:\s*/i, '')
+    .replace(/^Live Location:\s*/i, '')
+    .trim();
+}
+function hasLiveLocationReplyFromMe(msgs: ShareThreadMsg[], myId: string | undefined, targetId: string): boolean {
+  if (!myId) return false;
+  return msgs.some(x =>
+    (x.kind === 'live-location-reply' || isLiveLocationReplyMsg(x))
+    && String(x.fromId) === String(myId)
+    && String(x.replyToId || '') === String(targetId)
+  );
+}
 function hasStoryReplyFromMe(msgs: ShareThreadMsg[], myId: string | undefined, targetId: string): boolean {
   if (!myId) return false;
   return msgs.some(x => (x.kind === 'story-reply' || isStoryReplyMsg(x)) && String(x.fromId) === String(myId) && String(x.replyToId || '') === String(targetId));
@@ -998,22 +1023,52 @@ function formatLastSeen(value: number | string): string {
   const ts = typeof value === 'number' ? value : new Date(value).getTime();
   if (!Number.isFinite(ts)) return '';
   const now = Date.now();
-  const diffMin = Math.floor((now - ts) / 60000);
-  if (diffMin < 1) return 'last seen just now';
-  if (diffMin < 60) return `last seen ${diffMin}m ago`;
+  const diffMs = Math.max(0, now - ts);
+  const diffMin = Math.floor(diffMs / 60000);
   const date = new Date(ts);
-  const today = new Date();
   const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  if (date.toDateString() === today.toDateString()) return `last seen today at ${time}`;
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return `last seen yesterday at ${time}`;
-  if (now - ts < 6 * 24 * 60 * 60 * 1000) return `last seen ${date.toLocaleDateString('en-US', { weekday: 'long' })} at ${time}`;
-  return `last seen ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  const fullDate = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  if (diffMin < 1) return `last seen just now · ${time}`;
+  if (diffMin < 60) return `last seen ${diffMin} min ago · ${time}`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `last seen ${diffHr}h ago · ${time}`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay === 1) return `last seen yesterday at ${time} · ${fullDate}`;
+  if (diffDay < 30) return `last seen ${diffDay} days ago · ${time} · ${fullDate}`;
+  const diffMo = Math.floor(diffDay / 30);
+  if (diffMo < 12) return `last seen ${diffMo} mo ago · ${time} · ${fullDate}`;
+  return `last seen ${fullDate} at ${time}`;
 }
 function formatMsgTime(ts: number): string {
   return new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
+
+const TYPING_KEY = (fromId: string, toId: string) => `stooorna_typing_${fromId}_${toId}`;
+function signalFriendTyping(fromId: string, toId: string) {
+  if (!fromId || !toId) return;
+  try {
+    localStorage.setItem(TYPING_KEY(fromId, toId), String(Date.now()));
+    window.dispatchEvent(new CustomEvent('stooorna:friend-typing', {
+      detail: { fromId, toId, at: Date.now() },
+    }));
+  } catch { /* ignore */ }
+  try {
+    void fetch('/api/presence/heartbeat', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: fromId, id: fromId, typing: true, typingTo: toId }),
+    });
+  } catch { /* ignore */ }
+}
+function readFriendTyping(fromId: string, toId: string): boolean {
+  if (!fromId || !toId) return false;
+  try {
+    const raw = localStorage.getItem(TYPING_KEY(fromId, toId));
+    if (!raw) return false;
+    const at = Number(raw);
+    return Number.isFinite(at) && Date.now() - at < 4000;
+  } catch { return false; }
+}
+
 function formatDayLabel(ts: number): string {
   const date = new Date(ts);
   const today = new Date();
@@ -1664,7 +1719,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   friendRequests?: IncomingRequest[];
   liveFriends?: { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null }[];
   myId?: string | null;
-  onSendLiveChat?: (friendId: string, text: string) => void;
+  onSendLiveChat?: (friendId: string, text: string, meta?: { place?: string; lat?: number; lng?: number }) => void;
   onRespondFriendRequest?: (id: number, action: 'accept' | 'reject') => void | Promise<void>;
   /** جرس التنبيهات داخل الكاميرا — تعليقات الأصدقاء على الستوري */
   onOpenStoryComments?: () => void;
@@ -3455,7 +3510,11 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                       <button type="button" onClick={() => setLiveMsgPeer(null)} style={{ flex: 1, borderRadius: 10, border: 'none', padding: 10, cursor: 'pointer', background: '#ef4444', color: '#fff', fontWeight: 800 }}>Cancel</button>
                       <button type="button" onClick={() => {
                         if (!liveMsgText.trim()) return;
-                        onSendLiveChat?.(liveMsgPeer.id, liveMsgText.trim());
+                        onSendLiveChat?.(liveMsgPeer.id, liveMsgText.trim(), {
+                          place: livePlace || undefined,
+                          lat: liveCenter?.lat,
+                          lng: liveCenter?.lng,
+                        });
                         setLiveMsgText('');
                         setLiveMsgPeer(null);
                       }} style={{ flex: 1, borderRadius: 10, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 800, padding: 10, cursor: 'pointer' }}>Send</button>
@@ -13997,6 +14056,7 @@ export default function AddFriendPage() {
   // (thread key 'direct' keeps it separate from the post-share threads keyed 'share').
   const [friendChatListOpen, setFriendChatListOpen] = useState(false);
   const [friendChatPeer, setFriendChatPeer] = useState<Friend | null>(null);
+  const [friendChatTypingTick, setFriendChatTypingTick] = useState(0);
   const incomingVideoCall = useSyncExternalStore(subscribeVideoIncomingSnap, getVideoIncomingSnap, getVideoIncomingSnap);
 
   const [friendChatMsgs, setFriendChatMsgs] = useState<ShareThreadMsg[]>([]);
@@ -14093,6 +14153,30 @@ export default function AddFriendPage() {
     window.addEventListener('stooorna:share-thread', refresh);
     return () => window.removeEventListener('stooorna:share-thread', refresh);
   }, [user?.id, friendChatPeer?.friendId]);
+
+  // Poll peer typing for the open friend chat header ("Type....")
+  useEffect(() => {
+    if (!user?.id || !friendChatPeer?.friendId) return;
+    const tick = () => setFriendChatTypingTick(n => n + 1);
+    tick();
+    const iv = window.setInterval(tick, 1200);
+    const onTyping = (e: Event) => {
+      const d = (e as CustomEvent).detail as { fromId?: string; toId?: string } | undefined;
+      if (!d) return;
+      if (String(d.fromId) === String(friendChatPeer.friendId) && String(d.toId) === String(user.id)) tick();
+    };
+    window.addEventListener('stooorna:friend-typing', onTyping);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith('stooorna_typing_')) tick();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.clearInterval(iv);
+      window.removeEventListener('stooorna:friend-typing', onTyping);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [user?.id, friendChatPeer?.friendId]);
+
   async function friendChatStartRecording() {
     // Ignore a second tap while a start is already in flight, and never start
     // again once we're already recording.
@@ -20629,31 +20713,38 @@ export default function AddFriendPage() {
                 type="button"
                 onClick={() => { if (friendChatPeer.avatarUrl) setFriendChatAvatarViewerOpen(true); }}
                 aria-label="View profile photo"
-                style={{ background: 'none', border: 'none', padding: 0, flexShrink: 0, display: 'flex', cursor: friendChatPeer.avatarUrl ? 'pointer' : 'default' }}
+                style={{ background: 'none', border: 'none', padding: 0, flexShrink: 0, display: 'flex', cursor: friendChatPeer.avatarUrl ? 'pointer' : 'default', position: 'relative' }}
               >
-                <UserAvatar name={friendChatPeer.name ?? friendChatPeer.username ?? '?'} avatarUrl={friendChatPeer.avatarUrl} size={36} online={presence[friendChatPeer.friendId]?.online} />
+                <UserAvatar name={friendChatPeer.name ?? friendChatPeer.username ?? '?'} avatarUrl={friendChatPeer.avatarUrl} size={36} online={!!presence[friendChatPeer.friendId]?.online} />
+                <span
+                  aria-hidden
+                  style={{
+                    position: 'absolute', right: 0, bottom: 0, width: 11, height: 11, borderRadius: '50%',
+                    border: '2px solid #fff',
+                    background: presence[friendChatPeer.friendId]?.online ? '#22c55e' : '#ef4444',
+                  }}
+                />
               </button>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, color: '#111', fontWeight: 800, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {friendChatPeer.name ?? friendChatPeer.username ?? 'User'}
                 </p>
                 {(() => {
-                  // Presence fields beyond `online` (typing / lastSeen) are read defensively —
-                  // they render the moment the presence hook/backend supplies them, and fall
-                  // back to the username line when it doesn't have them yet.
-                  const peerPresence = presence[friendChatPeer.friendId] as { online?: boolean; typing?: boolean; lastSeen?: number | string | null } | undefined;
-                  if (peerPresence?.typing) {
-                    return <p style={{ margin: 0, color: '#128C7E', fontSize: '0.68rem', fontWeight: 700 }}>typing…</p>;
+                  void friendChatTypingTick;
+                  const peerPresence = presence[friendChatPeer.friendId] as { online?: boolean; typing?: boolean; lastSeen?: number | string | null; typingTo?: string | null } | undefined;
+                  const peerTypingLocal = user?.id ? readFriendTyping(friendChatPeer.friendId, user.id) : false;
+                  const peerTyping = peerTypingLocal || !!(peerPresence?.typing && (!peerPresence.typingTo || String(peerPresence.typingTo) === String(user?.id)));
+                  if (peerTyping) {
+                    return <p style={{ margin: 0, color: '#128C7E', fontSize: '0.72rem', fontWeight: 800 }}>Type....</p>;
                   }
                   if (peerPresence?.online) {
-                    return <p style={{ margin: 0, color: '#128C7E', fontSize: '0.68rem', fontWeight: 600 }}>Online</p>;
+                    return <p style={{ margin: 0, color: '#22c55e', fontSize: '0.68rem', fontWeight: 700 }}>Online</p>;
                   }
-                  if (peerPresence?.lastSeen) {
-                    return <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.68rem' }}>{formatLastSeen(peerPresence.lastSeen)}</p>;
+                  const last = peerPresence?.lastSeen;
+                  if (last) {
+                    return <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.68rem' }}>{formatLastSeen(last)}</p>;
                   }
-                  return friendChatPeer.username ? (
-                    <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.68rem' }}>@{friendChatPeer.username}</p>
-                  ) : null;
+                  return <p style={{ margin: 0, color: '#ef4444', fontSize: '0.68rem', fontWeight: 600 }}>Offline</p>;
                 })()}
               </div>
               {(() => {
@@ -20806,7 +20897,42 @@ export default function AddFriendPage() {
                           <p style={{ margin: 0, color: '#111', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{storyMsgPlainText(m)}</p>
                         </div>
                       )}
-                      {m.type === 'text' && !isStoryCommentMsg(m) && !isStoryReplyMsg(m) && (
+                      {m.type === 'text' && (isLiveLocationMsg(m) || isLiveLocationReplyMsg(m)) && (
+                        <div>
+                          <p style={{ margin: '0 0 6px', color: '#0ea5e9', fontSize: '0.68rem', fontWeight: 800 }}>
+                            {isLiveLocationReplyMsg(m) ? 'Live Location reply' : 'Live Location'}
+                          </p>
+                          {isLiveLocationReplyMsg(m) && (
+                            <div style={{
+                              marginBottom: 6, padding: '6px 8px', borderRadius: 8,
+                              background: 'rgba(14,165,233,0.1)', borderLeft: '3px solid #0ea5e9',
+                            }}>
+                              <p style={{ margin: 0, color: 'rgba(0,0,0,0.55)', fontSize: '0.72rem', whiteSpace: 'pre-wrap' }}>
+                                {m.replyToBody || 'Live Location'}
+                              </p>
+                            </div>
+                          )}
+                          {!isLiveLocationReplyMsg(m) && (m.place || (m.lat != null && m.lng != null)) && (
+                            <div style={{
+                              marginBottom: 6, padding: '8px 10px', borderRadius: 10,
+                              background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.25)',
+                            }}>
+                              {m.place ? (
+                                <p style={{ margin: 0, color: '#0369a1', fontSize: '0.78rem', fontWeight: 700 }}>{m.place}</p>
+                              ) : null}
+                              {m.lat != null && m.lng != null ? (
+                                <p style={{ margin: m.place ? '4px 0 0' : 0, color: 'rgba(0,0,0,0.5)', fontSize: '0.68rem' }}>
+                                  {Number(m.lat).toFixed(5)}, {Number(m.lng).toFixed(5)}
+                                </p>
+                              ) : null}
+                            </div>
+                          )}
+                          <p style={{ margin: 0, color: '#111', fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>
+                            {liveLocationPlainText(m)}
+                          </p>
+                        </div>
+                      )}
+                      {m.type === 'text' && !isStoryCommentMsg(m) && !isStoryReplyMsg(m) && !isLiveLocationMsg(m) && !isLiveLocationReplyMsg(m) && (
                         <p style={{
                           margin: 0,
                           color: String(m.body || '').trim().toLowerCase() === 'missed call' ? '#e11d48' : '#111',
@@ -20864,6 +20990,35 @@ export default function AddFriendPage() {
                         }}
                       >
                         {''}
+                      </button>
+                    )}
+                    {(isLiveLocationMsg(m) && user && String(m.fromId) !== String(user.id) && !hasLiveLocationReplyFromMe(friendChatMsgs, user.id, m.id)) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFriendChatStoryReplyTo(m);
+                          window.setTimeout(() => friendChatInputRef.current?.focus(), 30);
+                        }}
+                        aria-label="Reply to live location"
+                        style={{
+                          alignSelf: user && m.fromId === user.id ? 'flex-end' : 'flex-start',
+                          width: '82%',
+                          maxWidth: 280,
+                          minHeight: 44,
+                          marginTop: -4,
+                          borderRadius: 12,
+                          border: '1.5px dashed rgba(14,165,233,0.5)',
+                          background: 'rgba(255,255,255,0.65)',
+                          cursor: 'pointer',
+                          padding: '10px 12px',
+                          textAlign: 'start',
+                          color: 'rgba(14,165,233,0.85)',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        Reply
                       </button>
                     )}
                   </React.Fragment>
@@ -21036,7 +21191,12 @@ export default function AddFriendPage() {
                     <input
                       ref={friendChatInputRef as any}
                       value={friendChatText}
-                      onChange={e => setFriendChatText(e.target.value)}
+                      onChange={e => {
+                        setFriendChatText(e.target.value);
+                        if (user?.id && friendChatPeer?.friendId && e.target.value.trim()) {
+                          signalFriendTyping(user.id, friendChatPeer.friendId);
+                        }
+                      }}
                       onKeyDown={e => {
                         if (e.key === 'Enter' && !e.shiftKey && friendChatText.trim() && user && friendChatPeer) {
                           e.preventDefault();
@@ -21116,14 +21276,28 @@ export default function AddFriendPage() {
                       onClick={() => {
                         if (!user || !friendChatPeer) return;
                         if (friendChatStoryReplyTo) {
-                          pushShareThreadMsg(user.id, friendChatPeer.friendId, 'direct', {
-                            fromId: user.id,
-                            type: 'text',
-                            kind: 'story-reply',
-                            body: `Story reply: ${friendChatText.trim()}`,
-                            replyToId: friendChatStoryReplyTo.id,
-                            replyToBody: storyMsgPlainText(friendChatStoryReplyTo),
-                          });
+                          if (isLiveLocationMsg(friendChatStoryReplyTo) || isLiveLocationReplyMsg(friendChatStoryReplyTo)) {
+                            pushShareThreadMsg(user.id, friendChatPeer.friendId, 'direct', {
+                              fromId: user.id,
+                              type: 'text',
+                              kind: 'live-location-reply',
+                              body: friendChatText.trim(),
+                              replyToId: friendChatStoryReplyTo.id,
+                              replyToBody: liveLocationPlainText(friendChatStoryReplyTo) || friendChatStoryReplyTo.place || 'Live Location',
+                              place: friendChatStoryReplyTo.place ?? null,
+                              lat: friendChatStoryReplyTo.lat ?? null,
+                              lng: friendChatStoryReplyTo.lng ?? null,
+                            });
+                          } else {
+                            pushShareThreadMsg(user.id, friendChatPeer.friendId, 'direct', {
+                              fromId: user.id,
+                              type: 'text',
+                              kind: 'story-reply',
+                              body: `Story reply: ${friendChatText.trim()}`,
+                              replyToId: friendChatStoryReplyTo.id,
+                              replyToBody: storyMsgPlainText(friendChatStoryReplyTo),
+                            });
+                          }
                           setFriendChatStoryReplyTo(null);
                         } else {
                           pushShareThreadMsg(user.id, friendChatPeer.friendId, 'direct', { fromId: user.id, type: 'text', body: friendChatText.trim() });
@@ -21538,9 +21712,27 @@ export default function AddFriendPage() {
             publishLabel={isCompanyPublisher ? 'نشر إعلان للقصة' : 'نشر قصة'}
             myId={user?.id ?? null}
             liveFriends={friends.map(f => ({ id: f.friendId, name: f.name, username: f.username, avatarUrl: f.avatarUrl }))}
-            onSendLiveChat={(friendId, text) => {
+            onSendLiveChat={(friendId, text, meta) => {
               if (!user?.id) return;
-              pushShareThreadMsg(user.id, friendId, 'direct', { fromId: user.id, type: 'text', body: text });
+              pushShareThreadMsg(user.id, friendId, 'direct', {
+                fromId: user.id,
+                type: 'text',
+                kind: 'live-location',
+                body: text,
+                place: meta?.place ?? null,
+                lat: meta?.lat ?? null,
+                lng: meta?.lng ?? null,
+              });
+              try {
+                window.dispatchEvent(new CustomEvent('stooorna:bottom-chat-blink', {
+                  detail: { target: 'user', userId: friendId, yellow: true },
+                }));
+              } catch { /* ignore */ }
+              try {
+                window.dispatchEvent(new CustomEvent('stooorna:share-thread', {
+                  detail: { a: user.id, b: friendId, postId: 'direct' },
+                }));
+              } catch { /* ignore */ }
             }}
             onOpenStoryComments={() => {
               // إظهار Story + Chat معاً؛ إن وُجدت مشاركات غير مقروءة يُفضَّل Chat
