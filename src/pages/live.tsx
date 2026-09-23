@@ -254,6 +254,8 @@ export default function LivePage() {
     Map<number, { userId: string; name: string; username: string | null; avatarUrl: string | null }>
   >(new Map());
   const leftRef = useRef(false);
+  /** Host ended private room — listeners exit without re-broadcasting active */
+  const forceEndRef = useRef(false);
 
   useEffect(() => {
     if (!myId) return;
@@ -532,33 +534,61 @@ export default function LivePage() {
     });
   }, [sendDataPayload]);
 
-  const leaveRoom = useCallback(async () => {
-
+  const leaveRoom = useCallback(async (opts?: { forced?: boolean; skipNavigate?: boolean }) => {
+    const forced = !!opts?.forced;
     leftRef.current = true;
+    forceEndRef.current = forced || forceEndRef.current;
+
+    // Host ends private room: notify listeners BEFORE leaving Agora channel
+    if (amHost && isHostRoom && !forced) {
+      try {
+        for (let i = 0; i < 3; i++) {
+          await sendDataPayload({
+            t: 'room-ended',
+            hostId: hostId || myId || '',
+            host: myUidRef.current,
+            ts: Date.now(),
+          });
+        }
+      } catch { /* ignore */ }
+      try {
+        await fetch('/api/room/leave', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId: channelName, userId: myId, endRoom: true }),
+        });
+      } catch { /* ignore */ }
+      await new Promise(r => setTimeout(r, 120));
+    } else if (myId) {
+      try {
+        await fetch('/api/room/leave', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId: channelName, userId: myId }),
+        });
+      } catch { /* ignore */ }
+    }
+
+    try {
+      const c: any = clientRef.current;
+      if (c?.__freezeBroadcast) window.clearInterval(c.__freezeBroadcast);
+    } catch { /* ignore */ }
     try {
       if (micRef.current) {
         micRef.current.stop();
         micRef.current.close();
         micRef.current = null;
       }
-      remoteTracksRef.current.forEach(t => {
-        try {
-          t.stop();
-        } catch {
-          /* ignore */
-        }
+      remoteTracksRef.current.forEach(tr => {
+        try { tr.stop(); } catch { /* ignore */ }
       });
       remoteTracksRef.current.clear();
       if (clientRef.current) {
         await clientRef.current.leave();
         clientRef.current = null;
       }
-    } catch {
-      /* ignore */
-    }
-    try {
-      const c: any = clientRef.current;
-      if (c?.__freezeBroadcast) window.clearInterval(c.__freezeBroadcast);
     } catch { /* ignore */ }
     myUidRef.current = null;
     dataStreamIdRef.current = null;
@@ -572,20 +602,23 @@ export default function LivePage() {
     setJoined(false);
     setMicOn(true);
     micOnRef.current = true;
-    // أوقف إشارة البث النشط — ترجع الأيقونة للونها الطبيعي
-    try {
-      const activeHost = hostId || myId || '';
-      if (activeHost) {
-        localStorage.removeItem(`stooorna_live_active_${activeHost}`);
-      }
-      localStorage.removeItem('stooorna_live_active_current');
-      window.dispatchEvent(new CustomEvent('stooorna:live-active', { detail: { hostId: activeHost, active: false } }));
-    } catch { /* ignore */ }
+
+    // Only host (or forced end after host signal) clears global live-active
+    if (amHost || forced) {
+      try {
+        const activeHost = hostId || myId || '';
+        if (activeHost) {
+          localStorage.removeItem(`stooorna_live_active_${activeHost}`);
+        }
+        localStorage.removeItem( + current_key + r);
+        window.dispatchEvent(new CustomEvent( + event_name + r, { detail: { hostId: activeHost, active: false } }));
+      } catch { /* ignore */ }
+    }
 
     setJoining(false);
     setStatus('');
-    navigate(-1);
-  }, [navigate]);
+    if (!opts?.skipNavigate) navigate(-1);
+  }, [navigate, hostId, myId, amHost, isHostRoom, channelName, sendDataPayload]);
 
   const dismissLivePage = useCallback(() => {
     if (livePageClosing) return;
@@ -594,6 +627,33 @@ export default function LivePage() {
       void leaveRoom();
     }, 280);
   }, [livePageClosing, leaveRoom]);
+
+  // Host ended broadcast elsewhere — eject listeners still on this page
+  useEffect(() => {
+    if (!isHostRoom || amHost || !hostId) return;
+    const onEnd = (e: Event) => {
+      const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean } | undefined;
+      if (!d || d.active !== false) return;
+      if (String(d.hostId || '') !== String(hostId)) return;
+      if (leftRef.current) return;
+      forceEndRef.current = true;
+      void leaveRoom({ forced: true });
+    };
+    window.addEventListener('stooorna:live-active', onEnd);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== `stooorna_live_active_${hostId}`) return;
+      if (e.newValue) return;
+      if (leftRef.current) return;
+      forceEndRef.current = true;
+      void leaveRoom({ forced: true });
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('stooorna:live-active', onEnd);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [isHostRoom, amHost, hostId, leaveRoom]);
+
 
 
 
@@ -674,6 +734,14 @@ export default function LivePage() {
         remoteTracksRef.current.delete(remoteUser.uid as number);
         remoteUids.delete(remoteUser.uid as number);
         syncList();
+        if (isHostRoom && !amHost && hostId) {
+          const hostUid = uidFromString(hostId);
+          const leftUid = remoteUser.uid as number;
+          if (leftUid === hostUid || resolveRemote(leftUid).isHost) {
+            forceEndRef.current = true;
+            void leaveRoom({ forced: true });
+          }
+        }
       });
 
       // أوامر تجميد المايك من المضيف
@@ -714,6 +782,11 @@ export default function LivePage() {
               const set = new Set(msg.uids.map(Number));
               frozenUidsRef.current = set;
               setFrozenUids(set);
+            }
+          } else if (msg.t === 'room-ended') {
+            if (!amHost && isHostRoom) {
+              forceEndRef.current = true;
+              void leaveRoom({ forced: true });
             }
           }
         } catch {
@@ -845,19 +918,33 @@ export default function LivePage() {
         });
       } catch { /* ignore */ }
 
-      // أعلن أن البث نشط — أيقونة حمراء وامضة في كل الصفحات
+      // Only host announces private live (listeners must not keep the host flag alive)
       try {
-        const activeHost = hostId || myId || '';
-        if (activeHost) {
-          const payload = JSON.stringify({
-            hostId: activeHost,
-            channel: channelName,
-            at: Date.now(),
-            active: true,
-          });
-          localStorage.setItem(`stooorna_live_active_${activeHost}`, payload);
-          localStorage.setItem('stooorna_live_active_current', payload);
-          window.dispatchEvent(new CustomEvent('stooorna:live-active', { detail: { hostId: activeHost, active: true, channel: channelName } }));
+        if (amHost || !isHostRoom) {
+          const activeHost = hostId || myId || '';
+          if (activeHost) {
+            const payload = JSON.stringify({
+              hostId: activeHost,
+              channel: channelName,
+              at: Date.now(),
+              active: true,
+              name: myName,
+              username: myUsername,
+              avatarUrl: myAvatar,
+            });
+            localStorage.setItem(`stooorna_live_active_${activeHost}`, payload);
+            localStorage.setItem('stooorna_live_active_current', payload);
+            window.dispatchEvent(new CustomEvent('stooorna:live-active', {
+              detail: {
+                hostId: activeHost,
+                active: true,
+                channel: channelName,
+                hostName: myName,
+                hostUsername: myUsername,
+                hostAvatar: myAvatar,
+              },
+            }));
+          }
         }
       } catch { /* ignore */ }
     } catch (err: any) {

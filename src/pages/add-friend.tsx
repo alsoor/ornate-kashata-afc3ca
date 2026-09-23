@@ -7514,7 +7514,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             transition={{ duration: 0.38, ease: [0.32, 0.72, 0, 1] }}
             onClick={() => setMediaLightbox(null)}
             style={{
-              position: 'fixed', inset: 0, zIndex: 10450, background: '#000',
+              position: 'fixed', inset: 0, zIndex: 12280, background: '#000',
               display: 'flex', flexDirection: 'column',
             }}
           >
@@ -7680,7 +7680,7 @@ function InstagramCommentsSheet({
       transition={{ duration: 0.18 }}
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, zIndex: 10450,
+        position: 'fixed', inset: 0, zIndex: 12300,
         background: 'rgba(0,0,0,0.45)',
         display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
       }}
@@ -16971,7 +16971,7 @@ export default function AddFriendPage() {
 
         <AnimatePresence>
           {false && sharePost && (
-            <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 10450, background: 'hsl(var(--background)/0.9)', display: 'flex', alignItems: 'flex-end', overflow: 'hidden' }} onClick={() => setSharePost(null)}>
+            <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 12350, background: 'hsl(var(--background)/0.9)', display: 'flex', alignItems: 'flex-end', overflow: 'hidden' }} onClick={() => setSharePost(null)}>
               <motion.div initial={{ y: 80 }} animate={{ y: 0 }} exit={{ y: 80 }} onClick={event => event.stopPropagation()} style={{ width: '100%', maxHeight: '78dvh', overflowY: 'auto', borderRadius: '22px 22px 0 0', background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', padding: '18px 16px 28px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}><strong style={{ color: 'hsl(var(--foreground))' }}>Send post to friends</strong><button onClick={() => setSharePost(null)} style={{ background: 'none', border: 'none', color: 'hsl(var(--foreground))', cursor: 'pointer' }}><X size={20} /></button></div>
                 <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.74rem', margin: '0 0 12px' }}>Choose friends to send this post in a private chat.</p>
@@ -19025,7 +19025,7 @@ export default function AddFriendPage() {
             key="feed-ad-viewer"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             style={{
-              position: 'fixed', inset: 0, zIndex: 10600, background: 'rgba(0,0,0,0.92)',
+              position: 'fixed', inset: 0, zIndex: 12250, background: 'rgba(0,0,0,0.92)',
               display: 'flex', flexDirection: 'column',
             }}
           >
@@ -19304,7 +19304,7 @@ export default function AddFriendPage() {
             key="ad-detail"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             style={{
-              position: 'fixed', inset: 0, zIndex: 10620, background: 'rgba(0,0,0,0.6)',
+              position: 'fixed', inset: 0, zIndex: 12260, background: 'rgba(0,0,0,0.6)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
             }}
             onClick={() => setAdDetailOpen(null)}
@@ -20446,40 +20446,7 @@ export default function AddFriendPage() {
                   </button>
                 )}
 
-                <motion.button
-                  type="button"
-                  whileTap={{ scale: 0.96 }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!user) {
-                      navigate('/settings');
-                      return;
-                    }
-                    setComposerDestination('text');
-                    setComposerError('');
-                    try { clearPostMedia(); } catch { /* */ }
-                    try {
-                      const uid = user?.id;
-                      const isBiz = uid && (() => { try { const list = JSON.parse(localStorage.getItem('stooorna_business_registry') || '[]'); return Array.isArray(list) && list.some((x: any) => String(x.userId) === String(uid) && x.status === 'approved'); } catch { return false; } })();
-                      setComposerBizHint(!!isBiz);
-                    } catch { setComposerBizHint(false); }
-                    window.setTimeout(() => setShowComposer(true), 0);
-                  }}
-                  aria-label={!user ? 'Sign in' : 'Create a text post'}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    height: 40, minWidth: 120, padding: '0 18px', borderRadius: 20,
-                    border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                    background: CLR_PRIMARY_FAINT,
-                    color: CLR_PRIMARY,
-                    cursor: 'pointer',
-                    touchAction: 'manipulation',
-                    zIndex: 1,
-                  }}
-                >
-                  {!user ? <LogIn size={16} strokeWidth={2.4} /> : <PenLine size={16} strokeWidth={2.4} />}
-                  <span style={{ fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>{!user ? 'Sign in' : 'New Post'}</span>
-                </motion.button>
+                {/* New Post moved to bottom + menu (yellow PenLine) */}
 
                 {/* Right: plus menu (same actions as bottom-bar plus) */}
                 <div
@@ -23079,7 +23046,7 @@ export default function AddFriendPage() {
             exit={{ opacity: 0 }}
             onClick={() => setProductShareMenuPost(null)}
             style={{
-              position: 'fixed', inset: 0, zIndex: 10650,
+              position: 'fixed', inset: 0, zIndex: 12350,
               background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
               display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
             }}

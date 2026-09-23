@@ -2195,11 +2195,25 @@ function GlobalBottomNavigation() {
     }
   }
 
+  // Whenever we leave idle (answered / connecting / live), kill any residual ring tone
+  useEffect(() => {
+    if (homeCallPhase !== 'idle') {
+      stopHomeIncomingRing();
+      try { window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } })); } catch { /* */ }
+      try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
+    }
+  }, [homeCallPhase]);
+
   function beginHomeIncoming(invite: { channel: string; hostId: string; hostName: string | null; hostAvatar: string | null; members: HomeCallMember[]; video?: boolean }) {
     if (homeCallPhase !== 'idle') return;
     const lock = homeRingLockRef.current;
     if (lock.mode === 'answered') return;
     if (lock.mode === 'ignored' && lock.channel === invite.channel && Date.now() - lock.at < 10000) return;
+    // Already ringing for this call — do not restart the ring tone
+    if (homeIncoming && String(homeIncoming.channel) === String(invite.channel)) {
+      setHomeIncoming(invite);
+      return;
+    }
     setHomeIncoming(invite);
     stopHomeIncomingRing();
     playHomeIncomingRing();
@@ -2290,6 +2304,15 @@ function GlobalBottomNavigation() {
   async function answerHomeIncoming() {
     if (!user?.id || !homeIncoming) return;
     const invite = homeIncoming;
+    // Stop ring immediately before any async work so tone never continues into the call UI
+    stopHomeIncomingRing();
+    homeRingLockRef.current = { mode: 'answered', channel: invite.channel, at: Date.now() };
+    try { window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } })); } catch { /* */ }
+    try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
+    try {
+      localStorage.removeItem(`stooorna_home_call_invite_${user.id}`);
+      localStorage.removeItem('stooorna_home_call_active_invite');
+    } catch { /* */ }
     let channel = invite.channel;
     try {
       const ringId = `home_ring_${homeCallShortHash(user.id)}`;
@@ -3110,7 +3133,7 @@ function GlobalBottomNavigation() {
             border: '1px solid rgba(0,188,212,0.25)',
             borderRadius: 18,
             padding: '12px 12px 14px',
-            direction: 'rtl',
+            direction: 'ltr',
             boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
             display: 'flex',
             flexDirection: 'column',
@@ -3146,12 +3169,15 @@ function GlobalBottomNavigation() {
                   display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
                   borderRadius: 14, border: `1px solid ${on ? '#00BCD4' : 'rgba(0,188,212,0.2)'}`,
                   background: on ? 'rgba(0,188,212,0.14)' : 'rgba(0,188,212,0.05)',
-                  color: '#d7eeee', cursor: 'pointer', textAlign: 'right',
+                  color: '#d7eeee', cursor: 'pointer', textAlign: 'left', direction: 'ltr',
                 }}>
                   <div style={{ width: 38, height: 38, borderRadius: '50%', overflow: 'hidden', background: 'rgba(0,188,212,0.2)', flexShrink: 0 }}>
                     {f.avatarUrl ? <img src={f.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (f.name || f.username || '?')[0]}
                   </div>
-                  <span style={{ flex: 1, fontWeight: 700 }}>{f.name || f.username || 'صديق'}</span>
+                  <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                    <span style={{ display: 'block', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'صديق'}</span>
+                    {f.username ? <span style={{ display: 'block', fontSize: '0.72rem', color: 'rgba(150,200,200,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{f.username}</span> : null}
+                  </div>
                   <span style={{
                     width: 18, height: 18, borderRadius: 4, border: '2px solid #00BCD4',
                     background: on ? '#00BCD4' : 'transparent',
@@ -3656,6 +3682,34 @@ function GlobalBottomNavigation() {
                   }}
                 >
                   <Radio size={20} strokeWidth={2.2} />
+                </button>
+                )}
+                {/* New Post — yellow pen, opens text composer */}
+                {user && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    popNavBubble('newpost');
+                    try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* */ }
+                    if (location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend')) {
+                      window.dispatchEvent(new CustomEvent('stooorna:open-text-composer'));
+                      return;
+                    }
+                    navigate('/add-friend?tab=friends&openTextPosts=1&openTextComposer=1');
+                  }}
+                  aria-label="New post"
+                  style={{
+                    width: 44, height: 44, borderRadius: '50%',
+                    border: '1px solid rgba(234,179,8,0.65)',
+                    background: 'rgba(234,179,8,0.14)',
+                    color: '#eab308',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                  }}
+                >
+                  <PenLine size={20} strokeWidth={2.2} />
                 </button>
                 )}
               </div>
