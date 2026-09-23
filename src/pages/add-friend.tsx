@@ -14465,6 +14465,10 @@ export default function AddFriendPage() {
   // 1:1 chat screen per friend, using the same persistence layer as the share-mini chat
   // (thread key 'direct' keeps it separate from the post-share threads keyed 'share').
   const [friendChatListOpen, setFriendChatListOpen] = useState(false);
+  useEffect(() => {
+    if (!friendChatListOpen || !user) return;
+    void loadSecretChats();
+  }, [friendChatListOpen, user?.id]);
   const [friendChatPeer, setFriendChatPeer] = useState<Friend | null>(null);
   const [friendChatTypingTick, setFriendChatTypingTick] = useState(0);
   const incomingVideoCall = useSyncExternalStore(subscribeVideoIncomingSnap, getVideoIncomingSnap, getVideoIncomingSnap);
@@ -14963,7 +14967,7 @@ export default function AddFriendPage() {
   const [blockingFriendId, setBlockingFriendId] = useState<string | null>(null);
 
   // Per-friend action menu (⋮ block / remove)
-  const [openActionMenu, setOpenActionMenu] = useState<number | null>(null);
+  const [openActionMenu, setOpenActionMenu] = useState<string | number | null>(null);
 
   // Collect all user IDs visible in the current page for presence polling
   const friendIds = friends.map(f => f.friendId);
@@ -15680,7 +15684,7 @@ export default function AddFriendPage() {
   async function createSecretChat() {
     if (!scName.trim()) return;
     if (!/^\d{4,8}$/.test(scPin)) {
-      setScError('الرقم السري يجب أن يكون 4-8 أرقام');
+      setScError('PIN يجب أن يكون 4-8 أرقام');
       return;
     }
     setScCreating(true);
@@ -16228,7 +16232,10 @@ export default function AddFriendPage() {
                     <motion.button
                       type="button"
                       whileTap={{ scale: 0.9 }}
-                      onClick={() => setFriendChatListOpen(true)}
+                      onClick={() => {
+                        setFriendChatListOpen(true);
+                        void loadSecretChats();
+                      }}
                       aria-label={bellHasAlert ? (bellRinging ? 'Incoming call' : 'New message') : 'Notifications'}
                       style={{
                         width: 28, height: 28, borderRadius: '50%',
@@ -17088,10 +17095,10 @@ export default function AddFriendPage() {
 
       {/* ── New Secret Chat Modal ── */}
       <AnimatePresence>
-        {false && showNewSecret && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
+        {showNewSecret && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 50,
+        zIndex: 10910,
         background: 'rgba(0,0,0,0.7)',
         backdropFilter: 'blur(8px)',
         display: 'flex',
@@ -17141,7 +17148,7 @@ export default function AddFriendPage() {
                 fontWeight: 700,
                 letterSpacing: '0.2em',
                 textTransform: 'uppercase'
-              }}>دردشة سرية جديدة</p>
+              }}>New secret chat</p>
                 </div>
                 <motion.button whileTap={{
               scale: 0.9
@@ -17176,7 +17183,7 @@ export default function AddFriendPage() {
               transform: 'translateY(-50%)',
               color: CLR_PRIMARY_DIM
             }} />
-                <input type={scPinVisible ? 'text' : 'password'} inputMode="numeric" maxLength={8} value={scPin} onChange={e => setScPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="الرقم السري (4-8 أرقام)" style={{
+                <input type={scPinVisible ? 'text' : 'password'} inputMode="numeric" maxLength={8} value={scPin} onChange={e => setScPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="PIN (4-8 أرقام)" style={{
               width: '100%',
               boxSizing: 'border-box',
               background: CLR_INPUT_BG,
@@ -17278,7 +17285,7 @@ export default function AddFriendPage() {
             gap: 6
           }}>
                 <Lock size={14} strokeWidth={2} />
-                {scCreating ? 'جاري الإنشاء…' : 'إنشاء الدردشة السرية'}
+                {scCreating ? 'Creating…' : 'Create secret chat'}
               </motion.button>
               {scError && <p style={{
             color: 'hsl(var(--destructive))',
@@ -17292,10 +17299,10 @@ export default function AddFriendPage() {
 
       {/* ── PIN Gate Modal ── */}
       <AnimatePresence>
-        {false && openingChat && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
+        {openingChat && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 60,
+        zIndex: 10920,
         background: 'rgba(0,0,0,0.7)',
         backdropFilter: 'blur(10px)',
         display: 'flex',
@@ -17348,7 +17355,7 @@ export default function AddFriendPage() {
             color: CLR_TEXT_DIM,
             fontSize: '0.8rem',
             textAlign: 'center'
-          }}>أدخل الرقم السري للدخول</p>
+          }}>Enter PIN to unlock</p>
               <div style={{
             position: 'relative',
             width: '100%'
@@ -17356,7 +17363,7 @@ export default function AddFriendPage() {
                 <input type={openPinVisible ? 'text' : 'password'} inputMode="numeric" maxLength={8} value={openPin} onChange={e => {
               setOpenPin(e.target.value.replace(/\D/g, '').slice(0, 8));
               setOpenPinError('');
-            }} placeholder="الرقم السري" autoFocus style={{
+            }} placeholder="PIN" autoFocus style={{
               width: '100%',
               boxSizing: 'border-box',
               background: CLR_INPUT_BG,
@@ -17432,7 +17439,7 @@ export default function AddFriendPage() {
 
       {/* ── Active Secret Chat ── */}
       <AnimatePresence>
-        {false && activeChat && <motion.div initial={{
+        {activeChat && <motion.div initial={{
         opacity: 0,
         y: 40
       }} animate={{
@@ -17444,7 +17451,7 @@ export default function AddFriendPage() {
       }} style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 70,
+        zIndex: 10930,
         background: 'hsl(var(--background))',
         display: 'flex',
         flexDirection: 'column',
@@ -18206,7 +18213,7 @@ export default function AddFriendPage() {
         {confirmDeleteChat && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 80,
+        zIndex: 10940,
         background: 'hsl(var(--background) / 0.85)',
         backdropFilter: 'blur(8px)',
         display: 'flex',
@@ -18313,7 +18320,7 @@ export default function AddFriendPage() {
         {confirmLeaveChat && <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 80,
+        zIndex: 10940,
         background: 'hsl(var(--background) / 0.85)',
         backdropFilter: 'blur(8px)',
         display: 'flex',
@@ -20632,6 +20639,27 @@ export default function AddFriendPage() {
                             <Radio size={20} strokeWidth={2.2} />
                           </button>
                         )}
+                        {user && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTextPostsPlusOpen(false);
+                              window.setTimeout(() => setShowComposer(true), 0);
+                            }}
+                            aria-label="New post"
+                            style={{
+                              width: 44, height: 44, borderRadius: '50%',
+                              border: '1px solid rgba(234,179,8,0.65)',
+                              background: 'rgba(234,179,8,0.14)',
+                              color: '#eab308',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                            }}
+                          >
+                            <PenLine size={20} strokeWidth={2.2} />
+                          </button>
+                        )}
                       </div>
                     </>
                   )}
@@ -21080,7 +21108,19 @@ export default function AddFriendPage() {
               <button type="button" onClick={() => setFriendChatListOpen(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <X size={20} />
               </button>
-              <p style={{ margin: 0, color: '#111', fontWeight: 800, fontSize: '1rem', flex: 1 }}>Chats</p>
+              <p style={{ margin: 0, color: '#111', fontWeight: 800, fontSize: '1rem', flex: 1 }}>Secret Chats</p>
+              <button
+                type="button"
+                onClick={() => setShowNewSecret(true)}
+                aria-label="New secret chat"
+                style={{
+                  width: 34, height: 34, borderRadius: '50%', border: '1px solid rgba(0,188,212,0.35)',
+                  background: 'rgba(0,188,212,0.1)', color: '#00BCD4', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}
+              >
+                <Plus size={18} strokeWidth={2.4} />
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -21126,81 +21166,101 @@ export default function AddFriendPage() {
               </button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {friends.length ? friends.map(friend => {
-                // Row-level alert: this friend is calling right now, or left an
-                // unread direct message — either way the row gets a red light
-                // running around its frame the moment the list is opened.
-                const rowRinging = bellRinging && bellIncomingCall.callerId === friend.friendId;
-                const rowUnreadMsg = bellMessageAlert.active && bellMessageAlert.fromId === friend.friendId;
-                const rowAlert = rowRinging || rowUnreadMsg;
-                const rowPresence = presence[friend.friendId] as { online?: boolean; lastSeenAt?: number | string | null } | undefined;
+              {secretChats.length ? secretChats.map(sc => {
+                const isCreator = user && String((sc as any).created_by || (sc as any).createdBy || '') === String(user.id);
                 return (
-                <div key={friend.friendId} style={{ position: 'relative', borderRadius: 14, padding: rowAlert ? 2 : 0 }}>
-                  {rowAlert && (
-                    <>
-                      <style>{`@keyframes stooornaChatRowBorderSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-                      {/* Red light running around the row's frame — same rotating-conic-gradient
-                          trick used by the incoming-call banner, scoped to just this row. */}
-                      <div aria-hidden="true" style={{
-                        position: 'absolute', inset: 0, borderRadius: 14,
-                        background: 'conic-gradient(from 0deg, transparent 0%, #ef4444 14%, transparent 32%)',
-                        animation: 'stooornaChatRowBorderSpin 1.5s linear infinite',
-                      }} />
-                    </>
-                  )}
+                <div key={sc.id} style={{ position: 'relative', borderRadius: 14 }}>
                   <div style={{
-                    position: 'relative', display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 12px', borderRadius: 12,
-                    background: '#f5f6f7', border: rowAlert ? 'none' : '1px solid rgba(0,0,0,0.06)',
+                    position: 'relative', display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '12px 10px', borderRadius: 14,
+                    background: 'rgba(0,188,212,0.06)',
+                    border: '1px solid rgba(0,188,212,0.18)',
                   }}>
                     <button
                       type="button"
-                      onClick={() => openFriendChat(friend)}
-                      style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'start', minWidth: 0 }}
+                      onClick={() => {
+                        setOpeningChat(sc);
+                        setOpenPin('');
+                        setOpenPinError('');
+                        setFriendChatListOpen(false);
+                      }}
+                      style={{
+                        flex: 1, display: 'flex', alignItems: 'center', gap: 12,
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        textAlign: 'left', padding: 0, minWidth: 0,
+                      }}
                     >
-                      <span style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
-                        <UserAvatar name={friend.name ?? friend.username ?? 'User'} avatarUrl={friend.avatarUrl} size={44} online={!!rowPresence?.online} />
-                        <span
-                          aria-hidden
-                          style={{
-                            position: 'absolute', right: 0, bottom: 0, width: 12, height: 12, borderRadius: '50%',
-                            border: '2px solid #fff',
-                            background: rowPresence?.online ? '#22c55e' : '#ef4444',
-                          }}
-                        />
-                      </span>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <p style={{ margin: 0, color: '#111', fontWeight: 700, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {friend.name ?? friend.username ?? 'User'}
+                      <div style={{
+                        width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                        background: 'rgba(0,188,212,0.15)',
+                        border: '2px solid rgba(0,188,212,0.4)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#00BCD4',
+                      }}>
+                        <Lock size={18} strokeWidth={2.2} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, color: '#0a1a1a', fontWeight: 800, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {sc.name || 'Secret chat'}
                         </p>
-                        {rowRinging ? (
-                          <p style={{ margin: 0, color: '#ef4444', fontSize: '0.75rem', fontWeight: 700 }}>Calling…</p>
-                        ) : rowUnreadMsg ? (
-                          <p style={{ margin: 0, color: '#ef4444', fontSize: '0.75rem', fontWeight: 700 }}>New message</p>
-                        ) : rowPresence?.online ? (
-                          <p style={{ margin: 0, color: '#22c55e', fontSize: '0.72rem', fontWeight: 700 }}>Online</p>
-                        ) : rowPresence?.lastSeenAt ? (
-                          <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {formatLastSeen(rowPresence.lastSeenAt as number | string)}
-                          </p>
-                        ) : friend.username ? (
-                          <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.75rem' }}>@{friend.username}</p>
-                        ) : null}
+                        <p style={{ margin: '2px 0 0', color: 'rgba(0,0,0,0.45)', fontSize: '0.72rem' }}>
+                          {typeof (sc as any).member_count === 'number' ? `${(sc as any).member_count} members` : 'Locked · PIN required'}
+                        </p>
                       </div>
                     </button>
                     <button
                       type="button"
-                      aria-label="Options"
-                      onClick={() => setOpenActionMenu(friend.id)}
+                      aria-label="Chat actions"
+                      onClick={() => setOpenActionMenu(`sc-${sc.id}`)}
                       style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent', color: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
                     >
                       <MoreVertical size={18} />
                     </button>
                   </div>
+                  {openActionMenu === `sc-${sc.id}` && (
+                    <div
+                      style={{
+                        position: 'absolute', right: 8, top: 48, zIndex: 5,
+                        background: '#fff', border: '1px solid rgba(0,0,0,0.1)',
+                        borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                        minWidth: 160, overflow: 'hidden',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenActionMenu(null);
+                          setConfirmLeaveChat(sc);
+                        }}
+                        style={{ width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        <LogOut size={15} /> Leave
+                      </button>
+                      {isCreator && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenActionMenu(null);
+                            setConfirmDeleteChat(sc);
+                          }}
+                          style={{ width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 700, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
+                          <Trash2 size={15} /> Delete
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setOpenActionMenu(null)}
+                        style={{ width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 600, color: 'rgba(0,0,0,0.5)' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
                 );
               }) : (
-                <p style={{ color: 'rgba(0,0,0,0.4)', textAlign: 'center', padding: 30, fontSize: '0.85rem' }}>No friends added yet</p>
+                <p style={{ color: 'rgba(0,0,0,0.4)', textAlign: 'center', padding: 30, fontSize: '0.85rem' }}>No secret chats yet. Tap + to create one.</p>
               )}
             </div>
           </motion.div>
