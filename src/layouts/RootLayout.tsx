@@ -949,45 +949,6 @@ function GlobalBottomNavigation() {
     return () => window.removeEventListener('stooorna:open-mini-share-chat', onOpen as EventListener);
   }, [user?.id]);
 
-  useEffect(() => {
-    if (!homeCallIsVideo || homeCallPhase === 'idle') return;
-    let extra: MediaStream | null = null;
-    const bind = () => {
-      try { homeCallCamRef.current?.play?.(localVideoRef.current || undefined); } catch { /* */ }
-      try {
-        const client = homeCallAgoraRef.current;
-        const remotes = client?.remoteUsers || [];
-        for (const ru of remotes) {
-          if (ru.videoTrack) ru.videoTrack.play(remoteVideoRef.current || undefined);
-        }
-      } catch { /* */ }
-    };
-    bind();
-    const t = window.setInterval(bind, 800);
-    (async () => {
-      await new Promise(r => setTimeout(r, 250));
-      const el = localVideoRef.current;
-      if (!el) return;
-      if (el.querySelector('video')) return;
-      try {
-        extra = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-        const v = document.createElement('video');
-        v.autoplay = true;
-        v.muted = true;
-        v.playsInline = true;
-        v.srcObject = extra;
-        v.style.width = '100%';
-        v.style.height = '100%';
-        v.style.objectFit = 'cover';
-        el.appendChild(v);
-      } catch { /* */ }
-    })();
-    return () => {
-      window.clearInterval(t);
-      try { extra?.getTracks().forEach(tr => tr.stop()); } catch { /* */ }
-    };
-  }, [homeCallIsVideo, homeCallPhase]);
-
   function openCompanyChatList() {
     setCompanyChatOpen(true);
     setCompanyIconAlert(false);
