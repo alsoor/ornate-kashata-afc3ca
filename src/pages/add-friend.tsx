@@ -8104,16 +8104,32 @@ function clearVideoCallInvite(toUserId: string) {
   try { localStorage.removeItem(`stooorna_vidcall_invite_${toUserId}`); } catch { /* ignore */ }
 }
 
+
+type VideoIncomingSnap = FriendVideoCallSession | null;
+let videoIncomingSnap: VideoIncomingSnap = null;
+const videoIncomingListeners = new Set<() => void>();
+function setVideoIncomingSnap(next: VideoIncomingSnap) {
+  videoIncomingSnap = next;
+  videoIncomingListeners.forEach(fn => fn());
+}
+function getVideoIncomingSnap(): VideoIncomingSnap { return videoIncomingSnap; }
+function subscribeVideoIncomingSnap(fn: () => void) {
+  videoIncomingListeners.add(fn);
+  return () => { videoIncomingListeners.delete(fn); };
+}
+
 function FriendVideoCallStage({
   userId,
   userName,
   session,
   onClose,
+  minimized = false,
 }: {
   userId: string;
   userName: string | null;
   session: FriendVideoCallSession;
   onClose: () => void;
+  minimized?: boolean;
 }) {
   const localElRef = useRef<HTMLDivElement | null>(null);
   const remoteElRef = useRef<HTMLDivElement | null>(null);
@@ -8242,7 +8258,18 @@ function FriendVideoCallStage({
   const ss = String(seconds % 60).padStart(2, '0');
 
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, zIndex: 12000, background: '#111', color: '#fff' }}>
+    <div style={{
+      position: 'fixed',
+      inset: minimized ? 'auto' : 0,
+      width: minimized ? 1 : undefined,
+      height: minimized ? 1 : undefined,
+      overflow: minimized ? 'hidden' : undefined,
+      opacity: minimized ? 0 : 1,
+      pointerEvents: minimized ? 'none' : 'auto',
+      zIndex: minimized ? 1 : 12000,
+      background: '#111',
+      color: '#fff',
+    }}>
       <div ref={remoteElRef} style={{ position: 'absolute', inset: 0, background: '#1a1a1a' }} />
       {!connected && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, pointerEvents: 'none' }}>
@@ -8251,22 +8278,49 @@ function FriendVideoCallStage({
           <p style={{ margin: 0, opacity: 0.75, fontSize: '0.85rem' }}>{error || status}</p>
         </div>
       )}
-      <div style={{ position: 'absolute', top: 14, left: 14, right: 14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', zIndex: 3 }}>
-        <button type="button" onClick={hangup} aria-label="Minimize" style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer' }}>
+      <div style={{
+        position: 'absolute',
+        top: 'max(10px, env(safe-area-inset-top))',
+        left: 12,
+        right: 12,
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        zIndex: 3,
+        pointerEvents: 'none',
+      }}>
+        <button type="button" onClick={hangup} aria-label="Back" style={{
+          width: 42, height: 42, borderRadius: '50%', border: 'none',
+          background: 'rgba(0,0,0,0.5)', color: '#fff', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+          pointerEvents: 'auto', flexShrink: 0,
+        }}>
           <ArrowLeft size={18} />
         </button>
-        <div style={{ textAlign: 'center' }}>
-          <p style={{ margin: 0, fontWeight: 800, fontSize: '0.95rem' }}>My Live</p>
-          <p style={{ margin: 0, fontSize: '0.72rem', opacity: 0.85 }}>{mm}:{ss}</p>
+        <div style={{ textAlign: 'center', pointerEvents: 'none', paddingTop: 6 }}>
+          <p style={{ margin: 0, fontWeight: 800, fontSize: '0.95rem', lineHeight: 1.2 }}>My Live</p>
+          <p style={{ margin: 0, fontSize: '0.72rem', opacity: 0.85, lineHeight: 1.2 }}>{mm}:{ss}</p>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <button type="button" aria-label="Invite" style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'auto' }}>
+          <button type="button" aria-label="Invite" style={{
+            width: 42, height: 42, borderRadius: '50%', border: 'none',
+            background: 'rgba(0,0,0,0.5)', color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+          }}>
             <Users size={18} />
           </button>
-          <button type="button" onClick={() => void flipCamera()} aria-label="Flip camera" style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer' }}>
+          <button type="button" onClick={() => void flipCamera()} aria-label="Flip camera" style={{
+            width: 42, height: 42, borderRadius: '50%', border: 'none',
+            background: 'rgba(0,0,0,0.5)', color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+          }}>
             <Repeat2 size={18} />
           </button>
-          <button type="button" aria-label="Flash" style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff' }}>
+          <button type="button" aria-label="Flash" style={{
+            width: 42, height: 42, borderRadius: '50%', border: 'none',
+            background: 'rgba(0,0,0,0.5)', color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+          }}>
             <Zap size={18} />
           </button>
         </div>
@@ -8276,9 +8330,9 @@ function FriendVideoCallStage({
         style={{
           position: 'absolute',
           right: 16,
-          bottom: 110,
-          width: 132,
-          height: 186,
+          bottom: 'calc(96px + env(safe-area-inset-bottom))',
+          width: 118,
+          height: 168,
           borderRadius: 16,
           overflow: 'hidden',
           background: '#222',
@@ -8286,29 +8340,77 @@ function FriendVideoCallStage({
           zIndex: 4,
         }}
       />
-      <div style={{ position: 'absolute', left: 16, right: 16, bottom: 22, display: 'flex', justifyContent: 'center', zIndex: 5 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(20,20,20,0.88)', borderRadius: 999, padding: '10px 14px' }}>
-          <button type="button" aria-label="More" style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff' }}>
-            <MoreVertical size={18} />
+      <div style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 5,
+        padding: '0 16px calc(16px + env(safe-area-inset-bottom))',
+        boxSizing: 'border-box',
+      }}>
+        <div style={{
+          width: '100%',
+          maxWidth: 400,
+          margin: '0 auto',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-evenly',
+          background: 'rgba(20,20,20,0.92)',
+          borderRadius: 999,
+          padding: '8px 10px',
+          boxSizing: 'border-box',
+        }}>
+          <button type="button" aria-label="Open chat" onClick={() => {
+            window.dispatchEvent(new CustomEvent('stooorna:open-friend-chat', {
+              detail: {
+                friendId: session.peerId,
+                peerName: session.peerName,
+                peerAvatar: session.peerAvatar,
+              }
+            }));
+            window.dispatchEvent(new CustomEvent('stooorna:video-call-minimize'));
+          }} style={{
+            width: 48, height: 48, borderRadius: '50%', border: 'none',
+            background: 'rgba(255,255,255,0.12)', color: '#fff',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+          }}>
+            <MessageCircle size={20} />
           </button>
           <button type="button" aria-label="Toggle camera" onClick={() => {
             const next = !camOn;
             setCamOn(next);
             try { localTracksRef.current.cam?.setEnabled(next); } catch { /* ignore */ }
-          }} style={{ width: 52, height: 52, borderRadius: '50%', border: 'none', background: camOn ? '#fff' : 'rgba(255,255,255,0.12)', color: camOn ? '#111' : '#fff', cursor: 'pointer' }}>
+          }} style={{
+            width: 48, height: 48, borderRadius: '50%', border: 'none',
+            background: camOn ? '#fff' : 'rgba(255,255,255,0.12)', color: camOn ? '#111' : '#fff',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+          }}>
             <Video size={20} />
           </button>
-          <button type="button" aria-label="Speaker" onClick={() => setSpeakerOn(v => !v)} style={{ width: 52, height: 52, borderRadius: '50%', border: 'none', background: speakerOn ? '#fff' : 'rgba(255,255,255,0.12)', color: speakerOn ? '#111' : '#fff', cursor: 'pointer' }}>
+          <button type="button" aria-label="Speaker" onClick={() => setSpeakerOn(v => !v)} style={{
+            width: 48, height: 48, borderRadius: '50%', border: 'none',
+            background: speakerOn ? '#fff' : 'rgba(255,255,255,0.12)', color: speakerOn ? '#111' : '#fff',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+          }}>
             {speakerOn ? <Volume2 size={20} /> : <VolumeX size={20} />}
           </button>
           <button type="button" aria-label="Mute" onClick={() => {
             const next = !micOn;
             setMicOn(next);
             try { localTracksRef.current.mic?.setEnabled(next); } catch { /* ignore */ }
-          }} style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: micOn ? '#fff' : '#ef4444', cursor: 'pointer' }}>
+          }} style={{
+            width: 48, height: 48, borderRadius: '50%', border: 'none',
+            background: 'rgba(255,255,255,0.12)', color: micOn ? '#fff' : '#ef4444',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+          }}>
             {micOn ? <Mic size={18} /> : <MicOff size={18} />}
           </button>
-          <button type="button" aria-label="Hang up" onClick={hangup} style={{ width: 52, height: 52, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer' }}>
+          <button type="button" aria-label="Hang up" onClick={hangup} style={{
+            width: 48, height: 48, borderRadius: '50%', border: 'none',
+            background: '#ef4444', color: '#fff',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+          }}>
             <PhoneOff size={20} />
           </button>
         </div>
@@ -8327,6 +8429,14 @@ function FriendVideoCallController({
 }) {
   const [session, setSession] = useState<FriendVideoCallSession | null>(null);
   const [incoming, setIncoming] = useState<FriendVideoCallSession | null>(null);
+  const [minimized, setMinimized] = useState(false);
+  const [confirmAnswer, setConfirmAnswer] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+
+  useEffect(() => {
+    setVideoIncomingSnap(incoming);
+    return () => { if (getVideoIncomingSnap() === incoming) setVideoIncomingSnap(null); };
+  }, [incoming]);
 
   useEffect(() => {
     if (!userId) return;
@@ -8335,6 +8445,7 @@ function FriendVideoCallController({
       const peerId = String(d?.friendId || d?.peerId || '');
       if (!peerId || !userId) return;
       setIncoming(null);
+      setMinimized(false);
       setSession({
         role: 'caller',
         peerId,
@@ -8359,9 +8470,17 @@ function FriendVideoCallController({
     const onEnded = () => {
       setIncoming(null);
     };
+    const onMinimize = () => setMinimized(true);
+    const onRestore = () => setMinimized(false);
+    const onPrompt = () => {
+      if (incoming || getVideoIncomingSnap()) setConfirmAnswer(true);
+    };
     window.addEventListener('stooorna:start-video-call', onStart);
+    window.addEventListener('stooorna:video-call-prompt-answer', onPrompt);
     window.addEventListener('stooorna:video-call-invite', onInvite);
     window.addEventListener('stooorna:video-call-ended', onEnded);
+    window.addEventListener('stooorna:video-call-minimize', onMinimize);
+    window.addEventListener('stooorna:video-call-restore', onRestore);
     const poll = window.setInterval(() => {
       try {
         const raw = localStorage.getItem(`stooorna_vidcall_invite_${userId}`);
@@ -8381,8 +8500,11 @@ function FriendVideoCallController({
     }, 1500);
     return () => {
       window.removeEventListener('stooorna:start-video-call', onStart);
+      window.removeEventListener('stooorna:video-call-prompt-answer', onPrompt);
       window.removeEventListener('stooorna:video-call-invite', onInvite);
       window.removeEventListener('stooorna:video-call-ended', onEnded);
+      window.removeEventListener('stooorna:video-call-minimize', onMinimize);
+      window.removeEventListener('stooorna:video-call-restore', onRestore);
       window.clearInterval(poll);
     };
   }, [userId, session]);
@@ -8390,28 +8512,128 @@ function FriendVideoCallController({
   if (!userId) return null;
   return (
     <>
-      {incoming && !session && (
-        createPortal(
-          <div style={{ position: 'fixed', inset: 0, zIndex: 11950, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ width: 'min(360px, 92vw)', background: '#0d1a1c', border: '1px solid rgba(0,188,212,0.3)', borderRadius: 20, padding: 22, textAlign: 'center' }}>
-              <p style={{ margin: '0 0 6px', color: '#00BCD4', fontWeight: 800 }}>Incoming video call</p>
-              <p style={{ margin: '0 0 18px', color: 'rgba(220,240,240,0.85)' }}>{incoming.peerName || 'Friend'}</p>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button type="button" onClick={() => { clearVideoCallInvite(userId); setIncoming(null); }} style={{ flex: 1, padding: 12, borderRadius: 12, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Decline</button>
-                <button type="button" onClick={() => { setSession(incoming); setIncoming(null); }} style={{ flex: 1, padding: 12, borderRadius: 12, border: 'none', background: '#22c55e', color: '#041018', fontWeight: 800, cursor: 'pointer' }}>Accept</button>
-              </div>
+      <style>{`
+        @keyframes stooornaVidShake {
+          0% { transform: rotate(0deg) scale(1); }
+          20% { transform: rotate(-14deg) scale(1.08); }
+          40% { transform: rotate(12deg) scale(1.08); }
+          60% { transform: rotate(-10deg) scale(1.05); }
+          80% { transform: rotate(8deg) scale(1.05); }
+          100% { transform: rotate(0deg) scale(1); }
+        }
+        @keyframes stooornaVidPulse {
+          0% { transform: scale(1); opacity: 0.55; }
+          70% { transform: scale(1.55); opacity: 0; }
+          100% { transform: scale(1.55); opacity: 0; }
+        }
+        @keyframes stooornaVidRing {
+          0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.45); }
+          70% { box-shadow: 0 0 0 16px rgba(34,197,94,0); }
+          100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+        }
+      `}</style>
+      {incoming && !session && !confirmAnswer && !connecting && createPortal(
+        <button
+          type="button"
+          aria-label="Incoming video call"
+          onClick={() => setConfirmAnswer(true)}
+          style={{
+            position: 'fixed',
+            top: 'max(10px, env(safe-area-inset-top))',
+            right: 14,
+            zIndex: 11940,
+            width: 46,
+            height: 46,
+            borderRadius: '50%',
+            border: '2px solid #22c55e',
+            background: 'rgba(8,20,12,0.92)',
+            color: '#22c55e',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: 'stooornaVidShake 0.55s ease-in-out infinite, stooornaVidRing 1.2s ease-out infinite',
+          }}
+        >
+          <Video size={22} color="#22c55e" />
+        </button>,
+        document.body
+      )}
+      {incoming && confirmAnswer && !connecting && !session && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 11960, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 'min(360px, 92vw)', background: '#0d1a1c', border: '1px solid rgba(34,197,94,0.35)', borderRadius: 20, padding: 22, textAlign: 'center' }}>
+            <p style={{ margin: '0 0 8px', color: '#22c55e', fontWeight: 800, fontSize: '1rem' }}>Incoming video call</p>
+            <p style={{ margin: '0 0 16px', color: 'rgba(220,240,240,0.88)', fontSize: '0.9rem' }}>
+              Are you sure you want to answer {incoming.peerName || 'this call'}?
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={() => {
+                setConfirmAnswer(false);
+                setIncoming(null);
+                setVideoIncomingSnap(null);
+                clearVideoCallInvite(userId);
+              }} style={{ flex: 1, padding: 12, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Cancel</button>
+              <button type="button" onClick={() => {
+                setConfirmAnswer(false);
+                setConnecting(true);
+                window.setTimeout(() => {
+                  setSession(incoming);
+                  setIncoming(null);
+                  setVideoIncomingSnap(null);
+                  setConnecting(false);
+                }, 3000);
+              }} style={{ flex: 1, padding: 12, borderRadius: 12, border: 'none', background: '#22c55e', color: '#041018', fontWeight: 800, cursor: 'pointer' }}>Answer</button>
             </div>
-          </div>,
-          document.body
-        )
+          </div>
+        </div>,
+        document.body
+      )}
+      {connecting && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 11970, background: '#0a0a0a', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18 }}>
+          <div style={{ position: 'relative', width: 140, height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(34,197,94,0.35)', animation: 'stooornaVidPulse 1.4s ease-out infinite' }} />
+            <div style={{ position: 'absolute', inset: 12, borderRadius: '50%', border: '2px solid rgba(0,188,212,0.35)', animation: 'stooornaVidPulse 1.4s ease-out 0.35s infinite' }} />
+            <UserAvatar name={incoming?.peerName || session?.peerName || '?'} avatarUrl={incoming?.peerAvatar || session?.peerAvatar || null} size={88} />
+          </div>
+          <p style={{ margin: 0, fontWeight: 800, fontSize: '1.05rem' }}>{incoming?.peerName || session?.peerName || 'Friend'}</p>
+          <p style={{ margin: 0, color: '#22c55e', fontWeight: 700 }}>Connecting…</p>
+        </div>,
+        document.body
       )}
       {session && (
         <FriendVideoCallStage
           userId={userId}
           userName={userName}
           session={session}
-          onClose={() => { setSession(null); clearVideoCallInvite(session.peerId); clearVideoCallInvite(userId); }}
+          minimized={minimized}
+          onClose={() => { setSession(null); setMinimized(false); clearVideoCallInvite(session.peerId); clearVideoCallInvite(userId); }}
         />
+      )}
+      {session && minimized && createPortal(
+        <button
+          type="button"
+          onClick={() => setMinimized(false)}
+          style={{
+            position: 'fixed',
+            right: 14,
+            bottom: 'calc(88px + env(safe-area-inset-bottom))',
+            zIndex: 12100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 14px',
+            borderRadius: 999,
+            border: '1px solid rgba(0,188,212,0.45)',
+            background: 'rgba(6,14,14,0.94)',
+            color: '#00BCD4',
+            fontWeight: 800,
+            cursor: 'pointer',
+          }}
+        >
+          <Video size={16} />
+          Return to call
+        </button>,
+        document.body
       )}
     </>
   );
@@ -13054,6 +13276,8 @@ export default function AddFriendPage() {
   // (thread key 'direct' keeps it separate from the post-share threads keyed 'share').
   const [friendChatListOpen, setFriendChatListOpen] = useState(false);
   const [friendChatPeer, setFriendChatPeer] = useState<Friend | null>(null);
+  const incomingVideoCall = useSyncExternalStore(subscribeVideoIncomingSnap, getVideoIncomingSnap, getVideoIncomingSnap);
+
   const [friendChatMsgs, setFriendChatMsgs] = useState<ShareThreadMsg[]>([]);
   const [friendChatText, setFriendChatText] = useState('');
   const [friendChatCallLogOpen, setFriendChatCallLogOpen] = useState(false);
@@ -13121,6 +13345,25 @@ export default function AddFriendPage() {
     setFriendChatRecordSecs(0);
     clearMessageAlertFor(friend.friendId); // reading the chat clears its red-border alert
   }
+  useEffect(() => {
+    const onOpenFromCall = (e: Event) => {
+      const d = (e as CustomEvent).detail as { friendId?: string; peerName?: string | null; peerAvatar?: string | null } | undefined;
+      const friendId = String(d?.friendId || '');
+      if (!friendId) return;
+      const existing = friends.find(f => String(f.friendId) === friendId);
+      openFriendChat(existing || {
+        id: 0,
+        friendId,
+        name: d?.peerName ?? null,
+        username: null,
+        email: null,
+        avatarUrl: d?.peerAvatar ?? null,
+        since: null,
+      });
+    };
+    window.addEventListener('stooorna:open-friend-chat', onOpenFromCall);
+    return () => window.removeEventListener('stooorna:open-friend-chat', onOpenFromCall);
+  }, [friends, user?.id]);
   useEffect(() => {
     if (!user?.id || !friendChatPeer) return;
     const refresh = () => {
@@ -19679,9 +19922,18 @@ export default function AddFriendPage() {
                   ) : null;
                 })()}
               </div>
+              {(() => {
+                const incomingVid = incomingVideoCall;
+                const ringingHere = !!(incomingVid && String(incomingVid.peerId) === String(friendChatPeer.friendId));
+                return (
               <button type="button" aria-label="Video call" onClick={() => {
                 if (!friendChatPeer) return;
                 const fid = friendChatPeer.friendId;
+                const incomingNow = incomingVideoCall;
+                if (incomingNow && String(incomingNow.peerId) === String(fid)) {
+                  window.dispatchEvent(new CustomEvent('stooorna:video-call-prompt-answer'));
+                  return;
+                }
                 window.dispatchEvent(new CustomEvent('stooorna:start-video-call', {
                   detail: {
                     friendId: fid,
@@ -19691,9 +19943,24 @@ export default function AddFriendPage() {
                     video: true,
                   }
                 }));
-              }} style={{ background: 'none', border: 'none', color: '#111', cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Video size={19} />
+              }} style={{
+                background: ringingHere ? 'rgba(34,197,94,0.16)' : 'none',
+                border: ringingHere ? '1.5px solid #22c55e' : 'none',
+                color: ringingHere ? '#22c55e' : '#111',
+                cursor: 'pointer',
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                animation: ringingHere ? 'stooornaVidShake 0.55s ease-in-out infinite' : 'none',
+              }}>
+                <Video size={19} color={ringingHere ? '#22c55e' : 'currentColor'} />
               </button>
+                );
+              })()}
               <button
                 type="button"
                 aria-label="Call history"
