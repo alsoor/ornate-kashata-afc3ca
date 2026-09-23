@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import {
-  ArrowLeft, Send, Mic, Trash2, Play, Pause, Check, X, Image as ImageIcon, Video as VideoIcon,
+  ArrowLeft, Send, Mic, Trash2, Play, Pause, Check, X, Plus, Smile,
+  Image as ImageIcon, Video as VideoIcon, MapPin, Reply,
 } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
 import { useSession } from '@/lib/auth/auth-client';
@@ -15,11 +16,19 @@ import { usePresenceQuery, useHeartbeat } from '@/hooks/usePresence';
      <DirectChatScreen
        peer={friendChatPeer}
        onClose={() => setFriendChatPeer(null)}
-       headerActions={...}      // optional: call / history / options buttons
+       headerActions={...}      // optional: extra buttons on the right of the header
        onAvatarClick={...}      // optional: open the full-size profile photo
        peerTyping={...}         // optional: show the "type..." status
        onTyping={...}           // optional: called while the user is typing
      />
+
+   Features:
+     - text / voice / photo / video / location messages
+     - timestamps rendered in the flow of each bubble (never overlap the text)
+     - "+" menu (Photo, Video, Location) and an emoji panel
+     - tap-to-record voice messages (trash to cancel, black send button to send)
+     - swipe a message to the right to reply, replies are quoted inside the bubble
+     - long-press a message to react
 
    Storage: reuses the exact same localStorage key format as the old
    "direct" share-thread (`stooorna_share_thread_<a>_<b>_direct`) and fires
@@ -28,8 +37,9 @@ import { usePresenceQuery, useHeartbeat } from '@/hooks/usePresence';
    working with zero changes.
 
    Backend: GET/POST /api/messages — same endpoint the app already has,
-   just now also sending `type` + `duration` so voice/image/video actually
-   leave the device (the old code only ever sent `body` for text).
+   sending `type` + `duration` so voice/image/video actually leave the device.
+   A reply is carried inside the text body as a small encoded prefix, so the
+   quoted message also shows up on the other person's device.
    ════════════════════════════════════════════════════════════════════════ */
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -50,10 +60,45 @@ interface DirectMsg {
   duration?: number | null;
   fileName?: string | null;
   kind?: string;
+  replyToFromId?: string | null;
   replyToBody?: string | null;
   at: number;
   readAt?: number | null;
   reactions?: { emoji: string; fromId: string }[];
+}
+
+// ─── Reply codec (a reply travels inside the text body) ─────────────────
+// Wire format: <open>r:<fromId>:<quote><close><text> — every part is URI-encoded,
+// so the closing marker can never appear inside the payload.
+const REPLY_RE = /^\u27e6r:([^:\u27e7]*):([^\u27e7]*)\u27e7([\s\S]*)$/;
+
+function encodeReplyBody(body: string, quoteFromId: string, quoteText: string): string {
+  return `\u27e6r:${encodeURIComponent(quoteFromId)}:${encodeURIComponent(quoteText.slice(0, 120))}\u27e7${body}`;
+}
+
+function decodeReplyBody(body: string): { fromId: string; quote: string; text: string } | null {
+  const m = REPLY_RE.exec(body || '');
+  if (!m) return null;
+  try {
+    return { fromId: decodeURIComponent(m[1]), quote: decodeURIComponent(m[2]), text: m[3] };
+  } catch { return null; }
+}
+
+// ─── Location helpers (a shared location is a plain text message with a maps link) ─
+const LOCATION_RE = /^https:\/\/www\.google\.com\/maps\?q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/;
+
+function parseLocation(body: string): { lat: string; lng: string } | null {
+  const m = LOCATION_RE.exec((body || '').trim());
+  return m ? { lat: m[1], lng: m[2] } : null;
+}
+
+function previewOf(m: DirectMsg): string {
+  if (m.type === 'image') return 'Photo';
+  if (m.type === 'video') return 'Video';
+  if (m.type === 'voice') return 'Voice message';
+  if (m.type === 'file') return m.fileName || 'File';
+  if (parseLocation(m.body)) return 'Location';
+  return (m.body || '').slice(0, 120);
 }
 
 // ─── Storage (compatible with the existing friend-list previews) ───────
@@ -70,9 +115,20 @@ function loadThread(a: string, b: string): DirectMsg[] {
   } catch { return []; }
 }
 
+// Keeps a single copy of every id (a server id can briefly exist twice while a send resolves)
+function dedupeById(list: DirectMsg[]): DirectMsg[] {
+  const map = new Map<string, DirectMsg>();
+  for (const m of list) {
+    const prev = map.get(m.id);
+    if (!prev) { map.set(m.id, m); continue; }
+    map.set(m.id, { ...prev, ...m, reactions: m.reactions?.length ? m.reactions : prev.reactions });
+  }
+  return Array.from(map.values());
+}
+
 function saveThread(a: string, b: string, list: DirectMsg[]) {
   try {
-    localStorage.setItem(threadKey(a, b), JSON.stringify(list.slice(-300)));
+    localStorage.setItem(threadKey(a, b), JSON.stringify(dedupeById(list).slice(-300)));
     window.dispatchEvent(new CustomEvent('stooorna:share-thread', { detail: { a, b, postId: 'direct' } }));
   } catch { /* ignore */ }
 }
@@ -84,12 +140,16 @@ type ApiRow = {
 };
 
 function mapRow(row: ApiRow): DirectMsg {
+  const type = ((row.type as MsgType) || 'text');
+  const rep = type === 'text' ? decodeReplyBody(row.body) : null;
   return {
     id: `db-${row.id}`,
     fromId: row.senderId,
-    type: (row.type as MsgType) || 'text',
-    body: row.body,
+    type,
+    body: rep ? rep.text : row.body,
     duration: row.duration ?? null,
+    replyToFromId: rep ? rep.fromId : null,
+    replyToBody: rep ? rep.quote : null,
     at: new Date(row.createdAt).getTime(),
     readAt: row.readAt ? new Date(row.readAt).getTime() : null,
   };
@@ -116,7 +176,13 @@ async function pullDown(meId: string, peerId: string) {
     return prev?.reactions?.length ? { ...m, reactions: prev.reactions } : m;
   });
   const serverIds = new Set(serverRows.map(m => m.id));
-  const localOnly = local.filter(m => !serverIds.has(m.id) && !m.id.startsWith('db-'));
+  // A message that was just sent can show up from the server before its local copy
+  // is renamed; drop that local copy instead of showing the message twice.
+  const localOnly = local.filter(m => {
+    if (serverIds.has(m.id) || m.id.startsWith('db-')) return false;
+    return !serverRows.some(s =>
+      s.fromId === m.fromId && s.type === m.type && s.body === m.body && Math.abs(s.at - m.at) < 60000);
+  });
   const merged = [...serverRows, ...localOnly].sort((x, y) => x.at - y.at);
   saveThread(meId, peerId, merged);
 }
@@ -165,12 +231,14 @@ async function sendToServer(meId: string, peerId: string, localId: string, type:
   } catch { /* stays local-only until the thread is next pulled */ }
 }
 
-function pushLocal(meId: string, peerId: string, msg: Omit<DirectMsg, 'id' | 'at'>): DirectMsg[] {
+// `wireBody` is what is sent to the server when it differs from what is stored locally
+// (used to carry the reply quote inside the text body).
+function pushLocal(meId: string, peerId: string, msg: Omit<DirectMsg, 'id' | 'at'>, wireBody?: string): DirectMsg[] {
   const list = loadThread(meId, peerId);
   const next: DirectMsg = { id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: Date.now(), ...msg };
   const merged = [...list, next];
   saveThread(meId, peerId, merged);
-  void sendToServer(meId, peerId, next.id, next.type, next.body, next.duration);
+  void sendToServer(meId, peerId, next.id, next.type, wireBody ?? next.body, next.duration);
   return merged;
 }
 
@@ -191,6 +259,13 @@ function toggleReaction(meId: string, peerId: string, msgId: string, emoji: stri
 
 // ─── Small formatting helpers ───────────────────────────────────────────
 const REACT_EMOJIS = ['❤️', '😂', '😮', '😢', '🙏', '👍'];
+
+const EMOJI_PANEL = (
+  '😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 😉 😍 🥰 😘 😗 😋 😜 🤪 😎 🤩 🥳 😏 😒 😞 😔 😟 😕 🙁 😣 ' +
+  '😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤔 🤭 🤫 😶 😐 😑 😬 🙄 😯 ' +
+  '😮 😲 🥱 😴 🤤 😪 😵 🤐 🥴 🤢 🤮 🤧 😷 ❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 💕 💖 💯 🔥 ✨ 🎉 ' +
+  '👍 👎 👏 🙌 🙏 💪 👋 ✋ 👌 ✌️ 🤞 🤝 👀 🌹 ☕ 🎂 🎁 ⭐ ☀️ 🌙'
+).split(' ');
 
 function dayLabel(ts: number): string {
   const d = new Date(ts);
@@ -236,6 +311,19 @@ const C = {
   green: '#25D366',
   blueTick: '#34B7F1',
   border: 'rgba(0,0,0,0.08)',
+  action: '#000000',
+};
+
+// Black circle with a white icon — used by the mic and the send buttons
+const ROUND_BTN: React.CSSProperties = {
+  width: 40, height: 40, borderRadius: '50%', border: 'none', flexShrink: 0,
+  background: C.action, color: '#ffffff',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0,
+};
+
+const ICON_BTN: React.CSSProperties = {
+  background: 'none', border: 'none', color: '#54656f', cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, flexShrink: 0,
 };
 
 // ─── Voice bubble player ────────────────────────────────────────────────
@@ -245,18 +333,23 @@ function VoiceBubble({ url, duration, isMe }: { url: string; duration: number | 
   const [cur, setCur] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  useEffect(() => () => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+  }, []);
+
   function toggle() {
     if (!audioRef.current) {
       audioRef.current = new Audio(url);
       audioRef.current.ontimeupdate = () => {
-        const a = audioRef.current!;
-        setProgress(a.duration ? a.currentTime / a.duration : 0);
+        const a = audioRef.current;
+        if (!a) return;
+        setProgress(a.duration && Number.isFinite(a.duration) ? a.currentTime / a.duration : 0);
         setCur(a.currentTime);
       };
       audioRef.current.onended = () => { setPlaying(false); setProgress(0); setCur(0); };
     }
     if (playing) { audioRef.current.pause(); setPlaying(false); }
-    else { void audioRef.current.play(); setPlaying(true); }
+    else { void audioRef.current.play().catch(() => setPlaying(false)); setPlaying(true); }
   }
 
   const total = duration ?? 0;
@@ -303,16 +396,23 @@ function ReactionPicker({ onPick }: { onPick: (emoji: string) => void }) {
 }
 
 // ─── Message bubble ──────────────────────────────────────────────────────
+// - the timestamp lives in its own row inside the bubble, so it never covers the message
+// - dragging the bubble to the right triggers a reply (swipe to reply)
 function Bubble({
-  msg, isMe, onReact, showPickerFor, setShowPickerFor,
+  msg, isMe, meId, peerName, onReact, onReply, showPickerFor, setShowPickerFor,
 }: {
-  msg: DirectMsg; isMe: boolean;
+  msg: DirectMsg; isMe: boolean; meId: string; peerName: string;
   onReact: (id: string, emoji: string) => void;
+  onReply: (msg: DirectMsg) => void;
   showPickerFor: string | null; setShowPickerFor: (id: string | null) => void;
 }) {
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startPress = () => { pressTimer.current = setTimeout(() => setShowPickerFor(msg.id), 450); };
   const cancelPress = () => { if (pressTimer.current) clearTimeout(pressTimer.current); };
+
+  const x = useMotionValue(0);
+  const hintOpacity = useTransform(x, [0, 56], [0, 1]);
+  const hintScale = useTransform(x, [0, 56], [0.6, 1]);
 
   const grouped = useMemo(() => {
     const rs = msg.reactions || [];
@@ -322,13 +422,36 @@ function Bubble({
   }, [msg.reactions]);
 
   const isRead = !!msg.readAt;
+  const loc = msg.type === 'text' ? parseLocation(msg.body) : null;
+  const quoteName = msg.replyToFromId
+    ? (String(msg.replyToFromId) === String(meId) ? 'You' : peerName)
+    : null;
+  const isMedia = msg.type === 'image' || msg.type === 'video';
 
   return (
-    <div style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', marginBottom: grouped.length ? 14 : 4, padding: '0 10px' }}>
-      <div
+    <div style={{ position: 'relative', display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start', marginBottom: grouped.length ? 14 : 4, padding: '0 10px' }}>
+      {/* Reply hint revealed while dragging */}
+      <motion.div
+        aria-hidden
+        style={{
+          position: 'absolute', left: 16, top: '50%', marginTop: -14, width: 28, height: 28, borderRadius: '50%',
+          background: 'rgba(0,0,0,0.12)', color: '#54656f', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none', opacity: hintOpacity, scale: hintScale,
+        }}
+      >
+        <Reply size={16} />
+      </motion.div>
+
+      <motion.div
+        drag="x"
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={{ left: 0, right: 0.45 }}
+        dragSnapToOrigin
+        onDragStart={cancelPress}
+        onDragEnd={(_, info) => { if (info.offset.x > 56) onReply(msg); }}
         onMouseDown={startPress} onMouseUp={cancelPress} onMouseLeave={cancelPress}
         onTouchStart={startPress} onTouchEnd={cancelPress}
-        style={{ position: 'relative', maxWidth: '75%' }}
+        style={{ x, position: 'relative', maxWidth: '75%' }}
       >
         <AnimatePresence>
           {showPickerFor === msg.id && (
@@ -339,27 +462,44 @@ function Bubble({
         <div style={{
           background: isMe ? C.bubbleMe : C.bubbleThem,
           borderRadius: 10,
-          padding: msg.type === 'text' ? '6px 8px' : 6,
+          padding: isMedia ? 4 : '6px 8px',
           boxShadow: '0 1px 1px rgba(0,0,0,0.08)',
           position: 'relative',
         }}>
           {msg.replyToBody && msg.type === 'text' && (
             <div style={{
-              borderLeft: `3px solid ${C.green}`, background: 'rgba(0,0,0,0.05)', borderRadius: 6,
-              padding: '4px 8px', marginBottom: 4, fontSize: '0.78rem', color: C.textDim,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220,
+              borderLeft: `3px solid ${C.green}`, background: 'rgba(0,0,0,0.06)', borderRadius: 6,
+              padding: '4px 8px', marginBottom: 4, maxWidth: 240, overflow: 'hidden',
             }}>
-              {msg.replyToBody}
+              {quoteName && (
+                <p style={{ margin: 0, fontSize: '0.72rem', fontWeight: 700, color: '#128C7E' }}>{quoteName}</p>
+              )}
+              <p style={{ margin: 0, fontSize: '0.78rem', color: C.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {msg.replyToBody}
+              </p>
             </div>
           )}
-          {msg.type === 'text' && (
-            <p style={{ margin: 0, color: C.text, fontSize: '0.92rem', whiteSpace: 'pre-wrap', lineHeight: 1.4, paddingRight: 40 }}>
+
+          {msg.type === 'text' && !loc && (
+            <p style={{ margin: 0, color: C.text, fontSize: '0.92rem', whiteSpace: 'pre-wrap', lineHeight: 1.4, wordBreak: 'break-word' }}>
               {msg.body}
             </p>
           )}
+          {loc && (
+            <a href={msg.body} target="_blank" rel="noreferrer"
+              style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: C.text, minWidth: 170, padding: '2px 2px 0' }}>
+              <span style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(0,0,0,0.85)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <MapPin size={18} />
+              </span>
+              <span style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>Location</span>
+                <span style={{ fontSize: '0.72rem', color: '#128C7E', textDecoration: 'underline' }}>Open in Maps</span>
+              </span>
+            </a>
+          )}
           {msg.type === 'file' && (
             <a href={msg.body} target="_blank" rel="noreferrer" download={msg.fileName || undefined}
-              style={{ display: 'block', color: '#075E54', fontSize: '0.88rem', textDecoration: 'underline', padding: '2px 4px 8px', paddingRight: 40, wordBreak: 'break-all' }}>
+              style={{ display: 'block', color: '#075E54', fontSize: '0.88rem', textDecoration: 'underline', padding: '2px 4px', wordBreak: 'break-all' }}>
               {msg.fileName || 'File'}
             </a>
           )}
@@ -371,16 +511,16 @@ function Bubble({
           )}
           {msg.type === 'voice' && <VoiceBubble url={msg.body} duration={msg.duration} isMe={isMe} />}
 
-          <span style={{
-            position: 'absolute', bottom: 4, right: 8, display: 'flex', alignItems: 'center', gap: 3,
-            fontSize: '0.62rem', color: msg.type === 'image' || msg.type === 'video' ? '#fff' : C.textDim,
-            textShadow: msg.type === 'image' || msg.type === 'video' ? '0 1px 2px rgba(0,0,0,0.6)' : 'none',
+          {/* Timestamp row — in the normal flow, always fully visible */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3, marginTop: 2,
+            padding: isMedia ? '0 4px 2px' : 0, fontSize: '0.66rem', color: C.textDim, lineHeight: 1.2,
           }}>
-            {timeLabel(msg.at)}
+            <span>{timeLabel(msg.at)}</span>
             {isMe && (
-              <Check size={12} style={{ marginLeft: 1 }} color={isRead ? C.blueTick : 'rgba(0,0,0,0.4)'} strokeWidth={3} />
+              <Check size={12} color={isRead ? C.blueTick : 'rgba(0,0,0,0.4)'} strokeWidth={3} />
             )}
-          </span>
+          </div>
         </div>
 
         {grouped.length > 0 && (
@@ -394,144 +534,93 @@ function Bubble({
             ))}
           </div>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 }
 
-// ─── Voice recorder (press-and-hold mic, slide-left to cancel — WhatsApp) ─
-function VoiceRecorderButton({ onRecorded }: { onRecorded: (blob: Blob, seconds: number) => void }) {
+// ─── Voice recorder hook (tap the mic to start, trash to cancel, send to finish) ─
+function useVoiceRecorder(
+  onDone: (blob: Blob, seconds: number) => void,
+  onError: (message: string) => void,
+) {
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
-  const [dragX, setDragX] = useState(0);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startXRef = useRef(0);
-  const cancelledRef = useRef(false);
-  const secondsRef = useRef(0);
-  // True while the finger / mouse is still down. getUserMedia() is async, so the
-  // button can be released before the microphone is ready; this flag lets start()
-  // notice that and bail out instead of recording forever.
-  const heldRef = useRef(false);
+  const startedAtRef = useRef(0);
+  const sendRef = useRef(false);
   const startingRef = useRef(false);
+  const onDoneRef = useRef(onDone);
+  const onErrorRef = useRef(onError);
+  onDoneRef.current = onDone;
+  onErrorRef.current = onError;
 
-  const CANCEL_THRESHOLD = -80;
-
-  async function start() {
+  const start = useCallback(async () => {
     if (startingRef.current || mediaRef.current) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      onErrorRef.current('Voice recording is not supported on this device');
+      return;
+    }
     startingRef.current = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!heldRef.current) {
-        stream.getTracks().forEach(t => t.stop());
-        return;
-      }
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
-      const rec = new MediaRecorder(stream, { mimeType });
+      const canCheck = typeof MediaRecorder.isTypeSupported === 'function';
+      const mimeType = canCheck
+        ? (MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+          : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '')
+        : '';
+      const rec = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       chunksRef.current = [];
-      cancelledRef.current = false;
-      rec.ondataavailable = e => { if (e.data.size) chunksRef.current.push(e.data); };
+      sendRef.current = false;
+      rec.ondataavailable = e => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
       rec.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
         mediaRef.current = null;
-        const secs = secondsRef.current;
-        if (!cancelledRef.current && chunksRef.current.length && secs >= 1) {
-          const blob = new Blob(chunksRef.current, { type: rec.mimeType || mimeType });
-          onRecorded(blob, secs);
+        const elapsedMs = Date.now() - startedAtRef.current;
+        const chunks = chunksRef.current;
+        chunksRef.current = [];
+        if (!sendRef.current) return;
+        if (!chunks.length || elapsedMs < 800) {
+          onErrorRef.current('Recording is too short');
+          return;
         }
+        const blob = new Blob(chunks, { type: rec.mimeType || mimeType || 'audio/webm' });
+        onDoneRef.current(blob, Math.max(1, Math.round(elapsedMs / 1000)));
       };
       mediaRef.current = rec;
-      rec.start(100);
-      secondsRef.current = 0;
-      setRecording(true);
+      startedAtRef.current = Date.now();
+      rec.start(250);
       setSeconds(0);
+      setRecording(true);
       timerRef.current = setInterval(() => {
-        secondsRef.current += 1;
-        setSeconds(secondsRef.current);
-      }, 1000);
-    } catch { /* microphone permission denied */ }
-    finally {
+        setSeconds(Math.floor((Date.now() - startedAtRef.current) / 1000));
+      }, 500);
+    } catch {
+      onErrorRef.current('Microphone access was denied or is unavailable');
+    } finally {
       startingRef.current = false;
     }
-  }
+  }, []);
 
-  function finish(cancel: boolean) {
-    heldRef.current = false;
-    cancelledRef.current = cancel;
+  const stop = useCallback((send: boolean) => {
+    sendRef.current = send;
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     const rec = mediaRef.current;
     if (rec && rec.state !== 'inactive') rec.stop();
     setRecording(false);
-    setDragX(0);
-  }
-
-  function onPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-    startXRef.current = e.clientX;
-    heldRef.current = true;
-    void start();
-  }
-  function onPointerMove(e: React.PointerEvent) {
-    if (!recording) return;
-    const dx = Math.min(0, e.clientX - startXRef.current);
-    setDragX(dx);
-  }
-  function onPointerUp() {
-    heldRef.current = false;
-    if (!recording) return;
-    finish(dragX <= CANCEL_THRESHOLD);
-  }
+    setSeconds(0);
+  }, []);
 
   useEffect(() => () => {
+    sendRef.current = false;
     if (timerRef.current) clearInterval(timerRef.current);
-    cancelledRef.current = true;
     const rec = mediaRef.current;
     if (rec && rec.state !== 'inactive') rec.stop();
   }, []);
 
-  return (
-    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-      <AnimatePresence>
-        {recording && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{
-              position: 'absolute', right: 48, top: '50%', transform: 'translateY(-50%)',
-              display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-              background: '#fff', padding: '6px 12px', borderRadius: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            }}
-          >
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />
-            <span style={{ fontSize: '0.8rem', color: C.text, fontWeight: 600 }}>{fmtDur(seconds)}</span>
-            <span style={{ fontSize: '0.75rem', color: dragX <= CANCEL_THRESHOLD ? '#ef4444' : C.textDim }}>
-              {dragX <= CANCEL_THRESHOLD ? 'Release to cancel' : '← Slide to cancel'}
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <button
-        type="button"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={() => finish(true)}
-        onContextMenu={e => e.preventDefault()}
-        style={{
-          width: 40, height: 40, borderRadius: '50%', border: 'none', flexShrink: 0,
-          background: recording ? '#ef4444' : C.green, color: '#fff',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-          transform: recording ? 'scale(1.15)' : 'scale(1)', transition: 'transform 0.15s',
-          touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none',
-        }}
-        aria-label="Hold to record a voice message"
-      >
-        <Mic size={18} />
-      </button>
-    </div>
-  );
+  return { recording, seconds, start, stop };
 }
 
 // ─── Main screen ─────────────────────────────────────────────────────────
@@ -550,13 +639,28 @@ export default function DirectChatScreen({
   useHeartbeat(!!user);
   const presenceMap = usePresenceQuery(peer?.friendId ? [peer.friendId] : []) as Record<string, { online?: boolean; lastSeenAt?: number | string | null }>;
   const peerPresence = presenceMap[peer.friendId];
+  const peerName = peer.name ?? peer.username ?? 'User';
 
   const [msgs, setMsgs] = useState<DirectMsg[]>([]);
   const [text, setText] = useState('');
   const [showPickerFor, setShowPickerFor] = useState<string | null>(null);
+  const [showPlus, setShowPlus] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [replyTo, setReplyTo] = useState<DirectMsg | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const imgInputRef = useRef<HTMLInputElement | null>(null);
   const vidInputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  }, []);
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
   const refresh = useCallback(() => {
     if (!user?.id) return;
@@ -594,8 +698,23 @@ export default function DirectChatScreen({
 
   function sendText() {
     if (!user?.id || !text.trim()) return;
-    pushLocal(user.id, peer.friendId, { fromId: user.id, type: 'text', body: text.trim() });
+    const body = text.trim();
+    const target = replyTo;
+    const quote = target ? previewOf(target) : null;
+    pushLocal(
+      user.id,
+      peer.friendId,
+      {
+        fromId: user.id,
+        type: 'text',
+        body,
+        replyToFromId: target ? target.fromId : null,
+        replyToBody: quote,
+      },
+      target && quote ? encodeReplyBody(body, target.fromId, quote) : undefined,
+    );
     setText('');
+    setReplyTo(null);
     refresh();
   }
 
@@ -605,20 +724,53 @@ export default function DirectChatScreen({
     refresh();
   }
 
+  function handleReply(msg: DirectMsg) {
+    setReplyTo(msg);
+    setShowPlus(false);
+    setShowEmoji(false);
+    setTimeout(() => inputRef.current?.focus(), 60);
+  }
+
   async function handleVoice(blob: Blob, seconds: number) {
     if (!user?.id) return;
-    const url = await uploadMedia(blob, `voice-${Date.now()}.webm`);
-    if (!url) return; // upload failed — nothing sent rather than a broken local-only bubble
+    const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
+    setUploading(true);
+    const url = await uploadMedia(blob, `voice-${Date.now()}.${ext}`);
+    setUploading(false);
+    if (!url) { showToast('Could not send the voice message. Please try again.'); return; }
     pushLocal(user.id, peer.friendId, { fromId: user.id, type: 'voice', body: url, duration: seconds });
     refresh();
   }
 
+  const recorder = useVoiceRecorder(handleVoice, showToast);
+
   async function handleMediaFile(file: File, kind: 'image' | 'video') {
     if (!user?.id) return;
+    setUploading(true);
     const url = await uploadMedia(file, file.name);
-    if (!url) return;
+    setUploading(false);
+    if (!url) { showToast(`Could not send the ${kind === 'image' ? 'photo' : 'video'}. Please try again.`); return; }
     pushLocal(user.id, peer.friendId, { fromId: user.id, type: kind, body: url });
     refresh();
+  }
+
+  function handleLocation() {
+    if (!user?.id) return;
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      showToast('Location is not available on this device');
+      return;
+    }
+    showToast('Getting your location...');
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const url = `https://www.google.com/maps?q=${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
+        pushLocal(user.id, peer.friendId, { fromId: user.id, type: 'text', body: url });
+        setToast(null);
+        refresh();
+      },
+      () => showToast('Could not get your location. Check the location permission.'),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
+    );
   }
 
   // Group messages into day sections
@@ -633,11 +785,19 @@ export default function DirectChatScreen({
     return out;
   }, [msgs]);
 
+  const plusItems: { key: string; label: string; icon: React.ReactNode; run: () => void }[] = [
+    { key: 'photo', label: 'Photo', icon: <ImageIcon size={20} />, run: () => imgInputRef.current?.click() },
+    { key: 'video', label: 'Video', icon: <VideoIcon size={20} />, run: () => vidInputRef.current?.click() },
+    { key: 'location', label: 'Location', icon: <MapPin size={20} />, run: handleLocation },
+  ];
+
+  const statusText = uploading ? 'Sending...' : toast;
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 24 }}
       style={{ position: 'fixed', inset: 0, zIndex: 10860, display: 'flex', flexDirection: 'column', background: C.bg }}
-      onClick={() => setShowPickerFor(null)}
+      onClick={() => { setShowPickerFor(null); setShowPlus(false); }}
     >
       {/* Header */}
       <div style={{
@@ -658,7 +818,7 @@ export default function DirectChatScreen({
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontWeight: 700, fontSize: '0.98rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {peer.name ?? peer.username ?? 'User'}
+            {peerName}
           </p>
           <p style={{
             margin: 0, fontSize: '0.72rem',
@@ -685,7 +845,10 @@ export default function DirectChatScreen({
                 key={m.id}
                 msg={m}
                 isMe={!!user?.id && String(m.fromId) === String(user.id)}
+                meId={user?.id ?? ''}
+                peerName={peerName}
                 onReact={handleReact}
+                onReply={handleReply}
                 showPickerFor={showPickerFor}
                 setShowPickerFor={setShowPickerFor}
               />
@@ -699,12 +862,56 @@ export default function DirectChatScreen({
         )}
       </div>
 
-      {/* Composer */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-        paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
-        background: C.headerBg, borderTop: `1px solid ${C.border}`, flexShrink: 0,
-      }} onClick={e => e.stopPropagation()}>
+      {/* Bottom area: status toast, reply preview, emoji panel, composer */}
+      <div style={{ position: 'relative', flexShrink: 0, background: C.headerBg, borderTop: `1px solid ${C.border}` }} onClick={e => e.stopPropagation()}>
+        <AnimatePresence>
+          {statusText && (
+            <motion.div
+              key="status-toast"
+              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
+              style={{ position: 'absolute', left: 0, right: 0, bottom: '100%', marginBottom: 8, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 25 }}
+            >
+              <span style={{ background: 'rgba(0,0,0,0.82)', color: '#fff', fontSize: '0.78rem', padding: '7px 14px', borderRadius: 16, maxWidth: '86%', textAlign: 'center' }}>
+                {statusText}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Reply preview */}
+        {replyTo && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px 0' }}>
+            <div style={{ flex: 1, minWidth: 0, borderLeft: `4px solid ${C.green}`, background: '#f0f2f5', borderRadius: 8, padding: '6px 10px' }}>
+              <p style={{ margin: 0, fontSize: '0.74rem', fontWeight: 700, color: '#128C7E' }}>
+                {user?.id && String(replyTo.fromId) === String(user.id) ? 'You' : peerName}
+              </p>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: C.textDim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {previewOf(replyTo)}
+              </p>
+            </div>
+            <button type="button" onClick={() => setReplyTo(null)} aria-label="Cancel reply" style={ICON_BTN}>
+              <X size={20} />
+            </button>
+          </div>
+        )}
+
+        {/* Emoji panel */}
+        {showEmoji && !recorder.recording && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2, padding: '8px 10px 0', maxHeight: 170, overflowY: 'auto' }}>
+            {EMOJI_PANEL.map((em, i) => (
+              <button
+                key={`${em}-${i}`}
+                type="button"
+                onClick={() => { setText(t => t + em); onTyping?.(); }}
+                style={{ border: 'none', background: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: 4, lineHeight: 1, width: '12.5%', minWidth: 38 }}
+              >
+                {em}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Composer */}
         <input ref={imgInputRef} type="file" accept="image/*" hidden onChange={e => {
           const f = e.target.files?.[0]; e.target.value = '';
           if (f) void handleMediaFile(f, 'image');
@@ -713,36 +920,113 @@ export default function DirectChatScreen({
           const f = e.target.files?.[0]; e.target.value = '';
           if (f) void handleMediaFile(f, 'video');
         }} />
-        <button type="button" onClick={() => imgInputRef.current?.click()} style={{ background: 'none', border: 'none', color: '#54656f', cursor: 'pointer', display: 'flex' }} aria-label="Image">
-          <ImageIcon size={22} />
-        </button>
-        <button type="button" onClick={() => vidInputRef.current?.click()} style={{ background: 'none', border: 'none', color: '#54656f', cursor: 'pointer', display: 'flex' }} aria-label="Video">
-          <VideoIcon size={22} />
-        </button>
-        <div style={{ flex: 1 }}>
-          <input
-            value={text}
-            onChange={e => {
-              setText(e.target.value);
-              if (e.target.value.trim()) onTyping?.();
-            }}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); } }}
-            placeholder="Message"
-            style={{
-              width: '100%', boxSizing: 'border-box', borderRadius: 20, padding: '9px 14px',
-              background: '#f0f2f5', border: 'none', outline: 'none', fontSize: '0.9rem', color: C.text,
-            }}
-          />
-        </div>
-        {text.trim() ? (
-          <button type="button" onClick={sendText} style={{
-            width: 40, height: 40, borderRadius: '50%', border: 'none', background: C.green, color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
-          }} aria-label="Send">
-            <Send size={17} />
-          </button>
+
+        {recorder.recording ? (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+            paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+          }}>
+            <button type="button" onClick={() => recorder.stop(false)} aria-label="Cancel recording" style={{ ...ICON_BTN, color: '#ef4444', padding: 6 }}>
+              <Trash2 size={22} />
+            </button>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, borderRadius: 20, padding: '9px 14px', background: '#f0f2f5' }}>
+              <motion.span
+                animate={{ opacity: [1, 0.25, 1] }}
+                transition={{ duration: 1, repeat: Infinity }}
+                style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }}
+              />
+              <span style={{ fontSize: '0.92rem', fontWeight: 700, color: C.text, minWidth: 36 }}>{fmtDur(recorder.seconds)}</span>
+              <span style={{ fontSize: '0.8rem', color: C.textDim }}>Recording...</span>
+            </div>
+            <button type="button" onClick={() => recorder.stop(true)} style={ROUND_BTN} aria-label="Send voice message">
+              <Send size={17} />
+            </button>
+          </div>
         ) : (
-          <VoiceRecorderButton onRecorded={handleVoice} />
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+            paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+          }}>
+            <div style={{ position: 'relative', display: 'flex' }}>
+              <AnimatePresence>
+                {showPlus && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                    style={{
+                      position: 'absolute', left: 0, bottom: '100%', marginBottom: 10, minWidth: 176, zIndex: 30,
+                      background: '#fff', borderRadius: 14, padding: 6, boxShadow: '0 4px 18px rgba(0,0,0,0.25)',
+                    }}
+                  >
+                    {plusItems.map(it => (
+                      <button
+                        key={it.key}
+                        type="button"
+                        onClick={() => { setShowPlus(false); it.run(); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12, width: '100%', border: 'none', background: 'none',
+                          padding: '10px 12px', borderRadius: 10, cursor: 'pointer', color: C.text, fontSize: '0.92rem', fontWeight: 600,
+                        }}
+                      >
+                        <span style={{ width: 34, height: 34, borderRadius: '50%', background: C.action, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {it.icon}
+                        </span>
+                        {it.label}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <button
+                type="button"
+                onClick={() => { setShowPlus(v => !v); setShowEmoji(false); }}
+                aria-label="Attach"
+                style={{ ...ICON_BTN, transform: showPlus ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s' }}
+              >
+                <Plus size={26} />
+              </button>
+            </div>
+
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#f0f2f5', borderRadius: 20, paddingRight: 6 }}>
+              <input
+                ref={inputRef}
+                value={text}
+                onChange={e => {
+                  setText(e.target.value);
+                  if (e.target.value.trim()) onTyping?.();
+                }}
+                onFocus={() => setShowPlus(false)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); } }}
+                placeholder="Message"
+                style={{
+                  flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '9px 14px',
+                  background: 'transparent', border: 'none', outline: 'none', fontSize: '0.9rem', color: C.text,
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => { setShowEmoji(v => !v); setShowPlus(false); }}
+                aria-label="Emoji"
+                style={{ ...ICON_BTN, color: showEmoji ? '#128C7E' : '#54656f' }}
+              >
+                <Smile size={22} />
+              </button>
+            </div>
+
+            {text.trim() ? (
+              <button type="button" onClick={sendText} style={ROUND_BTN} aria-label="Send">
+                <Send size={17} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setShowEmoji(false); void recorder.start(); }}
+                style={ROUND_BTN}
+                aria-label="Record a voice message"
+              >
+                <Mic size={18} />
+              </button>
+            )}
+          </div>
         )}
       </div>
     </motion.div>
