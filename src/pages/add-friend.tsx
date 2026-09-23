@@ -9388,7 +9388,31 @@ function FriendVideoCallController({
     const onMinimize = () => setMinimized(true);
     const onRestore = () => setMinimized(false);
     const onPrompt = () => {
-      if (incoming || getVideoIncomingSnap()) setConfirmAnswer(true);
+      const inv = incoming || getVideoIncomingSnap();
+      if (!inv) return;
+      // Answer immediately — no confirm dialog
+      suppressIncomingRing(60_000);
+      stopGlobalIncomingRing();
+      setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:call-answered', { detail: { channel: inv.channel } }));
+        window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
+      } catch { /* ignore */ }
+      try {
+        if (userId) {
+          localStorage.removeItem(`stooorna_home_call_invite_${userId}`);
+          localStorage.removeItem(`stooorna_vidcall_invite_${userId}`);
+          void fetch('/api/call/invite', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clear: true, toUserId: userId, userId, channel: inv.channel }),
+          });
+        }
+      } catch { /* ignore */ }
+      setConfirmAnswer(false);
+      setIncoming(null);
+      setVideoIncomingSnap(null);
+      setConnecting(false);
+      setSession(inv);
     };
     window.addEventListener('stooorna:start-video-call', onStart);
     window.addEventListener('stooorna:video-call-prompt-answer', onPrompt);
@@ -9484,11 +9508,13 @@ function FriendVideoCallController({
           100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
         }
       `}</style>
-      {incoming && !session && !confirmAnswer && !connecting && createPortal(
+      {incoming && !session && !connecting && createPortal(
         <button
           type="button"
           aria-label="Incoming video call"
-          onClick={() => setConfirmAnswer(true)}
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('stooorna:video-call-prompt-answer'));
+          }}
           style={{
             position: 'fixed',
             top: 'max(10px, env(safe-area-inset-top))',
@@ -9511,7 +9537,7 @@ function FriendVideoCallController({
         </button>,
         document.body
       )}
-      {incoming && confirmAnswer && !connecting && !session && createPortal(
+      {false && incoming && confirmAnswer && !connecting && !session && createPortal(
         <div style={{ position: 'fixed', inset: 0, zIndex: 11960, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: 'min(360px, 92vw)', background: '#0d1a1c', border: '1px solid rgba(34,197,94,0.35)', borderRadius: 20, padding: 22, textAlign: 'center' }}>
             <p style={{ margin: '0 0 8px', color: '#22c55e', fontWeight: 800, fontSize: '1rem' }}>Incoming video call</p>
@@ -14427,14 +14453,14 @@ export default function AddFriendPage() {
     let cancelled = false;
     const pull = () => { if (!cancelled) void syncDirectThreadDown(user.id, friendChatPeer.friendId); };
     pull();
-    const iv = window.setInterval(pull, 3000);
+    const iv = window.setInterval(pull, 2000);
     return () => {
       cancelled = true;
       window.clearInterval(iv);
     };
   }, [user?.id, friendChatPeer?.friendId]);
 
-  // Poll peer typing for the open friend chat header ("Type....")
+  // Poll peer typing for the open friend chat header ("type...")
   useEffect(() => {
     if (!user?.id || !friendChatPeer?.friendId) return;
     const tick = () => setFriendChatTypingTick(n => n + 1);
@@ -14818,7 +14844,8 @@ export default function AddFriendPage() {
   const friendIds = friends.map(f => f.friendId);
   const resultIds = results.map(u => u.id);
   const incomingIds = incoming.map(r => r.requesterId);
-  const allVisibleIds = Array.from(new Set([...friendIds, ...resultIds, ...incomingIds]));
+  const chatPeerId = friendChatPeer?.friendId ? [friendChatPeer.friendId] : [];
+  const allVisibleIds = Array.from(new Set([...friendIds, ...resultIds, ...incomingIds, ...chatPeerId]));
   const presence = usePresenceQuery(allVisibleIds);
   // Heartbeat so friends see this user as online (shared presence store on server)
   useEffect(() => {
@@ -21086,7 +21113,7 @@ export default function AddFriendPage() {
                   const peerTypingLocal = user?.id ? readFriendTyping(friendChatPeer.friendId, user.id) : false;
                   const peerTyping = peerTypingLocal || !!(peerPresence?.typing && (!peerPresence.typingTo || String(peerPresence.typingTo) === String(user?.id)));
                   if (peerTyping) {
-                    return <p style={{ margin: 0, color: '#128C7E', fontSize: '0.72rem', fontWeight: 800 }}>Type....</p>;
+                    return <p style={{ margin: 0, color: '#128C7E', fontSize: '0.72rem', fontWeight: 800 }}>type...</p>;
                   }
                   if (peerPresence?.online) {
                     return <p style={{ margin: 0, color: '#22c55e', fontSize: '0.68rem', fontWeight: 700 }}>Online</p>;
@@ -21154,14 +21181,42 @@ export default function AddFriendPage() {
                 type="button"
                 aria-label={voiceRing ? 'Answer call' : 'Call'}
                 onClick={() => {
-                  if (!friendChatPeer) return;
+                  if (!friendChatPeer || !user) return;
                   if (voiceRing) {
                     window.dispatchEvent(new CustomEvent('stooorna:answer-home-incoming'));
                     return;
                   }
-                  window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
-                    detail: { friendId: friendChatPeer.friendId, direct: true },
-                  }));
+                  // Start voice call immediately (no confirm)
+                  const peerId = friendChatPeer.friendId;
+                  const channel = `private_${shortChannelHash([user.id, peerId].sort().join('_'))}`;
+                  try {
+                    postServerCallInvite(peerId, {
+                      channel,
+                      hostId: user.id,
+                      hostName: user.name ?? (user as any).username ?? null,
+                      hostAvatar: (user as any).avatarUrl ?? (user as any).image ?? null,
+                      video: false,
+                      kind: 'voice',
+                    });
+                  } catch { /* ignore */ }
+                  try {
+                    window.dispatchEvent(new CustomEvent('stooorna:home-group-call', {
+                      detail: {
+                        channel,
+                        hostId: user.id,
+                        hostName: user.name ?? null,
+                        members: [],
+                        video: false,
+                        kind: 'voice',
+                        at: Date.now(),
+                        inviteeIds: [peerId],
+                        direct: true,
+                      },
+                    }));
+                    window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
+                      detail: { friendId: peerId, direct: true, channel, autoStart: true },
+                    }));
+                  } catch { /* ignore */ }
                 }}
                 style={{
                   background: voiceRing ? 'rgba(34,197,94,0.16)' : 'none',
