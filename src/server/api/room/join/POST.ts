@@ -1,4 +1,4 @@
-/** POST /api/room/join — join a voice room */
+/** POST /api/room/join — join a voice or video room (presence signaling) */
 import type { Request, Response } from 'express';
 import { getAuth } from '../../../../lib/auth/auth.js';
 import { roomJoin } from '../../../lib/voiceRoom.js';

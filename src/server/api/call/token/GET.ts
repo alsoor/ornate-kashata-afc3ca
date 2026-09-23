@@ -6,6 +6,8 @@
  *
  * Returns { appId, token, channel, uid } — the client MUST use the returned
  * uid when calling client.join() so it matches the token exactly.
+ *
+ * Used by both voice and video calls (same channel + uid contract).
  */
 import type { Request, Response } from 'express';
 import pkg from 'agora-token';

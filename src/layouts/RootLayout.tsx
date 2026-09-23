@@ -589,6 +589,17 @@ function loadCallLog(uid: string): CallLogEntry[] {
 function saveCallLog(uid: string, list: CallLogEntry[]) {
   try { localStorage.setItem(CALL_LOG_KEY(uid), JSON.stringify(list.slice(0, 200))); } catch { /* */ }
 }
+const VIDEO_CALL_LOG_KEY = (uid: string) => `stooorna_video_call_log_${uid}`;
+function pushVideoCallLog(uid: string, entry: Omit<CallLogEntry, 'id'>) {
+  try {
+    const raw = localStorage.getItem(VIDEO_CALL_LOG_KEY(uid));
+    const list = raw ? JSON.parse(raw) as CallLogEntry[] : [];
+    const row: CallLogEntry = { ...entry, id: `vclog_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` };
+    const next = [row, ...(Array.isArray(list) ? list : [])].slice(0, 200);
+    localStorage.setItem(VIDEO_CALL_LOG_KEY(uid), JSON.stringify(next));
+  } catch { /* */ }
+}
+
 function pushCallLog(uid: string, entry: Omit<CallLogEntry, 'id'>) {
   if (!uid || !entry.peerId) return;
   const list = loadCallLog(uid);
@@ -937,6 +948,45 @@ function GlobalBottomNavigation() {
     window.addEventListener('stooorna:open-mini-share-chat', onOpen as EventListener);
     return () => window.removeEventListener('stooorna:open-mini-share-chat', onOpen as EventListener);
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!homeCallIsVideo || homeCallPhase === 'idle') return;
+    let extra: MediaStream | null = null;
+    const bind = () => {
+      try { homeCallCamRef.current?.play?.(localVideoRef.current || undefined); } catch { /* */ }
+      try {
+        const client = homeCallAgoraRef.current;
+        const remotes = client?.remoteUsers || [];
+        for (const ru of remotes) {
+          if (ru.videoTrack) ru.videoTrack.play(remoteVideoRef.current || undefined);
+        }
+      } catch { /* */ }
+    };
+    bind();
+    const t = window.setInterval(bind, 800);
+    (async () => {
+      await new Promise(r => setTimeout(r, 250));
+      const el = localVideoRef.current;
+      if (!el) return;
+      if (el.querySelector('video')) return;
+      try {
+        extra = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        const v = document.createElement('video');
+        v.autoplay = true;
+        v.muted = true;
+        v.playsInline = true;
+        v.srcObject = extra;
+        v.style.width = '100%';
+        v.style.height = '100%';
+        v.style.objectFit = 'cover';
+        el.appendChild(v);
+      } catch { /* */ }
+    })();
+    return () => {
+      window.clearInterval(t);
+      try { extra?.getTracks().forEach(tr => tr.stop()); } catch { /* */ }
+    };
+  }, [homeCallIsVideo, homeCallPhase]);
 
   function openCompanyChatList() {
     setCompanyChatOpen(true);
@@ -1392,10 +1442,17 @@ function GlobalBottomNavigation() {
   const [homeCallLogTick, setHomeCallLogTick] = useState(0);
   const homeCallNoAnswerTimer = useRef<number | null>(null);
   const homeCallSessionRef = useRef(0);
+  const homeCallVideoRef = useRef(false);
+  const homeCallCamRef = useRef<any>(null);
+  const [homeCallIsVideo, setHomeCallIsVideo] = useState(false);
+  const [pipPos, setPipPos] = useState({ x: 16, y: 80 });
+  const localVideoRef = useRef<HTMLDivElement | null>(null);
+  const remoteVideoRef = useRef<HTMLDivElement | null>(null);
   const homeCallLiveStartedAt = useRef<number | null>(null);
   const [homeCallFriends, setHomeCallFriends] = useState<HomeCallFriend[]>([]);
   const [homeCallSelected, setHomeCallSelected] = useState<Record<string, boolean>>({});
   const [pendingDirectCallId, setPendingDirectCallId] = useState<string | null>(null);
+  const pendingVideoRef = useRef(false);
   const [homeCallPhase, setHomeCallPhase] = useState<'idle' | 'animating' | 'connecting' | 'live'>('idle');
   const homeCallPhaseRef = useRef(homeCallPhase);
   useEffect(() => { homeCallPhaseRef.current = homeCallPhase; }, [homeCallPhase]);
@@ -1408,6 +1465,7 @@ function GlobalBottomNavigation() {
   const [homeCallMembersOpen, setHomeCallMembersOpen] = useState(false);
   const [homeCallChannel, setHomeCallChannel] = useState<string | null>(null);
   const [homeIncoming, setHomeIncoming] = useState<{
+    video?: boolean;
     channel: string;
     hostId: string;
     hostName: string | null;
@@ -1617,6 +1675,7 @@ function GlobalBottomNavigation() {
       setPlusMenuOpen(false);
       if (detail?.friendId && detail?.direct) {
         const fid = String(detail.friendId);
+        pendingVideoRef.current = !!(detail as any).video;
         setHomeCallSelected({ [fid]: true });
         setHomeCallPickerOpen(false);
         setPendingDirectCallId(fid);
@@ -1664,24 +1723,31 @@ function GlobalBottomNavigation() {
       const peers = endedMembers.filter(m => m.id && m.id !== user.id);
       for (const peer of peers) {
         recordMissedCallChat(user.id, peer.id, user.id);
-        pushCallLog(user.id, {
+        const outRow = {
           peerId: peer.id,
           peerName: peer.name ?? null,
           peerAvatar: peer.avatarUrl ?? null,
-          direction: 'out',
-          status: endedPhase === 'live' ? 'answered' : 'missed',
+          direction: 'out' as const,
+          status: (endedPhase === 'live' ? 'answered' : 'missed') as 'answered' | 'missed',
           at: endedAt,
           durationSec: endedPhase === 'live' ? durationSec : undefined,
-        });
-        pushCallLog(peer.id, {
+        };
+        const inRow = {
           peerId: user.id,
           peerName: (user as any).name ?? (user as any).username ?? null,
           peerAvatar: (user as any).avatarUrl ?? (user as any).image ?? null,
-          direction: 'in',
-          status: endedPhase === 'live' ? 'answered' : 'missed',
+          direction: 'in' as const,
+          status: (endedPhase === 'live' ? 'answered' : 'missed') as 'answered' | 'missed',
           at: endedAt,
           durationSec: endedPhase === 'live' ? durationSec : undefined,
-        });
+        };
+        if (homeCallVideoRef.current) {
+          pushVideoCallLog(user.id, outRow);
+          pushVideoCallLog(peer.id, inRow);
+        } else {
+          pushCallLog(user.id, outRow);
+          pushCallLog(peer.id, inRow);
+        }
       }
       setHomeCallLogTick(x => x + 1);
     }
@@ -1707,6 +1773,10 @@ function GlobalBottomNavigation() {
       });
     }
     setHomeCallPhase('idle');
+    setHomeCallIsVideo(false);
+    homeCallVideoRef.current = false;
+    try { homeCallCamRef.current?.stop?.(); homeCallCamRef.current?.close?.(); } catch { /* */ }
+    homeCallCamRef.current = null;
     setHomeCallMembers([]);
     setHomeCallChannel(null);
     setHomeCallMuted(false);
@@ -1742,8 +1812,10 @@ function GlobalBottomNavigation() {
     }
   }
 
-  async function startHomeGroupCall(overrideFriendIds?: string[]) {
+  async function startHomeGroupCall(overrideFriendIds?: string[], asVideo = false) {
     if (!user?.id) return;
+    homeCallVideoRef.current = !!asVideo;
+    setHomeCallIsVideo(!!asVideo);
     const ids = overrideFriendIds?.length
       ? overrideFriendIds
       : Object.keys(homeCallSelected).filter(id => homeCallSelected[id]);
@@ -1773,7 +1845,7 @@ function GlobalBottomNavigation() {
     setHomeCallMembers([me, ...others]);
     setHomeCallPickerOpen(false);
     setHomeCallPhase('animating');
-    const invitePayload = { channel, hostId: user.id, hostName: me.name, hostAvatar: me.avatarUrl, members: [me, ...others], at: Date.now() };
+    const invitePayload = { channel, hostId: user.id, hostName: me.name, hostAvatar: me.avatarUrl, members: [me, ...others], at: Date.now(), video: homeCallVideoRef.current };
     window.dispatchEvent(new CustomEvent('stooorna:home-group-call', {
       detail: { ...invitePayload, inviteeIds: picked.map(p => p.id) },
     }));
@@ -1799,14 +1871,20 @@ function GlobalBottomNavigation() {
       if (myId) {
         for (const peer of picked) {
           recordMissedCallChat(myId, peer.id, myId);
-          pushCallLog(myId, {
+          const miss = {
             peerId: peer.id,
             peerName: peer.name ?? null,
             peerAvatar: peer.avatarUrl ?? null,
-            direction: 'out',
-            status: 'missed',
+            direction: 'out' as const,
+            status: 'missed' as const,
             at: Date.now(),
-          });
+          };
+          if (homeCallVideoRef.current) {
+            pushVideoCallLog(myId, miss);
+            pushVideoCallLog(peer.id, { ...miss, direction: 'in', peerId: myId, peerName: me.name, peerAvatar: me.avatarUrl });
+          } else {
+            pushCallLog(myId, miss);
+          }
           try { localStorage.removeItem(`stooorna_home_call_invite_${peer.id}`); } catch { /* */ }
           void fetch('/api/room/leave', {
             method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
@@ -1857,10 +1935,12 @@ function GlobalBottomNavigation() {
       const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
       homeCallAgoraRef.current = client;
       client.on('user-published', async (remoteUser: any, mediaType: string) => {
-        if (mediaType !== 'audio') return;
         try {
-          await client.subscribe(remoteUser, 'audio');
-          remoteUser.audioTrack?.play();
+          await client.subscribe(remoteUser, mediaType);
+          if (mediaType === 'audio') remoteUser.audioTrack?.play();
+          if (mediaType === 'video') {
+            requestAnimationFrame(() => { try { remoteUser.videoTrack?.play(remoteVideoRef.current || undefined); } catch { /* */ } });
+          }
         } catch { /* */ }
       });
       const tokenResponse = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(user.id)}`, { credentials: 'include' });
@@ -1869,7 +1949,16 @@ function GlobalBottomNavigation() {
         await client.join('149ef04e839c4132a08efb49d717c436', channel, tokenData.token, tokenData.uid);
         const micTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' });
         homeCallMicRef.current = micTrack;
-        await client.publish([micTrack]);
+        const tracks: any[] = [micTrack];
+        if (homeCallVideoRef.current) {
+          try {
+            const cam = await AgoraRTC.createCameraVideoTrack();
+            homeCallCamRef.current = cam;
+            tracks.push(cam);
+            requestAnimationFrame(() => { try { cam.play(localVideoRef.current || undefined); } catch { /* */ } });
+          } catch { /* camera permission */ }
+        }
+        await client.publish(tracks);
         await Promise.all((client.remoteUsers || []).map(async (remoteUser: any) => {
           if (!remoteUser.hasAudio) return;
           try {
@@ -1910,8 +1999,63 @@ function GlobalBottomNavigation() {
     setPendingDirectCallId(null);
     setHomeCallSelected({ [fid]: true });
     // Enrich name/avatar from loaded friends when available
-    void startHomeGroupCall([fid]);
+    const asVideo = pendingVideoRef.current;
+    pendingVideoRef.current = false;
+    void startHomeGroupCall([fid], asVideo);
   }, [pendingDirectCallId, user?.id, homeCallPhase]);
+
+  useEffect(() => {
+    const onVideo = (ev: Event) => {
+      const friendId = String((ev as CustomEvent).detail?.friendId || '');
+      if (!friendId || !user?.id) return;
+      pendingVideoRef.current = true;
+      setHomeCallSelected({ [friendId]: true });
+      setHomeCallPickerOpen(false);
+      if (homeCallPhase === 'idle') setPendingDirectCallId(friendId);
+      else void startHomeGroupCall([friendId], true);
+    };
+    window.addEventListener('stooorna:start-video-call', onVideo as EventListener);
+    return () => window.removeEventListener('stooorna:start-video-call', onVideo as EventListener);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!homeCallIsVideo || homeCallPhase === 'idle') return;
+    let extra: MediaStream | null = null;
+    const bind = () => {
+      try { homeCallCamRef.current?.play?.(localVideoRef.current || undefined); } catch { /* */ }
+      try {
+        const client = homeCallAgoraRef.current;
+        const remotes = client?.remoteUsers || [];
+        for (const ru of remotes) {
+          if (ru.videoTrack) ru.videoTrack.play(remoteVideoRef.current || undefined);
+        }
+      } catch { /* */ }
+    };
+    bind();
+    const t = window.setInterval(bind, 800);
+    (async () => {
+      await new Promise(r => setTimeout(r, 250));
+      const el = localVideoRef.current;
+      if (!el) return;
+      if (el.querySelector('video')) return;
+      try {
+        extra = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        const v = document.createElement('video');
+        v.autoplay = true;
+        v.muted = true;
+        v.playsInline = true;
+        v.srcObject = extra;
+        v.style.width = '100%';
+        v.style.height = '100%';
+        v.style.objectFit = 'cover';
+        el.appendChild(v);
+      } catch { /* */ }
+    })();
+    return () => {
+      window.clearInterval(t);
+      try { extra?.getTracks().forEach(tr => tr.stop()); } catch { /* */ }
+    };
+  }, [homeCallIsVideo, homeCallPhase]);
 
   useEffect(() => {
     if (!user?.id || !homeCallChannel || (homeCallPhase !== 'live' && homeCallPhase !== 'connecting')) return;
@@ -2108,6 +2252,8 @@ function GlobalBottomNavigation() {
       homeCallNoAnswerTimer.current = null;
     }
     stopHomeIncomingRing();
+    homeCallVideoRef.current = !!(invite as any).video;
+    setHomeCallIsVideo(!!(invite as any).video);
     setHomeIncoming(null);
     try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
     try {
@@ -2160,10 +2306,12 @@ function GlobalBottomNavigation() {
       const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
       homeCallAgoraRef.current = client;
       client.on('user-published', async (remoteUser: any, mediaType: string) => {
-        if (mediaType !== 'audio') return;
         try {
-          await client.subscribe(remoteUser, 'audio');
-          remoteUser.audioTrack?.play();
+          await client.subscribe(remoteUser, mediaType);
+          if (mediaType === 'audio') remoteUser.audioTrack?.play();
+          if (mediaType === 'video') {
+            requestAnimationFrame(() => { try { remoteUser.videoTrack?.play(remoteVideoRef.current || undefined); } catch { /* */ } });
+          }
         } catch { /* */ }
       });
       client.on('user-unpublished', (remoteUser: any) => remoteUser.audioTrack?.stop?.());
@@ -2173,7 +2321,16 @@ function GlobalBottomNavigation() {
         await client.join('149ef04e839c4132a08efb49d717c436', channel, tokenData.token, tokenData.uid);
         const micTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' });
         homeCallMicRef.current = micTrack;
-        await client.publish([micTrack]);
+        const tracks: any[] = [micTrack];
+        if (homeCallVideoRef.current) {
+          try {
+            const cam = await AgoraRTC.createCameraVideoTrack();
+            homeCallCamRef.current = cam;
+            tracks.push(cam);
+            requestAnimationFrame(() => { try { cam.play(localVideoRef.current || undefined); } catch { /* */ } });
+          } catch { /* camera permission */ }
+        }
+        await client.publish(tracks);
         await Promise.all((client.remoteUsers || []).map(async (remoteUser: any) => {
           if (!remoteUser.hasAudio) return;
           try {
@@ -2838,7 +2995,38 @@ function GlobalBottomNavigation() {
 
 
 
-  const homeCallOverlay = (homeCallPickerOpen || homeCallPhase !== 'idle') ? (
+  const homeVideoOverlay = (homeCallIsVideo && homeCallPhase !== 'idle') ? (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 2147483646, background: '#000' }}>
+      <div ref={remoteVideoRef} id="stooorna-video-stage" style={{ position: 'absolute', inset: 0, background: '#111', overflow: 'hidden' }}>
+        <p style={{ position: 'absolute', inset: 0, margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.55)', fontWeight: 700, pointerEvents: 'none' }}>Waiting for video…</p>
+      </div>
+      <div
+        ref={localVideoRef}
+        onPointerDown={e => {
+          const startX = e.clientX, startY = e.clientY, ox = pipPos.x, oy = pipPos.y;
+          const move = (ev: PointerEvent) => setPipPos({ x: Math.max(8, ox + ev.clientX - startX), y: Math.max(8, oy + ev.clientY - startY) });
+          const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+          window.addEventListener('pointermove', move);
+          window.addEventListener('pointerup', up);
+        }}
+        style={{
+          position: 'absolute', left: pipPos.x, top: pipPos.y, width: 118, height: 168,
+          borderRadius: 14, overflow: 'hidden', border: '2px solid #fff', background: '#222', zIndex: 3, touchAction: 'none',
+        }}
+      />
+      <div style={{ position: 'absolute', top: 16, left: 0, right: 0, textAlign: 'center', color: '#fff', fontWeight: 700, zIndex: 4 }}>
+        {homeCallPhase === 'live' ? 'Video call' : 'Calling…'}
+      </div>
+      <button type="button" onClick={() => { void leaveHomeGroupCall(); }} style={{
+        position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)',
+        width: 64, height: 64, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', zIndex: 4,
+      }}>
+        <PhoneOff size={22} color="#fff" />
+      </button>
+    </div>
+  ) : null;
+
+  const homeCallOverlay = (homeCallPickerOpen || homeCallPhase !== 'idle') && !homeCallIsVideo ? (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 10950,
       background: homeCallPhase === 'animating'
@@ -3109,7 +3297,7 @@ function GlobalBottomNavigation() {
   {companyListPanel}
   {userListPanel}
   {miniChatOverlay}
-  {homeCallOverlay}
+  {homeVideoOverlay}{homeCallOverlay}
 
       {homeCallLogOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 10980, background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
