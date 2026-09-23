@@ -8357,6 +8357,8 @@ if (typeof window !== 'undefined') {
     } | undefined;
     if (!d) return;
     if (d.ringing) {
+      if (Date.now() < incomingRingSuppressUntil) return;
+      if (activeCallState.joined || globeVoiceJoinedRef.current) return;
       setIncomingCallState({
         ringing: true,
         channel: d.channel || null,
@@ -8365,14 +8367,20 @@ if (typeof window !== 'undefined') {
         isPrivate: true,
         ringSilenced: false,
       });
-      try { playIncomingCallRing(); } catch { /* */ }
-      try { navigator.vibrate?.([300, 180, 300, 180]); } catch { /* */ }
+      startGlobalIncomingRing();
     } else {
+      suppressIncomingRing(60_000);
       stopGlobalIncomingRing();
       setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
     }
   }) as EventListener);
   window.addEventListener('stooorna:call-answered', (() => {
+    suppressIncomingRing(60_000);
+    stopGlobalIncomingRing();
+    setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+  }) as EventListener);
+  window.addEventListener('stooorna:stop-incoming-ring', (() => {
+    suppressIncomingRing(60_000);
     stopGlobalIncomingRing();
     setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
   }) as EventListener);

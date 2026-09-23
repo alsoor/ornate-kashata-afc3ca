@@ -2201,8 +2201,23 @@ function GlobalBottomNavigation() {
       stopHomeIncomingRing();
       try { window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } })); } catch { /* */ }
       try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
+      if (homeCallPhase === 'connecting' || homeCallPhase === 'live') {
+        try {
+          window.dispatchEvent(new CustomEvent('stooorna:call-answered', {
+            detail: { channel: homeCallChannel, phase: homeCallPhase },
+          }));
+        } catch { /* */ }
+        try {
+          if (user?.id) {
+            void fetch('/api/call/invite', {
+              method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ clear: true, toUserId: user.id, userId: user.id, channel: homeCallChannel, answered: true }),
+            });
+          }
+        } catch { /* */ }
+      }
     }
-  }, [homeCallPhase]);
+  }, [homeCallPhase, homeCallChannel, user?.id]);
 
   function beginHomeIncoming(invite: { channel: string; hostId: string; hostName: string | null; hostAvatar: string | null; members: HomeCallMember[]; video?: boolean }) {
     if (homeCallPhase !== 'idle') return;
@@ -2304,11 +2319,30 @@ function GlobalBottomNavigation() {
   async function answerHomeIncoming() {
     if (!user?.id || !homeIncoming) return;
     const invite = homeIncoming;
-    // Stop ring immediately before any async work so tone never continues into the call UI
+    // Stop ring immediately on BOTH devices before any async work
     stopHomeIncomingRing();
     homeRingLockRef.current = { mode: 'answered', channel: invite.channel, at: Date.now() };
     try { window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } })); } catch { /* */ }
     try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
+    try { window.dispatchEvent(new CustomEvent('stooorna:call-answered', { detail: { channel: invite.channel, hostId: invite.hostId } })); } catch { /* */ }
+    try {
+      void fetch('/api/call/invite', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clear: true, toUserId: user.id, userId: user.id, channel: invite.channel }),
+      });
+    } catch { /* */ }
+    try {
+      if (invite.hostId) {
+        void fetch('/api/call/invite', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clear: true, toUserId: invite.hostId, userId: invite.hostId, channel: invite.channel, answered: true }),
+        });
+      }
+    } catch { /* */ }
+    try {
+      localStorage.setItem(`stooorna_call_answered_${invite.channel}`, JSON.stringify({ at: Date.now(), by: user.id }));
+      window.dispatchEvent(new StorageEvent('storage', { key: `stooorna_call_answered_${invite.channel}` }));
+    } catch { /* */ }
     try {
       localStorage.removeItem(`stooorna_home_call_invite_${user.id}`);
       localStorage.removeItem('stooorna_home_call_active_invite');

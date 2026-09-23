@@ -4146,7 +4146,7 @@ export default function ChatPage() {
       flexDirection: 'column',
       fontFamily: 'var(--font-sans)',
       position: 'relative'
-    }} onClick={() => setMenuMsgId(null)}>
+    }} onClick={() => { setMenuMsgId(null); setHeaderMenuOpen(false); setShowVolSlider(false); }}>
 
         {/* ── LiveVoiceBanner — إشعار البث الصوتي المباشر ── */}
         {user && <LiveVoiceBanner chatId={chatId} myId={user.id} />}
