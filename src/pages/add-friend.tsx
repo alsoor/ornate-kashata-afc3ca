@@ -20827,7 +20827,7 @@ export default function AddFriendPage() {
                 const rowRinging = bellRinging && bellIncomingCall.callerId === friend.friendId;
                 const rowUnreadMsg = bellMessageAlert.active && bellMessageAlert.fromId === friend.friendId;
                 const rowAlert = rowRinging || rowUnreadMsg;
-                const rowPresence = presence[friend.friendId] as { online?: boolean; lastSeen?: number | string | null } | undefined;
+                const rowPresence = presence[friend.friendId] as { online?: boolean; lastSeenAt?: number | string | null } | undefined;
                 return (
                 <div key={friend.friendId} style={{ position: 'relative', borderRadius: 14, padding: rowAlert ? 2 : 0 }}>
                   {rowAlert && (
@@ -20873,9 +20873,9 @@ export default function AddFriendPage() {
                           <p style={{ margin: 0, color: '#ef4444', fontSize: '0.75rem', fontWeight: 700 }}>New message</p>
                         ) : rowPresence?.online ? (
                           <p style={{ margin: 0, color: '#22c55e', fontSize: '0.72rem', fontWeight: 700 }}>Online</p>
-                        ) : rowPresence?.lastSeen ? (
+                        ) : rowPresence?.lastSeenAt ? (
                           <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {formatLastSeen(rowPresence.lastSeen as number | string)}
+                            {formatLastSeen(rowPresence.lastSeenAt as number | string)}
                           </p>
                         ) : friend.username ? (
                           <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.75rem' }}>@{friend.username}</p>
@@ -20938,7 +20938,7 @@ export default function AddFriendPage() {
                 </p>
                 {(() => {
                   void friendChatTypingTick;
-                  const peerPresence = presence[friendChatPeer.friendId] as { online?: boolean; typing?: boolean; lastSeen?: number | string | null; typingTo?: string | null } | undefined;
+                  const peerPresence = presence[friendChatPeer.friendId] as { online?: boolean; typing?: boolean; lastSeenAt?: number | string | null; typingTo?: string | null } | undefined;
                   const peerTypingLocal = user?.id ? readFriendTyping(friendChatPeer.friendId, user.id) : false;
                   const peerTyping = peerTypingLocal || !!(peerPresence?.typing && (!peerPresence.typingTo || String(peerPresence.typingTo) === String(user?.id)));
                   if (peerTyping) {
@@ -20947,7 +20947,7 @@ export default function AddFriendPage() {
                   if (peerPresence?.online) {
                     return <p style={{ margin: 0, color: '#22c55e', fontSize: '0.68rem', fontWeight: 700 }}>Online</p>;
                   }
-                  const last = peerPresence?.lastSeen;
+                  const last = peerPresence?.lastSeenAt;
                   if (last) {
                     return <p style={{ margin: 0, color: 'rgba(0,0,0,0.45)', fontSize: '0.68rem' }}>{formatLastSeen(last)}</p>;
                   }
