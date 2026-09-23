@@ -8407,21 +8407,87 @@ function subscribeMessageAlert(listener: () => void) {
 function clearMessageAlertFor(peerId: string) {
   if (messageAlertState.fromId === peerId) setMessageAlertState({ active: false, fromId: null });
 }
-/** Clear every unread message alert so the outer bell badge turns off. */
-function clearAllMessageAlerts() {
+/** After Read All, suppress re-arming the bell from pollers until server catches up. */
+let messageAlertSuppressedUntil = 0;
+function isMessageAlertSuppressed(): boolean {
+  return Date.now() < messageAlertSuppressedUntil;
+}
+function suppressMessageAlerts(ms = 86_400_000) {
+  messageAlertSuppressedUntil = Date.now() + ms;
   setMessageAlertState({ active: false, fromId: null });
+}
+
+const STORY_CMT_READ_KEY = (uid: string) => `stooorna_story_cmt_read_${uid}`;
+const POST_CMT_READ_KEY = (uid: string) => `stooorna_post_cmt_read_${uid}`;
+function loadLocalReadIdSet(key: string): Set<string> {
   try {
-    void fetch('/api/messages/read-all', { method: 'POST', credentials: 'include' });
+    const raw = localStorage.getItem(key);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+function saveLocalReadIdSet(key: string, ids: Set<string>) {
+  try {
+    localStorage.setItem(key, JSON.stringify(Array.from(ids).slice(0, 2000)));
   } catch { /* ignore */ }
+}
+function markLocalStoryThreadsRead(uid: string, storyIds: Array<string | number>) {
+  if (!uid) return;
+  const set = loadLocalReadIdSet(STORY_CMT_READ_KEY(uid));
+  for (const id of storyIds) set.add(String(id));
+  saveLocalReadIdSet(STORY_CMT_READ_KEY(uid), set);
+}
+function markLocalPostThreadsRead(uid: string, postIds: Array<string | number>) {
+  if (!uid) return;
+  const set = loadLocalReadIdSet(POST_CMT_READ_KEY(uid));
+  for (const id of postIds) set.add(String(id));
+  saveLocalReadIdSet(POST_CMT_READ_KEY(uid), set);
+}
+
+/** Clear every unread message alert so the outer bell badge turns off. */
+function clearAllMessageAlerts(opts?: { userId?: string | null; storyIds?: Array<string | number>; postIds?: Array<string | number> }) {
+  suppressMessageAlerts(86_400_000);
+  const uid = opts?.userId ? String(opts.userId) : '';
+  if (uid) {
+    if (opts?.storyIds?.length) markLocalStoryThreadsRead(uid, opts.storyIds);
+    if (opts?.postIds?.length) markLocalPostThreadsRead(uid, opts.postIds);
+    try {
+      const key = `stooorna_user_friend_chats_${uid}`;
+      const raw = localStorage.getItem(key);
+      const arr = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(arr)) {
+        const next = arr.map((x: any) => ({ ...x, unread: 0 }));
+        localStorage.setItem(key, JSON.stringify(next));
+        window.dispatchEvent(new CustomEvent('stooorna:user-friend-chats', { detail: { userId: uid, list: next, yellowBlink: false } }));
+      }
+    } catch { /* ignore */ }
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:bottom-chat-blink', { detail: { target: 'user', userId: uid, yellow: false } }));
+    } catch { /* ignore */ }
+  }
+  const endpoints: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [
+    { url: '/api/messages/read-all', method: 'POST', body: { all: true } },
+    { url: '/api/messages/unread/clear', method: 'POST', body: { all: true } },
+    { url: '/api/messages/mark-all-read', method: 'POST', body: { all: true } },
+    { url: '/api/messages/unread', method: 'DELETE' },
+    { url: '/api/status/comments/read-all', method: 'POST', body: { all: true } },
+    { url: '/api/status/comments/mark-all-read', method: 'POST', body: { all: true } },
+    { url: '/api/posts/comments/read-all', method: 'POST', body: { all: true } },
+  ];
+  for (const ep of endpoints) {
+    try {
+      void fetch(ep.url, {
+        method: ep.method,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: ep.body ? JSON.stringify(ep.body) : undefined,
+      });
+    } catch { /* next */ }
+  }
   try {
-    void fetch('/api/messages/unread/clear', { method: 'POST', credentials: 'include' });
-  } catch { /* ignore */ }
-  try {
-    void fetch('/api/messages/mark-all-read', {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ all: true }),
-    });
+    window.dispatchEvent(new CustomEvent('stooorna:messages-read-all'));
   } catch { /* ignore */ }
 }
 
@@ -9690,6 +9756,7 @@ function GlobalMessageAlertWatcher({ myUserId }: { myUserId: string | null }) {
       const last = thread[thread.length - 1];
       if (!last || last.fromId === myUserId) return; // that was my own message, not incoming
       if (Date.now() - last.at > 8000) return; // stale/old event, not a fresh arrival
+      if (isMessageAlertSuppressed()) return;
       setMessageAlertState({ active: true, fromId: peerId });
       try { navigator.vibrate?.([120, 80, 120]); } catch {}
     };
@@ -9726,7 +9793,7 @@ function DirectMessageSyncWatcher({ myUserId }: { myUserId: string | null }) {
         // Skip the very first poll's results — those are unread counts that
         // already existed before this tab opened, not a fresh arrival, so
         // don't ring the bell for them. Just record the baseline instead.
-        if (primedRef.current) {
+        if (primedRef.current && !isMessageAlertSuppressed()) {
           for (const [senderId, count] of Object.entries(bySender)) {
             if (count > (lastCountsRef.current[senderId] || 0)) {
               setMessageAlertState({ active: true, fromId: senderId });
@@ -9734,7 +9801,13 @@ function DirectMessageSyncWatcher({ myUserId }: { myUserId: string | null }) {
             }
           }
         }
-        lastCountsRef.current = bySender;
+        // After Read All, lock baseline to current server counts so old unreads cannot re-fire
+        if (isMessageAlertSuppressed()) {
+          lastCountsRef.current = bySender;
+          setMessageAlertState({ active: false, fromId: null });
+        } else {
+          lastCountsRef.current = bySender;
+        }
         primedRef.current = true;
       } catch { /* offline — try again next tick */ }
     }
@@ -13386,10 +13459,16 @@ export default function AddFriendPage() {
       if (!r.ok) return;
       const data = await r.json() as { threads: StoryCommentThread[] };
       const now = Date.now();
-      const fresh = (data.threads ?? []).filter(t => new Date(t.expiresAt).getTime() > now);
+      let fresh = (data.threads ?? []).filter(t => new Date(t.expiresAt).getTime() > now);
+      try {
+        if (user?.id) {
+          const localRead = loadLocalReadIdSet(STORY_CMT_READ_KEY(String(user.id)));
+          fresh = fresh.map(t => localRead.has(String(t.storyId)) ? { ...t, read: true } : t);
+        }
+      } catch { /* ignore */ }
       if (knownStoryThreadIdsRef.current) {
         const hasNewArrival = fresh.some(t => !t.read && !knownStoryThreadIdsRef.current!.has(t.storyId));
-        if (hasNewArrival) playShareArrivedSound();
+        if (hasNewArrival && !isMessageAlertSuppressed()) playShareArrivedSound();
       }
       knownStoryThreadIdsRef.current = new Set(fresh.map(t => t.storyId));
       setStoryCommentThreads(fresh);
@@ -13419,7 +13498,7 @@ export default function AddFriendPage() {
                 thumbUrl: thread.mediaUrl || null,
                 at: Number.isFinite(at) ? at : Date.now(),
               });
-              if (!thread.read) {
+              if (!thread.read && !isMessageAlertSuppressed()) {
                 try {
                   setMessageAlertState({ active: true, fromId: c.authorId });
                 } catch { /* */ }
@@ -13463,10 +13542,16 @@ export default function AddFriendPage() {
       if (!r.ok) return;
       const data = await r.json() as { threads: PostCommentThread[] };
       const now = Date.now();
-      const fresh = (data.threads ?? []).filter(t => new Date(t.expiresAt).getTime() > now);
+      let fresh = (data.threads ?? []).filter(t => new Date(t.expiresAt).getTime() > now);
+      try {
+        if (user?.id) {
+          const localRead = loadLocalReadIdSet(POST_CMT_READ_KEY(String(user.id)));
+          fresh = fresh.map(t => localRead.has(String(t.post.id)) ? { ...t, read: true } : t);
+        }
+      } catch { /* ignore */ }
       if (knownPostThreadIdsRef.current) {
         const hasNewArrival = fresh.some(t => !t.read && !knownPostThreadIdsRef.current!.has(t.post.id));
-        if (hasNewArrival) playShareArrivedSound();
+        if (hasNewArrival && !isMessageAlertSuppressed()) playShareArrivedSound();
       }
       knownPostThreadIdsRef.current = new Set(fresh.map(t => t.post.id));
       setPostCommentThreads(fresh);
@@ -21032,12 +21117,16 @@ export default function AddFriendPage() {
               <button
                 type="button"
                 onClick={() => {
-                  clearAllMessageAlerts();
+                  const storyIds = storyCommentThreads.map(t => t.storyId);
+                  const postIds = (typeof postCommentThreads !== 'undefined' ? postCommentThreads : []).map((t: any) => t.post?.id ?? t.id).filter(Boolean);
+                  clearAllMessageAlerts({ userId: user?.id, storyIds, postIds });
                   try {
                     if (user?.id) {
                       const list = loadUserShareInbox(user.id).map(x => ({ ...x, read: true }));
                       saveUserShareInbox(user.id, list);
                       setUserShareInbox(list);
+                      markLocalStoryThreadsRead(String(user.id), storyIds);
+                      markLocalPostThreadsRead(String(user.id), postIds);
                     }
                   } catch { /* ignore */ }
                   try {
@@ -21045,6 +21134,12 @@ export default function AddFriendPage() {
                   } catch { /* ignore */ }
                   try {
                     setPostCommentThreads(prev => prev.map(t => ({ ...t, read: true })));
+                  } catch { /* ignore */ }
+                  try {
+                    setSharedInbox(prev => prev.map(s => ({ ...s, read: true })));
+                  } catch { /* ignore */ }
+                  try {
+                    setPostInteractions(prev => prev.map(p => ({ ...p, read: true })));
                   } catch { /* ignore */ }
                 }}
                 aria-label="Read all messages"
