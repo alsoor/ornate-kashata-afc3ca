@@ -6,6 +6,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, Search, X } from 'lucide-react';
+import { publishLiveLocation, pullLiveLocations, type LiveLocPing } from '@/lib/liveLocationSync';
 
 export type LiveLocUser = {
   id: string;
@@ -68,6 +69,27 @@ export default function LiveLocationMap({
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 360, h: 520 });
 
+  const applyPings = useCallback((list: LiveLocUser[], pings: LiveLocPing[]) => {
+    const byId = new Map(pings.map(p => [String(p.id), p]));
+    const byUser = new Map(
+      pings.map(p => [String(p.username || '').replace(/^@/, '').toLowerCase(), p]),
+    );
+    return list.map(u => {
+      const un = String(u.username || '').replace(/^@/, '').toLowerCase();
+      const hit = byId.get(String(u.id)) || (un ? byUser.get(un) : undefined);
+      if (!hit) return u;
+      return {
+        ...u,
+        lat: hit.lat,
+        lng: hit.lng,
+        live: true,
+        avatarUrl: u.avatarUrl || hit.avatarUrl,
+        name: u.name || hit.name,
+        username: u.username || hit.username,
+      };
+    });
+  }, []);
+
   const mergeLive = useCallback((list: LiveLocUser[]) => {
     let liveRows: LiveLocUser[] = [];
     try {
@@ -76,7 +98,7 @@ export default function LiveLocationMap({
       liveRows = [];
     }
     const map = new Map<string, LiveLocUser>();
-    for (const u of list) map.set(String(u.id), { ...u, live: false });
+    for (const u of list) map.set(String(u.id), { ...u, live: !!u.live });
     for (const u of liveRows) {
       const id = String(u.id);
       const prev = map.get(id) || u;
@@ -184,6 +206,54 @@ export default function LiveLocationMap({
     return () => window.clearTimeout(t);
   }, [q, mergeLive]);
 
+  useEffect(() => {
+    let stop = false;
+    const tick = async () => {
+      const pings = await pullLiveLocations();
+      if (stop) return;
+      setDirectory(prev => {
+        const extra: LiveLocUser[] = [];
+        for (const p of pings) {
+          if (!prev.some(u => u.id === p.id)) {
+            extra.push({
+              id: p.id,
+              name: p.name,
+              username: p.username,
+              avatarUrl: p.avatarUrl,
+              lat: p.lat,
+              lng: p.lng,
+              live: true,
+            });
+          }
+        }
+        return applyPings([...extra, ...prev], pings);
+      });
+    };
+    void tick();
+    const id = window.setInterval(tick, 4000);
+    return () => {
+      stop = true;
+      window.clearInterval(id);
+    };
+  }, [applyPings]);
+
+  useEffect(() => {
+    if (!on || !me || !currentUserId) return;
+    const id = window.setInterval(() => {
+      void publishLiveLocation({
+        id: currentUserId,
+        name: currentName || 'Me',
+        username: currentUsername ?? null,
+        avatarUrl: currentAvatar ?? null,
+        lat: me.lat,
+        lng: me.lng,
+        at: Date.now(),
+        on: true,
+      });
+    }, 8000);
+    return () => window.clearInterval(id);
+  }, [on, me, currentUserId, currentName, currentUsername, currentAvatar]);
+
   const publishMe = useCallback((lat: number, lng: number) => {
     setMe({ lat, lng });
     setCenter({ lat, lng });
@@ -213,6 +283,16 @@ export default function LiveLocationMap({
       return next;
     });
     setSelected(row);
+    void publishLiveLocation({
+      id: currentUserId,
+      name: currentName || 'Me',
+      username: currentUsername ?? null,
+      avatarUrl: currentAvatar ?? null,
+      lat,
+      lng,
+      at: Date.now(),
+      on: true,
+    });
   }, [currentUserId, currentName, currentUsername, currentAvatar]);
 
   function toggleOptIn() {
@@ -260,7 +340,7 @@ export default function LiveLocationMap({
       if (self && u.id === self.id) map.set(u.id, { ...u, ...self, live: self.live || liveOf(u) });
       else map.set(u.id, u);
     }
-    const all = [...map.values()];
+    const all = [...map.values()].filter(u => !String(u.username || u.name || '').toLowerCase().includes('deleted_'));
     if (!s) return all.slice(0, 40);
     return all.filter(u =>
       u.name.toLowerCase().includes(s) || String(u.username || '').toLowerCase().includes(s),
