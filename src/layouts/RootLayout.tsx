@@ -2426,7 +2426,6 @@ function GlobalBottomNavigation() {
       return;
     }
     setHomeIncoming(invite);
-    // Banner first (heads-up); user can expand to full swipe UI
     setHomeIncomingExpanded(false);
     stopHomeIncomingRing();
     playHomeIncomingRing();
@@ -2467,7 +2466,6 @@ function GlobalBottomNavigation() {
             } as NotificationOptions);
             n.onclick = () => {
               try { window.focus(); } catch { /* */ }
-              setHomeIncomingExpanded(true);
               n.close();
             };
           } catch { /* */ }
@@ -3497,235 +3495,9 @@ function GlobalBottomNavigation() {
       ? 'Ringing…'
       : '';
 
-  const homeIncomingOverlay = homeIncoming && homeCallPhase === 'idle' ? (
-    <>
-      {/* Heads-up banner (outside / on home) — tap body opens full screen */}
-      {!homeIncomingExpanded && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 'max(env(safe-area-inset-top, 0px), 8px)',
-            left: 10,
-            right: 10,
-            zIndex: 11020,
-            pointerEvents: 'auto',
-          }}
-        >
-          <div
-            role="button"
-            onClick={() => { playHomeCallTapFeedback(); setHomeIncomingExpanded(true); }}
-            style={{
-              background: 'rgba(245,247,250,0.98)',
-              borderRadius: 18,
-              padding: '12px 12px 12px 12px',
-              boxShadow: '0 10px 32px rgba(0,0,0,0.28)',
-              border: '1px solid rgba(0,0,0,0.06)',
-              cursor: 'pointer',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <div style={{ position: 'relative', width: 44, height: 44, flexShrink: 0 }}>
-                <div style={{ width: 44, height: 44, borderRadius: '50%', overflow: 'hidden', background: '#ddd' }}>
-                  {homeIncoming.hostAvatar ? (
-                    <img src={homeIncoming.hostAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#333', fontSize: 18 }}>
-                      {(homeIncoming.hostName || '?')[0]}
-                    </div>
-                  )}
-                </div>
-                <span style={{
-                  position: 'absolute', right: -2, bottom: -2, width: 18, height: 18, borderRadius: '50%',
-                  background: '#25d366', border: '2px solid #fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Phone size={10} color="#fff" strokeWidth={3} />
-                </span>
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, color: '#111', fontWeight: 800, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {homeIncoming.hostName || 'Friend'} <span style={{ color: '#ef4444' }}>&#10084;</span>
-                </p>
-                <p style={{ margin: 0, color: 'rgba(0,0,0,0.55)', fontSize: 13, fontWeight: 600 }}>
-                  {homeIncoming.video ? 'Incoming video call' : 'Incoming voice call'}
-                </p>
-              </div>
-              <span style={{ color: 'rgba(0,0,0,0.4)', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
-                {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: 10 }} onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                onClick={() => { playHomeCallTapFeedback(); ignoreHomeIncoming(); }}
-                style={{
-                  flex: 1, padding: '12px 10px', borderRadius: 14, border: 'none',
-                  background: '#e11d48', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer',
-                }}
-              >
-                Decline
-              </button>
-              <button
-                type="button"
-                onClick={() => { playHomeCallTapFeedback(); void answerHomeIncoming(); }}
-                style={{
-                  flex: 1, padding: '12px 10px', borderRadius: 14, border: 'none',
-                  background: '#16a34a', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer',
-                }}
-              >
-                Answer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Full-screen incoming — swipe up green to accept */}
-      {homeIncomingExpanded && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, zIndex: 11030,
-            background: '#0b141a',
-            display: 'flex', flexDirection: 'column',
-            paddingTop: 'max(env(safe-area-inset-top, 0px), 20px)',
-            paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 28px)',
-            boxSizing: 'border-box',
-          }}
-        >
-          <div aria-hidden style={{
-            position: 'absolute', inset: 0, opacity: 0.1, pointerEvents: 'none',
-            backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'80\' height=\'80\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.4\'%3E%3Ccircle cx=\'12\' cy=\'20\' r=\'1.2\'/%3E%3Cpath d=\'M40 10h10v2H40zM55 40h8v8h-8zM20 55h6v6h-6z\'/%3E%3C/g%3E%3C/svg%3E")',
-          }} />
-          <div style={{ textAlign: 'center', position: 'relative', zIndex: 1, padding: '12px 16px 0' }}>
-            <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: 22 }}>
-              {homeIncoming.hostName || 'Friend'} <span style={{ color: '#ef4444' }}>&#10084;</span>
-            </p>
-            {(() => {
-              const un = (homeIncoming as any).hostUsername
-                || homeIncoming.members?.find((m: any) => String(m.id) === String(homeIncoming.hostId))?.username
-                || null;
-              return un ? (
-                <p style={{ margin: '6px 0 0', color: 'rgba(200,210,220,0.75)', fontSize: 14, fontWeight: 600 }}>
-                  @{String(un).replace(/^@/, '')}
-                </p>
-              ) : (
-                <p style={{ margin: '6px 0 0', color: 'rgba(200,210,220,0.55)', fontSize: 13 }}>
-                  {homeIncoming.video ? 'Video call' : 'Voice call'}
-                </p>
-              );
-            })()}
-          </div>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 1 }}>
-            <div style={{
-              width: 168, height: 168, borderRadius: '50%', overflow: 'hidden',
-              border: '2px solid rgba(255,255,255,0.15)',
-              boxShadow: '0 0 40px rgba(37,211,102,0.2)',
-              background: 'rgba(255,255,255,0.06)',
-              animation: 'stooornaHomeRingShake 1s ease-in-out infinite',
-            }}>
-              {homeIncoming.hostAvatar ? (
-                <img src={homeIncoming.hostAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 52, fontWeight: 800, color: '#fff' }}>
-                  {(homeIncoming.hostName || '?')[0]}
-                </div>
-              )}
-            </div>
-          </div>
-          <div style={{ position: 'relative', zIndex: 2, padding: '0 28px 8px' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: 72 }}>
-                <button
-                  type="button"
-                  onClick={() => { playHomeCallTapFeedback(); ignoreHomeIncoming(); }}
-                  aria-label="Decline"
-                  style={{
-                    width: 64, height: 64, borderRadius: '50%', border: 'none',
-                    background: '#e11d48', color: '#fff', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 6px 20px rgba(225,29,72,0.4)',
-                  }}
-                >
-                  <PhoneOff size={26} color="#fff" strokeWidth={2.2} />
-                </button>
-                <span style={{ color: 'rgba(220,230,240,0.85)', fontSize: 12, fontWeight: 600 }}>Decline</span>
-              </div>
-
-              <div
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flex: 1 }}
-                onTouchStart={(e) => {
-                  homeIncomingSwipeStart.current = e.touches[0]?.clientY ?? null;
-                  homeIncomingSwipeY.current = 0;
-                }}
-                onTouchMove={(e) => {
-                  if (homeIncomingSwipeStart.current == null) return;
-                  const dy = homeIncomingSwipeStart.current - (e.touches[0]?.clientY ?? homeIncomingSwipeStart.current);
-                  homeIncomingSwipeY.current = dy;
-                }}
-                onTouchEnd={() => {
-                  const dy = homeIncomingSwipeY.current || 0;
-                  homeIncomingSwipeStart.current = null;
-                  homeIncomingSwipeY.current = null;
-                  if (dy > 48) {
-                    playHomeCallTapFeedback();
-                    void answerHomeIncoming();
-                  }
-                }}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, marginBottom: 4, opacity: 0.7 }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.2"><path d="M18 15l-6-6-6 6"/></svg>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="2.2"><path d="M18 15l-6-6-6 6"/></svg>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { playHomeCallTapFeedback(); void answerHomeIncoming(); }}
-                  aria-label="Accept"
-                  style={{
-                    width: 68, height: 68, borderRadius: '50%', border: 'none',
-                    background: '#22c55e', color: '#fff', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 6px 24px rgba(34,197,94,0.45)',
-                    animation: 'stooornaHomeRingShake 0.9s ease-in-out infinite',
-                  }}
-                >
-                  <Phone size={28} color="#fff" strokeWidth={2.2} />
-                </button>
-                <span style={{ color: 'rgba(220,230,240,0.85)', fontSize: 12, fontWeight: 600, marginTop: 4 }}>Swipe up to accept</span>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: 72 }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    playHomeCallTapFeedback();
-                    const peerId = homeIncoming.hostId;
-                    const peerName = homeIncoming.hostName;
-                    const peerAvatar = homeIncoming.hostAvatar;
-                    const peerUsername = (homeIncoming as any).hostUsername || null;
-                    ignoreHomeIncoming();
-                    try {
-                      window.dispatchEvent(new CustomEvent('stooorna:open-friend-chat', {
-                        detail: { friendId: peerId, peerName, peerUsername, peerAvatar },
-                      }));
-                    } catch { /* */ }
-                  }}
-                  aria-label="Message"
-                  style={{
-                    width: 64, height: 64, borderRadius: '50%', border: 'none',
-                    background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                >
-                  <MessageCircle size={24} strokeWidth={2.2} />
-                </button>
-                <span style={{ color: 'rgba(220,230,240,0.85)', fontSize: 12, fontWeight: 600 }}>Message</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  ) : null;
+  // Incoming answer UI: answer only from bottom-bar plus menu phone icon.
+  // No top banner and no full-screen ring/answer layer.
+  const homeIncomingOverlay = null;
 
   const homeCallOverlay = (homeCallPickerOpen || homeCallPhase !== 'idle') ? (
     <div style={{
@@ -3735,11 +3507,15 @@ function GlobalBottomNavigation() {
         : homeCallPhase === 'animating'
         ? 'radial-gradient(ellipse 60% 50% at 50% 80%, rgba(0,188,212,0.35), rgba(6,14,14,0.92) 70%)'
         : (homeCallPhase === 'connecting' || homeCallPhase === 'live')
-          ? '#0b0f14'
+          ? 'rgba(0,0,0,0.45)'
           : 'rgba(6,10,12,0.55)',
       display: 'flex', flexDirection: 'column',
-      justifyContent: (homeCallPhase === 'connecting' || homeCallPhase === 'live') ? 'stretch' : 'flex-end',
-      animation: homeCallPhase === 'animating' ? 'stooornaHomeCallIn 0.9s ease-out' : undefined,
+      justifyContent: 'flex-end',
+      animation: homeCallPhase === 'animating'
+        ? 'stooornaHomeCallIn 0.9s ease-out'
+        : (homeCallPhase === 'connecting' || homeCallPhase === 'live') && !homeCallMinimized
+          ? 'stooornaHomeCallSheet 0.32s cubic-bezier(0.32, 0.72, 0, 1)'
+          : undefined,
       pointerEvents: homeCallMinimized ? 'none' : 'auto',
     }}>
       {homeCallPhase === 'animating' && (
@@ -3850,10 +3626,17 @@ function GlobalBottomNavigation() {
 
       {(homeCallPhase === 'connecting' || homeCallPhase === 'live') && !homeCallMinimized && (
         <div style={{
-          flex: 1, display: 'flex', flexDirection: 'column',
+          width: '100%',
+          height: '100%',
+          maxHeight: '100%',
+          display: 'flex', flexDirection: 'column',
           background: '#0b141a',
           position: 'relative',
           overflow: 'hidden',
+          borderTopLeftRadius: 18,
+          borderTopRightRadius: 18,
+          boxShadow: '0 -8px 32px rgba(0,0,0,0.45)',
+          transform: 'translateY(0)',
         }}>
           <div aria-hidden style={{
             position: 'absolute', inset: 0, opacity: 0.09, pointerEvents: 'none',
