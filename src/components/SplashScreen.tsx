@@ -3,6 +3,36 @@ import { useEffect } from 'react';
 const HOLD_MS = 2000;
 const SPIN_MS = 3000;
 
+function AppMark() {
+  return (
+    <svg viewBox="0 0 200 200" width="100%" height="100%" aria-hidden="true">
+      <rect width="200" height="200" rx="42" fill="#0b1618" />
+      <circle cx="100" cy="100" r="72" fill="none" stroke="#00BCD4" strokeWidth="14" />
+      <path
+        d="M42 78 C70 58, 130 58, 158 78"
+        fill="none"
+        stroke="#00BCD4"
+        strokeWidth="12"
+        strokeLinecap="round"
+      />
+      <path
+        d="M40 108 C78 92, 128 128, 160 108"
+        fill="none"
+        stroke="#00BCD4"
+        strokeWidth="12"
+        strokeLinecap="round"
+      />
+      <path
+        d="M48 138 C88 118, 122 162, 156 140"
+        fill="none"
+        stroke="#00BCD4"
+        strokeWidth="12"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export default function SplashScreen({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     const t = window.setTimeout(() => onDone(), HOLD_MS + SPIN_MS);
@@ -18,55 +48,32 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'radial-gradient(ellipse 70% 55% at 50% 42%, #063230 0%, #031614 38%, #010807 100%)',
+        background: 'radial-gradient(ellipse 70% 55% at 50% 42%, #042422 0%, #021110 40%, #000807 100%)',
         overflow: 'hidden',
       }}
     >
-      <div
-        style={{
-          position: 'absolute',
-          width: 460,
-          height: 460,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(0,40,42,0.45) 0%, rgba(0,0,0,0.2) 55%, transparent 72%)',
-          filter: 'blur(10px)',
-        }}
-      />
-
-      <div style={{ position: 'relative', width: 236, height: 236 }}>
+      <div style={{ position: 'relative', width: 228, height: 228 }}>
         <div
           style={{
             position: 'absolute',
             inset: 0,
             borderRadius: '50%',
-            border: '6px solid #22c55e',
-            boxShadow: '0 0 22px rgba(34,197,94,0.55), inset 0 0 18px rgba(34,197,94,0.18)',
-            animation: 'stooornaSplashRingSpin 0.85s linear infinite',
+            border: '7px solid #0f6b3a',
+            boxShadow: '0 0 18px rgba(15,107,58,0.55), inset 0 0 12px rgba(15,107,58,0.25)',
+            animation: 'stooornaSplashRingSpin 0.9s linear infinite',
           }}
         />
         <div
           style={{
             position: 'absolute',
-            inset: 10,
-            borderRadius: '50%',
-            border: '1px solid rgba(0,188,212,0.28)',
+            inset: 14,
+            borderRadius: 36,
+            overflow: 'hidden',
+            animation: 'stooornaSplashLogoSpin 0.9s linear infinite',
           }}
-        />
-        <img
-          src="/stooorna-logo.jpg"
-          alt=""
-          style={{
-            position: 'absolute',
-            left: '50%',
-            top: '50%',
-            width: 132,
-            height: 132,
-            borderRadius: 28,
-            objectFit: 'cover',
-            animation: 'stooornaSplashLogoSpin 0.85s linear infinite',
-            boxShadow: '0 0 18px rgba(0,188,212,0.28)',
-          }}
-        />
+        >
+          <AppMark />
+        </div>
       </div>
 
       <style>{`
@@ -75,8 +82,8 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
           to { transform: rotate(360deg); }
         }
         @keyframes stooornaSplashLogoSpin {
-          from { transform: translate(-50%, -50%) rotate(0deg); }
-          to { transform: translate(-50%, -50%) rotate(-360deg); }
+          from { transform: rotate(0deg); }
+          to { transform: rotate(-360deg); }
         }
       `}</style>
     </div>
