@@ -52,22 +52,22 @@ function fmtCallDuration(totalSeconds: number): string {
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 const T = {
-  bg: 'radial-gradient(ellipse 70% 60% at 50% 30%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)',
-  primary: '#00BCD4',
-  primaryDim: 'rgba(0,188,212,0.35)',
-  primaryBorder: 'rgba(0,188,212,0.2)',
-  primaryFaint: 'rgba(0,188,212,0.08)',
-  text: 'rgba(200,230,230,0.9)',
-  textDim: 'rgba(150,200,200,0.5)',
-  bubbleMe: 'rgba(0,188,212,0.18)',
-  bubbleThem: 'rgba(255,255,255,0.05)',
-  inputBg: 'rgba(0,30,35,0.85)',
-  navBorder: 'rgba(0,188,212,0.1)',
-  red: 'hsl(var(--destructive))',
-  redFaint: 'rgba(239,68,68,0.1)',
-  redBorder: 'rgba(239,68,68,0.3)',
-  redBar: 'rgba(239,68,68,0.55)',
-  popupBg: 'hsl(var(--card))'
+  bg: '#efeae2',
+  primary: '#075E54',
+  primaryDim: 'rgba(7,94,84,0.35)',
+  primaryBorder: 'rgba(7,94,84,0.18)',
+  primaryFaint: 'rgba(7,94,84,0.08)',
+  text: '#111b21',
+  textDim: '#667781',
+  bubbleMe: '#d9fdd3',
+  bubbleThem: '#ffffff',
+  inputBg: '#ffffff',
+  navBorder: 'rgba(0,0,0,0.08)',
+  red: '#e53935',
+  redFaint: 'rgba(229,57,53,0.1)',
+  redBorder: 'rgba(229,57,53,0.3)',
+  redBar: 'rgba(229,57,53,0.55)',
+  popupBg: '#ffffff'
 };
 
 
@@ -528,25 +528,25 @@ function isLikelyVideoUrl(url: string): boolean {
 
 const LOCATION_PREFIX = '__LOCATION__';
 
-function parseLocationBody(body: string | null | undefined): { lat: number; lng: number; label?: string } | null {
+function parseLocationBody(body: string | null | undefined): { lat: number; lng: number; label?: string; live?: boolean } | null {
   if (!body || typeof body !== 'string' || !body.startsWith(LOCATION_PREFIX)) return null;
   try {
-    const loc = JSON.parse(body.slice(LOCATION_PREFIX.length)) as { lat?: number; lng?: number; label?: string };
+    const loc = JSON.parse(body.slice(LOCATION_PREFIX.length)) as { lat?: number; lng?: number; label?: string; live?: boolean };
     const lat = Number(loc?.lat);
     const lng = Number(loc?.lng);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat, lng, label: loc.label };
+    return { lat, lng, label: loc.label, live: !!loc.live };
   } catch {
     return null;
   }
 }
 
-function osmEmbedSrc(lat: number, lng: number, zoomDelta = 0.012): string {
-  const minLng = lng - zoomDelta;
-  const minLat = lat - zoomDelta;
-  const maxLng = lng + zoomDelta;
-  const maxLat = lat + zoomDelta;
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${minLng}%2C${minLat}%2C${maxLng}%2C${maxLat}&layer=mapnik&marker=${lat}%2C${lng}`;
+function googleEmbedSrc(lat: number, lng: number): string {
+  return `https://maps.google.com/maps?q=${lat},${lng}&z=16&output=embed`;
+}
+
+function osmEmbedSrc(lat: number, lng: number, _zoomDelta = 0.012): string {
+  return googleEmbedSrc(lat, lng);
 }
 
 function LocationMapBubble({ lat, lng, label }: { lat: number; lng: number; label?: string }) {
@@ -637,7 +637,7 @@ function LocationPickerOverlay({
   onConfirm,
 }: {
   onClose: () => void;
-  onConfirm: (lat: number, lng: number) => void;
+  onConfirm: (lat: number, lng: number, live?: boolean) => void;
 }) {
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
@@ -718,34 +718,43 @@ function LocationPickerOverlay({
         </div>
       </div>
       <div style={{
-        padding: '12px 14px max(14px, env(safe-area-inset-bottom))',
-        borderTop: `1px solid ${T.primaryBorder}`,
-        display: 'flex', flexDirection: 'column', gap: 10,
-        background: 'rgba(6,14,14,0.98)',
+        padding: '8px 14px max(14px, env(safe-area-inset-bottom))',
+        borderTop: '1px solid #eee',
+        display: 'flex', flexDirection: 'column', gap: 2,
+        background: '#fff',
       }}>
-        <p style={{ margin: 0, color: T.textDim, fontSize: '0.75rem' }}>
-          {lat != null && lng != null ? `${lat.toFixed(5)}, ${lng.toFixed(5)}` : 'Waiting for GPS…'}
-        </p>
-        {err ? <p style={{ margin: 0, color: T.red, fontSize: '0.75rem' }}>{err}</p> : null}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" onClick={readGps} style={{
-            flex: 1, padding: 12, borderRadius: 12, border: `1px solid ${T.primaryBorder}`,
-            background: T.primaryFaint, color: T.primary, fontWeight: 700, cursor: 'pointer',
-          }}>My location</button>
-          <button
-            type="button"
-            disabled={lat == null || lng == null}
-            onClick={() => { if (lat != null && lng != null) onConfirm(lat, lng); }}
-            style={{
-              flex: 2, padding: 12, borderRadius: 12, border: 'none',
-              background: lat != null ? T.primary : T.primaryFaint,
-              color: lat != null ? '#041018' : T.textDim,
-              fontWeight: 800, cursor: lat != null ? 'pointer' : 'default',
-            }}
-          >
-            Confirm & send
-          </button>
-        </div>
+        {err ? <p style={{ margin: '6px 0', color: T.red, fontSize: '0.75rem' }}>{err}</p> : null}
+        <button
+          type="button"
+          disabled={lat == null || lng == null}
+          onClick={() => { if (lat != null && lng != null) onConfirm(lat, lng, true); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12, padding: '12px 4px',
+            background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: '#111',
+          }}
+        >
+          <span style={{ width: 36, height: 36, borderRadius: '50%', background: '#111', color: '#fff', display: 'grid', placeItems: 'center' }}>
+            <MapPin size={16} />
+          </span>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>Share live location</span>
+        </button>
+        <button
+          type="button"
+          disabled={lat == null || lng == null}
+          onClick={() => { if (lat != null && lng != null) onConfirm(lat, lng, false); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12, padding: '12px 4px',
+            background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: '#111',
+          }}
+        >
+          <span style={{ width: 36, height: 36, borderRadius: '50%', border: '2px solid #111', display: 'grid', placeItems: 'center' }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#111' }} />
+          </span>
+          <span>
+            <span style={{ display: 'block', fontWeight: 600, fontSize: 15 }}>Send your current location</span>
+            <span style={{ display: 'block', color: '#667781', fontSize: 12 }}>{loading ? 'Locating…' : 'Accurate to GPS'}</span>
+          </span>
+        </button>
       </div>
     </motion.div>
   );
@@ -4287,12 +4296,12 @@ export default function ChatPage() {
     return () => document.removeEventListener('pointerdown', close);
   }, [menuMsgId]);
 
-  async function sendLocation(lat: number, lng: number) {
+  async function sendLocation(lat: number, lng: number, live = false) {
     if (sending) return;
     playBubblePop('send');
     setSending(true);
     try {
-      const body = `${LOCATION_PREFIX}${JSON.stringify({ lat, lng, label: 'Location' })}`;
+      const body = `${LOCATION_PREFIX}${JSON.stringify({ lat, lng, label: live ? 'Live location' : 'Location', live })}`;
       if (isGroup) {
         await fetch(`/api/groups/${groupId}/messages`, {
           method: 'POST', credentials: 'include',
@@ -6012,9 +6021,9 @@ export default function ChatPage() {
         {locationPickerOpen && (
           <LocationPickerOverlay
             onClose={() => setLocationPickerOpen(false)}
-            onConfirm={(lat, lng) => {
+            onConfirm={(lat, lng, live) => {
               setLocationPickerOpen(false);
-              void sendLocation(lat, lng);
+              void sendLocation(lat, lng, live);
             }}
           />
         )}
