@@ -19849,8 +19849,8 @@ export default function AddFriendPage() {
               `}</style>
               {!textFeedSearchOpen ? (
                 <>
-                  {/* Left: profile avatar — opens story/account sheet (same size as search square) */}
-                  {user && (
+                  {/* Left: profile — same outer box as search (32x32) */}
+                  {user ? (
                     <button
                       type="button"
                       onClick={() => {
@@ -19862,27 +19862,40 @@ export default function AddFriendPage() {
                       }}
                       aria-label="Open account page"
                       style={{
-                        position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                        position: 'absolute',
+                        left: 10,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
                         marginTop: 'max(2px, env(safe-area-inset-top, 0px) / 2)',
-                        width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(0,188,212,0.45)',
-                        background: 'rgba(0,188,212,0.12)', color: CLR_PRIMARY, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
-                        padding: 0, overflow: 'hidden',
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        border: 'none',
+                        background: 'rgba(0,188,212,0.1)',
+                        color: CLR_PRIMARY,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 2,
+                        padding: 0,
+                        overflow: 'hidden',
+                        boxSizing: 'border-box',
                       }}
                     >
                       {((user as any).avatarUrl || (user as any).image) ? (
                         <img
                           src={(user as any).avatarUrl || (user as any).image}
                           alt=""
-                          style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7 }}
+                          style={{ width: 32, height: 32, objectFit: 'cover', display: 'block', borderRadius: 8 }}
                         />
                       ) : isCompanyPublisher ? (
-                        <Building2 size={16} strokeWidth={2.2} />
+                        <Building2 size={16} strokeWidth={2.3} />
                       ) : (
-                        <Users size={16} strokeWidth={2.2} />
+                        <Users size={16} strokeWidth={2.3} />
                       )}
                     </button>
-                  )}
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => {
@@ -19916,7 +19929,7 @@ export default function AddFriendPage() {
                       STOOORNA
                     </span>
                   </button>
-                  {/* Right: search (same square size as profile) */}
+                  {/* Right: search square — identical size to profile */}
                   <button
                     type="button"
                     onClick={() => {
@@ -19925,47 +19938,108 @@ export default function AddFriendPage() {
                     }}
                     aria-label="Search"
                     style={{
-                      position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                      position: 'absolute',
+                      right: 10,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
                       marginTop: 'max(2px, env(safe-area-inset-top, 0px) / 2)',
-                      width: 32, height: 32, borderRadius: 8, border: 'none',
-                      background: 'rgba(0,188,212,0.1)', color: CLR_PRIMARY, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      border: 'none',
+                      background: 'rgba(0,188,212,0.1)',
+                      color: CLR_PRIMARY,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 2,
+                      padding: 0,
+                      boxSizing: 'border-box',
                     }}
                   >
                     <Search size={16} strokeWidth={2.3} />
                   </button>
                 </>
               ) : (
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8, width: '100%', maxWidth: 420,
-                  paddingTop: 2, paddingBottom: 2,
-                }}>
-                  {/* Close search — same slot/size as profile square on the left */}
+                <>
+                  {/* Left: X replaces profile only — same 32x32 slot */}
                   <button
                     type="button"
                     onClick={() => { setTextFeedSearchOpen(false); setTextFeedSearchQuery(''); }}
                     aria-label="Close search"
                     style={{
-                      width: 32, height: 32, borderRadius: 8, border: 'none',
-                      background: 'rgba(255,255,255,0.06)', color: CLR_TEXT_DIM, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      position: 'absolute',
+                      left: 10,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      marginTop: 'max(2px, env(safe-area-inset-top, 0px) / 2)',
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      border: 'none',
+                      background: 'rgba(0,188,212,0.1)',
+                      color: CLR_PRIMARY,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 2,
+                      padding: 0,
+                      boxSizing: 'border-box',
                     }}
                   >
                     <X size={16} strokeWidth={2.3} />
                   </button>
-                  <Search size={15} color={CLR_PRIMARY} strokeWidth={2.3} style={{ flexShrink: 0 }} />
+                  {/* Center: search field — header height unchanged */}
                   <input
                     ref={textFeedSearchInputRef}
                     value={textFeedSearchQuery}
                     onChange={e => setTextFeedSearchQuery(e.target.value)}
                     placeholder="Search posts, #hashtag, @user"
                     style={{
-                      flex: 1, minWidth: 0, height: 30, borderRadius: 8, border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                      background: CLR_INPUT_BG, color: CLR_TEXT, fontSize: '0.78rem',
-                      padding: '0 10px', outline: 'none',
+                      width: 'min(220px, calc(100% - 96px))',
+                      height: 28,
+                      borderRadius: 8,
+                      border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      background: CLR_INPUT_BG,
+                      color: CLR_TEXT,
+                      fontSize: '0.78rem',
+                      padding: '0 10px',
+                      outline: 'none',
+                      boxSizing: 'border-box',
                     }}
                   />
-                </div>
+                  {/* Right: search icon stays in place */}
+                  <button
+                    type="button"
+                    aria-label="Search"
+                    tabIndex={-1}
+                    style={{
+                      position: 'absolute',
+                      right: 10,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      marginTop: 'max(2px, env(safe-area-inset-top, 0px) / 2)',
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      border: 'none',
+                      background: 'rgba(0,188,212,0.1)',
+                      color: CLR_PRIMARY,
+                      cursor: 'default',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 2,
+                      padding: 0,
+                      boxSizing: 'border-box',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    <Search size={16} strokeWidth={2.3} />
+                  </button>
+                </>
               )}
             </div>
             <div
@@ -20269,7 +20343,7 @@ export default function AddFriendPage() {
               <>
                 {/* Profile avatar moved to top header (left) */}
 
-                {/* Center: New post (true blue, not cyan) */}
+                {/* Center: New post (cyan, white pen) */}
                 {user && (
                   <button
                     type="button"
@@ -20287,14 +20361,14 @@ export default function AddFriendPage() {
                       width: 44,
                       height: 44,
                       borderRadius: '50%',
-                      border: '1px solid rgba(37,99,235,0.55)',
-                      background: '#2563EB',
+                      border: '1px solid rgba(0,188,212,0.55)',
+                      background: '#00BCD4',
                       color: '#ffffff',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      boxShadow: '0 4px 16px rgba(37,99,235,0.4)',
+                      boxShadow: '0 4px 16px rgba(0,188,212,0.4)',
                       zIndex: 2,
                       padding: 0,
                     }}

@@ -3747,8 +3747,8 @@ function GlobalBottomNavigation() {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <p style={{ margin: 0, flex: 1, color: '#00BCD4', fontWeight: 800, fontSize: 16 }}>Call a friend</p>
-            <button type="button" onClick={() => setHomeCallPickerOpen(false)} style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer' }}>
-              <X size={18} />
+            <button type="button" onClick={() => setHomeCallPickerOpen(false)} aria-label="Close" style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 0 }}>
+              <X size={18} strokeWidth={2.4} style={{ display: 'block' }} />
             </button>
           </div>
           <div style={{ overflowY: 'auto', maxHeight: '48vh', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -3798,7 +3798,7 @@ function GlobalBottomNavigation() {
         </div>
       )}
 
-      {/* WhatsApp-style bottom call pill — active call only */}
+      {/* WhatsApp-style bottom call pill — active call only (dark app chrome + moving border shine) */}
       {homeCallSheetShown && (
         <div
           style={{
@@ -3814,30 +3814,59 @@ function GlobalBottomNavigation() {
             gap: 6,
           }}
         >
+          <style>{`
+            @keyframes stooornaCallBorderShine {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
+          {/* Outer ring: rotating cyan shine around the pill */}
           <div
             style={{
               width: '100%',
               maxWidth: 420,
-              background: '#ffffff',
               borderRadius: 999,
-              boxShadow: '0 8px 28px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)',
-              padding: '10px 14px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8,
+              padding: 2,
+              position: 'relative',
+              overflow: 'hidden',
               boxSizing: 'border-box',
               animation: 'stooornaHomeCallSheet 0.34s cubic-bezier(0.32, 0.72, 0, 1)',
+              boxShadow: '0 8px 28px rgba(0,0,0,0.45), 0 0 18px rgba(0,188,212,0.18)',
             }}
           >
+            <div
+              aria-hidden
+              style={{
+                position: 'absolute',
+                inset: '-40%',
+                background: 'conic-gradient(from 0deg, transparent 0%, transparent 55%, rgba(0,188,212,0.15) 62%, #00BCD4 70%, #e0fbff 74%, #00BCD4 78%, rgba(0,188,212,0.15) 85%, transparent 92%, transparent 100%)',
+                animation: 'stooornaCallBorderShine 2.8s linear infinite',
+                zIndex: 0,
+              }}
+            />
+            <div
+              style={{
+                position: 'relative',
+                zIndex: 1,
+                width: '100%',
+                background: 'linear-gradient(180deg, #0c2226 0%, #071416 55%, #050e10 100%)',
+                borderRadius: 999,
+                padding: '10px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+                boxSizing: 'border-box',
+              }}
+            >
             <button
               type="button"
               onClick={() => homeCallAction(() => toggleHomeCallMute())}
               aria-label={homeCallMuted ? 'Unmute' : 'Mute'}
               style={{
-                width: 44, height: 44, borderRadius: '50%', border: '1.5px solid rgba(0,0,0,0.12)',
-                background: homeCallMuted ? 'rgba(0,0,0,0.06)' : 'transparent',
-                color: '#111', cursor: 'pointer',
+                width: 44, height: 44, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.28)',
+                background: homeCallMuted ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)',
+                color: '#fff', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
               }}
             >
@@ -3885,8 +3914,8 @@ function GlobalBottomNavigation() {
               })}
               aria-label="Wave"
               style={{
-                width: 44, height: 44, borderRadius: '50%', border: '1.5px solid rgba(0,0,0,0.12)',
-                background: 'transparent', cursor: 'pointer',
+                width: 44, height: 44, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.28)',
+                background: 'rgba(255,255,255,0.06)', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0, fontSize: 22,
               }}
             >
@@ -3906,10 +3935,11 @@ function GlobalBottomNavigation() {
             >
               <PhoneOff size={20} strokeWidth={2.3} color="#fff" />
             </button>
+            </div>
           </div>
           <p style={{
-            margin: 0, color: 'rgba(60,60,60,0.75)', fontSize: 12, fontWeight: 600,
-            background: 'rgba(255,255,255,0.92)', borderRadius: 12, padding: '4px 12px',
+            margin: 0, color: 'rgba(180,220,220,0.85)', fontSize: 12, fontWeight: 600,
+            background: 'rgba(6,16,20,0.92)', border: '1px solid rgba(0,188,212,0.2)', borderRadius: 12, padding: '4px 12px',
           }}>
             {homeCallPhase === 'live'
               ? (homeCallStatusLabel || formatCallDuration(homeCallElapsedSec))
