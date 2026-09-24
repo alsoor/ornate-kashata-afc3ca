@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin } from 'lucide-react';
+import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin, Smile, Paperclip } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import { useHeartbeat, usePresenceQuery, formatLastSeen, useTypingPublisher, usePeerTyping } from '@/hooks/usePresence';
 import InAppNotification, { type AppNotification } from '@/components/InAppNotification';
@@ -4046,6 +4046,7 @@ export default function ChatPage() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const analyserFrameRef = useRef<number | null>(null);
   const [recordLevel, setRecordLevel] = useState(0.08);
+  const [recPaused, setRecPaused] = useState(false);
 
   // ── Streak camera state REMOVED ─────────────────────────────────────────────
 
@@ -4629,6 +4630,7 @@ export default function ChatPage() {
       };
       updateLevel();
       setIsRecording(true);
+      setRecPaused(false);
       setRecordSecs(0);
       recordTimerRef.current = setInterval(() => setRecordSecs(s => s + 1), 1000);
     } catch {/* mic denied */}
@@ -4651,6 +4653,7 @@ export default function ChatPage() {
     recorder.stream.getTracks().forEach(t => t.stop());
     mediaRecorderRef.current = null;
     setIsRecording(false);
+    setRecPaused(false);
     if (send) playBubblePop('send');
     if (!send) {
       setRecordSecs(0);
@@ -5938,31 +5941,51 @@ export default function ChatPage() {
           e.target.value = '';
         }} />
 
-          {/* ── Circular live voice recorder ── */}
-          <AnimatePresence>
-            {isRecording && <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} style={{ position: 'absolute', left: 0, right: 0, bottom: 8, display: 'flex', justifyContent: 'center', zIndex: 8 }}>
-              <div style={{ width: 168, height: 168, borderRadius: '50%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.28)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
-                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.6, repeat: Infinity, ease: 'linear' }} style={{ position: 'absolute', inset: -4, borderRadius: '50%', borderTop: '4px solid #ef4444', borderRight: '4px solid transparent', borderBottom: '4px solid transparent', borderLeft: '4px solid transparent' }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 42, padding: '0 20px' }}>
-                  {Array.from({ length: 13 }, (_, i) => {
-                    const distance = Math.abs(i - 6) / 6;
-                    const height = 10 + (1 - distance) * 28 * recordLevel;
-                    return <motion.span key={i} animate={{ height }} transition={{ duration: 0.08 }} style={{ width: 4, borderRadius: 99, background: '#ef4444' }} />;
-                  })}
-                </div>
-              </div>
-            </motion.div>}
-          </AnimatePresence>
-
           {/* ── Input row ── */}
           <div style={{
           display: 'flex',
-          alignItems: 'flex-end',
+          alignItems: 'center',
           gap: 8,
           position: 'relative'
         }}>
 
-            {/* textarea + مايك مدمج بنفس الحقل */}
+            {isRecording ? (
+              <div style={{ flex: 1, background: '#fff', borderRadius: 22, padding: '10px 12px 12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: '#111', fontVariantNumeric: 'tabular-nums' }}>
+                    {`${Math.floor(recordSecs / 60)}:${String(recordSecs % 60).padStart(2, '0')}`}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 28, overflow: 'hidden', width: 140 }}>
+                    {Array.from({ length: 28 }, (_, i) => (
+                      <span key={i} style={{
+                        width: 3, borderRadius: 99, background: '#111',
+                        height: recPaused ? 6 : 6 + Math.abs(Math.sin((i + recordSecs) * 0.7)) * 18 * recordLevel,
+                      }} />
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button type="button" onClick={() => stopRecording(false)} style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: '#fde8ef', color: '#e11d48', cursor: 'pointer' }}>
+                    <Trash2 size={18} />
+                  </button>
+                  <button type="button" onClick={() => {
+                    const rec = mediaRecorderRef.current;
+                    if (!rec) return;
+                    if (recPaused) {
+                      try { rec.resume(); } catch { /* ignore */ }
+                      setRecPaused(false);
+                      recordTimerRef.current = setInterval(() => setRecordSecs(s => s + 1), 1000);
+                    } else {
+                      try { rec.pause(); } catch { /* ignore */ }
+                      setRecPaused(true);
+                      if (recordTimerRef.current) { clearInterval(recordTimerRef.current); recordTimerRef.current = null; }
+                    }
+                  }} style={{ flex: 1, height: 44, borderRadius: 22, border: 'none', background: '#f3f4f6', color: '#111', fontWeight: 700, cursor: 'pointer' }}>
+                    {recPaused ? 'Resume' : '00  Pause'}
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div style={{
             position: 'relative',
             flex: 1
@@ -5980,128 +6003,57 @@ export default function ChatPage() {
                 e.preventDefault();
                 sendText();
               }
-            }} readOnly={isRecording} onFocus={() => { if (isRecording) inputRef.current?.blur(); }} placeholder={replyTo ? 'اكتب رداً…' : 'رسالة…'} rows={1} style={{
+            }} placeholder={replyTo ? 'Reply…' : 'Message'} rows={1} style={{
               width: '100%',
               boxSizing: 'border-box',
               resize: 'none',
-              background: T.inputBg,
-              border: `1px solid ${T.primaryBorder}`,
+              background: '#fff',
+              border: '1px solid #e5e7eb',
               borderRadius: 22,
-              padding: '10px 44px 10px 44px',
-              color: T.text,
-              fontSize: '0.9rem',
+              padding: '10px 78px 10px 40px',
+              color: '#111',
+              fontSize: '0.95rem',
               outline: 'none',
               lineHeight: 1.4,
               maxHeight: 100,
               overflowY: 'auto',
               fontFamily: 'var(--font-sans)',
-              display: isRecording ? 'none' : 'block',
             }} />
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#667781' }}>
+                <Smile size={20} />
+              </span>
+              {!text.trim() && (
+                <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 10, color: '#667781' }}>
+                  <button type="button" onClick={() => setLocationPickerOpen(true)} style={{ background: 'none', border: 'none', padding: 0, color: '#667781', cursor: 'pointer' }}><Paperclip size={20} /></button>
+                  <button type="button" onClick={() => setChatCameraOpen(true)} style={{ background: 'none', border: 'none', padding: 0, color: '#667781', cursor: 'pointer' }}><Camera size={20} /></button>
+                </span>
+              )}
+              {!!text.trim() && (
+                <button type="button" onClick={() => setLocationPickerOpen(true)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', padding: 0, color: '#667781', cursor: 'pointer' }}>
+                  <Paperclip size={20} />
+                </button>
+              )}
 
-              {/* Send / Mic — مدمج داخل حقل الكتابة */}
-              {text.trim() ? <motion.button whileTap={{
-              scale: 0.88
-            }} onClick={sendText} disabled={sending} style={{
-              position: 'absolute',
-              right: 6,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              width: 32,
-              height: 32,
-              borderRadius: '50%',
-              background: T.primaryFaint,
-              border: 'none',
-              color: T.primary,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 0,
-            }}>
-                  <Send size={15} strokeWidth={2} />
-                </motion.button> : isRecording ? <><motion.button whileTap={{
-              scale: 0.88
-            }} onClick={() => stopRecording(false)} aria-label="Cancel voice recording" style={{
-              position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', width: 32, height: 32, borderRadius: '50%', background: T.redFaint, border: 'none', color: T.red, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-            }}><X size={17} strokeWidth={2.4} /></motion.button>
-                <motion.button whileTap={{ scale: 0.88 }} onClick={() => stopRecording(true)} aria-label="Send voice recording" style={{
-              position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 32, height: 32, borderRadius: '50%', background: T.primaryFaint, border: 'none', color: T.primary, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-            }}><Send size={15} strokeWidth={2} /></motion.button></> : <motion.button whileTap={{
-              scale: 0.88
-            }} onClick={startRecording} aria-label="Start voice recording" style={{
-              position: 'absolute',
-              right: 6,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              background: '#111b21',
-              border: 'none',
-              color: '#fff',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 0,
-            }}>
-                  <Mic size={18} strokeWidth={2.2} />
-                </motion.button>}
             </div>
+            )}
 
-            {/* Share current location */}
-            {!text.trim() && !isRecording && (
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.88 }}
-                onClick={() => setLocationPickerOpen(true)}
-                aria-label="Share location"
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '50%',
-                  flexShrink: 0,
-                  background: '#ffffff',
-                  border: '1px solid #111111',
-                  color: '#111111',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 0,
-                  alignSelf: 'center',
-                }}
-              >
-                <MapPin size={18} strokeWidth={2.1} />
-              </motion.button>
-            )}
-            {/* Camera — WhatsApp-style: opens full camera (Video / Photo / Voice note / File) */}
-            {!text.trim() && !isRecording && (
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.88 }}
-                onClick={() => setChatCameraOpen(true)}
-                aria-label="Camera"
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '50%',
-                  flexShrink: 0,
-                  background: '#ffffff',
-                  border: '1px solid #111111',
-                  color: '#111111',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 0,
-                  marginBottom: 0,
-                  alignSelf: 'center',
-                }}
-              >
-                <Camera size={18} strokeWidth={2.1} />
-              </motion.button>
-            )}
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.92 }}
+              onClick={() => {
+                if (isRecording) { void stopRecording(true); return; }
+                if (text.trim()) { void sendText(); return; }
+                void startRecording();
+              }}
+              disabled={sending}
+              style={{
+                width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
+                background: '#111b21', border: 'none', color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+              }}
+            >
+              {isRecording || text.trim() ? <Play size={18} fill="#fff" /> : <Mic size={20} strokeWidth={2.2} />}
+            </motion.button>
           </div>
         </div>
       </motion.div>
