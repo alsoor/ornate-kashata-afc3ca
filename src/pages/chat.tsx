@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon } from 'lucide-react';
+import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import { useHeartbeat, usePresenceQuery, formatLastSeen } from '@/hooks/usePresence';
 import InAppNotification, { type AppNotification } from '@/components/InAppNotification';
@@ -425,14 +425,53 @@ function StoryReplyBubble({
   );
 }
 
+function resolveMediaUrl(raw: string | null | undefined): string {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  if (!s) return '';
+  try {
+    const p = JSON.parse(s);
+    if (p && typeof p === 'object') {
+      const u = p.url || p.src || p.mediaUrl || p.path || p.href;
+      if (u) return String(u);
+    }
+  } catch { /* plain */ }
+  return s;
+}
+
+function isLikelyImageUrl(url: string): boolean {
+  const u = url.toLowerCase().split('?')[0];
+  return /\.(jpg|jpeg|png|gif|webp|bmp|heic|heif|avif|svg)$/i.test(u)
+    || u.includes('/image') || u.includes('/images/') || u.includes('secret-chat/image');
+}
+
+function isLikelyVideoUrl(url: string): boolean {
+  const u = url.toLowerCase().split('?')[0];
+  return /\.(mp4|webm|mov|m4v|mkv|avi|3gp|ogv)$/i.test(u)
+    || u.includes('/video') || u.includes('video-note');
+}
+
 function ImageBubble({
   url
 }: {
   url: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [broken, setBroken] = useState(false);
+  const src = resolveMediaUrl(url);
+  if (!src || broken) {
+    return (
+      <div style={{
+        padding: '12px 14px', maxWidth: 220,
+        display: 'flex', alignItems: 'center', gap: 8, color: T.textDim, fontSize: '0.82rem',
+      }}>
+        <ImageIcon size={18} />
+        <span>Image unavailable</span>
+      </div>
+    );
+  }
   return <>
-      <img src={url} alt="Shared image" onClick={() => setOpen(true)} style={{
+      <img src={src} alt="" onClick={() => setOpen(true)} onError={() => setBroken(true)} style={{
       display: 'block',
       width: '100%',
       maxWidth: 240,
@@ -470,7 +509,7 @@ function ImageBubble({
         }}>
               <X size={28} />
             </button>
-            <img src={url} alt="Full size" style={{
+            <img src={src} alt="" style={{
           maxWidth: '100%',
           maxHeight: '90vh',
           objectFit: 'contain',
@@ -1488,7 +1527,7 @@ function GroupInfoModal({
             </div>
             {/* Camera button for creator */}
             {isCreator && <>
-                <input ref={fileRef} type="file" accept="image/*" style={{
+                <input ref={fileRef} type="file" accept="image/*,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif,.bmp,.svg" style={{
               display: 'none'
             }} onChange={e => {
               const f = e.target.files?.[0];
@@ -2673,62 +2712,8 @@ function ChatCameraCapture({
         padding: '8px 0 max(16px, env(safe-area-inset-bottom))',
         background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.55))',
       }}>
-        {galleryThumbs.length > 0 && !notePreviewUrl && !photoPreviewUrl && !recording && (
-          <div style={{
-            display: 'flex', gap: 6, overflowX: 'auto', padding: '0 12px 12px',
-            scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch', alignItems: 'center',
-          }}>
-            {galleryThumbs.map(item => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => void sendGalleryItem(item)}
-                style={{
-                  width: 56, height: 56, borderRadius: 10, flexShrink: 0, padding: 0,
-                  border: '1.5px solid rgba(255,255,255,0.35)', overflow: 'hidden', cursor: 'pointer',
-                  background: '#111', position: 'relative',
-                }}
-              >
-                {item.kind === 'video' ? (
-                  <>
-                    <video src={item.url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    <span style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'rgba(0,0,0,0.25)' }}>
-                      <Play size={14} color="#fff" fill="#fff" />
-                    </span>
-                  </>
-                ) : (
-                  <img src={item.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                )}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={async () => {
-                if (sending || !galleryThumbs.length) return;
-                setSending(true);
-                try {
-                  for (const item of galleryThumbs) {
-                    if (item.kind === 'video') await onSendVideo(item.file);
-                    else await onSendImage(item.file);
-                  }
-                  onClose();
-                } finally {
-                  setSending(false);
-                }
-              }}
-              disabled={sending}
-              style={{
-                marginLeft: 'auto', flexShrink: 0, height: 40, padding: '0 18px', borderRadius: 20,
-                border: 'none', background: '#22c55e', color: '#041018', fontWeight: 800, fontSize: '0.88rem',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: sending ? 0.6 : 1,
-                boxShadow: '0 4px 12px rgba(34,197,94,0.35)',
-              }}
-            >
-              <Send size={15} strokeWidth={2.4} />
-              Send{galleryThumbs.length > 1 ? ` (${galleryThumbs.length})` : ''}
-            </button>
-          </div>
-        )}
+        {/* Gallery selection uses shutter-row thumb + Send only */}
+
 
         {/* شريط الغالق: أثناء التسجيل/معاينة النوت — ✕ مكان المعرض · إرسال مكان قلب الكاميرا */}
         <div style={{
@@ -2892,7 +2877,7 @@ function ChatCameraCapture({
       <input
         ref={galleryInputRef}
         type="file"
-        accept="image/*,video/*"
+        accept="image/*,video/*,.mp4,.webm,.mov,.m4v,.mkv,.avi,.3gp,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif,.bmp"
         multiple
         style={{ display: 'none' }}
         onChange={e => {
@@ -2903,7 +2888,7 @@ function ChatCameraCapture({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z,.csv,.json,.xml,.mp3,.wav,.ogg,.aac,.flac,.apk"
+        accept="*/*"
         style={{ display: 'none' }}
         onChange={async e => {
           const f = e.target.files?.[0];
@@ -3825,6 +3810,45 @@ export default function ChatPage() {
     return () => document.removeEventListener('pointerdown', close);
   }, [menuMsgId]);
 
+  // ── Share live location as a special text message ───────────────────────────
+  async function shareMyLocation() {
+    if (sending) return;
+    if (!navigator.geolocation) {
+      try { alert('Location is not available on this device.'); } catch { /* */ }
+      return;
+    }
+    setSending(true);
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true, timeout: 15000, maximumAge: 10000,
+        });
+      });
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const body = `__LOCATION__${JSON.stringify({ lat, lng, label: 'My location' })}`;
+      if (isGroup) {
+        await fetch(`/api/groups/${groupId}/messages`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body }),
+        });
+      } else {
+        if (!scChatId) return;
+        await fetch('/api/secret-chat/messages', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: scChatId, body }),
+        });
+      }
+      await fetchMsgs();
+    } catch {
+      try { alert('Could not get location. Check permission settings.'); } catch { /* */ }
+    } finally {
+      setSending(false);
+    }
+  }
+
   // ── Send text ───────────────────────────────────────────────────────────────
   async function sendText() {
     if (!text.trim() || sending) return;
@@ -3913,16 +3937,17 @@ export default function ChatPage() {
 
   async function sendImage(file: File) {
     try {
+      const ct = file.type || 'image/jpeg';
       if (isGroup) {
         await fetch(`/api/groups/${groupId}/messages/image`, {
           method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': file.type }, body: file
+          headers: { 'Content-Type': ct }, body: file
         });
       } else {
         if (!scChatId) return;
         await fetch(`/api/secret-chat/image?chatId=${scChatId}`, {
           method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': file.type }, body: file
+          headers: { 'Content-Type': ct }, body: file
         });
       }
       await fetchMsgs();
@@ -3932,17 +3957,32 @@ export default function ChatPage() {
   // ── Send video / document file ───────────────────────────────────────────────
   async function sendFile(file: File) {
     try {
+      const ct = file.type || 'application/octet-stream';
+      const isVid = ct.startsWith('video/') || isLikelyVideoUrl(file.name);
+      const isImg = ct.startsWith('image/') || isLikelyImageUrl(file.name);
+      if (isImg && !isGroup) {
+        await sendImage(file);
+        return;
+      }
       if (isGroup) {
         await fetch(`/api/groups/${groupId}/messages/file?name=${encodeURIComponent(file.name)}`, {
           method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': file.type }, body: file
+          headers: { 'Content-Type': ct }, body: file
         });
       } else {
         if (!scChatId) return;
-        await fetch(`/api/secret-chat/file?chatId=${scChatId}&name=${encodeURIComponent(file.name)}`, {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': file.type }, body: file
-        });
+        // Prefer dedicated image endpoint when mime is image
+        if (isImg) {
+          await fetch(`/api/secret-chat/image?chatId=${scChatId}`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': ct }, body: file
+          });
+        } else {
+          await fetch(`/api/secret-chat/file?chatId=${scChatId}&name=${encodeURIComponent(file.name)}`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': ct }, body: file
+          });
+        }
       }
       await fetchMsgs();
     } catch {/* silent */}
@@ -4951,11 +4991,39 @@ export default function ChatPage() {
                             );
                           }
                           if (m.isStreak) return <StreakBubble msg={m} isMe={isMe} />;
-                          if (m.type === 'voice' && m.body) return <VoiceBubble url={m.body} duration={m.duration} isMe={isMe} />;
+                          if (m.type === 'voice' && m.body) return <VoiceBubble url={resolveMediaUrl(m.body) || m.body} duration={m.duration} isMe={isMe} />;
                           if (m.type === 'image' && m.body) return <ImageBubble url={m.body} />;
                           if (m.type === 'video' && m.body) return <ChatVideoBubble body={m.body} duration={m.duration} />;
-                          if (m.type === 'file' && m.body) return <ChatFileBubble body={m.body} isMe={isMe} />;
-                          if (m.type === 'call') return null; // call feature removed
+                          if (m.type === 'file' && m.body) {
+                            const fu = resolveMediaUrl(m.body);
+                            if (isLikelyImageUrl(fu) || isLikelyImageUrl(m.body)) return <ImageBubble url={fu || m.body} />;
+                            if (isLikelyVideoUrl(fu) || isLikelyVideoUrl(m.body)) return <ChatVideoBubble body={m.body} duration={m.duration} />;
+                            return <ChatFileBubble body={m.body} isMe={isMe} />;
+                          }
+                          if (m.type === 'text' && m.body) {
+                            const tu = resolveMediaUrl(m.body);
+                            if (tu && isLikelyImageUrl(tu) && (tu.startsWith('http') || tu.startsWith('/'))) return <ImageBubble url={tu} />;
+                            if (tu && isLikelyVideoUrl(tu) && (tu.startsWith('http') || tu.startsWith('/'))) return <ChatVideoBubble body={m.body} duration={m.duration} />;
+                            if (m.body.startsWith('__LOCATION__')) {
+                              try {
+                                const loc = JSON.parse(m.body.slice('__LOCATION__'.length)) as { lat: number; lng: number; label?: string };
+                                const maps = `https://maps.google.com/?q=${loc.lat},${loc.lng}`;
+                                return (
+                                  <a href={maps} target="_blank" rel="noopener noreferrer" style={{
+                                    display: 'flex', flexDirection: 'column', gap: 6, textDecoration: 'none',
+                                    padding: '4px 2px', minWidth: 160, maxWidth: 240,
+                                  }}>
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.primary, fontWeight: 700, fontSize: '0.85rem' }}>
+                                      <MapPin size={16} strokeWidth={2.3} /> Location
+                                    </span>
+                                    <span style={{ color: T.textDim, fontSize: '0.72rem' }}>{loc.label || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`}</span>
+                                    <span style={{ color: T.primary, fontSize: '0.72rem', fontWeight: 600 }}>Open in Maps</span>
+                                  </a>
+                                );
+                              } catch { /* fall through */ }
+                            }
+                          }
+                          if (m.type === 'call') return null;
                           return (
                             <p style={{
                               color: T.text,
@@ -5245,14 +5313,14 @@ export default function ChatPage() {
           if (f) sendImage(f);
           e.target.value = '';
         }} />
-          <input ref={videoInputRef} type="file" accept="video/*" style={{
+          <input ref={videoInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.mkv,.avi,.3gp" style={{
           display: 'none'
         }} onChange={e => {
           const f = e.target.files?.[0];
           if (f) sendFile(f);
           e.target.value = '';
         }} />
-          <input ref={docInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z,.csv,.json,.xml,.mp3,.wav,.ogg,.aac,.flac,.apk,.ipa,.dmg,.exe,.deb" style={{
+          <input ref={docInputRef} type="file" accept="*/*" style={{
           display: 'none'
         }} onChange={e => {
           const f = e.target.files?.[0];
@@ -5365,13 +5433,39 @@ export default function ChatPage() {
                 </motion.button>}
             </div>
 
+            {/* Share current location */}
+            {!text.trim() && !isRecording && (
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.88 }}
+                onClick={() => { void shareMyLocation(); }}
+                aria-label="Share location"
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  flexShrink: 0,
+                  background: 'rgba(255,255,255,0.08)',
+                  border: `1px solid ${T.primaryBorder}`,
+                  color: T.primary,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                  alignSelf: 'center',
+                }}
+              >
+                <MapPin size={18} strokeWidth={2.1} />
+              </motion.button>
+            )}
             {/* Camera — WhatsApp-style: opens full camera (Video / Photo / Voice note / File) */}
             {!text.trim() && !isRecording && (
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.88 }}
                 onClick={() => setChatCameraOpen(true)}
-                aria-label="الكاميرا"
+                aria-label="Camera"
                 style={{
                   width: 40,
                   height: 40,
