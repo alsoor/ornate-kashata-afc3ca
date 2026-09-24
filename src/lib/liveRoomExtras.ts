@@ -110,6 +110,19 @@ export function publishLiveActive(opts: {
   } catch {
     /* ignore */
   }
+  // Registry of active hosts for same-origin tabs / soft poll
+  try {
+    const regRaw = localStorage.getItem('stooorna_any_live_hosts');
+    const reg = regRaw ? (JSON.parse(regRaw) as Record<string, { kind: string; at: number; name?: string }>) : {};
+    if (active) {
+      reg[hostId] = { kind, at: Date.now(), name: hostName || undefined };
+    } else {
+      delete reg[hostId];
+    }
+    localStorage.setItem('stooorna_any_live_hosts', JSON.stringify(reg));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function makeChatPayload(opts: {

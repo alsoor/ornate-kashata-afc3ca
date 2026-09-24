@@ -1855,13 +1855,13 @@ export default function LiveCameraPage() {
             position: 'absolute',
             left: 10,
             right: 10,
-            bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
+            bottom: 'calc(118px + env(safe-area-inset-bottom, 0px))',
             zIndex: 25,
             pointerEvents: 'none',
             display: 'flex',
             flexDirection: 'column',
             gap: 6,
-            maxHeight: liveChatOpen ? 200 : 36,
+            maxHeight: liveChatOpen ? 220 : 36,
           }}
         >
           <button

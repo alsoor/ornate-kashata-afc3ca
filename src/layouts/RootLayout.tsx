@@ -285,11 +285,80 @@ function LiveJoinBanner() {
       });
     };
 
+    const onBanner = (e: Event) => {
+      const d = (e as CustomEvent).detail as {
+        hostId?: string;
+        active?: boolean;
+        kind?: 'voice' | 'camera';
+        hostName?: string;
+        hostUsername?: string | null;
+        hostAvatar?: string | null;
+        message?: string;
+      };
+      if (!d?.hostId || !d.active) {
+        if (d?.hostId && d.active === false) {
+          setBanner((prev) => (prev && String(prev.hostId) === String(d.hostId) ? null : prev));
+        }
+        return;
+      }
+      void resolveHost(String(d.hostId), d.kind === 'camera' ? 'camera' : 'voice', {
+        name: d.hostName || undefined,
+        username: d.hostUsername ?? null,
+        avatarUrl: d.hostAvatar ?? null,
+      });
+    };
+
+    const readStorageLive = () => {
+      try {
+        for (const kind of ['voice', 'camera'] as const) {
+          const curKey = kind === 'camera' ? 'stooorna_livecam_active_current' : 'stooorna_live_active_current';
+          const raw = localStorage.getItem(curKey);
+          if (!raw) continue;
+          const d = JSON.parse(raw) as {
+            hostId?: string;
+            active?: boolean;
+            at?: number;
+            name?: string;
+            username?: string | null;
+            avatarUrl?: string | null;
+            kind?: string;
+          };
+          if (!d?.hostId || !d.active) continue;
+          if (d.at && Date.now() - Number(d.at) > 90_000) continue;
+          if (user?.id && String(d.hostId) === String(user.id)) continue;
+          void resolveHost(String(d.hostId), kind === 'camera' || d.kind === 'camera' ? 'camera' : 'voice', {
+            name: d.name || undefined,
+            username: d.username ?? null,
+            avatarUrl: d.avatarUrl ?? null,
+          });
+        }
+      } catch { /* ignore */ }
+    };
+
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key) return;
+      if (
+        e.key === 'stooorna_live_active_current' ||
+        e.key === 'stooorna_livecam_active_current' ||
+        e.key.startsWith('stooorna_live_active_') ||
+        e.key.startsWith('stooorna_livecam_active_')
+      ) {
+        readStorageLive();
+      }
+    };
+
     window.addEventListener('stooorna:live-active', onVoice);
     window.addEventListener('stooorna:livecam-active', onCam);
+    window.addEventListener('stooorna:live-banner', onBanner as EventListener);
+    window.addEventListener('storage', onStorage);
+    readStorageLive();
+    const pollId = window.setInterval(readStorageLive, 4000);
     return () => {
       window.removeEventListener('stooorna:live-active', onVoice);
       window.removeEventListener('stooorna:livecam-active', onCam);
+      window.removeEventListener('stooorna:live-banner', onBanner as EventListener);
+      window.removeEventListener('storage', onStorage);
+      window.clearInterval(pollId);
       if (hideTimer.current) window.clearTimeout(hideTimer.current);
     };
   }, [user?.id, location.pathname]);
@@ -314,7 +383,7 @@ function LiveJoinBanner() {
         top: 0,
         left: 0,
         right: 0,
-        zIndex: 12000,
+        zIndex: 13050,
         padding: 'max(env(safe-area-inset-top, 0px), 10px) 12px 0',
         pointerEvents: 'none',
       }}
