@@ -1687,46 +1687,26 @@ function GlobalBottomNavigation() {
           if (other) {
             let parsed: any = null;
             try { parsed = other.name ? JSON.parse(other.name) : null; } catch { parsed = null; }
+            // Require explicit invite payload (channel + hostId). Do not invent channels from visits.
+            const ch = parsed?.channel
+              || (other.name && (String(other.name).startsWith('private_') || String(other.name).startsWith('home_group_')) ? other.name : null);
+            if (!ch || !(parsed?.hostId || other.userId)) continue;
+            if (parsed?.ended || parsed?.answered || parsed?.clear) continue;
             applyInvite({
-              channel: (parsed?.channel
-                || (other.name && (other.name.startsWith('private_') || other.name.startsWith('home_group_')) ? other.name : null)
-                || `private_${homeCallShortHash([user.id, String(other.userId || '')].sort().join('_'))}`),
-              hostId: parsed?.hostId || other.userId,
-              hostName: parsed?.hostName || other.name || null,
+              channel: String(ch),
+              hostId: String(parsed?.hostId || other.userId),
+              hostName: parsed?.hostName || (typeof other.name === 'string' && !other.name.startsWith('{') ? other.name : null) || null,
               hostAvatar: parsed?.hostAvatar || other.avatarUrl || null,
               members: parsed?.members || [],
+              at: Number(parsed?.at) || Date.now(),
+              video: !!parsed?.video,
             });
           }
         }
       } catch { /* */ }
-      try {
-        const vis = await fetch(`/api/profile-visit/visitors?ownerId=${encodeURIComponent(user.id)}`, { credentials: 'include' });
-        if (!vis.ok) return;
-        const vd = await vis.json() as { visitors?: { userId?: string; name?: string | null; username?: string | null; avatarUrl?: string | null }[] };
-        const visitor = (vd.visitors || [])[0];
-        if (!visitor?.userId) return;
-        const pairChannel = `private_${homeCallShortHash([user.id, String(visitor.userId)].sort().join('_'))}`;
-        const roomRes = await fetch(`/api/room?id=${encodeURIComponent(pairChannel)}`, { credentials: 'include' });
-        let callerActive = true;
-        if (roomRes.ok) {
-          const roomData = await roomRes.json() as { members?: { userId?: string }[] };
-          callerActive = (roomData.members || []).some(m => String(m.userId || '') !== user.id);
-        }
-        if (!callerActive) return;
-        applyInvite({
-          channel: pairChannel,
-          hostId: String(visitor.userId),
-          hostName: visitor.name || visitor.username || null,
-          hostAvatar: visitor.avatarUrl || null,
-          members: [{
-            id: String(visitor.userId),
-            name: visitor.name ?? null,
-            username: visitor.username ?? null,
-            avatarUrl: visitor.avatarUrl ?? null,
-            joined: true,
-          }],
-        });
-      } catch { /* */ }
+      // Do NOT invent incoming calls from profile-visit alone.
+      // Only explicit invites (localStorage /api/call/invite / ring-room JSON) may ring.
+
     };
     void poll();
     const interval = window.setInterval(poll, 1200);
@@ -1840,17 +1820,23 @@ function GlobalBottomNavigation() {
       : 0;
     homeCallLiveStartedAt.current = null;
     homeCallSessionRef.current += 1;
-    // Notify remote party so their UI closes automatically
+    // Notify remote party so their UI closes automatically (local hang-up only)
     if (!remoteEnd && endedChannel && user?.id) {
       try {
         const payload = { channel: endedChannel, by: user.id, at: endedAt };
-        localStorage.setItem(`stooorna_call_ended_${endedChannel}`, JSON.stringify(payload));
+        // Write end marker multiple times so peer poll / storage listeners always see it
+        for (let i = 0; i < 3; i++) {
+          try { localStorage.setItem(`stooorna_call_ended_${endedChannel}`, JSON.stringify({ ...payload, n: i })); } catch { /* */ }
+        }
         window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: payload }));
         window.dispatchEvent(new StorageEvent('storage', { key: `stooorna_call_ended_${endedChannel}`, newValue: JSON.stringify(payload) }));
+        try { localStorage.removeItem('stooorna_home_call_active_invite'); } catch { /* */ }
+        try { localStorage.removeItem(`stooorna_home_call_invite_${user.id}`); } catch { /* */ }
+        try { localStorage.removeItem('stooorna_home_call_live_session'); } catch { /* */ }
         for (const m of endedMembers) {
           if (!m.id || m.id === user.id) continue;
           try {
-            localStorage.setItem(`stooorna_home_call_invite_${m.id}`, JSON.stringify({ ended: true, channel: endedChannel, at: endedAt }));
+            localStorage.setItem(`stooorna_home_call_invite_${m.id}`, JSON.stringify({ ended: true, channel: endedChannel, at: endedAt, clear: true }));
             localStorage.removeItem(`stooorna_home_call_invite_${m.id}`);
           } catch { /* */ }
           try {
@@ -1862,11 +1848,22 @@ function GlobalBottomNavigation() {
           try {
             void fetch('/api/room/leave', {
               method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ roomId: endedChannel, userId: user.id, endRoom: true }),
+              body: JSON.stringify({ roomId: `home_ring_${homeCallShortHash(m.id)}`, userId: user.id, endRoom: true }),
             });
           } catch { /* */ }
         }
+        try {
+          void fetch('/api/room/leave', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId: endedChannel, userId: user.id, endRoom: true }),
+          });
+        } catch { /* */ }
       } catch { /* */ }
+    } else if (remoteEnd && endedChannel) {
+      // Peer already ended — still wipe local invite + session markers
+      try { localStorage.removeItem('stooorna_home_call_active_invite'); } catch { /* */ }
+      try { if (user?.id) localStorage.removeItem(`stooorna_home_call_invite_${user.id}`); } catch { /* */ }
+      try { localStorage.removeItem('stooorna_home_call_live_session'); } catch { /* */ }
     }
     if (homeCallNoAnswerTimer.current) {
       window.clearTimeout(homeCallNoAnswerTimer.current);
@@ -1920,10 +1917,10 @@ function GlobalBottomNavigation() {
     } catch { /* */ }
     homeCallMicRef.current = null;
     homeCallAgoraRef.current = null;
-    if (homeCallChannel && user?.id) {
+    if (endedChannel && user?.id) {
       void fetch('/api/room/leave', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId: homeCallChannel, userId: user.id }),
+        body: JSON.stringify({ roomId: endedChannel, userId: user.id, endRoom: !remoteEnd }),
       });
     }
     setHomeCallPhase('idle');
