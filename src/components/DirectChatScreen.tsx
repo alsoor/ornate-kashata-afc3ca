@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import {
-  ArrowLeft, Send, Mic, Trash2, Play, Pause, Check, X, Plus, Smile,
+  ArrowLeft, Send, Mic, Trash2, Play, Pause, Check, CheckCheck, X, Plus, Smile,
   Image as ImageIcon, Video as VideoIcon, MapPin, Reply,
 } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
@@ -194,6 +194,7 @@ async function pullDown(meId: string, peerId: string) {
   saveThread(meId, peerId, merged);
 }
 
+// Fallback endpoints, tried only if the app's main media endpoint doesn't accept the file.
 const UPLOAD_ENDPOINTS = ['/api/upload', '/api/files/upload', '/api/support/upload', '/api/media/upload'];
 
 function pickUploadUrl(d: any): string | null {
@@ -206,7 +207,42 @@ function pickUploadUrl(d: any): string | null {
   try { return new URL(s, window.location.origin).href; } catch { return s; }
 }
 
-async function uploadMedia(file: Blob, filename: string): Promise<string | null> {
+async function uploadMedia(file: Blob, filename: string, kind: 'image' | 'video' | 'audio' = 'image'): Promise<string | null> {
+  const ext = filename.includes('.') ? filename.split('.').pop() as string : (kind === 'video' ? 'mp4' : kind === 'audio' ? 'webm' : 'jpg');
+
+  // 1) The endpoint the rest of the app already uses for photo/video uploads (posts, stories),
+  //    tried first as a raw body — this is the one that actually works in this backend.
+  try {
+    const r = await fetch('/api/posts/media', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': file.type || (kind === 'video' ? 'video/mp4' : kind === 'audio' ? 'audio/webm' : 'image/jpeg'),
+        'X-File-Ext': `.${ext}`,
+        'X-Media-Type': kind,
+      },
+      body: file,
+    });
+    if (r.ok) {
+      const url = pickUploadUrl(await r.json().catch(() => null));
+      if (url) return url;
+    }
+  } catch { /* try FormData on the same endpoint */ }
+
+  // 2) Same endpoint, but as FormData (some backends only accept multipart bodies).
+  try {
+    const fd = new FormData();
+    fd.append('file', file, filename);
+    fd.append('type', kind);
+    fd.append('mediaType', kind);
+    const r = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+    if (r.ok) {
+      const url = pickUploadUrl(await r.json().catch(() => null));
+      if (url) return url;
+    }
+  } catch { /* fall through to the generic endpoints */ }
+
+  // 3) Generic upload endpoints, kept as a last-resort fallback.
   for (const ep of UPLOAD_ENDPOINTS) {
     try {
       const fd = new FormData();
@@ -286,19 +322,41 @@ function timeLabel(ts: number): string {
   return new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
-function lastSeenLabel(online: boolean | undefined, ts: number | string | null | undefined): string {
-  if (online) return 'Online';
-  if (!ts) return 'Offline';
-  const t = typeof ts === 'number' ? ts : new Date(ts).getTime();
-  if (!Number.isFinite(t)) return 'Offline';
-  const diffMin = Math.floor((Date.now() - t) / 60000);
-  if (diffMin < 1) return 'Last seen just now';
-  if (diffMin < 60) return `Last seen ${diffMin}m ago`;
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `Last seen ${diffH}h ago`;
-  const diffD = Math.floor(diffH / 24);
-  return diffD === 1 ? 'Last seen yesterday' : `Last seen ${diffD}d ago`;
+// ─── Message sounds — short synthesized "pop" ticks (no audio files needed) ──
+let sharedAudioCtx: AudioContext | null = null;
+function getAudioCtx(): AudioContext | null {
+  try {
+    const Ctor = window.AudioContext || (window as any).webkitAudioContext;
+    if (!Ctor) return null;
+    if (!sharedAudioCtx) sharedAudioCtx = new Ctor();
+    if (sharedAudioCtx.state === 'suspended') void sharedAudioCtx.resume();
+    return sharedAudioCtx;
+  } catch { return null; }
 }
+
+function playPopTone(freqStart: number, freqEnd: number, duration: number, volume: number) {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  try {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const now = ctx.currentTime;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freqStart, now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(freqEnd, 1), now + duration);
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
+  } catch { /* ignore playback errors (autoplay policy, unsupported browser, etc.) */ }
+}
+
+// Played the moment a message we send lands in the thread.
+function playSentSound() { playPopTone(880, 640, 0.09, 0.18); }
+// Played when a new message arrives from the peer.
+function playReceivedSound() { playPopTone(660, 920, 0.11, 0.22); }
 
 function fmtDur(sec: number): string {
   const s = Math.max(0, Math.floor(sec));
@@ -314,6 +372,7 @@ const C = {
   text: '#111111',
   textDim: 'rgba(0,0,0,0.45)',
   green: '#25D366',
+  red: '#f15c5c',
   blueTick: '#34B7F1',
   border: 'rgba(0,0,0,0.08)',
   action: '#000000',
@@ -542,7 +601,9 @@ function Bubble({
           }}>
             <span>{timeLabel(msg.at)}</span>
             {isMe && (
-              <Check size={12} color={isRead ? C.blueTick : 'rgba(0,0,0,0.4)'} strokeWidth={3} />
+              isRead
+                ? <CheckCheck size={14} color={C.blueTick} strokeWidth={3} />
+                : <Check size={12} color={'rgba(0,0,0,0.4)'} strokeWidth={3} />
             )}
           </div>
         </div>
@@ -720,6 +781,22 @@ export default function DirectChatScreen({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
   }, [msgs.length]);
 
+  // Play a receive tick whenever a new message from the peer shows up (poll or live event),
+  // without making a sound for the initial load of the thread.
+  const seenIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const seen = seenIdsRef.current;
+    if (seen) {
+      for (const m of msgs) {
+        if (!seen.has(m.id) && user?.id && String(m.fromId) !== String(user.id)) {
+          playReceivedSound();
+          break;
+        }
+      }
+    }
+    seenIdsRef.current = new Set(msgs.map(m => m.id));
+  }, [msgs, user?.id]);
+
   function sendText() {
     if (!user?.id || !text.trim()) return;
     const body = text.trim();
@@ -737,6 +814,7 @@ export default function DirectChatScreen({
       },
       target && quote ? encodeReplyBody(body, target.fromId, quote) : undefined,
     );
+    playSentSound();
     setText('');
     setReplyTo(null);
     refresh();
@@ -759,10 +837,11 @@ export default function DirectChatScreen({
     if (!user?.id) return;
     const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
     setUploading(true);
-    const url = await uploadMedia(blob, `voice-${Date.now()}.${ext}`);
+    const url = await uploadMedia(blob, `voice-${Date.now()}.${ext}`, 'audio');
     setUploading(false);
     if (!url) { showToast('Could not send the voice message. Please try again.'); return; }
     pushLocal(user.id, peer.friendId, { fromId: user.id, type: 'voice', body: url, duration: seconds });
+    playSentSound();
     refresh();
   }
 
@@ -771,10 +850,11 @@ export default function DirectChatScreen({
   async function handleMediaFile(file: File, kind: 'image' | 'video') {
     if (!user?.id) return;
     setUploading(true);
-    const url = await uploadMedia(file, file.name);
+    const url = await uploadMedia(file, file.name, kind);
     setUploading(false);
     if (!url) { showToast(`Could not send the ${kind === 'image' ? 'photo' : 'video'}. Please try again.`); return; }
     pushLocal(user.id, peer.friendId, { fromId: user.id, type: kind, body: url });
+    playSentSound();
     refresh();
   }
 
@@ -840,21 +920,25 @@ export default function DirectChatScreen({
           type="button"
           onClick={() => onAvatarClick?.()}
           aria-label="View profile photo"
-          style={{ background: 'none', border: 'none', padding: 0, flexShrink: 0, display: 'flex', cursor: onAvatarClick ? 'pointer' : 'default' }}
+          style={{ position: 'relative', background: 'none', border: 'none', padding: 0, flexShrink: 0, display: 'flex', cursor: onAvatarClick ? 'pointer' : 'default' }}
         >
           <UserAvatar name={peer.name ?? peer.username ?? '?'} avatarUrl={peer.avatarUrl} size={38} online={!!peerPresence?.online} />
+          {/* Status dot on the profile photo — green while online, red while offline */}
+          <span aria-hidden style={{
+            position: 'absolute', right: -1, bottom: -1, width: 11, height: 11, borderRadius: '50%',
+            background: peerPresence?.online ? C.green : C.red,
+            border: `2px solid ${C.headerBg}`, boxSizing: 'border-box',
+          }} />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontWeight: 700, fontSize: '0.98rem', color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {peerName}
           </p>
-          <p style={{
-            margin: 0, fontSize: '0.72rem',
-            color: peerTyping ? '#128C7E' : (peerPresence?.online ? C.green : C.textDim),
-            fontWeight: peerTyping || peerPresence?.online ? 700 : 400,
-          }}>
-            {peerTyping ? 'type...' : lastSeenLabel(peerPresence?.online, peerPresence?.lastSeenAt)}
-          </p>
+          {peerTyping && (
+            <p style={{ margin: 0, fontSize: '0.72rem', color: '#128C7E', fontWeight: 700 }}>
+              type...
+            </p>
+          )}
         </div>
         {headerActions}
       </div>
