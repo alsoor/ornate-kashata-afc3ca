@@ -1690,17 +1690,19 @@ function GlobalBottomNavigation() {
             // Require explicit invite payload (channel + hostId). Do not invent channels from visits.
             const ch = parsed?.channel
               || (other.name && (String(other.name).startsWith('private_') || String(other.name).startsWith('home_group_')) ? other.name : null);
-            if (!ch || !(parsed?.hostId || other.userId)) continue;
-            if (parsed?.ended || parsed?.answered || parsed?.clear) continue;
-            applyInvite({
-              channel: String(ch),
-              hostId: String(parsed?.hostId || other.userId),
-              hostName: parsed?.hostName || (typeof other.name === 'string' && !other.name.startsWith('{') ? other.name : null) || null,
-              hostAvatar: parsed?.hostAvatar || other.avatarUrl || null,
-              members: parsed?.members || [],
-              at: Number(parsed?.at) || Date.now(),
-              video: !!parsed?.video,
-            });
+            const hostOk = !!(parsed?.hostId || other.userId);
+            const skipped = !ch || !hostOk || !!(parsed?.ended || parsed?.answered || parsed?.clear);
+            if (!skipped) {
+              applyInvite({
+                channel: String(ch),
+                hostId: String(parsed?.hostId || other.userId),
+                hostName: parsed?.hostName || (typeof other.name === 'string' && !other.name.startsWith('{') ? other.name : null) || null,
+                hostAvatar: parsed?.hostAvatar || other.avatarUrl || null,
+                members: parsed?.members || [],
+                at: Number(parsed?.at) || Date.now(),
+                video: !!parsed?.video,
+              });
+            }
           }
         }
       } catch { /* */ }
