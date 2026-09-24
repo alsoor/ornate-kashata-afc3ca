@@ -457,7 +457,27 @@ export default function LiveLocationMap({
       fontFamily: 'system-ui, sans-serif',
     }}>
       <div style={{ padding: '8px 12px 6px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <p style={{ margin: 0, flex: 1, fontWeight: 800, fontSize: '0.95rem', color: '#00BCD4' }}>Live Location</p>
+        <p style={{ margin: 0, fontWeight: 800, fontSize: '0.95rem', color: '#00BCD4' }}>Live Location</p>
+        {(() => {
+          const pool = directory.filter(u => !String(u.username || u.name || '').toLowerCase().includes('deleted_'));
+          const onN = pool.filter(u => liveOf(u) || u.online).length + (on ? 0 : 0);
+          const selfOn = on ? 1 : 0;
+          const ids = new Set(pool.map(u => u.id));
+          const onlineN = pool.filter(u => liveOf(u) || u.online || (on && u.id === currentUserId)).length + (currentUserId && !ids.has(currentUserId) && on ? 1 : 0);
+          const offlineN = Math.max(0, pool.length + (currentUserId && !ids.has(currentUserId) ? 1 : 0) - onlineN);
+          return (
+            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: 18 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px rgba(34,197,94,0.7)' }} />
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#22c55e', lineHeight: 1 }}>{onlineN || selfOn}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#9ca3af' }} />
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#9ca3af', lineHeight: 1 }}>{offlineN}</span>
+              </div>
+            </div>
+          );
+        })()}
         <button
           type="button"
           onClick={toggleOptIn}
