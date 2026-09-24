@@ -9,6 +9,7 @@ import { usePresenceQuery } from '@/hooks/usePresence';
 import LiveLocationMap from '@/components/LiveLocationMap';
 import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
+import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -10686,44 +10687,13 @@ export default function SettingsPage() {
                           try {
                             const orig = String(row.originalUsername || '').replace(/^@/, '').trim()
                               || (String(row.username || '').startsWith('deleted_') ? '' : String(row.username || '').replace(/^@/, '').trim());
-                            // Remove from local recovery list immediately
-                            const next = restoreDeletedUser(row);
-                            setRecoveredUsers([...next]);
-                            // Unban + restore username on server
-                            const payload: Record<string, unknown> = {
-                              isBanned: false,
-                              banned: false,
-                              active: true,
-                              status: 'active',
-                              deleted: false,
-                              isDeleted: false,
-                            };
-                            if (orig) payload.username = orig;
-                            const ids = [row.id].filter(Boolean) as string[];
-                            for (const uid of ids) {
-                              for (const url of [`/api/owner/users/${uid}`, `/api/support/users/${uid}`, `/api/users/${uid}`]) {
-                                try {
-                                  const r = await fetch(url, {
-                                    method: 'PATCH',
-                                    credentials: 'include',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify(payload),
-                                  });
-                                  if (r.ok) break;
-                                } catch { /* next */ }
-                              }
-                            }
-                            // Also try by email
-                            if (row.email) {
-                              try {
-                                await fetch('/api/owner/users/unban', {
-                                  method: 'POST',
-                                  credentials: 'include',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ email: row.email, username: orig, ...payload }),
-                                });
-                              } catch { /* */ }
-                            }
+                            await restoreOwnerAccount({
+                              id: row.id,
+                              email: row.email,
+                              username: row.username,
+                              originalUsername: orig || row.originalUsername,
+                              lastIp: (row as any).lastIp || null,
+                            });
                             setRecoveredUsers(loadDeletedUsers());
                             try { await loadOwnerData(); } catch { /* */ }
                           } catch (err) {
@@ -10757,6 +10727,13 @@ export default function SettingsPage() {
                               if (row.email && String(x.email || '').toLowerCase() === String(row.email || '').toLowerCase()) return false;
                               return true;
                             }));
+                            await wipeOwnerAccount({
+                              id: row.id,
+                              email: row.email,
+                              username: row.username,
+                              originalUsername: (row as any).originalUsername || row.username,
+                              lastIp: (row as any).lastIp || null,
+                            });
                             await permanentlyWipeUser(row);
                             setRecoveredUsers(loadDeletedUsers());
                             try { await loadOwnerData(); } catch { /* */ }

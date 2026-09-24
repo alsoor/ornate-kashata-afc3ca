@@ -427,6 +427,43 @@ app.get("/api/owner/secret-room-joins/count", owner_secret_room_joins_count_get_
 app.get("/api/owner/stats", owner_stats_get_64);
 app.get("/api/owner/users", owner_users_get_65);
 app.patch("/api/owner/users/:id", owner_users_id_patch_66);
+const gBan = globalThis as typeof globalThis & { __stooornaIpBans?: Set<string>; __stooornaEmailBans?: Set<string> };
+if (!gBan.__stooornaIpBans) gBan.__stooornaIpBans = new Set();
+if (!gBan.__stooornaEmailBans) gBan.__stooornaEmailBans = new Set();
+app.post("/api/owner/users/unban", (req, res) => {
+  try {
+    const body = (req.body || {}) as Record<string, unknown>;
+    const email = String(body.email || "").toLowerCase();
+    const ip = String(body.lastIp || body.ip || "").trim();
+    if (email) gBan.__stooornaEmailBans!.delete(email);
+    if (ip) gBan.__stooornaIpBans!.delete(ip);
+    res.json({ ok: true, unbanned: true });
+  } catch {
+    res.status(500).json({ error: "unban_failed" });
+  }
+});
+app.post("/api/owner/users/unban-ip", (req, res) => {
+  try {
+    const body = (req.body || {}) as Record<string, unknown>;
+    const ip = String(body.lastIp || body.ip || "").trim();
+    if (ip) gBan.__stooornaIpBans!.delete(ip);
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "unban_ip_failed" });
+  }
+});
+app.post("/api/owner/users/wipe", (req, res) => {
+  try {
+    const body = (req.body || {}) as Record<string, unknown>;
+    const email = String(body.email || "").toLowerCase();
+    const ip = String(body.lastIp || body.ip || "").trim();
+    if (email) gBan.__stooornaEmailBans!.delete(email);
+    if (ip) gBan.__stooornaIpBans!.delete(ip);
+    res.json({ ok: true, wiped: true });
+  } catch {
+    res.status(500).json({ error: "wipe_failed" });
+  }
+});
 app.get("/api/posts", posts_get_67);
 app.post("/api/posts", posts_post_68);
 app.get("/api/posts/comment-unread", posts_comment_unread_get_69);
