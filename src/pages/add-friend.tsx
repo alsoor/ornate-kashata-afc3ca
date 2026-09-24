@@ -5944,15 +5944,7 @@ function PostCard({
                       {feedMuted[index] === false ? <Volume2 size={14} strokeWidth={2.2} /> : <VolumeX size={14} strokeWidth={2.2} />}
                     </motion.button>
                   )}
-                  {isMine && index === 0 && (
-                    <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onRemoveMedia(post); }} aria-label="حذف الوسائط" style={{
-                      position: 'absolute', top: 10, right: 10, width: 28, height: 28, borderRadius: '50%',
-                      background: 'rgba(20,20,20,0.85)', border: `1px solid ${CLR_POST_BORDER}`, color: '#fff', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
-                    }}>
-                      <X size={14} strokeWidth={2.6} />
-                    </motion.button>
-                  )}
+                  {false && isMine && index === 0 && null}
                 </div>
               ))}
             </div>
