@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
@@ -59,8 +60,8 @@ const T = {
   primaryFaint: 'rgba(0,188,212,0.10)',
   text: '#111111',
   textDim: '#444444',
-  bubbleMe: '#81D4FA',
-  bubbleThem: '#B3E5FC',
+  bubbleMe: '#4FC3F7',
+  bubbleThem: '#81D4FA',
   inputBg: '#ffffff',
   navBorder: 'rgba(0,0,0,0.08)',
   red: '#e53935',
@@ -283,10 +284,10 @@ function VoiceBubble({
         {label}
       </span>
       <div style={{
-        width: 28, height: 28, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
-        background: '#e5e5e5', border: '1px solid rgba(0,0,0,0.08)',
+        width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
+        marginInlineEnd: -4, background: '#ddd',
       }}>
-        {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
+        {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : null}
       </div>
     </div>;
 }
@@ -620,19 +621,23 @@ function LocationMapBubble({
           <p style={{ margin: 0, fontSize: 11, color: '#555' }}>{username ? `@${String(username).replace(/^@/, '')}` : ''}</p>
         </div>
       </button>
-      {open && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 20000, background: '#fff' }}>
+      {open && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 40000, background: '#0a1a1c' }}>
           <button
             type="button"
             onClick={() => setOpen(false)}
             style={{
               position: 'absolute', top: 14, left: 12, zIndex: 3, width: 36, height: 36, borderRadius: '50%',
-              border: '1px solid rgba(0,0,0,0.12)', background: '#fff', cursor: 'pointer',
+              border: '1px solid rgba(0,188,212,0.35)', background: '#fff', cursor: 'pointer',
             }}
           >
             <X size={18} color="#111" />
           </button>
-          <iframe title="live-map" src={embed} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} />
+          <iframe
+            title="live-map"
+            src={`https://www.openstreetmap.org/export/embed.html?bbox=${them.lng-0.01},${them.lat-0.01},${them.lng+0.01},${them.lat+0.01}&layer=mapnik&marker=${them.lat},${them.lng}`}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }}
+          />
           <div style={{
             position: 'absolute', left: '50%', top: '42%', transform: 'translate(-50%, -50%)',
             display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: 'none',
@@ -660,7 +665,7 @@ function LocationMapBubble({
             </div>
           )}
         </div>
-      )}
+      , document.body)}
     </>
   );
 }
@@ -749,15 +754,14 @@ function LocationPickerOverlay({
             {loading ? 'Locating…' : (err || 'No location')}
           </div>
         )}
-        <div style={{
-          position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-          display: 'flex', flexDirection: 'column', gap: 6,
-        }}>
-          <button type="button" onClick={() => nudge(0.0008, 0)} style={nudgeBtnStyle}>↑</button>
-          <button type="button" onClick={() => nudge(0, -0.0008)} style={nudgeBtnStyle}>←</button>
-          <button type="button" onClick={() => nudge(0, 0.0008)} style={nudgeBtnStyle}>→</button>
-          <button type="button" onClick={() => nudge(-0.0008, 0)} style={nudgeBtnStyle}>↓</button>
-        </div>
+        {lat != null && lng != null && (
+          <div style={{
+            position: 'absolute', left: '50%', top: '46%', transform: 'translate(-50%, -100%)',
+            pointerEvents: 'none',
+          }}>
+            <MapPin size={36} color="#ea4335" fill="#ea4335" />
+          </div>
+        )}
       </div>
       <div style={{
         padding: '8px 14px max(14px, env(safe-area-inset-bottom))',
@@ -3986,6 +3990,7 @@ export default function ChatPage() {
   const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false);
   const [chatCameraOpen, setChatCameraOpen] = useState(false);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+  const [hideChatChrome, setHideChatChrome] = useState(false);
   const headerMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!headerMenuOpen) return;
@@ -4877,7 +4882,9 @@ export default function ChatPage() {
           position: 'sticky',
           top: 0,
           zIndex: 20,
-          flexShrink: 0
+          flexShrink: 0,
+          transform: hideChatChrome ? 'translateY(-110%)' : 'translateY(0)',
+          transition: 'transform 0.22s ease',
         }}>
           <motion.button whileTap={{
           scale: 0.85
@@ -5240,6 +5247,12 @@ export default function ChatPage() {
         const scrolledUp = distFromBottom > 200;
         userScrolledUp.current = scrolledUp;
         setShowScrollBtn(scrolledUp);
+        const prev = Number(box.dataset.prevScroll || 0);
+        box.dataset.prevScroll = String(box.scrollTop);
+        setHideChatChrome(box.scrollTop > 24 && box.scrollTop > prev);
+        try {
+          window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: box.scrollTop > 24 && box.scrollTop > prev } }));
+        } catch { /* ignore */ }
       }} style={{
         flex: 1,
         minHeight: 0,
@@ -5987,14 +6000,15 @@ export default function ChatPage() {
               borderRadius: '50%',
               background: 'transparent',
               border: 'none',
-              color: T.primary,
+              color: '#ef4444',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               padding: 0,
+              marginTop: 10,
             }}>
-                  <Mic size={16} strokeWidth={2} />
+                  <Mic size={16} strokeWidth={2.4} />
                 </motion.button>}
             </div>
 
