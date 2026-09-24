@@ -6,7 +6,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import UserAvatar from '@/components/UserAvatar';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, Bell, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip } from 'lucide-react';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12012,21 +12012,6 @@ export default function AddFriendPage() {
   const [sharedCommentSending, setSharedCommentSending] = useState(false);
   const knownShareIdsRef = useRef<Set<number> | null>(null);
 
-  // ── Bell alert state — an incoming call or an unread direct message, both of which
-  //    should light the bell up red and shake it, on top of the story-comment badge
-  //    it already carries below. ──
-  const bellIncomingCall = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
-  const bellMessageAlert = useSyncExternalStore(subscribeMessageAlert, getMessageAlertSnapshot, getMessageAlertSnapshot);
-  const bellRinging = bellIncomingCall.ringing;
-  const bellHasAlert = bellRinging || bellMessageAlert.active;
-  const bellWasAlertRef = useRef(false);
-  useEffect(() => {
-    if (bellHasAlert && !bellWasAlertRef.current) {
-      try { navigator.vibrate?.([150, 90, 150]); } catch {}
-    }
-    bellWasAlertRef.current = bellHasAlert;
-  }, [bellHasAlert]);
-
   // ── Story-comment inbox — comments friends left on my stories (section 2 of the FEED-row box) ──
   const [storyCommentThreads, setStoryCommentThreads] = useState<StoryCommentThread[]>([]);
   const [storyCommentThreadsLoading, setStoryCommentThreadsLoading] = useState(false);
@@ -14319,6 +14304,7 @@ export default function AddFriendPage() {
   // 1:1 chat screen per friend, using the same persistence layer as the share-mini chat
   // (thread key 'direct' keeps it separate from the post-share threads keyed 'share').
   const [friendChatListOpen, setFriendChatListOpen] = useState(false);
+  const [normalChatPickerOpen, setNormalChatPickerOpen] = useState(false);
   useEffect(() => {
     if (!friendChatListOpen || !user) return;
     void loadFriends();
@@ -14384,6 +14370,16 @@ export default function AddFriendPage() {
   const friendChatFileRef = useRef<HTMLInputElement | null>(null);
   const friendChatVideoRef = useRef<HTMLInputElement | null>(null);
   const friendChatDocRef = useRef<HTMLInputElement | null>(null);
+  function openNormalChat(friend: Friend) {
+    const qs = new URLSearchParams();
+    qs.set('with', String(friend.friendId));
+    if (friend.name) qs.set('name', friend.name);
+    if (friend.username) qs.set('username', friend.username);
+    if (friend.avatarUrl) qs.set('avatarUrl', friend.avatarUrl);
+    setNormalChatPickerOpen(false);
+    navigate(`/chat?${qs.toString()}`);
+  }
+
   function openFriendChat(friend: Friend) {
     setFriendChatPeer(friend);
     setFriendChatMsgs(user ? loadShareThread(user.id, friend.friendId, 'direct') : []);
@@ -16117,50 +16113,20 @@ export default function AddFriendPage() {
                       type="button"
                       whileTap={{ scale: 0.9 }}
                       onClick={() => {
-                        setFriendChatListOpen(true);
-                        void loadSecretChats();
+                        setNormalChatPickerOpen(true);
+                        void loadFriends();
                       }}
-                      aria-label={bellHasAlert ? (bellRinging ? 'Incoming call' : 'New message') : 'Notifications'}
+                      aria-label="Chat"
                       style={{
                         width: 28, height: 28, borderRadius: '50%',
-                        background: bellRinging
-                          ? 'rgba(34,197,94,0.28)'
-                          : (bellHasAlert || storyCommentThreads.filter(t => !t.read).length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.2)'),
-                        border: `2px solid ${bellRinging ? '#22c55e' : (bellHasAlert ? '#ef4444' : CLR_PRIMARY)}`,
-                        boxShadow: bellRinging
-                          ? '0 0 14px rgba(34,197,94,0.65)'
-                          : (bellHasAlert ? '0 0 12px rgba(239,68,68,0.6)' : '0 0 10px rgba(0,188,212,0.45)'),
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                        padding: 0, position: 'relative', flexShrink: 0,
-                        animation: bellHasAlert ? 'stooornaBellShake 0.55s ease-in-out infinite' : 'none',
+                        background: 'rgba(0,188,212,0.2)',
+                        border: `2px solid ${CLR_PRIMARY}`,
+                        boxShadow: '0 0 10px rgba(0,188,212,0.45)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', padding: 0, position: 'relative', flexShrink: 0,
                       }}
                     >
-                      <style>{`
-                        @keyframes stooornaBellShake {
-                          0%, 100% { transform: rotate(0deg) scale(1); }
-                          20% { transform: rotate(-14deg) scale(1.08); }
-                          40% { transform: rotate(12deg) scale(1.08); }
-                          60% { transform: rotate(-10deg) scale(1.05); }
-                          80% { transform: rotate(8deg) scale(1.05); }
-                        }
-                      `}</style>
-                      <Bell size={14} color={bellRinging ? '#22c55e' : (bellHasAlert ? '#ef4444' : CLR_PRIMARY)} strokeWidth={2.2} />
-                      {(bellHasAlert || storyCommentThreads.filter(t => !t.read).length > 0) && (
-                        <span style={{
-                          position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, borderRadius: 8,
-                          background: bellRinging ? '#22c55e' : '#ef4444',
-                          color: '#fff',
-                          fontSize: '0.55rem', fontWeight: 800,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
-                          border: '1.5px solid #000',
-                        }}>
-                          {bellRinging
-                            ? '•'
-                            : (storyCommentThreads.filter(t => !t.read).length + (bellMessageAlert.active ? 1 : 0)) > 9
-                              ? '9+'
-                              : storyCommentThreads.filter(t => !t.read).length + (bellMessageAlert.active ? 1 : 0)}
-                        </span>
-                      )}
+                      <MessageCircle size={14} color={CLR_PRIMARY} strokeWidth={2.2} />
                     </motion.button>
                     {businessApproved && (
                       <motion.button
@@ -20929,6 +20895,118 @@ export default function AddFriendPage() {
             </div>
           </div>
         )}
+        <AnimatePresence>
+          {normalChatPickerOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setNormalChatPickerOpen(false)}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 10980,
+                background: 'rgba(0,0,0,0.58)',
+                backdropFilter: 'blur(8px)',
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              }}
+            >
+              <motion.div
+                initial={{ y: '100%', opacity: 0.9 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: '100%', opacity: 0.9 }}
+                transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+                onClick={e => e.stopPropagation()}
+                style={{
+                  width: '100%', maxWidth: 560, maxHeight: '82dvh',
+                  background: '#fff', borderRadius: '22px 22px 0 0',
+                  overflow: 'hidden', display: 'flex', flexDirection: 'column',
+                  boxShadow: '0 -12px 40px rgba(0,0,0,0.3)',
+                }}
+              >
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '14px 16px',
+                  borderBottom: '1px solid rgba(0,0,0,0.08)',
+                }}>
+                  <MessageCircle size={20} color="#00BCD4" />
+                  <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: 800, fontSize: '1.05rem' }}>
+                    Chats
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setNormalChatPickerOpen(false)}
+                    aria-label="Close"
+                    style={{
+                      width: 34, height: 34, border: 'none', borderRadius: '50%',
+                      background: '#f1f3f5', color: '#111', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '6px 0 18px' }}>
+                  {friends.length === 0 ? (
+                    <div style={{ padding: 42, textAlign: 'center', color: 'rgba(0,0,0,0.48)', fontSize: '0.88rem' }}>
+                      No friends yet.
+                    </div>
+                  ) : (
+                    friends.map(friend => {
+                      const online = !!(presence[friend.friendId] as any)?.online;
+                      return (
+                        <button
+                          key={friend.friendId}
+                          type="button"
+                          onClick={() => openNormalChat(friend)}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                            padding: '11px 16px', border: 'none', background: 'transparent',
+                            cursor: 'pointer', textAlign: 'left',
+                          }}
+                        >
+                          <div style={{ position: 'relative', flexShrink: 0 }}>
+                            <UserAvatar
+                              name={friend.name || friend.username || '?'}
+                              avatarUrl={friend.avatarUrl}
+                              size={48}
+                            />
+                            <span
+                              aria-hidden
+                              style={{
+                                position: 'absolute', right: 0, bottom: 0,
+                                width: 11, height: 11, borderRadius: '50%',
+                                border: '2px solid #fff',
+                                background: online ? '#22c55e' : '#9ca3af',
+                              }}
+                            />
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{
+                              color: '#111', fontWeight: 700, fontSize: '0.92rem',
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>
+                              {friend.username
+                                ? (String(friend.username).startsWith('@') ? friend.username : `@${friend.username}`)
+                                : (friend.name || 'User')}
+                            </div>
+                            {friend.name && friend.username ? (
+                              <div style={{
+                                marginTop: 2, color: 'rgba(0,0,0,0.45)', fontSize: '0.76rem',
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              }}>
+                                {friend.name}
+                              </div>
+                            ) : null}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {friendChatListOpen && !friendChatPeer && (
           <motion.div
             key="friend-chat-list"
