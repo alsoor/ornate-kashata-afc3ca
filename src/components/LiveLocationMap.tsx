@@ -23,7 +23,7 @@ const USERS_KEY = 'stooorna_live_location_users';
 const TILE = 256;
 
 function tileUrl(z: number, x: number, y: number) {
-  return `https://basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}.png`;
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${z}/${y}/${x}`;
 }
 
 function liveOf(u: LiveLocUser) {
@@ -279,7 +279,7 @@ export default function LiveLocationMap({
     const maxX = Math.floor(world.x + cx / TILE) + 1;
     const minY = Math.floor(world.y - cy / TILE) - 1;
     const maxY = Math.floor(world.y + cy / TILE) + 1;
-    const out: { key: string; src: string; left: number; top: number }[] = [];
+    const out: { key: string; src: string; z: number; x: number; y: number; left: number; top: number }[] = [];
     for (let x = minX; x <= maxX; x++) {
       for (let y = minY; y <= maxY; y++) {
         if (y < 0 || y >= n) continue;
@@ -287,6 +287,9 @@ export default function LiveLocationMap({
         out.push({
           key: `${z}-${tx}-${y}`,
           src: tileUrl(z, tx, y),
+          z,
+          x: tx,
+          y,
           left: cx + (x - world.x) * TILE,
           top: cy + (y - world.y) * TILE,
         });
@@ -488,6 +491,11 @@ export default function LiveLocationMap({
             src={t.src}
             alt=""
             draggable={false}
+            onError={e => {
+              const el = e.currentTarget;
+              const next = `https://tile.openstreetmap.org/${t.z}/${t.x}/${t.y}.png`;
+              if (el.src !== next) el.src = next;
+            }}
             style={{
               position: 'absolute',
               left: t.left,
