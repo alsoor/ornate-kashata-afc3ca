@@ -14380,6 +14380,18 @@ export default function AddFriendPage() {
     navigate(`/chat?${qs.toString()}`);
   }
 
+  useEffect(() => {
+    const open = !!(friendChatPeer || userShareChatPeer);
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:friend-chat-state', { detail: { open } }));
+    } catch { /* ignore */ }
+    return () => {
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:friend-chat-state', { detail: { open: false } }));
+      } catch { /* ignore */ }
+    };
+  }, [friendChatPeer, userShareChatPeer]);
+
   function openFriendChat(friend: Friend) {
     setFriendChatPeer(friend);
     setFriendChatMsgs(user ? loadShareThread(user.id, friend.friendId, 'direct') : []);
@@ -14411,6 +14423,26 @@ export default function AddFriendPage() {
     window.addEventListener('stooorna:open-friend-chat', onOpenFromCall);
     return () => window.removeEventListener('stooorna:open-friend-chat', onOpenFromCall);
   }, [friends, user?.id]);
+
+  useEffect(() => {
+    const onOpenChatPicker = () => {
+      setNormalChatPickerOpen(true);
+      void loadFriends();
+    };
+    window.addEventListener('stooorna:open-normal-chat-picker', onOpenChatPicker);
+    return () => window.removeEventListener('stooorna:open-normal-chat-picker', onOpenChatPicker);
+  }, []);
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get('openChatPicker') === '1') {
+        setNormalChatPickerOpen(true);
+        void loadFriends();
+        const u = new URL(window.location.href);
+        u.searchParams.delete('openChatPicker');
+        window.history.replaceState({}, '', u.pathname + (u.searchParams.toString() ? '?' + u.searchParams.toString() : '') + u.hash);
+      }
+    } catch { /* ignore */ }
+  }, []);
   useEffect(() => {
     if (!user?.id || !friendChatPeer) return;
     const refresh = () => {
@@ -16109,25 +16141,6 @@ export default function AddFriendPage() {
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
                   </div>
                   <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 12, flexShrink: 0, position: 'relative', zIndex: 2, minWidth: 36, paddingTop: 2 }}>
-                    <motion.button
-                      type="button"
-                      whileTap={{ scale: 0.9 }}
-                      onClick={() => {
-                        setNormalChatPickerOpen(true);
-                        void loadFriends();
-                      }}
-                      aria-label="Chat"
-                      style={{
-                        width: 28, height: 28, borderRadius: '50%',
-                        background: 'rgba(0,188,212,0.2)',
-                        border: `2px solid ${CLR_PRIMARY}`,
-                        boxShadow: '0 0 10px rgba(0,188,212,0.45)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        cursor: 'pointer', padding: 0, position: 'relative', flexShrink: 0,
-                      }}
-                    >
-                      <MessageCircle size={14} color={CLR_PRIMARY} strokeWidth={2.2} />
-                    </motion.button>
                     {businessApproved && (
                       <motion.button
                         type="button"
@@ -20266,7 +20279,39 @@ export default function AddFriendPage() {
                   </button>
                 )}
 
-                {/* New Post moved to bottom + menu (yellow PenLine) */}
+                {/* Center: New post (true blue, not cyan) */}
+                {user && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTextPostsPlusOpen(false);
+                      window.setTimeout(() => setShowComposer(true), 0);
+                    }}
+                    aria-label="New post"
+                    style={{
+                      position: 'absolute',
+                      left: '50%',
+                      top: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: 44,
+                      height: 44,
+                      borderRadius: '50%',
+                      border: '1px solid rgba(37,99,235,0.55)',
+                      background: '#2563EB',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 16px rgba(37,99,235,0.4)',
+                      zIndex: 2,
+                      padding: 0,
+                    }}
+                  >
+                    <PenLine size={20} strokeWidth={2.2} color="#ffffff" />
+                  </button>
+                )}
 
                 {/* Right: plus menu (same actions as bottom-bar plus) */}
                 <div
@@ -20426,6 +20471,28 @@ export default function AddFriendPage() {
                             type="button"
                             onClick={() => {
                               setTextPostsPlusOpen(false);
+                              setNormalChatPickerOpen(true);
+                              void loadFriends();
+                            }}
+                            aria-label="Chat"
+                            style={{
+                              width: 44, height: 44, borderRadius: '50%',
+                              border: '1px solid rgba(0,188,212,0.4)',
+                              background: 'rgba(6,20,22,0.96)',
+                              color: '#00BCD4',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                            }}
+                          >
+                            <MessageCircle size={20} strokeWidth={2.2} />
+                          </button>
+                        )}
+                        {user && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTextPostsPlusOpen(false);
                               try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
                               try {
                                 window.dispatchEvent(new CustomEvent('stooorna:open-live-kind', {
@@ -20445,27 +20512,6 @@ export default function AddFriendPage() {
                             }}
                           >
                             <Radio size={20} strokeWidth={2.2} />
-                          </button>
-                        )}
-                        {user && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTextPostsPlusOpen(false);
-                              window.setTimeout(() => setShowComposer(true), 0);
-                            }}
-                            aria-label="New post"
-                            style={{
-                              width: 44, height: 44, borderRadius: '50%',
-                              border: '1px solid rgba(0,188,212,0.55)',
-                              background: '#00BCD4',
-                              color: '#ffffff',
-                              cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              boxShadow: '0 4px 16px rgba(0,188,212,0.35)',
-                            }}
-                          >
-                            <PenLine size={20} strokeWidth={2.2} color="#ffffff" />
                           </button>
                         )}
                       </div>
