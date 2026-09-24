@@ -29,9 +29,11 @@ function project(lat: number, lng: number, w: number, h: number) {
 export default function LiveLocationMap({
   currentUserId,
   currentName,
+  onClose,
 }: {
   currentUserId?: string;
   currentName?: string;
+  onClose?: () => void;
 }) {
   const [on, setOn] = useState(false);
   const [q, setQ] = useState('');
@@ -129,8 +131,8 @@ export default function LiveLocationMap({
       color: 'rgba(200,230,230,0.92)',
       fontFamily: 'system-ui, sans-serif',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <p style={{ margin: 0, fontWeight: 800, fontSize: '0.95rem', color: '#00BCD4' }}>Live Location</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <p style={{ margin: 0, flex: 1, fontWeight: 800, fontSize: '0.95rem', color: '#00BCD4' }}>Live Location</p>
         <button
           type="button"
           onClick={toggleOptIn}
@@ -146,6 +148,11 @@ export default function LiveLocationMap({
         >
           {on ? 'On' : 'Off'}
         </button>
+        {onClose ? (
+          <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: '#00BCD4', cursor: 'pointer', padding: 4 }}>
+            <X size={18} />
+          </button>
+        ) : null}
       </div>
 
       <div style={{ position: 'relative' }}>

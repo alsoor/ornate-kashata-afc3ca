@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, Briefcase, Menu, ChevronDown, AlertTriangle, FileText, MapPin } from 'lucide-react';
 import { useSession, signOut, signIn, signUp } from '@/lib/auth/auth-client';
 import { usePresenceQuery } from '@/hooks/usePresence';
+import LiveLocationMap from '@/components/LiveLocationMap';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -5092,6 +5093,7 @@ export default function SettingsPage() {
   } = useSession();
   const [tab, setTab] = useState<Tab>('account');
   const [showSupportChat, setShowSupportChat] = useState(false);
+  const [showLiveLocation, setShowLiveLocation] = useState(false);
 
   // ── Music player (profile button) ──
   const [musicModalOpen, setMusicModalOpen] = useState(false);
@@ -6446,7 +6448,7 @@ export default function SettingsPage() {
               try {
                 window.dispatchEvent(new CustomEvent('stooorna:open-live-map'));
               } catch { /* */ }
-              navigate('/add-friend?liveMap=1');
+              setShowLiveLocation(true);
             }}
             title="Map"
             aria-label="Open live map"
@@ -11296,6 +11298,32 @@ export default function SettingsPage() {
                 Demo top-up (local). Connect a payment gateway for production.
               </p>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showLiveLocation && (
+          <motion.div
+            key="live-location-map"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 12000,
+              background: 'rgba(4,12,14,0.96)',
+              display: 'flex',
+              flexDirection: 'column',
+              paddingTop: 'max(10px, env(safe-area-inset-top))',
+            }}
+          >
+            <LiveLocationMap
+              currentUserId={user?.id}
+              currentName={(user as any)?.name || (user as any)?.username || 'Me'}
+              onClose={() => setShowLiveLocation(false)}
+            />
           </motion.div>
         )}
       </AnimatePresence>
