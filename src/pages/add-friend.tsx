@@ -19967,6 +19967,7 @@ export default function AddFriendPage() {
                   />
                 </div>
               )}
+            </div>
             <div
               ref={textPostsScrollRef}
               onScroll={handleTextPostsScroll}
