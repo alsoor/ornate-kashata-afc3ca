@@ -29,6 +29,7 @@ import {
   VideoOff,
   SwitchCamera,
   X,
+  Hand,
 } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import UserAvatar from '@/components/UserAvatar';
@@ -49,6 +50,16 @@ import {
   LIVE_ENDED_HINT,
   type LiveChatMsg,
 } from '@/lib/liveRoomExtras';
+import {
+  MAX_LIVE_SPEAKERS,
+  publishLiveSignal,
+  postLiveSignalHttp,
+  subscribeLiveSignals,
+  makeMicRequestPayload,
+  canGrantSpeaker,
+  type MicRequest,
+  type LiveSignal,
+} from '@/lib/liveRoomStage';
 
 const AGORA_APP_ID = '149ef04e839c4132a08efb49d717c436';
 
@@ -126,6 +137,11 @@ export default function LiveCameraPage() {
   const mutedUidsRef = useRef<Set<number>>(new Set());
   const [frozenUids, setFrozenUids] = useState<Set<number>>(new Set());
   const frozenUidsRef = useRef<Set<number>>(new Set());
+  const [speakerUids, setSpeakerUids] = useState<Set<number>>(new Set());
+  const speakerUidsRef = useRef<Set<number>>(new Set());
+  const [micRequests, setMicRequests] = useState<MicRequest[]>([]);
+  const [requestsOpen, setRequestsOpen] = useState(false);
+  const [micRequested, setMicRequested] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [liveChatMsgs, setLiveChatMsgs] = useState<LiveChatMsg[]>([]);
@@ -507,6 +523,9 @@ export default function LiveCameraPage() {
   }, []);
 
   const sendDataPayload = useCallback(async (payload: object) => {
+    publishLiveSignal(channelName, payload);
+    publishLiveChat(channelName, payload);
+    void postLiveSignalHttp(channelName, payload);
     const client = clientRef.current as any;
     if (!client) return false;
 
@@ -564,7 +583,7 @@ export default function LiveCameraPage() {
       }
     }
     return ok;
-  }, [ensureDataStream]);
+  }, [ensureDataStream, channelName]);
 
   const sendFreezeCmd = useCallback(async (targetUid: number, freeze: boolean) => {
     await sendDataPayload({
@@ -579,6 +598,18 @@ export default function LiveCameraPage() {
       host: myUidRef.current,
       ts: Date.now(),
     });
+    if (freeze) {
+      const next = new Set(speakerUidsRef.current);
+      next.delete(targetUid);
+      speakerUidsRef.current = next;
+      setSpeakerUids(next);
+      await sendDataPayload({
+        t: 'speakers-set',
+        uids: [...next],
+        host: myUidRef.current,
+        ts: Date.now(),
+      });
+    }
   }, [sendDataPayload]);
 
   const leaveRoom = useCallback(async (opts?: { forced?: boolean; skipNavigate?: boolean }) => {
@@ -660,6 +691,11 @@ export default function LiveCameraPage() {
     mutedUidsRef.current = new Set();
     setFrozenUids(new Set());
     frozenUidsRef.current = new Set();
+    setSpeakerUids(new Set());
+    speakerUidsRef.current = new Set();
+    setMicRequests([]);
+    setMicRequested(false);
+    setRequestsOpen(false);
     setMicFrozenByHost(false);
     micFrozenRef.current = false;
     setJoined(false);
@@ -876,6 +912,21 @@ export default function LiveCameraPage() {
                 void leaveRoom({ forced: true });
               }, 1800);
             }
+          } else if (msg.t === 'mic-req' && amHost && isHostRoom && msg.uid != null) {
+            setMicRequests(prev => {
+              if (prev.some(r => r.uid === msg.uid)) return prev;
+              return [...prev, {
+                uid: Number(msg.uid),
+                name: 'User',
+                at: Date.now(),
+              }].slice(-30);
+            });
+          } else if ((msg.t === 'mic-grant' || msg.t === 'mic-revoke' || msg.t === 'speakers-set') && isHostRoom) {
+            const list = ((msg as any).speakers || msg.uids || []).map(Number);
+            speakerUidsRef.current = new Set(list);
+            setSpeakerUids(new Set(list));
+            const me = myUidRef.current;
+            if (me != null && !amHost && !list.includes(me)) void forceMuteLocalMic();
           }
         } catch {
           /* ignore bad payload */
@@ -1012,6 +1063,17 @@ export default function LiveCameraPage() {
       setJoined(true);
       setStatus('');
       setJoining(false);
+      if (amHost) {
+        const seed = new Set<number>([uid]);
+        speakerUidsRef.current = seed;
+        setSpeakerUids(seed);
+        void sendDataPayload({
+          t: 'speakers-set',
+          uids: [uid],
+          host: uid,
+          ts: Date.now(),
+        });
+      }
 
       try {
         await fetch('/api/room/join', {
@@ -1126,6 +1188,22 @@ export default function LiveCameraPage() {
       void forceMuteLocalMic();
       setError('Mic frozen by host');
       return;
+    }
+    if (!amHost) {
+      const allowed = speakerUidsRef.current.has(myUidRef.current || -1);
+      if (!allowed) {
+        if (myUidRef.current == null) return;
+        setMicRequested(true);
+        await sendDataPayload(makeMicRequestPayload({
+          uid: myUidRef.current,
+          userId: myId,
+          name: myName,
+          username: myUsername,
+          avatarUrl: myAvatar,
+        }));
+        setError('Mic request sent to host');
+        return;
+      }
     }
     const next = !micOn;
     try {
@@ -1274,6 +1352,113 @@ export default function LiveCameraPage() {
     });
   };
 
+  const applySpeakerList = useCallback((uids: number[]) => {
+    const next = new Set(uids.map(Number).filter(n => Number.isFinite(n)));
+    speakerUidsRef.current = next;
+    setSpeakerUids(next);
+    const me = myUidRef.current;
+    if (me == null || amHost) return;
+    if (!next.has(me) || frozenUidsRef.current.has(me)) {
+      setMicRequested(false);
+      void forceMuteLocalMic();
+    }
+  }, [amHost, forceMuteLocalMic]);
+
+  const hostSetSpeaker = useCallback(async (uid: number, grant: boolean) => {
+    if (!amHost) return;
+    const next = new Set(speakerUidsRef.current);
+    if (grant) {
+      if (frozenUidsRef.current.has(uid)) return;
+      if (!canGrantSpeaker(next, uid)) {
+        setError(`Max ${MAX_LIVE_SPEAKERS} speakers`);
+        return;
+      }
+      next.add(uid);
+    } else {
+      next.delete(uid);
+    }
+    speakerUidsRef.current = next;
+    setSpeakerUids(next);
+    setMicRequests(prev => prev.filter(r => r.uid !== uid));
+    await sendDataPayload({
+      t: grant ? 'mic-grant' : 'mic-revoke',
+      uid,
+      uids: [...next],
+      speakers: [...next],
+      host: myUidRef.current,
+      ts: Date.now(),
+    });
+    await sendDataPayload({
+      t: 'speakers-set',
+      uids: [...next],
+      host: myUidRef.current,
+      ts: Date.now(),
+    });
+  }, [amHost, sendDataPayload]);
+
+  const applyIncomingSignal = useCallback((msg: LiveSignal) => {
+    const myUid = myUidRef.current;
+    if (msg.t === 'freeze' && msg.uid === myUid) {
+      micFrozenRef.current = true;
+      setMicFrozenByHost(true);
+      void forceMuteLocalMic();
+    } else if (msg.t === 'unfreeze' && msg.uid === myUid) {
+      micFrozenRef.current = false;
+      setMicFrozenByHost(false);
+    } else if (msg.t === 'freeze-set' && Array.isArray(msg.uids) && myUid != null) {
+      const frozen = msg.uids.includes(myUid);
+      if (frozen) {
+        micFrozenRef.current = true;
+        setMicFrozenByHost(true);
+        void forceMuteLocalMic();
+      } else if (micFrozenRef.current) {
+        micFrozenRef.current = false;
+        setMicFrozenByHost(false);
+      }
+      if (!amHost) {
+        const set = new Set(msg.uids.map(Number));
+        frozenUidsRef.current = set;
+        setFrozenUids(set);
+      }
+    } else if (msg.t === 'chat') {
+      const cm = parseIncomingChat(msg);
+      if (cm && cm.uid !== myUid && !(cm.userId && myId && cm.userId === myId)) {
+        setLiveChatMsgs(prev => {
+          if (prev.some(x => x.id === cm.id)) return prev;
+          return [...prev, { ...cm, isMe: false }].slice(-80);
+        });
+      }
+    } else if (msg.t === 'room-ended') {
+      if (!amHost && isHostRoom) {
+        forceEndRef.current = true;
+        setRoomEndedOverlay(true);
+        window.setTimeout(() => {
+          void leaveRoom({ forced: true });
+        }, 1800);
+      }
+    } else if (msg.t === 'mic-req' && amHost && msg.uid != null) {
+      if (frozenUidsRef.current.has(msg.uid)) return;
+      setMicRequests(prev => {
+        if (prev.some(r => r.uid === msg.uid)) return prev;
+        return [...prev, {
+          uid: Number(msg.uid),
+          userId: msg.userId,
+          name: msg.name || `User ${msg.uid}`,
+          username: msg.username ?? null,
+          avatarUrl: msg.avatarUrl ?? null,
+          at: Number(msg.at || Date.now()),
+        }].slice(-30);
+      });
+    } else if (msg.t === 'mic-grant' || msg.t === 'mic-revoke' || msg.t === 'speakers-set') {
+      const list = (msg.speakers || msg.uids || []).map(Number);
+      applySpeakerList(list);
+      if (msg.t === 'mic-grant' && msg.uid === myUid) {
+        setMicRequested(false);
+        setError('');
+      }
+    }
+  }, [amHost, isHostRoom, myId, forceMuteLocalMic, leaveRoom, applySpeakerList]);
+
   const toggleHostFreeze = (uid: number, isMe?: boolean) => {
     if (!amHost || isMe) return;
     setFrozenUids(prev => {
@@ -1317,7 +1502,7 @@ export default function LiveCameraPage() {
 
   useEffect(() => {
     if (!joined || !channelName) return;
-    return subscribeLiveChat(channelName, (cm) => {
+    const unsubChat = subscribeLiveChat(channelName, (cm) => {
       const myUid = myUidRef.current;
       if (cm.uid === myUid || (cm.userId && myId && cm.userId === myId)) return;
       setLiveChatMsgs(prev => {
@@ -1325,7 +1510,14 @@ export default function LiveCameraPage() {
         return [...prev, { ...cm, isMe: false }].slice(-80);
       });
     });
-  }, [joined, channelName, myId]);
+    const unsubSig = subscribeLiveSignals(channelName, (msg) => {
+      applyIncomingSignal(msg);
+    });
+    return () => {
+      unsubChat();
+      unsubSig();
+    };
+  }, [joined, channelName, myId, applyIncomingSignal]);
 
   const onMemberTap = (m: Member) => {
     if (m.isMe) return;
@@ -1594,6 +1786,29 @@ export default function LiveCameraPage() {
           >
             <Users size={14} />
             <span>{members.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (amHost) setRequestsOpen(true);
+              else void toggleMic();
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              color: '#facc15',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              padding: '6px 10px',
+              borderRadius: 20,
+              background: 'rgba(250,204,21,0.12)',
+              border: '1px solid rgba(250,204,21,0.4)',
+              cursor: 'pointer',
+            }}
+          >
+            <Hand size={14} />
+            <span>{amHost ? `Mic ${micRequests.length}` : (micRequested || speakerUids.has(myUidRef.current || -1) ? 'Mic' : 'Ask mic')}</span>
           </button>
           <button type="button" onClick={dismissLivePage} aria-label="Leave live"
             style={{
@@ -2130,6 +2345,73 @@ export default function LiveCameraPage() {
                 Tap a listener to freeze or unfreeze their mic
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {requestsOpen && amHost && (
+        <div
+          onClick={() => setRequestsOpen(false)}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 56,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'flex-end',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxHeight: '70vh',
+              background: 'rgba(6,16,18,0.98)',
+              borderRadius: '18px 18px 0 0',
+              border: '1px solid rgba(250,204,21,0.3)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 10px', borderBottom: '1px solid rgba(250,204,21,0.15)' }}>
+              <Hand size={18} color="#facc15" />
+              <p style={{ margin: 0, flex: 1, color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>
+                Mic requests · speakers {speakerUids.size}/{MAX_LIVE_SPEAKERS}
+              </p>
+              <button type="button" onClick={() => setRequestsOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(200,230,230,0.8)', cursor: 'pointer', padding: 6 }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px 16px' }}>
+              {members.filter(m => speakerUids.has(m.uid) && !m.isHost).map(m => (
+                <button
+                  key={`spk-${m.uid}`}
+                  type="button"
+                  onClick={() => void hostSetSpeaker(m.uid, false)}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', border: 'none', borderBottom: '1px solid rgba(0,188,212,0.08)', background: 'transparent', color: '#e8f6f6', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <span style={{ flex: 1, fontWeight: 800 }}>{m.name}{m.username ? ` @${m.username}` : ''}</span>
+                  <span style={{ color: '#ef4444', fontSize: '0.72rem', fontWeight: 800 }}>Remove mic</span>
+                </button>
+              ))}
+              {micRequests.length === 0 && members.filter(m => speakerUids.has(m.uid) && !m.isHost).length === 0 && (
+                <p style={{ textAlign: 'center', color: 'rgba(150,200,200,0.5)', fontSize: '0.8rem', marginTop: 24 }}>No mic requests</p>
+              )}
+              {micRequests.map(r => (
+                <button
+                  key={`req-${r.uid}`}
+                  type="button"
+                  onClick={() => void hostSetSpeaker(r.uid, !speakerUids.has(r.uid))}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', border: 'none', borderBottom: '1px solid rgba(0,188,212,0.08)', background: 'transparent', color: '#e8f6f6', cursor: 'pointer', textAlign: 'left' }}
+                >
+                  <span style={{ flex: 1, fontWeight: 800 }}>{r.name}{r.username ? ` @${r.username}` : ''}</span>
+                  <span style={{ color: speakerUids.has(r.uid) ? '#ef4444' : '#22c55e', fontSize: '0.72rem', fontWeight: 800 }}>
+                    {speakerUids.has(r.uid) ? 'Remove mic' : 'Raise'}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
