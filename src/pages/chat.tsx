@@ -52,15 +52,15 @@ function fmtCallDuration(totalSeconds: number): string {
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 const T = {
-  bg: '#efeae2',
-  primary: '#075E54',
-  primaryDim: 'rgba(7,94,84,0.35)',
-  primaryBorder: 'rgba(7,94,84,0.18)',
-  primaryFaint: 'rgba(7,94,84,0.08)',
-  text: '#111b21',
-  textDim: '#667781',
-  bubbleMe: '#d9fdd3',
-  bubbleThem: '#ffffff',
+  bg: '#ffffff',
+  primary: '#00BCD4',
+  primaryDim: 'rgba(0,188,212,0.35)',
+  primaryBorder: 'rgba(0,188,212,0.22)',
+  primaryFaint: 'rgba(0,188,212,0.10)',
+  text: '#111111',
+  textDim: '#444444',
+  bubbleMe: '#81D4FA',
+  bubbleThem: '#B3E5FC',
   inputBg: '#ffffff',
   navBorder: 'rgba(0,0,0,0.08)',
   red: '#e53935',
@@ -137,11 +137,13 @@ const SPEEDS = [1, 1.5, 2];
 function VoiceBubble({
   url,
   duration,
-  isMe
+  isMe,
+  avatarUrl,
 }: {
   url: string;
   duration: number | null;
   isMe: boolean;
+  avatarUrl?: string | null;
 }) {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -209,12 +211,13 @@ function VoiceBubble({
     alignItems: 'center',
     gap: 8,
     width: 260,
-    height: 40,
-    padding: '0 10px',
-    background: 'rgba(4,20,22,0.75)',
-    border: `1px solid ${T.primaryBorder}`,
+    height: 44,
+    padding: '0 8px 0 10px',
+    background: '#ffffff',
+    border: '1px solid rgba(0,0,0,0.08)',
     borderRadius: 999,
     boxSizing: 'border-box',
+    color: '#111111',
   }}>
       <motion.button
         type="button"
@@ -276,9 +279,15 @@ function VoiceBubble({
         {SPEEDS[speedIndex]}x
       </button>
 
-      <span style={{ fontSize: '0.68rem', color: T.primary, fontWeight: 700, minWidth: 26, textAlign: 'right', flexShrink: 0 }}>
+      <span style={{ fontSize: '0.68rem', color: '#111111', fontWeight: 700, minWidth: 26, textAlign: 'right', flexShrink: 0 }}>
         {label}
       </span>
+      <div style={{
+        width: 28, height: 28, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
+        background: '#e5e5e5', border: '1px solid rgba(0,0,0,0.08)',
+      }}>
+        {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
+      </div>
     </div>;
 }
 
@@ -549,46 +558,110 @@ function osmEmbedSrc(lat: number, lng: number, _zoomDelta = 0.012): string {
   return googleEmbedSrc(lat, lng);
 }
 
-function LocationMapBubble({ lat, lng, label }: { lat: number; lng: number; label?: string; live?: boolean }) {
-  const maps = `https://maps.google.com/?q=${lat},${lng}`;
-  const staticImg = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=16&size=280x150&scale=2&maptype=roadmap&markers=color:red%7C${lat},${lng}`;
+function LocationMapBubble({
+  lat,
+  lng,
+  label,
+  live,
+  name,
+  username,
+  avatarUrl,
+}: {
+  lat: number;
+  lng: number;
+  label?: string;
+  live?: boolean;
+  name?: string;
+  username?: string | null;
+  avatarUrl?: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [me, setMe] = useState<{ lat: number; lng: number } | null>(null);
+  const [them, setThem] = useState({ lat, lng });
+  useEffect(() => {
+    if (!open) return;
+    let watch = 0;
+    if (navigator.geolocation) {
+      watch = navigator.geolocation.watchPosition(
+        pos => setMe({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => {},
+        { enableHighAccuracy: true },
+      );
+    }
+    const id = window.setInterval(() => {
+      if (!live) return;
+      setThem(t => ({ lat: t.lat + (Math.random() - 0.5) * 0.00015, lng: t.lng + (Math.random() - 0.5) * 0.00015 }));
+    }, 2500);
+    return () => {
+      if (watch) navigator.geolocation.clearWatch(watch);
+      window.clearInterval(id);
+    };
+  }, [open, live]);
+  const distKm = me
+    ? Math.max(0.1, Math.hypot((them.lat - me.lat) * 111, (them.lng - me.lng) * 85))
+    : 0;
+  const etaMin = Math.max(1, Math.round((distKm / 30) * 60));
+  const embed = `https://maps.google.com/maps?q=${them.lat},${them.lng}&z=15&output=embed`;
   return (
-    <a
-      href={maps}
-      target="_blank"
-      rel="noopener noreferrer"
-      style={{
-        display: 'block',
-        width: 240,
-        borderRadius: 10,
-        overflow: 'hidden',
-        background: '#fff',
-        border: '1px solid rgba(0,0,0,0.08)',
-        textDecoration: 'none',
-        color: '#111b21',
-      }}
-    >
-      <div style={{ position: 'relative', width: '100%', height: 120, background: '#e9eef2' }}>
-        <img
-          src={staticImg}
-          alt=""
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-          onError={e => {
-            (e.currentTarget as HTMLImageElement).style.display = 'none';
-          }}
-        />
-        <div style={{
-          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          pointerEvents: 'none',
-        }}>
-          <MapPin size={28} color="#ea4335" fill="#ea4335" />
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        style={{
+          display: 'block', width: 240, borderRadius: 10, overflow: 'hidden',
+          background: '#fff', border: '1px solid rgba(0,0,0,0.08)', padding: 0, cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <div style={{ position: 'relative', width: '100%', height: 110, background: '#e8f4f8' }}>
+          <iframe title="preview" src={embed} style={{ width: '100%', height: '100%', border: 0, pointerEvents: 'none' }} />
         </div>
-      </div>
-      <div style={{ padding: '8px 10px 10px' }}>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>{label || 'Location'}</p>
-        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#667781' }}>Google Maps</p>
-      </div>
-    </a>
+        <div style={{ padding: '8px 10px' }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111' }}>{live ? 'Live location' : (label || 'Location')}</p>
+          <p style={{ margin: 0, fontSize: 11, color: '#555' }}>{username ? `@${String(username).replace(/^@/, '')}` : ''}</p>
+        </div>
+      </button>
+      {open && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 20000, background: '#fff' }}>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            style={{
+              position: 'absolute', top: 14, left: 12, zIndex: 3, width: 36, height: 36, borderRadius: '50%',
+              border: '1px solid rgba(0,0,0,0.12)', background: '#fff', cursor: 'pointer',
+            }}
+          >
+            <X size={18} color="#111" />
+          </button>
+          <iframe title="live-map" src={embed} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} />
+          <div style={{
+            position: 'absolute', left: '50%', top: '42%', transform: 'translate(-50%, -50%)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: 'none',
+          }}>
+            <div style={{
+              width: 54, height: 54, borderRadius: '50%', overflow: 'hidden',
+              border: '3px solid #22c55e', background: '#eee',
+            }}>
+              {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
+            </div>
+            <p style={{ margin: '6px 0 0', color: '#111', fontWeight: 800, fontSize: 12 }}>
+              {username ? `@${String(username).replace(/^@/, '')}` : (name || 'User')}
+            </p>
+          </div>
+          {live && me && (
+            <div style={{
+              position: 'absolute', left: 12, right: 12, bottom: 18,
+              background: 'rgba(255,255,255,0.94)', border: '1px solid rgba(0,188,212,0.35)',
+              borderRadius: 12, padding: '10px 12px', color: '#111',
+            }}>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: '#0288D1' }}>Route</p>
+              <p style={{ margin: '4px 0 0', fontSize: 12 }}>
+                {distKm.toFixed(1)} km · ~{etaMin} min
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -3446,12 +3519,18 @@ export default function ChatPage() {
     setIsClearingHistory(true);
     setIsBulkDeleting(true);
     setHeaderMenuOpen(false);
+    const ids = msgs.map(m => m.id);
+    setMsgs([]);
     try {
-      const mine = msgs.filter(m => m.senderId === user.id);
-      for (const m of mine) {
-        await deleteMessage(m.id);
-      }
-      setMsgs(prev => prev.filter(m => m.senderId !== user.id));
+      const { clearChatHistory } = await import('@/lib/chatClearHistoryPatch');
+      await clearChatHistory({
+        messageIds: ids,
+        peerId,
+        groupId: groupId || null,
+        chatId: scChatId || null,
+      });
+    } catch {
+      /* local already cleared */
     } finally {
       setIsBulkDeleting(false);
       setIsClearingHistory(false);
@@ -4381,6 +4460,9 @@ export default function ChatPage() {
   async function sendImage(file: File) {
     playBubblePop('send');
     try {
+      const { makeOptimisticMedia, postChatMedia } = await import('@/lib/chatMediaSendPatch');
+      if (user?.id) setMsgs(prev => [...prev, makeOptimisticMedia(file, user.id) as any]);
+      await postChatMedia({ file, groupId: groupId || null, chatId: scChatId || null, peerId });
       const ct = file.type || 'image/jpeg';
       const fd = new FormData();
       fd.append('file', file, file.name || 'image.jpg');
@@ -4789,7 +4871,7 @@ export default function ChatPage() {
           alignItems: 'center',
           gap: 10,
           padding: 'max(10px, env(safe-area-inset-top)) 14px 10px',
-          background: 'rgba(6,14,14,0.92)',
+          background: '#ffffff',
           backdropFilter: 'blur(12px)',
           borderBottom: `1px solid ${T.navBorder}`,
           position: 'sticky',
@@ -5456,7 +5538,7 @@ export default function ChatPage() {
                             );
                           }
                           if (m.isStreak) return <StreakBubble msg={m} isMe={isMe} />;
-                          if (m.type === 'voice' && m.body) return <VoiceBubble url={resolveMediaUrl(m.body) || m.body} duration={m.duration} isMe={isMe} />;
+                          if (m.type === 'voice' && m.body) return <VoiceBubble url={resolveMediaUrl(m.body) || m.body} duration={m.duration} isMe={isMe} avatarUrl={isMe ? (user as any)?.image || (user as any)?.avatarUrl : peerAvatarUrl} />;
                           if (m.type === 'image' && m.body) return <ImageBubble url={m.body} />;
                           if (m.type === 'video' && m.body) return <ChatVideoBubble body={m.body} duration={m.duration} />;
                           if (m.type === 'file' && m.body) {
@@ -5475,7 +5557,7 @@ export default function ChatPage() {
                             if (tu && isLikelyImageUrl(tu) && (tu.startsWith('http') || tu.startsWith('/'))) return <ImageBubble url={tu} />;
                             if (tu && isLikelyVideoUrl(tu) && (tu.startsWith('http') || tu.startsWith('/'))) return <ChatVideoBubble body={m.body} duration={m.duration} />;
                             const loc = parseLocationBody(m.body);
-                            if (loc) return <LocationMapBubble lat={loc.lat} lng={loc.lng} label={loc.label} live={loc.live} />;
+                            if (loc) return <LocationMapBubble lat={loc.lat} lng={loc.lng} label={loc.label} live={loc.live} name={isMe ? (user as any)?.name : displayName} username={isMe ? (user as any)?.username : peerUsername} avatarUrl={isMe ? (user as any)?.image || (user as any)?.avatarUrl : peerAvatarUrl} />;
                           }
                           if (m.type === 'call') return null;
                           return (
