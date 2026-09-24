@@ -19849,53 +19849,61 @@ export default function AddFriendPage() {
               `}</style>
               {!textFeedSearchOpen ? (
                 <>
-                  {/* Left: profile — same outer box as search (32x32) */}
-                  {user ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTextPostsPlusOpen(false);
-                        setViewingProfile(null);
-                        setAccountSlideFromLeft(false);
-                        try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
-                        setStoryHomeSheetOpen(true);
-                      }}
-                      aria-label="Open account page"
-                      style={{
-                        position: 'absolute',
-                        left: 10,
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        marginTop: 'max(2px, env(safe-area-inset-top, 0px) / 2)',
-                        width: 32,
-                        height: 32,
-                        borderRadius: 8,
-                        border: 'none',
-                        background: 'rgba(0,188,212,0.1)',
-                        color: CLR_PRIMARY,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        zIndex: 2,
-                        padding: 0,
-                        overflow: 'hidden',
-                        boxSizing: 'border-box',
-                      }}
-                    >
-                      {((user as any).avatarUrl || (user as any).image) ? (
-                        <img
-                          src={(user as any).avatarUrl || (user as any).image}
-                          alt=""
-                          style={{ width: 32, height: 32, objectFit: 'cover', display: 'block', borderRadius: 8 }}
-                        />
-                      ) : isCompanyPublisher ? (
-                        <Building2 size={16} strokeWidth={2.3} />
-                      ) : (
-                        <Users size={16} strokeWidth={2.3} />
-                      )}
-                    </button>
-                  ) : null}
+                  {/* Left: two horizontal lines (menu) — opens account sheet; shine like STOOORNA */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTextPostsPlusOpen(false);
+                      setViewingProfile(null);
+                      setAccountSlideFromLeft(false);
+                      try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
+                      setStoryHomeSheetOpen(true);
+                    }}
+                    aria-label="Open account page"
+                    style={{
+                      position: 'absolute',
+                      left: 10,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      marginTop: 'max(2px, env(safe-area-inset-top, 0px) / 2)',
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      zIndex: 2,
+                      padding: 0,
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <style>{`
+                      @keyframes stooornaMenuLineShine {
+                        0% { background-position: 200% center; }
+                        100% { background-position: -200% center; }
+                      }
+                    `}</style>
+                    {[0, 1].map(i => (
+                      <span
+                        key={i}
+                        style={{
+                          display: 'block',
+                          width: 18,
+                          height: 2.5,
+                          borderRadius: 2,
+                          backgroundImage: 'linear-gradient(105deg, #00BCD4 0%, #00BCD4 38%, #e0fbff 48%, #ffffff 52%, #e0fbff 56%, #00BCD4 68%, #00BCD4 100%)',
+                          backgroundSize: '220% 100%',
+                          animation: 'stooornaMenuLineShine 5.5s linear infinite',
+                          animationDelay: i === 1 ? '0.35s' : '0s',
+                        }}
+                      />
+                    ))}
+                  </button>
                   <button
                     type="button"
                     onClick={() => {

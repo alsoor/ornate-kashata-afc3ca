@@ -2030,6 +2030,53 @@ function GlobalBottomNavigation() {
     };
   }, [homeCallPhase, homeCallChannel]);
 
+  // Peer declined or remote end while ringing/connecting — close local call chrome for both
+  useEffect(() => {
+    if (homeCallPhase !== 'connecting' && homeCallPhase !== 'animating' && homeCallPhase !== 'live') return;
+    const channel = homeCallChannel;
+    if (!channel) return;
+    const closeBoth = (detail: { channel?: string } | null) => {
+      if (!detail?.channel) return;
+      if (String(detail.channel) !== String(channel)) return;
+      void leaveHomeGroupCall({ remote: true });
+    };
+    const onDeclined = (e: Event) => {
+      const d = (e as CustomEvent).detail as { channel?: string } | undefined;
+      closeBoth(d || null);
+    };
+    const onEnded = (e: Event) => {
+      const d = (e as CustomEvent).detail as { channel?: string } | undefined;
+      closeBoth(d || null);
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || !e.newValue) return;
+      if (e.key === `stooorna_call_ended_${channel}` || e.key.startsWith('stooorna_call_ended_')) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (String(parsed?.channel || '') === String(channel)) closeBoth(parsed);
+        } catch { /* */ }
+      }
+    };
+    window.addEventListener('stooorna:call-declined', onDeclined as EventListener);
+    window.addEventListener('stooorna:home-call-ended', onEnded as EventListener);
+    window.addEventListener('storage', onStorage);
+    const poll = window.setInterval(() => {
+      try {
+        const raw = localStorage.getItem(`stooorna_call_ended_${channel}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.at && Date.now() - Number(parsed.at) < 120000) closeBoth(parsed);
+        }
+      } catch { /* */ }
+    }, 350);
+    return () => {
+      window.removeEventListener('stooorna:call-declined', onDeclined as EventListener);
+      window.removeEventListener('stooorna:home-call-ended', onEnded as EventListener);
+      window.removeEventListener('storage', onStorage);
+      window.clearInterval(poll);
+    };
+  }, [homeCallPhase, homeCallChannel]);
+
   // Caller: when peer answers, switch to live + start duration timer
   useEffect(() => {
     if (homeCallPhase !== 'connecting' && homeCallPhase !== 'animating') return;
@@ -2921,7 +2968,7 @@ function GlobalBottomNavigation() {
   }
 
   function playHomeCallTapFeedback() {
-    try { navigator.vibrate?.(12); } catch { /* */ }
+    try { navigator.vibrate?.(28); } catch { /* */ }
     try {
       const w = window as any;
       const Ctx: typeof AudioContext | undefined = w.AudioContext || w.webkitAudioContext;
@@ -3688,7 +3735,7 @@ function GlobalBottomNavigation() {
         <div style={{ display: 'flex', gap: 10 }}>
           <button
             type="button"
-            onClick={() => ignoreHomeIncoming()}
+            onClick={() => { playHomeCallTapFeedback(); ignoreHomeIncoming(); }}
             style={{
               flex: 1,
               padding: '11px 0',
@@ -3705,7 +3752,7 @@ function GlobalBottomNavigation() {
           </button>
           <button
             type="button"
-            onClick={() => { void answerHomeIncoming(); }}
+            onClick={() => { playHomeCallTapFeedback(); void answerHomeIncoming(); }}
             style={{
               flex: 1,
               padding: '11px 0',
