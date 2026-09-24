@@ -26,6 +26,10 @@ interface Message {
   senderAvatarUrl?: string | null;
   senderNameColor?: string | null;
   isSystem?: boolean;
+  // Delivery / read receipts (server may send readAt or read)
+  read?: boolean;
+  readAt?: string | null;
+  delivered?: boolean;
   // Streak fields
   isStreak?: boolean;
   streakOpenedAt?: string | null;
@@ -2697,6 +2701,32 @@ function ChatCameraCapture({
                 )}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={async () => {
+                if (sending || !galleryThumbs.length) return;
+                setSending(true);
+                try {
+                  for (const item of galleryThumbs) {
+                    if (item.kind === 'video') await onSendVideo(item.file);
+                    else await onSendImage(item.file);
+                  }
+                  onClose();
+                } finally {
+                  setSending(false);
+                }
+              }}
+              disabled={sending}
+              style={{
+                marginLeft: 'auto', flexShrink: 0, height: 40, padding: '0 18px', borderRadius: 20,
+                border: 'none', background: '#22c55e', color: '#041018', fontWeight: 800, fontSize: '0.88rem',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: sending ? 0.6 : 1,
+                boxShadow: '0 4px 12px rgba(34,197,94,0.35)',
+              }}
+            >
+              <Send size={15} strokeWidth={2.4} />
+              Send{galleryThumbs.length > 1 ? ` (${galleryThumbs.length})` : ''}
+            </button>
           </div>
         )}
 
@@ -2704,7 +2734,7 @@ function ChatCameraCapture({
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 36, padding: '4px 20px 10px',
         }}>
-          {/* يسار */}
+          {/* Left: cancel while recording/preview, else gallery (shows selected thumb when picked) */}
           {(recording || notePreviewUrl || photoPreviewUrl) ? (
             <button
               type="button"
@@ -2714,7 +2744,7 @@ function ChatCameraCapture({
                 else if (mode === 'videonote') cancelVideoNote();
                 else if (mode === 'video') cancelLinearVideoRecording();
               }}
-              aria-label="إلغاء"
+              aria-label="Cancel"
               style={{
                 width: 44, height: 44, borderRadius: '50%', border: 'none',
                 background: 'rgba(239,68,68,0.22)', color: '#ef4444', cursor: 'pointer',
@@ -2727,15 +2757,24 @@ function ChatCameraCapture({
             <button
               type="button"
               onClick={() => galleryInputRef.current?.click()}
-              aria-label="المعرض"
+              aria-label="Gallery"
               style={{
-                width: 44, height: 44, borderRadius: '50%', border: 'none',
+                width: 48, height: 48, borderRadius: 12, border: galleryThumbs.length ? '2px solid #22c55e' : 'none',
                 background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 visibility: mode === 'file' ? 'hidden' : 'visible',
+                padding: 0, overflow: 'hidden', flexShrink: 0,
               }}
             >
-              <ImageIcon size={20} />
+              {galleryThumbs[0] ? (
+                galleryThumbs[0].kind === 'video' ? (
+                  <video src={galleryThumbs[0].url} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <img src={galleryThumbs[0].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                )
+              ) : (
+                <ImageIcon size={20} />
+              )}
             </button>
           )}
 
@@ -2774,33 +2813,41 @@ function ChatCameraCapture({
             )}
           </button>
 
-          {/* يمين */}
-          {(recording || notePreviewUrl || photoPreviewUrl) ? (
+          {/* Right: Send when gallery picked or after capture; else flip camera */}
+          {(recording || notePreviewUrl || photoPreviewUrl || galleryThumbs.length > 0) ? (
             <button
               type="button"
               onClick={() => {
+                if (galleryThumbs.length > 0 && !recording && !notePreviewUrl && !photoPreviewUrl) {
+                  void sendGalleryItem(galleryThumbs[0]);
+                  return;
+                }
                 if (photoPreviewUrl) void sendPhotoPreview();
                 else if (notePreviewUrl) void sendNotePreview();
                 else if (mode === 'videonote') stopVideoNote();
                 else if (mode === 'video') stopLinearVideoRecording();
               }}
               disabled={sending}
-              aria-label="إرسال"
+              aria-label="Send"
               style={{
-                width: 44, height: 44, borderRadius: '50%', border: 'none',
-                background: 'rgba(34,197,94,0.28)', color: '#22c55e', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                opacity: sending ? 0.6 : 1,
+                minWidth: 64, height: 48, borderRadius: 24, border: 'none',
+                padding: '0 16px',
+                background: '#22c55e', color: '#041018', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                opacity: sending ? 0.6 : 1, fontWeight: 800, fontSize: '0.88rem',
+                boxShadow: '0 4px 14px rgba(34,197,94,0.4)',
+                flexShrink: 0,
               }}
             >
-              <Send size={18} strokeWidth={2.2} />
+              <Send size={16} strokeWidth={2.4} />
+              Send
             </button>
           ) : (
             <button
               type="button"
               onClick={() => setFacing(f => f === 'user' ? 'environment' : 'user')}
               disabled={mode === 'file' || recording}
-              aria-label="قلب الكاميرا"
+              aria-label="Flip camera"
               style={{
                 width: 44, height: 44, borderRadius: '50%', border: 'none',
                 background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
@@ -3630,6 +3677,9 @@ export default function ChatPage() {
         body: (m.body ?? null) as string | null,
         duration: (m.duration ?? null) as number | null,
         createdAt: (m.createdAt ?? m.created_at ?? null) as string | null,
+        read: !!(m.read ?? m.isRead ?? m.seen),
+        readAt: (m.readAt ?? m.read_at ?? null) as string | null,
+        delivered: !!(m.delivered ?? m.isDelivered),
         senderName: (m.senderName ?? m.sender_name ?? null) as string | null,
         senderUsername: (m.senderUsername ?? m.sender_username ?? null) as string | null,
         senderAvatarUrl: (m.senderAvatarUrl ?? m.sender_avatar_url ?? null) as string | null,
@@ -4947,8 +4997,32 @@ export default function ChatPage() {
                             color: T.textDim,
                             fontSize: '0.62rem',
                             margin: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 3,
                           }}>
                             {timeLabel}
+                            {isMe && (
+                              <span
+                                aria-label={(m.read || m.readAt) ? 'Read' : 'Sent'}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  marginInlineStart: 2,
+                                  color: (m.read || m.readAt) ? '#00BCD4' : 'rgba(150,200,200,0.55)',
+                                  lineHeight: 1,
+                                }}
+                              >
+                                {(m.read || m.readAt) ? (
+                                  <>
+                                    <Check size={11} strokeWidth={2.8} style={{ marginInlineEnd: -5 }} />
+                                    <Check size={11} strokeWidth={2.8} />
+                                  </>
+                                ) : (
+                                  <Check size={11} strokeWidth={2.8} />
+                                )}
+                              </span>
+                            )}
                           </p>
                         </div>}
                       </motion.div>
@@ -5246,7 +5320,8 @@ export default function ChatPage() {
             }} onClick={sendText} disabled={sending} style={{
               position: 'absolute',
               right: 6,
-              bottom: 5,
+              top: '50%',
+              transform: 'translateY(-50%)',
               width: 32,
               height: 32,
               borderRadius: '50%',
@@ -5256,22 +5331,24 @@ export default function ChatPage() {
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              padding: 0,
             }}>
                   <Send size={15} strokeWidth={2} />
                 </motion.button> : isRecording ? <><motion.button whileTap={{
               scale: 0.88
             }} onClick={() => stopRecording(false)} aria-label="Cancel voice recording" style={{
-              position: 'absolute', left: 6, bottom: 5, width: 32, height: 32, borderRadius: '50%', background: T.redFaint, border: 'none', color: T.red, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+              position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', width: 32, height: 32, borderRadius: '50%', background: T.redFaint, border: 'none', color: T.red, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
             }}><X size={17} strokeWidth={2.4} /></motion.button>
                 <motion.button whileTap={{ scale: 0.88 }} onClick={() => stopRecording(true)} aria-label="Send voice recording" style={{
-              position: 'absolute', right: 6, bottom: 5, width: 32, height: 32, borderRadius: '50%', background: T.primaryFaint, border: 'none', color: T.primary, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+              position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 32, height: 32, borderRadius: '50%', background: T.primaryFaint, border: 'none', color: T.primary, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
             }}><Send size={15} strokeWidth={2} /></motion.button></> : <motion.button whileTap={{
               scale: 0.88
             }} onClick={startRecording} aria-label="Start voice recording" style={{
               position: 'absolute',
               left: 6,
-              bottom: 5,
+              top: '50%',
+              transform: 'translateY(-50%)',
               width: 32,
               height: 32,
               borderRadius: '50%',
@@ -5281,7 +5358,8 @@ export default function ChatPage() {
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              padding: 0,
             }}>
                   <Mic size={16} strokeWidth={2} />
                 </motion.button>}
@@ -5306,7 +5384,9 @@ export default function ChatPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  marginBottom: 2,
+                  padding: 0,
+                  marginBottom: 0,
+                  alignSelf: 'center',
                 }}
               >
                 <Camera size={18} strokeWidth={2.1} />
