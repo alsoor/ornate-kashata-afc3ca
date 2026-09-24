@@ -54,10 +54,10 @@ function fmtCallDuration(totalSeconds: number): string {
 // ─── Theme ────────────────────────────────────────────────────────────────────
 const T = {
   bg: '#efeae2',
-  primary: '#00a884',
-  primaryDim: 'rgba(0,168,132,0.35)',
-  primaryBorder: 'rgba(0,168,132,0.22)',
-  primaryFaint: 'rgba(0,168,132,0.10)',
+  primary: '#111111',
+  primaryDim: 'rgba(0,0,0,0.35)',
+  primaryBorder: 'rgba(0,0,0,0.22)',
+  primaryFaint: 'rgba(0,0,0,0.08)',
   text: '#111b21',
   textDim: '#667781',
   bubbleMe: '#d9fdd3',
@@ -662,11 +662,7 @@ function LocationMapBubble({
           >
             <MapPin size={16} color="#00a884" />
           </button>
-          {me && (
-            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }}>
-              <line x1="20%" y1="72%" x2="50%" y2="46%" stroke="#1a73e8" strokeWidth="4" strokeLinecap="round" />
-            </svg>
-          )}
+          {null}
           <iframe
             title="live-map"
             src={`https://www.openstreetmap.org/export/embed.html?bbox=${them.lng-0.01},${them.lat-0.01},${them.lng+0.01},${them.lat+0.01}&layer=mapnik&marker=${them.lat},${them.lng}`}
@@ -4388,6 +4384,10 @@ export default function ChatPage() {
     playBubblePop('send');
     setSending(true);
     try {
+      if (live && user?.id) {
+        const { startChatLiveShare } = await import('@/lib/chatLiveMapPatch');
+        startChatLiveShare(user.id);
+      }
       const body = `${LOCATION_PREFIX}${JSON.stringify({ lat, lng, label: live ? 'Live location' : 'Location', live })}`;
       if (isGroup) {
         await fetch(`/api/groups/${groupId}/messages`, {
@@ -4596,6 +4596,7 @@ export default function ChatPage() {
   // ── Voice recording ──────────────────────────────────────────────────────────
   async function startRecording() {
     try {
+      try { inputRef.current?.blur(); } catch { /* ignore */ }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true
       });
@@ -5810,11 +5811,12 @@ export default function ChatPage() {
         {/* ── Input bar ── */}
         <div style={{
         padding: '10px 12px 24px',
-        background: 'rgba(6,14,14,0.95)',
+        background: '#ffffff',
         backdropFilter: 'blur(12px)',
         borderTop: `1px solid ${T.navBorder}`,
         position: 'sticky',
         bottom: 0,
+        zIndex: 21,
         flexShrink: 0
       }}>
 
@@ -5937,7 +5939,7 @@ export default function ChatPage() {
 
           {/* ── Circular live voice recorder ── */}
           <AnimatePresence>
-            {isRecording && <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+            {isRecording && <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} style={{ position: 'absolute', left: 0, right: 0, bottom: 72, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 5 }}>
               <div style={{ width: 154, height: 154, borderRadius: '50%', border: `1px solid ${T.primaryBorder}`, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent' }}>
                 <motion.div animate={{ rotate: 360 }} transition={{ duration: 3, repeat: Infinity, ease: 'linear' }} style={{ position: 'absolute', inset: -3, borderRadius: '50%', borderTop: `4px solid ${T.primary}`, borderRight: '4px solid transparent', borderBottom: '4px solid transparent', borderLeft: '4px solid transparent' }} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 42, padding: '0 20px' }}>
@@ -5977,7 +5979,7 @@ export default function ChatPage() {
                 e.preventDefault();
                 sendText();
               }
-            }} placeholder={replyTo ? 'اكتب رداً…' : 'رسالة…'} rows={1} style={{
+            }} readOnly={isRecording} onFocus={() => { if (isRecording) inputRef.current?.blur(); }} placeholder={replyTo ? 'اكتب رداً…' : 'رسالة…'} rows={1} style={{
               width: '100%',
               boxSizing: 'border-box',
               resize: 'none',
@@ -6057,9 +6059,9 @@ export default function ChatPage() {
                   height: 40,
                   borderRadius: '50%',
                   flexShrink: 0,
-                  background: 'rgba(255,255,255,0.08)',
-                  border: `1px solid ${T.primaryBorder}`,
-                  color: T.primary,
+                  background: '#ffffff',
+                  border: '1px solid #111111',
+                  color: '#111111',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -6083,9 +6085,9 @@ export default function ChatPage() {
                   height: 40,
                   borderRadius: '50%',
                   flexShrink: 0,
-                  background: 'rgba(255,255,255,0.08)',
-                  border: `1px solid ${T.primaryBorder}`,
-                  color: T.primary,
+                  background: '#ffffff',
+                  border: '1px solid #111111',
+                  color: '#111111',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
