@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LogOut, Mic, MicOff, Users, Volume2, VolumeX } from 'lucide-react';
+import { LogOut, Mic, MicOff, Users, Volume2, VolumeX, X } from 'lucide-react';
 
 const ROOM = 'stooorna-public-voice';
 const TALK_MS = 30_000;
@@ -41,6 +41,7 @@ export default function PublicVoiceLive({
   const [mutedIds, setMutedIds] = useState<Set<string>>(new Set());
   const [speakerMuted, setSpeakerMuted] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
+  const [membersOpen, setMembersOpen] = useState(false);
   const [chatText, setChatText] = useState('');
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
@@ -105,6 +106,17 @@ export default function PublicVoiceLive({
     const id = window.setInterval(() => setCoolMs(Math.max(0, start - (Date.now() - t0))), 200);
     return () => window.clearInterval(id);
   }, [coolMs > 0]);
+
+  useEffect(() => {
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:live-map', { detail: { open: true } }));
+    } catch { /* ignore */ }
+    return () => {
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:live-map', { detail: { open: false } }));
+      } catch { /* ignore */ }
+    };
+  }, []);
 
   useEffect(() => {
     let stop = false;
@@ -247,14 +259,19 @@ export default function PublicVoiceLive({
           <p style={{ margin: 0, fontWeight: 800, color: '#00BCD4', fontSize: 13 }}>Public Voice</p>
           <p style={{ margin: 0, fontSize: 10, color: 'rgba(150,200,200,0.65)' }}>Shared room</p>
         </div>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(150,200,200,0.9)',
-          fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 14,
-          background: 'rgba(0,188,212,0.1)', border: '1px solid rgba(0,188,212,0.3)',
-        }}>
+        <button
+          type="button"
+          onClick={() => setMembersOpen(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(150,200,200,0.9)',
+            fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 14,
+            background: membersOpen ? 'rgba(0,188,212,0.22)' : 'rgba(0,188,212,0.1)',
+            border: '1px solid rgba(0,188,212,0.3)', cursor: 'pointer',
+          }}
+        >
           <Users size={11} />
           <span>{list.length}</span>
-        </div>
+        </button>
         <button
           type="button"
           onClick={onClose}
@@ -410,6 +427,69 @@ export default function PublicVoiceLive({
       <p style={{ margin: '0 0 6px', fontSize: 10, color: 'rgba(150,200,200,0.45)', textAlign: 'center' }}>
         {talking ? `${secs}s` : coolMs > 0 ? `Wait ${cool}s` : '30s turns'}
       </p>
+
+      {membersOpen && (
+        <div
+          onClick={() => setMembersOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.55)' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'absolute', left: 0, right: 0, bottom: 0,
+              maxHeight: '70%', overflowY: 'auto',
+              background: 'linear-gradient(180deg, #0c1c1f 0%, #071112 100%)',
+              borderTop: '1px solid rgba(0,188,212,0.25)',
+              borderRadius: '16px 16px 0 0',
+              padding: '12px 12px max(16px, env(safe-area-inset-bottom))',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <Users size={14} color="#00BCD4" />
+              <p style={{ margin: 0, flex: 1, fontWeight: 800, color: '#00BCD4', fontSize: 13 }}>In room · {list.length}</p>
+              <button type="button" onClick={() => setMembersOpen(false)} style={{ background: 'none', border: 'none', color: '#00BCD4', cursor: 'pointer' }}>
+                <X size={16} />
+              </button>
+            </div>
+            {list.map(p => {
+              const muted = mutedIds.has(p.id);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => toggleMute(p.id)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 4px', background: 'none', border: 'none', color: 'inherit',
+                    cursor: p.id === me.id ? 'default' : 'pointer',
+                  }}
+                >
+                  <div style={{
+                    width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
+                    border: `2px solid ${p.talking ? '#22c55e' : 'rgba(0,188,212,0.35)'}`,
+                  }}>
+                    {p.avatarUrl ? (
+                      <img src={p.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00BCD4', fontWeight: 800 }}>
+                        {(p.name || '?')[0]}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>
+                      {p.username ? `@${String(p.username).replace(/^@/, '')}` : p.name}
+                    </p>
+                    <p style={{ margin: 0, fontSize: 10, color: muted ? '#9ca3af' : p.talking ? '#22c55e' : 'rgba(150,200,200,0.6)' }}>
+                      {p.id === me.id ? 'You' : muted ? 'Muted' : p.talking ? 'Talking' : 'Listening'}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
