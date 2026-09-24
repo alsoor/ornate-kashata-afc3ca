@@ -70,7 +70,7 @@ export async function postLiveSignalHttp(channel: string, payload: object) {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomId: channel, payload }),
+      body: JSON.stringify({ roomId: channel, payload, data: payload, t: (payload as any).t }),
     });
   } catch {
     /* endpoint optional */
@@ -128,15 +128,11 @@ export function subscribeLiveSignals(
         `/api/room/signal?roomId=${encodeURIComponent(channel)}&since=${since}`,
         { credentials: 'include' },
       );
-      if (r.status === 404 || r.status === 405) {
-        pollOn = false;
-        return;
-      }
       if (!r.ok) return;
       const d = await r.json();
-      const list = (d.messages ?? d.signals ?? d ?? []) as Array<{ payload?: LiveSignal; at?: number } | LiveSignal>;
+      const list = (d.messages ?? d.signals ?? d.items ?? (Array.isArray(d) ? d : [])) as Array<{ payload?: LiveSignal; data?: LiveSignal; at?: number } | LiveSignal>;
       for (const item of list) {
-        const payload = (item as any).payload ?? item;
+        const payload = (item as any).payload ?? (item as any).data ?? item;
         const at = Number((item as any).at || (payload as any).at || (payload as any).ts || Date.now());
         if (at > since) since = at;
         handle(payload);

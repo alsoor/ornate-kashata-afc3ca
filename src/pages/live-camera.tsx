@@ -917,7 +917,10 @@ export default function LiveCameraPage() {
               if (prev.some(r => r.uid === msg.uid)) return prev;
               return [...prev, {
                 uid: Number(msg.uid),
-                name: 'User',
+                userId: (msg as any).userId,
+                name: String((msg as any).name || 'User'),
+                username: (msg as any).username ?? null,
+                avatarUrl: (msg as any).avatarUrl ?? null,
                 at: Date.now(),
               }].slice(-30);
             });

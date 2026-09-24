@@ -51,8 +51,11 @@ async function readBody(req: Request | any): Promise<any> {
 
 export async function POST(req: Request) {
   const body = await readBody(req);
-  const roomId = String(body?.roomId || '').trim();
-  const payload = body?.payload && typeof body.payload === 'object' ? body.payload : null;
+  const roomId = String(body?.roomId || body?.id || '').trim();
+  const payload =
+    (body?.payload && typeof body.payload === 'object' && body.payload) ||
+    (body?.data && typeof body.data === 'object' && body.data) ||
+    (body?.t ? body : null);
   if (!roomId || !payload) return json({ ok: false, error: 'roomId and payload required' }, 400);
 
   const at = Date.now();
@@ -72,7 +75,10 @@ export default async function handler(req: any, res?: any) {
   if (res && typeof res.json === 'function') {
     const body = req.body || {};
     const roomId = String(body.roomId || '').trim();
-    const payload = body.payload && typeof body.payload === 'object' ? body.payload : null;
+    const payload =
+      (body.payload && typeof body.payload === 'object' && body.payload) ||
+      (body.data && typeof body.data === 'object' && body.data) ||
+      (body.t ? body : null);
     if (!roomId || !payload) {
       res.statusCode = 400;
       return res.json({ ok: false, error: 'roomId and payload required' });
