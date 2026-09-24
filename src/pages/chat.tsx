@@ -611,29 +611,30 @@ function LocationMapBubble({
         type="button"
         onClick={() => setOpen(true)}
         style={{
-          display: 'block', width: 240, borderRadius: 10, overflow: 'hidden',
-          background: '#fff', border: '1px solid rgba(0,0,0,0.08)', padding: 0, cursor: 'pointer', textAlign: 'left',
+          display: 'flex', alignItems: 'center', gap: 8, width: 250, height: 52,
+          borderRadius: 16, overflow: 'hidden', background: '#fff',
+          border: '1px solid rgba(0,0,0,0.08)', padding: '0 8px', cursor: 'pointer', textAlign: 'left',
         }}
       >
-        <div style={{ position: 'relative', width: '100%', height: 140, background: '#e8f4f8' }}>
-          <iframe title="preview" src={embed} style={{ width: '100%', height: '100%', border: 0, pointerEvents: 'none' }} />
+        <div style={{ position: 'relative', width: 52, height: 40, borderRadius: 10, overflow: 'hidden', background: '#e8f4f8', flexShrink: 0 }}>
+          <iframe title="preview" src={embed} style={{ width: '160%', height: '160%', border: 0, pointerEvents: 'none', transform: 'scale(0.72)', transformOrigin: '0 0' }} />
           {live && (
             <div style={{
-              position: 'absolute', left: '50%', top: '46%', transform: 'translate(-50%, -50%)',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: 'none',
+              position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
             }}>
-              <div style={{ width: 46, height: 46, borderRadius: '50%', overflow: 'hidden', border: '3px solid #22c55e', background: '#eee' }}>
+              <div style={{ width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', border: '2px solid #22c55e', background: '#eee' }}>
                 {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
               </div>
             </div>
           )}
         </div>
-        <div style={{ padding: '8px 10px 10px' }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           {live ? (
-            <p style={{ margin: 0, fontSize: 12, color: '#111' }}>Live until {new Date(Date.now() + 8 * 3600_000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
+            <p style={{ margin: 0, fontSize: 12, color: '#111', fontWeight: 600 }}>Live location</p>
           ) : (
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111' }}>{label || 'Location'}</p>
+            <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#111' }}>{label || 'Location'}</p>
           )}
+          <p style={{ margin: 0, fontSize: 10, color: '#667781' }}>{username ? `@${String(username).replace(/^@/, '')}` : ''}</p>
         </div>
       </button>
       {open && createPortal(
