@@ -795,6 +795,7 @@ function GlobalBottomNavigation() {
   // posts get the full screen; scrolling back toward the top brings it back.
   // Purely local to the bar itself — nothing above it is ever affected.
   const [navBarHidden, setNavBarHidden] = useState(false);
+  const [liveMapOpen, setLiveMapOpen] = useState(false);
   useEffect(() => {
     const onFeedScroll = (e: Event) => {
       const dir = (e as CustomEvent).detail?.dir as 'down' | 'up' | undefined;
@@ -827,6 +828,11 @@ function GlobalBottomNavigation() {
       } catch { /* ignore */ }
     };
     window.addEventListener('stooorna:open-live-kind', onLiveKind);
+    const onLiveMap = (e: Event) => {
+      const d = (e as CustomEvent).detail as { open?: boolean } | undefined;
+      setLiveMapOpen(!!d?.open);
+    };
+    window.addEventListener('stooorna:live-map', onLiveMap);
     return () => {
       window.removeEventListener('stooorna:friends-panel-opened', onOpen);
       window.removeEventListener('stooorna:friends-panel-closed', onClose);
@@ -835,6 +841,7 @@ function GlobalBottomNavigation() {
       window.removeEventListener('stooorna:story-media-closed', onMediaClose);
       window.removeEventListener('stooorna:close-story-media', onMediaClose);
       window.removeEventListener('stooorna:open-live-kind', onLiveKind);
+      window.removeEventListener('stooorna:live-map', onLiveMap);
     };
   }, []);
   useEffect(() => {
@@ -4588,6 +4595,7 @@ function GlobalBottomNavigation() {
   {(() => {
     const hideBottomBar =
       navBarHidden
+      || liveMapOpen
       || isConversation
       || secretChatOpen
       || friendChatOpen
