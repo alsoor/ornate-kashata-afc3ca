@@ -11322,6 +11322,8 @@ export default function SettingsPage() {
             <LiveLocationMap
               currentUserId={user?.id}
               currentName={(user as any)?.name || (user as any)?.username || 'Me'}
+              currentUsername={(user as any)?.username || profileUsername || null}
+              currentAvatar={(user as any)?.avatarUrl || (user as any)?.image || null}
               onClose={() => setShowLiveLocation(false)}
             />
           </motion.div>
