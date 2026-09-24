@@ -13,6 +13,9 @@ type Props = {
   color?: string;
   className?: string;
   style?: React.CSSProperties;
+  readerOnly?: boolean;
+  open?: boolean;
+  onClose?: () => void;
 };
 
 export default function PostTextMore({
@@ -20,8 +23,18 @@ export default function PostTextMore({
   maxLines = POST_PREVIEW_LINES,
   color = 'rgba(220,235,235,0.95)',
   style,
+  readerOnly = false,
+  open: openProp,
+  onClose,
 }: Props) {
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(!!readerOnly && openProp !== false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? !!openProp : openState;
+  const setOpen = (v: boolean) => {
+    if (!v) onClose?.();
+    if (!controlled) setOpenState(v);
+  };
+
   const full = String(text || '');
   const needs = postNeedsMore(full, maxLines);
   const preview = needs ? postPreviewText(full, maxLines) : full;
@@ -37,30 +50,34 @@ export default function PostTextMore({
 
   return (
     <>
-      <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color, lineHeight: 1.45, ...style }}>
-        {preview}
-        {needs ? '…' : null}
-      </div>
-      {needs && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen(true);
-          }}
-          style={{
-            marginTop: 6,
-            border: 'none',
-            background: 'none',
-            color: '#00BCD4',
-            fontWeight: 800,
-            fontSize: '0.85rem',
-            cursor: 'pointer',
-            padding: 0,
-          }}
-        >
-          More
-        </button>
+      {!readerOnly && (
+        <>
+          <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color, lineHeight: 1.45, ...style }}>
+            {preview}
+            {needs ? '…' : null}
+          </div>
+          {needs && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(true);
+              }}
+              style={{
+                marginTop: 6,
+                border: 'none',
+                background: 'none',
+                color: '#00BCD4',
+                fontWeight: 800,
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              More
+            </button>
+          )}
+        </>
       )}
 
       {open &&

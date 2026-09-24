@@ -14,6 +14,8 @@ import { usePresenceQuery } from '@/hooks/usePresence';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useGlobalCall } from '@/components/GlobalCallProvider';
 import { useGuestGuard } from '@/hooks/useGuestGuard';
+import PostTextMore from '@/components/PostTextMore';
+import { publishFeedPost, uploadPostMedia, deleteStoryInstant, POST_TEXT_MAX_CHARS } from '@/lib/postStoryPatch';
 interface SearchUser {
   id: string;
   name: string | null;
@@ -4228,6 +4230,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
     }
     setConfirmDelete(false);
     setDeleting(false);
+    void deleteStoryInstant(id);
     // Best-effort server delete (any matching route)
     const attempts: Array<() => Promise<Response>> = [
       () => fetch(`/api/status/${id}`, { method: 'DELETE', credentials: 'include' }),
@@ -4954,6 +4957,20 @@ function LinkMediaPreview({ url, failedNote }: { url: string; failedNote?: strin
   return failedNote ? <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p> : null;
 }
 
+
+function PostTextMoreInlineRest({ full, color, onMore }: { full: string; color: string; onMore?: () => void }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <button type="button" onClick={e => { e.stopPropagation(); if (onMore) onMore(); else setOpen(true); }} aria-label="More"
+        style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: '2px 0', margin: 0, color: color || 'hsl(var(--primary))', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+        More
+      </button>
+      {open ? <PostTextMore text={full} readerOnly open onClose={() => setOpen(false)} /> : null}
+    </>
+  );
+}
+
 // ── PostText — renders post text with #hashtags highlighted ──────────────────
 function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, bold = false, collapseLong = false, onMore }: {
   text: string;
@@ -4972,10 +4989,10 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
     : { cleanText: text, embeds: [] as { url: string; type: 'image' | 'video' }[], xStatusUrls: [] as string[] };
   const { cleanText, embeds, xStatusUrls } = extracted;
   if (!cleanText && embeds.length === 0 && xStatusUrls.length === 0) return null;
-  const COLLAPSE_AFTER_LINES = 5;
-  const PREVIEW_LINES = 5;
+  const COLLAPSE_AFTER_LINES = 50;
+  const PREVIEW_LINES = 50;
   const allLines = cleanText ? cleanText.split('\n') : [];
-  const shouldCollapse = !!collapseLong && !!onMore && allLines.length > COLLAPSE_AFTER_LINES;
+  const shouldCollapse = !!collapseLong && allLines.length > COLLAPSE_AFTER_LINES;
   const visibleText = shouldCollapse
     ? allLines.slice(0, PREVIEW_LINES).join('\n') + (allLines.length > PREVIEW_LINES ? '\n…' : '')
     : cleanText;
@@ -4999,10 +5016,7 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
         </p>
       ) : null}
       {shouldCollapse && (
-        <button type="button" onClick={e => { e.stopPropagation(); onMore?.(); }} aria-label="More"
-          style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: '2px 0', margin: 0, color: color || 'hsl(var(--primary))', fontSize: '0.78rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
-          More
-        </button>
+        <PostTextMoreInlineRest full={cleanText} color={color} onMore={onMore} />
       )}
       {embedMediaLinks && <PostLinkEmbeds embeds={embeds} />}
       {embedMediaLinks && xStatusUrls.map(u => <XStatusEmbed key={u} statusUrl={u} />)}
@@ -12767,6 +12781,12 @@ export default function AddFriendPage() {
           }
 
           if (!uploadedUrl) {
+            try {
+              const extra = await uploadPostMedia(file, { kind: mediaType, fileName: file.name });
+              if (extra.ok && extra.url) uploadedUrl = extra.url;
+            } catch { /* keep last error */ }
+          }
+          if (!uploadedUrl) {
             const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
             lastUploadError = `Media upload failed${uploadRes ? ` (${uploadRes.status})` : ''} ${lastBody.slice(0, 80)} [${mediaType} ${sizeMb}MB]`.trim();
             console.error('[Post media upload]', lastUploadError);
@@ -12980,12 +13000,13 @@ export default function AddFriendPage() {
         }
       } else {
         // ── بدون وسائط: منشور نصي مباشر ──
-        const createRes = await fetch('/api/posts', {
+        const textBody = String(finalText || '').slice(0, POST_TEXT_MAX_CHARS);
+        let createRes = await fetch('/api/posts', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            text: finalText,
+            text: textBody,
             mediaUrl: null,
             mediaType: null,
             mediaUrls: [],
@@ -12999,10 +13020,16 @@ export default function AddFriendPage() {
           }),
         });
         if (!createRes.ok) {
+          const fallback = await publishFeedPost({ text: textBody, audience: 'text' });
+          if (fallback.ok) {
+            createRes = new Response(JSON.stringify({ post: { id: fallback.postId || Date.now(), text: textBody } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          }
+        }
+        if (!createRes.ok) {
           const errBody = await createRes.text().catch(() => '');
           let msg = '';
           try { msg = (JSON.parse(errBody) as { error?: string }).error || ''; } catch { msg = errBody.slice(0, 120); }
-          throw new Error(msg || `فشل إنشاء المنشور (${createRes.status})`);
+          throw new Error(msg || `Failed to create post (${createRes.status})`);
         }
         const createData = await createRes.json();
         if (!createData?.post?.id) throw new Error('المنشور لم يُحفظ على السيرفر');
