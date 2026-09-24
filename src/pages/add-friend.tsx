@@ -8372,9 +8372,10 @@ type IncomingCallState = {
   callerLabel: string | null;
   isPrivate: boolean;
   ringSilenced: boolean; // "ميوت" — يوقف صوت/رجفة الرنة بس يخلي البانر الأخضر ظاهر
+  at: number | null; // start time of the invite currently ringing, used to key the declined-call registry
 };
 let incomingCallState: IncomingCallState = {
-  ringing: false, channel: null, callerId: null, callerLabel: null, isPrivate: true, ringSilenced: false,
+  ringing: false, channel: null, callerId: null, callerLabel: null, isPrivate: true, ringSilenced: false, at: null,
 };
 const incomingCallListeners = new Set<() => void>();
 function getIncomingCallSnapshot(): IncomingCallState { return incomingCallState; }
@@ -8397,11 +8398,14 @@ if (typeof window !== 'undefined') {
       hostName?: string | null;
       video?: boolean;
       kind?: string;
+      at?: number;
     } | undefined;
     if (!d) return;
     if (d.ringing) {
       if (Date.now() < incomingRingSuppressUntil) return;
       if (activeCallState.joined || globeVoiceJoinedRef.current) return;
+      const at = Number(d.at) || Date.now();
+      if (d.channel && isHomeCallRecentlyDeclined(myIdForDeclineCheck(), homeInviteKey(d.channel, at))) return;
       setIncomingCallState({
         ringing: true,
         channel: d.channel || null,
@@ -8409,23 +8413,24 @@ if (typeof window !== 'undefined') {
         callerLabel: d.hostName || null,
         isPrivate: true,
         ringSilenced: false,
+        at,
       });
       startGlobalIncomingRing();
     } else {
       suppressIncomingRing(60_000);
       stopGlobalIncomingRing();
-      setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+      setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false, at: null });
     }
   }) as EventListener);
   window.addEventListener('stooorna:call-answered', (() => {
     suppressIncomingRing(60_000);
     stopGlobalIncomingRing();
-    setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+    setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false, at: null });
   }) as EventListener);
   window.addEventListener('stooorna:stop-incoming-ring', (() => {
     suppressIncomingRing(60_000);
     stopGlobalIncomingRing();
-    setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+    setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false, at: null });
   }) as EventListener);
 }
 
@@ -8602,6 +8607,58 @@ function suppressIncomingRing(ms = 60000) {
   stopGlobalIncomingRing();
 }
 
+// Declined-call registry, persisted in localStorage (shared key format with
+// RootLayout's own copy of this) so a decline survives a page refresh: the
+// in-memory incomingRingSuppressUntil above resets on reload, but this does
+// not — so a call just declined from this watcher's own poll loop never
+// rings again on this device, even if the server-side clear request for it
+// is still in flight (e.g. cut short by an immediate refresh). Keyed per
+// exact call instance (channel + its start time) so a brand-new call from
+// the same peer is never suppressed by an old decline.
+const HOME_CALL_DECLINED_WINDOW_MS = 120000;
+function homeCallDeclinedKey(uid: string): string {
+  return `stooorna_home_call_declined_${uid}`;
+}
+function loadHomeCallDeclinedMap(uid: string): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(homeCallDeclinedKey(uid));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function markHomeCallDeclined(uid: string, inviteKey: string) {
+  if (!uid || !inviteKey) return;
+  try {
+    const map = loadHomeCallDeclinedMap(uid);
+    const now = Date.now();
+    map[inviteKey] = now;
+    for (const key of Object.keys(map)) {
+      if (now - map[key] > HOME_CALL_DECLINED_WINDOW_MS) delete map[key];
+    }
+    localStorage.setItem(homeCallDeclinedKey(uid), JSON.stringify(map));
+  } catch { /* ignore */ }
+}
+function isHomeCallRecentlyDeclined(uid: string, inviteKey: string): boolean {
+  if (!uid || !inviteKey) return false;
+  const at = loadHomeCallDeclinedMap(uid)[inviteKey];
+  if (!at) return false;
+  return Date.now() - at <= HOME_CALL_DECLINED_WINDOW_MS;
+}
+function homeInviteKey(channel: string, at: number | null | undefined): string {
+  return `${channel}@${Number(at) || 0}`;
+}
+// Set by <GlobalIncomingCallWatcher/> (mounted once at the page root) so the
+// module-level 'stooorna:incoming-call-ui' bridge listener below — which
+// runs outside any component and so has no props — can still check the
+// declined-call registry, which is keyed per user.
+let globalIncomingCallUserId: string | null = null;
+function myIdForDeclineCheck(): string {
+  return globalIncomingCallUserId || '';
+}
+
 function startGlobalIncomingRing() {
   if (Date.now() < incomingRingSuppressUntil) return;
   if (activeCallState.joined || globeVoiceJoinedRef.current) return;
@@ -8651,10 +8708,17 @@ function notifyIncomingCallSystem(callerLabel: string) {
 
 /** Decline / ignore an incoming call without joining. Stops ring on this device and clears invite. */
 async function declineIncomingCallGlobally(myUserId: string | null) {
-  const { channel } = incomingCallState;
+  const { channel, at } = incomingCallState;
   suppressIncomingRing(60_000);
   stopGlobalIncomingRing();
-  setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+  // Persist the decline for this exact call instance so no poll loop can
+  // ever ring for it again on this device, even across an immediate page
+  // refresh — incomingRingSuppressUntil above is in-memory only and would
+  // otherwise be lost.
+  if (myUserId && channel) {
+    markHomeCallDeclined(myUserId, homeInviteKey(channel, at));
+  }
+  setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false, at: null });
   try {
     if (myUserId) {
       localStorage.removeItem(`stooorna_home_call_invite_${myUserId}`);
@@ -8666,6 +8730,7 @@ async function declineIncomingCallGlobally(myUserId: string | null) {
       void fetch('/api/call/invite', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clear: true, toUserId: myUserId, userId: myUserId, channel, declined: true }),
+        keepalive: true,
       });
     }
   } catch { /* ignore */ }
@@ -8684,13 +8749,14 @@ function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string 
   void myUserName;
   useEffect(() => {
     if (!myUserId) return;
+    globalIncomingCallUserId = myUserId;
     let cancelled = false;
     const poll = async () => {
       // Already in a call or actively joining — never re-start ring
       if (activeCallState.joined || globeVoiceJoinedRef.current || Date.now() < incomingRingSuppressUntil) {
         if (incomingCallState.ringing) {
           stopGlobalIncomingRing();
-          setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+          setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false, at: null });
         }
         return;
       }
@@ -8727,6 +8793,11 @@ function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string 
         const invite = serverInvite || localInvite;
         if (invite?.channel && invite.hostId && String(invite.hostId) !== String(myUserId)) {
           const channel = String(invite.channel);
+          const inviteAt = Number(invite.at) || Date.now();
+          if (isHomeCallRecentlyDeclined(myUserId, homeInviteKey(channel, inviteAt))) {
+            try { localStorage.removeItem(`stooorna_home_call_invite_${myUserId}`); } catch { /* ignore */ }
+            return;
+          }
           if (!incomingCallState.ringing || incomingCallState.channel !== channel) {
             const label = invite.hostName || null;
             setIncomingCallState({
@@ -8736,6 +8807,7 @@ function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string 
               callerLabel: label,
               isPrivate: true,
               ringSilenced: false,
+              at: inviteAt,
             });
             startGlobalIncomingRing();
             notifyIncomingCallSystem(label || 'Friend');
@@ -8783,15 +8855,16 @@ function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string 
                 const members = roomData.members ?? [];
                 const callerActive = members.some(m => m.userId !== myUserId);
                 let inviteFresh = false;
+                let inviteAt = 0;
                 try {
                   const raw = localStorage.getItem(`stooorna_home_call_invite_${myUserId}`);
                   const parsed = raw ? JSON.parse(raw) : null;
-                  const at = Number(parsed?.at || 0);
-                  inviteFresh = !!at && Date.now() - at <= 18000;
+                  inviteAt = Number(parsed?.at || 0);
+                  inviteFresh = !!inviteAt && Date.now() - inviteAt <= 18000;
                 } catch { inviteFresh = false; }
-                if (callerActive && inviteFresh && !incomingCallState.ringing) {
+                if (callerActive && inviteFresh && !incomingCallState.ringing && !isHomeCallRecentlyDeclined(myUserId, homeInviteKey(channel, inviteAt))) {
                   const label = visitor.name || visitor.username || null;
-                  setIncomingCallState({ ringing: true, channel, callerId: visitor.userId, callerLabel: label, isPrivate: true, ringSilenced: false });
+                  setIncomingCallState({ ringing: true, channel, callerId: visitor.userId, callerLabel: label, isPrivate: true, ringSilenced: false, at: inviteAt || Date.now() });
                   startGlobalIncomingRing();
                   notifyIncomingCallSystem(label || 'Friend');
                   return;
@@ -8803,7 +8876,7 @@ function GlobalIncomingCallWatcher({ myUserId, myUserName }: { myUserId: string 
 
         if (incomingCallState.ringing) {
           stopGlobalIncomingRing();
-          setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
+          setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false, at: null });
         }
       } catch {}
     };
@@ -20155,9 +20228,7 @@ export default function AddFriendPage() {
               })()}
             </div>
 
-            <style>{`@keyframes stooornaPlusFanIn { from { opacity: 0; transform: translateY(8px) scale(0.92); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes stooornaPlusCallShake { 0%, 100% { transform: translateY(-50%) rotate(0deg); } 15% { transform: translateY(-50%) rotate(-12deg) scale(1.06); } 30% { transform: translateY(-50%) rotate(10deg) scale(1.06); } 45% { transform: translateY(-50%) rotate(-8deg); } 60% { transform: translateY(-50%) rotate(8deg); } 75% { transform: translateY(-50%) rotate(-4deg); } }
-@keyframes stooornaPlusCallPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.55); } 50% { box-shadow: 0 0 0 10px rgba(34,197,94,0); } }`}</style>
+            <style>{`@keyframes stooornaPlusFanIn { from { opacity: 0; transform: translateY(8px) scale(0.92); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
             {/* Bottom chrome: profile (left) | New Post (center) | plus menu (right) */}
             <div
               ref={postsChromeBottomRef}
@@ -20372,13 +20443,12 @@ export default function AddFriendPage() {
                               aria-label={incomingCallUi.ringing ? 'Answer call' : 'Call'}
                               style={{
                                 width: 44, height: 44, borderRadius: '50%',
-                                border: incomingCallUi.ringing ? '1.5px solid #22c55e' : '1px solid rgba(0,188,212,0.4)',
-                                background: incomingCallUi.ringing ? 'rgba(34,197,94,0.22)' : 'rgba(6,20,22,0.96)',
-                                color: incomingCallUi.ringing ? '#22c55e' : '#00BCD4',
+                                border: '1px solid rgba(0,188,212,0.4)',
+                                background: 'rgba(6,20,22,0.96)',
+                                color: '#00BCD4',
                                 cursor: 'pointer',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                boxShadow: incomingCallUi.ringing ? '0 0 16px rgba(34,197,94,0.45)' : '0 4px 16px rgba(0,0,0,0.45)',
-                                animation: incomingCallUi.ringing ? 'stooornaPlusCallPulse 1.1s ease-in-out infinite' : undefined,
+                                boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
                               }}
                             >
                               <Phone size={20} strokeWidth={2.2} />
@@ -20450,19 +20520,16 @@ export default function AddFriendPage() {
                       transform: 'translateY(-50%)',
                       width: 44,
                       height: 36,
-                      border: incomingCallUi.ringing ? '1.5px solid #22c55e' : 'none',
-                      background: incomingCallUi.ringing
-                        ? 'rgba(34,197,94,0.22)'
-                        : (textPostsPlusOpen ? 'rgba(0,188,212,0.14)' : 'transparent'),
+                      border: 'none',
+                      background: textPostsPlusOpen ? 'rgba(0,188,212,0.14)' : 'transparent',
                       borderRadius: 12,
-                      color: incomingCallUi.ringing ? '#22c55e' : (textPostsPlusOpen ? '#00BCD4' : 'rgba(0,188,212,0.85)'),
+                      color: textPostsPlusOpen ? '#00BCD4' : 'rgba(0,188,212,0.85)',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       zIndex: 2,
                       WebkitTapHighlightColor: 'transparent',
-                      animation: incomingCallUi.ringing ? 'stooornaPlusCallShake 0.7s ease-in-out infinite, stooornaPlusCallPulse 1.1s ease-in-out infinite' : undefined,
                     }}
                   >
                     <span style={{

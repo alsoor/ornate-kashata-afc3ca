@@ -616,6 +616,49 @@ function isFreshHomeInvite(raw: any): boolean {
   return Date.now() - at <= HOME_CALL_NO_ANSWER_MS;
 }
 
+// Declined-call registry, persisted in localStorage (not just an in-memory
+// ref) so a decline survives a page refresh: the in-memory "ignored" lock
+// resets on reload, but this does not, so a call just declined never rings
+// again on this device even if the server-side clear request for it is
+// still in flight when the refresh happens. Keyed per exact call instance
+// (channel + its start time) so a brand-new call from the same peer (same
+// 1:1 channel, different start time) is never suppressed by an old decline.
+const HOME_CALL_DECLINED_WINDOW_MS = 120000;
+function homeCallDeclinedKey(uid: string): string {
+  return `stooorna_home_call_declined_${uid}`;
+}
+function loadHomeCallDeclinedMap(uid: string): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(homeCallDeclinedKey(uid));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function markHomeCallDeclined(uid: string, inviteKey: string) {
+  if (!uid || !inviteKey) return;
+  try {
+    const map = loadHomeCallDeclinedMap(uid);
+    const now = Date.now();
+    map[inviteKey] = now;
+    for (const key of Object.keys(map)) {
+      if (now - map[key] > HOME_CALL_DECLINED_WINDOW_MS) delete map[key];
+    }
+    localStorage.setItem(homeCallDeclinedKey(uid), JSON.stringify(map));
+  } catch { /* */ }
+}
+function isHomeCallRecentlyDeclined(uid: string, inviteKey: string): boolean {
+  if (!uid || !inviteKey) return false;
+  const at = loadHomeCallDeclinedMap(uid)[inviteKey];
+  if (!at) return false;
+  return Date.now() - at <= HOME_CALL_DECLINED_WINDOW_MS;
+}
+function homeInviteKey(channel: string, at: number | null | undefined): string {
+  return `${channel}@${Number(at) || 0}`;
+}
+
 function pushShareThreadMsg(a: string, b: string, postId: string | number, msg: Omit<ShareThreadMsg, 'id' | 'at'>) {
   const list = loadShareThread(a, b, postId);
   list.push({ ...msg, id: `stm-${Date.now()}`, at: Date.now() });
@@ -1441,6 +1484,7 @@ function GlobalBottomNavigation() {
     hostUsername?: string | null;
     hostAvatar: string | null;
     members: HomeCallMember[];
+    at?: number;
   } | null>(null);
   const homeRingTimer = useRef<number | null>(null);
   const homeSwipeY = useRef<number | null>(null);
@@ -1537,11 +1581,27 @@ function GlobalBottomNavigation() {
     if (!user?.id) return;
     const applyInvite = (raw: any) => {
       if (!raw?.channel || raw.hostId === user.id) return;
-      if (!isFreshHomeInvite(raw)) {
-        // The invite already expired before this device saw it (e.g. the
-        // app was opened after the caller stopped ringing). Don't ring —
-        // just log it as a missed call in the chat, once.
-        if (raw.hostId && !raw.ended && !raw.answered) {
+      const ch = String(raw.channel);
+      const inviteKey = homeInviteKey(ch, raw.at);
+      if (isHomeCallRecentlyDeclined(user.id, inviteKey)) {
+        // Already declined this exact call on this device — never ring for
+        // it again, even after a refresh (the in-memory lock below resets
+        // on reload, this persisted registry does not).
+        try {
+          localStorage.removeItem(`stooorna_home_call_invite_${user.id}`);
+          localStorage.removeItem('stooorna_home_call_active_invite');
+        } catch { /* */ }
+        return;
+      }
+      // A call that was already ended or answered (elsewhere) should never
+      // ring here, regardless of how fresh its timestamp still looks.
+      const finished = !!(raw.ended || raw.answered);
+      if (finished || !isFreshHomeInvite(raw)) {
+        // Either the invite already expired before this device saw it
+        // (e.g. the app was opened after the caller stopped ringing), or
+        // the call is already over. Don't ring — just log a missed call
+        // in the chat, once, and only when it genuinely went unanswered.
+        if (raw.hostId && !finished) {
           const staleKey = `${raw.channel}@${raw.at || 0}`;
           if (!staleInviteHandledRef.current.has(staleKey)) {
             staleInviteHandledRef.current.add(staleKey);
@@ -1563,18 +1623,18 @@ function GlobalBottomNavigation() {
         } catch { /* */ }
         return;
       }
-      const ch = String(raw.channel);
       const lock = homeRingLockRef.current;
       if (lock.mode === 'answered' && (lock.channel === ch || Date.now() - lock.at < 120000)) return;
       if (lock.mode === 'ignored' && Date.now() - lock.at < 60000) return;
       beginHomeIncoming({
-        channel: String(raw.channel),
+        channel: ch,
         hostId: String(raw.hostId || ''),
         hostName: raw.hostName ?? null,
         hostUsername: raw.hostUsername ?? raw.username ?? (Array.isArray(raw.members) ? (raw.members.find((m: any) => String(m.id) === String(raw.hostId || ''))?.username) : null) ?? null,
         hostAvatar: raw.hostAvatar ?? null,
         members: Array.isArray(raw.members) ? raw.members : [],
         video: !!raw.video,
+        at: Number(raw.at) || Date.now(),
       });
     };
     const onLocal = (e: Event) => {
@@ -2468,7 +2528,7 @@ function GlobalBottomNavigation() {
     }
   }, [homeCallPhase, homeCallChannel, user?.id]);
 
-  function beginHomeIncoming(invite: { channel: string; hostId: string; hostName: string | null; hostUsername?: string | null; hostAvatar: string | null; members: HomeCallMember[]; video?: boolean }) {
+  function beginHomeIncoming(invite: { channel: string; hostId: string; hostName: string | null; hostUsername?: string | null; hostAvatar: string | null; members: HomeCallMember[]; video?: boolean; at?: number }) {
     if (homeCallPhase !== 'idle') return;
     const lock = homeRingLockRef.current;
     if (lock.mode === 'answered' && Date.now() - lock.at < 4000) return;
@@ -2498,6 +2558,7 @@ function GlobalBottomNavigation() {
           hostUsername: (invite as any).hostUsername || null,
           video: !!(invite as any).video,
           kind: (invite as any).video ? 'video' : 'voice',
+          at: invite.at,
         },
       }));
     } catch { /* */ }
@@ -2577,6 +2638,12 @@ function GlobalBottomNavigation() {
     }
     stopHomeIncomingRing();
     homeRingLockRef.current = { mode: 'ignored', channel: channel || homeIncoming?.channel || '', at: endedAt };
+    // Persist the decline for this exact call instance so it can never ring
+    // again on this device, even across an immediate page refresh (the ref
+    // above is in-memory only and would be lost).
+    if (user?.id && channel) {
+      markHomeCallDeclined(user.id, homeInviteKey(channel, inviteSnap?.at));
+    }
     setHomeIncomingExpanded(false);
     setHomeIncoming(null);
     setHomeCallPhase('idle');
@@ -2597,14 +2664,18 @@ function GlobalBottomNavigation() {
         localStorage.removeItem(`stooorna_home_call_invite_${user.id}`);
         localStorage.removeItem('stooorna_home_call_active_invite');
         try {
+          // keepalive so this still reaches the server even if the tab is
+          // refreshed or closed right after declining
           void fetch('/api/call/invite/clear', {
             method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: user.id }),
+            keepalive: true,
           });
         } catch { /* */ }
         void fetch('/api/room/leave', {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ roomId: `home_ring_${homeCallShortHash(user.id)}`, userId: user.id }),
+          keepalive: true,
         });
         // Missed call into 1:1 chat when declining
         if (inviteSnap?.hostId) {
