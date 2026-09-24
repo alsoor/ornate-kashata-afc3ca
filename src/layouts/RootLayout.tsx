@@ -10,6 +10,7 @@ import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useSession } from '@/lib/auth/auth-client';
 import { useNotificationCounts } from '@/hooks/useNotificationCounts';
 import { playNotificationSound } from '@/lib/notificationSound';
+import SplashScreen from '@/components/SplashScreen';
 interface RootLayoutProps {
   children: ReactElement;
 }
@@ -4898,6 +4899,19 @@ export default function RootLayout({
   const session = (sessionResult as any).session ?? (sessionResult as any).data;
   const location = useLocation();
   const navigate = useNavigate();
+  const [showSplash, setShowSplash] = useState(() => {
+    try {
+      return sessionStorage.getItem('stooorna_splash_seen') !== '1';
+    } catch {
+      return true;
+    }
+  });
+  const finishSplash = () => {
+    try {
+      sessionStorage.setItem('stooorna_splash_seen', '1');
+    } catch { /* ignore */ }
+    setShowSplash(false);
+  };
 
   // عند فتح التطبيق على / نوجّه مباشرة لصفحة الهوم مع فتح البوستات النصية
   useEffect(() => {
@@ -4982,6 +4996,7 @@ export default function RootLayout({
   }, [isSettingsPage, settingsClosing, navigate]);
 
   return <Website>
+      {showSplash ? <SplashScreen onDone={finishSplash} /> : null}
       <Helmet>
         <title>Stooorna — Voice, Whisper &amp; Connect</title>
         <meta name="description" content="Stooorna is a real-time voice app for push-to-talk broadcasts, private whispers, group voice rooms, and instant messaging." />
