@@ -4,7 +4,7 @@ import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
-import { useHeartbeat, usePresenceQuery, formatLastSeen } from '@/hooks/usePresence';
+import { useHeartbeat, usePresenceQuery, formatLastSeen, useTypingPublisher, usePeerTyping } from '@/hooks/usePresence';
 import InAppNotification, { type AppNotification } from '@/components/InAppNotification';
 import UserAvatar from '@/components/UserAvatar';
 import { playNotificationSound } from '@/lib/notificationSound';
@@ -495,27 +495,83 @@ function osmEmbedSrc(lat: number, lng: number, zoomDelta = 0.012): string {
 }
 
 function LocationMapBubble({ lat, lng, label }: { lat: number; lng: number; label?: string }) {
+  const [open, setOpen] = useState(false);
   const maps = `https://maps.google.com/?q=${lat},${lng}`;
   return (
-    <a href={maps} target="_blank" rel="noopener noreferrer" style={{
-      display: 'block', textDecoration: 'none', width: 240, maxWidth: '100%',
-      overflow: 'hidden', borderRadius: 10, background: 'rgba(0,20,24,0.9)',
-    }}>
-      <div style={{ width: '100%', height: 140, overflow: 'hidden', pointerEvents: 'none' }}>
-        <iframe
-          title="Shared location"
-          src={osmEmbedSrc(lat, lng)}
-          style={{ width: '100%', height: 160, border: 0, marginTop: -8 }}
-        />
-      </div>
-      <div style={{ padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.primary, fontWeight: 700, fontSize: '0.82rem' }}>
-          <MapPin size={14} strokeWidth={2.3} /> {label || 'Location'}
-        </span>
-        <span style={{ color: T.textDim, fontSize: '0.68rem' }}>{lat.toFixed(5)}, {lng.toFixed(5)}</span>
-        <span style={{ color: T.primary, fontSize: '0.7rem', fontWeight: 600 }}>Open in Maps</span>
-      </div>
-    </a>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        style={{
+          display: 'block', width: 168, maxWidth: '100%', padding: 0, border: 'none',
+          overflow: 'hidden', borderRadius: 10, background: 'rgba(0,20,24,0.9)',
+          cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <div style={{ width: '100%', height: 72, overflow: 'hidden', pointerEvents: 'none', position: 'relative' }}>
+          <iframe
+            title="Shared location"
+            src={osmEmbedSrc(lat, lng, 0.018)}
+            style={{ width: '100%', height: 96, border: 0, marginTop: -10 }}
+          />
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(180deg, transparent 40%, rgba(0,10,12,0.75) 100%)',
+          }} />
+        </div>
+        <div style={{ padding: '6px 8px 8px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: T.primary, fontWeight: 700, fontSize: '0.75rem' }}>
+            <MapPin size={12} strokeWidth={2.3} /> {label || 'Location'}
+          </span>
+          <span style={{ color: T.textDim, fontSize: '0.62rem' }}>{lat.toFixed(4)}, {lng.toFixed(4)}</span>
+        </div>
+      </button>
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 300,
+            background: 'rgba(0,0,0,0.88)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            padding: 16, gap: 12,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}
+          >
+            <X size={26} />
+          </button>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 420, height: 320, borderRadius: 14, overflow: 'hidden',
+              background: '#0a1212', border: '1px solid rgba(0,188,212,0.25)',
+            }}
+          >
+            <iframe
+              title="Location full"
+              src={osmEmbedSrc(lat, lng, 0.01)}
+              style={{ width: '100%', height: '100%', border: 0 }}
+            />
+          </div>
+          <a
+            href={maps}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            style={{
+              color: '#00BCD4', fontWeight: 700, fontSize: '0.85rem', textDecoration: 'none',
+              padding: '10px 16px', borderRadius: 12, border: '1px solid rgba(0,188,212,0.35)',
+              background: 'rgba(0,188,212,0.1)',
+            }}
+          >
+            Open in Maps
+          </a>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -878,15 +934,162 @@ function ChatVideoBubble({
   if (meta.isNote) {
     return <VideoNoteBubble body={body} duration={duration ?? meta.duration} />;
   }
-  return <video src={meta.url} controls playsInline style={{
-    display: 'block',
-    width: '100%',
-    maxWidth: 240,
-    maxHeight: 280,
-    borderRadius: 8,
-    background: 'hsl(var(--background))',
-    objectFit: 'cover',
-  }} />;
+  return <ChatInlineVideoPlayer src={meta.url} knownDuration={duration ?? meta.duration} />;
+}
+
+/** In-frame video: play/pause, seek, time — controls inside the frame (post-style). */
+function ChatInlineVideoPlayer({
+  src,
+  knownDuration,
+}: {
+  src: string;
+  knownDuration?: number | null;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [duration, setDuration] = useState(Number(knownDuration) > 0 ? Number(knownDuration) : 0);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const seekingRef = useRef(false);
+
+  useEffect(() => {
+    setControlsVisible(true);
+    const t = window.setTimeout(() => setControlsVisible(false), 2200);
+    return () => window.clearTimeout(t);
+  }, [src]);
+
+  useEffect(() => {
+    if (!controlsVisible) return;
+    const t = window.setTimeout(() => setControlsVisible(false), 2200);
+    return () => window.clearTimeout(t);
+  }, [controlsVisible]);
+
+  function togglePlay() {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      void v.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    } else {
+      v.pause();
+      setPlaying(false);
+    }
+  }
+
+  function onSeek(val: number) {
+    const v = videoRef.current;
+    if (!v || !Number.isFinite(val)) return;
+    v.currentTime = val;
+    setCurrent(val);
+  }
+
+  const clock = (sec: number) => {
+    const s = Math.max(0, Math.floor(sec || 0));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
+
+  return (
+    <div style={{
+      position: 'relative', width: '100%', maxWidth: 240, borderRadius: 8, overflow: 'hidden',
+      background: '#000',
+    }}>
+      <video
+        ref={videoRef}
+        src={src}
+        playsInline
+        preload="metadata"
+        controls={false}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!controlsVisible) {
+            setControlsVisible(true);
+            return;
+          }
+          togglePlay();
+        }}
+        onTimeUpdate={() => {
+          const v = videoRef.current;
+          if (!v || seekingRef.current) return;
+          setCurrent(v.currentTime || 0);
+        }}
+        onLoadedMetadata={() => {
+          const v = videoRef.current;
+          if (v && Number.isFinite(v.duration) && v.duration > 0) setDuration(v.duration);
+        }}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+        style={{
+          display: 'block', width: '100%', maxHeight: 280, objectFit: 'cover',
+          background: '#000', cursor: 'pointer',
+        }}
+      />
+      {!playing && (
+        <div
+          onClick={(e) => { e.stopPropagation(); togglePlay(); setControlsVisible(true); }}
+          style={{
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.25)', pointerEvents: 'auto',
+          }}
+        >
+          <div style={{
+            width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,188,212,0.9)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Play size={18} color="#041018" fill="#041018" style={{ marginLeft: 2 }} />
+          </div>
+        </div>
+      )}
+      {controlsVisible && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 3,
+            padding: '8px 10px 10px',
+            background: 'linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.3) 70%, transparent 100%)',
+            display: 'flex', flexDirection: 'column', gap: 6,
+          }}
+        >
+          <input
+            type="range"
+            min={0}
+            max={duration > 0 ? duration : 0}
+            step={0.05}
+            value={Math.min(current, duration || 0)}
+            onChange={(e) => onSeek(Number(e.target.value))}
+            onMouseDown={() => { seekingRef.current = true; }}
+            onMouseUp={(e) => { seekingRef.current = false; onSeek(Number((e.target as HTMLInputElement).value)); }}
+            onTouchStart={() => { seekingRef.current = true; }}
+            onTouchEnd={(e) => { seekingRef.current = false; onSeek(Number((e.target as HTMLInputElement).value)); }}
+            aria-label="Seek"
+            style={{ width: '100%', height: 4, margin: 0, padding: 0, cursor: 'pointer', accentColor: '#00BCD4' }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => togglePlay()}
+              style={{
+                width: 28, height: 28, borderRadius: '50%', border: 'none',
+                background: 'rgba(0,188,212,0.25)', color: '#00BCD4', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+              }}
+            >
+              {playing ? (
+                <span style={{ display: 'flex', gap: 2 }}>
+                  <span style={{ width: 3, height: 10, background: '#00BCD4', borderRadius: 1 }} />
+                  <span style={{ width: 3, height: 10, background: '#00BCD4', borderRadius: 1 }} />
+                </span>
+              ) : (
+                <Play size={12} fill="currentColor" strokeWidth={0} style={{ marginLeft: 1 }} />
+              )}
+            </button>
+            <span style={{ color: '#fff', fontSize: '0.68rem', fontWeight: 700, textShadow: '0 1px 2px #000' }}>
+              {clock(current)} / {clock(duration)}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Streak Bubble ────────────────────────────────────────────────────────────
@@ -3254,23 +3457,47 @@ export default function ChatPage() {
   async function saveEdit(msgId: number) {
     const trimmed = editText.trim();
     if (!trimmed) return;
+    // Optimistic local update so edit always feels instant
+    setMsgs(prev => prev.map(m => m.id === msgId ? { ...m, body: trimmed } : m));
+    setEditedIds(prev => new Set(prev).add(msgId));
+    setEditingId(null);
+    setEditText('');
+    const body = JSON.stringify({ body: trimmed, text: trimmed, messageId: msgId });
+    const headers = { 'Content-Type': 'application/json' };
+    const urls: string[] = [];
+    if (isGroup && groupId) {
+      urls.push(`/api/groups/${groupId}/messages/${msgId}`);
+    } else if (scChatId) {
+      urls.push(`/api/secret-chat/message/${msgId}`);
+      urls.push(`/api/secret-chat/messages/${msgId}`);
+    } else if (peerId) {
+      urls.push(`/api/messages/${msgId}`);
+      urls.push(`/api/chat/message/${msgId}`);
+      urls.push(`/api/secret-chat/message/${msgId}`);
+    } else {
+      urls.push(`/api/secret-chat/message/${msgId}`);
+    }
     try {
-      const url = isGroup
-        ? `/api/groups/${groupId}/messages/${msgId}`
-        : `/api/secret-chat/message/${msgId}`;
-      const res = await fetch(url, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: trimmed })
-      });
-      if (res.ok) {
-        setMsgs(prev => prev.map(m => m.id === msgId ? { ...m, body: trimmed } : m));
-        setEditedIds(prev => new Set(prev).add(msgId));
-        setEditingId(null);
-        setEditText('');
-      } else {
-        console.error('[editMessage] failed', res.status, await res.text());
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, {
+            method: 'PATCH',
+            credentials: 'include',
+            headers,
+            body,
+          });
+          if (res.ok) return;
+          // some APIs use PUT
+          const res2 = await fetch(url, {
+            method: 'PUT',
+            credentials: 'include',
+            headers,
+            body,
+          });
+          if (res2.ok) return;
+        } catch {
+          /* try next */
+        }
       }
     } catch (e) {
       console.error('[editMessage] error', e);
@@ -3746,8 +3973,12 @@ export default function ChatPage() {
     return () => clearInterval(id);
   }, [user, isGroup, groupId]);
 
+  const dmTypeRef = useRef<() => void>(() => {});
   const sendTyping = useCallback(() => {
-    if (!isGroup) return;
+    if (!isGroup) {
+      try { dmTypeRef.current(); } catch { /* */ }
+      return;
+    }
     const now = Date.now();
     if (now - lastTypingSentRef.current < 2000) return;
     lastTypingSentRef.current = now;
@@ -3759,10 +3990,17 @@ export default function ChatPage() {
     }).catch(() => {});
   }, [isGroup, groupId]);
 
-  // Presence
-  useHeartbeat(!!user);
+  // Presence + DM typing
+  useHeartbeat(!!user, {
+    userId: user?.id,
+    name: user?.name ?? null,
+    username: (user as any)?.username ?? null,
+  });
   const presenceMap = usePresenceQuery(peerId ? [peerId] : []);
   const peerPresence = peerId ? presenceMap[peerId] : null;
+  const onDmType = useTypingPublisher(!isGroup ? peerId : null, user?.id);
+  const peerIsTyping = usePeerTyping(user?.id, !isGroup ? peerId : null);
+  dmTypeRef.current = onDmType;
 
   // Highlighted (red) user IDs
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set());
@@ -4596,12 +4834,15 @@ export default function ChatPage() {
               fontSize: '0.68rem',
               lineHeight: 1.2
             }}>
-                  {peerPresence?.online ? <span style={{
+                  {peerIsTyping ? <span style={{
+                color: '#22c55e',
+                fontWeight: 700
+              }}>Type....</span> : peerPresence?.online ? <span style={{
                 color: '#22c55e',
                 fontWeight: 600
               }}>● Online</span> : peerPresence?.lastSeenAt ? <span style={{
                 color: T.textDim
-              }}>Last seen {formatLastSeen(peerPresence.lastSeenAt)}</span> : <span style={{
+              }}>{formatLastSeen(peerPresence.lastSeenAt)}</span> : <span style={{
                 color: T.textDim,
                 opacity: 0.5
               }}>Offline</span>}
@@ -5418,6 +5659,18 @@ export default function ChatPage() {
               </motion.div>}
           </AnimatePresence>
 
+          {/* DM typing */}
+          <AnimatePresence>
+            {!isGroup && peerIsTyping && (
+              <motion.div key="dm-typing" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingInline: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 16 }}>
+                  {[0, 1, 2].map(i => <motion.div key={i} animate={{ scaleY: [0.4, 1, 0.4] }} transition={{ duration: 0.7, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' as const }} style={{ width: 4, height: 12, borderRadius: 3, background: T.primary, transformOrigin: 'bottom' }} />)}
+                </div>
+                <span style={{ color: T.textDim, fontSize: '0.72rem' }}>Type....</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Group typing */}
           <AnimatePresence>
             {isGroup && _typers.length > 0 && (
@@ -5543,8 +5796,13 @@ export default function ChatPage() {
             flex: 1
           }}>
               <textarea ref={inputRef} value={text} onChange={e => {
-              if (isGroup) { setText(e.target.value); sendTyping(); }
-              else handleScTyping(e.target.value);
+              const val = e.target.value;
+              if (scChatId) {
+                handleScTyping(val);
+              } else {
+                setText(val);
+                sendTyping();
+              }
             }} onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();

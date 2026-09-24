@@ -242,25 +242,28 @@ if (typeof window !== 'undefined') {
 
 // ── formatLastSeen ────────────────────────────────────────────────────────────
 export function formatLastSeen(value: number | string | null | undefined): string {
-  if (value == null || value === '') return 'recently';
+  if (value == null || value === '') return 'last seen recently';
   const ts = typeof value === 'number' ? value : new Date(value).getTime();
-  if (!Number.isFinite(ts)) return 'recently';
+  if (!Number.isFinite(ts)) return 'last seen recently';
   const diff = Math.max(0, Date.now() - ts);
   const sec = Math.floor(diff / 1000);
-  if (sec < 45) return 'just now';
+  if (sec < 45) return 'last seen just now';
   const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
+  if (min === 1) return 'last seen a minute ago';
+  if (min < 60) return `last seen ${min} minutes ago`;
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
+  if (hr === 1) return 'last seen an hour ago';
+  if (hr < 24) return `last seen ${hr} hours ago`;
   const day = Math.floor(hr / 24);
-  if (day < 7) return `${day}d ago`;
+  if (day === 1) return 'last seen a day ago';
+  if (day < 30) return `last seen ${day} days ago`;
   try {
-    return new Date(ts).toLocaleDateString(undefined, {
+    return `last seen ${new Date(ts).toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
-    });
+    })}`;
   } catch {
-    return 'a while ago';
+    return 'last seen a while ago';
   }
 }
 
