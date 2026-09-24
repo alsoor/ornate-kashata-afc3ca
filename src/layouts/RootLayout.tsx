@@ -611,8 +611,11 @@ function recordMissedCallChat(a: string, b: string, fromId: string) {
   pushShareThreadMsg(a, b, 'direct', { fromId, type: 'text', body: 'Missed call' });
 }
 function isFreshHomeInvite(raw: any): boolean {
+  if (!raw) return false;
+  if (raw.ended || raw.answered || raw.clear) return false;
   const at = Number(raw?.at || 0);
-  if (!at) return false;
+  // Missing at: treat as fresh so API invites without a timestamp still ring
+  if (!at) return true;
   return Date.now() - at <= HOME_CALL_NO_ANSWER_MS;
 }
 
@@ -2177,6 +2180,8 @@ function GlobalBottomNavigation() {
             hostName: invitePayload.hostName,
             hostAvatar: invitePayload.hostAvatar,
             members: invitePayload.members,
+            at: invitePayload.at,
+            hostUsername: invitePayload.hostUsername,
           }),
         });
       } catch { /* */ }
@@ -2254,7 +2259,16 @@ function GlobalBottomNavigation() {
             body: JSON.stringify({
               roomId: `home_ring_${homeCallShortHash(peer.id)}`,
               userId: user.id,
-              name: channel,
+              name: JSON.stringify({
+                channel,
+                hostId: user.id,
+                hostName: me.name,
+                hostUsername: me.username,
+                hostAvatar: me.avatarUrl,
+                members: [me, ...others],
+                at: invitePayload.at,
+                video: !!homeCallVideoRef.current,
+              }),
             }),
           });
         } catch { /* */ }
@@ -2471,6 +2485,8 @@ function GlobalBottomNavigation() {
             hostName: invitePayload.hostName,
             hostAvatar: invitePayload.hostAvatar,
             members: invitePayload.members,
+            at: invitePayload.at,
+            hostUsername: invitePayload.hostUsername,
           }),
         });
       } catch { /* */ }
@@ -2492,7 +2508,15 @@ function GlobalBottomNavigation() {
           body: JSON.stringify({
             roomId: `home_ring_${homeCallShortHash(peer.id)}`,
             userId: user.id,
-            name: homeCallChannel,
+            name: JSON.stringify({
+              channel: homeCallChannel,
+              hostId: user.id,
+              hostName: meName,
+              hostAvatar: meAvatar,
+              members: homeCallMembers,
+              at: Date.now(),
+              video: !!homeCallVideoRef.current,
+            }),
           }),
         });
       } catch { /* */ }
@@ -3713,7 +3737,7 @@ function GlobalBottomNavigation() {
   const isIncomingRinging = !!(homeIncoming && homeCallPhase === 'idle');
 
 
-  const homeCallOverlay = (homeCallPickerOpen || homeCallPhase !== 'idle') ? (
+  const homeCallOverlay = (homeCallPickerOpen || homeCallPhase !== 'idle' || !!homeIncoming) ? (
     <div style={{
       position: 'fixed',
       inset: 0,
@@ -3873,35 +3897,54 @@ function GlobalBottomNavigation() {
             )}
 
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 0, gap: 2 }}>
-              <div style={{ position: 'relative', width: 48, height: 48 }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: '50%', overflow: 'hidden',
-                  background: '#e8e8e8', border: '2px solid #fff',
-                  boxShadow: '0 0 0 2px rgba(37,99,235,0.25)',
-                }}>
-                  {peerOnCall?.avatarUrl ? (
-                    <img src={peerOnCall.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#333', fontSize: 18 }}>
-                      {(peerOnCall?.name || peerOnCall?.username || '?')[0]}
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {(() => {
+                  const meAv = (user as any)?.avatarUrl || (user as any)?.image || null;
+                  const meName = (user as any)?.name || (user as any)?.username || 'You';
+                  const peerAv = peerOnCall?.avatarUrl || null;
+                  const peerName = peerOnCall?.name || peerOnCall?.username || '?';
+                  const showPair = !!(homeCallPhase === 'live' || homeCallPhase === 'connecting' || isIncomingRinging);
+                  const bubble = (url: string | null, label: string, size: number, z: number, marginLeft?: number) => (
+                    <div key={label + z} style={{
+                      width: size, height: size, borderRadius: '50%', overflow: 'hidden',
+                      background: '#e8e8e8', border: '2px solid #fff',
+                      boxShadow: '0 0 0 2px rgba(37,99,235,0.25)',
+                      marginLeft: marginLeft || 0, zIndex: z, position: 'relative', flexShrink: 0,
+                    }}>
+                      {url ? (
+                        <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      ) : (
+                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#333', fontSize: size * 0.38 }}>
+                          {(label || '?')[0]}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                {homeCallPhase === 'live' && (
-                  <span style={{
-                    position: 'absolute', left: '50%', bottom: -2, transform: 'translateX(-50%)',
-                    display: 'flex', gap: 2, alignItems: 'flex-end', height: 12,
-                  }}>
-                    {[0,1,2].map(i => (
-                      <span key={i} style={{
-                        width: 3, borderRadius: 2, background: '#2563EB',
-                        height: 6 + (i === 1 ? 6 : 0),
-                        animation: 'stooornaLivePulse 0.9s ease-in-out infinite',
-                        animationDelay: `${i * 0.12}s`,
-                      }} />
-                    ))}
-                  </span>
-                )}
+                  );
+                  if (showPair) {
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                        {bubble(meAv, meName, 44, 1)}
+                        {bubble(peerAv, peerName, 44, 2, -14)}
+                        {homeCallPhase === 'live' && (
+                          <span style={{
+                            position: 'absolute', left: '50%', bottom: -4, transform: 'translateX(-50%)',
+                            display: 'flex', gap: 2, alignItems: 'flex-end', height: 12,
+                          }}>
+                            {[0,1,2].map(i => (
+                              <span key={i} style={{
+                                width: 3, borderRadius: 2, background: '#22c55e',
+                                height: 6 + (i === 1 ? 6 : 0),
+                                animation: 'stooornaLivePulse 0.9s ease-in-out infinite',
+                                animationDelay: `${i * 0.12}s`,
+                              }} />
+                            ))}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  }
+                  return bubble(peerAv, peerName, 48, 1);
+                })()}
               </div>
             </div>
 
