@@ -1,7 +1,7 @@
 /**
  * Live Location map (settings pin).
- * Full-screen cartoon globe, pan + pinch zoom.
- * Search any user: gray = offline location, green = live on map.
+ * Real OpenStreetMap tiles, pan + pinch zoom.
+ * Search any user: gray = unavailable, green = live on map.
  * English-only.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -20,15 +20,23 @@ export type LiveLocUser = {
 const KEY = 'stooorna_live_location_optin';
 const POS_KEY = 'stooorna_live_location_pos';
 const USERS_KEY = 'stooorna_live_location_users';
-
-function project(lat: number, lng: number, w: number, h: number) {
-  const x = ((lng + 180) / 360) * w;
-  const y = ((90 - lat) / 180) * h;
-  return { x, y };
-}
+const TILE = 256;
 
 function liveOf(u: LiveLocUser) {
   return !!(u.live && u.lat != null && u.lng != null && Number.isFinite(u.lat) && Number.isFinite(u.lng));
+}
+
+function wrapTile(v: number, n: number) {
+  return ((v % n) + n) % n;
+}
+
+function lngLatToWorld(lat: number, lng: number, z: number) {
+  const n = 2 ** z;
+  const x = ((lng + 180) / 360) * n;
+  const clamped = Math.max(-85.05112878, Math.min(85.05112878, lat));
+  const s = Math.sin((clamped * Math.PI) / 180);
+  const y = (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n;
+  return { x, y };
 }
 
 export default function LiveLocationMap({
@@ -49,12 +57,12 @@ export default function LiveLocationMap({
   const [me, setMe] = useState<{ lat: number; lng: number } | null>(null);
   const [directory, setDirectory] = useState<LiveLocUser[]>([]);
   const [selected, setSelected] = useState<LiveLocUser | null>(null);
-  const [scale, setScale] = useState(1.15);
-  const [tx, setTx] = useState(0);
-  const [ty, setTy] = useState(0);
-  const dragRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
-  const pinchRef = useRef<{ dist: number; scale: number } | null>(null);
+  const [center, setCenter] = useState({ lat: 29.3759, lng: 47.9774 });
+  const [zoom, setZoom] = useState(11);
+  const dragRef = useRef<{ x: number; y: number; lat: number; lng: number } | null>(null);
+  const pinchRef = useRef<{ dist: number; zoom: number } | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ w: 360, h: 520 });
 
   const mergeLive = useCallback((list: LiveLocUser[]) => {
     let liveRows: LiveLocUser[] = [];
@@ -81,7 +89,11 @@ export default function LiveLocationMap({
     try {
       setOn(localStorage.getItem(KEY) === '1');
       const pos = localStorage.getItem(POS_KEY);
-      if (pos) setMe(JSON.parse(pos));
+      if (pos) {
+        const p = JSON.parse(pos);
+        setMe(p);
+        if (p?.lat && p?.lng) setCenter({ lat: p.lat, lng: p.lng });
+      }
     } catch {
       /* ignore */
     }
@@ -113,6 +125,17 @@ export default function LiveLocationMap({
   }, [mergeLive]);
 
   useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      setSize({ w: el.clientWidth || 360, h: el.clientHeight || 520 });
+    });
+    ro.observe(el);
+    setSize({ w: el.clientWidth || 360, h: el.clientHeight || 520 });
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
     if (!q.trim()) return;
     const t = window.setTimeout(async () => {
       try {
@@ -139,7 +162,7 @@ export default function LiveLocationMap({
           return mergeLive([...map.values()]);
         });
       } catch {
-        /* optional endpoint */
+        /* optional */
       }
     }, 180);
     return () => window.clearTimeout(t);
@@ -147,6 +170,8 @@ export default function LiveLocationMap({
 
   const publishMe = useCallback((lat: number, lng: number) => {
     setMe({ lat, lng });
+    setCenter({ lat, lng });
+    setZoom(z => Math.max(z, 14));
     try {
       localStorage.setItem(POS_KEY, JSON.stringify({ lat, lng, at: Date.now() }));
     } catch {
@@ -172,18 +197,7 @@ export default function LiveLocationMap({
       return next;
     });
     setSelected(row);
-    focusOn(lat, lng, 2.2);
   }, [currentUserId, currentName, currentUsername, currentAvatar]);
-
-  function focusOn(lat: number, lng: number, nextScale = 2) {
-    const el = boxRef.current;
-    const w = el?.clientWidth || 360;
-    const h = el?.clientHeight || 480;
-    const p = project(lat, lng, w, h);
-    setScale(nextScale);
-    setTx(w / 2 - p.x * nextScale);
-    setTy(h / 2 - p.y * nextScale);
-  }
 
   function toggleOptIn() {
     const next = !on;
@@ -227,9 +241,8 @@ export default function LiveLocationMap({
     const map = new Map<string, LiveLocUser>();
     if (self) map.set(self.id, self);
     for (const u of directory) {
-      if (self && u.id === self.id) {
-        map.set(u.id, { ...u, ...self, live: self.live || liveOf(u) });
-      } else map.set(u.id, u);
+      if (self && u.id === self.id) map.set(u.id, { ...u, ...self, live: self.live || liveOf(u) });
+      else map.set(u.id, u);
     }
     const all = [...map.values()];
     if (!s) return all.slice(0, 40);
@@ -240,29 +253,70 @@ export default function LiveLocationMap({
 
   const liveUsers = filtered.filter(liveOf);
 
+  const tiles = useMemo(() => {
+    const z = Math.round(zoom);
+    const n = 2 ** z;
+    const world = lngLatToWorld(center.lat, center.lng, z);
+    const cx = size.w / 2;
+    const cy = size.h / 2;
+    const minX = Math.floor(world.x - cx / TILE) - 1;
+    const maxX = Math.floor(world.x + cx / TILE) + 1;
+    const minY = Math.floor(world.y - cy / TILE) - 1;
+    const maxY = Math.floor(world.y + cy / TILE) + 1;
+    const out: { key: string; src: string; left: number; top: number }[] = [];
+    for (let x = minX; x <= maxX; x++) {
+      for (let y = minY; y <= maxY; y++) {
+        if (y < 0 || y >= n) continue;
+        const tx = wrapTile(x, n);
+        out.push({
+          key: `${z}-${tx}-${y}`,
+          src: `https://tile.openstreetmap.org/${z}/${tx}/${y}.png`,
+          left: cx + (x - world.x) * TILE,
+          top: cy + (y - world.y) * TILE,
+        });
+      }
+    }
+    return out;
+  }, [center.lat, center.lng, zoom, size.w, size.h]);
+
+  function pointFor(lat: number, lng: number) {
+    const z = Math.round(zoom);
+    const world = lngLatToWorld(center.lat, center.lng, z);
+    const p = lngLatToWorld(lat, lng, z);
+    return {
+      left: size.w / 2 + (p.x - world.x) * TILE,
+      top: size.h / 2 + (p.y - world.y) * TILE,
+    };
+  }
+
   function onPointerDown(e: React.PointerEvent) {
     if ((e.target as HTMLElement).closest('button,input,a')) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    dragRef.current = { x: e.clientX, y: e.clientY, tx, ty };
+    dragRef.current = { x: e.clientX, y: e.clientY, lat: center.lat, lng: center.lng };
   }
   function onPointerMove(e: React.PointerEvent) {
     const d = dragRef.current;
     if (!d) return;
-    setTx(d.tx + (e.clientX - d.x));
-    setTy(d.ty + (e.clientY - d.y));
+    const z = Math.round(zoom);
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    const world = lngLatToWorld(d.lat, d.lng, z);
+    const nx = world.x - dx / TILE;
+    const ny = world.y - dy / TILE;
+    const n = 2 ** z;
+    const lng = (nx / n) * 360 - 180;
+    const merc = Math.PI * (1 - (2 * ny) / n);
+    const lat = (Math.atan(Math.sinh(merc)) * 180) / Math.PI;
+    setCenter({ lat, lng });
   }
   function onPointerUp() {
     dragRef.current = null;
   }
-
   function onTouchStart(e: React.TouchEvent) {
     if (e.touches.length === 2) {
       const a = e.touches[0];
       const b = e.touches[1];
-      pinchRef.current = {
-        dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
-        scale,
-      };
+      pinchRef.current = { dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), zoom };
       dragRef.current = null;
     }
   }
@@ -271,23 +325,22 @@ export default function LiveLocationMap({
       const a = e.touches[0];
       const b = e.touches[1];
       const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-      const next = Math.min(4.5, Math.max(0.7, pinchRef.current.scale * (dist / pinchRef.current.dist)));
-      setScale(next);
+      const next = Math.min(18, Math.max(3, pinchRef.current.zoom + Math.log2(dist / pinchRef.current.dist)));
+      setZoom(next);
     }
   }
   function onWheel(e: React.WheelEvent) {
     e.preventDefault();
-    const next = Math.min(4.5, Math.max(0.7, scale * (e.deltaY > 0 ? 0.92 : 1.08)));
-    setScale(next);
+    setZoom(z => Math.min(18, Math.max(3, z + (e.deltaY > 0 ? -0.35 : 0.35))));
   }
 
   function pickUser(u: LiveLocUser) {
     setSelected(u);
-    if (liveOf(u) && u.lat != null && u.lng != null) focusOn(u.lat, u.lng, 2.4);
+    if (liveOf(u) && u.lat != null && u.lng != null) {
+      setCenter({ lat: u.lat, lng: u.lng });
+      setZoom(15);
+    }
   }
-
-  const w = 720;
-  const h = 720;
 
   return (
     <div style={{
@@ -340,7 +393,7 @@ export default function LiveLocationMap({
             left: 12,
             right: 12,
             top: 42,
-            zIndex: 5,
+            zIndex: 6,
             maxHeight: 180,
             overflowY: 'auto',
             background: 'rgba(6,16,18,0.98)',
@@ -369,22 +422,12 @@ export default function LiveLocationMap({
                   }}
                 >
                   <span style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    overflow: 'hidden',
-                    background: '#123',
-                    flexShrink: 0,
-                    position: 'relative',
+                    width: 28, height: 28, borderRadius: '50%', overflow: 'hidden',
+                    background: '#123', flexShrink: 0, position: 'relative',
                   }}>
                     {u.avatarUrl ? <img src={u.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
                     <span style={{
-                      position: 'absolute',
-                      right: -1,
-                      bottom: -1,
-                      width: 9,
-                      height: 9,
-                      borderRadius: '50%',
+                      position: 'absolute', right: -1, bottom: -1, width: 9, height: 9, borderRadius: '50%',
                       background: live ? '#22c55e' : '#9ca3af',
                       border: '2px solid #061012',
                     }} />
@@ -420,61 +463,58 @@ export default function LiveLocationMap({
           minHeight: 0,
           overflow: 'hidden',
           touchAction: 'none',
-          background: 'radial-gradient(circle at 50% 45%, #163a40 0%, #071214 72%)',
+          background: '#0b1a1c',
         }}
       >
-        <div style={{
-          width: '100%',
-          height: '100%',
-          transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
-          transformOrigin: '0 0',
-          willChange: 'transform',
-        }}>
-          <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid slice">
-            <ellipse cx={w / 2} cy={h / 2} rx={w * 0.42} ry={h * 0.42} fill="#0e2c32" stroke="#00BCD4" strokeWidth="2" />
-            {[...Array(9)].map((_, i) => (
-              <ellipse key={`lat-${i}`} cx={w / 2} cy={h / 2} rx={w * 0.42} ry={(h * 0.42 * (i + 1)) / 10} fill="none" stroke="rgba(0,188,212,0.32)" strokeWidth="1" />
-            ))}
-            {[...Array(10)].map((_, i) => {
-              const a = (i / 10) * Math.PI;
-              const rx = w * 0.42 * Math.cos(a);
-              return (
-                <ellipse key={`lng-${i}`} cx={w / 2} cy={h / 2} rx={Math.max(10, Math.abs(rx))} ry={h * 0.42} fill="none" stroke="rgba(0,188,212,0.26)" strokeWidth="1" />
-              );
-            })}
-          </svg>
-          {liveUsers.map(u => {
-            const el = boxRef.current;
-            const bw = el?.clientWidth || w;
-            const bh = el?.clientHeight || h;
-            const p = project(u.lat as number, u.lng as number, bw, bh);
-            return (
-              <button
-                key={u.id}
-                type="button"
-                onClick={() => pickUser(u)}
-                style={{
-                  position: 'absolute',
-                  left: p.x,
-                  top: p.y,
-                  transform: 'translate(-50%, -50%)',
-                  width: 36,
-                  height: 36,
-                  borderRadius: '50%',
-                  padding: 0,
-                  border: '2px solid #22c55e',
-                  overflow: 'hidden',
-                  background: '#123',
-                  cursor: 'pointer',
-                }}
-              >
-                {u.avatarUrl ? <img src={u.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (
-                  <span style={{ color: '#22c55e', fontWeight: 800, fontSize: 12 }}>{(u.name || '?')[0]}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        {tiles.map(t => (
+          <img
+            key={t.key}
+            src={t.src}
+            alt=""
+            draggable={false}
+            style={{
+              position: 'absolute',
+              left: t.left,
+              top: t.top,
+              width: TILE,
+              height: TILE,
+              userSelect: 'none',
+              pointerEvents: 'none',
+            }}
+          />
+        ))}
+
+        {liveUsers.map(u => {
+          const p = pointFor(u.lat as number, u.lng as number);
+          return (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => pickUser(u)}
+              style={{
+                position: 'absolute',
+                left: p.left,
+                top: p.top,
+                transform: 'translate(-50%, -50%)',
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                padding: 0,
+                border: '2px solid #22c55e',
+                overflow: 'hidden',
+                background: '#123',
+                cursor: 'pointer',
+                zIndex: 2,
+              }}
+            >
+              {u.avatarUrl ? (
+                <img src={u.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <span style={{ color: '#22c55e', fontWeight: 800, fontSize: 12 }}>{(u.name || '?')[0]}</span>
+              )}
+            </button>
+          );
+        })}
 
         {selected ? (
           <div style={{
@@ -489,15 +529,11 @@ export default function LiveLocationMap({
             display: 'flex',
             gap: 8,
             alignItems: 'center',
+            zIndex: 3,
           }}>
             <span style={{
-              width: 34,
-              height: 34,
-              borderRadius: '50%',
-              overflow: 'hidden',
-              background: '#123',
-              position: 'relative',
-              flexShrink: 0,
+              width: 34, height: 34, borderRadius: '50%', overflow: 'hidden',
+              background: '#123', position: 'relative', flexShrink: 0,
             }}>
               {selected.avatarUrl ? <img src={selected.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
               <span style={{
