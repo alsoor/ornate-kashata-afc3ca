@@ -7,6 +7,8 @@ import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock,
 import { useSession, signOut, signIn, signUp } from '@/lib/auth/auth-client';
 import { usePresenceQuery } from '@/hooks/usePresence';
 import LiveLocationMap from '@/components/LiveLocationMap';
+import PublicVoiceLive from '@/components/PublicVoiceLive';
+import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -5094,6 +5096,14 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>('account');
   const [showSupportChat, setShowSupportChat] = useState(false);
   const [showLiveLocation, setShowLiveLocation] = useState(false);
+  const [showPublicVoice, setShowPublicVoice] = useState(false);
+  const [profileCountry, setProfileCountry] = useState<string | null>(() => readSavedCountry()?.name || null);
+
+  useEffect(() => {
+    void ensureMyCountry(user?.id).then(info => {
+      if (info?.name) setProfileCountry(info.name);
+    });
+  }, [user?.id]);
 
   // ── Music player (profile button) ──
   const [musicModalOpen, setMusicModalOpen] = useState(false);
@@ -6802,6 +6812,11 @@ export default function SettingsPage() {
                         <BusinessHeadBadge />
                       )}
                     </p>}
+                    {profileCountry ? (
+                      <p style={{ margin: '4px 0 0', color: 'rgba(160,200,200,0.75)', fontSize: '0.7rem', fontWeight: 700 }}>
+                        {profileCountry}
+                      </p>
+                    ) : null}
                         <div style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -6831,14 +6846,7 @@ export default function SettingsPage() {
                         whileTap={{ scale: 0.9 }}
                         onClick={() => {
                           if (!user) return;
-                          const qs = new URLSearchParams({
-                            hostId: String((user as any).id || ''),
-                            hostName: String((user as any).name || profileUsername || 'Host'),
-                          });
-                          if (profileUsername) qs.set('hostUsername', profileUsername);
-                          const av = avatarUrl || (user as any).avatarUrl || (user as any).image;
-                          if (av) qs.set('hostAvatar', String(av));
-                          navigate('/live?' + qs.toString());
+                          setShowPublicVoice(true);
                         }}
                         aria-label="Public live voice"
                         title="Public live voice"
@@ -11329,6 +11337,16 @@ export default function SettingsPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showPublicVoice && (
+        <PublicVoiceLive
+          userId={user?.id}
+          userName={(user as any)?.name || profileUsername || 'Me'}
+          userUsername={profileUsername || (user as any)?.username || null}
+          userAvatar={avatarUrl || (user as any)?.avatarUrl || (user as any)?.image || null}
+          onClose={() => setShowPublicVoice(false)}
+        />
+      )}
 
       {/* ── Music modal — from profile Music button ── */}
       <AnimatePresence>
