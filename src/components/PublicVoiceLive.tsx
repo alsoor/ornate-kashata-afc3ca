@@ -234,64 +234,68 @@ export default function PublicVoiceLive({
         color: '#d7eeee',
       }}
     >
-      <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ flex: 1 }}>
-          <p style={{ margin: 0, fontWeight: 800, color: '#00BCD4', fontSize: '0.95rem' }}>Public Voice</p>
-          <p style={{ margin: 0, fontSize: 11, color: 'rgba(150,200,200,0.7)' }}>Shared room</p>
+      <style>{`
+        @keyframes pubVoicePulse {
+          0% { transform: scale(0.55); opacity: 0.7; }
+          70% { transform: scale(1); opacity: 0; }
+          100% { transform: scale(1); opacity: 0; }
+        }
+      `}</style>
+
+      <div style={{ padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontWeight: 800, color: '#00BCD4', fontSize: 13 }}>Public Voice</p>
+          <p style={{ margin: 0, fontSize: 10, color: 'rgba(150,200,200,0.65)' }}>Shared room</p>
         </div>
-        <button
-          type="button"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(150,200,200,0.9)',
-            fontSize: '0.75rem', fontWeight: 700, padding: '6px 10px', borderRadius: 20,
-            background: 'rgba(0,188,212,0.1)', border: '1px solid rgba(0,188,212,0.35)',
-          }}
-        >
-          <Users size={14} />
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(150,200,200,0.9)',
+          fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 14,
+          background: 'rgba(0,188,212,0.1)', border: '1px solid rgba(0,188,212,0.3)',
+        }}>
+          <Users size={11} />
           <span>{list.length}</span>
-        </button>
+        </div>
         <button
           type="button"
           onClick={onClose}
           style={{
-            width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
-            background: 'rgba(239,68,68,0.16)', border: '1px solid rgba(239,68,68,0.5)',
+            width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
+            background: 'rgba(239,68,68,0.16)', border: '1px solid rgba(239,68,68,0.45)',
             color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          <LogOut size={17} />
+          <LogOut size={13} />
         </button>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '6px 12px 10px' }}>
+      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', padding: '2px 10px 8px' }}>
         {list.map(p => {
           const muted = mutedIds.has(p.id) || speakerMuted;
-          const ring = p.talking ? '#22c55e' : '#facc15';
+          const isTalk = !!p.talking;
+          const ring = isTalk ? '#22c55e' : muted && p.id !== me.id ? '#6b7280' : 'rgba(0,188,212,0.35)';
           return (
             <button
               key={p.id}
               type="button"
               onClick={() => toggleMute(p.id)}
-              style={{ width: 84, flexShrink: 0, background: 'none', border: 'none', color: 'inherit', cursor: p.id === me.id ? 'default' : 'pointer' }}
+              style={{ width: 56, flexShrink: 0, background: 'none', border: 'none', color: 'inherit', padding: 0, cursor: p.id === me.id ? 'default' : 'pointer' }}
             >
               <div style={{
-                width: 58, height: 58, margin: '0 auto', borderRadius: '50%', overflow: 'hidden',
-                border: `3px solid ${muted && p.id !== me.id ? '#9ca3af' : ring}`, background: '#102226',
-                opacity: muted && p.id !== me.id ? 0.55 : 1,
+                width: 42, height: 42, margin: '0 auto', borderRadius: '50%', overflow: 'hidden',
+                border: `2px solid ${ring}`, background: '#102226',
+                opacity: muted && p.id !== me.id ? 0.5 : 1,
+                boxShadow: isTalk ? '0 0 8px rgba(34,197,94,0.55)' : 'none',
               }}>
                 {p.avatarUrl ? (
                   <img src={p.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00BCD4', fontWeight: 800 }}>
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00BCD4', fontWeight: 800, fontSize: 13 }}>
                     {(p.name || '?')[0]}
                   </div>
                 )}
               </div>
-              <p style={{ margin: '6px 0 0', fontSize: 11, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <p style={{ margin: '4px 0 0', fontSize: 9, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {p.username ? `@${String(p.username).replace(/^@/, '')}` : p.name}
-              </p>
-              <p style={{ margin: 0, fontSize: 10, color: muted && p.id !== me.id ? '#9ca3af' : p.talking ? '#22c55e' : 'rgba(250,204,21,0.8)' }}>
-                {p.id !== me.id && mutedIds.has(p.id) ? 'Muted' : p.talking ? 'Talking' : 'Live'}
               </p>
             </button>
           );
@@ -301,37 +305,37 @@ export default function PublicVoiceLive({
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {chatOpen && (
           <div style={{
-            position: 'absolute', left: 10, right: 10, bottom: 8, maxHeight: 220,
-            background: 'rgba(4,14,16,0.82)', border: '1px solid rgba(0,188,212,0.2)',
-            borderRadius: 14, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6,
+            position: 'absolute', left: 8, right: 8, bottom: 6, maxHeight: 168,
+            background: 'rgba(4,14,16,0.88)', border: '1px solid rgba(0,188,212,0.18)',
+            borderRadius: 12, padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 5,
           }}>
-            <div style={{ flex: 1, overflowY: 'auto', minHeight: 48, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ flex: 1, overflowY: 'auto', minHeight: 36, display: 'flex', flexDirection: 'column', gap: 3 }}>
               {chatMsgs.length === 0 && (
-                <p style={{ margin: 0, color: 'rgba(150,200,200,0.45)', fontSize: '0.68rem' }}>Live chat — say hello</p>
+                <p style={{ margin: 0, color: 'rgba(150,200,200,0.4)', fontSize: 11 }}>Live chat</p>
               )}
               {chatMsgs.map(m => (
-                <p key={m.id} style={{ margin: 0, fontSize: '0.72rem', color: m.userId === userId ? '#00BCD4' : 'rgba(220,240,240,0.92)' }}>
+                <p key={m.id} style={{ margin: 0, fontSize: 11, lineHeight: 1.3, color: m.userId === userId ? '#00BCD4' : 'rgba(220,240,240,0.9)' }}>
                   <span style={{ fontWeight: 800, color: m.userId === userId ? '#00BCD4' : '#eab308' }}>{m.name} </span>
                   {m.text}
                 </p>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
               <input
                 value={chatText}
                 onChange={e => setChatText(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') void sendChat(); }}
-                placeholder="Message..."
+                placeholder="Message"
                 style={{
-                  flex: 1, borderRadius: 999, border: '1px solid rgba(0,188,212,0.28)',
-                  background: 'rgba(0,20,24,0.8)', color: '#d7eeee', padding: '8px 12px', outline: 'none',
+                  flex: 1, height: 30, borderRadius: 16, border: '1px solid rgba(0,188,212,0.25)',
+                  background: 'rgba(0,20,24,0.8)', color: '#d7eeee', padding: '0 10px', outline: 'none', fontSize: 12,
                 }}
               />
               <button
                 type="button"
                 onClick={() => void sendChat()}
                 style={{
-                  border: 'none', borderRadius: 999, padding: '8px 12px', fontWeight: 800,
+                  height: 30, border: 'none', borderRadius: 16, padding: '0 10px', fontWeight: 800, fontSize: 11,
                   background: '#00BCD4', color: '#041414', cursor: 'pointer',
                 }}
               >
@@ -342,51 +346,70 @@ export default function PublicVoiceLive({
         )}
       </div>
 
-      <div style={{ padding: '10px 14px max(16px, env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{
+        padding: '6px 10px max(10px, env(safe-area-inset-bottom))',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}>
         <button
           type="button"
           onClick={() => setChatOpen(o => !o)}
           style={{
-            alignSelf: 'flex-start', border: '1px solid rgba(0,188,212,0.3)', background: 'rgba(6,16,18,0.85)',
-            color: '#00BCD4', borderRadius: 999, padding: '4px 10px', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer',
+            border: '1px solid rgba(0,188,212,0.28)', background: 'rgba(6,16,18,0.85)',
+            color: '#00BCD4', borderRadius: 999, padding: '4px 8px', fontSize: 10, fontWeight: 800, cursor: 'pointer',
           }}
         >
-          {chatOpen ? 'Hide chat' : 'Show chat'}
+          {chatOpen ? 'Hide' : 'Chat'}
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
           <button
             type="button"
             onClick={() => (talking ? stopMic() : startMic())}
             disabled={coolMs > 0}
             style={{
-              width: 64, height: 64, borderRadius: '50%',
-              border: talking ? '2px solid #041414' : '1px solid rgba(0,188,212,0.35)',
-              background: talking ? '#00BCD4' : 'rgba(0,188,212,0.12)',
-              color: talking ? '#041414' : coolMs > 0 ? '#6b7280' : '#00BCD4',
+              position: 'relative',
+              width: 46,
+              height: 46,
+              borderRadius: '50%',
+              border: talking ? '2px solid #ef4444' : '1px solid rgba(0,188,212,0.35)',
+              background: talking ? 'rgba(239,68,68,0.22)' : 'rgba(0,188,212,0.1)',
+              color: talking ? '#ef4444' : coolMs > 0 ? '#6b7280' : '#00BCD4',
               cursor: coolMs > 0 ? 'default' : 'pointer',
+              overflow: 'hidden',
             }}
           >
-            {talking ? <Mic size={22} /> : <MicOff size={22} />}
-          </button>
-          <button
-            type="button"
-            onClick={() => setSpeakerMuted(v => !v)}
-            style={{
-              height: 40, padding: '0 12px', borderRadius: 12,
-              border: speakerMuted ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(0,188,212,0.28)',
-              background: speakerMuted ? 'rgba(239,68,68,0.12)' : 'rgba(0,188,212,0.08)',
-              color: speakerMuted ? '#ef4444' : '#00BCD4', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}
-          >
-            {speakerMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-            {speakerMuted ? 'Unmute room' : 'Mute room'}
+            {talking && (
+              <>
+                <span style={{ position: 'absolute', inset: 4, borderRadius: '50%', border: '2px solid rgba(239,68,68,0.55)', animation: 'pubVoicePulse 1s ease-out infinite' }} />
+                <span style={{ position: 'absolute', inset: 8, borderRadius: '50%', border: '2px solid rgba(239,68,68,0.4)', animation: 'pubVoicePulse 1s ease-out infinite 0.25s' }} />
+              </>
+            )}
+            <span style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {talking ? <Mic size={16} /> : <MicOff size={16} />}
+            </span>
           </button>
         </div>
-        <p style={{ margin: 0, fontSize: '0.62rem', color: 'rgba(150,200,200,0.45)', textAlign: 'center' }}>
-          {talking ? `Mic open · ${secs}s` : coolMs > 0 ? `Wait ${cool}s` : 'Mic closed · 30s turns'}
-        </p>
+
+        <button
+          type="button"
+          onClick={() => setSpeakerMuted(v => !v)}
+          style={{
+            height: 28, padding: '0 8px', borderRadius: 10,
+            border: speakerMuted ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(0,188,212,0.28)',
+            background: speakerMuted ? 'rgba(239,68,68,0.12)' : 'rgba(0,188,212,0.08)',
+            color: speakerMuted ? '#ef4444' : '#00BCD4', cursor: 'pointer', fontSize: 10, fontWeight: 700,
+            display: 'flex', alignItems: 'center', gap: 4,
+          }}
+        >
+          {speakerMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+          {speakerMuted ? 'Unmute' : 'Mute'}
+        </button>
       </div>
+      <p style={{ margin: '0 0 6px', fontSize: 10, color: 'rgba(150,200,200,0.45)', textAlign: 'center' }}>
+        {talking ? `${secs}s` : coolMs > 0 ? `Wait ${cool}s` : '30s turns'}
+      </p>
     </div>
   );
 }
