@@ -28,6 +28,7 @@ import {
   Video,
   VideoOff,
   SwitchCamera,
+  X,
 } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import UserAvatar from '@/components/UserAvatar';
@@ -41,6 +42,8 @@ import {
   publishLiveActive,
   makeChatPayload,
   parseIncomingChat,
+  publishLiveChat,
+  subscribeLiveChat,
   LIVE_ENDED_TITLE,
   LIVE_ENDED_BODY,
   LIVE_ENDED_HINT,
@@ -672,8 +675,8 @@ export default function LiveCameraPage() {
         if (activeHost) {
           localStorage.removeItem(`stooorna_livecam_active_${activeHost}`);
         }
-        localStorage.removeItem( + current_key + r);
-        window.dispatchEvent(new CustomEvent( + event_name + r, { detail: { hostId: activeHost, active: false } }));
+        localStorage.removeItem('stooorna_livecam_active_current');
+        window.dispatchEvent(new CustomEvent('stooorna:livecam-active', { detail: { hostId: activeHost, active: false } }));
       } catch { /* ignore */ }
     }
 
@@ -858,10 +861,11 @@ export default function LiveCameraPage() {
             }
           } else if (msg.t === 'chat') {
             const cm = parseIncomingChat(msg);
-            if (cm && cm.uid !== myUid) {
+            if (cm) publishLiveChat(channelName, msg);
+            if (cm && cm.uid !== myUid && !(cm.userId && myId && cm.userId === myId)) {
               setLiveChatMsgs(prev => {
                 if (prev.some(x => x.id === cm.id)) return prev;
-                return [...prev, cm].slice(-80);
+                return [...prev, { ...cm, isMe: false }].slice(-80);
               });
             }
           } else if (msg.t === 'room-ended') {
@@ -1293,12 +1297,35 @@ export default function LiveCameraPage() {
       text: raw,
     });
     setLiveChatText('');
-    setLiveChatMsgs(prev => [...prev, { ...payload, isMe: true }].slice(-80));
+    setLiveChatMsgs(prev => {
+      if (prev.some(x => x.id === payload.id)) return prev;
+      return [...prev, { ...payload, isMe: true }].slice(-80);
+    });
+    publishLiveChat(channelName, payload);
     await sendDataPayload(payload);
     try {
       liveChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     } catch { /* ignore */ }
   };
+
+  useEffect(() => {
+    if (!liveChatOpen || liveChatMsgs.length === 0) return;
+    try {
+      liveChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    } catch { /* ignore */ }
+  }, [liveChatMsgs, liveChatOpen]);
+
+  useEffect(() => {
+    if (!joined || !channelName) return;
+    return subscribeLiveChat(channelName, (cm) => {
+      const myUid = myUidRef.current;
+      if (cm.uid === myUid || (cm.userId && myId && cm.userId === myId)) return;
+      setLiveChatMsgs(prev => {
+        if (prev.some(x => x.id === cm.id)) return prev;
+        return [...prev, { ...cm, isMe: false }].slice(-80);
+      });
+    });
+  }, [joined, channelName, myId]);
 
   const onMemberTap = (m: Member) => {
     if (m.isMe) return;

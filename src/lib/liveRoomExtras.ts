@@ -157,6 +157,80 @@ export function parseIncomingChat(msg: any): LiveChatMsg | null {
   };
 }
 
+export function liveChatChannelKey(channel: string): string {
+  return `stooorna_live_chat_${String(channel || '').slice(0, 80)}`;
+}
+
+/** Same-origin fan-out so every viewer in this live sees the message immediately. */
+export function publishLiveChat(channel: string, payload: object) {
+  if (!channel) return;
+  const key = liveChatChannelKey(channel);
+  const raw = JSON.stringify(payload);
+  try {
+    localStorage.setItem(key, raw);
+  } catch {
+    /* ignore */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(key, { detail: payload }));
+  } catch {
+    /* ignore */
+  }
+  try {
+    const w = window as any;
+    if (!w.__stooornaLiveChatBC) w.__stooornaLiveChatBC = {};
+    let bc = w.__stooornaLiveChatBC[key] as BroadcastChannel | undefined;
+    if (!bc && typeof BroadcastChannel !== 'undefined') {
+      bc = new BroadcastChannel(key);
+      w.__stooornaLiveChatBC[key] = bc;
+    }
+    bc?.postMessage(payload);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function subscribeLiveChat(
+  channel: string,
+  onMsg: (msg: LiveChatMsg) => void,
+): () => void {
+  if (!channel) return () => {};
+  const key = liveChatChannelKey(channel);
+  const handle = (raw: unknown) => {
+    const parsed = parseIncomingChat(raw);
+    if (parsed) onMsg(parsed);
+  };
+  const onCustom = (e: Event) => handle((e as CustomEvent).detail);
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== key || !e.newValue) return;
+    try {
+      handle(JSON.parse(e.newValue));
+    } catch {
+      /* ignore */
+    }
+  };
+  window.addEventListener(key, onCustom as EventListener);
+  window.addEventListener('storage', onStorage);
+  let bc: BroadcastChannel | null = null;
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      bc = new BroadcastChannel(key);
+      bc.onmessage = (ev) => handle(ev.data);
+    }
+  } catch {
+    bc = null;
+  }
+  return () => {
+    window.removeEventListener(key, onCustom as EventListener);
+    window.removeEventListener('storage', onStorage);
+    try {
+      bc?.close();
+    } catch {
+      /* ignore */
+    }
+  };
+}
+
 export const LIVE_ENDED_TITLE = 'Live ended';
 export const LIVE_ENDED_BODY =
   'The host closed this broadcast. You have been removed from the room.';
