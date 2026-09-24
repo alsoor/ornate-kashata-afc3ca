@@ -1676,17 +1676,23 @@ function pinnedTrackFromProfile(profile: MiniProfileData | null): MusicTrack | n
   };
 }
 
-// ── وقت نسبي بالعربي (لعرضه بجانب اسم المستخدم في الستوري) ───────────────────
+// Relative time for stories / posts / comments (supports minute → month → year)
 function storyRelativeTime(dateStr: string): string {
-  const arabicNumber = (value: number) => new Intl.NumberFormat('ar-KW').format(value);
+  const n = (value: number) => new Intl.NumberFormat('ar-KW').format(value);
   const diffSeconds = Math.max(0, Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000));
-  if (diffSeconds < 60) return `منذ ${arabicNumber(diffSeconds || 1)} ثانية`;
+  if (diffSeconds < 60) return `منذ ${n(diffSeconds || 1)} ثانية`;
   const minutes = Math.floor(diffSeconds / 60);
-  if (minutes < 60) return `منذ ${arabicNumber(minutes)} دقيقة`;
+  if (minutes < 60) return `منذ ${n(minutes)} دقيقة`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `منذ ${arabicNumber(hours)} ساعة`;
+  if (hours < 24) return `منذ ${n(hours)} ساعة`;
   const days = Math.floor(hours / 24);
-  return `منذ ${arabicNumber(days)} يوم`;
+  if (days < 7) return `منذ ${n(days)} يوم`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `منذ ${n(weeks)} أسبوع`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `منذ ${n(months)} شهر`;
+  const years = Math.floor(days / 365);
+  return `منذ ${n(years)} سنة`;
 }
 
 /** تسمية وقت صغيرة لشبكة المنشورات (3 أعمدة) — من الخارج أسفل المربع */
@@ -5581,17 +5587,7 @@ function PostCard({
   onTogglePin?: (post: PostItem) => void;
 }) {
   const postDate = new Date(post.createdAt);
-  const arabicNumber = (value: number) => new Intl.NumberFormat('ar-KW').format(value);
-  const timeAgo = (() => {
-    const diffSeconds = Math.max(0, Math.floor((Date.now() - postDate.getTime()) / 1000));
-    if (diffSeconds < 60) return `منذ ${arabicNumber(diffSeconds || 1)} ثانية`;
-    const minutes = Math.floor(diffSeconds / 60);
-    if (minutes < 60) return `منذ ${arabicNumber(minutes)} دقيقة`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `منذ ${arabicNumber(hours)} ساعة`;
-    const days = Math.floor(hours / 24);
-    return `منذ ${arabicNumber(days)} يوم`;
-  })();
+  const timeAgo = storyRelativeTime(post.createdAt);
   const publishedDate = postDate.toLocaleDateString('ar-KW', {
     day: 'numeric',
     month: 'long',
@@ -7934,17 +7930,7 @@ function PostDetailPage({
   }, [post.id, post.text]);
 
   const postDate = new Date(post.createdAt);
-  const arabicNumber = (value: number) => new Intl.NumberFormat('ar-KW').format(value);
-  const timeAgo = (() => {
-    const diffSeconds = Math.max(0, Math.floor((Date.now() - postDate.getTime()) / 1000));
-    if (diffSeconds < 60) return `منذ ${arabicNumber(diffSeconds || 1)} ثانية`;
-    const minutes = Math.floor(diffSeconds / 60);
-    if (minutes < 60) return `منذ ${arabicNumber(minutes)} دقيقة`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `منذ ${arabicNumber(hours)} ساعة`;
-    const days = Math.floor(hours / 24);
-    return `منذ ${arabicNumber(days)} يوم`;
-  })();
+  const timeAgo = storyRelativeTime(post.createdAt);
 
   const formatCommentDate = (value: string) => new Intl.DateTimeFormat('ar-KW', {
     dateStyle: 'medium', timeStyle: 'short',

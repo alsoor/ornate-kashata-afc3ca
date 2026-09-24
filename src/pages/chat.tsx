@@ -5241,11 +5241,23 @@ export default function ChatPage() {
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 16 }}>
                   {[0, 1, 2].map(i => <motion.div key={i} animate={{ scaleY: [0.4, 1, 0.4] }} transition={{ duration: 0.7, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' as const }} style={{ width: 4, height: 12, borderRadius: 3, background: T.primary, transformOrigin: 'bottom' }} />)}
                 </div>
-                <span style={{ color: T.textDim, fontSize: '0.72rem' }}>{scTypingNames.join('، ')} يكتب...</span>
+                <span style={{ color: T.textDim, fontSize: '0.72rem' }}>{scTypingNames.length ? `${scTypingNames.join(', ')} ` : ''}Type....</span>
               </motion.div>}
           </AnimatePresence>
 
-          {/* Group voice bar — groups only — فوق شريط الإدخال */}
+          {/* Group typing */}
+          <AnimatePresence>
+            {isGroup && _typers.length > 0 && (
+              <motion.div key="g-typing" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingInline: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 16 }}>
+                  {[0, 1, 2].map(i => <motion.div key={i} animate={{ scaleY: [0.4, 1, 0.4] }} transition={{ duration: 0.7, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' as const }} style={{ width: 4, height: 12, borderRadius: 3, background: T.primary, transformOrigin: 'bottom' }} />)}
+                </div>
+                <span style={{ color: T.textDim, fontSize: '0.72rem' }}>{_typers.map(x => x.name).filter(Boolean).join(', ') || 'Someone'} Type....</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Group voice bar */}
           {isGroup && user && <div style={{
           marginBottom: 8
         }}>
