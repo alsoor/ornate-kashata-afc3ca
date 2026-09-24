@@ -141,7 +141,13 @@ type ApiRow = {
 };
 
 function mapRow(row: ApiRow): DirectMsg {
-  const type = ((row.type as MsgType) || 'text');
+  const rawType = String(row.type || 'text').toLowerCase();
+  const type: MsgType =
+    rawType === 'photo' || rawType === 'image' ? 'image'
+    : rawType === 'video' ? 'video'
+    : rawType === 'voice' || rawType === 'audio' ? 'voice'
+    : rawType === 'file' ? 'file'
+    : 'text';
   const rep = type === 'text' ? decodeReplyBody(row.body) : null;
   return {
     id: `db-${row.id}`,
@@ -209,15 +215,15 @@ function pickUploadUrl(d: any): string | null {
 
 async function uploadMedia(file: Blob, filename: string, kind: 'image' | 'video' | 'audio' = 'image'): Promise<string | null> {
   const ext = filename.includes('.') ? filename.split('.').pop() as string : (kind === 'video' ? 'mp4' : kind === 'audio' ? 'webm' : 'jpg');
+  const contentType = file.type || (kind === 'video' ? 'video/mp4' : kind === 'audio' ? 'audio/webm' : 'image/jpeg');
 
-  // 1) The endpoint the rest of the app already uses for photo/video uploads (posts, stories),
-  //    tried first as a raw body — this is the one that actually works in this backend.
+  // 1) Raw body on the app media endpoint (posts / stories share this path).
   try {
     const r = await fetch('/api/posts/media', {
       method: 'POST',
       credentials: 'include',
       headers: {
-        'Content-Type': file.type || (kind === 'video' ? 'video/mp4' : kind === 'audio' ? 'audio/webm' : 'image/jpeg'),
+        'Content-Type': contentType,
         'X-File-Ext': `.${ext}`,
         'X-Media-Type': kind,
       },
@@ -227,12 +233,13 @@ async function uploadMedia(file: Blob, filename: string, kind: 'image' | 'video'
       const url = pickUploadUrl(await r.json().catch(() => null));
       if (url) return url;
     }
-  } catch { /* try FormData on the same endpoint */ }
+  } catch { /* try FormData */ }
 
-  // 2) Same endpoint, but as FormData (some backends only accept multipart bodies).
+  // 2) FormData on the same endpoint.
   try {
     const fd = new FormData();
     fd.append('file', file, filename);
+    fd.append('media', file, filename);
     fd.append('type', kind);
     fd.append('mediaType', kind);
     const r = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
@@ -240,19 +247,33 @@ async function uploadMedia(file: Blob, filename: string, kind: 'image' | 'video'
       const url = pickUploadUrl(await r.json().catch(() => null));
       if (url) return url;
     }
-  } catch { /* fall through to the generic endpoints */ }
+  } catch { /* fall through */ }
 
-  // 3) Generic upload endpoints, kept as a last-resort fallback.
+  // 3) Generic upload endpoints.
   for (const ep of UPLOAD_ENDPOINTS) {
     try {
       const fd = new FormData();
       fd.append('file', file, filename);
       fd.append('media', file, filename);
+      fd.append('type', kind);
       const r = await fetch(ep, { method: 'POST', credentials: 'include', body: fd });
       if (!r.ok) continue;
       const url = pickUploadUrl(await r.json().catch(() => null));
       if (url) return url;
-    } catch { /* try the next endpoint */ }
+    } catch { /* next */ }
+  }
+
+  // 4) Small files: data-URL fallback so the message still renders when upload APIs fail.
+  if (file.size > 0 && file.size <= 1_500_000) {
+    try {
+      const dataUrl = await new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+      if (dataUrl) return dataUrl;
+    } catch { /* ignore */ }
   }
   return null;
 }
@@ -276,13 +297,22 @@ async function sendToServer(meId: string, peerId: string, localId: string, type:
 
 // `wireBody` is what is sent to the server when it differs from what is stored locally
 // (used to carry the reply quote inside the text body).
-function pushLocal(meId: string, peerId: string, msg: Omit<DirectMsg, 'id' | 'at'>, wireBody?: string): DirectMsg[] {
+function pushLocal(meId: string, peerId: string, msg: Omit<DirectMsg, 'id' | 'at'>, wireBody?: string, opts?: { skipServer?: boolean }): DirectMsg[] {
   const list = loadThread(meId, peerId);
   const next: DirectMsg = { id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, at: Date.now(), ...msg };
   const merged = [...list, next];
   saveThread(meId, peerId, merged);
-  void sendToServer(meId, peerId, next.id, next.type, wireBody ?? next.body, next.duration);
+  if (!opts?.skipServer) {
+    void sendToServer(meId, peerId, next.id, next.type, wireBody ?? next.body, next.duration);
+  }
   return merged;
+}
+
+function patchMessageBody(meId: string, peerId: string, localId: string, body: string): DirectMsg[] {
+  const list = loadThread(meId, peerId);
+  const next = list.map(m => (m.id === localId ? { ...m, body } : m));
+  saveThread(meId, peerId, next);
+  return next;
 }
 
 function toggleReaction(meId: string, peerId: string, msgId: string, emoji: string): DirectMsg[] {
@@ -586,13 +616,13 @@ function Bubble({
               {msg.fileName || 'File'}
             </a>
           )}
-          {msg.type === 'image' && (
-            <img src={msg.body} alt="" style={{ maxWidth: 240, maxHeight: 300, borderRadius: 8, display: 'block', objectFit: 'cover' }} />
+          {msg.type === 'image' && msg.body && (
+            <img src={msg.body} alt="" style={{ maxWidth: 240, maxHeight: 300, borderRadius: 8, display: 'block', objectFit: 'cover', background: '#000' }} />
           )}
-          {msg.type === 'video' && (
-            <video src={msg.body} controls style={{ maxWidth: 240, maxHeight: 300, borderRadius: 8, display: 'block' }} />
+          {msg.type === 'video' && msg.body && (
+            <video src={msg.body} controls playsInline preload="metadata" style={{ maxWidth: 240, maxHeight: 300, borderRadius: 8, display: 'block', background: '#000' }} />
           )}
-          {msg.type === 'voice' && <VoiceBubble url={msg.body} duration={msg.duration} isMe={isMe} />}
+          {msg.type === 'voice' && msg.body && <VoiceBubble url={msg.body} duration={msg.duration} isMe={isMe} />}
 
           {/* Timestamp row — in the normal flow, always fully visible */}
           <div style={{
@@ -724,7 +754,10 @@ export default function DirectChatScreen({
   useHeartbeat(!!user);
   const presenceMap = usePresenceQuery(peer?.friendId ? [peer.friendId] : []) as Record<string, { online?: boolean; lastSeenAt?: number | string | null }>;
   const peerPresence = presenceMap[peer.friendId];
-  const peerName = peer.name ?? peer.username ?? 'User';
+  const peerUsername = (peer.username || '').replace(/^@/, '').trim();
+  const peerName = peerUsername
+    ? (peerUsername.startsWith('@') ? peerUsername : `@${peerUsername}`)
+    : (peer.name || 'User');
 
   const [msgs, setMsgs] = useState<DirectMsg[]>([]);
   const [text, setText] = useState('');
@@ -836,26 +869,60 @@ export default function DirectChatScreen({
   async function handleVoice(blob: Blob, seconds: number) {
     if (!user?.id) return;
     const ext = blob.type.includes('mp4') ? 'm4a' : blob.type.includes('ogg') ? 'ogg' : 'webm';
-    setUploading(true);
-    const url = await uploadMedia(blob, `voice-${Date.now()}.${ext}`, 'audio');
-    setUploading(false);
-    if (!url) { showToast('Could not send the voice message. Please try again.'); return; }
-    pushLocal(user.id, peer.friendId, { fromId: user.id, type: 'voice', body: url, duration: seconds });
+    const localUrl = URL.createObjectURL(blob);
+    const localList = pushLocal(
+      user.id,
+      peer.friendId,
+      { fromId: user.id, type: 'voice', body: localUrl, duration: seconds },
+      undefined,
+      { skipServer: true },
+    );
+    const localId = localList[localList.length - 1]?.id;
     playSentSound();
     refresh();
+    setUploading(true);
+    try {
+      const url = await uploadMedia(blob, `voice-${Date.now()}.${ext}`, 'audio');
+      if (url && localId) {
+        patchMessageBody(user.id, peer.friendId, localId, url);
+        void sendToServer(user.id, peer.friendId, localId, 'voice', url, seconds);
+        refresh();
+      } else if (!url) {
+        showToast('Voice saved on this device. Upload failed — peer may not receive it yet.');
+      }
+    } finally {
+      setUploading(false);
+    }
   }
 
   const recorder = useVoiceRecorder(handleVoice, showToast);
 
   async function handleMediaFile(file: File, kind: 'image' | 'video') {
     if (!user?.id) return;
-    setUploading(true);
-    const url = await uploadMedia(file, file.name, kind);
-    setUploading(false);
-    if (!url) { showToast(`Could not send the ${kind === 'image' ? 'photo' : 'video'}. Please try again.`); return; }
-    pushLocal(user.id, peer.friendId, { fromId: user.id, type: kind, body: url });
+    const localUrl = URL.createObjectURL(file);
+    const localList = pushLocal(
+      user.id,
+      peer.friendId,
+      { fromId: user.id, type: kind, body: localUrl },
+      undefined,
+      { skipServer: true },
+    );
+    const localId = localList[localList.length - 1]?.id;
     playSentSound();
     refresh();
+    setUploading(true);
+    try {
+      const url = await uploadMedia(file, file.name || `media-${Date.now()}`, kind);
+      if (url && localId) {
+        patchMessageBody(user.id, peer.friendId, localId, url);
+        void sendToServer(user.id, peer.friendId, localId, kind, url, null);
+        refresh();
+      } else if (!url) {
+        showToast(`${kind === 'image' ? 'Photo' : 'Video'} saved on this device. Upload failed — peer may not receive it yet.`);
+      }
+    } finally {
+      setUploading(false);
+    }
   }
 
   function handleLocation() {

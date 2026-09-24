@@ -21273,7 +21273,7 @@ export default function AddFriendPage() {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: unread > 0 ? 800 : 600, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'User'}</p>
+                          <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: unread > 0 ? 800 : 600, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.username ? (String(f.username).startsWith('@') ? f.username : `@${f.username}`) : (f.name || 'User')}</p>
                           {timeLabel ? <span style={{ color: unread > 0 ? '#25D366' : 'rgba(0,0,0,0.45)', fontSize: '0.72rem', fontWeight: unread > 0 ? 700 : 500, flexShrink: 0 }}>{timeLabel}</span> : null}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
