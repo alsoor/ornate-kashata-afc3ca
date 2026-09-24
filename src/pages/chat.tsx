@@ -290,8 +290,16 @@ function parseStoryReply(body: string | null | undefined): { mediaUrl: string; m
   if (!isStory && !isShare) return null;
   const raw = body.slice(isStory ? STORY_REPLY_PREFIX.length : POST_SHARE_PREFIX.length);
   try {
-    // يدعم JSON عادي أو base64 لتجنب مشاكل الترميز على السيرفر
-    let data: { mediaUrl?: string; mediaType?: string; comment?: string };
+    let data: {
+      mediaUrl?: string;
+      mediaType?: string;
+      comment?: string;
+      url?: string;
+      src?: string;
+      imageUrl?: string;
+      videoUrl?: string;
+      mediaUrls?: string[];
+    };
     try {
       data = JSON.parse(raw);
     } catch {
@@ -301,11 +309,15 @@ function parseStoryReply(body: string | null | undefined): { mediaUrl: string; m
         return null;
       }
     }
-    // نص فقط مسموح (شير منشور نصي بدون وسائط)
-    if (!data?.mediaUrl && !(data?.comment)) return null;
+    const mediaUrl = String(
+      data.mediaUrl || data.url || data.src || data.imageUrl || data.videoUrl || (data.mediaUrls && data.mediaUrls[0]) || ''
+    ).trim();
+    if (!mediaUrl && !(data?.comment)) return null;
+    const looksVideo = /\.(mp4|webm|mov|m4v|mkv|avi|3gp|ogv)(\?|$)/i.test(mediaUrl)
+      || String(data.mediaType || '').toLowerCase().includes('video');
     return {
-      mediaUrl: data.mediaUrl || '',
-      mediaType: (data.mediaType || (data.mediaUrl ? 'image' : 'text')).toLowerCase(),
+      mediaUrl,
+      mediaType: (data.mediaType || (mediaUrl ? (looksVideo ? 'video' : 'image') : 'text')).toLowerCase(),
       comment: data.comment || '',
     };
   } catch {
@@ -327,8 +339,9 @@ function StoryReplyBubble({
   isMe: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const isVideo = (mediaType || '').includes('video');
-  const hasMedia = !!(mediaUrl && mediaUrl.trim());
+  const resolved = resolveMediaUrl(mediaUrl) || (mediaUrl || '').trim();
+  const isVideo = (mediaType || '').includes('video') || /\.(mp4|webm|mov|m4v|mkv|avi|3gp|ogv)(\?|$)/i.test(resolved);
+  const hasMedia = !!(resolved && (resolved.startsWith('http') || resolved.startsWith('/') || resolved.startsWith('blob:') || resolved.startsWith('data:')));
   return (
     <div style={{
       position: 'relative',
@@ -342,7 +355,7 @@ function StoryReplyBubble({
       {/* الوسائط — صورة أو فيديو إن وُجدت؛ وإلا نص فقط في نفس المربع */}
       {!hasMedia ? null : isVideo ? (
         <video
-          src={mediaUrl}
+          src={resolved}
           controls
           playsInline
           style={{ display: 'block', width: '100%', maxHeight: 320, objectFit: 'cover', background: '#000' }}
@@ -350,7 +363,7 @@ function StoryReplyBubble({
       ) : (
         <>
           <img
-            src={mediaUrl}
+            src={resolved}
             alt="Story"
             onClick={() => setOpen(true)}
             style={{
@@ -376,7 +389,7 @@ function StoryReplyBubble({
                 >
                   <X size={28} />
                 </button>
-                <img src={mediaUrl} alt="Full size" style={{ maxWidth: '100%', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
+                <img src={resolved} alt="Full size" style={{ maxWidth: '100%', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -427,15 +440,22 @@ function StoryReplyBubble({
 
 function resolveMediaUrl(raw: string | null | undefined): string {
   if (!raw) return '';
-  const s = String(raw).trim();
+  let s = String(raw).trim();
   if (!s) return '';
+  if (s.startsWith(POST_SHARE_PREFIX) || s.startsWith(STORY_REPLY_PREFIX)) {
+    const parsed = parseStoryReply(s);
+    if (parsed?.mediaUrl) s = parsed.mediaUrl;
+  }
   try {
     const p = JSON.parse(s);
     if (p && typeof p === 'object') {
-      const u = p.url || p.src || p.mediaUrl || p.path || p.href;
-      if (u) return String(u);
+      const u = p.url || p.src || p.mediaUrl || p.imageUrl || p.videoUrl || p.path || p.href
+        || (Array.isArray(p.mediaUrls) ? p.mediaUrls[0] : null);
+      if (u) s = String(u);
     }
   } catch { /* plain */ }
+  s = String(s).trim();
+  if (s.startsWith('//')) return `https:${s}`;
   return s;
 }
 
@@ -451,6 +471,182 @@ function isLikelyVideoUrl(url: string): boolean {
     || u.includes('/video') || u.includes('video-note');
 }
 
+const LOCATION_PREFIX = '__LOCATION__';
+
+function parseLocationBody(body: string | null | undefined): { lat: number; lng: number; label?: string } | null {
+  if (!body || typeof body !== 'string' || !body.startsWith(LOCATION_PREFIX)) return null;
+  try {
+    const loc = JSON.parse(body.slice(LOCATION_PREFIX.length)) as { lat?: number; lng?: number; label?: string };
+    const lat = Number(loc?.lat);
+    const lng = Number(loc?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng, label: loc.label };
+  } catch {
+    return null;
+  }
+}
+
+function osmEmbedSrc(lat: number, lng: number, zoomDelta = 0.012): string {
+  const minLng = lng - zoomDelta;
+  const minLat = lat - zoomDelta;
+  const maxLng = lng + zoomDelta;
+  const maxLat = lat + zoomDelta;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${minLng}%2C${minLat}%2C${maxLng}%2C${maxLat}&layer=mapnik&marker=${lat}%2C${lng}`;
+}
+
+function LocationMapBubble({ lat, lng, label }: { lat: number; lng: number; label?: string }) {
+  const maps = `https://maps.google.com/?q=${lat},${lng}`;
+  return (
+    <a href={maps} target="_blank" rel="noopener noreferrer" style={{
+      display: 'block', textDecoration: 'none', width: 240, maxWidth: '100%',
+      overflow: 'hidden', borderRadius: 10, background: 'rgba(0,20,24,0.9)',
+    }}>
+      <div style={{ width: '100%', height: 140, overflow: 'hidden', pointerEvents: 'none' }}>
+        <iframe
+          title="Shared location"
+          src={osmEmbedSrc(lat, lng)}
+          style={{ width: '100%', height: 160, border: 0, marginTop: -8 }}
+        />
+      </div>
+      <div style={{ padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.primary, fontWeight: 700, fontSize: '0.82rem' }}>
+          <MapPin size={14} strokeWidth={2.3} /> {label || 'Location'}
+        </span>
+        <span style={{ color: T.textDim, fontSize: '0.68rem' }}>{lat.toFixed(5)}, {lng.toFixed(5)}</span>
+        <span style={{ color: T.primary, fontSize: '0.7rem', fontWeight: 600 }}>Open in Maps</span>
+      </div>
+    </a>
+  );
+}
+
+const nudgeBtnStyle: React.CSSProperties = {
+  width: 36, height: 36, borderRadius: 10,
+  border: '1px solid rgba(0,188,212,0.35)',
+  background: 'rgba(6,20,22,0.88)',
+  color: '#00BCD4',
+  fontWeight: 800,
+  cursor: 'pointer',
+};
+
+function LocationPickerOverlay({
+  onClose,
+  onConfirm,
+}: {
+  onClose: () => void;
+  onConfirm: (lat: number, lng: number) => void;
+}) {
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+
+  const applyPosition = useCallback((la: number, ln: number) => {
+    setLat(la);
+    setLng(ln);
+    setLoading(false);
+    setErr('');
+  }, []);
+
+  const readGps = useCallback(() => {
+    if (!navigator.geolocation) {
+      setErr('Location is not available on this device.');
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      pos => applyPosition(pos.coords.latitude, pos.coords.longitude),
+      () => {
+        setErr('Could not get location. Check permission settings.');
+        setLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 8000 },
+    );
+  }, [applyPosition]);
+
+  useEffect(() => { readGps(); }, [readGps]);
+
+  const nudge = (dLat: number, dLng: number) => {
+    if (lat == null || lng == null) return;
+    setLat(lat + dLat);
+    setLng(lng + dLng);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1400,
+        background: 'rgba(4,12,14,0.96)',
+        display: 'flex', flexDirection: 'column',
+      }}
+    >
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+        borderBottom: `1px solid ${T.primaryBorder}`,
+      }}>
+        <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: T.primary, cursor: 'pointer', padding: 2 }}>
+          <X size={22} />
+        </button>
+        <p style={{ margin: 0, flex: 1, color: T.primary, fontWeight: 800, fontSize: '0.95rem' }}>Pick location</p>
+      </div>
+      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+        {lat != null && lng != null ? (
+          <iframe
+            title="Pick location map"
+            src={osmEmbedSrc(lat, lng, 0.008)}
+            style={{ width: '100%', height: '100%', border: 0 }}
+          />
+        ) : (
+          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textDim }}>
+            {loading ? 'Locating…' : (err || 'No location')}
+          </div>
+        )}
+        <div style={{
+          position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+          display: 'flex', flexDirection: 'column', gap: 6,
+        }}>
+          <button type="button" onClick={() => nudge(0.0008, 0)} style={nudgeBtnStyle}>↑</button>
+          <button type="button" onClick={() => nudge(0, -0.0008)} style={nudgeBtnStyle}>←</button>
+          <button type="button" onClick={() => nudge(0, 0.0008)} style={nudgeBtnStyle}>→</button>
+          <button type="button" onClick={() => nudge(-0.0008, 0)} style={nudgeBtnStyle}>↓</button>
+        </div>
+      </div>
+      <div style={{
+        padding: '12px 14px max(14px, env(safe-area-inset-bottom))',
+        borderTop: `1px solid ${T.primaryBorder}`,
+        display: 'flex', flexDirection: 'column', gap: 10,
+        background: 'rgba(6,14,14,0.98)',
+      }}>
+        <p style={{ margin: 0, color: T.textDim, fontSize: '0.75rem' }}>
+          {lat != null && lng != null ? `${lat.toFixed(5)}, ${lng.toFixed(5)}` : 'Waiting for GPS…'}
+        </p>
+        {err ? <p style={{ margin: 0, color: T.red, fontSize: '0.75rem' }}>{err}</p> : null}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={readGps} style={{
+            flex: 1, padding: 12, borderRadius: 12, border: `1px solid ${T.primaryBorder}`,
+            background: T.primaryFaint, color: T.primary, fontWeight: 700, cursor: 'pointer',
+          }}>My location</button>
+          <button
+            type="button"
+            disabled={lat == null || lng == null}
+            onClick={() => { if (lat != null && lng != null) onConfirm(lat, lng); }}
+            style={{
+              flex: 2, padding: 12, borderRadius: 12, border: 'none',
+              background: lat != null ? T.primary : T.primaryFaint,
+              color: lat != null ? '#041018' : T.textDim,
+              fontWeight: 800, cursor: lat != null ? 'pointer' : 'default',
+            }}
+          >
+            Confirm & send
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 function ImageBubble({
   url
 }: {
@@ -459,14 +655,15 @@ function ImageBubble({
   const [open, setOpen] = useState(false);
   const [broken, setBroken] = useState(false);
   const src = resolveMediaUrl(url);
-  if (!src || broken) {
+  const looksLikeUrl = !!src && (src.startsWith('http') || src.startsWith('/') || src.startsWith('blob:') || src.startsWith('data:'));
+  if (!src || !looksLikeUrl || broken) {
     return (
       <div style={{
         padding: '12px 14px', maxWidth: 220,
         display: 'flex', alignItems: 'center', gap: 8, color: T.textDim, fontSize: '0.82rem',
       }}>
         <ImageIcon size={18} />
-        <span>Image unavailable</span>
+        <span>Shared image</span>
       </div>
     );
   }
@@ -3464,6 +3661,7 @@ export default function ChatPage() {
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false);
   const [chatCameraOpen, setChatCameraOpen] = useState(false);
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const headerMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!headerMenuOpen) return;
@@ -3810,23 +4008,11 @@ export default function ChatPage() {
     return () => document.removeEventListener('pointerdown', close);
   }, [menuMsgId]);
 
-  // ── Share live location as a special text message ───────────────────────────
-  async function shareMyLocation() {
+  async function sendLocation(lat: number, lng: number) {
     if (sending) return;
-    if (!navigator.geolocation) {
-      try { alert('Location is not available on this device.'); } catch { /* */ }
-      return;
-    }
     setSending(true);
     try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true, timeout: 15000, maximumAge: 10000,
-        });
-      });
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      const body = `__LOCATION__${JSON.stringify({ lat, lng, label: 'My location' })}`;
+      const body = `${LOCATION_PREFIX}${JSON.stringify({ lat, lng, label: 'Location' })}`;
       if (isGroup) {
         await fetch(`/api/groups/${groupId}/messages`, {
           method: 'POST', credentials: 'include',
@@ -3842,9 +4028,7 @@ export default function ChatPage() {
         });
       }
       await fetchMsgs();
-    } catch {
-      try { alert('Could not get location. Check permission settings.'); } catch { /* */ }
-    } finally {
+    } catch { /* silent */ } finally {
       setSending(false);
     }
   }
@@ -4996,32 +5180,21 @@ export default function ChatPage() {
                           if (m.type === 'video' && m.body) return <ChatVideoBubble body={m.body} duration={m.duration} />;
                           if (m.type === 'file' && m.body) {
                             const fu = resolveMediaUrl(m.body);
-                            if (isLikelyImageUrl(fu) || isLikelyImageUrl(m.body)) return <ImageBubble url={fu || m.body} />;
-                            if (isLikelyVideoUrl(fu) || isLikelyVideoUrl(m.body)) return <ChatVideoBubble body={m.body} duration={m.duration} />;
+                            const lower = `${fu} ${m.body}`.toLowerCase();
+                            if (isLikelyImageUrl(fu) || isLikelyImageUrl(m.body) || lower.includes('shared image') || lower.includes('image/')) {
+                              return <ImageBubble url={fu || m.body} />;
+                            }
+                            if (isLikelyVideoUrl(fu) || isLikelyVideoUrl(m.body) || lower.includes('video/')) {
+                              return <ChatVideoBubble body={m.body} duration={m.duration} />;
+                            }
                             return <ChatFileBubble body={m.body} isMe={isMe} />;
                           }
                           if (m.type === 'text' && m.body) {
                             const tu = resolveMediaUrl(m.body);
                             if (tu && isLikelyImageUrl(tu) && (tu.startsWith('http') || tu.startsWith('/'))) return <ImageBubble url={tu} />;
                             if (tu && isLikelyVideoUrl(tu) && (tu.startsWith('http') || tu.startsWith('/'))) return <ChatVideoBubble body={m.body} duration={m.duration} />;
-                            if (m.body.startsWith('__LOCATION__')) {
-                              try {
-                                const loc = JSON.parse(m.body.slice('__LOCATION__'.length)) as { lat: number; lng: number; label?: string };
-                                const maps = `https://maps.google.com/?q=${loc.lat},${loc.lng}`;
-                                return (
-                                  <a href={maps} target="_blank" rel="noopener noreferrer" style={{
-                                    display: 'flex', flexDirection: 'column', gap: 6, textDecoration: 'none',
-                                    padding: '4px 2px', minWidth: 160, maxWidth: 240,
-                                  }}>
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: T.primary, fontWeight: 700, fontSize: '0.85rem' }}>
-                                      <MapPin size={16} strokeWidth={2.3} /> Location
-                                    </span>
-                                    <span style={{ color: T.textDim, fontSize: '0.72rem' }}>{loc.label || `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`}</span>
-                                    <span style={{ color: T.primary, fontSize: '0.72rem', fontWeight: 600 }}>Open in Maps</span>
-                                  </a>
-                                );
-                              } catch { /* fall through */ }
-                            }
+                            const loc = parseLocationBody(m.body);
+                            if (loc) return <LocationMapBubble lat={loc.lat} lng={loc.lng} label={loc.label} />;
                           }
                           if (m.type === 'call') return null;
                           return (
@@ -5450,7 +5623,7 @@ export default function ChatPage() {
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.88 }}
-                onClick={() => { void shareMyLocation(); }}
+                onClick={() => setLocationPickerOpen(true)}
                 aria-label="Share location"
                 style={{
                   width: 40,
@@ -5511,6 +5684,18 @@ export default function ChatPage() {
             onSendVideo={async (file) => { await sendFile(file); }}
             onSendVideoNote={async (file, dur) => { await sendVideoNote(file, dur); }}
             onSendFile={async (file) => { await sendFile(file); }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {locationPickerOpen && (
+          <LocationPickerOverlay
+            onClose={() => setLocationPickerOpen(false)}
+            onConfirm={(lat, lng) => {
+              setLocationPickerOpen(false);
+              void sendLocation(lat, lng);
+            }}
           />
         )}
       </AnimatePresence>
