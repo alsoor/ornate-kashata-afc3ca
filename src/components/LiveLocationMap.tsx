@@ -6,7 +6,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, Search, X } from 'lucide-react';
-import { publishLiveLocation, pullLiveLocations, type LiveLocPing } from '@/lib/liveLocationSync';
+import { publishLiveLocation, pullLiveLocations, pullOnlineIds, type LiveLocPing } from '@/lib/liveLocationSync';
 
 export type LiveLocUser = {
   id: string;
@@ -16,6 +16,7 @@ export type LiveLocUser = {
   lat?: number | null;
   lng?: number | null;
   live?: boolean;
+  online?: boolean;
 };
 
 const KEY = 'stooorna_live_location_optin';
@@ -209,7 +210,7 @@ export default function LiveLocationMap({
   useEffect(() => {
     let stop = false;
     const tick = async () => {
-      const pings = await pullLiveLocations();
+      const [pings, onlineIds] = await Promise.all([pullLiveLocations(), pullOnlineIds()]);
       if (stop) return;
       setDirectory(prev => {
         const extra: LiveLocUser[] = [];
@@ -223,10 +224,15 @@ export default function LiveLocationMap({
               lat: p.lat,
               lng: p.lng,
               live: true,
+              online: true,
             });
           }
         }
-        return applyPings([...extra, ...prev], pings);
+        const merged = applyPings([...extra, ...prev], pings);
+        return merged.map(u => ({
+          ...u,
+          online: u.online || onlineIds.has(String(u.id)),
+        }));
       });
     };
     void tick();
@@ -534,7 +540,7 @@ export default function LiveLocationMap({
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontWeight: 800, fontSize: '0.8rem' }}>{u.name}</span>
                     <span style={{ display: 'block', color: 'rgba(150,200,200,0.55)', fontSize: '0.68rem' }}>
-                      @{String(u.username || u.name).replace(/^@/, '')} · {live ? 'Live' : 'Unavailable'}
+                      @{String(u.username || u.name).replace(/^@/, '')} · {live ? 'Live' : (u.online ? 'Online' : 'Unavailable')}
                     </span>
                   </span>
                 </button>

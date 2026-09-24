@@ -590,6 +590,38 @@ app.post("/api/live-gps", (req, res) => {
     res.status(500).json({ error: "live_gps_post_failed" });
   }
 });
+app.get("/api/live-location", (_req, res) => {
+  try {
+    const pins = listLiveGpsPins();
+    res.json({ pings: pins, pins });
+  } catch (e) {
+    res.status(500).json({ pings: [], pins: [] });
+  }
+});
+app.post("/api/live-location", (req, res) => {
+  try {
+    const body = (req.body || {}) as Record<string, unknown>;
+    const ping = ((body.ping || body) as Record<string, unknown>);
+    const id = String(ping.id || ping.userId || "").trim();
+    const lat = Number(ping.lat);
+    const lng = Number(ping.lng);
+    if (!id || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      res.status(400).json({ error: "id_lat_lng_required" });
+      return;
+    }
+    upsertLiveGpsPin({
+      id,
+      name: ping.name != null ? String(ping.name) : "User",
+      username: ping.username != null ? String(ping.username) : "",
+      avatarUrl: ping.avatarUrl ?? null,
+      lat,
+      lng,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: "live_location_post_failed" });
+  }
+});
 
 // ── Call invite store (cross-device ring / notify) ───────────────────────────
 const CALL_INVITE_TTL_MS = 45_000;
