@@ -1,12 +1,9 @@
-/**
- * Owner restore / unban / permanent wipe.
- * Clears account flags and device IP bans so the user can sign in again.
- */
-
 const DELETED_KEY = 'stooorna_deleted_users';
 const IP_BAN_KEY = 'stooorna_banned_ips';
 const DEVICE_BAN_KEY = 'stooorna_banned_devices';
 const EMAIL_BAN_KEY = 'stooorna_banned_emails';
+const FREED_KEY = 'stooorna_freed_usernames';
+const RESTORED_KEY = 'stooorna_restored_users';
 
 export type RecoverRow = {
   id?: string | null;
@@ -16,31 +13,55 @@ export type RecoverRow = {
   lastIp?: string | null;
 };
 
-function loadJson<T>(key: string, fallback: T): T {
+function readList(key: string): any[] {
   try {
     const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
+    const v = raw ? JSON.parse(raw) : [];
+    return Array.isArray(v) ? v : [];
   } catch {
-    return fallback;
+    return [];
   }
 }
 
-function saveJson(key: string, value: unknown) {
+function writeList(key: string, list: any[]) {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(key, JSON.stringify(list));
   } catch {
     /* ignore */
   }
 }
 
+function normUser(v?: string | null) {
+  return String(v || '').replace(/^@/, '').trim().toLowerCase();
+}
+
+function origName(row: RecoverRow) {
+  const a = normUser(row.originalUsername);
+  if (a && !a.startsWith('deleted_')) return a;
+  const b = normUser(row.username);
+  if (b && !b.startsWith('deleted_')) return b;
+  return '';
+}
+
+function sameRow(a: RecoverRow, b: RecoverRow) {
+  const ida = String(a.id || '');
+  const idb = String(b.id || '');
+  if (ida && idb && ida === idb) return true;
+  const ea = String(a.email || '').toLowerCase();
+  const eb = String(b.email || '').toLowerCase();
+  if (ea && eb && ea === eb) return true;
+  const ua = normUser(a.username);
+  const ub = normUser(b.username);
+  if (ua && ub && ua === ub) return true;
+  return false;
+}
+
 export function loadDeletedUsersLocal(): RecoverRow[] {
-  const list = loadJson<any[]>(DELETED_KEY, []);
-  return Array.isArray(list) ? list : [];
+  return readList(DELETED_KEY);
 }
 
 export function saveDeletedUsersLocal(list: RecoverRow[]) {
-  saveJson(DELETED_KEY, list);
+  writeList(DELETED_KEY, list);
   try {
     window.dispatchEvent(new CustomEvent('stooorna:users-deleted', { detail: list }));
   } catch {
@@ -48,68 +69,59 @@ export function saveDeletedUsersLocal(list: RecoverRow[]) {
   }
 }
 
-function sameUser(a: RecoverRow, b: RecoverRow) {
-  const ida = String(a.id || '');
-  const idb = String(b.id || '');
-  const ema = String(a.email || '').toLowerCase();
-  const emb = String(b.email || '').toLowerCase();
-  const una = String(a.username || '').replace(/^@/, '').toLowerCase();
-  const unb = String(b.username || '').replace(/^@/, '').toLowerCase();
-  if (ida && idb && ida === idb) return true;
-  if (ema && emb && ema === emb) return true;
-  if (una && unb && una === unb) return true;
-  return false;
-}
-
-export function removeFromDeletedList(row: RecoverRow) {
-  const next = loadDeletedUsersLocal().filter(x => !sameUser(x, row));
+function pullFromDeleted(row: RecoverRow) {
+  const next = loadDeletedUsersLocal().filter(x => !sameRow(x, row));
   saveDeletedUsersLocal(next);
   return next;
 }
 
-export function clearLocalBans(row: RecoverRow) {
+function freeUsername(name: string) {
+  const u = normUser(name);
+  if (!u) return;
+  const list = readList(FREED_KEY).map(x => normUser(typeof x === 'string' ? x : x?.username));
+  if (!list.includes(u)) list.push(u);
+  writeList(FREED_KEY, list);
+}
+
+function unfreeUsername(name: string) {
+  const u = normUser(name);
+  writeList(FREED_KEY, readList(FREED_KEY).filter(x => normUser(typeof x === 'string' ? x : x?.username) !== u));
+}
+
+function clearBans(row: RecoverRow) {
   const email = String(row.email || '').toLowerCase();
   const ip = String(row.lastIp || '').trim();
-  const emails = loadJson<string[]>(EMAIL_BAN_KEY, []).filter(x => String(x).toLowerCase() !== email);
-  saveJson(EMAIL_BAN_KEY, emails);
-  if (ip) {
-    const ips = loadJson<string[]>(IP_BAN_KEY, []).filter(x => x !== ip);
-    saveJson(IP_BAN_KEY, ips);
-  }
-  const devices = loadJson<any[]>(DEVICE_BAN_KEY, []).filter((x: any) => {
-    if (email && String(x.email || '').toLowerCase() === email) return false;
-    if (row.id && String(x.userId || x.id || '') === String(row.id)) return false;
-    if (ip && String(x.ip || '') === ip) return false;
-    return true;
-  });
-  saveJson(DEVICE_BAN_KEY, devices);
+  writeList(EMAIL_BAN_KEY, readList(EMAIL_BAN_KEY).filter(x => String(x).toLowerCase() !== email));
+  if (ip) writeList(IP_BAN_KEY, readList(IP_BAN_KEY).filter(x => String(x) !== ip));
+  writeList(
+    DEVICE_BAN_KEY,
+    readList(DEVICE_BAN_KEY).filter((x: any) => {
+      if (email && String(x.email || '').toLowerCase() === email) return false;
+      if (row.id && String(x.userId || x.id || '') === String(row.id)) return false;
+      if (ip && String(x.ip || '') === ip) return false;
+      return true;
+    }),
+  );
 }
 
-function originalName(row: RecoverRow) {
-  const orig = String(row.originalUsername || '').replace(/^@/, '').trim();
-  if (orig && !orig.startsWith('deleted_')) return orig;
-  const u = String(row.username || '').replace(/^@/, '').trim();
-  if (u && !u.startsWith('deleted_')) return u;
-  return '';
-}
-
-async function tryFetch(url: string, init: RequestInit) {
+async function hit(url: string, init: RequestInit) {
   try {
     const r = await fetch(url, { credentials: 'include', ...init });
-    return r.ok || r.status === 404;
+    return r.ok || r.status === 404 || r.status === 204;
   } catch {
     return false;
   }
 }
 
 export async function restoreOwnerAccount(row: RecoverRow): Promise<{ ok: boolean }> {
-  const orig = originalName(row);
+  const username = origName(row);
+  const id = String(row.id || '');
   const payload = {
-    id: row.id,
-    userId: row.id,
+    id,
+    userId: id,
     email: row.email,
-    username: orig || undefined,
-    originalUsername: orig || undefined,
+    username: username || undefined,
+    originalUsername: username || undefined,
     isBanned: false,
     banned: false,
     active: true,
@@ -121,26 +133,24 @@ export async function restoreOwnerAccount(row: RecoverRow): Promise<{ ok: boolea
     unbanDevice: true,
   };
 
-  clearLocalBans(row);
-  removeFromDeletedList(row);
+  clearBans(row);
+  if (username) unfreeUsername(username);
+  const next = pullFromDeleted(row);
+  writeList(RESTORED_KEY, [...readList(RESTORED_KEY).filter(x => !sameRow(x, row)), { ...row, username, at: Date.now() }]);
 
   const json = { 'Content-Type': 'application/json' };
   const body = JSON.stringify(payload);
-  const id = String(row.id || '');
+  await Promise.all([
+    hit('/api/owner/users/unban', { method: 'POST', headers: json, body }),
+    hit('/api/owner/users/unban-ip', { method: 'POST', headers: json, body }),
+    id ? hit(`/api/owner/users/${encodeURIComponent(id)}`, { method: 'PATCH', headers: json, body }) : Promise.resolve(false),
+    id ? hit(`/api/support/users/${encodeURIComponent(id)}`, { method: 'PATCH', headers: json, body }) : Promise.resolve(false),
+    id ? hit(`/api/users/${encodeURIComponent(id)}`, { method: 'PATCH', headers: json, body }) : Promise.resolve(false),
+  ]);
 
-  const calls: Array<() => Promise<boolean>> = [
-    () => tryFetch('/api/owner/users/unban', { method: 'POST', headers: json, body }),
-    () => tryFetch('/api/owner/users/unban-ip', { method: 'POST', headers: json, body }),
-    () => tryFetch('/api/me/ban-status', { method: 'POST', headers: json, body: JSON.stringify({ ...payload, clear: true }) }),
-  ];
-  if (id) {
-    calls.push(() => tryFetch(`/api/owner/users/${encodeURIComponent(id)}`, { method: 'PATCH', headers: json, body }));
-    calls.push(() => tryFetch(`/api/users/${encodeURIComponent(id)}`, { method: 'PATCH', headers: json, body }));
-  }
-
-  for (const run of calls) await run();
   try {
-    window.dispatchEvent(new CustomEvent('stooorna:user-restored', { detail: payload }));
+    window.dispatchEvent(new CustomEvent('stooorna:user-restored', { detail: { ...payload, list: next } }));
+    window.dispatchEvent(new CustomEvent('stooorna:users-deleted', { detail: next }));
   } catch {
     /* ignore */
   }
@@ -148,32 +158,47 @@ export async function restoreOwnerAccount(row: RecoverRow): Promise<{ ok: boolea
 }
 
 export async function wipeOwnerAccount(row: RecoverRow): Promise<{ ok: boolean }> {
-  const orig = originalName(row);
+  const username = origName(row) || normUser(row.username);
+  const id = String(row.id || '');
   const payload = {
-    id: row.id,
-    userId: row.id,
+    id,
+    userId: id,
     email: row.email,
-    username: orig || row.username,
+    username,
     lastIp: row.lastIp || undefined,
     permanent: true,
+    wipe: true,
   };
-  clearLocalBans(row);
-  removeFromDeletedList(row);
+
+  clearBans(row);
+  if (username) freeUsername(username);
+  if (row.username) freeUsername(String(row.username));
+  const next = pullFromDeleted(row);
 
   const json = { 'Content-Type': 'application/json' };
   const body = JSON.stringify(payload);
-  const id = String(row.id || '');
-  await tryFetch('/api/owner/users/wipe', { method: 'POST', headers: json, body });
-  if (id) {
-    await tryFetch(`/api/owner/users/${encodeURIComponent(id)}`, {
+  await Promise.all([
+    hit('/api/owner/users/wipe', { method: 'POST', headers: json, body }),
+    hit('/api/owner/users/unban', { method: 'POST', headers: json, body }),
+    hit('/api/owner/users/unban-ip', { method: 'POST', headers: json, body }),
+    id ? hit(`/api/owner/users/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: json,
-      body: JSON.stringify({ deleted: true, isDeleted: true, wipe: true, username: `wiped_${Date.now()}` }),
-    });
-    await tryFetch(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  }
+      body: JSON.stringify({
+        deleted: true,
+        isDeleted: true,
+        wipe: true,
+        isBanned: false,
+        banned: false,
+        username: username ? `wiped_${username}_${Date.now()}` : `wiped_${Date.now()}`,
+      }),
+    }) : Promise.resolve(false),
+    id ? hit(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE' }) : Promise.resolve(false),
+  ]);
+
   try {
-    window.dispatchEvent(new CustomEvent('stooorna:user-wiped', { detail: payload }));
+    window.dispatchEvent(new CustomEvent('stooorna:user-wiped', { detail: { ...payload, list: next } }));
+    window.dispatchEvent(new CustomEvent('stooorna:users-deleted', { detail: next }));
   } catch {
     /* ignore */
   }
