@@ -2716,7 +2716,22 @@ function GlobalBottomNavigation() {
         const payload = { channel, by: user?.id || '', at: endedAt, reason: 'declined' };
         try { localStorage.setItem(`stooorna_call_ended_${channel}`, JSON.stringify(payload)); } catch { /* */ }
         try { window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: payload })); } catch { /* */ }
+        try { window.dispatchEvent(new CustomEvent('stooorna:call-declined', { detail: payload })); } catch { /* */ }
         try { window.dispatchEvent(new StorageEvent('storage', { key: `stooorna_call_ended_${channel}`, newValue: JSON.stringify(payload) })); } catch { /* */ }
+        const hostId = inviteSnap?.hostId;
+        if (hostId) {
+          try {
+            localStorage.setItem(`stooorna_home_call_invite_${hostId}`, JSON.stringify({ ended: true, channel, at: endedAt, reason: 'declined' }));
+            localStorage.removeItem(`stooorna_home_call_invite_${hostId}`);
+          } catch { /* */ }
+          try {
+            void fetch('/api/call/invite', {
+              method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ clear: true, toUserId: hostId, userId: hostId, channel, ended: true, declined: true }),
+              keepalive: true,
+            });
+          } catch { /* */ }
+        }
       }
       if (user?.id) {
         localStorage.removeItem(`stooorna_home_call_invite_${user.id}`);
@@ -2758,6 +2773,15 @@ function GlobalBottomNavigation() {
     // Stop ring immediately on BOTH devices before any async work
     stopHomeIncomingRing();
     homeRingLockRef.current = { mode: 'answered', channel: invite.channel, at: Date.now() };
+    // Keep top bar visible: enter connecting before async so UI does not vanish on answer
+    setHomeCallMinimized(true);
+    setHomeCallPhase('connecting');
+    setHomeCallChannel(String(invite.channel || '').trim() || null);
+    setHomeCallMembers([
+      { id: user.id, name: (user as any).name ?? null, username: (user as any).username ?? null, avatarUrl: (user as any).avatarUrl ?? (user as any).image ?? null, joined: true },
+      { id: invite.hostId, name: invite.hostName, username: (invite as any).hostUsername ?? null, avatarUrl: invite.hostAvatar, joined: false },
+    ]);
+    setHomeIncoming(null);
     try { window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } })); } catch { /* */ }
     try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
     try { window.dispatchEvent(new CustomEvent('stooorna:call-answered', { detail: { channel: invite.channel, hostId: invite.hostId } })); } catch { /* */ }
@@ -3681,100 +3705,14 @@ function GlobalBottomNavigation() {
       ? 'Ringing…'
       : '';
 
-  // Incoming call UI: a compact sheet that drops down from the top of the
-  // screen (about a quarter of the screen height) showing the caller's
-  // name and avatar, with Answer / Decline actions. Tapping Answer keeps
-  // the call minimized in a top bar instead of opening the full call UI —
-  // the full UI only opens if the user taps that bar.
-  const homeIncomingOverlay = (homeIncoming && homeCallPhase === 'idle') ? (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 10970,
-        paddingTop: 'env(safe-area-inset-top, 0px)',
-        animation: 'stooornaHomeIncomingSheetIn 0.32s cubic-bezier(0.32, 0.72, 0, 1)',
-        pointerEvents: 'auto',
-      }}
-    >
-      <div
-        style={{
-          margin: '8px 10px 0',
-          maxHeight: '25vh',
-          background: 'linear-gradient(180deg,#0a1f22 0%,#061014 100%)',
-          border: '1px solid rgba(0,188,212,0.3)',
-          borderRadius: 18,
-          padding: '14px 16px',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', background: 'rgba(0,188,212,0.2)', flexShrink: 0 }}>
-            {homeIncoming.hostAvatar ? (
-              <img src={homeIncoming.hostAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00BCD4', fontWeight: 800, fontSize: 18 }}>
-                {(homeIncoming.hostName || '?')[0]}
-              </div>
-            )}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {homeIncoming.hostName || 'Unknown'}
-            </p>
-            <p style={{ margin: 0, color: 'rgba(150,200,200,0.75)', fontSize: 12.5 }}>
-              {(homeIncoming as any).video ? 'Incoming video call…' : 'Incoming call…'}
-            </p>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            type="button"
-            onClick={() => { playHomeCallTapFeedback(); ignoreHomeIncoming(); }}
-            style={{
-              flex: 1,
-              padding: '11px 0',
-              borderRadius: 14,
-              border: '1px solid rgba(239,68,68,0.4)',
-              background: 'rgba(239,68,68,0.14)',
-              color: '#ef4444',
-              fontWeight: 800,
-              fontSize: 14,
-              cursor: 'pointer',
-            }}
-          >
-            Decline
-          </button>
-          <button
-            type="button"
-            onClick={() => { playHomeCallTapFeedback(); void answerHomeIncoming(); }}
-            style={{
-              flex: 1,
-              padding: '11px 0',
-              borderRadius: 14,
-              border: 'none',
-              background: '#22c55e',
-              color: '#041018',
-              fontWeight: 800,
-              fontSize: 14,
-              cursor: 'pointer',
-            }}
-          >
-            Answer
-          </button>
-        </div>
-      </div>
-    </div>
-  ) : null;
+  // Incoming Answer/Decline sheet removed — use top call bar with green Answer instead.
+  const homeIncomingOverlay = null;
 
-  // The call sheet is shown from the very first moment of a call (outgoing or answered)
-  // and rises from the bottom of the screen, like WhatsApp. No intermediate screens.
   const homeCallSheetShown = homeCallPhase === 'animating' || homeCallPhase === 'connecting' || homeCallPhase === 'live';
+  // Top sticky call bar: incoming (idle+invite) OR active outgoing/live
+  const showTopCallBar = homeCallSheetShown || !!(homeIncoming && homeCallPhase === 'idle');
+  const isIncomingRinging = !!(homeIncoming && homeCallPhase === 'idle');
+
 
   const homeCallOverlay = (homeCallPickerOpen || homeCallPhase !== 'idle') ? (
     <div style={{
@@ -3846,14 +3784,14 @@ function GlobalBottomNavigation() {
       )}
 
       {/* WhatsApp-style bottom call pill — active call only (dark app chrome + moving border shine) */}
-      {homeCallSheetShown && (
+      {showTopCallBar && (
         <div
           style={{
             pointerEvents: 'auto',
             position: 'fixed',
             left: 12,
             right: 12,
-            bottom: 'max(12px, env(safe-area-inset-bottom, 0px))',
+            top: 'max(10px, env(safe-area-inset-top, 0px))',
             zIndex: 10960,
             display: 'flex',
             flexDirection: 'column',
@@ -3906,19 +3844,34 @@ function GlobalBottomNavigation() {
                 boxSizing: 'border-box',
               }}
             >
-            <button
-              type="button"
-              onClick={() => homeCallAction(() => toggleHomeCallMute())}
-              aria-label={homeCallMuted ? 'Unmute' : 'Mute'}
-              style={{
-                width: 44, height: 44, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.28)',
-                background: homeCallMuted ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)',
-                color: '#fff', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
-              }}
-            >
-              {homeCallMuted ? <MicOff size={20} strokeWidth={2.2} /> : <Mic size={20} strokeWidth={2.2} />}
-            </button>
+            {isIncomingRinging ? (
+              <button
+                type="button"
+                onClick={() => homeCallAction(() => { ignoreHomeIncoming(); })}
+                aria-label="Decline"
+                style={{
+                  width: 44, height: 44, borderRadius: '50%', border: 'none',
+                  background: 'rgba(239,68,68,0.2)', color: '#ef4444', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+                }}
+              >
+                <X size={20} strokeWidth={2.4} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => homeCallAction(() => toggleHomeCallMute())}
+                aria-label={homeCallMuted ? 'Unmute' : 'Mute'}
+                style={{
+                  width: 44, height: 44, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.28)',
+                  background: homeCallMuted ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)',
+                  color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+                }}
+              >
+                {homeCallMuted ? <MicOff size={20} strokeWidth={2.2} /> : <Mic size={20} strokeWidth={2.2} />}
+              </button>
+            )}
 
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 0, gap: 2 }}>
               <div style={{ position: 'relative', width: 48, height: 48 }}>
@@ -3969,28 +3922,46 @@ function GlobalBottomNavigation() {
               👋
             </button>
 
-            <button
-              type="button"
-              onClick={() => homeCallAction(() => { void leaveHomeGroupCall(); })}
-              aria-label="End call"
-              style={{
-                width: 48, height: 48, borderRadius: '50%', border: 'none',
-                background: '#e11d48', color: '#fff', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
-                boxShadow: '0 4px 12px rgba(225,29,72,0.35)',
-              }}
-            >
-              <PhoneOff size={20} strokeWidth={2.3} color="#fff" />
-            </button>
+            {isIncomingRinging ? (
+              <button
+                type="button"
+                onClick={() => homeCallAction(() => { void answerHomeIncoming(); })}
+                aria-label="Answer"
+                style={{
+                  width: 48, height: 48, borderRadius: '50%', border: 'none',
+                  background: '#22c55e', color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+                  boxShadow: '0 4px 14px rgba(34,197,94,0.45)',
+                }}
+              >
+                <Phone size={20} strokeWidth={2.3} color="#fff" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => homeCallAction(() => { void leaveHomeGroupCall(); })}
+                aria-label="End call"
+                style={{
+                  width: 48, height: 48, borderRadius: '50%', border: 'none',
+                  background: '#e11d48', color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+                  boxShadow: '0 4px 12px rgba(225,29,72,0.35)',
+                }}
+              >
+                <PhoneOff size={20} strokeWidth={2.3} color="#fff" />
+              </button>
+            )}
             </div>
           </div>
           <p style={{
             margin: 0, color: 'rgba(180,220,220,0.85)', fontSize: 12, fontWeight: 600,
             background: 'rgba(6,16,20,0.92)', border: '1px solid rgba(0,188,212,0.2)', borderRadius: 12, padding: '4px 12px',
           }}>
-            {homeCallPhase === 'live'
-              ? (homeCallStatusLabel || formatCallDuration(homeCallElapsedSec))
-              : (peerOnCall ? `Calling ${peerOnCall.name || peerOnCall.username || '…'}…` : 'Connecting…')}
+            {isIncomingRinging
+              ? `Incoming · ${peerOnCall?.name || peerOnCall?.username || 'Call'}`
+              : homeCallPhase === 'live'
+                ? (homeCallStatusLabel || formatCallDuration(homeCallElapsedSec))
+                : (peerOnCall ? `Calling ${peerOnCall.name || peerOnCall.username || '…'}…` : 'Connecting…')}
             {homeCallPhase === 'live' && homeCallMembers.filter(m => m.id !== user?.id && m.joined).length === 0
               ? ' · No one else is here yet…'
               : ''}
