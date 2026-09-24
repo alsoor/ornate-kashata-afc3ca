@@ -53,15 +53,15 @@ function fmtCallDuration(totalSeconds: number): string {
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 const T = {
-  bg: '#ffffff',
-  primary: '#00BCD4',
-  primaryDim: 'rgba(0,188,212,0.35)',
-  primaryBorder: 'rgba(0,188,212,0.22)',
-  primaryFaint: 'rgba(0,188,212,0.10)',
-  text: '#111111',
-  textDim: '#444444',
-  bubbleMe: '#4FC3F7',
-  bubbleThem: '#81D4FA',
+  bg: '#efeae2',
+  primary: '#00a884',
+  primaryDim: 'rgba(0,168,132,0.35)',
+  primaryBorder: 'rgba(0,168,132,0.22)',
+  primaryFaint: 'rgba(0,168,132,0.10)',
+  text: '#111b21',
+  textDim: '#667781',
+  bubbleMe: '#d9fdd3',
+  bubbleThem: '#ffffff',
   inputBg: '#ffffff',
   navBorder: 'rgba(0,0,0,0.08)',
   red: '#e53935',
@@ -211,15 +211,22 @@ function VoiceBubble({
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    width: 260,
-    height: 44,
-    padding: '0 8px 0 10px',
-    background: '#ffffff',
-    border: '1px solid rgba(0,0,0,0.08)',
-    borderRadius: 999,
+    width: 250,
+    minHeight: 52,
+    padding: '6px 8px',
+    background: 'transparent',
+    border: 'none',
     boxSizing: 'border-box',
-    color: '#111111',
+    color: '#111b21',
   }}>
+      <div style={{
+        width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: '#ccc', position: 'relative',
+      }}>
+        {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : null}
+        <span style={{ position: 'absolute', right: -1, bottom: -1, width: 16, height: 16, borderRadius: '50%', background: '#d9fdd3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Mic size={9} color="#111" />
+        </span>
+      </div>
       <motion.button
         type="button"
         aria-label={playing ? 'Stop voice message' : 'Play voice message'}
@@ -283,12 +290,7 @@ function VoiceBubble({
       <span style={{ fontSize: '0.68rem', color: '#111111', fontWeight: 700, minWidth: 26, textAlign: 'right', flexShrink: 0 }}>
         {label}
       </span>
-      <div style={{
-        width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
-        marginInlineEnd: -4, background: '#ddd',
-      }}>
-        {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : null}
-      </div>
+      {null}
     </div>;
 }
 
@@ -613,12 +615,25 @@ function LocationMapBubble({
           background: '#fff', border: '1px solid rgba(0,0,0,0.08)', padding: 0, cursor: 'pointer', textAlign: 'left',
         }}
       >
-        <div style={{ position: 'relative', width: '100%', height: 110, background: '#e8f4f8' }}>
+        <div style={{ position: 'relative', width: '100%', height: 140, background: '#e8f4f8' }}>
           <iframe title="preview" src={embed} style={{ width: '100%', height: '100%', border: 0, pointerEvents: 'none' }} />
+          {live && (
+            <div style={{
+              position: 'absolute', left: '50%', top: '46%', transform: 'translate(-50%, -50%)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: 'none',
+            }}>
+              <div style={{ width: 46, height: 46, borderRadius: '50%', overflow: 'hidden', border: '3px solid #22c55e', background: '#eee' }}>
+                {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
+              </div>
+            </div>
+          )}
         </div>
-        <div style={{ padding: '8px 10px' }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111' }}>{live ? 'Live location' : (label || 'Location')}</p>
-          <p style={{ margin: 0, fontSize: 11, color: '#555' }}>{username ? `@${String(username).replace(/^@/, '')}` : ''}</p>
+        <div style={{ padding: '8px 10px 10px' }}>
+          {live ? (
+            <p style={{ margin: 0, fontSize: 12, color: '#111' }}>Live until {new Date(Date.now() + 8 * 3600_000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</p>
+          ) : (
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111' }}>{label || 'Location'}</p>
+          )}
         </div>
       </button>
       {open && createPortal(
@@ -628,11 +643,30 @@ function LocationMapBubble({
             onClick={() => setOpen(false)}
             style={{
               position: 'absolute', top: 14, left: 12, zIndex: 3, width: 36, height: 36, borderRadius: '50%',
-              border: '1px solid rgba(0,188,212,0.35)', background: '#fff', cursor: 'pointer',
+              border: '1px solid rgba(0,0,0,0.12)', background: '#fff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 1,
             }}
           >
-            <X size={18} color="#111" />
+            <X size={18} color="#111" strokeWidth={2} />
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (me) setThem({ lat: me.lat, lng: me.lng });
+            }}
+            style={{
+              position: 'absolute', top: 14, right: 12, zIndex: 3, width: 36, height: 36, borderRadius: '50%',
+              border: '1px solid rgba(0,0,0,0.12)', background: '#fff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+            }}
+          >
+            <MapPin size={16} color="#00a884" />
+          </button>
+          {me && (
+            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }}>
+              <line x1="20%" y1="72%" x2="50%" y2="46%" stroke="#1a73e8" strokeWidth="4" strokeLinecap="round" />
+            </svg>
+          )}
           <iframe
             title="live-map"
             src={`https://www.openstreetmap.org/export/embed.html?bbox=${them.lng-0.01},${them.lat-0.01},${them.lng+0.01},${them.lat+0.01}&layer=mapnik&marker=${them.lat},${them.lng}`}
@@ -5992,23 +6026,22 @@ export default function ChatPage() {
               scale: 0.88
             }} onClick={startRecording} aria-label="Start voice recording" style={{
               position: 'absolute',
-              left: 6,
+              right: 6,
               top: '50%',
               transform: 'translateY(-50%)',
-              width: 32,
-              height: 32,
+              width: 40,
+              height: 40,
               borderRadius: '50%',
-              background: 'transparent',
+              background: '#111b21',
               border: 'none',
-              color: '#ef4444',
+              color: '#fff',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               padding: 0,
-              marginTop: 10,
             }}>
-                  <Mic size={16} strokeWidth={2.4} />
+                  <Mic size={18} strokeWidth={2.2} />
                 </motion.button>}
             </div>
 
