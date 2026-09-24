@@ -656,45 +656,35 @@ function LocationMapBubble({
               if (me) setThem({ lat: me.lat, lng: me.lng });
             }}
             style={{
-              position: 'absolute', top: 14, right: 12, zIndex: 3, width: 36, height: 36, borderRadius: '50%',
+              position: 'absolute', bottom: 28, right: 14, zIndex: 4, width: 44, height: 44, borderRadius: '50%',
               border: '1px solid rgba(0,0,0,0.12)', background: '#fff', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
             }}
           >
-            <MapPin size={16} color="#00a884" />
+            <MapPin size={18} color="#111" />
           </button>
-          {null}
-          <iframe
-            title="live-map"
-            src={`https://www.openstreetmap.org/export/embed.html?bbox=${them.lng-0.01},${them.lat-0.01},${them.lng+0.01},${them.lat+0.01}&layer=mapnik&marker=${them.lat},${them.lng}`}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }}
+          <img
+            alt=""
+            src={`https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${them.lng-0.012},${them.lat-0.012},${them.lng+0.012},${them.lat+0.012}&bboxSR=4326&imageSR=3857&size=900,1600&format=png&f=image`}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', border: 0 }}
           />
           <div style={{
-            position: 'absolute', left: '50%', top: '42%', transform: 'translate(-50%, -50%)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: 'none',
+            position: 'absolute', left: '50%', top: '46%', transform: 'translate(-50%, -50%)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: 'none', zIndex: 3,
           }}>
             <div style={{
-              width: 54, height: 54, borderRadius: '50%', overflow: 'hidden',
-              border: '3px solid #22c55e', background: '#eee',
+              width: 58, height: 58, borderRadius: '50%', overflow: 'hidden',
+              border: '3px solid #22c55e', background: '#eee', boxShadow: '0 6px 16px rgba(0,0,0,0.28)',
             }}>
               {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
             </div>
-            <p style={{ margin: '6px 0 0', color: '#111', fontWeight: 800, fontSize: 12 }}>
-              {username ? `@${String(username).replace(/^@/, '')}` : (name || 'User')}
-            </p>
-          </div>
-          {live && me && (
-            <div style={{
-              position: 'absolute', left: 12, right: 12, bottom: 18,
-              background: 'rgba(255,255,255,0.94)', border: '1px solid rgba(0,188,212,0.35)',
-              borderRadius: 12, padding: '10px 12px', color: '#111',
+            <span style={{
+              marginTop: 6, padding: '3px 10px', borderRadius: 999,
+              background: '#06261f', color: '#fff', fontWeight: 800, fontSize: 12,
             }}>
-              <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: '#0288D1' }}>Route</p>
-              <p style={{ margin: '4px 0 0', fontSize: 12 }}>
-                {distKm.toFixed(1)} km · ~{etaMin} min
-              </p>
-            </div>
-          )}
+              {username ? `@${String(username).replace(/^@/, '')}` : (name || 'User')}
+            </span>
+          </div>
         </div>
       , document.body)}
     </>
@@ -3557,6 +3547,10 @@ export default function ChatPage() {
     const ids = msgs.map(m => m.id);
     setMsgs([]);
     try {
+      const key = `stooorna_chat_cleared_${isGroup ? `g_${groupId}` : (scChatId || peerId || 'x')}`;
+      localStorage.setItem(key, String(Date.now()));
+    } catch { /* ignore */ }
+    try {
       const { clearChatHistory } = await import('@/lib/chatClearHistoryPatch');
       await clearChatHistory({
         messageIds: ids,
@@ -4222,6 +4216,11 @@ export default function ChatPage() {
       if (!r.ok) return;
       const raw = await r.json();
       if (!Array.isArray(raw)) return;
+      let clearedAt = 0;
+      try {
+        const key = `stooorna_chat_cleared_${isGroup ? `g_${groupId}` : (scChatId || peerId || 'x')}`;
+        clearedAt = Number(localStorage.getItem(key) || 0);
+      } catch { clearedAt = 0; }
 
       // Normalise SC messages (sender_id → senderId etc.) so the existing Message type works
       const newMsgs: Message[] = raw.map((m: Record<string, unknown>) => ({
@@ -4243,7 +4242,11 @@ export default function ChatPage() {
         streakOpenedAt: (m.streak_opened_at ?? null) as string | null,
         streakDuration: (m.streak_duration ?? null) as number | null,
         streakMediaType: (m.streak_media_type ?? null) as 'photo' | 'video' | null,
-      }));
+      })).filter(m => {
+        if (!clearedAt) return true;
+        const t = m.createdAt ? Date.parse(m.createdAt) : 0;
+        return !t || t > clearedAt;
+      });
 
       // Detect new incoming messages
       if (prevMsgCountRef.current >= 0 && newMsgs.length > prevMsgCountRef.current) {
@@ -5008,8 +5011,9 @@ export default function ChatPage() {
               }}>● Online</span> : peerPresence?.lastSeenAt ? <span style={{
                 color: T.textDim
               }}>{formatLastSeen(peerPresence.lastSeenAt)}</span> : <span style={{
-                color: T.textDim,
-                opacity: 0.5
+                color: '#111111',
+                fontWeight: 400,
+                opacity: 1,
               }}>Offline</span>}
                 </span>
               </div>}
@@ -5818,7 +5822,9 @@ export default function ChatPage() {
         position: 'sticky',
         bottom: 0,
         zIndex: 21,
-        flexShrink: 0
+        flexShrink: 0,
+        transform: hideChatChrome ? 'translateY(110%)' : 'translateY(0)',
+        transition: 'transform 0.22s ease',
       }}>
 
           {/* ── Typing indicator (SC) ── */}
@@ -5940,14 +5946,14 @@ export default function ChatPage() {
 
           {/* ── Circular live voice recorder ── */}
           <AnimatePresence>
-            {isRecording && <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} style={{ position: 'absolute', left: 0, right: 0, bottom: 72, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 5 }}>
-              <div style={{ width: 154, height: 154, borderRadius: '50%', border: `1px solid ${T.primaryBorder}`, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent' }}>
-                <motion.div animate={{ rotate: 360 }} transition={{ duration: 3, repeat: Infinity, ease: 'linear' }} style={{ position: 'absolute', inset: -3, borderRadius: '50%', borderTop: `4px solid ${T.primary}`, borderRight: '4px solid transparent', borderBottom: '4px solid transparent', borderLeft: '4px solid transparent' }} />
+            {isRecording && <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }} style={{ position: 'absolute', left: 0, right: 0, bottom: 8, display: 'flex', justifyContent: 'center', zIndex: 8 }}>
+              <div style={{ width: 168, height: 168, borderRadius: '50%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.28)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.6, repeat: Infinity, ease: 'linear' }} style={{ position: 'absolute', inset: -4, borderRadius: '50%', borderTop: '4px solid #ef4444', borderRight: '4px solid transparent', borderBottom: '4px solid transparent', borderLeft: '4px solid transparent' }} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 42, padding: '0 20px' }}>
                   {Array.from({ length: 13 }, (_, i) => {
                     const distance = Math.abs(i - 6) / 6;
                     const height = 10 + (1 - distance) * 28 * recordLevel;
-                    return <motion.span key={i} animate={{ height }} transition={{ duration: 0.08 }} style={{ width: 4, borderRadius: 99, background: T.primary }} />;
+                    return <motion.span key={i} animate={{ height }} transition={{ duration: 0.08 }} style={{ width: 4, borderRadius: 99, background: '#ef4444' }} />;
                   })}
                 </div>
               </div>
@@ -5994,7 +6000,8 @@ export default function ChatPage() {
               lineHeight: 1.4,
               maxHeight: 100,
               overflowY: 'auto',
-              fontFamily: 'var(--font-sans)'
+              fontFamily: 'var(--font-sans)',
+              display: isRecording ? 'none' : 'block',
             }} />
 
               {/* Send / Mic — مدمج داخل حقل الكتابة */}
@@ -6487,7 +6494,7 @@ export default function ChatPage() {
                   <Trash2 size={18} strokeWidth={2} color="hsl(var(--destructive))" />
                 </div>
                 <div>
-                  <p style={{ color: T.text, fontSize: '0.9rem', fontWeight: 700, margin: 0 }}>
+                  <p style={{ color: '#000000', fontSize: '0.95rem', fontWeight: 800, margin: 0 }}>
                     Clear History?
                   </p>
                   <p style={{ color: T.textDim, fontSize: '0.73rem', margin: 0 }}>
