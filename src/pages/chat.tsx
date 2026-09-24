@@ -549,77 +549,46 @@ function osmEmbedSrc(lat: number, lng: number, _zoomDelta = 0.012): string {
   return googleEmbedSrc(lat, lng);
 }
 
-function LocationMapBubble({ lat, lng, label }: { lat: number; lng: number; label?: string }) {
-  const [open, setOpen] = useState(false);
+function LocationMapBubble({ lat, lng, label }: { lat: number; lng: number; label?: string; live?: boolean }) {
   const maps = `https://maps.google.com/?q=${lat},${lng}`;
+  const staticImg = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=16&size=280x150&scale=2&maptype=roadmap&markers=color:red%7C${lat},${lng}`;
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label={label || 'Location'}
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: '50%',
-          padding: 0,
-          border: '1.5px solid rgba(0,188,212,0.45)',
-          background: 'radial-gradient(circle at 35% 30%, #1a4a50 0%, #0a1a1c 70%)',
-          cursor: 'pointer',
-          display: 'grid',
-          placeItems: 'center',
-          boxShadow: '0 0 0 3px rgba(0,188,212,0.12)',
-          flexShrink: 0,
-        }}
-      >
-        <MapPin size={18} color="#00BCD4" strokeWidth={2.4} />
-      </button>
-      {open && (
-        <div
-          onClick={() => setOpen(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 300,
-            background: 'rgba(0,0,0,0.88)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            padding: 16, gap: 12,
+    <a
+      href={maps}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: 'block',
+        width: 240,
+        borderRadius: 10,
+        overflow: 'hidden',
+        background: '#fff',
+        border: '1px solid rgba(0,0,0,0.08)',
+        textDecoration: 'none',
+        color: '#111b21',
+      }}
+    >
+      <div style={{ position: 'relative', width: '100%', height: 120, background: '#e9eef2' }}>
+        <img
+          src={staticImg}
+          alt=""
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          onError={e => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none';
           }}
-        >
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}
-          >
-            <X size={26} />
-          </button>
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              width: '100%', maxWidth: 420, height: 320, borderRadius: 14, overflow: 'hidden',
-              background: '#0a1212', border: '1px solid rgba(0,188,212,0.25)',
-            }}
-          >
-            <iframe
-              title="Location full"
-              src={osmEmbedSrc(lat, lng, 0.01)}
-              style={{ width: '100%', height: '100%', border: 0 }}
-            />
-          </div>
-          <a
-            href={maps}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={e => e.stopPropagation()}
-            style={{
-              color: '#00BCD4', fontWeight: 700, fontSize: '0.85rem', textDecoration: 'none',
-              padding: '10px 16px', borderRadius: 12, border: '1px solid rgba(0,188,212,0.35)',
-              background: 'rgba(0,188,212,0.1)',
-            }}
-          >
-            Open in Maps
-          </a>
+        />
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none',
+        }}>
+          <MapPin size={28} color="#ea4335" fill="#ea4335" />
         </div>
-      )}
-    </>
+      </div>
+      <div style={{ padding: '8px 10px 10px' }}>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>{label || 'Location'}</p>
+        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#667781' }}>Google Maps</p>
+      </div>
+    </a>
   );
 }
 
@@ -5046,11 +5015,11 @@ export default function ChatPage() {
                   <button onClick={() => setShowVolSlider(v => !v)} style={{
                 display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                 padding: '10px 10px', background: 'transparent', border: 'none', borderRadius: 9,
-                color: T.text, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', textAlign: 'left'
+                color: '#fff', fontSize: '0.8rem', fontWeight: 400, cursor: 'pointer', textAlign: 'left'
               }}>
-                    {speakerVol === 0 ? <VolumeX size={16} strokeWidth={2} color="#ef4444" /> : <Volume2 size={16} strokeWidth={2} color={isSpeaking ? '#22c55e' : T.primary} />}
+                    {speakerVol === 0 ? <VolumeX size={16} strokeWidth={2} color="#ef4444" /> : <Volume2 size={16} strokeWidth={2} color={isSpeaking ? '#22c55e' : '#fff'} />}
                     Speaker
-                    <span style={{ marginLeft: 'auto', color: T.textDim, fontSize: '0.7rem', fontWeight: 700 }}>{Math.round(speakerVol * 100)}%</span>
+                    <span style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.7)', fontSize: '0.7rem', fontWeight: 400 }}>{Math.round(speakerVol * 100)}%</span>
                   </button>
                   {showVolSlider && <div style={{ padding: '2px 10px 10px' }}>
                     <div style={{
@@ -5113,7 +5082,7 @@ export default function ChatPage() {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                       padding: '10px 10px', background: 'transparent', border: 'none', borderRadius: 9,
-                      color: T.text, fontSize: '0.8rem', fontWeight: 600, cursor: isClearingHistory ? 'default' : 'pointer',
+                      color: '#fff', fontSize: '0.8rem', fontWeight: 400, cursor: isClearingHistory ? 'default' : 'pointer',
                       textAlign: 'left', opacity: isClearingHistory ? 0.6 : 1,
                     }}
                   >
@@ -5138,7 +5107,7 @@ export default function ChatPage() {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                       padding: '10px 10px', background: 'transparent', border: 'none', borderRadius: 9,
-                      color: T.text, fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', textAlign: 'left'
+                      color: '#fff', fontSize: '0.8rem', fontWeight: 400, cursor: 'pointer', textAlign: 'left'
                     }}
                   >
                     <Images size={16} strokeWidth={2} color={T.primary} />
@@ -5506,7 +5475,7 @@ export default function ChatPage() {
                             if (tu && isLikelyImageUrl(tu) && (tu.startsWith('http') || tu.startsWith('/'))) return <ImageBubble url={tu} />;
                             if (tu && isLikelyVideoUrl(tu) && (tu.startsWith('http') || tu.startsWith('/'))) return <ChatVideoBubble body={m.body} duration={m.duration} />;
                             const loc = parseLocationBody(m.body);
-                            if (loc) return <LocationMapBubble lat={loc.lat} lng={loc.lng} label={loc.label} />;
+                            if (loc) return <LocationMapBubble lat={loc.lat} lng={loc.lng} label={loc.label} live={loc.live} />;
                           }
                           if (m.type === 'call') return null;
                           return (
