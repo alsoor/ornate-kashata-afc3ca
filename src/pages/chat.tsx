@@ -86,6 +86,51 @@ function getChatSfxCtx(): AudioContext | null {
 }
 function playChatCallRing() { /* call feature removed */ }
 
+function playBubblePop(kind: 'send' | 'recv') {
+  const ctx = getChatSfxCtx();
+  if (!ctx) return;
+  try {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    osc.type = 'sine';
+    if (kind === 'send') {
+      osc.frequency.setValueAtTime(920, t0);
+      osc.frequency.exponentialRampToValueAtTime(540, t0 + 0.09);
+      filter.frequency.value = 1400;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.11);
+    } else {
+      osc.frequency.setValueAtTime(640, t0);
+      osc.frequency.exponentialRampToValueAtTime(420, t0 + 0.12);
+      filter.frequency.value = 900;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.16, t0 + 0.016);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.14);
+    }
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.16);
+  } catch {
+    /* ignore */
+  }
+}
+
+function buzzChat() {
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate(18);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 // ─── Voice bubble player ──────────────────────────────────────────────────────
 const WAVEFORM_BARS = 28;
 const SPEEDS = [1, 1.5, 2];
@@ -104,6 +149,8 @@ function VoiceBubble({
   const [speedIndex, setSpeedIndex] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   function toggle() {
+    buzzChat();
+    playBubblePop('send');
     if (!audioRef.current) {
       audioRef.current = new Audio(url);
       audioRef.current.setAttribute('playsinline', 'true');
@@ -446,16 +493,24 @@ function resolveMediaUrl(raw: string | null | undefined): string {
     const parsed = parseStoryReply(s);
     if (parsed?.mediaUrl) s = parsed.mediaUrl;
   }
-  try {
-    const p = JSON.parse(s);
-    if (p && typeof p === 'object') {
-      const u = p.url || p.src || p.mediaUrl || p.imageUrl || p.videoUrl || p.path || p.href
-        || (Array.isArray(p.mediaUrls) ? p.mediaUrls[0] : null);
-      if (u) s = String(u);
-    }
-  } catch { /* plain */ }
-  s = String(s).trim();
+  if ((s.startsWith('{') && s.includes('}')) || s.startsWith('[')) {
+    try {
+      const p = JSON.parse(s);
+      if (p && typeof p === 'object') {
+        const u = p.url || p.src || p.mediaUrl || p.imageUrl || p.videoUrl || p.path || p.href
+          || p.fileUrl || p.publicUrl || p.downloadUrl
+          || (Array.isArray(p.mediaUrls) ? p.mediaUrls[0] : null);
+        if (u) s = String(u);
+      }
+    } catch { /* plain */ }
+  }
+  const quoted = s.match(/https?:\/\/[^\s"'<>]+/i);
+  if (quoted && !s.startsWith('http') && !s.startsWith('/') && !s.startsWith('blob:') && !s.startsWith('data:')) {
+    s = quoted[0];
+  }
+  s = String(s).trim().replace(/^"+|"+$/g, '');
   if (s.startsWith('//')) return `https:${s}`;
+  if (s.startsWith('uploads/') || s.startsWith('media/') || s.startsWith('files/')) return `/${s}`;
   return s;
 }
 
@@ -502,29 +557,22 @@ function LocationMapBubble({ lat, lng, label }: { lat: number; lng: number; labe
       <button
         type="button"
         onClick={() => setOpen(true)}
+        aria-label={label || 'Location'}
         style={{
-          display: 'block', width: 168, maxWidth: '100%', padding: 0, border: 'none',
-          overflow: 'hidden', borderRadius: 10, background: 'rgba(0,20,24,0.9)',
-          cursor: 'pointer', textAlign: 'left',
+          width: 44,
+          height: 44,
+          borderRadius: '50%',
+          padding: 0,
+          border: '1.5px solid rgba(0,188,212,0.45)',
+          background: 'radial-gradient(circle at 35% 30%, #1a4a50 0%, #0a1a1c 70%)',
+          cursor: 'pointer',
+          display: 'grid',
+          placeItems: 'center',
+          boxShadow: '0 0 0 3px rgba(0,188,212,0.12)',
+          flexShrink: 0,
         }}
       >
-        <div style={{ width: '100%', height: 72, overflow: 'hidden', pointerEvents: 'none', position: 'relative' }}>
-          <iframe
-            title="Shared location"
-            src={osmEmbedSrc(lat, lng, 0.018)}
-            style={{ width: '100%', height: 96, border: 0, marginTop: -10 }}
-          />
-          <div style={{
-            position: 'absolute', inset: 0,
-            background: 'linear-gradient(180deg, transparent 40%, rgba(0,10,12,0.75) 100%)',
-          }} />
-        </div>
-        <div style={{ padding: '6px 8px 8px', display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: T.primary, fontWeight: 700, fontSize: '0.75rem' }}>
-            <MapPin size={12} strokeWidth={2.3} /> {label || 'Location'}
-          </span>
-          <span style={{ color: T.textDim, fontSize: '0.62rem' }}>{lat.toFixed(4)}, {lng.toFixed(4)}</span>
-        </div>
+        <MapPin size={18} color="#00BCD4" strokeWidth={2.4} />
       </button>
       {open && (
         <div
@@ -802,13 +850,13 @@ function CallBubble({
 
 // ─── Video / Video-note helpers ───────────────────────────────────────────────
 function parseVideoBody(body: string): { url: string; isNote: boolean; duration: number | null; name: string } {
-  let url = body;
+  let url = resolveMediaUrl(body) || body;
   let isNote = false;
   let duration: number | null = null;
   let name = '';
   try {
     const p = JSON.parse(body);
-    if (p?.url) url = String(p.url);
+    if (p?.url) url = resolveMediaUrl(String(p.url)) || String(p.url);
     if (p?.name) name = String(p.name);
     if (p?.duration != null) duration = Number(p.duration) || null;
     if (p?.isVideoNote || p?.videoNote || p?.note) isNote = true;
@@ -835,6 +883,7 @@ function VideoNoteBubble({
   const [current, setCurrent] = useState(0);
 
   function toggle() {
+    buzzChat();
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) {
@@ -3420,20 +3469,11 @@ export default function ChatPage() {
     setIsBulkDeleting(true);
     setHeaderMenuOpen(false);
     try {
-      if (isGroup && groupId) {
-        const res = await fetch(`/api/groups/${groupId}/messages/clear`, {
-          method: 'DELETE',
-          credentials: 'include',
-        });
-        if (!res.ok) console.error('[clearHistory group]', res.status, await res.text());
-      } else if (peerId) {
-        const res = await fetch(`/api/messages/clear?with=${encodeURIComponent(peerId)}`, {
-          method: 'DELETE',
-          credentials: 'include',
-        });
-        if (!res.ok) console.error('[clearHistory direct]', res.status, await res.text());
+      const mine = msgs.filter(m => m.senderId === user.id);
+      for (const m of mine) {
+        await deleteMessage(m.id);
       }
-      setMsgs([]);
+      setMsgs(prev => prev.filter(m => m.senderId !== user.id));
     } finally {
       setIsBulkDeleting(false);
       setIsClearingHistory(false);
@@ -4117,6 +4157,7 @@ export default function ChatPage() {
         const incoming = newMsgs.slice(prevMsgCountRef.current).filter(m => m.senderId !== user?.id && !m.isSystem);
         if (incoming.length > 0) {
           setHasNewMsg(true);
+          playBubblePop('recv');
           playNotificationSound('message');
           const last = incoming[incoming.length - 1];
           const senderName = last.senderName ?? last.senderUsername ?? 'Someone';
@@ -4248,6 +4289,7 @@ export default function ChatPage() {
 
   async function sendLocation(lat: number, lng: number) {
     if (sending) return;
+    playBubblePop('send');
     setSending(true);
     try {
       const body = `${LOCATION_PREFIX}${JSON.stringify({ lat, lng, label: 'Location' })}`;
@@ -4274,6 +4316,7 @@ export default function ChatPage() {
   // ── Send text ───────────────────────────────────────────────────────────────
   async function sendText() {
     if (!text.trim() || sending) return;
+    playBubblePop('send');
     setSending(true);
     const body = text.trim();
     setText('');
@@ -4358,19 +4401,34 @@ export default function ChatPage() {
   // ── Send image ──────────────────────────────────────────────────────────────
 
   async function sendImage(file: File) {
+    playBubblePop('send');
     try {
       const ct = file.type || 'image/jpeg';
+      const fd = new FormData();
+      fd.append('file', file, file.name || 'image.jpg');
+      fd.append('image', file, file.name || 'image.jpg');
+      let res: Response | null = null;
       if (isGroup) {
-        await fetch(`/api/groups/${groupId}/messages/image`, {
+        res = await fetch(`/api/groups/${groupId}/messages/image`, {
           method: 'POST', credentials: 'include',
           headers: { 'Content-Type': ct }, body: file
         });
+        if (!res.ok) {
+          res = await fetch(`/api/groups/${groupId}/messages/image`, {
+            method: 'POST', credentials: 'include', body: fd
+          });
+        }
       } else {
         if (!scChatId) return;
-        await fetch(`/api/secret-chat/image?chatId=${scChatId}`, {
+        res = await fetch(`/api/secret-chat/image?chatId=${scChatId}`, {
           method: 'POST', credentials: 'include',
           headers: { 'Content-Type': ct }, body: file
         });
+        if (!res.ok) {
+          res = await fetch(`/api/secret-chat/image?chatId=${scChatId}`, {
+            method: 'POST', credentials: 'include', body: fd
+          });
+        }
       }
       await fetchMsgs();
     } catch {/* silent */}
@@ -4378,6 +4436,7 @@ export default function ChatPage() {
 
   // ── Send video / document file ───────────────────────────────────────────────
   async function sendFile(file: File) {
+    playBubblePop('send');
     try {
       const ct = file.type || 'application/octet-stream';
       const isVid = ct.startsWith('video/') || isLikelyVideoUrl(file.name);
@@ -4412,6 +4471,7 @@ export default function ChatPage() {
 
   /** Video note — اسم الملف video-note-* ليُعرض كفقاعة دائرية في الشات */
   async function sendVideoNote(file: File, durationSec?: number) {
+    playBubblePop('send');
     const safeName = file.name.startsWith('video-note-')
       ? file.name
       : `video-note-${Date.now()}.${file.name.split('.').pop() || 'webm'}`;
@@ -4487,6 +4547,7 @@ export default function ChatPage() {
     recorder.stream.getTracks().forEach(t => t.stop());
     mediaRecorderRef.current = null;
     setIsRecording(false);
+    if (send) playBubblePop('send');
     if (!send) {
       setRecordSecs(0);
       return;
@@ -4521,6 +4582,7 @@ export default function ChatPage() {
   }
   async function deleteMessage(msgId: number) {
     const target = msgs.find(m => m.id === msgId);
+    if (target && user?.id && target.senderId !== user.id) return;
     const inquiry = target ? parseProductInquiry(target.body) : null;
     // تنبيه: حذف الاستفسار يلغيه من الطرفين (المستخدم + شات الشركة)
     if (inquiry || target) {
@@ -4536,8 +4598,8 @@ export default function ChatPage() {
         ? `/api/groups/${groupId}/messages/${msgId}`
         : `/api/secret-chat/message/${msgId}`;
       const res = await fetch(url, { method: 'DELETE', credentials: 'include' });
-      if (res.ok) {
-        setMsgs(prev => prev.filter(m => m.id !== msgId));
+      if (res.ok || res.status === 404) {
+        setMsgs(prev => prev.map(m => m.id === msgId ? { ...m, body: '', type: 'text' as const } : m).filter(m => m.id !== msgId));
         // إزالة من صندوق شات الشركة عند حذف استفسار منتج
         if (inquiry && user?.id) {
           try {
