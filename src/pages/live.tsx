@@ -22,6 +22,15 @@ import { Mic, MicOff, Volume2, VolumeX, X, Users, Radio, Snowflake, LogOut, Chev
 import { useSession } from '@/lib/auth/auth-client';
 import UserAvatar from '@/components/UserAvatar';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
+import {
+  publishLiveActive,
+  makeChatPayload,
+  parseIncomingChat,
+  LIVE_ENDED_TITLE,
+  LIVE_ENDED_BODY,
+  LIVE_ENDED_HINT,
+  type LiveChatMsg,
+} from '@/lib/liveRoomExtras';
 
 const AGORA_APP_ID = '149ef04e839c4132a08efb49d717c436';
 const PUBLIC_CHANNEL = 'stooorna-live-voice';
@@ -105,6 +114,12 @@ export default function LivePage() {
   const frozenUidsRef = useRef<Set<number>>(new Set());
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const [liveChatMsgs, setLiveChatMsgs] = useState<LiveChatMsg[]>([]);
+  const [liveChatText, setLiveChatText] = useState('');
+  const [liveChatOpen, setLiveChatOpen] = useState(true);
+  const [roomEndedOverlay, setRoomEndedOverlay] = useState(false);
+  const liveChatEndRef = useRef<HTMLDivElement | null>(null);
+
   type HostPost = {
     id: number;
     text?: string | null;
@@ -141,7 +156,7 @@ export default function LivePage() {
     // strip hidden marker
     const clean = raw.replace(/⟦stooorna-product:[A-Za-z0-9+/=]+⟧\s*$/u, '').trim();
     const lines = clean.split(/\n+/).map(l => l.trim()).filter(Boolean);
-    let title = lines[0] || 'منتج';
+    let title = lines[0] || 'Product';
     let price = '';
     let details = '';
     const extras: string[] = [];
@@ -166,9 +181,9 @@ export default function LivePage() {
   }
 
   function parseProductTitle(text: string | null | undefined): string {
-    if (!text) return 'منشور';
+    if (!text) return 'Post';
     const first = text.trim().split(/\n\n+/)[0]?.trim() || text.trim();
-    return first.slice(0, 80) || 'منشور';
+    return first.slice(0, 80) || 'Post';
   }
 
   async function loadHostPosts() {
@@ -552,6 +567,17 @@ export default function LivePage() {
         }
       } catch { /* ignore */ }
       try {
+        publishLiveActive({
+          hostId: hostId || myId || '',
+          kind: 'voice',
+          active: false,
+          channel: channelName,
+          hostName: hostName,
+          hostUsername: hostUsername,
+          hostAvatar: hostAvatar,
+        });
+      } catch { /* ignore */ }
+      try {
         await fetch('/api/room/leave', {
           method: 'POST',
           credentials: 'include',
@@ -783,10 +809,21 @@ export default function LivePage() {
               frozenUidsRef.current = set;
               setFrozenUids(set);
             }
+          } else if (msg.t === 'chat') {
+            const cm = parseIncomingChat(msg);
+            if (cm && cm.uid !== myUid) {
+              setLiveChatMsgs(prev => {
+                if (prev.some(x => x.id === cm.id)) return prev;
+                return [...prev, cm].slice(-80);
+              });
+            }
           } else if (msg.t === 'room-ended') {
             if (!amHost && isHostRoom) {
               forceEndRef.current = true;
-              void leaveRoom({ forced: true });
+              setRoomEndedOverlay(true);
+              window.setTimeout(() => {
+                void leaveRoom({ forced: true });
+              }, 1800);
             }
           }
         } catch {
@@ -918,32 +955,20 @@ export default function LivePage() {
         });
       } catch { /* ignore */ }
 
-      // Only host announces private live (listeners must not keep the host flag alive)
+      // Host announces live so profiles show Online + top banner notification
       try {
         if (amHost || !isHostRoom) {
           const activeHost = hostId || myId || '';
           if (activeHost) {
-            const payload = JSON.stringify({
+            publishLiveActive({
               hostId: activeHost,
-              channel: channelName,
-              at: Date.now(),
+              kind: 'voice',
               active: true,
-              name: myName,
-              username: myUsername,
-              avatarUrl: myAvatar,
+              channel: channelName,
+              hostName: isHostRoom ? hostName : myName,
+              hostUsername: isHostRoom ? hostUsername : myUsername,
+              hostAvatar: isHostRoom ? hostAvatar : myAvatar,
             });
-            localStorage.setItem(`stooorna_live_active_${activeHost}`, payload);
-            localStorage.setItem('stooorna_live_active_current', payload);
-            window.dispatchEvent(new CustomEvent('stooorna:live-active', {
-              detail: {
-                hostId: activeHost,
-                active: true,
-                channel: channelName,
-                hostName: myName,
-                hostUsername: myUsername,
-                hostAvatar: myAvatar,
-              },
-            }));
           }
         }
       } catch { /* ignore */ }
@@ -1051,6 +1076,23 @@ export default function LivePage() {
       void sendFreezeCmd(uid, freeze);
       return next;
     });
+  };
+
+  const sendLiveChat = async () => {
+    const raw = liveChatText.trim();
+    if (!raw || myUidRef.current == null) return;
+    const payload = makeChatPayload({
+      uid: myUidRef.current,
+      userId: myId,
+      name: myName,
+      text: raw,
+    });
+    setLiveChatText('');
+    setLiveChatMsgs(prev => [...prev, { ...payload, isMe: true }].slice(-80));
+    await sendDataPayload(payload);
+    try {
+      liveChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    } catch { /* ignore */ }
   };
 
   const onMemberTap = (m: Member) => {
@@ -1585,6 +1627,143 @@ export default function LivePage() {
         </p>
       </div>
 
+
+
+      {/* Live room chat */}
+      {joined && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 10,
+            right: 10,
+            bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
+            zIndex: 25,
+            pointerEvents: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            maxHeight: liveChatOpen ? 200 : 36,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setLiveChatOpen(o => !o)}
+            style={{
+              alignSelf: 'flex-start',
+              pointerEvents: 'auto',
+              border: '1px solid rgba(0,188,212,0.3)',
+              background: 'rgba(6,16,18,0.85)',
+              color: '#00BCD4',
+              borderRadius: 999,
+              padding: '4px 10px',
+              fontSize: '0.68rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            {liveChatOpen ? 'Hide chat' : 'Show chat'}
+          </button>
+          {liveChatOpen && (
+            <div
+              style={{
+                pointerEvents: 'auto',
+                background: 'rgba(4,14,16,0.82)',
+                border: '1px solid rgba(0,188,212,0.2)',
+                borderRadius: 14,
+                padding: '8px 10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                maxHeight: 160,
+              }}
+            >
+              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, minHeight: 48 }}>
+                {liveChatMsgs.length === 0 && (
+                  <p style={{ margin: 0, color: 'rgba(150,200,200,0.45)', fontSize: '0.68rem' }}>Live chat — say hello</p>
+                )}
+                {liveChatMsgs.map(m => (
+                  <p key={m.id} style={{ margin: 0, fontSize: '0.72rem', lineHeight: 1.35, color: m.isMe ? '#00BCD4' : 'rgba(220,240,240,0.92)' }}>
+                    <span style={{ fontWeight: 800, color: m.isMe ? '#00BCD4' : '#eab308' }}>{m.name}: </span>
+                    {m.text}
+                  </p>
+                ))}
+                <div ref={liveChatEndRef} />
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  value={liveChatText}
+                  onChange={e => setLiveChatText(e.target.value.slice(0, 200))}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void sendLiveChat();
+                    }
+                  }}
+                  placeholder="Message…"
+                  style={{
+                    flex: 1,
+                    borderRadius: 12,
+                    border: '1px solid rgba(0,188,212,0.28)',
+                    background: 'rgba(0,20,24,0.9)',
+                    color: '#dff6f6',
+                    padding: '8px 10px',
+                    fontSize: '0.78rem',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => void sendLiveChat()}
+                  style={{
+                    borderRadius: 12,
+                    border: 'none',
+                    background: '#00BCD4',
+                    color: '#041018',
+                    fontWeight: 800,
+                    padding: '0 12px',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                  }}
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Host closed broadcast — English guidance, then exit */}
+      {roomEndedOverlay && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 80,
+            background: 'rgba(0,0,0,0.72)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 340,
+              borderRadius: 18,
+              border: '1px solid rgba(0,188,212,0.3)',
+              background: 'rgba(8,18,20,0.98)',
+              padding: '22px 18px',
+              textAlign: 'center',
+            }}
+          >
+            <p style={{ margin: '0 0 8px', color: '#fff', fontWeight: 900, fontSize: '1.05rem' }}>{LIVE_ENDED_TITLE}</p>
+            <p style={{ margin: '0 0 6px', color: 'rgba(200,230,230,0.9)', fontSize: '0.85rem', lineHeight: 1.45 }}>{LIVE_ENDED_BODY}</p>
+            <p style={{ margin: 0, color: 'rgba(150,200,200,0.55)', fontSize: '0.72rem' }}>{LIVE_ENDED_HINT}</p>
+          </div>
+        </div>
+      )}
 
       {/* شيت منشورات المضيف — من الأسفل، البث مستمر */}
       <AnimatePresence>
