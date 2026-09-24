@@ -1448,6 +1448,7 @@ function GlobalBottomNavigation() {
   const homeLongPressFired = useRef(false);
   const homeCallPollRef = useRef<number | null>(null);
   const homeRingLockRef = useRef<{ mode: 'none' | 'answered' | 'ignored'; channel: string; at: number }>({ mode: 'none', channel: '', at: 0 });
+  const staleInviteHandledRef = useRef<Set<string>>(new Set());
   const homeCallAgoraRef = useRef<any>(null);
   const homeCallMicRef = useRef<any>(null);
 
@@ -1537,6 +1538,25 @@ function GlobalBottomNavigation() {
     const applyInvite = (raw: any) => {
       if (!raw?.channel || raw.hostId === user.id) return;
       if (!isFreshHomeInvite(raw)) {
+        // The invite already expired before this device saw it (e.g. the
+        // app was opened after the caller stopped ringing). Don't ring —
+        // just log it as a missed call in the chat, once.
+        if (raw.hostId && !raw.ended && !raw.answered) {
+          const staleKey = `${raw.channel}@${raw.at || 0}`;
+          if (!staleInviteHandledRef.current.has(staleKey)) {
+            staleInviteHandledRef.current.add(staleKey);
+            recordMissedCallChat(user.id, String(raw.hostId), String(raw.hostId));
+            pushCallLog(user.id, {
+              peerId: String(raw.hostId),
+              peerName: raw.hostName ?? null,
+              peerAvatar: raw.hostAvatar ?? null,
+              direction: 'in',
+              status: 'missed',
+              at: Number(raw.at) || Date.now(),
+            });
+            setHomeCallLogTick(x => x + 1);
+          }
+        }
         try {
           localStorage.removeItem(`stooorna_home_call_invite_${user.id}`);
           localStorage.removeItem('stooorna_home_call_active_invite');
@@ -2013,6 +2033,9 @@ function GlobalBottomNavigation() {
     setHomeCallMembers([me, ...others]);
     setHomeCallPickerOpen(false);
     setHomeCallPhase('animating');
+    // Do not open the full call screen while ringing out — keep it as a
+    // minimized top bar. Tapping the bar opens the full call UI.
+    setHomeCallMinimized(true);
     const invitePayload = { channel, hostId: user.id, hostName: me.name, hostUsername: me.username, hostAvatar: me.avatarUrl, members: [me, ...others], at: Date.now(), video: homeCallVideoRef.current };
     window.dispatchEvent(new CustomEvent('stooorna:home-group-call', {
       detail: { ...invitePayload, inviteeIds: picked.map(p => p.id) },
@@ -2697,6 +2720,9 @@ function GlobalBottomNavigation() {
     setHomeCallMembers(members);
     const session = ++homeCallSessionRef.current;
     setHomeCallPhase('animating');
+    // Answering should not open the full call screen — keep it minimized
+    // as a top bar. Tapping the bar opens the full call UI.
+    setHomeCallMinimized(true);
     window.setTimeout(() => {
       if (homeCallSessionRef.current !== session) return;
       setHomeCallPhase('connecting');
@@ -3525,9 +3551,96 @@ function GlobalBottomNavigation() {
       ? 'Ringing…'
       : '';
 
-  // Incoming answer UI: answer only from bottom-bar plus menu phone icon.
-  // No top banner and no full-screen ring/answer layer.
-  const homeIncomingOverlay = null;
+  // Incoming call UI: a compact sheet that drops down from the top of the
+  // screen (about a quarter of the screen height) showing the caller's
+  // name and avatar, with Answer / Decline actions. Tapping Answer keeps
+  // the call minimized in a top bar instead of opening the full call UI —
+  // the full UI only opens if the user taps that bar.
+  const homeIncomingOverlay = (homeIncoming && homeCallPhase === 'idle') ? (
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 10970,
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        animation: 'stooornaHomeIncomingSheetIn 0.32s cubic-bezier(0.32, 0.72, 0, 1)',
+        pointerEvents: 'auto',
+      }}
+    >
+      <div
+        style={{
+          margin: '8px 10px 0',
+          maxHeight: '25vh',
+          background: 'linear-gradient(180deg,#0a1f22 0%,#061014 100%)',
+          border: '1px solid rgba(0,188,212,0.3)',
+          borderRadius: 18,
+          padding: '14px 16px',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 48, height: 48, borderRadius: '50%', overflow: 'hidden', background: 'rgba(0,188,212,0.2)', flexShrink: 0 }}>
+            {homeIncoming.hostAvatar ? (
+              <img src={homeIncoming.hostAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00BCD4', fontWeight: 800, fontSize: 18 }}>
+                {(homeIncoming.hostName || '?')[0]}
+              </div>
+            )}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {homeIncoming.hostName || 'Unknown'}
+            </p>
+            <p style={{ margin: 0, color: 'rgba(150,200,200,0.75)', fontSize: 12.5 }}>
+              {(homeIncoming as any).video ? 'Incoming video call…' : 'Incoming call…'}
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => ignoreHomeIncoming()}
+            style={{
+              flex: 1,
+              padding: '11px 0',
+              borderRadius: 14,
+              border: '1px solid rgba(239,68,68,0.4)',
+              background: 'rgba(239,68,68,0.14)',
+              color: '#ef4444',
+              fontWeight: 800,
+              fontSize: 14,
+              cursor: 'pointer',
+            }}
+          >
+            Decline
+          </button>
+          <button
+            type="button"
+            onClick={() => { void answerHomeIncoming(); }}
+            style={{
+              flex: 1,
+              padding: '11px 0',
+              borderRadius: 14,
+              border: 'none',
+              background: '#22c55e',
+              color: '#041018',
+              fontWeight: 800,
+              fontSize: 14,
+              cursor: 'pointer',
+            }}
+          >
+            Answer
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   // The call sheet is shown from the very first moment of a call (outgoing or answered)
   // and rises from the bottom of the screen, like WhatsApp. No intermediate screens.
@@ -3973,16 +4086,16 @@ function GlobalBottomNavigation() {
         </div>
       )}
 
-      {(homeCallPhase === 'connecting' || homeCallPhase === 'live') && homeCallMinimized && (
+      {(homeCallPhase === 'animating' || homeCallPhase === 'connecting' || homeCallPhase === 'live') && homeCallMinimized && (
         <div
           style={{
             position: 'fixed',
             left: 12,
             right: 12,
-            bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))',
+            top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
             zIndex: 10955,
-            background: 'rgba(12,18,24,0.96)',
-            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'linear-gradient(180deg,#0a1f22 0%,#061014 100%)',
+            border: '1px solid rgba(0,188,212,0.3)',
             borderRadius: 16,
             padding: '10px 12px',
             display: 'flex',
@@ -4195,71 +4308,19 @@ function GlobalBottomNavigation() {
                 }}>
                   <button
                     type="button"
-                    onClick={(e) => {
-                      const target = e.currentTarget as any;
-                      if (target._homeLongPress) {
-                        target._homeLongPress = false;
-                        return;
-                      }
-                      if (homeIncoming && homeCallPhase === 'idle') {
-                        setPlusMenuOpen(false);
-                        void answerHomeIncoming();
-                        return;
-                      }
+                    onClick={() => {
                       setPlusMenuOpen(false);
                       setHomeCallPickerOpen(true);
                     }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      if (homeIncoming && homeCallPhase === 'idle') {
-                        ignoreHomeIncoming();
-                        setPlusMenuOpen(false);
-                      }
-                    }}
-                    onPointerDown={(e) => {
-                      if (!(homeIncoming && homeCallPhase === 'idle')) return;
-                      const target = e.currentTarget;
-                      const timer = window.setTimeout(() => {
-                        (target as any)._homeLongPress = true;
-                        ignoreHomeIncoming();
-                        setPlusMenuOpen(false);
-                      }, 550);
-                      (target as any)._homeLongPressTimer = timer;
-                      (target as any)._homeLongPress = false;
-                    }}
-                    onPointerUp={(e) => {
-                      const target = e.currentTarget as any;
-                      if (target._homeLongPressTimer) {
-                        window.clearTimeout(target._homeLongPressTimer);
-                        target._homeLongPressTimer = null;
-                      }
-                    }}
-                    onPointerLeave={(e) => {
-                      const target = e.currentTarget as any;
-                      if (target._homeLongPressTimer) {
-                        window.clearTimeout(target._homeLongPressTimer);
-                        target._homeLongPressTimer = null;
-                      }
-                    }}
-                    onPointerCancel={(e) => {
-                      const target = e.currentTarget as any;
-                      if (target._homeLongPressTimer) {
-                        window.clearTimeout(target._homeLongPressTimer);
-                        target._homeLongPressTimer = null;
-                      }
-                    }}
-                    aria-label={homeIncoming ? 'Answer call — long press to decline' : 'Call'}
+                    aria-label="Call"
                     style={{
                       width: 44, height: 44, borderRadius: '50%',
-                      border: '1px solid ' + (homeIncoming ? 'rgba(34,197,94,0.55)' : 'rgba(0,188,212,0.4)'),
+                      border: '1px solid rgba(0,188,212,0.4)',
                       background: 'rgba(6,20,22,0.96)',
-                      color: homeIncoming ? '#22c55e' : '#00BCD4',
+                      color: '#00BCD4',
                       cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: homeIncoming
-                        ? '0 0 14px rgba(34,197,94,0.5)'
-                        : '0 4px 16px rgba(0,0,0,0.45)',
-                      animation: homeIncoming ? 'stooornaHomeRingShake 0.45s ease-in-out infinite' : 'none',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
                     }}
                   >
                     <Phone size={20} strokeWidth={2.2} />
@@ -4399,30 +4460,23 @@ function GlobalBottomNavigation() {
               width: 44,
               height: 36,
               border: 'none',
-              background: (homeIncoming && homeCallPhase === 'idle')
-                ? 'rgba(34,197,94,0.18)'
-                : (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? 'rgba(0,188,212,0.14)' : 'transparent',
+              background: (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? 'rgba(0,188,212,0.14)' : 'transparent',
               borderRadius: 12,
-              color: (homeIncoming && homeCallPhase === 'idle')
-                ? '#22c55e'
-                : (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? '#00BCD4' : 'rgba(0,188,212,0.85)',
+              color: (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? '#00BCD4' : 'rgba(0,188,212,0.85)',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: 2,
               WebkitTapHighlightColor: 'transparent',
-              boxShadow: (homeIncoming && homeCallPhase === 'idle') ? '0 0 12px rgba(34,197,94,0.45)' : 'none',
+              boxShadow: 'none',
             }}
           >
-            <NavBubble id="plus" color={(homeIncoming && homeCallPhase === 'idle') ? 'rgba(34,197,94,0.65)' : 'rgba(0,188,212,0.65)'} />
+            <NavBubble id="plus" color="rgba(0,188,212,0.65)" />
             <span style={{
               display: 'flex',
-              transition: (homeIncoming && homeCallPhase === 'idle') ? 'none' : 'transform 0.25s ease',
+              transition: 'transform 0.25s ease',
               transform: (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? 'rotate(45deg)' : 'rotate(0deg)',
-              animation: (homeIncoming && homeCallPhase === 'idle' && !(plusMenuOpen || settingsSheetOpen || friendsPanelOpen))
-                ? 'stooornaHomeRingShake 0.45s ease-in-out infinite'
-                : 'none',
               transformOrigin: 'center center',
             }}>
               <Plus size={26} strokeWidth={2.4} />
@@ -4603,6 +4657,6 @@ export default function RootLayout({
       </div>
       <LiveJoinBanner />
       <GlobalBottomNavigation />
-      <style>{`@keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } } @keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } } @keyframes stooornaLiveBannerIn { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaTextPostSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeIncomingSheetIn { from { transform: translateY(-100%); opacity: 0.6; } to { transform: translateY(0); opacity: 1; } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } } @keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } } @keyframes stooornaLiveBannerIn { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaTextPostSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </Website>;
 }
