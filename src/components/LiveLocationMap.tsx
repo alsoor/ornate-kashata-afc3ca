@@ -20,7 +20,20 @@ export type LiveLocUser = {
 const KEY = 'stooorna_live_location_optin';
 const POS_KEY = 'stooorna_live_location_pos';
 const USERS_KEY = 'stooorna_live_location_users';
+const STYLE_KEY = 'stooorna_live_location_style';
 const TILE = 256;
+
+type MapStyle = 'streets' | 'satellite' | 'apple';
+
+function tileUrl(style: MapStyle, z: number, x: number, y: number) {
+  if (style === 'satellite') {
+    return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+  }
+  if (style === 'apple') {
+    return `https://basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}.png`;
+  }
+  return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
+}
 
 function liveOf(u: LiveLocUser) {
   return !!(u.live && u.lat != null && u.lng != null && Number.isFinite(u.lat) && Number.isFinite(u.lng));
@@ -59,6 +72,7 @@ export default function LiveLocationMap({
   const [selected, setSelected] = useState<LiveLocUser | null>(null);
   const [center, setCenter] = useState({ lat: 29.3759, lng: 47.9774 });
   const [zoom, setZoom] = useState(11);
+  const [mapStyle, setMapStyle] = useState<MapStyle>('streets');
   const dragRef = useRef<{ x: number; y: number; lat: number; lng: number } | null>(null);
   const pinchRef = useRef<{ dist: number; zoom: number } | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -88,6 +102,8 @@ export default function LiveLocationMap({
   useEffect(() => {
     try {
       setOn(localStorage.getItem(KEY) === '1');
+      const st = localStorage.getItem(STYLE_KEY);
+      if (st === 'streets' || st === 'satellite' || st === 'apple') setMapStyle(st);
       const pos = localStorage.getItem(POS_KEY);
       if (pos) {
         const p = JSON.parse(pos);
@@ -270,14 +286,14 @@ export default function LiveLocationMap({
         const tx = wrapTile(x, n);
         out.push({
           key: `${z}-${tx}-${y}`,
-          src: `https://tile.openstreetmap.org/${z}/${tx}/${y}.png`,
+          src: tileUrl(mapStyle, z, tx, y),
           left: cx + (x - world.x) * TILE,
           top: cy + (y - world.y) * TILE,
         });
       }
     }
     return out;
-  }, [center.lat, center.lng, zoom, size.w, size.h]);
+  }, [center.lat, center.lng, zoom, size.w, size.h, mapStyle]);
 
   function pointFor(lat: number, lng: number) {
     const z = Math.round(zoom);
@@ -353,6 +369,29 @@ export default function LiveLocationMap({
     }}>
       <div style={{ padding: '8px 12px 6px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         <p style={{ margin: 0, flex: 1, fontWeight: 800, fontSize: '0.95rem', color: '#00BCD4' }}>Live Location</p>
+        {(['streets', 'satellite', 'apple'] as MapStyle[]).map(s => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => {
+              setMapStyle(s);
+              try { localStorage.setItem(STYLE_KEY, s); } catch { /* ignore */ }
+            }}
+            style={{
+              border: `1px solid ${mapStyle === s ? 'rgba(0,188,212,0.55)' : 'rgba(0,188,212,0.2)'}`,
+              background: mapStyle === s ? 'rgba(0,188,212,0.18)' : 'transparent',
+              color: '#9fdde4',
+              borderRadius: 999,
+              padding: '5px 8px',
+              fontWeight: 800,
+              fontSize: '0.62rem',
+              cursor: 'pointer',
+              textTransform: 'capitalize',
+            }}
+          >
+            {s === 'streets' ? 'Map' : s === 'satellite' ? 'Satellite' : 'iPhone'}
+          </button>
+        ))}
         <button
           type="button"
           onClick={toggleOptIn}
@@ -486,6 +525,7 @@ export default function LiveLocationMap({
 
         {liveUsers.map(u => {
           const p = pointFor(u.lat as number, u.lng as number);
+          const active = selected?.id === u.id;
           return (
             <button
               key={u.id}
@@ -496,22 +536,57 @@ export default function LiveLocationMap({
                 left: p.left,
                 top: p.top,
                 transform: 'translate(-50%, -50%)',
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 3,
+                background: 'transparent',
+                border: 'none',
                 padding: 0,
-                border: '2px solid #22c55e',
-                overflow: 'hidden',
-                background: '#123',
                 cursor: 'pointer',
-                zIndex: 2,
+                zIndex: active ? 3 : 2,
               }}
             >
-              {u.avatarUrl ? (
-                <img src={u.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <span style={{ color: '#22c55e', fontWeight: 800, fontSize: 12 }}>{(u.name || '?')[0]}</span>
-              )}
+              <span style={{
+                width: 40,
+                height: 40,
+                borderRadius: '50%',
+                overflow: 'hidden',
+                background: '#123',
+                border: active ? '3px solid #22c55e' : '2px solid rgba(34,197,94,0.7)',
+                boxShadow: active ? '0 0 0 3px rgba(34,197,94,0.28)' : 'none',
+                position: 'relative',
+              }}>
+                {u.avatarUrl ? (
+                  <img src={u.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <span style={{ color: '#22c55e', fontWeight: 800, fontSize: 12 }}>{(u.name || '?')[0]}</span>
+                )}
+                <span style={{
+                  position: 'absolute',
+                  right: 1,
+                  bottom: 1,
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: '#22c55e',
+                  border: '2px solid #061012',
+                }} />
+              </span>
+              <span style={{
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                color: '#041014',
+                background: 'rgba(255,255,255,0.88)',
+                borderRadius: 8,
+                padding: '1px 6px',
+                maxWidth: 92,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
+                @{String(u.username || u.name).replace(/^@/, '')}
+              </span>
             </button>
           );
         })}
@@ -582,7 +657,7 @@ export default function LiveLocationMap({
             aria-label="Close"
             style={{
               position: 'absolute',
-              right: 14,
+              left: 14,
               bottom: 22,
               width: 48,
               height: 48,
