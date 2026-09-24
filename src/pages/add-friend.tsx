@@ -15489,25 +15489,21 @@ export default function AddFriendPage() {
   async function sendRequest(addresseeId: string) {
     setSending(addresseeId);
     try {
-      const response = await fetch('/api/friends', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          addresseeId
-        })
-      });
-      const data = await response.json().catch(() => ({})) as { status?: 'accepted' | 'pending' };
-      if (!response.ok && response.status !== 409) return;
-      const status = data.status ?? 'pending';
+      const { addOrRequestFriend } = await import('@/lib/friendAddPatch');
+      const myId = (user as { id?: string } | null)?.id || '';
+      const next = await addOrRequestFriend(myId, addresseeId);
+      const status = next === 'friends' ? 'accepted' : 'pending';
       setResults(prev => prev.map(u => u.id === addresseeId ? {
         ...u,
         friendStatus: status,
         iRequested: true
       } : u));
-      await loadFriends();
+      setStoryReqResults(prev => prev.map(u => u.id === addresseeId ? {
+        ...u,
+        friendStatus: status,
+        iRequested: true
+      } : u));
+      try { await loadFriends(); } catch { /* ignore */ }
     } catch {/* silent */} finally {
       setSending(null);
     }
@@ -20962,15 +20958,15 @@ export default function AddFriendPage() {
                         </div>
                         <button
                           type="button"
-                          disabled={storyReqSendingId === u.id}
+                          disabled={storyReqSendingId === u.id || u.friendStatus === 'accepted' || u.friendStatus === 'pending'}
                           onClick={async () => {
                             setStoryReqSendingId(u.id);
                             try { await sendRequest(u.id); }
                             finally { setStoryReqSendingId(null); }
                           }}
-                          style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(0,188,212,0.18)', color: '#00BCD4', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: u.friendStatus === 'accepted' ? 'rgba(34,197,94,0.2)' : 'rgba(0,188,212,0.18)', color: u.friendStatus === 'accepted' ? '#22c55e' : '#00BCD4', cursor: u.friendStatus ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
-                          <UserPlus size={16} strokeWidth={2.4} />
+                          {u.friendStatus === 'accepted' ? <Check size={16} strokeWidth={2.6} /> : u.friendStatus === 'pending' ? <Clock size={16} strokeWidth={2.4} /> : <UserPlus size={16} strokeWidth={2.4} />}
                         </button>
                       </div>
                     ))}
