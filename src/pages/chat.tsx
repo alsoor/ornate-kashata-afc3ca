@@ -5475,13 +5475,6 @@ export default function ChatPage() {
                     marginBottom: 3,
                     flexDirection: isMe ? 'row-reverse' : 'row'
                   }}>
-                        <span style={{
-                      color: senderNameColor || (isMe ? T.primary : senderIsOwner ? '#2563eb' : T.text),
-                      fontSize: '0.74rem',
-                      fontWeight: 600
-                    }}>
-                          {senderName}
-                        </span>
                         {senderIsOwner && <span style={{
                       fontSize: '0.55rem',
                       fontWeight: 800,
@@ -5492,12 +5485,13 @@ export default function ChatPage() {
                       boxShadow: '0 0 6px rgba(37,99,235,0.55)',
                       lineHeight: 1.6
                     }}>OWNER</span>}
-                        {senderUser && <span style={{
-                      color: senderIsOwner ? '#2563eb' : T.textDim,
-                      fontSize: '0.64rem'
+                        <span style={{
+                      color: '#111111',
+                      fontSize: '0.72rem',
+                      fontWeight: 600
                     }}>
-                            @{senderUser}
-                          </span>}
+                          @{String(senderUser || senderName || 'user').replace(/^@/, '')}
+                        </span>
                       </div>}
 
                     {/* Bubble + action menu */}
