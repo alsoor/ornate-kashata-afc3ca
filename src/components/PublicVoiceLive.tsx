@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { LogOut, Mic, MicOff, Users, Volume2, VolumeX, X } from 'lucide-react';
-import {
-  startPublicVoiceRtc,
-  stopPublicVoiceRtc,
-  handlePublicVoiceSignal,
-  setPublicVoiceMute,
-  setPublicVoiceSpeaker,
-} from '@/lib/publicVoiceRtc';
+import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 
 const ROOM = 'stooorna-public-voice';
 const TALK_MS = 30_000;
@@ -14,6 +8,7 @@ const COOLDOWN_MS = 3_000;
 
 type Peer = {
   id: string;
+  uid?: number;
   name: string;
   username?: string | null;
   avatarUrl?: string | null;
@@ -27,6 +22,20 @@ type ChatMsg = {
   text: string;
   at: number;
 };
+
+function uidFromString(s: string): number {
+  if (!s || s === '0') return 0;
+  return Math.abs(s.split('').reduce((a, c) => (Math.imul(31, a) + c.charCodeAt(0)) | 0, 0)) % 100_000 || 1;
+}
+
+async function fetchToken(channel: string, userId: string) {
+  const r = await fetch(
+    `/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(userId)}`,
+    { credentials: 'include' },
+  );
+  if (!r.ok) throw new Error('token');
+  return r.json() as Promise<{ token: string; uid: number; appId: string }>;
+}
 
 export default function PublicVoiceLive({
   userId,
@@ -51,9 +60,16 @@ export default function PublicVoiceLive({
   const [membersOpen, setMembersOpen] = useState(false);
   const [chatText, setChatText] = useState('');
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
-  const sinceRef = useRef(0);
+
   const peersRef = useRef<Peer[]>([]);
+  const sinceRef = useRef(0);
+  const clientRef = useRef<IAgoraRTCClient | null>(null);
+  const micRef = useRef<IMicrophoneAudioTrack | null>(null);
+  const remoteTracksRef = useRef<Map<number, any>>(new Map());
+  const mutedRef = useRef<Set<string>>(new Set());
+  const speakerOffRef = useRef(false);
+  const myUidRef = useRef(0);
+  const talkingRef = useRef(false);
 
   const me: Peer = {
     id: String(userId || 'me'),
@@ -63,12 +79,49 @@ export default function PublicVoiceLive({
     talking,
   };
 
+  const applyMute = useCallback(() => {
+    remoteTracksRef.current.forEach((track, uid) => {
+      const peer = peersRef.current.find(p => p.uid === uid || uidFromString(p.id) === uid);
+      const id = peer?.id || String(uid);
+      const off = speakerOffRef.current || mutedRef.current.has(id);
+      try {
+        if (off) track.stop();
+        else track.play();
+      } catch {
+        /* ignore */
+      }
+    });
+  }, []);
+
+  const sendAgoraChat = useCallback(async (payload: ChatMsg) => {
+    const client = clientRef.current;
+    try {
+      const raw = JSON.stringify({ t: 'chat', ...payload });
+      const bytes = new TextEncoder().encode(raw);
+      await client?.sendStreamMessage(bytes);
+    } catch {
+      /* fallback below */
+    }
+    await fetch('/api/room/signal', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        roomId: ROOM,
+        t: 'chat',
+        data: { t: 'chat', ...payload },
+      }),
+    }).catch(() => {});
+  }, []);
+
   const stopMic = useCallback(() => {
-    void stopPublicVoiceRtc();
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
+    talkingRef.current = false;
     setTalking(false);
     setLeftMs(0);
+    const mic = micRef.current;
+    if (mic) {
+      try { mic.setMuted(true); } catch { /* ignore */ }
+    }
     void fetch('/api/room/floor', {
       method: 'POST',
       credentials: 'include',
@@ -78,14 +131,15 @@ export default function PublicVoiceLive({
   }, [userId]);
 
   const startMic = useCallback(async () => {
-    if (coolMs > 0 || talking || !userId) return;
+    if (coolMs > 0 || talkingRef.current || !userId) return;
+    const mic = micRef.current;
+    if (!mic) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
+      await mic.setEnabled(true);
+      try { mic.setMuted(false); } catch { /* ignore */ }
+      talkingRef.current = true;
       setTalking(true);
       setLeftMs(TALK_MS);
-      const ids = peersRef.current.map(p => p.id);
-      await startPublicVoiceRtc({ roomId: ROOM, userId, stream, peerIds: ids });
       await fetch('/api/room/floor', {
         method: 'POST',
         credentials: 'include',
@@ -93,9 +147,10 @@ export default function PublicVoiceLive({
         body: JSON.stringify({ roomId: ROOM, userId, talking: true }),
       }).catch(() => {});
     } catch {
+      talkingRef.current = false;
       setTalking(false);
     }
-  }, [coolMs, talking, userId]);
+  }, [coolMs, userId]);
 
   useEffect(() => {
     if (!talking) return;
@@ -130,9 +185,81 @@ export default function PublicVoiceLive({
   }, []);
 
   useEffect(() => {
+    if (!userId) return;
     let stop = false;
-    if (userId) {
-      void fetch('/api/room/join', {
+    (async () => {
+      try {
+        const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
+        AgoraRTC.setLogLevel(3);
+        const { token, uid, appId } = await fetchToken(ROOM, userId);
+        myUidRef.current = uid || uidFromString(userId);
+        const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+        clientRef.current = client;
+
+        client.on('user-published', async (remoteUser: IAgoraRTCRemoteUser, mediaType: string) => {
+          if (mediaType !== 'audio') return;
+          try {
+            await client.subscribe(remoteUser, 'audio');
+            const track = remoteUser.audioTrack;
+            if (track) {
+              remoteTracksRef.current.set(remoteUser.uid as number, track);
+              applyMute();
+            }
+          } catch { /* ignore */ }
+        });
+        client.on('user-unpublished', (remoteUser: IAgoraRTCRemoteUser, mediaType: string) => {
+          if (mediaType === 'audio') {
+            remoteUser.audioTrack?.stop();
+            remoteTracksRef.current.delete(remoteUser.uid as number);
+          }
+        });
+        client.on('user-left', (remoteUser: IAgoraRTCRemoteUser) => {
+          remoteUser.audioTrack?.stop();
+          remoteTracksRef.current.delete(remoteUser.uid as number);
+        });
+        const onStream = (...args: any[]) => {
+          try {
+            let data: any = args.length >= 2 ? args[1] : args[0];
+            if (data && typeof data === 'object' && 'data' in data && !(data instanceof ArrayBuffer)) data = data.data;
+            let raw = '';
+            if (typeof data === 'string') raw = data;
+            else if (data instanceof ArrayBuffer) raw = new TextDecoder().decode(new Uint8Array(data));
+            else if (ArrayBuffer.isView(data)) raw = new TextDecoder().decode(data as Uint8Array);
+            raw = raw.replace(/\u0000/g, '').trim();
+            if (!raw) return;
+            const msg = JSON.parse(raw);
+            if (msg?.t !== 'chat' || !msg.text) return;
+            setChatMsgs(prev => {
+              if (prev.some(x => x.id === String(msg.id))) return prev;
+              return [...prev, {
+                id: String(msg.id),
+                userId: String(msg.userId || ''),
+                name: String(msg.name || 'User'),
+                text: String(msg.text),
+                at: Number(msg.at || Date.now()),
+              }].slice(-80);
+            });
+          } catch { /* ignore */ }
+        };
+        client.on('stream-message', onStream);
+        try { (client as any).on('streamMessage', onStream); } catch { /* ignore */ }
+
+        await client.join(appId, ROOM, token, myUidRef.current);
+        const mic = await AgoraRTC.createMicrophoneAudioTrack({
+          encoderConfig: { sampleRate: 48000, stereo: false, bitrate: 48 },
+          AEC: true,
+          ANS: true,
+          AGC: true,
+        });
+        micRef.current = mic;
+        await mic.setEnabled(true);
+        try { mic.setMuted(true); } catch { /* ignore */ }
+        await client.publish([mic]);
+      } catch {
+        /* token/join optional if server down */
+      }
+
+      await fetch('/api/room/join', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -144,40 +271,38 @@ export default function PublicVoiceLive({
           avatarUrl: userAvatar,
         }),
       }).catch(() => {});
-    }
+    })();
+
     const pull = async () => {
+      if (stop) return;
       try {
         const r = await fetch(`/api/room?id=${encodeURIComponent(ROOM)}`, { credentials: 'include' });
-        if (!r.ok || stop) return;
-        const d = await r.json();
-        const members = (d.members || d.users || []) as any[];
-        const nextPeers = members
-          .map(m => ({
-            id: String(m.id || m.userId || ''),
-            name: String(m.name || m.username || 'User'),
-            username: m.username ?? null,
-            avatarUrl: m.avatarUrl ?? m.image ?? null,
-            talking: !!(m.talking || m.floor),
-          }))
-          .filter(p => p.id);
-        peersRef.current = nextPeers;
-        setPeers(nextPeers);
-      } catch {
-        /* optional */
-      }
+        if (r.ok) {
+          const d = await r.json();
+          const members = (d.members || d.users || []) as any[];
+          const nextPeers = members
+            .map(m => ({
+              id: String(m.id || m.userId || ''),
+              uid: Number(m.uid || uidFromString(String(m.id || m.userId || ''))),
+              name: String(m.name || m.username || 'User'),
+              username: m.username ?? null,
+              avatarUrl: m.avatarUrl ?? m.image ?? null,
+              talking: !!(m.talking || m.floor),
+            }))
+            .filter(p => p.id);
+          peersRef.current = nextPeers;
+          setPeers(nextPeers);
+        }
+      } catch { /* ignore */ }
       try {
         const r = await fetch(`/api/room/signal?roomId=${encodeURIComponent(ROOM)}&since=${sinceRef.current}`, { credentials: 'include' });
-        if (!r.ok || stop) return;
+        if (!r.ok) return;
         const d = await r.json();
         const items = (d.items || d.signals || []) as any[];
         for (const raw of items) {
           const msg = raw?.data || raw;
           const at = Number(raw.at || msg.at || Date.now());
           if (at > sinceRef.current) sinceRef.current = at;
-          if (msg?.t === 'webrtc') {
-            void handlePublicVoiceSignal(msg);
-            continue;
-          }
           if (msg?.t !== 'chat' || !msg.text) continue;
           setChatMsgs(prev => {
             if (prev.some(x => x.id === String(msg.id))) return prev;
@@ -190,35 +315,37 @@ export default function PublicVoiceLive({
             }].slice(-80);
           });
         }
-      } catch {
-        /* optional */
-      }
+      } catch { /* ignore */ }
     };
     void pull();
-    const id = window.setInterval(pull, 2200);
+    const id = window.setInterval(pull, 1800);
     return () => {
       stop = true;
       window.clearInterval(id);
       stopMic();
-      if (userId) {
-        void fetch('/api/room/leave', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ roomId: ROOM, userId }),
-        }).catch(() => {});
-      }
+      try { micRef.current?.stop(); micRef.current?.close(); } catch { /* ignore */ }
+      micRef.current = null;
+      try { clientRef.current?.leave(); } catch { /* ignore */ }
+      clientRef.current = null;
+      remoteTracksRef.current.forEach(t => { try { t.stop(); } catch { /* */ } });
+      remoteTracksRef.current.clear();
+      void fetch('/api/room/leave', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId: ROOM, userId }),
+      }).catch(() => {});
     };
-  }, [userId, userName, userUsername, userAvatar, stopMic]);
+  }, [userId, userName, userUsername, userAvatar, applyMute, stopMic]);
 
   function toggleMute(id: string) {
     if (id === me.id) return;
     setMutedIds(prev => {
       const next = new Set(prev);
-      const on = !next.has(id);
-      if (on) next.add(id);
-      else next.delete(id);
-      setPublicVoiceMute(id, on);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      mutedRef.current = next;
+      applyMute();
       return next;
     });
   }
@@ -235,16 +362,7 @@ export default function PublicVoiceLive({
       at: Date.now(),
     };
     setChatMsgs(prev => [...prev, msg].slice(-80));
-    await fetch('/api/room/signal', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        roomId: ROOM,
-        t: 'chat',
-        data: { t: 'chat', id: msg.id, userId, name: msg.name, text, at: msg.at },
-      }),
-    }).catch(() => {});
+    await sendAgoraChat(msg);
   }
 
   const list = [me, ...peers.filter(p => p.id !== me.id)];
@@ -396,7 +514,6 @@ export default function PublicVoiceLive({
         >
           {chatOpen ? 'Hide' : 'Chat'}
         </button>
-
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
           <button
             type="button"
@@ -425,12 +542,12 @@ export default function PublicVoiceLive({
             </span>
           </button>
         </div>
-
         <button
           type="button"
           onClick={() => setSpeakerMuted(v => {
             const next = !v;
-            setPublicVoiceSpeaker(next);
+            speakerOffRef.current = next;
+            applyMute();
             return next;
           })}
           style={{
@@ -487,24 +604,14 @@ export default function PublicVoiceLive({
                 >
                   <div style={{
                     width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
-                    border: `2px solid ${p.talking ? '#22c55e' : 'rgba(0,188,212,0.35)'}`,
+                    border: `2px solid ${p.talking ? '#22c55e' : muted ? '#6b7280' : 'rgba(0,188,212,0.35)'}`,
                   }}>
-                    {p.avatarUrl ? (
-                      <img src={p.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00BCD4', fontWeight: 800 }}>
-                        {(p.name || '?')[0]}
-                      </div>
-                    )}
+                    {p.avatarUrl ? <img src={p.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
                   </div>
-                  <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>
-                      {p.username ? `@${String(p.username).replace(/^@/, '')}` : p.name}
-                    </p>
-                    <p style={{ margin: 0, fontSize: 10, color: muted ? '#9ca3af' : p.talking ? '#22c55e' : 'rgba(150,200,200,0.6)' }}>
-                      {p.id === me.id ? 'You' : muted ? 'Muted' : p.talking ? 'Talking' : 'Listening'}
-                    </p>
-                  </div>
+                  <span style={{ flex: 1, textAlign: 'left', fontSize: 13, fontWeight: 700 }}>
+                    {p.username ? `@${String(p.username).replace(/^@/, '')}` : p.name}
+                  </span>
+                  {p.id !== me.id && <span style={{ fontSize: 11, color: muted ? '#ef4444' : '#22c55e' }}>{muted ? 'Muted' : 'Live'}</span>}
                 </button>
               );
             })}
