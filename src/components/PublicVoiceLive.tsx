@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { LogOut, Mic, MicOff, Users, Volume2, VolumeX, X } from 'lucide-react';
+import {
+  startPublicVoiceRtc,
+  stopPublicVoiceRtc,
+  handlePublicVoiceSignal,
+  setPublicVoiceMute,
+  setPublicVoiceSpeaker,
+} from '@/lib/publicVoiceRtc';
 
 const ROOM = 'stooorna-public-voice';
 const TALK_MS = 30_000;
@@ -46,6 +53,7 @@ export default function PublicVoiceLive({
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const sinceRef = useRef(0);
+  const peersRef = useRef<Peer[]>([]);
 
   const me: Peer = {
     id: String(userId || 'me'),
@@ -56,6 +64,7 @@ export default function PublicVoiceLive({
   };
 
   const stopMic = useCallback(() => {
+    void stopPublicVoiceRtc();
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     setTalking(false);
@@ -75,6 +84,8 @@ export default function PublicVoiceLive({
       streamRef.current = stream;
       setTalking(true);
       setLeftMs(TALK_MS);
+      const ids = peersRef.current.map(p => p.id);
+      await startPublicVoiceRtc({ roomId: ROOM, userId, stream, peerIds: ids });
       await fetch('/api/room/floor', {
         method: 'POST',
         credentials: 'include',
@@ -140,17 +151,17 @@ export default function PublicVoiceLive({
         if (!r.ok || stop) return;
         const d = await r.json();
         const members = (d.members || d.users || []) as any[];
-        setPeers(
-          members
-            .map(m => ({
-              id: String(m.id || m.userId || ''),
-              name: String(m.name || m.username || 'User'),
-              username: m.username ?? null,
-              avatarUrl: m.avatarUrl ?? m.image ?? null,
-              talking: !!(m.talking || m.floor),
-            }))
-            .filter(p => p.id),
-        );
+        const nextPeers = members
+          .map(m => ({
+            id: String(m.id || m.userId || ''),
+            name: String(m.name || m.username || 'User'),
+            username: m.username ?? null,
+            avatarUrl: m.avatarUrl ?? m.image ?? null,
+            talking: !!(m.talking || m.floor),
+          }))
+          .filter(p => p.id);
+        peersRef.current = nextPeers;
+        setPeers(nextPeers);
       } catch {
         /* optional */
       }
@@ -163,6 +174,10 @@ export default function PublicVoiceLive({
           const msg = raw?.data || raw;
           const at = Number(raw.at || msg.at || Date.now());
           if (at > sinceRef.current) sinceRef.current = at;
+          if (msg?.t === 'webrtc') {
+            void handlePublicVoiceSignal(msg);
+            continue;
+          }
           if (msg?.t !== 'chat' || !msg.text) continue;
           setChatMsgs(prev => {
             if (prev.some(x => x.id === String(msg.id))) return prev;
@@ -200,8 +215,10 @@ export default function PublicVoiceLive({
     if (id === me.id) return;
     setMutedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      const on = !next.has(id);
+      if (on) next.add(id);
+      else next.delete(id);
+      setPublicVoiceMute(id, on);
       return next;
     });
   }
@@ -411,7 +428,11 @@ export default function PublicVoiceLive({
 
         <button
           type="button"
-          onClick={() => setSpeakerMuted(v => !v)}
+          onClick={() => setSpeakerMuted(v => {
+            const next = !v;
+            setPublicVoiceSpeaker(next);
+            return next;
+          })}
           style={{
             height: 28, padding: '0 8px', borderRadius: 10,
             border: speakerMuted ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(0,188,212,0.28)',
