@@ -610,8 +610,8 @@ export default function LivePage() {
         if (activeHost) {
           localStorage.removeItem(`stooorna_live_active_${activeHost}`);
         }
-        localStorage.removeItem( + current_key + r);
-        window.dispatchEvent(new CustomEvent( + event_name + r, { detail: { hostId: activeHost, active: false } }));
+        localStorage.removeItem('stooorna_live_active_current');
+        window.dispatchEvent(new CustomEvent('stooorna:live-active', { detail: { hostId: activeHost, active: false } }));
       } catch { /* ignore */ }
     }
 

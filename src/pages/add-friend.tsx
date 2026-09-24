@@ -8649,99 +8649,6 @@ function notifyIncomingCallSystem(callerLabel: string) {
   } catch {}
 }
 
-// الرد على مكالمة واردة من أي مكان بالصفحة — نفس منطق joinRoom بالضبط لكنه يشتغل على
-// نفس الـ refs العامة اللي يستخدمها endActiveCallGlobally/toggleActiveCallMute فوق،
-// بدل ما يحتاج instance من GlobeVoiceControl يكون متركّب بالشاشة عشان يرد.
-async function answerIncomingCallGlobally(myUserId: string, myUserName: string | null) {
-  const { channel, callerLabel, isPrivate, callerId } = incomingCallState;
-  if (!channel) return;
-  // Stop ring immediately and clear invite so pollers cannot restart it
-  suppressIncomingRing(60_000);
-  stopGlobalIncomingRing();
-  setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
-  try {
-    localStorage.removeItem(`stooorna_home_call_invite_${myUserId}`);
-    localStorage.removeItem(`stooorna_vidcall_invite_${myUserId}`);
-  } catch { /* ignore */ }
-  try {
-    void fetch('/api/call/invite', {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clear: true, toUserId: myUserId, userId: myUserId, channel }),
-    });
-  } catch { /* ignore */ }
-  try {
-    window.dispatchEvent(new CustomEvent('stooorna:video-call-ended'));
-  } catch { /* ignore */ }
-  try {
-    const register = await fetch('/api/room/join', {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomId: channel, userId: myUserId, name: myUserName }),
-    });
-    if (!register.ok) throw new Error('Unable to start the voice room.');
-
-    const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
-    const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
-    globeVoiceClientRef.current = client;
-    client.on('user-published', async (remoteUser: IAgoraRTCRemoteUser, mediaType: string) => {
-      if (mediaType !== 'audio') return;
-      try {
-        await client.subscribe(remoteUser, 'audio');
-        remoteUser.audioTrack?.play();
-        setActiveCallState({ answered: true });
-        stopGlobalIncomingRing();
-        try {
-          window.dispatchEvent(new CustomEvent('stooorna:call-answered', { detail: { channel } }));
-          window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
-        } catch { /* ignore */ }
-      } catch (subscribeError) {
-        console.warn('[GlobalIncomingCall] audio subscription skipped', subscribeError);
-      }
-    });
-    client.on('user-joined', () => {
-      setActiveCallState({ answered: true });
-      stopGlobalIncomingRing();
-      try {
-        window.dispatchEvent(new CustomEvent('stooorna:call-answered', { detail: { channel } }));
-        window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
-      } catch { /* ignore */ }
-    });
-    client.on('user-unpublished', (remoteUser: IAgoraRTCRemoteUser) => remoteUser.audioTrack?.stop());
-    client.on('user-left', (remoteUser: IAgoraRTCRemoteUser) => remoteUser.audioTrack?.stop());
-
-    const tokenResponse = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(myUserId)}`, { credentials: 'include' });
-    if (!tokenResponse.ok) throw new Error('Voice connection is unavailable.');
-    const tokenData = await tokenResponse.json() as { token: string; uid: number };
-    await client.join(AGORA_APP_ID, channel, tokenData.token, tokenData.uid);
-
-    globeVoiceJoinedRef.current = true;
-    setActiveCallState({ joined: true, answered: false, muted: false, channel, userId: myUserId, isPrivate, peerLabel: callerLabel });
-    try {
-      window.dispatchEvent(new CustomEvent('stooorna:call-answered', { detail: { channel } }));
-      window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
-    } catch { /* ignore */ }
-
-    const micTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' });
-    globeVoiceMicTrackRef.current = micTrack;
-    await client.publish([micTrack]);
-
-    await Promise.all(client.remoteUsers.map(async (remoteUser) => {
-      if (!remoteUser.hasAudio) return;
-      try { await client.subscribe(remoteUser, 'audio'); remoteUser.audioTrack?.play(); } catch (subscribeError) {
-        console.warn('[GlobalIncomingCall] existing audio subscription skipped', subscribeError);
-      }
-    }));
-
-    try { navigator.vibrate?.(35); } catch {}
-  } catch (answerError) {
-    console.error('[GlobalIncomingCall] answer error', answerError);
-    // فشل الرد — نرجّع حالة الاتصال النشط لصفرها عشان زر "إنهاء" ما يعلق ظاهر على مكالمة فاضية
-    globeVoiceJoinedRef.current = false;
-    setActiveCallState({ joined: false, answered: false, muted: false, channel: null, userId: null, peerLabel: null });
-  }
-}
-
-// بانر المكالمة الواردة — نفس شكل ومكان GlobalCallBanner بالضبط (نفس المستطيل)، لكن
-// بالأخضر وبدون زر إنهاء: بس "رد" + "ميوت". يظهر فقط إذا كان في رنين ولسا ما دخلت مكالمة.
 /** Decline / ignore an incoming call without joining. Stops ring on this device and clears invite. */
 async function declineIncomingCallGlobally(myUserId: string | null) {
   const { channel } = incomingCallState;
@@ -8767,99 +8674,6 @@ async function declineIncomingCallGlobally(myUserId: string | null) {
     window.dispatchEvent(new CustomEvent('stooorna:video-call-ended'));
     window.dispatchEvent(new CustomEvent('stooorna:call-declined', { detail: { channel } }));
   } catch { /* ignore */ }
-}
-
-function GlobalIncomingCallBanner({ myUserId, myUserName }: { myUserId: string | null; myUserName: string | null }) {
-  const incoming = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
-  useEffect(() => {
-    const onAnswer = () => {
-      if (!myUserId) return;
-      if (!incomingCallState.ringing && !incomingCallState.channel) return;
-      void answerIncomingCallGlobally(myUserId, myUserName);
-    };
-    window.addEventListener('stooorna:answer-home-incoming', onAnswer);
-    return () => window.removeEventListener('stooorna:answer-home-incoming', onAnswer);
-  }, [myUserId, myUserName]);
-  const activeState = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
-  // Disabled: only the WhatsApp-style heads-up banner in RootLayout should show for incoming calls.
-  const visible = false && incoming.ringing && !activeState.joined && !!myUserId;
-  void activeState;
-  return (
-    <AnimatePresence>
-      {visible && (
-        // Rises up into view from below the screen edge (rather than just fading in),
-        // so it reads as the call surfacing to meet the answer icon, not just appearing.
-        <motion.div
-          key="incoming-call-banner"
-          initial={{ opacity: 0, x: '-50%', y: 56, scale: 0.9 }}
-          animate={{ opacity: 1, x: '-50%', y: 0, scale: 1 }}
-          exit={{ opacity: 0, x: '-50%', y: 40, scale: 0.92 }}
-          transition={{ type: 'spring', stiffness: 420, damping: 24 }}
-          style={{
-            position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 8px)', left: '50%',
-            zIndex: 10500, padding: 2, borderRadius: 999,
-          }}
-        >
-          <style>{`
-            @keyframes incomingCallBorderSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-            @keyframes incomingCallAnswerPulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34,197,94,0.55); } 50% { transform: scale(1.14); box-shadow: 0 0 0 9px rgba(34,197,94,0); } }
-            @keyframes incomingCallAnswerShake { 0%, 100% { transform: rotate(0deg); } 20% { transform: rotate(-16deg); } 40% { transform: rotate(14deg); } 60% { transform: rotate(-9deg); } 80% { transform: rotate(7deg); } }
-          `}</style>
-          {/* Red light chasing around the frame — the visual cue that this box is an
-              incoming call, separate from the steady green "already in a call" banner. */}
-          <div aria-hidden="true" style={{
-            position: 'absolute', inset: 0, borderRadius: 999,
-            background: 'conic-gradient(from 0deg, transparent 0%, #ef4444 12%, transparent 30%)',
-            animation: 'incomingCallBorderSpin 1.6s linear infinite',
-          }} />
-          <div style={{
-            position: 'relative', display: 'flex', alignItems: 'center', gap: 10,
-            background: 'rgba(10,26,26,0.96)', borderRadius: 999, padding: '6px 8px 6px 12px',
-            boxShadow: '0 4px 18px rgba(239,68,68,0.3)', backdropFilter: 'blur(6px)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 16 }} aria-hidden="true">
-              {[0, 1, 2, 3, 4].map(i => (
-                <span key={i} style={{
-                  width: 3, height: '100%', borderRadius: 2, background: '#22c55e',
-                  transformOrigin: 'center',
-                  animation: `globeVoiceWave 0.6s ease-in-out ${i * 0.09}s infinite alternate`,
-                }} />
-              ))}
-            </div>
-            <span style={{ color: '#fff', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-              {incoming.callerLabel || 'مكالمة واردة'}
-            </span>
-            <button
-              onClick={() => { void answerIncomingCallGlobally(myUserId as string, myUserName); }}
-              aria-label="رد"
-              title="رد"
-              style={{
-                width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
-                background: '#22c55e', color: '#06171a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                animation: 'incomingCallAnswerPulse 1.1s ease-in-out infinite',
-              }}
-            >
-              <span style={{ display: 'flex', animation: 'incomingCallAnswerShake 1.1s ease-in-out infinite' }}>
-                <Phone size={13} strokeWidth={2.6} />
-              </span>
-            </button>
-            <button
-              onClick={() => setIncomingCallState({ ringSilenced: !incoming.ringSilenced })}
-              aria-label={incoming.ringSilenced ? 'إلغاء الميوت' : 'ميوت الرنة'}
-              title={incoming.ringSilenced ? 'إلغاء الميوت' : 'ميوت الرنة'}
-              style={{
-                width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
-                background: incoming.ringSilenced ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.1)',
-                color: incoming.ringSilenced ? '#22c55e' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}
-            >
-              {incoming.ringSilenced ? <MicOff size={13} strokeWidth={2.3} /> : <Mic size={13} strokeWidth={2.3} />}
-            </button>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
 }
 
 // الراصد العام للمكالمات الواردة — مكوّن غير مرئي (يرجّع null دايمًا)، يتركّب مرة وحدة
@@ -9353,7 +9167,9 @@ function FriendVideoCallStage({
       zIndex: minimized ? 1 : 12000,
       background: '#111',
       color: '#fff',
+      animation: minimized ? undefined : 'stooornaVideoStageRise 0.32s cubic-bezier(0.32, 0.72, 0, 1)',
     }}>
+      <style>{`@keyframes stooornaVideoStageRise { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
       <div ref={remoteElRef} style={{ position: 'absolute', inset: 0, background: '#1a1a1a' }} />
       {!connected && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, pointerEvents: 'none' }}>
@@ -9516,8 +9332,6 @@ function FriendVideoCallController({
   const [session, setSession] = useState<FriendVideoCallSession | null>(null);
   const [incoming, setIncoming] = useState<FriendVideoCallSession | null>(null);
   const [minimized, setMinimized] = useState(false);
-  const [confirmAnswer, setConfirmAnswer] = useState(false);
-  const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
     setVideoIncomingSnap(incoming);
@@ -9588,35 +9402,11 @@ function FriendVideoCallController({
     };
     const onMinimize = () => setMinimized(true);
     const onRestore = () => setMinimized(false);
-    const onPrompt = () => {
-      const inv = incoming || getVideoIncomingSnap();
-      if (!inv) return;
-      // Answer immediately — no confirm dialog
-      suppressIncomingRing(60_000);
-      stopGlobalIncomingRing();
-      setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
-      try {
-        window.dispatchEvent(new CustomEvent('stooorna:call-answered', { detail: { channel: inv.channel } }));
-        window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
-      } catch { /* ignore */ }
-      try {
-        if (userId) {
-          localStorage.removeItem(`stooorna_home_call_invite_${userId}`);
-          localStorage.removeItem(`stooorna_vidcall_invite_${userId}`);
-          void fetch('/api/call/invite', {
-            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ clear: true, toUserId: userId, userId, channel: inv.channel }),
-          });
-        }
-      } catch { /* ignore */ }
-      setConfirmAnswer(false);
-      setIncoming(null);
-      setVideoIncomingSnap(null);
-      setConnecting(false);
-      setSession(inv);
-    };
+    // The call was answered or declined from the shared call sheet: drop the pending invite here too
+    const onHandled = () => { setIncoming(null); };
+    window.addEventListener('stooorna:call-answered', onHandled);
+    window.addEventListener('stooorna:call-declined', onHandled);
     window.addEventListener('stooorna:start-video-call', onStart);
-    window.addEventListener('stooorna:video-call-prompt-answer', onPrompt);
     window.addEventListener('stooorna:video-call-invite', onInvite);
     window.addEventListener('stooorna:video-call-ended', onEnded);
     window.addEventListener('stooorna:video-call-minimize', onMinimize);
@@ -9677,7 +9467,8 @@ function FriendVideoCallController({
     }, 1500);
     return () => {
       window.removeEventListener('stooorna:start-video-call', onStart);
-      window.removeEventListener('stooorna:video-call-prompt-answer', onPrompt);
+      window.removeEventListener('stooorna:call-answered', onHandled);
+      window.removeEventListener('stooorna:call-declined', onHandled);
       window.removeEventListener('stooorna:video-call-invite', onInvite);
       window.removeEventListener('stooorna:video-call-ended', onEnded);
       window.removeEventListener('stooorna:video-call-minimize', onMinimize);
@@ -9689,111 +9480,6 @@ function FriendVideoCallController({
   if (!userId) return null;
   return (
     <>
-      <style>{`
-        @keyframes stooornaVidShake {
-          0% { transform: rotate(0deg) scale(1); }
-          20% { transform: rotate(-14deg) scale(1.08); }
-          40% { transform: rotate(12deg) scale(1.08); }
-          60% { transform: rotate(-10deg) scale(1.05); }
-          80% { transform: rotate(8deg) scale(1.05); }
-          100% { transform: rotate(0deg) scale(1); }
-        }
-        @keyframes stooornaVidPulse {
-          0% { transform: scale(1); opacity: 0.55; }
-          70% { transform: scale(1.55); opacity: 0; }
-          100% { transform: scale(1.55); opacity: 0; }
-        }
-        @keyframes stooornaVidRing {
-          0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.45); }
-          70% { box-shadow: 0 0 0 16px rgba(34,197,94,0); }
-          100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
-        }
-      `}</style>
-      {incoming && !session && !connecting && createPortal(
-        <button
-          type="button"
-          aria-label="Incoming video call"
-          onClick={() => {
-            window.dispatchEvent(new CustomEvent('stooorna:video-call-prompt-answer'));
-          }}
-          style={{
-            position: 'fixed',
-            top: 'max(10px, env(safe-area-inset-top))',
-            right: 14,
-            zIndex: 11940,
-            width: 46,
-            height: 46,
-            borderRadius: '50%',
-            border: '2px solid #22c55e',
-            background: 'rgba(8,20,12,0.92)',
-            color: '#22c55e',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            animation: 'stooornaVidShake 0.55s ease-in-out infinite, stooornaVidRing 1.2s ease-out infinite',
-          }}
-        >
-          <Video size={22} color="#22c55e" />
-        </button>,
-        document.body
-      )}
-      {false && incoming && confirmAnswer && !connecting && !session && createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 11960, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: 'min(360px, 92vw)', background: '#0d1a1c', border: '1px solid rgba(34,197,94,0.35)', borderRadius: 20, padding: 22, textAlign: 'center' }}>
-            <p style={{ margin: '0 0 8px', color: '#22c55e', fontWeight: 800, fontSize: '1rem' }}>Incoming video call</p>
-            <p style={{ margin: '0 0 16px', color: 'rgba(220,240,240,0.88)', fontSize: '0.9rem' }}>
-              Are you sure you want to answer {incoming.peerName || 'this call'}?
-            </p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" onClick={() => {
-                setConfirmAnswer(false);
-                setIncoming(null);
-                setVideoIncomingSnap(null);
-                clearVideoCallInvite(userId);
-              }} style={{ flex: 1, padding: 12, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>Cancel</button>
-              <button type="button" onClick={() => {
-                setConfirmAnswer(false);
-                setConnecting(true);
-                // Stop all ringing immediately on answer
-                suppressIncomingRing(60_000);
-                stopGlobalIncomingRing();
-                setIncomingCallState({ ringing: false, channel: null, callerId: null, callerLabel: null, ringSilenced: false });
-                try {
-                  if (userId) {
-                    localStorage.removeItem(`stooorna_home_call_invite_${userId}`);
-                    localStorage.removeItem(`stooorna_vidcall_invite_${userId}`);
-                    void fetch('/api/call/invite', {
-                      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ clear: true, toUserId: userId, userId, channel: incoming?.channel }),
-                    });
-                  }
-                } catch { /* ignore */ }
-                const accepted = incoming;
-                setIncoming(null);
-                setVideoIncomingSnap(null);
-                window.setTimeout(() => {
-                  if (accepted) setSession(accepted);
-                  setConnecting(false);
-                }, 3000);
-              }} style={{ flex: 1, padding: 12, borderRadius: 12, border: 'none', background: '#22c55e', color: '#041018', fontWeight: 800, cursor: 'pointer' }}>Answer</button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-      {connecting && createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 11970, background: '#0a0a0a', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18 }}>
-          <div style={{ position: 'relative', width: 140, height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(34,197,94,0.35)', animation: 'stooornaVidPulse 1.4s ease-out infinite' }} />
-            <div style={{ position: 'absolute', inset: 12, borderRadius: '50%', border: '2px solid rgba(0,188,212,0.35)', animation: 'stooornaVidPulse 1.4s ease-out 0.35s infinite' }} />
-            <UserAvatar name={incoming?.peerName || session?.peerName || '?'} avatarUrl={incoming?.peerAvatar || session?.peerAvatar || null} size={88} />
-          </div>
-          <p style={{ margin: 0, fontWeight: 800, fontSize: '1.05rem' }}>{incoming?.peerName || session?.peerName || 'Friend'}</p>
-          <p style={{ margin: 0, color: '#22c55e', fontWeight: 700 }}>Connecting…</p>
-        </div>,
-        document.body
-      )}
       {session && (
         <FriendVideoCallStage
           userId={userId}
@@ -16132,7 +15818,6 @@ export default function AddFriendPage() {
 
   return <>
       <GlobalCallBanner />
-      <GlobalIncomingCallBanner myUserId={user?.id ?? null} myUserName={user?.name ?? user?.email ?? null} />
       <GlobalIncomingCallWatcher myUserId={user?.id ?? null} myUserName={user?.name ?? user?.email ?? null} />
       <FriendVideoCallController userId={user?.id ?? null} userName={user?.name ?? user?.email ?? null} />
       <GlobalMessageAlertWatcher myUserId={user?.id ?? null} />
@@ -20634,18 +20319,6 @@ export default function AddFriendPage() {
                         )}
                         {user && (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, position: 'relative' }}>
-                            {incomingCallUi.ringing && (
-                              <span style={{
-                                position: 'absolute', right: 50, top: '50%', transform: 'translateY(-50%)',
-                                maxWidth: 140, padding: '6px 8px', borderRadius: 10,
-                                background: 'rgba(6,20,22,0.96)', border: '1px solid rgba(34,197,94,0.45)',
-                                color: 'rgba(200,230,230,0.92)', fontSize: '0.62rem', fontWeight: 700,
-                                lineHeight: 1.35, textAlign: 'center', pointerEvents: 'none',
-                                boxShadow: '0 4px 14px rgba(0,0,0,0.4)', whiteSpace: 'normal',
-                              }}>
-                                Tap to answer. Long-press to ignore.
-                              </span>
-                            )}
                             <button
                               type="button"
                               onPointerDown={() => {
@@ -20655,6 +20328,7 @@ export default function AddFriendPage() {
                                 plusCallPressRef.current.timer = setTimeout(() => {
                                   plusCallPressRef.current.long = true;
                                   void declineIncomingCallGlobally(user?.id ?? null);
+                                  try { window.dispatchEvent(new CustomEvent('stooorna:decline-home-incoming')); } catch { /* ignore */ }
                                   setTextPostsPlusOpen(false);
                                 }, 550);
                               }}
@@ -20677,7 +20351,15 @@ export default function AddFriendPage() {
                                 }
                                 if (incomingCallUi.ringing) {
                                   setTextPostsPlusOpen(false);
-                                  void answerIncomingCallGlobally(user.id, user.name ?? (user as any).username ?? null);
+                                  try {
+                                    window.dispatchEvent(new CustomEvent('stooorna:answer-home-incoming', {
+                                      detail: {
+                                        channel: incomingCallUi.channel,
+                                        hostId: incomingCallUi.callerId,
+                                        hostName: incomingCallUi.callerLabel,
+                                      },
+                                    }));
+                                  } catch { /* ignore */ }
                                   return;
                                 }
                                 setTextPostsPlusOpen(false);
@@ -20688,7 +20370,6 @@ export default function AddFriendPage() {
                                 } catch { /* */ }
                               }}
                               aria-label={incomingCallUi.ringing ? 'Answer call' : 'Call'}
-                              title={incomingCallUi.ringing ? 'Tap to answer · Long-press to ignore' : 'Call'}
                               style={{
                                 width: 44, height: 44, borderRadius: '50%',
                                 border: incomingCallUi.ringing ? '1.5px solid #22c55e' : '1px solid rgba(0,188,212,0.4)',

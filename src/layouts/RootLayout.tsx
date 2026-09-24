@@ -1646,13 +1646,43 @@ function GlobalBottomNavigation() {
     };
   }, [user?.id, homeCallPhase, homeIncoming]);
 
-  // Answer from chat header Phone / Video when already ringing
+  // Answer from any screen (chat header Phone / Video, plus menu on other pages) when ringing
   useEffect(() => {
-    const onAnswer = () => {
-      if (homeIncoming && homeCallPhase === 'idle') void answerHomeIncoming();
+    const onAnswer = (e: Event) => {
+      if (homeCallPhase !== 'idle') return;
+      if (homeIncoming) {
+        void answerHomeIncoming();
+        return;
+      }
+      const d = (e as CustomEvent).detail as {
+        channel?: string | null;
+        hostId?: string | null;
+        hostName?: string | null;
+        hostAvatar?: string | null;
+        video?: boolean;
+      } | undefined;
+      if (d?.channel) {
+        void answerHomeIncoming({
+          channel: String(d.channel),
+          hostId: String(d.hostId || ''),
+          hostName: d.hostName ?? null,
+          hostAvatar: d.hostAvatar ?? null,
+          members: [],
+          video: !!d.video,
+        });
+      }
     };
     window.addEventListener('stooorna:answer-home-incoming', onAnswer);
     return () => window.removeEventListener('stooorna:answer-home-incoming', onAnswer);
+  }, [homeIncoming, homeCallPhase]);
+
+  // Decline from another screen (long-press on the phone icon in its plus menu)
+  useEffect(() => {
+    const onDecline = () => {
+      if (homeIncoming && homeCallPhase === 'idle') ignoreHomeIncoming();
+    };
+    window.addEventListener('stooorna:decline-home-incoming', onDecline);
+    return () => window.removeEventListener('stooorna:decline-home-incoming', onDecline);
   }, [homeIncoming, homeCallPhase]);
 
   // Bridge so other screens can open this call sheet.
@@ -2570,9 +2600,9 @@ function GlobalBottomNavigation() {
     } catch { /* */ }
   }
 
-  async function answerHomeIncoming() {
-    if (!user?.id || !homeIncoming) return;
-    const invite = homeIncoming;
+  async function answerHomeIncoming(inviteOverride?: NonNullable<typeof homeIncoming>) {
+    const invite = inviteOverride ?? homeIncoming;
+    if (!user?.id || !invite) return;
     // Stop ring immediately on BOTH devices before any async work
     stopHomeIncomingRing();
     homeRingLockRef.current = { mode: 'answered', channel: invite.channel, at: Date.now() };
@@ -3499,36 +3529,25 @@ function GlobalBottomNavigation() {
   // No top banner and no full-screen ring/answer layer.
   const homeIncomingOverlay = null;
 
+  // The call sheet is shown from the very first moment of a call (outgoing or answered)
+  // and rises from the bottom of the screen, like WhatsApp. No intermediate screens.
+  const homeCallSheetShown = homeCallPhase === 'animating' || homeCallPhase === 'connecting' || homeCallPhase === 'live';
+
   const homeCallOverlay = (homeCallPickerOpen || homeCallPhase !== 'idle') ? (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 10950,
       background: homeCallMinimized
         ? 'transparent'
-        : homeCallPhase === 'animating'
-        ? 'radial-gradient(ellipse 60% 50% at 50% 80%, rgba(0,188,212,0.35), rgba(6,14,14,0.92) 70%)'
-        : (homeCallPhase === 'connecting' || homeCallPhase === 'live')
+        : homeCallSheetShown
           ? 'rgba(0,0,0,0.45)'
           : 'rgba(6,10,12,0.55)',
       display: 'flex', flexDirection: 'column',
       justifyContent: 'flex-end',
-      animation: homeCallPhase === 'animating'
-        ? 'stooornaHomeCallIn 0.9s ease-out'
-        : (homeCallPhase === 'connecting' || homeCallPhase === 'live') && !homeCallMinimized
-          ? 'stooornaHomeCallSheet 0.32s cubic-bezier(0.32, 0.72, 0, 1)'
-          : undefined,
+      animation: homeCallSheetShown && !homeCallMinimized
+        ? 'stooornaHomeCallSheet 0.32s cubic-bezier(0.32, 0.72, 0, 1)'
+        : undefined,
       pointerEvents: homeCallMinimized ? 'none' : 'auto',
     }}>
-      {homeCallPhase === 'animating' && (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14 }}>
-          <div style={{
-            width: 88, height: 88, borderRadius: '50%',
-            border: '3px solid #00BCD4',
-            boxShadow: '0 0 28px rgba(0,188,212,0.55)',
-            animation: 'stooornaFeedOrbit 1.1s linear infinite',
-          }} />
-          <p style={{ color: '#00BCD4', fontWeight: 800, margin: 0 }}>Connecting…</p>
-        </div>
-      )}
 
       {homeCallPickerOpen && homeCallPhase === 'idle' && (
         <div
@@ -3624,7 +3643,7 @@ function GlobalBottomNavigation() {
       )}
 
 
-      {(homeCallPhase === 'connecting' || homeCallPhase === 'live') && !homeCallMinimized && (
+      {homeCallSheetShown && !homeCallMinimized && (
         <div style={{
           width: '100%',
           height: '100%',
@@ -4174,36 +4193,6 @@ function GlobalBottomNavigation() {
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}>
-                  {homeIncoming && homeCallPhase === 'idle' && (
-                    <div
-                      aria-hidden
-                      style={{
-                        position: 'absolute',
-                        right: 52,
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        width: 'max-content',
-                        maxWidth: 168,
-                        background: 'rgba(6,14,14,0.96)',
-                        color: '#fff',
-                        border: '1px solid rgba(34,197,94,0.55)',
-                        borderRadius: 12,
-                        padding: '8px 10px',
-                        fontSize: 11,
-                        fontWeight: 700,
-                        textAlign: 'left',
-                        lineHeight: 1.4,
-                        boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
-                        pointerEvents: 'none',
-                        zIndex: 10230,
-                      }}
-                    >
-                      <div style={{ color: '#86efac' }}>Tap to answer</div>
-                      <div style={{ color: 'rgba(200,230,210,0.95)', fontWeight: 600, marginTop: 3 }}>
-                        Long-press to decline
-                      </div>
-                    </div>
-                  )}
                   <button
                     type="button"
                     onClick={(e) => {
