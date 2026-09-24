@@ -5,16 +5,11 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import {
-  POST_PREVIEW_LINES,
-  postNeedsMore,
-  postPreviewText,
-} from '@/lib/postStoryPatch';
+import { POST_PREVIEW_LINES, postNeedsMore, postPreviewText } from '@/lib/postStoryPatch';
 
 type Props = {
   text: string | null | undefined;
   maxLines?: number;
-  /** Color of collapsed body text */
   color?: string;
   className?: string;
   style?: React.CSSProperties;
@@ -95,9 +90,7 @@ export default function PostTextMore({
                 background: '#fff',
               }}
             >
-              <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: 800, fontSize: '1.05rem' }}>
-                Post
-              </p>
+              <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: 800, fontSize: '1.05rem' }}>Post</p>
               <button
                 type="button"
                 onClick={() => setOpen(false)}

@@ -13,8 +13,6 @@ export const POST_TEXT_MAX_CHARS = 50_000;
 export const UPLOAD_MAX_ATTEMPTS = 4;
 export const UPLOAD_TIMEOUT_MS = 120_000;
 
-// ── Text helpers ──────────────────────────────────────────────────────────────
-
 export function splitPostLines(text: string | null | undefined): string[] {
   if (!text) return [];
   return String(text).replace(/\r\n/g, '\n').split('\n');
@@ -23,22 +21,14 @@ export function splitPostLines(text: string | null | undefined): string[] {
 export function postNeedsMore(text: string | null | undefined, maxLines = POST_PREVIEW_LINES): boolean {
   const lines = splitPostLines(text);
   if (lines.length > maxLines) return true;
-  // also treat very long single-line walls as expandable
   return String(text || '').length > maxLines * 80;
 }
-// or: import { useInstantStoryDelete } from '@/hooks/useInstantStoryDelete';
-
-await deleteStoryInstant(storyId, {
-  onOptimistic: (id) => setStories(s => s.filter(x => String(x.id) !== id)),
-});
 
 export function postPreviewText(text: string | null | undefined, maxLines = POST_PREVIEW_LINES): string {
   const lines = splitPostLines(text);
   if (lines.length <= maxLines) return String(text || '');
   return lines.slice(0, maxLines).join('\n');
 }
-
-// ── Media upload (image / video) ───────────────────────────────────────────────
 
 export type UploadResult = {
   ok: boolean;
@@ -65,6 +55,8 @@ function pickUrl(data: any): string | undefined {
     data?.status?.mediaUrl ||
     data?.item?.mediaUrl ||
     data?.post?.mediaUrl ||
+    data?.post?.imageUrl ||
+    data?.post?.videoUrl ||
     (Array.isArray(data.mediaUrls) ? data.mediaUrls[0] : undefined) ||
     undefined
   );
@@ -86,10 +78,11 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/**
- * Upload one image or video for a feed post. Tries several endpoints and field names.
- * Fast retries with backoff. Returns the public media URL when possible.
- */
+function guessKind(file: File | Blob, forced?: 'image' | 'video' | 'auto'): 'image' | 'video' {
+  if (forced === 'image' || forced === 'video') return forced;
+  return (file.type || '').startsWith('video') ? 'video' : 'image';
+}
+
 export async function uploadPostMedia(
   file: File | Blob,
   opts?: {
@@ -98,22 +91,12 @@ export async function uploadPostMedia(
     onProgress?: (pct: number) => void;
   },
 ): Promise<UploadResult> {
-  const kind =
-    opts?.kind === 'image' || opts?.kind === 'video'
-      ? opts.kind
-      : (file.type || '').startsWith('video')
-        ? 'video'
-        : 'image';
+  const kind = guessKind(file, opts?.kind);
   const name =
     opts?.fileName ||
     (file instanceof File ? file.name : kind === 'video' ? `post-${Date.now()}.mp4` : `post-${Date.now()}.jpg`);
 
-  const endpoints = [
-    '/api/posts/media',
-    '/api/upload',
-    '/api/media/upload',
-    '/api/posts/upload',
-  ];
+  const endpoints = ['/api/posts/media', '/api/upload', '/api/media/upload', '/api/posts/upload'];
   const fieldNames = ['file', 'media', 'image', 'video', 'upload'];
 
   let lastError = 'upload failed';
@@ -124,7 +107,7 @@ export async function uploadPostMedia(
           opts?.onProgress?.(5 + attempt * 15);
           const form = new FormData();
           form.append(field, file, name);
-          form.append('file', file, name);
+          if (field !== 'file') form.append('file', file, name);
           form.append('type', kind);
           form.append('mediaType', kind);
 
@@ -147,14 +130,13 @@ export async function uploadPostMedia(
             return {
               ok: true,
               url,
-              urls: Array.isArray(data.mediaUrls) ? data.mediaUrls : url ? [url] : [],
+              urls: Array.isArray((data as any).mediaUrls) ? (data as any).mediaUrls : [url],
               type: kind,
-              postId: data.postId ?? data.id,
+              postId: (data as any).postId ?? (data as any).id,
               raw: data,
             };
           }
-          // some APIs return ok without url when they attach to a draft
-          if (data.ok || data.success) {
+          if ((data as any).ok || (data as any).success) {
             opts?.onProgress?.(100);
             return { ok: true, url: undefined, type: kind, raw: data };
           }
@@ -168,9 +150,6 @@ export async function uploadPostMedia(
   return { ok: false, error: lastError };
 }
 
-/**
- * Create / publish a text or media post. Prefer sending media URLs already uploaded.
- */
 export async function publishFeedPost(input: {
   text?: string;
   mediaUrls?: string[];
@@ -207,6 +186,12 @@ export async function publishFeedPost(input: {
       mediaUrls,
       type: mediaTypes[0] || 'text',
     },
+    {
+      text,
+      imageUrl: mediaTypes[0] === 'image' ? mediaUrls[0] : undefined,
+      videoUrl: mediaTypes[0] === 'video' ? mediaUrls[0] : undefined,
+      mediaType: mediaTypes[0] || (text ? 'text' : undefined),
+    },
   ];
 
   const endpoints = ['/api/posts', '/api/posts/create', '/api/feed/posts'];
@@ -231,7 +216,7 @@ export async function publishFeedPost(input: {
         const data = await res.json().catch(() => ({}));
         return {
           ok: true,
-          postId: data.id ?? data.postId ?? data?.post?.id,
+          postId: (data as any).id ?? (data as any).postId ?? (data as any)?.post?.id,
           url: pickUrl(data),
           urls: mediaUrls,
           raw: data,
@@ -242,7 +227,6 @@ export async function publishFeedPost(input: {
     }
   }
 
-  // Multipart fallback (some hosts only accept FormData)
   try {
     const form = new FormData();
     form.append('text', text);
@@ -259,7 +243,7 @@ export async function publishFeedPost(input: {
     });
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
-      return { ok: true, postId: data.id ?? data.postId, raw: data, urls: mediaUrls };
+      return { ok: true, postId: (data as any).id ?? (data as any).postId, raw: data, urls: mediaUrls };
     }
     lastError = `multipart ${res.status}`;
   } catch (e: any) {
@@ -269,9 +253,6 @@ export async function publishFeedPost(input: {
   return { ok: false, error: lastError };
 }
 
-/**
- * Story camera / status publish — media first, then attach metadata.
- */
 export async function publishStoryMedia(
   file: File | Blob,
   meta?: {
@@ -279,9 +260,7 @@ export async function publishStoryMedia(
     type?: 'image' | 'video';
   },
 ): Promise<UploadResult> {
-  const type =
-    meta?.type ||
-    ((file.type || '').startsWith('video') ? 'video' : 'image');
+  const type = meta?.type || guessKind(file);
   const name =
     file instanceof File
       ? file.name
@@ -289,12 +268,7 @@ export async function publishStoryMedia(
         ? `story-${Date.now()}.webm`
         : `story-${Date.now()}.jpg`;
 
-  const endpoints = [
-    '/api/stories',
-    '/api/status',
-    '/api/stories/upload',
-    '/api/status/upload',
-  ];
+  const endpoints = ['/api/stories', '/api/status', '/api/stories/upload', '/api/status/upload'];
 
   let lastError = 'story publish failed';
   for (let attempt = 0; attempt < UPLOAD_MAX_ATTEMPTS; attempt++) {
@@ -325,7 +299,7 @@ export async function publishStoryMedia(
           ok: true,
           url,
           type,
-          statusId: data.id ?? data.statusId ?? data?.status?.id,
+          statusId: (data as any).id ?? (data as any).statusId ?? (data as any)?.status?.id,
           raw: data,
         };
       } catch (e: any) {
@@ -337,8 +311,6 @@ export async function publishStoryMedia(
   return { ok: false, error: lastError };
 }
 
-// ── Story delete (instant) ────────────────────────────────────────────────────
-
 function purgeStoryLocalCaches(storyId: string | number) {
   const id = String(storyId);
   try {
@@ -346,12 +318,7 @@ function purgeStoryLocalCaches(storyId: string | number) {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (!k) continue;
-      if (
-        k.includes('story') ||
-        k.includes('status') ||
-        k.includes('stooorna_story') ||
-        k.includes('stooorna_status')
-      ) {
+      if (k.includes('story') || k.includes('status') || k.includes('stooorna_story') || k.includes('stooorna_status')) {
         keys.push(k);
       }
     }
@@ -359,13 +326,10 @@ function purgeStoryLocalCaches(storyId: string | number) {
       try {
         const raw = localStorage.getItem(k);
         if (!raw || !raw.includes(id)) continue;
-        // If array of items, filter out this id
         try {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
-            const next = parsed.filter(
-              (x: any) => String(x?.id ?? x?.statusId ?? x?.storyId ?? '') !== id,
-            );
+            const next = parsed.filter((x: any) => String(x?.id ?? x?.statusId ?? x?.storyId ?? '') !== id);
             localStorage.setItem(k, JSON.stringify(next));
           } else if (parsed && typeof parsed === 'object') {
             if (String(parsed.id) === id) localStorage.removeItem(k);
@@ -382,10 +346,6 @@ function purgeStoryLocalCaches(storyId: string | number) {
   }
 }
 
-/**
- * Delete a story/status immediately in the UI, then confirm on the server.
- * Call onDeleted(id) optimistically before await if you hold list state.
- */
 export async function deleteStoryInstant(
   storyId: string | number,
   opts?: { onOptimistic?: (id: string) => void },
@@ -394,9 +354,7 @@ export async function deleteStoryInstant(
   opts?.onOptimistic?.(id);
   purgeStoryLocalCaches(id);
   try {
-    window.dispatchEvent(
-      new CustomEvent('stooorna:story-deleted', { detail: { id } }),
-    );
+    window.dispatchEvent(new CustomEvent('stooorna:story-deleted', { detail: { id } }));
   } catch {
     /* ignore */
   }
@@ -425,7 +383,6 @@ export async function deleteStoryInstant(
       /* try next */
     }
   }
-  // Still treat as ok for UI — item already removed locally
   return { ok: true };
 }
 

@@ -4,9 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { deleteStoryInstant } from '@/lib/postStoryPatch';
 
-export function useInstantStoryDelete<T extends { id: string | number }>(
-  initial: T[] = [],
-) {
+export function useInstantStoryDelete<T extends { id: string | number }>(initial: T[] = []) {
   const [items, setItems] = useState<T[]>(initial);
 
   useEffect(() => {
