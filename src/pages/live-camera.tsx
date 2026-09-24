@@ -128,6 +128,7 @@ export default function LiveCameraPage() {
   const [liveChatMsgs, setLiveChatMsgs] = useState<LiveChatMsg[]>([]);
   const [liveChatText, setLiveChatText] = useState('');
   const [liveChatOpen, setLiveChatOpen] = useState(true);
+  const [membersSheetOpen, setMembersSheetOpen] = useState(false);
   const [roomEndedOverlay, setRoomEndedOverlay] = useState(false);
   const liveChatEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -1546,23 +1547,27 @@ export default function LiveCameraPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <div
+          <button
+            type="button"
+            onClick={() => setMembersSheetOpen(true)}
+            aria-label="Viewers and members"
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              color: 'rgba(150,200,200,0.7)',
+              color: 'rgba(150,200,200,0.9)',
               fontSize: '0.75rem',
               fontWeight: 700,
               padding: '6px 10px',
               borderRadius: 20,
-              background: 'rgba(0,188,212,0.1)',
-              border: '1px solid rgba(0,188,212,0.25)',
+              background: membersSheetOpen ? 'rgba(0,188,212,0.22)' : 'rgba(0,188,212,0.1)',
+              border: '1px solid rgba(0,188,212,0.35)',
+              cursor: 'pointer',
             }}
           >
             <Users size={14} />
             <span>{members.length}</span>
-          </div>
+          </button>
           <button type="button" onClick={dismissLivePage} aria-label="Leave live"
             style={{
               width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
@@ -1622,7 +1627,12 @@ export default function LiveCameraPage() {
             }}
           >
             <AnimatePresence initial={false}>
-              {members.filter(m => !m.isHost && !m.isMe).map(m => {
+              {members.filter(m => {
+                  const talking = speakingUids.has(m.uid) && !(m.isMe && (micFrozenByHost || !micOn));
+                  const micActive = m.isMe ? (micOn && !micFrozenByHost) : !frozenUids.has(m.uid);
+                  // Side rail: only active speakers (not silent viewers)
+                  return talking || (m.isMe && micActive && speakingUids.has(m.uid));
+                }).map(m => {
                 const talking = speakingUids.has(m.uid) && !(m.isMe && (micFrozenByHost || !micOn));
                 const hostFrozen = frozenUids.has(m.uid);
                 const userMuted = mutedUids.has(m.uid);
@@ -1900,12 +1910,31 @@ export default function LiveCameraPage() {
                 {liveChatMsgs.length === 0 && (
                   <p style={{ margin: 0, color: 'rgba(150,200,200,0.45)', fontSize: '0.68rem' }}>Live chat — say hello</p>
                 )}
-                {liveChatMsgs.map(m => (
-                  <p key={m.id} style={{ margin: 0, fontSize: '0.72rem', lineHeight: 1.35, color: m.isMe ? '#00BCD4' : 'rgba(220,240,240,0.92)' }}>
-                    <span style={{ fontWeight: 800, color: m.isMe ? '#00BCD4' : '#eab308' }}>{m.name}: </span>
-                    {m.text}
-                  </p>
-                ))}
+                {liveChatMsgs.map(m => {
+                  const mem = members.find(x => x.uid === m.uid) || members.find(x => x.userId && m.userId && x.userId === m.userId);
+                  const av = mem?.avatarUrl || null;
+                  const uname = mem?.username ? `@${mem.username}` : m.name;
+                  return (
+                    <div key={m.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <div style={{
+                        width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
+                        background: 'rgba(0,188,212,0.2)', border: '1px solid rgba(0,188,212,0.3)',
+                      }}>
+                        {av ? (
+                          <img src={av} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#00BCD4' }}>
+                            {(m.name || '?')[0]}
+                          </div>
+                        )}
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.72rem', lineHeight: 1.35, color: m.isMe ? '#00BCD4' : 'rgba(220,240,240,0.92)', minWidth: 0 }}>
+                        <span style={{ fontWeight: 800, color: m.isMe ? '#00BCD4' : '#eab308' }}>{uname} </span>
+                        {m.text}
+                      </p>
+                    </div>
+                  );
+                })}
                 <div ref={liveChatEndRef} />
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
@@ -1949,6 +1978,132 @@ export default function LiveCameraPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+
+      {/* All viewers / members — opens from top Users icon */}
+      {membersSheetOpen && (
+        <div
+          onClick={() => setMembersSheetOpen(false)}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 55,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'flex-end',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxHeight: '70vh',
+              background: 'rgba(6,16,18,0.98)',
+              borderRadius: '18px 18px 0 0',
+              border: '1px solid rgba(0,188,212,0.25)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '14px 14px 10px',
+              borderBottom: '1px solid rgba(0,188,212,0.12)',
+            }}>
+              <Users size={18} color="#00BCD4" />
+              <p style={{ margin: 0, flex: 1, color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>
+                In this live · {members.length}
+              </p>
+              <button
+                type="button"
+                onClick={() => setMembersSheetOpen(false)}
+                style={{ background: 'none', border: 'none', color: 'rgba(200,230,230,0.8)', cursor: 'pointer', padding: 6 }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{
+              flex: 1, overflowY: 'auto', padding: '8px 12px 16px',
+              WebkitOverflowScrolling: 'touch', minHeight: 120,
+            }}>
+              {members.length === 0 && (
+                <p style={{ textAlign: 'center', color: 'rgba(150,200,200,0.5)', fontSize: '0.8rem', marginTop: 24 }}>
+                  No one else is here yet
+                </p>
+              )}
+              {members.map(m => {
+                const talking = speakingUids.has(m.uid) && !(m.isMe && (micFrozenByHost || !micOn));
+                const hostFrozen = frozenUids.has(m.uid);
+                const label = m.username ? `@${m.username}` : m.name;
+                return (
+                  <button
+                    key={m.uid}
+                    type="button"
+                    onClick={() => {
+                      if (amHost && !m.isMe) {
+                        onMemberTap(m);
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '10px 8px',
+                      border: 'none',
+                      borderBottom: '1px solid rgba(0,188,212,0.08)',
+                      background: 'transparent',
+                      cursor: amHost && !m.isMe ? 'pointer' : 'default',
+                      textAlign: 'left',
+                      color: '#e8f6f6',
+                    }}
+                  >
+                    <div style={{ position: 'relative', width: 44, height: 44, flexShrink: 0 }}>
+                      <div style={{
+                        width: 44, height: 44, borderRadius: '50%', overflow: 'hidden',
+                        border: `2px solid ${hostFrozen ? '#ef4444' : talking ? '#22c55e' : 'rgba(0,188,212,0.35)'}`,
+                        opacity: hostFrozen ? 0.55 : 1,
+                        background: 'rgba(0,188,212,0.15)',
+                      }}>
+                        {m.avatarUrl ? (
+                          <img src={m.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#00BCD4' }}>
+                            {(m.name || '?')[0]}
+                          </div>
+                        )}
+                      </div>
+                      <span style={{
+                        position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: '50%',
+                        background: hostFrozen ? '#ef4444' : talking ? '#22c55e' : '#9ca3af',
+                        border: '2px solid #061012',
+                      }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontWeight: 800, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {m.name}{m.isMe ? ' (you)' : ''}{m.isHost ? ' · Host' : ''}
+                      </p>
+                      <p style={{ margin: 0, color: 'rgba(150,200,200,0.55)', fontSize: '0.72rem' }}>{label}</p>
+                    </div>
+                    <span style={{
+                      fontSize: '0.68rem', fontWeight: 800,
+                      color: hostFrozen ? '#ef4444' : talking ? '#22c55e' : 'rgba(150,200,200,0.5)',
+                    }}>
+                      {hostFrozen ? 'Frozen' : talking ? 'Speaking' : 'Viewer'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {amHost && (
+              <p style={{ margin: 0, padding: '0 14px 14px', color: 'rgba(250,204,21,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
+                Tap a listener to freeze or unfreeze their mic
+              </p>
+            )}
+          </div>
         </div>
       )}
 
