@@ -26,6 +26,11 @@ export function postNeedsMore(text: string | null | undefined, maxLines = POST_P
   // also treat very long single-line walls as expandable
   return String(text || '').length > maxLines * 80;
 }
+// or: import { useInstantStoryDelete } from '@/hooks/useInstantStoryDelete';
+
+await deleteStoryInstant(storyId, {
+  onOptimistic: (id) => setStories(s => s.filter(x => String(x.id) !== id)),
+});
 
 export function postPreviewText(text: string | null | undefined, maxLines = POST_PREVIEW_LINES): string {
   const lines = splitPostLines(text);
