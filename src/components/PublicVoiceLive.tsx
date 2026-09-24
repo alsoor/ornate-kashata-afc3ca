@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, X } from 'lucide-react';
+import { LogOut, Mic, MicOff, Users, Volume2, VolumeX } from 'lucide-react';
 
 const ROOM = 'stooorna-public-voice';
 const TALK_MS = 30_000;
@@ -11,6 +11,14 @@ type Peer = {
   username?: string | null;
   avatarUrl?: string | null;
   talking?: boolean;
+};
+
+type ChatMsg = {
+  id: string;
+  userId: string;
+  name: string;
+  text: string;
+  at: number;
 };
 
 export default function PublicVoiceLive({
@@ -31,8 +39,12 @@ export default function PublicVoiceLive({
   const [leftMs, setLeftMs] = useState(0);
   const [coolMs, setCoolMs] = useState(0);
   const [mutedIds, setMutedIds] = useState<Set<string>>(new Set());
+  const [speakerMuted, setSpeakerMuted] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
+  const [chatText, setChatText] = useState('');
+  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
-  const tickRef = useRef<number | null>(null);
+  const sinceRef = useRef(0);
 
   const me: Peer = {
     id: String(userId || 'me'),
@@ -62,18 +74,6 @@ export default function PublicVoiceLive({
       streamRef.current = stream;
       setTalking(true);
       setLeftMs(TALK_MS);
-      await fetch('/api/room/join', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          roomId: ROOM,
-          userId,
-          name: userName,
-          username: userUsername,
-          avatarUrl: userAvatar,
-        }),
-      }).catch(() => {});
       await fetch('/api/room/floor', {
         method: 'POST',
         credentials: 'include',
@@ -83,60 +83,31 @@ export default function PublicVoiceLive({
     } catch {
       setTalking(false);
     }
-  }, [coolMs, talking, userId, userName, userUsername, userAvatar]);
+  }, [coolMs, talking, userId]);
 
   useEffect(() => {
     if (!talking) return;
     const t0 = Date.now();
-    tickRef.current = window.setInterval(() => {
+    const id = window.setInterval(() => {
       const left = TALK_MS - (Date.now() - t0);
       if (left <= 0) {
         stopMic();
         setCoolMs(COOLDOWN_MS);
-      } else {
-        setLeftMs(left);
-      }
+      } else setLeftMs(left);
     }, 200);
-    return () => {
-      if (tickRef.current) window.clearInterval(tickRef.current);
-    };
+    return () => window.clearInterval(id);
   }, [talking, stopMic]);
 
   useEffect(() => {
     if (coolMs <= 0) return;
     const t0 = Date.now();
     const start = coolMs;
-    const id = window.setInterval(() => {
-      const left = start - (Date.now() - t0);
-      setCoolMs(Math.max(0, left));
-    }, 200);
+    const id = window.setInterval(() => setCoolMs(Math.max(0, start - (Date.now() - t0))), 200);
     return () => window.clearInterval(id);
   }, [coolMs > 0]);
 
   useEffect(() => {
     let stop = false;
-    const pull = async () => {
-      try {
-        const r = await fetch(`/api/room?id=${encodeURIComponent(ROOM)}`, { credentials: 'include' });
-        if (!r.ok) return;
-        const d = await r.json();
-        const members = (d.members || d.users || []) as any[];
-        if (stop) return;
-        setPeers(
-          members
-            .map(m => ({
-              id: String(m.id || m.userId || ''),
-              name: String(m.name || m.username || 'User'),
-              username: m.username ?? null,
-              avatarUrl: m.avatarUrl ?? m.image ?? null,
-              talking: !!(m.talking || m.floor),
-            }))
-            .filter(p => p.id),
-        );
-      } catch {
-        /* optional */
-      }
-    };
     if (userId) {
       void fetch('/api/room/join', {
         method: 'POST',
@@ -151,8 +122,53 @@ export default function PublicVoiceLive({
         }),
       }).catch(() => {});
     }
+    const pull = async () => {
+      try {
+        const r = await fetch(`/api/room?id=${encodeURIComponent(ROOM)}`, { credentials: 'include' });
+        if (!r.ok || stop) return;
+        const d = await r.json();
+        const members = (d.members || d.users || []) as any[];
+        setPeers(
+          members
+            .map(m => ({
+              id: String(m.id || m.userId || ''),
+              name: String(m.name || m.username || 'User'),
+              username: m.username ?? null,
+              avatarUrl: m.avatarUrl ?? m.image ?? null,
+              talking: !!(m.talking || m.floor),
+            }))
+            .filter(p => p.id),
+        );
+      } catch {
+        /* optional */
+      }
+      try {
+        const r = await fetch(`/api/room/signal?roomId=${encodeURIComponent(ROOM)}&since=${sinceRef.current}`, { credentials: 'include' });
+        if (!r.ok || stop) return;
+        const d = await r.json();
+        const items = (d.items || d.signals || []) as any[];
+        for (const raw of items) {
+          const msg = raw?.data || raw;
+          const at = Number(raw.at || msg.at || Date.now());
+          if (at > sinceRef.current) sinceRef.current = at;
+          if (msg?.t !== 'chat' || !msg.text) continue;
+          setChatMsgs(prev => {
+            if (prev.some(x => x.id === String(msg.id))) return prev;
+            return [...prev, {
+              id: String(msg.id || `${msg.userId}-${at}`),
+              userId: String(msg.userId || ''),
+              name: String(msg.name || 'User'),
+              text: String(msg.text),
+              at,
+            }].slice(-80);
+          });
+        }
+      } catch {
+        /* optional */
+      }
+    };
     void pull();
-    const id = window.setInterval(pull, 2500);
+    const id = window.setInterval(pull, 2200);
     return () => {
       stop = true;
       window.clearInterval(id);
@@ -169,12 +185,37 @@ export default function PublicVoiceLive({
   }, [userId, userName, userUsername, userAvatar, stopMic]);
 
   function toggleMute(id: string) {
+    if (id === me.id) return;
     setMutedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  }
+
+  async function sendChat() {
+    const text = chatText.trim();
+    if (!text || !userId) return;
+    setChatText('');
+    const msg: ChatMsg = {
+      id: `${userId}-${Date.now()}`,
+      userId,
+      name: userUsername ? `@${String(userUsername).replace(/^@/, '')}` : (userName || 'Me'),
+      text,
+      at: Date.now(),
+    };
+    setChatMsgs(prev => [...prev, msg].slice(-80));
+    await fetch('/api/room/signal', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        roomId: ROOM,
+        t: 'chat',
+        data: { t: 'chat', id: msg.id, userId, name: msg.name, text, at: msg.at },
+      }),
+    }).catch(() => {});
   }
 
   const list = [me, ...peers.filter(p => p.id !== me.id)];
@@ -193,64 +234,51 @@ export default function PublicVoiceLive({
         color: '#d7eeee',
       }}
     >
-      <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <p style={{ margin: 0, fontWeight: 800, color: '#00BCD4', fontSize: '0.95rem' }}>Public Voice</p>
+          <p style={{ margin: 0, fontSize: 11, color: 'rgba(150,200,200,0.7)' }}>Shared room</p>
+        </div>
+        <button
+          type="button"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(150,200,200,0.9)',
+            fontSize: '0.75rem', fontWeight: 700, padding: '6px 10px', borderRadius: 20,
+            background: 'rgba(0,188,212,0.1)', border: '1px solid rgba(0,188,212,0.35)',
+          }}
+        >
+          <Users size={14} />
+          <span>{list.length}</span>
+        </button>
         <button
           type="button"
           onClick={onClose}
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            border: '1px solid rgba(0,188,212,0.3)',
-            background: 'rgba(0,20,24,0.8)',
-            color: '#00BCD4',
-            cursor: 'pointer',
+            width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
+            background: 'rgba(239,68,68,0.16)', border: '1px solid rgba(239,68,68,0.5)',
+            color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          <X size={16} />
+          <LogOut size={17} />
         </button>
-        <div style={{ flex: 1 }}>
-          <p style={{ margin: 0, fontWeight: 800, color: '#00BCD4' }}>Public Voice</p>
-          <p style={{ margin: 0, fontSize: 11, opacity: 0.7 }}>{list.length} here</p>
-        </div>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          gap: 10,
-          overflowX: 'auto',
-          padding: '8px 14px 16px',
-        }}
-      >
+      <div style={{ display: 'flex', gap: 10, overflowX: 'auto', padding: '6px 12px 10px' }}>
         {list.map(p => {
-          const muted = mutedIds.has(p.id);
+          const muted = mutedIds.has(p.id) || speakerMuted;
+          const ring = p.talking ? '#22c55e' : '#facc15';
           return (
             <button
               key={p.id}
               type="button"
-              onClick={() => p.id !== me.id && toggleMute(p.id)}
-              style={{
-                width: 86,
-                flexShrink: 0,
-                background: 'transparent',
-                border: 'none',
-                color: 'inherit',
-                cursor: p.id === me.id ? 'default' : 'pointer',
-              }}
+              onClick={() => toggleMute(p.id)}
+              style={{ width: 84, flexShrink: 0, background: 'none', border: 'none', color: 'inherit', cursor: p.id === me.id ? 'default' : 'pointer' }}
             >
-              <div
-                style={{
-                  width: 64,
-                  height: 64,
-                  margin: '0 auto',
-                  borderRadius: '50%',
-                  overflow: 'hidden',
-                  border: p.talking ? '3px solid #22c55e' : '2px solid rgba(0,188,212,0.35)',
-                  opacity: muted ? 0.45 : 1,
-                  background: '#102226',
-                }}
-              >
+              <div style={{
+                width: 58, height: 58, margin: '0 auto', borderRadius: '50%', overflow: 'hidden',
+                border: `3px solid ${muted && p.id !== me.id ? '#9ca3af' : ring}`, background: '#102226',
+                opacity: muted && p.id !== me.id ? 0.55 : 1,
+              }}>
                 {p.avatarUrl ? (
                   <img src={p.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
@@ -262,35 +290,101 @@ export default function PublicVoiceLive({
               <p style={{ margin: '6px 0 0', fontSize: 11, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {p.username ? `@${String(p.username).replace(/^@/, '')}` : p.name}
               </p>
-              <p style={{ margin: 0, fontSize: 10, color: muted ? '#9ca3af' : p.talking ? '#22c55e' : 'transparent' }}>
-                {muted ? 'Muted' : p.talking ? 'Talking' : '.'}
+              <p style={{ margin: 0, fontSize: 10, color: muted && p.id !== me.id ? '#9ca3af' : p.talking ? '#22c55e' : 'rgba(250,204,21,0.8)' }}>
+                {p.id !== me.id && mutedIds.has(p.id) ? 'Muted' : p.talking ? 'Talking' : 'Live'}
               </p>
             </button>
           );
         })}
       </div>
 
-      <div style={{ flex: 1 }} />
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        {chatOpen && (
+          <div style={{
+            position: 'absolute', left: 10, right: 10, bottom: 8, maxHeight: 220,
+            background: 'rgba(4,14,16,0.82)', border: '1px solid rgba(0,188,212,0.2)',
+            borderRadius: 14, padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6,
+          }}>
+            <div style={{ flex: 1, overflowY: 'auto', minHeight: 48, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {chatMsgs.length === 0 && (
+                <p style={{ margin: 0, color: 'rgba(150,200,200,0.45)', fontSize: '0.68rem' }}>Live chat — say hello</p>
+              )}
+              {chatMsgs.map(m => (
+                <p key={m.id} style={{ margin: 0, fontSize: '0.72rem', color: m.userId === userId ? '#00BCD4' : 'rgba(220,240,240,0.92)' }}>
+                  <span style={{ fontWeight: 800, color: m.userId === userId ? '#00BCD4' : '#eab308' }}>{m.name} </span>
+                  {m.text}
+                </p>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                value={chatText}
+                onChange={e => setChatText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') void sendChat(); }}
+                placeholder="Message..."
+                style={{
+                  flex: 1, borderRadius: 999, border: '1px solid rgba(0,188,212,0.28)',
+                  background: 'rgba(0,20,24,0.8)', color: '#d7eeee', padding: '8px 12px', outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => void sendChat()}
+                style={{
+                  border: 'none', borderRadius: 999, padding: '8px 12px', fontWeight: 800,
+                  background: '#00BCD4', color: '#041414', cursor: 'pointer',
+                }}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
-      <div style={{ padding: '18px 18px max(24px, env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <div style={{ padding: '10px 14px max(16px, env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 8 }}>
         <button
           type="button"
-          onClick={() => (talking ? stopMic() : startMic())}
-          disabled={coolMs > 0}
+          onClick={() => setChatOpen(o => !o)}
           style={{
-            width: 74,
-            height: 74,
-            borderRadius: '50%',
-            border: talking ? '3px solid #ef4444' : '3px solid rgba(0,188,212,0.4)',
-            background: talking ? 'rgba(239,68,68,0.2)' : 'rgba(0,188,212,0.12)',
-            color: talking ? '#ef4444' : coolMs > 0 ? '#6b7280' : '#00BCD4',
-            cursor: coolMs > 0 ? 'default' : 'pointer',
+            alignSelf: 'flex-start', border: '1px solid rgba(0,188,212,0.3)', background: 'rgba(6,16,18,0.85)',
+            color: '#00BCD4', borderRadius: 999, padding: '4px 10px', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer',
           }}
         >
-          {talking ? <MicOff size={28} /> : <Mic size={28} />}
+          {chatOpen ? 'Hide chat' : 'Show chat'}
         </button>
-        <p style={{ margin: 0, fontSize: 12, color: talking ? '#ef4444' : '#9ca3af' }}>
-          {talking ? `${secs}s` : coolMs > 0 ? `Wait ${cool}s` : 'Hold floor 30s'}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+          <button
+            type="button"
+            onClick={() => (talking ? stopMic() : startMic())}
+            disabled={coolMs > 0}
+            style={{
+              width: 64, height: 64, borderRadius: '50%',
+              border: talking ? '2px solid #041414' : '1px solid rgba(0,188,212,0.35)',
+              background: talking ? '#00BCD4' : 'rgba(0,188,212,0.12)',
+              color: talking ? '#041414' : coolMs > 0 ? '#6b7280' : '#00BCD4',
+              cursor: coolMs > 0 ? 'default' : 'pointer',
+            }}
+          >
+            {talking ? <Mic size={22} /> : <MicOff size={22} />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSpeakerMuted(v => !v)}
+            style={{
+              height: 40, padding: '0 12px', borderRadius: 12,
+              border: speakerMuted ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(0,188,212,0.28)',
+              background: speakerMuted ? 'rgba(239,68,68,0.12)' : 'rgba(0,188,212,0.08)',
+              color: speakerMuted ? '#ef4444' : '#00BCD4', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            {speakerMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+            {speakerMuted ? 'Unmute room' : 'Mute room'}
+          </button>
+        </div>
+        <p style={{ margin: 0, fontSize: '0.62rem', color: 'rgba(150,200,200,0.45)', textAlign: 'center' }}>
+          {talking ? `Mic open · ${secs}s` : coolMs > 0 ? `Wait ${cool}s` : 'Mic closed · 30s turns'}
         </p>
       </div>
     </div>
