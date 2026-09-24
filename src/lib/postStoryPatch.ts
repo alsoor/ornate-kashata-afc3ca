@@ -346,9 +346,18 @@ function purgeStoryLocalCaches(storyId: string | number) {
   }
 }
 
+async function tryDelete(url: string, init: RequestInit): Promise<boolean> {
+  try {
+    const res = await fetch(url, { credentials: 'include', ...init });
+    return res.ok || res.status === 404 || res.status === 204;
+  } catch {
+    return false;
+  }
+}
+
 export async function deleteStoryInstant(
   storyId: string | number,
-  opts?: { onOptimistic?: (id: string) => void },
+  opts?: { onOptimistic?: (id: string) => void; mediaUrl?: string },
 ): Promise<{ ok: boolean; error?: string }> {
   const id = String(storyId);
   opts?.onOptimistic?.(id);
@@ -359,29 +368,64 @@ export async function deleteStoryInstant(
     /* ignore */
   }
 
-  const endpoints = [
-    `/api/stories/${encodeURIComponent(id)}`,
-    `/api/status/${encodeURIComponent(id)}`,
-    `/api/stories/delete`,
-    `/api/status/delete`,
+  const payload = JSON.stringify({
+    id,
+    storyId: id,
+    statusId: id,
+    mediaUrl: opts?.mediaUrl || undefined,
+  });
+  const json = { 'Content-Type': 'application/json' };
+
+  const attempts: Array<() => Promise<boolean>> = [
+    () => tryDelete(`/api/status?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    () => tryDelete('/api/status', { method: 'DELETE', headers: json, body: payload }),
+    () => tryDelete(`/api/status/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    () => tryDelete('/api/status/delete', { method: 'POST', headers: json, body: payload }),
+    () => tryDelete(`/api/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    () => tryDelete(`/api/stories/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    () => tryDelete('/api/stories/delete', { method: 'POST', headers: json, body: payload }),
   ];
 
-  for (const endpoint of endpoints) {
-    try {
-      const isBody = endpoint.endsWith('/delete');
-      const res = await fetch(endpoint, {
-        method: isBody ? 'POST' : 'DELETE',
-        credentials: 'include',
-        headers: isBody ? { 'Content-Type': 'application/json' } : undefined,
-        body: isBody ? JSON.stringify({ id, storyId: id, statusId: id }) : undefined,
-      });
-      if (res.ok || res.status === 404) {
-        purgeStoryLocalCaches(id);
-        return { ok: true };
+  for (const run of attempts) {
+    if (await run()) {
+      purgeStoryLocalCaches(id);
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:story-deleted', { detail: { id, ok: true } }));
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* try next */
+      return { ok: true };
     }
+  }
+
+  purgeStoryLocalCaches(id);
+  return { ok: true };
+}
+
+export async function deletePostInstant(
+  postId: string | number,
+  opts?: { onOptimistic?: (id: string) => void },
+): Promise<{ ok: boolean; error?: string }> {
+  const id = String(postId);
+  opts?.onOptimistic?.(id);
+  try {
+    window.dispatchEvent(new CustomEvent('stooorna:post-deleted', { detail: { id } }));
+  } catch {
+    /* ignore */
+  }
+
+  const payload = JSON.stringify({ id, postId: id });
+  const json = { 'Content-Type': 'application/json' };
+  const attempts: Array<() => Promise<boolean>> = [
+    () => tryDelete(`/api/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    () => tryDelete(`/api/posts?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    () => tryDelete('/api/posts', { method: 'DELETE', headers: json, body: payload }),
+    () => tryDelete('/api/status', { method: 'DELETE', headers: json, body: JSON.stringify({ id, statusId: id }) }),
+    () => tryDelete(`/api/status?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  ];
+
+  for (const run of attempts) {
+    if (await run()) return { ok: true };
   }
   return { ok: true };
 }
@@ -394,4 +438,5 @@ export default {
   publishFeedPost,
   publishStoryMedia,
   deleteStoryInstant,
+  deletePostInstant,
 };
