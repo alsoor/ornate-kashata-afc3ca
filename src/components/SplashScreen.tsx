@@ -3,30 +3,30 @@ import { useEffect } from 'react';
 const HOLD_MS = 2000;
 const SPIN_MS = 3000;
 
-function AppMark() {
+function AppIcon() {
   return (
     <svg viewBox="0 0 200 200" width="100%" height="100%" aria-hidden="true">
-      <rect width="200" height="200" rx="42" fill="#0b1618" />
-      <circle cx="100" cy="100" r="72" fill="none" stroke="#00BCD4" strokeWidth="14" />
+      <circle cx="100" cy="100" r="78" fill="#071314" />
+      <circle cx="100" cy="100" r="64" fill="none" stroke="#00BCD4" strokeWidth="16" />
       <path
-        d="M42 78 C70 58, 130 58, 158 78"
+        d="M48 86 C78 62, 122 62, 152 86"
         fill="none"
         stroke="#00BCD4"
-        strokeWidth="12"
+        strokeWidth="13"
         strokeLinecap="round"
       />
       <path
-        d="M40 108 C78 92, 128 128, 160 108"
+        d="M44 112 C84 94, 124 132, 156 112"
         fill="none"
         stroke="#00BCD4"
-        strokeWidth="12"
+        strokeWidth="13"
         strokeLinecap="round"
       />
       <path
-        d="M48 138 C88 118, 122 162, 156 140"
+        d="M52 140 C90 118, 124 160, 150 138"
         fill="none"
         stroke="#00BCD4"
-        strokeWidth="12"
+        strokeWidth="13"
         strokeLinecap="round"
       />
     </svg>
@@ -48,42 +48,61 @@ export default function SplashScreen({ onDone }: { onDone: () => void }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'radial-gradient(ellipse 70% 55% at 50% 42%, #042422 0%, #021110 40%, #000807 100%)',
-        overflow: 'hidden',
+        background: 'radial-gradient(ellipse 60% 50% at 50% 38%, #0a2426 0%, #061516 42%, #030a0b 100%)',
       }}
     >
-      <div style={{ position: 'relative', width: 228, height: 228 }}>
-        <div
+      <div style={{ position: 'relative', width: 168, height: 168 }}>
+        <svg
+          viewBox="0 0 100 100"
+          width="168"
+          height="168"
           style={{
             position: 'absolute',
             inset: 0,
-            borderRadius: '50%',
-            border: '7px solid #0f6b3a',
-            boxShadow: '0 0 18px rgba(15,107,58,0.55), inset 0 0 12px rgba(15,107,58,0.25)',
-            animation: 'stooornaSplashRingSpin 0.9s linear infinite',
+            animation: 'stooornaSplashRingSpin 1.1s linear infinite',
           }}
-        />
+        >
+          <circle
+            cx="50"
+            cy="50"
+            r="44"
+            fill="none"
+            stroke="rgba(0,80,86,0.45)"
+            strokeWidth="3.2"
+          />
+          <circle
+            cx="50"
+            cy="50"
+            r="44"
+            fill="none"
+            stroke="url(#stooornaSplashArc)"
+            strokeWidth="3.2"
+            strokeLinecap="round"
+            strokeDasharray="70 206"
+          />
+          <defs>
+            <linearGradient id="stooornaSplashArc" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#00E5FF" />
+              <stop offset="55%" stopColor="#00BCD4" />
+              <stop offset="100%" stopColor="#ef4444" />
+            </linearGradient>
+          </defs>
+        </svg>
         <div
           style={{
             position: 'absolute',
-            inset: 14,
-            borderRadius: 36,
+            inset: 28,
+            borderRadius: '50%',
             overflow: 'hidden',
-            animation: 'stooornaSplashLogoSpin 0.9s linear infinite',
           }}
         >
-          <AppMark />
+          <AppIcon />
         </div>
       </div>
-
       <style>{`
         @keyframes stooornaSplashRingSpin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
-        }
-        @keyframes stooornaSplashLogoSpin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(-360deg); }
         }
       `}</style>
     </div>
