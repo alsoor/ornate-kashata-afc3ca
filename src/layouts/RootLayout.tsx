@@ -4127,7 +4127,7 @@ function GlobalBottomNavigation() {
               )}
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {(() => {
-                  // Outer bar: at most 5 profiles side-by-side. Prefer joined members; fill gaps when someone leaves.
+                  // Outer bar: at most 3 profiles side-by-side. Prefer joined members; fill gaps when someone leaves.
                   const meId = user?.id ? String(user.id) : '';
                   const sorted = [...homeCallMembers].sort((a, b) => {
                     const aj = a.joined || a.id === meId ? 1 : 0;
@@ -4137,7 +4137,7 @@ function GlobalBottomNavigation() {
                     if (b.id === meId) return 1;
                     return 0;
                   });
-                  let outer = sorted.slice(0, 5);
+                  let outer = sorted.slice(0, 3);
                   if (outer.length === 0 && peerOnCall) {
                     outer = [{
                       id: peerOnCall.id,
@@ -4215,27 +4215,6 @@ function GlobalBottomNavigation() {
                   );
                 })()}
               </div>
-              {/* Plus — invite more people into the live call */}
-              {!isIncomingRinging && (homeCallPhase === 'live' || homeCallPhase === 'connecting') && (
-                <button
-                  type="button"
-                  onClick={() => homeCallAction(() => {
-                    setHomeCallAddOpen(o => !o);
-                    setHomeCallMembersOpen(false);
-                    if (!homeCallFriends.length) setHomeCallPickerOpen(true);
-                  })}
-                  aria-label="Add people"
-                  style={{
-                    width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                    border: '1.5px solid rgba(0,188,212,0.45)',
-                    background: homeCallAddOpen ? 'rgba(0,188,212,0.22)' : 'rgba(0,188,212,0.08)',
-                    color: '#00BCD4', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-                  }}
-                >
-                  <Plus size={18} strokeWidth={2.6} />
-                </button>
-              )}
             </div>
 
             <button
@@ -4311,9 +4290,28 @@ function GlobalBottomNavigation() {
               borderRadius: 16, padding: '10px 12px', boxSizing: 'border-box',
               maxHeight: 220, overflowY: 'auto',
             }}>
-              <p style={{ margin: '0 0 8px', color: '#00BCD4', fontWeight: 800, fontSize: 13 }}>
-                In this call · {homeCallMembers.length}
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <p style={{ margin: 0, flex: 1, color: '#00BCD4', fontWeight: 800, fontSize: 13 }}>
+                  In this call · {homeCallMembers.length}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => homeCallAction(() => {
+                    setHomeCallAddOpen(true);
+                    if (!homeCallFriends.length) setHomeCallPickerOpen(true);
+                  })}
+                  aria-label="Add people"
+                  style={{
+                    width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                    border: '1.5px solid rgba(0,188,212,0.45)',
+                    background: homeCallAddOpen ? 'rgba(0,188,212,0.22)' : 'rgba(0,188,212,0.1)',
+                    color: '#00BCD4', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                  }}
+                >
+                  <Plus size={16} strokeWidth={2.6} />
+                </button>
+              </div>
               {homeCallMembers.map(m => {
                 const isMe = user?.id && m.id === user.id;
                 const muted = isMe && homeCallMuted;
