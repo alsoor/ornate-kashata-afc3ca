@@ -19849,23 +19849,40 @@ export default function AddFriendPage() {
               `}</style>
               {!textFeedSearchOpen ? (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTextFeedSearchOpen(true);
-                      window.setTimeout(() => textFeedSearchInputRef.current?.focus(), 40);
-                    }}
-                    aria-label="Search"
-                    style={{
-                      position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
-                      marginTop: 'max(2px, env(safe-area-inset-top, 0px) / 2)',
-                      width: 32, height: 32, borderRadius: 8, border: 'none',
-                      background: 'rgba(0,188,212,0.1)', color: CLR_PRIMARY, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
-                    }}
-                  >
-                    <Search size={16} strokeWidth={2.3} />
-                  </button>
+                  {/* Left: profile avatar — opens story/account sheet (same size as search square) */}
+                  {user && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTextPostsPlusOpen(false);
+                        setViewingProfile(null);
+                        setAccountSlideFromLeft(false);
+                        try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
+                        setStoryHomeSheetOpen(true);
+                      }}
+                      aria-label="Open account page"
+                      style={{
+                        position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                        marginTop: 'max(2px, env(safe-area-inset-top, 0px) / 2)',
+                        width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(0,188,212,0.45)',
+                        background: 'rgba(0,188,212,0.12)', color: CLR_PRIMARY, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
+                        padding: 0, overflow: 'hidden',
+                      }}
+                    >
+                      {((user as any).avatarUrl || (user as any).image) ? (
+                        <img
+                          src={(user as any).avatarUrl || (user as any).image}
+                          alt=""
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 7 }}
+                        />
+                      ) : isCompanyPublisher ? (
+                        <Building2 size={16} strokeWidth={2.2} />
+                      ) : (
+                        <Users size={16} strokeWidth={2.2} />
+                      )}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -19899,12 +19916,43 @@ export default function AddFriendPage() {
                       STOOORNA
                     </span>
                   </button>
+                  {/* Right: search (same square size as profile) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTextFeedSearchOpen(true);
+                      window.setTimeout(() => textFeedSearchInputRef.current?.focus(), 40);
+                    }}
+                    aria-label="Search"
+                    style={{
+                      position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                      marginTop: 'max(2px, env(safe-area-inset-top, 0px) / 2)',
+                      width: 32, height: 32, borderRadius: 8, border: 'none',
+                      background: 'rgba(0,188,212,0.1)', color: CLR_PRIMARY, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
+                    }}
+                  >
+                    <Search size={16} strokeWidth={2.3} />
+                  </button>
                 </>
               ) : (
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 8, width: '100%', maxWidth: 420,
                   paddingTop: 2, paddingBottom: 2,
                 }}>
+                  {/* Close search — same slot/size as profile square on the left */}
+                  <button
+                    type="button"
+                    onClick={() => { setTextFeedSearchOpen(false); setTextFeedSearchQuery(''); }}
+                    aria-label="Close search"
+                    style={{
+                      width: 32, height: 32, borderRadius: 8, border: 'none',
+                      background: 'rgba(255,255,255,0.06)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}
+                  >
+                    <X size={16} strokeWidth={2.3} />
+                  </button>
                   <Search size={15} color={CLR_PRIMARY} strokeWidth={2.3} style={{ flexShrink: 0 }} />
                   <input
                     ref={textFeedSearchInputRef}
@@ -19917,21 +19965,8 @@ export default function AddFriendPage() {
                       padding: '0 10px', outline: 'none',
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => { setTextFeedSearchOpen(false); setTextFeedSearchQuery(''); }}
-                    aria-label="Close search"
-                    style={{
-                      width: 30, height: 30, borderRadius: 8, border: 'none',
-                      background: 'rgba(255,255,255,0.06)', color: CLR_TEXT_DIM, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    }}
-                  >
-                    <X size={15} />
-                  </button>
                 </div>
               )}
-            </div>
             <div
               ref={textPostsScrollRef}
               onScroll={handleTextPostsScroll}
@@ -20208,7 +20243,7 @@ export default function AddFriendPage() {
             </div>
 
             <style>{`@keyframes stooornaPlusFanIn { from { opacity: 0; transform: translateY(8px) scale(0.92); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
-            {/* Bottom chrome: profile (left) | New Post (center) | plus menu (right) */}
+            {/* Bottom chrome: New Post (center) | plus menu (right) */}
             <div
               ref={postsChromeBottomRef}
               style={{
@@ -20231,53 +20266,7 @@ export default function AddFriendPage() {
               backfaceVisibility: 'hidden' as const,
             }}>
               <>
-                {/* Left: account profile avatar — settings-style sheet over public posts, from the left */}
-                {user && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setTextPostsPlusOpen(false);
-                      setViewingProfile(null);
-                      setAccountSlideFromLeft(false);
-                      try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
-                      setStoryHomeSheetOpen(true);
-                    }}
-                    aria-label="Open account page"
-                    style={{
-                      position: 'absolute',
-                      left: 12,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      padding: 0,
-                      overflow: 'hidden',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      background: 'rgba(0,188,212,0.18)',
-                      border: '1px solid rgba(0,188,212,0.45)',
-                      color: '#00BCD4',
-                      cursor: 'pointer',
-                      flexShrink: 0,
-                      zIndex: 2,
-                    }}
-                  >
-                    {((user as any).avatarUrl || (user as any).image) ? (
-                      <img
-                        src={(user as any).avatarUrl || (user as any).image}
-                        alt=""
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }}
-                      />
-                    ) : isCompanyPublisher ? (
-                      <Building2 size={18} strokeWidth={2.2} />
-                    ) : (
-                      <Users size={18} strokeWidth={2.2} />
-                    )}
-                  </button>
-                )}
+                {/* Profile avatar moved to top header (left) */}
 
                 {/* Center: New post (true blue, not cyan) */}
                 {user && (
