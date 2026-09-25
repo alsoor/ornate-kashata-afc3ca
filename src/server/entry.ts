@@ -397,6 +397,38 @@ app.post("/api/live/recordings/upload", live_recordings_upload_post_33);
 app.delete("/api/live/recordings/:id", live_recordings_id_delete_34);
 app.get("/api/live/status", live_status_get_35);
 
+const liveChatMem = () => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveChat?: Map<string, Array<{ at: number; payload: any }>> };
+  if (!g.__stooornaLiveChat) g.__stooornaLiveChat = new Map();
+  return g.__stooornaLiveChat;
+};
+app.get("/api/live-chat", (req, res) => {
+  const channel = String(req.query.channel || "");
+  const since = Number(req.query.since || 0);
+  if (!channel) return res.json({ messages: [] });
+  const list = (liveChatMem().get(channel) || []).filter((m) => m.at > since).slice(-80);
+  res.json({ messages: list });
+});
+app.post("/api/live-chat", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const channel = String(body.channel || "");
+  if (!channel) return res.status(400).json({ error: "channel required" });
+  const payload = (body.payload || body) as Record<string, unknown>;
+  const at = Date.now();
+  const mem = liveChatMem();
+  const list = mem.get(channel) || [];
+  list.push({ at, payload: { ...payload, at } });
+  mem.set(channel, list.slice(-120));
+  res.json({ ok: true, at });
+});
+app.get("/api/vip/directory", (_req, res) => {
+  const g = globalThis as typeof globalThis & { __stooornaVip?: Map<string, any> };
+  const mem = g.__stooornaVip || new Map();
+  const users = Array.from(mem.values()).filter((x) => x && x.active);
+  res.json({ users });
+});
+
+
 const vipMem = () => {
   const g = globalThis as typeof globalThis & { __stooornaVip?: Map<string, any> };
   if (!g.__stooornaVip) g.__stooornaVip = new Map();
@@ -424,7 +456,7 @@ app.post("/api/vip", (req, res) => {
   if (action === "activate") { row.active = true; row.since = Date.now(); }
   if (action === "color") {
     const c = String(body.color || "");
-    if (["blue", "gold", "red", "green", "gray"].includes(c)) row.color = c;
+    if (["blue", "gold", "red", "green", "gray", "pink"].includes(c)) row.color = c;
   }
   if (action === "feat") {
     if (body.key === "eightMics" || body.key === "roomMusic") {
