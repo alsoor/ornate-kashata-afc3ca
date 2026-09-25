@@ -43,7 +43,7 @@ export default async function handler(req: Request, res: Response) {
     const existing = existingRows[0];
 
     const patch: Record<string, unknown> = {};
-    if (action === "activate") {
+    if (action === "activate" || action === "publish" || action === "upsert") {
       patch.active = true;
       patch.since = new Date();
       patch.expiresAt = new Date(Number(body.expiresAt) || Date.now() + PERIOD_MS);

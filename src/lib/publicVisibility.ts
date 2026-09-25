@@ -86,7 +86,7 @@ export async function publishBusinessPublic(row: {
         row.remove
           ? { action: 'remove', userId: row.userId }
           : {
-              action: 'upsert',
+              action: 'activate',
               userId: row.userId,
               username: row.username ?? null,
               email: row.email ?? null,
