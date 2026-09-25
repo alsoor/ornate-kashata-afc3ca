@@ -1076,7 +1076,7 @@ export default function LivePage() {
   }, [micFrozenByHost, forceMuteLocalMic]);
 
   const toggleMic = async () => {
-    if (!micRef.current || !joined) return;
+    if (!joined) return;
     if (micFrozenRef.current || micFrozenByHost) {
       void forceMuteLocalMic();
       setError('Mic frozen by host');
@@ -1085,19 +1085,28 @@ export default function LivePage() {
     if (isHostRoom && !amHost) {
       const allowed = speakerUidsRef.current.has(myUidRef.current || -1);
       if (!allowed) {
-        if (myUidRef.current == null) return;
+        if (myUidRef.current == null) {
+          setError('Still joining, try again');
+          return;
+        }
         setMicRequested(true);
-        await sendDataPayload(makeMicRequestPayload({
+        const payload = makeMicRequestPayload({
           uid: myUidRef.current,
-          userId: myId,
-          name: myName,
+          userId: myId || undefined,
+          name: myName || 'Guest',
           username: myUsername,
           avatarUrl: myAvatar,
-        }));
+        });
+        await sendDataPayload(payload);
+        try {
+          publishLiveSignal(channelName, payload);
+          void postLiveSignalHttp(channelName, payload);
+        } catch { /* ignore */ }
         setError('Mic request sent to host');
         return;
       }
     }
+    if (!micRef.current) return;
     const next = !micOn;
     try {
       if (next) {

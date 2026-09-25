@@ -414,6 +414,14 @@ export function syncBusinessPublicDirectory(list?: BusinessRegistration[]) {
       }));
     localStorage.setItem(BUSINESS_DIRECTORY_KEY, JSON.stringify(approved));
     window.dispatchEvent(new CustomEvent('stooorna:business-directory', { detail: approved }));
+    for (const row of approved) {
+      void publishBusinessPublic({
+        userId: row.userId,
+        username: row.username,
+        email: row.email,
+        projectName: row.projectName,
+      });
+    }
   } catch { /* ignore */ }
 }
 

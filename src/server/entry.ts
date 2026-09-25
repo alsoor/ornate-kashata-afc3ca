@@ -423,7 +423,9 @@ app.post("/api/live-chat", (req, res) => {
 });
 
 
-const DATA_DIR_VIP = process.cwd() + "/data";
+const DATA_DIR_VIP = (typeof process.env.RAILWAY_VOLUME_MOUNT_PATH === "string" && process.env.RAILWAY_VOLUME_MOUNT_PATH)
+  ? process.env.RAILWAY_VOLUME_MOUNT_PATH
+  : (process.cwd() + "/data");
 const VIP_FILE = DATA_DIR_VIP + "/vip-directory.json";
 const BIZ_FILE = DATA_DIR_VIP + "/business-directory.json";
 

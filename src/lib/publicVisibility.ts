@@ -99,6 +99,27 @@ export async function publishBusinessPublic(row: {
   }
 }
 
+/** Push every local approved business row to the server (owner browser recovery). */
+export async function pushAllLocalBusinessToServer() {
+  try {
+    const raw = localStorage.getItem('stooorna_business_registry');
+    const list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) return;
+    for (const x of list) {
+      if (x && x.status === 'approved' && x.userId) {
+        await publishBusinessPublic({
+          userId: String(x.userId),
+          username: x.username || null,
+          email: x.email || null,
+          projectName: x.projectName || null,
+        });
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function hydrateBusinessDirectory() {
   try {
     const r = await fetch('/api/business/directory', { credentials: 'include' });
@@ -116,14 +137,43 @@ export async function hydrateBusinessDirectory() {
 let syncStarted = false;
 
 /** Poll VIP + Business public directories so every viewer sees badges. */
-export function startPublicBadgeSync(_userId?: string | null) {
+export function startPublicBadgeSync(userId?: string | null) {
   if (typeof window === 'undefined') return;
   if (syncStarted) return;
   syncStarted = true;
+
+  const reseedSelf = () => {
+    try {
+      import('@/lib/vipPatch')
+        .then((m) => {
+          const uid = userId || null;
+          if (uid && typeof m.isVip === 'function' && m.isVip(uid)) {
+            if (typeof m.publishVipPublic === 'function') m.publishVipPublic(uid);
+            const color = typeof m.getVipColor === 'function' ? m.getVipColor(uid) : 'gold';
+            void fetch('/api/vip', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: uid, action: 'activate' }),
+            }).catch(() => {});
+            void fetch('/api/vip', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: uid, action: 'color', color }),
+            }).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    } catch {
+      /* ignore */
+    }
+    void pushAllLocalBusinessToServer();
+  };
+
   const tick = () => {
     void hydrateBusinessDirectory();
     try {
-      // dynamic import avoids circular deps with vipPatch
       import('@/lib/vipPatch')
         .then((m) => {
           if (typeof m.hydrateVipDirectory === 'function') void m.hydrateVipDirectory();
@@ -133,12 +183,18 @@ export function startPublicBadgeSync(_userId?: string | null) {
       /* ignore */
     }
   };
+
+  reseedSelf();
   tick();
   window.setInterval(tick, 12000);
+  window.setInterval(reseedSelf, 60000);
+
   window.addEventListener('stooorna:business-registry', () => {
+    void pushAllLocalBusinessToServer();
     void hydrateBusinessDirectory();
   });
   window.addEventListener('stooorna:vip', () => {
+    reseedSelf();
     try {
       import('@/lib/vipPatch')
         .then((m) => {
