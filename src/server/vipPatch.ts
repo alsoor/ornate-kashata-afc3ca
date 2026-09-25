@@ -150,7 +150,19 @@ export function getVipColor(userId?: string | null): VipColor {
   if (!userId) return 'gold';
   const map = readJson<Record<string, VipColor>>(COLOR_KEY, {});
   const c = map[userId];
-  return c && VIP_COLORS[c] ? c : 'gold';
+  if (c && VIP_COLORS[c]) return c;
+  // hydrateVipDirectory() only ever writes another account's chosen color
+  // into the public directory cache (below), never into COLOR_KEY above —
+  // COLOR_KEY is populated solely by this device's own setVipColor/
+  // hydrateVipFromServer calls, for the signed-in user only. Without this
+  // fallback, every VIP badge/frame for anyone other than the viewer
+  // renders in the default gold instead of their actual chosen color.
+  try {
+    const dir = readJson<Record<string, { color?: VipColor }>>('stooorna_vip_public_dir', {});
+    const dirColor = dir[userId]?.color;
+    if (dirColor && VIP_COLORS[dirColor]) return dirColor;
+  } catch { /* ignore */ }
+  return 'gold';
 }
 
 export function vipUsernameColor(userId?: string | null): string {
