@@ -28,17 +28,16 @@ function json(data: unknown, status = 200) {
   });
 }
 
+function isUnreadStreamBody(b: any): boolean {
+  return !!b && typeof b === 'object' && typeof b.getReader === 'function';
+}
+
 async function readBody(req: Request | any): Promise<any> {
-  if (req && typeof req.json === 'function' && !req.body && req.method) {
-    try {
-      return await req.json();
-    } catch {
-      return {};
-    }
-  }
-  if (req?.body && typeof req.body === 'object' && !req.bodyLocked) {
+  // Framework already parsed the body into a plain object (e.g. Express + body-parser).
+  if (req?.body && typeof req.body === 'object' && !isUnreadStreamBody(req.body)) {
     return req.body;
   }
+  // Standard Fetch API Request (or anything else exposing .json()) with an unread body.
   if (typeof req?.json === 'function') {
     try {
       return await req.json();

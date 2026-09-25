@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { isVip, resolveVipNameStyle } from '@/lib/vipPatch';
+import { getVipColor, isVip, resolveVipNameStyle, VIP_COLORS } from '@/lib/vipPatch';
 
 export function VipBadge({ userId, compact }: { userId?: string | null; compact?: boolean }) {
   const [, bump] = useState(0);
@@ -47,15 +47,26 @@ export function VipAvatarFrame({
   children: React.ReactNode;
   size?: number;
 }) {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const on = () => bump((n) => n + 1);
+    window.addEventListener('stooorna:vip', on);
+    window.addEventListener('stooorna:vip-directory', on);
+    return () => {
+      window.removeEventListener('stooorna:vip', on);
+      window.removeEventListener('stooorna:vip-directory', on);
+    };
+  }, []);
   const vip = isVip(userId);
+  const ringColor = vip ? VIP_COLORS[getVipColor(userId)] : '';
   return (
     <span
       style={{
         display: 'inline-flex',
         borderRadius: '50%',
         padding: vip ? 2 : 0,
-        background: vip ? 'linear-gradient(135deg,#fde68a,#eab308,#f59e0b)' : 'transparent',
-        boxShadow: vip ? '0 0 10px rgba(234,179,8,0.45)' : 'none',
+        background: vip ? `linear-gradient(135deg, ${ringColor}cc, ${ringColor}, ${ringColor}e6)` : 'transparent',
+        boxShadow: vip ? `0 0 10px ${ringColor}73` : 'none',
         width: size + (vip ? 4 : 0),
         height: size + (vip ? 4 : 0),
         alignItems: 'center',
