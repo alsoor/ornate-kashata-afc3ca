@@ -421,26 +421,40 @@ app.post("/api/live-chat", (req, res) => {
   mem.set(channel, list.slice(-120));
   res.json({ ok: true, at });
 });
-app.get("/api/vip/directory", (_req, res) => {
-  const g = globalThis as typeof globalThis & { __stooornaVip?: Map<string, any> };
-  const mem = g.__stooornaVip || new Map();
-  const users = Array.from(mem.values()).filter((x) => x && x.active);
-  res.json({ users });
-});
-
-
 const vipMem = () => {
   const g = globalThis as typeof globalThis & { __stooornaVip?: Map<string, any> };
   if (!g.__stooornaVip) g.__stooornaVip = new Map();
   return g.__stooornaVip;
 };
+const bizDirMem = () => {
+  const g = globalThis as typeof globalThis & { __stooornaBizDir?: Map<string, any> };
+  if (!g.__stooornaBizDir) g.__stooornaBizDir = new Map();
+  return g.__stooornaBizDir;
+};
+app.get("/api/vip/directory", (_req, res) => {
+  const now = Date.now();
+  const users = Array.from(vipMem().values())
+    .filter((x) => x && x.active && !(x.expiresAt && now > Number(x.expiresAt)))
+    .map((x) => ({
+      userId: x.userId,
+      active: true,
+      color: x.color || "gold",
+      expiresAt: x.expiresAt || null,
+      feats: x.feats || { eightMics: false, roomMusic: false },
+    }));
+  res.json({ users });
+});
 app.get("/api/vip", (req, res) => {
   const userId = String(req.query.userId || "");
   if (!userId) return res.status(400).json({ error: "userId required" });
   const row = vipMem().get(userId) || {
-    userId, active: false, since: 0, color: "gold",
+    userId, active: false, since: 0, expiresAt: null, color: "gold",
     feats: { eightMics: false, roomMusic: false }, renameUsed: false,
   };
+  if (row.active && row.expiresAt && Date.now() > Number(row.expiresAt)) {
+    row.active = false;
+    vipMem().set(userId, row);
+  }
   res.json(row);
 });
 app.post("/api/vip", (req, res) => {
@@ -449,23 +463,51 @@ app.post("/api/vip", (req, res) => {
   if (!userId) return res.status(400).json({ error: "userId required" });
   const mem = vipMem();
   const row = mem.get(userId) || {
-    userId, active: false, since: 0, color: "gold",
+    userId, active: false, since: 0, expiresAt: null, color: "gold",
     feats: { eightMics: false, roomMusic: false }, renameUsed: false,
   };
   const action = String(body.action || "");
-  if (action === "activate") { row.active = true; row.since = Date.now(); }
-  if (action === "color") {
+  if (action === "activate") {
+    row.active = true;
+    row.since = Date.now();
+    const exp = Number(body.expiresAt);
+    row.expiresAt = Number.isFinite(exp) && exp > 0 ? exp : Date.now() + 30 * 24 * 60 * 60 * 1000;
+  } else if (action === "deactivate") {
+    row.active = false;
+  } else if (action === "color") {
     const c = String(body.color || "");
     if (["blue", "gold", "red", "green", "gray", "pink"].includes(c)) row.color = c;
-  }
-  if (action === "feat") {
+  } else if (action === "feat") {
     if (body.key === "eightMics" || body.key === "roomMusic") {
       row.feats[String(body.key)] = !!body.on;
     }
+  } else if (action === "rename-used") {
+    row.renameUsed = true;
   }
-  if (action === "rename-used") row.renameUsed = true;
   mem.set(userId, row);
   res.json(row);
+});
+app.get("/api/business/directory", (_req, res) => {
+  const users = Array.from(bizDirMem().values());
+  res.json({ users });
+});
+app.post("/api/business/directory", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const action = String(body.action || "upsert");
+  const userId = String(body.userId || "");
+  if (!userId) return res.status(400).json({ error: "userId required" });
+  const mem = bizDirMem();
+  if (action === "remove") {
+    mem.delete(userId);
+  } else {
+    mem.set(userId, {
+      userId,
+      username: body.username ? String(body.username) : null,
+      email: body.email ? String(body.email) : null,
+      projectName: body.projectName ? String(body.projectName) : null,
+    });
+  }
+  res.json({ users: Array.from(mem.values()) });
 });
 
 app.get("/api/me/ban-status", me_ban_status_get_36);
