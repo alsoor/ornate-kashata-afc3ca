@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePresenceQuery } from '@/hooks/usePresence';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useGlobalCall } from '@/components/GlobalCallProvider';
+import { normalizeComment, sortCommentsTree, authorCountryLabel } from '@/lib/postCommentReplyPatch';
 import { useGuestGuard } from '@/hooks/useGuestGuard';
 import PostTextMore from '@/components/PostTextMore';
 import { publishFeedPost, uploadPostMedia, deleteStoryInstant, POST_TEXT_MAX_CHARS } from '@/lib/postStoryPatch';
@@ -5696,6 +5697,7 @@ function PostCard({
               {post.authorName || post.authorUsername || '—'}
               <span style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.66rem', fontWeight: 700, marginInlineStart: 6 }}>
                 {publishedDate}
+                {authorCountryLabel(post.authorId) ? ` · ${authorCountryLabel(post.authorId)}` : ''}
               </span>
               <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: '0.64rem', fontWeight: 600 }}>
                 · {timeAgo}
@@ -7820,7 +7822,7 @@ function InstagramCommentsSheet({
               <p style={{ color: 'rgba(0,0,0,0.45)', fontSize: '0.8rem', margin: '8px 0 0' }}>Start the conversation.</p>
             </div>
           ) : (
-            comments.map(c => (
+            sortCommentsTree(comments).map(c => (
               <div
                 key={c.id}
                 style={{
@@ -8121,7 +8123,7 @@ function PostDetailPage({
                 لا توجد ردود بعد — كن أول من يعلّق
               </p>
             )}
-              {comments.map(c => (
+              {sortCommentsTree(comments).map(c => (
                 <div key={c.id} style={{ display: 'flex', gap: 8, marginLeft: c.parentCommentId ? 22 : 0 }}>
                   <UserAvatar name={c.authorName} avatarUrl={c.authorAvatarUrl} size={30} />
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -13749,15 +13751,15 @@ export default function AddFriendPage() {
     setOpenCommentsMediaIndex(usePerMedia ? mediaIndex! : null);
     if (usePerMedia) {
       const eng = getMediaEng(post.id, mediaIndex!);
-      setPostComments(prev => ({ ...prev, [post.id]: eng.comments || [] }));
+      setPostComments(prev => ({ ...prev, [post.id]: sortCommentsTree((eng.comments || []).map(c => normalizeComment(c) as PostComment)) }));
       return;
     }
-    if (postComments[post.id]) return;
     try {
       const r = await fetch(`/api/posts/${post.id}/comments`, { credentials: 'include' });
       if (r.ok) {
         const d = await r.json() as { comments: PostComment[] };
-        setPostComments(prev => ({ ...prev, [post.id]: d.comments ?? [] }));
+        const mapped = (d.comments ?? []).map(c => normalizeComment(c) as PostComment);
+        setPostComments(prev => ({ ...prev, [post.id]: sortCommentsTree(mapped) }));
       }
     } catch {/* silent */}
   }
