@@ -26,7 +26,7 @@ export function LiveVipDock({
   const vipHost = isVip(hostId);
   const feats = getVipFeats(hostId);
   const cap = getVipMaxSpeakers(hostId);
-  const canMusic = vipHost && feats.roomMusic;
+  const canMusic = vipHost;
   const isHost = !!currentUserId && String(currentUserId) === String(hostId);
 
   const [open, setOpen] = useState(false);

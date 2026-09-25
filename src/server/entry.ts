@@ -396,6 +396,46 @@ app.get("/api/live/recordings", live_recordings_get_32);
 app.post("/api/live/recordings/upload", live_recordings_upload_post_33);
 app.delete("/api/live/recordings/:id", live_recordings_id_delete_34);
 app.get("/api/live/status", live_status_get_35);
+
+const vipMem = () => {
+  const g = globalThis as typeof globalThis & { __stooornaVip?: Map<string, any> };
+  if (!g.__stooornaVip) g.__stooornaVip = new Map();
+  return g.__stooornaVip;
+};
+app.get("/api/vip", (req, res) => {
+  const userId = String(req.query.userId || "");
+  if (!userId) return res.status(400).json({ error: "userId required" });
+  const row = vipMem().get(userId) || {
+    userId, active: false, since: 0, color: "gold",
+    feats: { eightMics: false, roomMusic: false }, renameUsed: false,
+  };
+  res.json(row);
+});
+app.post("/api/vip", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const userId = String(body.userId || "");
+  if (!userId) return res.status(400).json({ error: "userId required" });
+  const mem = vipMem();
+  const row = mem.get(userId) || {
+    userId, active: false, since: 0, color: "gold",
+    feats: { eightMics: false, roomMusic: false }, renameUsed: false,
+  };
+  const action = String(body.action || "");
+  if (action === "activate") { row.active = true; row.since = Date.now(); }
+  if (action === "color") {
+    const c = String(body.color || "");
+    if (["blue", "gold", "red", "green", "gray"].includes(c)) row.color = c;
+  }
+  if (action === "feat") {
+    if (body.key === "eightMics" || body.key === "roomMusic") {
+      row.feats[String(body.key)] = !!body.on;
+    }
+  }
+  if (action === "rename-used") row.renameUsed = true;
+  mem.set(userId, row);
+  res.json(row);
+});
+
 app.get("/api/me/ban-status", me_ban_status_get_36);
 app.post("/api/me/update-ip", me_update_ip_post_37);
 app.get("/api/messages", messages_get_38);

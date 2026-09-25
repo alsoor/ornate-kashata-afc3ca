@@ -34,7 +34,6 @@ import {
   type LiveChatMsg,
 } from '@/lib/liveRoomExtras';
 import {
-  MAX_LIVE_SPEAKERS,
   publishLiveSignal,
   postLiveSignalHttp,
   subscribeLiveSignals,
@@ -43,6 +42,9 @@ import {
   type MicRequest,
   type LiveSignal,
 } from '@/lib/liveRoomStage';
+import { getVipMaxSpeakers, isVip } from '@/lib/vipPatch';
+import { LiveVipDock } from '@/components/LiveVipDock';
+import { VipAvatarFrame, VipBadge } from '@/components/VipBadge';
 
 const AGORA_APP_ID = '149ef04e839c4132a08efb49d717c436';
 const PUBLIC_CHANNEL = 'stooorna-live-voice';
@@ -99,6 +101,8 @@ export default function LivePage() {
   const hostAvatar = (searchParams.get('hostAvatar') || '').trim() || null;
   const isHostRoom = !!hostId;
   const amHost = !!(myId && hostId && myId === hostId);
+  const micCap = getVipMaxSpeakers(hostId);
+  const hostIsVip = isVip(hostId);
   const channelName = isHostRoom
     ? `stooorna-live-${hostId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48) || uidFromString(hostId)}`
     : PUBLIC_CHANNEL;
@@ -1166,8 +1170,8 @@ export default function LivePage() {
     const next = new Set(speakerUidsRef.current);
     if (grant) {
       if (frozenUidsRef.current.has(uid)) return;
-      if (!canGrantSpeaker(next, uid)) {
-        setError(`Max ${MAX_LIVE_SPEAKERS} speakers`);
+      if (!canGrantSpeaker(next, uid, hostId)) {
+        setError(`Max ${micCap} speakers`);
         return;
       }
       next.add(uid);
@@ -1603,19 +1607,23 @@ export default function LivePage() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              color: '#facc15',
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              padding: '6px 10px',
-              borderRadius: 20,
-              background: 'rgba(250,204,21,0.12)',
-              border: '1px solid rgba(250,204,21,0.4)',
+              justifyContent: 'center',
+              gap: 4,
+              color: '#111',
+              fontSize: '0.7rem',
+              fontWeight: 800,
+              width: 46,
+              height: 46,
+              padding: 0,
+              borderRadius: '50%',
+              background: 'radial-gradient(circle at 30% 30%, #ffe08a, #eab308)',
+              border: '1.5px solid rgba(234,179,8,0.85)',
+              boxShadow: '0 0 12px rgba(234,179,8,0.5)',
               cursor: 'pointer',
             }}
+            title="Mic requests"
           >
-            <Hand size={14} />
-            <span>{amHost ? `Mic ${micRequests.length}` : (micRequested || speakerUids.has(myUidRef.current || -1) ? 'Mic' : 'Ask mic')}</span>
+            <Hand size={16} color="#111" />
           </button>
         )}
         <button type="button" onClick={dismissLivePage} aria-label="خروج من البث"
@@ -2164,7 +2172,7 @@ export default function LivePage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 10px', borderBottom: '1px solid rgba(250,204,21,0.15)' }}>
               <Hand size={18} color="#facc15" />
               <p style={{ margin: 0, flex: 1, color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>
-                Mic requests · speakers {speakerUids.size}/{MAX_LIVE_SPEAKERS}
+                Mic requests · speakers {speakerUids.size}/{micCap}
               </p>
               <button type="button" onClick={() => setRequestsOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(200,230,230,0.8)', cursor: 'pointer', padding: 6 }}>
                 <X size={18} />
@@ -2488,6 +2496,7 @@ export default function LivePage() {
           </motion.div>
         )}
       </AnimatePresence>
+      <LiveVipDock hostId={hostId} currentUserId={myId} />
     </div>
   );
 }

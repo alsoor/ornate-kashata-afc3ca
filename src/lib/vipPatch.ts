@@ -109,8 +109,7 @@ export function getVipPublicState(userId?: string | null): VipPublicState | null
 }
 
 export function getVipMaxSpeakers(hostId?: string | null): number {
-  if (!isVip(hostId)) return 4;
-  return getVipFeats(hostId).eightMics ? 8 : 4;
+  return isVip(hostId) ? 8 : 4;
 }
 
 async function postVip(body: Record<string, unknown>) {
