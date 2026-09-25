@@ -1,36 +1,33 @@
-import React from 'react';
-import { isVip, getVipColor, VIP_COLORS, type VipColor } from '@/lib/vipPatch';
+import React, { useEffect, useState } from 'react';
+import { isVip, resolveVipNameStyle } from '@/lib/vipPatch';
 
-/** Small VIP chip next to @username. Visible to every viewer when the account is VIP. */
-export function VipBadge({
-  userId,
-  compact,
-  force,
-}: {
-  userId?: string | null;
-  compact?: boolean;
-  force?: boolean;
-}) {
-  if (!force && !isVip(userId)) return null;
-  const color: VipColor = getVipColor(userId);
-  const accent = VIP_COLORS[color] || VIP_COLORS.gold;
+export function VipBadge({ userId, compact }: { userId?: string | null; compact?: boolean }) {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const on = () => bump((n) => n + 1);
+    window.addEventListener('stooorna:vip', on);
+    window.addEventListener('stooorna:vip-directory', on);
+    return () => {
+      window.removeEventListener('stooorna:vip', on);
+      window.removeEventListener('stooorna:vip-directory', on);
+    };
+  }, []);
+  if (!isVip(userId)) return null;
   return (
     <span
       title="VIP"
-      data-vip-badge="1"
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: compact ? '0.5rem' : '0.56rem',
+        fontSize: compact ? '0.52rem' : '0.58rem',
         fontWeight: 900,
         color: '#111',
-        background: accent,
+        background: 'linear-gradient(90deg,#fde68a,#eab308)',
         borderRadius: 5,
-        padding: compact ? '1px 5px' : '2px 6px',
-        letterSpacing: '0.06em',
+        padding: compact ? '1px 5px' : '2px 7px',
+        letterSpacing: '0.04em',
         lineHeight: 1.2,
-        boxShadow: `0 0 8px ${accent}99`,
+        boxShadow: '0 0 8px rgba(234,179,8,0.45)',
         verticalAlign: 'middle',
         flexShrink: 0,
         marginInlineStart: 4,
@@ -41,77 +38,49 @@ export function VipBadge({
   );
 }
 
-/** Animated gold ring + VIP tab on top of an avatar. */
 export function VipAvatarFrame({
   userId,
-  size = 80,
   children,
+  size = 44,
 }: {
   userId?: string | null;
-  size?: number;
   children: React.ReactNode;
+  size?: number;
 }) {
-  const active = isVip(userId);
-  const color = VIP_COLORS[getVipColor(userId)] || VIP_COLORS.gold;
-  if (!active) {
-    return <div style={{ position: 'relative', width: size, height: size }}>{children}</div>;
-  }
+  const vip = isVip(userId);
   return (
-    <div style={{ position: 'relative', width: size, height: size }}>
-      <style>{`
-        @keyframes stooornaVipGlow {
-          0%, 100% { box-shadow: 0 0 0 2px ${color}, 0 0 10px ${color}cc, 0 0 18px ${color}66; }
-          50% { box-shadow: 0 0 0 3px ${color}, 0 0 18px ${color}, 0 0 28px ${color}aa; }
-        }
-        @keyframes stooornaVipSpin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          inset: -4,
-          borderRadius: '50%',
-          background: `conic-gradient(from 0deg, transparent 0deg, ${color} 80deg, #fff3c4 140deg, ${color} 200deg, transparent 280deg)`,
-          animation: 'stooornaVipSpin 3.6s linear infinite',
-          opacity: 0.95,
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          borderRadius: '50%',
-          overflow: 'hidden',
-          animation: 'stooornaVipGlow 1.8s ease-in-out infinite',
-          zIndex: 1,
-        }}
-      >
-        {children}
-      </div>
-      <span
-        style={{
-          position: 'absolute',
-          top: -8,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: color,
-          color: '#111',
-          fontSize: size >= 70 ? 9 : 8,
-          fontWeight: 900,
-          borderRadius: 6,
-          padding: '1px 7px',
-          zIndex: 3,
-          letterSpacing: '0.06em',
-          boxShadow: `0 2px 8px ${color}99`,
-        }}
-      >
-        VIP
-      </span>
-    </div>
+    <span
+      style={{
+        display: 'inline-flex',
+        borderRadius: '50%',
+        padding: vip ? 2 : 0,
+        background: vip ? 'linear-gradient(135deg,#fde68a,#eab308,#f59e0b)' : 'transparent',
+        boxShadow: vip ? '0 0 10px rgba(234,179,8,0.45)' : 'none',
+        width: size + (vip ? 4 : 0),
+        height: size + (vip ? 4 : 0),
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {children}
+    </span>
   );
 }
 
-export default VipBadge;
+export function VipName({
+  userId,
+  children,
+  className,
+  style,
+}: {
+  userId?: string | null;
+  children: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <span className={className} style={{ ...resolveVipNameStyle(userId), ...style }}>
+      {children}
+    </span>
+  );
+}

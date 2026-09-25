@@ -7,6 +7,7 @@ import { Helmet } from '@dr.pogodin/react-helmet';
 import UserAvatar from '@/components/UserAvatar';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 import { hydrateVipDirectory } from '@/lib/vipPatch';
+import { startPublicBadgeSync, isPublicBusinessAccount } from '@/lib/publicVisibility';
 
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
@@ -5395,6 +5396,7 @@ function normalizePostMediaFields<T extends {
 /** True when author is an approved Business account (yellow badge next to @username) */
 function isAuthorBusinessAccount(authorId?: string | null, authorUsername?: string | null): boolean {
   try {
+    if (isPublicBusinessAccount({ id: authorId, username: authorUsername })) return true;
     const id = String(authorId || '').trim();
     const un = String(authorUsername || '').replace(/^@/, '').trim().toLowerCase();
     if (!id && !un) return false;
@@ -11281,7 +11283,7 @@ export default function AddFriendPage() {
   // attached once on mount, so those listeners never act on a stale (pre-login-load) user.
   const latestUserRef = useRef(user);
   
-  useEffect(() => { void hydrateVipDirectory(); const t = window.setInterval(() => { void hydrateVipDirectory(); }, 15000); return () => window.clearInterval(t); }, []);
+  useEffect(() => { startPublicBadgeSync(user?.id); void hydrateVipDirectory(); const t = window.setInterval(() => { void hydrateVipDirectory(); }, 15000); return () => window.clearInterval(t); }, [user?.id]);
 useEffect(() => { latestUserRef.current = user; }, [user]);
   const latestCompaniesRef = useRef<CompanyAccount[]>([]);
   const { startCall } = useGlobalCall();

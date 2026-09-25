@@ -1,5 +1,5 @@
 /**
- * VIP plan — local cache + server sync.
+ * VIP plan — local cache + server sync so every viewer sees VIP live.
  * English-only identifiers and comments.
  */
 export type VipColor = 'blue' | 'gold' | 'red' | 'green' | 'gray' | 'pink';
@@ -18,6 +18,7 @@ const COLOR_KEY = 'stooorna_vip_color';
 const RENAME_KEY = 'stooorna_vip_rename_used';
 const FEAT_KEY = 'stooorna_vip_feats';
 export const VIP_FAVS_KEY = 'stooorna_vip_music_favs';
+export const PUBLIC_DIR_KEY = 'stooorna_vip_public_dir';
 
 export const VIP_PRICE_KD = 5;
 export const VIP_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
@@ -40,6 +41,8 @@ export type VipPublicState = {
   color: VipColor;
   feats: VipFeats;
   usernameColor: string;
+  expiresAt?: number;
+  username?: string | null;
 };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -72,6 +75,16 @@ function readAllPlans(): Record<string, VipPlan> {
   return readJson<Record<string, VipPlan>>(PLAN_KEY, {});
 }
 
+function readPublicDir(): Record<string, VipPublicState> {
+  return readJson<Record<string, VipPublicState>>(PUBLIC_DIR_KEY, {});
+}
+
+function publicRowActive(row?: Partial<VipPublicState> | null): boolean {
+  if (!row?.active) return false;
+  if (row.expiresAt && Date.now() > Number(row.expiresAt)) return false;
+  return true;
+}
+
 export function isVip(userId?: string | null): boolean {
   if (!userId) return false;
   const p = readAllPlans()[userId];
@@ -82,21 +95,15 @@ export function isVip(userId?: string | null): boolean {
     }
     return true;
   }
-  try {
-    const dir = readJson<Record<string, { active?: boolean; expiresAt?: number }>>('stooorna_vip_public_dir', {});
-    const row = dir[userId];
-    if (!row?.active) return false;
-    if (row.expiresAt && Date.now() > row.expiresAt) return false;
-    return true;
-  } catch {
-    return false;
-  }
+  return publicRowActive(readPublicDir()[userId]);
 }
 
 export function getVipExpiry(userId?: string | null): number | null {
   if (!userId) return null;
   const p = readAllPlans()[userId];
-  return p?.expiresAt || null;
+  if (p?.expiresAt) return p.expiresAt;
+  const d = readPublicDir()[userId];
+  return d?.expiresAt || null;
 }
 
 export function deactivateVip(userId: string) {
@@ -106,15 +113,24 @@ export function deactivateVip(userId: string) {
     writeJson(PLAN_KEY, all);
   }
   try {
-    const dir = readJson<Record<string, unknown>>('stooorna_vip_public_dir', {});
+    const dir = readPublicDir();
     delete dir[userId];
-    writeJson('stooorna_vip_public_dir', dir);
-  } catch { /* ignore */ }
+    writeJson(PUBLIC_DIR_KEY, dir);
+  } catch {
+    /* ignore */
+  }
   emitVip({ userId, active: false });
+  window.dispatchEvent(new CustomEvent('stooorna:vip-directory', { detail: readPublicDir() }));
   void postVip({ userId, action: 'deactivate' });
 }
 
-export function formatVipCountdown(expiresAt?: number | null): { days: number; hours: number; minutes: number; seconds: number; date: string } {
+export function formatVipCountdown(expiresAt?: number | null): {
+  days: number;
+  hours: number;
+  minutes: number;
+  seconds: number;
+  date: string;
+} {
   const end = Number(expiresAt || 0);
   const left = Math.max(0, end - Date.now());
   const days = Math.floor(left / 86400000);
@@ -125,12 +141,14 @@ export function formatVipCountdown(expiresAt?: number | null): { days: number; h
   return { days, hours, minutes, seconds, date };
 }
 
-
 export function getVipColor(userId?: string | null): VipColor {
   if (!userId) return 'gold';
   const map = readJson<Record<string, VipColor>>(COLOR_KEY, {});
   const c = map[userId];
-  return c && VIP_COLORS[c] ? c : 'gold';
+  if (c && VIP_COLORS[c]) return c;
+  const pub = readPublicDir()[userId];
+  if (pub?.color && VIP_COLORS[pub.color]) return pub.color;
+  return 'gold';
 }
 
 export function vipUsernameColor(userId?: string | null): string {
@@ -141,7 +159,11 @@ export function getVipFeats(userId?: string | null): VipFeats {
   if (!userId) return { eightMics: false, roomMusic: false };
   const map = readJson<Record<string, Partial<VipFeats>>>(FEAT_KEY, {});
   const f = map[userId] || {};
-  return { eightMics: !!f.eightMics, roomMusic: !!f.roomMusic };
+  const pub = readPublicDir()[userId];
+  return {
+    eightMics: !!(f.eightMics ?? pub?.feats?.eightMics),
+    roomMusic: !!(f.roomMusic ?? pub?.feats?.roomMusic),
+  };
 }
 
 export function getVipPublicState(userId?: string | null): VipPublicState | null {
@@ -153,10 +175,13 @@ export function getVipPublicState(userId?: string | null): VipPublicState | null
     color,
     feats: getVipFeats(userId),
     usernameColor: VIP_COLORS[color],
+    expiresAt: getVipExpiry(userId) || undefined,
   };
 }
 
 export function getVipMaxSpeakers(hostId?: string | null): number {
+  const feats = getVipFeats(hostId);
+  if (isVip(hostId) && feats.eightMics !== false) return 8;
   return isVip(hostId) ? 8 : 4;
 }
 
@@ -169,7 +194,7 @@ async function postVip(body: Record<string, unknown>) {
       body: JSON.stringify(body),
     });
   } catch {
-    /* server optional; local cache remains source of truth until sync */
+    /* server optional; local cache remains until sync */
   }
 }
 
@@ -181,7 +206,12 @@ export async function hydrateVipFromServer(userId: string) {
     const d = await r.json();
     if (d?.active) {
       const all = readAllPlans();
-      all[userId] = { userId, active: true, since: Number(d.since) || Date.now(), expiresAt: Number(d.expiresAt) || (Date.now() + VIP_PERIOD_MS) };
+      all[userId] = {
+        userId,
+        active: true,
+        since: Number(d.since) || Date.now(),
+        expiresAt: Number(d.expiresAt) || Date.now() + VIP_PERIOD_MS,
+      };
       if (all[userId].expiresAt && Date.now() > all[userId].expiresAt!) {
         all[userId].active = false;
       }
@@ -205,6 +235,7 @@ export async function hydrateVipFromServer(userId: string) {
       map[userId] = true;
       writeJson(RENAME_KEY, map);
     }
+    publishVipPublic(userId);
     emitVip({ userId, hydrated: true });
   } catch {
     /* ignore */
@@ -221,29 +252,23 @@ export function setVipColor(userId: string, color: VipColor) {
   void postVip({ userId, action: 'color', color });
 }
 
-const PUBLIC_DIR_KEY = 'stooorna_vip_public_dir';
-
 export function publishVipPublic(userId: string) {
   if (!userId) return;
   try {
-    const dir = readJson<Record<string, VipPublicState>>(PUBLIC_DIR_KEY, {});
+    const dir = readPublicDir();
     const state = getVipPublicState(userId);
     if (state) dir[userId] = state;
     else delete dir[userId];
     writeJson(PUBLIC_DIR_KEY, dir);
     window.dispatchEvent(new CustomEvent('stooorna:vip-directory', { detail: dir }));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function isPublicVipAccount(userId?: string | null): boolean {
   if (!userId) return false;
-  if (isVip(userId)) return true;
-  try {
-    const dir = readJson<Record<string, VipPublicState>>(PUBLIC_DIR_KEY, {});
-    return !!dir[userId]?.active;
-  } catch {
-    return false;
-  }
+  return isVip(userId);
 }
 
 export function activateVip(userId: string) {
@@ -255,7 +280,6 @@ export function activateVip(userId: string) {
   emitVip({ userId, active: true, expiresAt: now + VIP_PERIOD_MS });
   void postVip({ userId, action: 'activate', expiresAt: now + VIP_PERIOD_MS });
 }
-
 
 export function vipRenameUsed(userId: string): boolean {
   const map = readJson<Record<string, boolean>>(RENAME_KEY, {});
@@ -292,26 +316,58 @@ export function saveVipFav(userId: string, track: { id: string; title: string; u
   writeJson(VIP_FAVS_KEY, map);
 }
 
-/** Username CSS color for feed / live / profile. Empty string = default theme color. */
 export function resolveVipNameStyle(userId?: string | null): { color?: string; fontWeight?: number } {
   const c = vipUsernameColor(userId);
   if (!c) return {};
   return { color: c, fontWeight: 800 };
 }
 
+function mergeServerDir(list: Array<Partial<VipPublicState> & { userId?: string }>) {
+  const dir = readPublicDir();
+  for (const row of list) {
+    const id = String(row?.userId || '');
+    if (!id) continue;
+    const active = row.active !== false && !(row.expiresAt && Date.now() > Number(row.expiresAt));
+    if (!active) {
+      delete dir[id];
+      continue;
+    }
+    const color = (row.color && VIP_COLORS[row.color]) ? row.color : (dir[id]?.color || 'gold');
+    dir[id] = {
+      userId: id,
+      active: true,
+      color,
+      feats: {
+        eightMics: !!(row.feats?.eightMics ?? dir[id]?.feats?.eightMics),
+        roomMusic: !!(row.feats?.roomMusic ?? dir[id]?.feats?.roomMusic),
+      },
+      usernameColor: VIP_COLORS[color],
+      expiresAt: Number(row.expiresAt) || dir[id]?.expiresAt,
+      username: row.username ?? dir[id]?.username,
+    };
+  }
+  writeJson(PUBLIC_DIR_KEY, dir);
+  window.dispatchEvent(new CustomEvent('stooorna:vip-directory', { detail: dir }));
+}
 
+/** Pull public VIP list so other accounts see badges without sharing localStorage. */
 export async function hydrateVipDirectory() {
   try {
     const r = await fetch('/api/vip/directory', { credentials: 'include' });
-    if (!r.ok) return;
-    const d = await r.json();
-    const list = (d.users || d.items || []) as Array<{ userId: string; active?: boolean; color?: VipColor; expiresAt?: number }>;
-    const dir: Record<string, { active: boolean; color?: VipColor; expiresAt?: number }> = {};
-    for (const row of list) {
-      if (!row?.userId) continue;
-      dir[row.userId] = { active: row.active !== false, color: row.color, expiresAt: row.expiresAt };
+    if (r.ok) {
+      const d = await r.json();
+      const list = (d.users || d.items || []) as Array<Partial<VipPublicState> & { userId?: string }>;
+      mergeServerDir(list);
     }
-    writeJson('stooorna_vip_public_dir', dir);
-    window.dispatchEvent(new CustomEvent('stooorna:vip-directory', { detail: dir }));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const plans = readAllPlans();
+    for (const id of Object.keys(plans)) {
+      if (plans[id]?.active) publishVipPublic(id);
+    }
+  } catch {
+    /* ignore */
+  }
 }

@@ -13,6 +13,7 @@ import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
 import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, getVipFeats, setVipFeat, hydrateVipFromServer, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown } from '@/lib/vipPatch';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
+import { startPublicBadgeSync, publishBusinessPublic } from '@/lib/publicVisibility';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -5897,6 +5898,7 @@ export default function SettingsPage() {
       setVipRoomMusic(!!f.roomMusic);
       setVipExpiresAt(all?.[user.id]?.expiresAt || null);
     } catch { setVipOn(false); }
+    startPublicBadgeSync(user.id);
     void hydrateVipFromServer(user.id).then(() => {
       try {
         const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
@@ -11280,6 +11282,12 @@ export default function SettingsPage() {
                           type="button"
                           onClick={() => {
                             reviewBusinessRegistration(row.id, 'approve', ownerBizNotes[row.id] || null);
+                            publishBusinessPublic({
+                              userId: String(row.userId),
+                              username: row.username || null,
+                              email: row.email || null,
+                              projectName: row.projectName || null,
+                            });
                             setOwnerBusinessList(loadBusinessRegistry());
                             setOwnerBizNotes(prev => {
                               const n = { ...prev };
