@@ -1,6 +1,7 @@
-const DATA_DIR_VIP = join(process.cwd(), "data");
-const VIP_FILE = join(DATA_DIR_VIP, "vip-directory.json");
-const BIZ_FILE = join(DATA_DIR_VIP, "business-directory.json");
+import { readFileSync } from "node:fs";
+const DATA_DIR_VIP = process.cwd() + "/data";
+const VIP_FILE = DATA_DIR_VIP + "/vip-directory.json";
+const BIZ_FILE = DATA_DIR_VIP + "/business-directory.json";
 
 type VipRowPersisted = {
   userId: string;
@@ -18,7 +19,7 @@ type BizRowPersisted = {
   projectName?: string | null;
 };
 
-function loadJsonFileSync<T>(file: string, fallback: T): T {
+function loadJsonFileSyncVip<T>(file: string, fallback: T): T {
   try {
     const raw = readFileSync(file, "utf8");
     return JSON.parse(raw) as T;
@@ -26,11 +27,11 @@ function loadJsonFileSync<T>(file: string, fallback: T): T {
     return fallback;
   }
 }
-function saveJsonFileSync(file: string, data: unknown) {
+function saveJsonFileSyncVip(file: string, data: unknown) {
   try {
-    const { mkdirSync, writeFileSync } = require("node:fs") as typeof import("node:fs");
-    mkdirSync(DATA_DIR_VIP, { recursive: true });
-    writeFileSync(file, JSON.stringify(data), "utf8");
+    const fs = require("node:fs") as typeof import("node:fs");
+    fs.mkdirSync(DATA_DIR_VIP, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data), "utf8");
   } catch (e) {
     console.warn("[vip-biz] save failed", e);
   }
@@ -40,7 +41,7 @@ const vipMem = () => {
   const g = globalThis as typeof globalThis & { __stooornaVip?: Map<string, VipRowPersisted>; __stooornaVipLoaded?: boolean };
   if (!g.__stooornaVip) g.__stooornaVip = new Map();
   if (!g.__stooornaVipLoaded) {
-    const arr = loadJsonFileSync<VipRowPersisted[]>(VIP_FILE, []);
+    const arr = loadJsonFileSyncVip<VipRowPersisted[]>(VIP_FILE, []);
     if (Array.isArray(arr)) {
       for (const row of arr) {
         if (row?.userId) g.__stooornaVip.set(String(row.userId), row);
@@ -51,13 +52,13 @@ const vipMem = () => {
   return g.__stooornaVip;
 };
 const persistVip = () => {
-  saveJsonFileSync(VIP_FILE, Array.from(vipMem().values()));
+  saveJsonFileSyncVip(VIP_FILE, Array.from(vipMem().values()));
 };
 const bizDirMem = () => {
   const g = globalThis as typeof globalThis & { __stooornaBizDir?: Map<string, BizRowPersisted>; __stooornaBizLoaded?: boolean };
   if (!g.__stooornaBizDir) g.__stooornaBizDir = new Map();
   if (!g.__stooornaBizLoaded) {
-    const arr = loadJsonFileSync<BizRowPersisted[]>(BIZ_FILE, []);
+    const arr = loadJsonFileSyncVip<BizRowPersisted[]>(BIZ_FILE, []);
     if (Array.isArray(arr)) {
       for (const row of arr) {
         if (row?.userId) g.__stooornaBizDir.set(String(row.userId), row);
@@ -68,7 +69,7 @@ const bizDirMem = () => {
   return g.__stooornaBizDir;
 };
 const persistBiz = () => {
-  saveJsonFileSync(BIZ_FILE, Array.from(bizDirMem().values()));
+  saveJsonFileSyncVip(BIZ_FILE, Array.from(bizDirMem().values()));
 };
 app.get("/api/vip/directory", (_req, res) => {
   const now = Date.now();
