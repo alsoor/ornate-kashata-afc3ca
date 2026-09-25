@@ -5697,7 +5697,6 @@ function PostCard({
               {post.authorName || post.authorUsername || '—'}
               <span style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.66rem', fontWeight: 700, marginInlineStart: 6 }}>
                 {publishedDate}
-                {authorCountryLabel(post.authorId) ? ` · ${authorCountryLabel(post.authorId)}` : ''}
               </span>
               <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: '0.64rem', fontWeight: 600 }}>
                 · {timeAgo}
@@ -5719,6 +5718,18 @@ function PostCard({
               {isAuthorBusinessAccount(post.authorId, post.authorUsername) && <BusinessHeadBadgeInline compact />}
             </p>
           </div>
+          {authorCountryLabel(post.authorId) ? (
+            <span style={{
+              marginLeft: 'auto',
+              flexShrink: 0,
+              color: 'rgba(0,0,0,0.45)',
+              fontSize: '0.66rem',
+              fontWeight: 600,
+              paddingInlineEnd: 4,
+            }}>
+              {authorCountryLabel(post.authorId)}
+            </span>
+          ) : null}
 
           {/* زر المتابعة/الإضافة — لا يظهر على منشورك أنت (followStatus === null) */}
           {followStatus === 'pending' && (
@@ -7326,16 +7337,39 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           marginTop: coverUrl ? -28 : -4,
           paddingBottom: 2,
         }}>
-          <motion.button
-            whileTap={{ scale: 0.94 }}
-            onClick={() => setAvatarExpanded(true)}
-            style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', padding: 0, border: `3px solid ${PAGE_BG}`, cursor: 'pointer', background: '#000' }}
-          >
-            <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={72} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
-          </motion.button>
+          <div style={{ position: 'relative', width: 80, height: 80 }}>
+            {(() => {
+              try {
+                const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
+                if (all?.[authorId]?.active) {
+                  return (
+                    <>
+                      <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid #eab308', boxShadow: '0 0 12px rgba(234,179,8,0.8)' }} />
+                      <span style={{ position: 'absolute', top: -7, left: '50%', transform: 'translateX(-50%)', background: '#eab308', color: '#111', fontSize: 9, fontWeight: 900, borderRadius: 6, padding: '1px 6px', zIndex: 2 }}>VIP</span>
+                    </>
+                  );
+                }
+              } catch { /* ignore */ }
+              return null;
+            })()}
+            <motion.button
+              whileTap={{ scale: 0.94 }}
+              onClick={() => setAvatarExpanded(true)}
+              style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', padding: 0, border: `3px solid ${PAGE_BG}`, cursor: 'pointer', background: '#000', position: 'absolute', left: 4, top: 4 }}
+            >
+              <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={72} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
+            </motion.button>
+          </div>
 
           <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: '6px 0 0' }}>{name || username || '—'}</p>
           {username && <p style={{ color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
+            {(() => {
+              try {
+                const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
+                if (all?.[authorId]?.active) return <span style={{ background: '#eab308', color: '#111', fontSize: 9, fontWeight: 900, borderRadius: 6, padding: '1px 6px' }}>VIP</span>;
+              } catch { /* ignore */ }
+              return null;
+            })()}
             {(isCompanyProfile || readBusinessApproved(authorId)) && (
               <span style={{
                 fontSize: '0.55rem', fontWeight: 900, color: '#0a0a0a',
