@@ -1785,6 +1785,23 @@ function readBusinessApproved(userId?: string | null): boolean {
   }
 }
 
+/** Public Business directory synced from the server, mirroring hydrateVipDirectory.
+ * Without this, isAuthorBusinessAccount/readBusinessApproved only ever read
+ * whatever this one browser had written to its own localStorage, so a
+ * Business account's badge/frame never reached any other viewer or device. */
+async function hydrateBusinessDirectory() {
+  try {
+    const r = await fetch('/api/business/directory', { credentials: 'include' });
+    if (!r.ok) return;
+    const d = await r.json();
+    const list = Array.isArray(d?.users) ? d.users : [];
+    localStorage.setItem('stooorna_business_directory', JSON.stringify(list));
+    window.dispatchEvent(new CustomEvent('stooorna:business-registry'));
+  } catch {
+    /* server optional; existing local cache remains until next successful sync */
+  }
+}
+
 function useBusinessApproved(userId?: string | null): boolean {
   const [on, setOn] = useState(() => readBusinessApproved(userId));
   useEffect(() => {
@@ -4311,9 +4328,15 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
       </div>
       {/* Story identity and controls — intentionally below the progress line */}
       <div style={{ position: 'absolute', top: 28, left: 0, right: 0, zIndex: 3, display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px' }}>
-        <UserAvatar name={group.name} avatarUrl={group.avatarUrl} size={36} style={{ border: '2px solid hsl(var(--card))', boxShadow: 'none' }} />
+        <VipAvatarFrame userId={group.userId} size={36}>
+          <UserAvatar name={group.name} avatarUrl={group.avatarUrl} size={36} style={{ border: '2px solid hsl(var(--card))', boxShadow: 'none' }} />
+        </VipAvatarFrame>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-          <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.85rem', fontWeight: 700, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.name}</p>
+          <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.85rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {group.name}
+            <VipBadge userId={group.userId} compact />
+            {isAuthorBusinessAccount(group.userId, group.username) && <BusinessHeadBadgeInline compact />}
+          </p>
           <p style={{ color: 'hsl(var(--muted-foreground))', fontSize: '0.68rem', margin: 0 }}>{storyRelativeTime(item.createdAt)}</p>
         </div>
         {isMyStory && (
@@ -11281,7 +11304,7 @@ export default function AddFriendPage() {
   // attached once on mount, so those listeners never act on a stale (pre-login-load) user.
   const latestUserRef = useRef(user);
   
-  useEffect(() => { void hydrateVipDirectory(); const t = window.setInterval(() => { void hydrateVipDirectory(); }, 15000); return () => window.clearInterval(t); }, []);
+  useEffect(() => { void hydrateVipDirectory(); void hydrateBusinessDirectory(); const t = window.setInterval(() => { void hydrateVipDirectory(); void hydrateBusinessDirectory(); }, 15000); return () => window.clearInterval(t); }, []);
 useEffect(() => { latestUserRef.current = user; }, [user]);
   const latestCompaniesRef = useRef<CompanyAccount[]>([]);
   const { startCall } = useGlobalCall();
