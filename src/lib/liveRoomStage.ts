@@ -157,9 +157,17 @@ export function subscribeLiveSignals(
   };
 }
 
-export function canGrantSpeaker(speakers: Set<number>, uid: number): boolean {
+export function canGrantSpeaker(speakers: Set<number>, uid: number, hostId?: string | null): boolean {
   if (speakers.has(uid)) return true;
-  return speakers.size < MAX_LIVE_SPEAKERS;
+  const cap = hostId ? (typeof window !== 'undefined' && (() => {
+    try {
+      const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
+      return all?.[hostId]?.active ? 8 : 4;
+    } catch {
+      return 4;
+    }
+  })()) : MAX_LIVE_SPEAKERS;
+  return speakers.size < cap;
 }
 
 export function makeMicRequestPayload(opts: {

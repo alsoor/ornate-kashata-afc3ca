@@ -10,6 +10,7 @@ import LiveLocationMap from '@/components/LiveLocationMap';
 import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
+import { activateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS } from '@/lib/vipPatch';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -5823,6 +5824,14 @@ export default function SettingsPage() {
   const [bizCardNumber, setBizCardNumber] = useState('');
   const [bizCardExp, setBizCardExp] = useState('');
   const [bizCardCvv, setBizCardCvv] = useState('');
+  const [vipOn, setVipOn] = useState(false);
+  const [vipPayOpen, setVipPayOpen] = useState(false);
+  const [vipCard, setVipCard] = useState('');
+  const [vipExp, setVipExp] = useState('');
+  const [vipCvv, setVipCvv] = useState('');
+  const [vipColor, setVipColor] = useState<'blue' | 'gold' | 'red' | 'green' | 'gray'>('gold');
+  const [vipNewUser, setVipNewUser] = useState('');
+  const [vipRenameMsg, setVipRenameMsg] = useState('');
   const [bizTopUpAmount, setBizTopUpAmount] = useState('10');
   const [bizProjectName, setBizProjectName] = useState('');
   const [bizLicense, setBizLicense] = useState('');
@@ -5853,6 +5862,12 @@ export default function SettingsPage() {
       const bal = Number(localStorage.getItem(`stooorna_biz_balance_${user.id}`) || '0') || 0;
       setBizBalance(bal);
     } catch { setBizBalance(0); }
+    try {
+      const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
+      setVipOn(!!all?.[user.id]?.active);
+      const colors = JSON.parse(localStorage.getItem('stooorna_vip_color') || '{}');
+      if (colors?.[user.id]) setVipColor(colors[user.id]);
+    } catch { setVipOn(false); }
     const onBiz = () => {
       const r = getBusinessForUser(user.id);
       setBusinessRow(r);
@@ -7102,6 +7117,74 @@ export default function SettingsPage() {
                       </p>
                     </div>
                   )}
+
+                  <div style={{
+                    background: T.surface,
+                    border: `1px solid ${vipOn ? 'rgba(234,179,8,0.45)' : T.surfaceBorder}`,
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    marginBottom: 10,
+                    opacity: vipOn ? 1 : 0.55,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <p style={{
+                          margin: 0,
+                          color: '#eab308',
+                          fontSize: '0.62rem',
+                          letterSpacing: '0.2em',
+                          textTransform: 'uppercase',
+                          fontWeight: 800,
+                        }}>{vipOn ? 'VIP' : 'Subscribe'}</p>
+                        <p style={{ margin: '6px 0 0', color: T.text, fontSize: '0.82rem', fontWeight: 700 }}>VIP</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { if (!vipOn) setVipPayOpen(true); }}
+                        style={{
+                          width: 46, height: 26, borderRadius: 999, border: 'none',
+                          background: vipOn ? '#eab308' : '#4b5563',
+                          position: 'relative', cursor: vipOn ? 'default' : 'pointer',
+                        }}
+                      >
+                        <span style={{
+                          position: 'absolute', top: 3, width: 20, height: 20, borderRadius: '50%',
+                          background: '#fff', left: vipOn ? 23 : 3, transition: 'left 0.18s',
+                        }} />
+                      </button>
+                    </div>
+                    {vipOn && (
+                      <div style={{ marginTop: 12 }}>
+                        <p style={{ margin: '0 0 8px', color: '#eab308', fontSize: '0.7rem', fontWeight: 700 }}>Username color</p>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {(['blue', 'gold', 'red', 'green', 'gray'] as const).map(c => (
+                            <button key={c} type="button" onClick={() => { setVipColor(c); persistVipColor(user.id, c); }}
+                              style={{
+                                width: 22, height: 22, borderRadius: '50%', background: VIP_COLORS[c],
+                                border: vipColor === c ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer',
+                              }} />
+                          ))}
+                        </div>
+                        <p style={{ margin: '12px 0 6px', color: '#eab308', fontSize: '0.7rem', fontWeight: 700 }}>Change username once</p>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <input value={vipNewUser} onChange={e => setVipNewUser(e.target.value)} disabled={vipRenameUsed(user.id)}
+                            placeholder="new username" style={{ flex: 1, borderRadius: 8, border: '1px solid rgba(234,179,8,0.35)', background: 'transparent', color: T.text, padding: '6px 8px' }} />
+                          <button type="button" disabled={vipRenameUsed(user.id) || !vipNewUser.trim()}
+                            onClick={async () => {
+                              if (vipRenameUsed(user.id)) { setVipRenameMsg('Already used'); return; }
+                              const next = vipNewUser.trim().replace(/^@/, '');
+                              try {
+                                await fetch('/api/users/me', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: next }) });
+                              } catch { /* local mark anyway */ }
+                              markVipRenameUsed(user.id);
+                              setVipRenameMsg('Saved');
+                            }}
+                            style={{ borderRadius: 8, border: 'none', background: '#eab308', color: '#111', fontWeight: 800, padding: '6px 10px', cursor: 'pointer' }}>Save</button>
+                        </div>
+                        {vipRenameMsg ? <p style={{ margin: '6px 0 0', color: '#eab308', fontSize: '0.7rem' }}>{vipRenameMsg}</p> : null}
+                      </div>
+                    )}
+                  </div>
 
                   {/* ── Display Name ── */}
                   <div style={{
@@ -11282,6 +11365,43 @@ export default function SettingsPage() {
               <p style={{ margin: '10px 0 0', color: 'rgba(180,210,210,0.55)', fontSize: '0.65rem', textAlign: 'center' }}>
                 Demo top-up (local). Connect a payment gateway for production.
               </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {vipPayOpen && (
+          <motion.div
+            key="vip-pay"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 10520, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+            onClick={() => setVipPayOpen(false)}
+          >
+            <motion.div onClick={e => e.stopPropagation()} initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+              style={{ width: 'min(94vw, 380px)', background: '#0a1f22', border: '1px solid rgba(234,179,8,0.4)', borderRadius: 16, padding: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>VIP (Visa)</p>
+                <button type="button" onClick={() => setVipPayOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
+              </div>
+              <input value={vipCard} onChange={e => setVipCard(e.target.value.replace(/[^0-9 ]/g, '').slice(0, 19))} placeholder="Card number"
+                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 8, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <input value={vipExp} onChange={e => setVipExp(e.target.value.slice(0, 5))} placeholder="MM/YY"
+                  style={{ flex: 1, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
+                <input value={vipCvv} onChange={e => setVipCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="CVV"
+                  style={{ flex: 1, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
+              </div>
+              <button type="button" onClick={() => {
+                if (!user?.id) return;
+                if (vipCard.replace(/\s/g, '').length < 12) return;
+                activateVip(user.id);
+                setVipOn(true);
+                setVipPayOpen(false);
+                setVipCard(''); setVipExp(''); setVipCvv('');
+              }} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: '#eab308', color: '#111', fontWeight: 900, cursor: 'pointer' }}>
+                Pay and activate VIP
+              </button>
             </motion.div>
           </motion.div>
         )}

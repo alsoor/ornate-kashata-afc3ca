@@ -5582,11 +5582,26 @@ export default function ChatPage() {
                       lineHeight: 1.6
                     }}>OWNER</span>}
                         <span style={{
-                      color: '#111111',
+                      color: (() => {
+                        try {
+                          const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
+                          const colors = JSON.parse(localStorage.getItem('stooorna_vip_color') || '{}');
+                          const map: Record<string, string> = { blue: '#2563eb', gold: '#eab308', red: '#ef4444', green: '#22c55e', gray: '#9ca3af' };
+                          if (all?.[m.senderId]?.active) return map[colors?.[m.senderId] || 'gold'] || '#eab308';
+                        } catch { /* ignore */ }
+                        return '#111111';
+                      })(),
                       fontSize: '0.72rem',
                       fontWeight: 600
                     }}>
                           @{String(senderUser || senderName || 'user').replace(/^@/, '')}
+                          {(() => {
+                            try {
+                              const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
+                              if (all?.[m.senderId]?.active) return <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, color: '#111', background: '#eab308', borderRadius: 4, padding: '1px 5px' }}>VIP</span>;
+                            } catch { /* ignore */ }
+                            return null;
+                          })()}
                         </span>
                       </div>}
 

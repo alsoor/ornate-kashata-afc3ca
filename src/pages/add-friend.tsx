@@ -7427,6 +7427,15 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             </motion.button>
             )}
           </div>
+          {(() => {
+            try {
+              const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
+              if (all?.[authorId]?.active) {
+                return <span style={{ marginTop: 6, padding: '3px 10px', borderRadius: 999, background: '#eab308', color: '#111', fontWeight: 800, fontSize: 11 }}>VIP</span>;
+              }
+            } catch { /* ignore */ }
+            return null;
+          })()}
           {String(user?.id) !== String(authorId) && visitorCountry ? (
             <p style={{ color: '#2563eb', fontSize: '0.74rem', fontWeight: 600, margin: '4px 0 0', letterSpacing: 0.2 }}>{visitorCountry}</p>
           ) : null}
