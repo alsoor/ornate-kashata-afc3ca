@@ -2,7 +2,7 @@
  * VIP plan — local cache + server sync.
  * English-only identifiers and comments.
  */
-export type VipColor = 'blue' | 'gold' | 'red' | 'green' | 'gray';
+export type VipColor = 'blue' | 'gold' | 'red' | 'green' | 'gray' | 'pink';
 
 export const VIP_COLORS: Record<VipColor, string> = {
   blue: '#2563eb',
@@ -10,6 +10,7 @@ export const VIP_COLORS: Record<VipColor, string> = {
   red: '#ef4444',
   green: '#22c55e',
   gray: '#9ca3af',
+  pink: '#ec4899',
 };
 
 const PLAN_KEY = 'stooorna_vip_plan';
@@ -296,4 +297,21 @@ export function resolveVipNameStyle(userId?: string | null): { color?: string; f
   const c = vipUsernameColor(userId);
   if (!c) return {};
   return { color: c, fontWeight: 800 };
+}
+
+
+export async function hydrateVipDirectory() {
+  try {
+    const r = await fetch('/api/vip/directory', { credentials: 'include' });
+    if (!r.ok) return;
+    const d = await r.json();
+    const list = (d.users || d.items || []) as Array<{ userId: string; active?: boolean; color?: VipColor; expiresAt?: number }>;
+    const dir: Record<string, { active: boolean; color?: VipColor; expiresAt?: number }> = {};
+    for (const row of list) {
+      if (!row?.userId) continue;
+      dir[row.userId] = { active: row.active !== false, color: row.color, expiresAt: row.expiresAt };
+    }
+    writeJson('stooorna_vip_public_dir', dir);
+    window.dispatchEvent(new CustomEvent('stooorna:vip-directory', { detail: dir }));
+  } catch { /* ignore */ }
 }
