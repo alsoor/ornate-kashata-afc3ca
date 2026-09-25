@@ -1,5 +1,5 @@
 /**
- * VIP plan — local cache + server sync.
+ * VIP plan — local cache + server sync (file-backed API).
  * English-only identifiers and comments.
  */
 export type VipColor = 'blue' | 'gold' | 'red' | 'green' | 'gray' | 'pink';
@@ -41,6 +41,7 @@ export type VipPublicState = {
   color: VipColor;
   feats: VipFeats;
   usernameColor: string;
+  expiresAt?: number;
 };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -84,7 +85,7 @@ export function isVip(userId?: string | null): boolean {
     return true;
   }
   try {
-    const dir = readJson<Record<string, { active?: boolean; expiresAt?: number; color?: VipColor }>>(PUBLIC_DIR_KEY, {});
+    const dir = readJson<Record<string, { active?: boolean; expiresAt?: number }>>(PUBLIC_DIR_KEY, {});
     const row = dir[userId];
     if (!row?.active) return false;
     if (row.expiresAt && Date.now() > row.expiresAt) return false;
@@ -97,7 +98,13 @@ export function isVip(userId?: string | null): boolean {
 export function getVipExpiry(userId?: string | null): number | null {
   if (!userId) return null;
   const p = readAllPlans()[userId];
-  return p?.expiresAt || null;
+  if (p?.expiresAt) return p.expiresAt;
+  try {
+    const dir = readJson<Record<string, { expiresAt?: number }>>(PUBLIC_DIR_KEY, {});
+    return dir[userId]?.expiresAt || null;
+  } catch {
+    return null;
+  }
 }
 
 export function deactivateVip(userId: string) {
@@ -110,12 +117,20 @@ export function deactivateVip(userId: string) {
     const dir = readJson<Record<string, unknown>>(PUBLIC_DIR_KEY, {});
     delete dir[userId];
     writeJson(PUBLIC_DIR_KEY, dir);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   emitVip({ userId, active: false });
   void postVip({ userId, action: 'deactivate' });
 }
 
-export function formatVipCountdown(expiresAt?: number | null): { days: number; hours: number; minutes: number; seconds: number; date: string } {
+export function formatVipCountdown(expiresAt?: number | null): {
+  days: number;
+  hours: number;
+  minutes: number;
+  seconds: number;
+  date: string;
+} {
   const end = Number(expiresAt || 0);
   const left = Math.max(0, end - Date.now());
   const days = Math.floor(left / 86400000);
@@ -135,7 +150,9 @@ export function getVipColor(userId?: string | null): VipColor {
     const dir = readJson<Record<string, { color?: VipColor }>>(PUBLIC_DIR_KEY, {});
     const dc = dir[userId]?.color;
     if (dc && VIP_COLORS[dc]) return dc;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return 'gold';
 }
 
@@ -159,6 +176,7 @@ export function getVipPublicState(userId?: string | null): VipPublicState | null
     color,
     feats: getVipFeats(userId),
     usernameColor: VIP_COLORS[color],
+    expiresAt: getVipExpiry(userId) || undefined,
   };
 }
 
@@ -175,7 +193,7 @@ async function postVip(body: Record<string, unknown>) {
       body: JSON.stringify(body),
     });
   } catch {
-    /* server optional; local cache remains source of truth until sync */
+    /* server optional; local cache remains */
   }
 }
 
@@ -187,7 +205,12 @@ export async function hydrateVipFromServer(userId: string) {
     const d = await r.json();
     if (d?.active) {
       const all = readAllPlans();
-      all[userId] = { userId, active: true, since: Number(d.since) || Date.now(), expiresAt: Number(d.expiresAt) || (Date.now() + VIP_PERIOD_MS) };
+      all[userId] = {
+        userId,
+        active: true,
+        since: Number(d.since) || Date.now(),
+        expiresAt: Number(d.expiresAt) || Date.now() + VIP_PERIOD_MS,
+      };
       if (all[userId].expiresAt && Date.now() > all[userId].expiresAt!) {
         all[userId].active = false;
       }
@@ -195,7 +218,7 @@ export async function hydrateVipFromServer(userId: string) {
     }
     if (d?.color && VIP_COLORS[d.color as VipColor]) {
       const map = readJson<Record<string, VipColor>>(COLOR_KEY, {});
-      map[userId] = d.color;
+      map[userId] = d.color as VipColor;
       writeJson(COLOR_KEY, map);
     }
     if (d?.feats) {
@@ -211,6 +234,7 @@ export async function hydrateVipFromServer(userId: string) {
       map[userId] = true;
       writeJson(RENAME_KEY, map);
     }
+    publishVipPublic(userId);
     emitVip({ userId, hydrated: true });
   } catch {
     /* ignore */
@@ -224,11 +248,20 @@ export function setVipColor(userId: string, color: VipColor) {
   writeJson(COLOR_KEY, map);
   try {
     const dir = readJson<Record<string, VipPublicState>>(PUBLIC_DIR_KEY, {});
-    if (dir[userId]) {
-      dir[userId] = { ...dir[userId], color, usernameColor: VIP_COLORS[color] };
-      writeJson(PUBLIC_DIR_KEY, dir);
-    }
-  } catch { /* ignore */ }
+    const prev = dir[userId];
+    dir[userId] = {
+      userId,
+      active: true,
+      color,
+      feats: prev?.feats || getVipFeats(userId),
+      usernameColor: VIP_COLORS[color],
+      expiresAt: prev?.expiresAt || getVipExpiry(userId) || undefined,
+    };
+    writeJson(PUBLIC_DIR_KEY, dir);
+    window.dispatchEvent(new CustomEvent('stooorna:vip-directory', { detail: dir }));
+  } catch {
+    /* ignore */
+  }
   publishVipPublic(userId);
   emitVip({ userId, color });
   void postVip({ userId, action: 'color', color });
@@ -243,7 +276,9 @@ export function publishVipPublic(userId: string) {
     else delete dir[userId];
     writeJson(PUBLIC_DIR_KEY, dir);
     window.dispatchEvent(new CustomEvent('stooorna:vip-directory', { detail: dir }));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function isPublicVipAccount(userId?: string | null): boolean {
@@ -321,23 +356,41 @@ export async function hydrateVipDirectory() {
       expiresAt?: number;
       feats?: Partial<VipFeats>;
     }>;
-    const dir: Record<string, { active: boolean; color?: VipColor; expiresAt?: number }> = {};
+    const prevDir = readJson<Record<string, VipPublicState>>(PUBLIC_DIR_KEY, {});
+    const dir: Record<string, VipPublicState> = { ...prevDir };
     const colorMap = readJson<Record<string, VipColor>>(COLOR_KEY, {});
     const featMap = readJson<Record<string, Partial<VipFeats>>>(FEAT_KEY, {});
     for (const row of list) {
       if (!row?.userId) continue;
-      dir[row.userId] = { active: row.active !== false, color: row.color, expiresAt: row.expiresAt };
-      if (row.color && VIP_COLORS[row.color]) colorMap[row.userId] = row.color;
+      const color =
+        (row.color && VIP_COLORS[row.color] ? row.color : null) ||
+        colorMap[row.userId] ||
+        prevDir[row.userId]?.color ||
+        'gold';
+      if (VIP_COLORS[color]) colorMap[row.userId] = color;
       if (row.feats) {
         featMap[row.userId] = {
           eightMics: !!row.feats.eightMics,
           roomMusic: !!row.feats.roomMusic,
         };
       }
+      dir[row.userId] = {
+        userId: row.userId,
+        active: row.active !== false,
+        color,
+        feats: {
+          eightMics: !!(row.feats?.eightMics ?? featMap[row.userId]?.eightMics),
+          roomMusic: !!(row.feats?.roomMusic ?? featMap[row.userId]?.roomMusic),
+        },
+        usernameColor: VIP_COLORS[color],
+        expiresAt: row.expiresAt,
+      };
     }
     writeJson(COLOR_KEY, colorMap);
     writeJson(FEAT_KEY, featMap);
     writeJson(PUBLIC_DIR_KEY, dir);
     window.dispatchEvent(new CustomEvent('stooorna:vip-directory', { detail: dir }));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }

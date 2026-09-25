@@ -47,9 +47,9 @@ export function VipAvatarFrame({
   children: React.ReactNode;
   size?: number;
 }) {
-  const [, bump] = useState(0);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    const on = () => bump((n) => n + 1);
+    const on = () => setTick((n) => n + 1);
     window.addEventListener('stooorna:vip', on);
     window.addEventListener('stooorna:vip-directory', on);
     return () => {
@@ -61,6 +61,7 @@ export function VipAvatarFrame({
   const ringColor = vip ? VIP_COLORS[getVipColor(userId)] : '';
   return (
     <span
+      key={`vip-frame-${userId || 'x'}-${tick}-${ringColor}`}
       style={{
         display: 'inline-flex',
         borderRadius: '50%',
@@ -89,6 +90,16 @@ export function VipName({
   className?: string;
   style?: React.CSSProperties;
 }) {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const on = () => bump((n) => n + 1);
+    window.addEventListener('stooorna:vip', on);
+    window.addEventListener('stooorna:vip-directory', on);
+    return () => {
+      window.removeEventListener('stooorna:vip', on);
+      window.removeEventListener('stooorna:vip-directory', on);
+    };
+  }, []);
   return (
     <span className={className} style={{ ...resolveVipNameStyle(userId), ...style }}>
       {children}
