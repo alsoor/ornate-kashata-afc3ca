@@ -10,7 +10,8 @@ import LiveLocationMap from '@/components/LiveLocationMap';
 import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
-import { activateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, getVipFeats, setVipFeat } from '@/lib/vipPatch';
+import { activateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, getVipFeats, setVipFeat, hydrateVipFromServer, resolveVipNameStyle } from '@/lib/vipPatch';
+import { VipBadge } from '@/components/VipBadge';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -5837,6 +5838,7 @@ export default function SettingsPage() {
   const [vipFeaturesOpen, setVipFeaturesOpen] = useState(false);
   const [vipEightMics, setVipEightMics] = useState(false);
   const [vipRoomMusic, setVipRoomMusic] = useState(false);
+  const [vipConfirm, setVipConfirm] = useState<null | { kind: 'color' | 'rename' | 'eightMics' | 'roomMusic'; color?: 'blue' | 'gold' | 'red' | 'green' | 'gray'; nextOn?: boolean }>(null);
   const [bizTopUpAmount, setBizTopUpAmount] = useState('10');
   const [bizProjectName, setBizProjectName] = useState('');
   const [bizLicense, setBizLicense] = useState('');
@@ -5877,6 +5879,18 @@ export default function SettingsPage() {
       setVipEightMics(!!f.eightMics);
       setVipRoomMusic(!!f.roomMusic);
     } catch { setVipOn(false); }
+    void hydrateVipFromServer(user.id).then(() => {
+      try {
+        const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
+        setVipOn(!!all?.[user.id]?.active);
+        const colors = JSON.parse(localStorage.getItem('stooorna_vip_color') || '{}');
+        if (colors?.[user.id]) setVipColor(colors[user.id]);
+        const feats = JSON.parse(localStorage.getItem('stooorna_vip_feats') || '{}');
+        const f = feats?.[user.id] || {};
+        setVipEightMics(!!f.eightMics);
+        setVipRoomMusic(!!f.roomMusic);
+      } catch { /* ignore */ }
+    });
     const onBiz = () => {
       const r = getBusinessForUser(user.id);
       setBusinessRow(r);
@@ -6832,7 +6846,8 @@ export default function SettingsPage() {
                       fontWeight: isOwner ? 700 : 400,
                       textShadow: isOwner ? '0 0 8px rgba(37,99,235,0.5)' : 'none',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap',
-                    }}>@{profileUsername}
+                    }}><span style={resolveVipNameStyle(user?.id)}>@{profileUsername}</span>
+                      <VipBadge userId={user?.id} compact />
                       {(businessRow?.status === 'approved' || isPublicBusinessAccount({ id: user?.id, username: profileUsername, email: user?.email })) && (
                         <BusinessHeadBadge />
                       )}
@@ -11413,49 +11428,88 @@ export default function SettingsPage() {
             style={{ position: 'fixed', inset: 0, zIndex: 10530, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
             onClick={() => setVipFeaturesOpen(false)}>
             <motion.div onClick={e => e.stopPropagation()} initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-              style={{ width: 'min(92vw, 360px)', maxHeight: '88vh', overflowY: 'auto', background: '#0a1f22', border: '1px solid rgba(234,179,8,0.4)', borderRadius: 16, padding: 16 }}>
+              style={{ width: 'min(92vw, 360px)', maxHeight: '88vh', overflowY: 'auto', background: '#0a1f22', border: '1px solid rgba(234,179,8,0.4)', borderRadius: 16, padding: 16, position: 'relative' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>VIP features</p>
-                <button type="button" onClick={() => setVipFeaturesOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
+                <button type="button" onClick={() => { setVipFeaturesOpen(false); setVipConfirm(null); }} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
               </div>
               <p style={{ margin: '0 0 8px', color: '#eab308', fontSize: 12, fontWeight: 700 }}>Username color</p>
               <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                 {(['blue', 'gold', 'red', 'green', 'gray'] as const).map(c => (
-                  <button key={c} type="button" onClick={() => { setVipColor(c); persistVipColor(user.id, c); }}
+                  <button key={c} type="button" onClick={() => setVipConfirm({ kind: 'color', color: c })}
                     style={{ width: 24, height: 24, borderRadius: '50%', background: VIP_COLORS[c], border: vipColor === c ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer' }} />
                 ))}
               </div>
               <p style={{ margin: '0 0 6px', color: '#eab308', fontSize: 12, fontWeight: 700 }}>Change username once</p>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
                 <input value={vipNewUser} onChange={e => setVipNewUser(e.target.value)} disabled={vipRenameUsed(user.id)}
                   placeholder="new username" style={{ flex: 1, borderRadius: 8, border: '1px solid rgba(234,179,8,0.35)', background: 'transparent', color: T.text, padding: '6px 8px' }} />
                 <button type="button" disabled={vipRenameUsed(user.id) || !vipNewUser.trim()}
-                  onClick={async () => {
-                    if (vipRenameUsed(user.id)) { setVipRenameMsg('Already used'); return; }
-                    const next = vipNewUser.trim().replace(/^@/, '');
-                    try {
-                      await fetch('/api/users/me', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: next }) });
-                    } catch { /* local */ }
-                    markVipRenameUsed(user.id);
-                    setVipRenameMsg('Saved');
-                  }}
+                  onClick={() => setVipConfirm({ kind: 'rename' })}
                   style={{ borderRadius: 8, border: 'none', background: '#eab308', color: '#111', fontWeight: 800, padding: '6px 10px' }}>Save</button>
               </div>
               {vipRenameMsg ? <p style={{ margin: '0 0 10px', color: '#eab308', fontSize: 12 }}>{vipRenameMsg}</p> : null}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <span style={{ color: T.text, fontSize: 13 }}>8 speakers on live mic</span>
-                <button type="button" onClick={() => { const n = !vipEightMics; setVipEightMics(n); setVipFeat(user.id, 'eightMics', n); }}
+                <button type="button" onClick={() => setVipConfirm({ kind: 'eightMics', nextOn: !vipEightMics })}
                   style={{ width: 46, height: 26, borderRadius: 999, border: 'none', background: vipEightMics ? '#eab308' : '#4b5563', position: 'relative' }}>
                   <span style={{ position: 'absolute', top: 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', left: vipEightMics ? 23 : 3 }} />
                 </button>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ color: T.text, fontSize: 13 }}>Room music search</span>
-                <button type="button" onClick={() => { const n = !vipRoomMusic; setVipRoomMusic(n); setVipFeat(user.id, 'roomMusic', n); }}
+                <button type="button" onClick={() => setVipConfirm({ kind: 'roomMusic', nextOn: !vipRoomMusic })}
                   style={{ width: 46, height: 26, borderRadius: 999, border: 'none', background: vipRoomMusic ? '#eab308' : '#4b5563', position: 'relative' }}>
                   <span style={{ position: 'absolute', top: 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', left: vipRoomMusic ? 23 : 3 }} />
                 </button>
               </div>
+              {vipOn && vipRoomMusic && (
+                <button type="button" onClick={() => setMusicModalOpen(true)}
+                  style={{ marginTop: 14, width: '100%', padding: 10, borderRadius: 10, border: '1px solid rgba(234,179,8,0.4)', background: 'rgba(234,179,8,0.12)', color: '#eab308', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Music size={16} /> Open room music
+                </button>
+              )}
+              {vipConfirm && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 16 }}>
+                  <div style={{ width: '100%', background: '#0d2428', border: '1px solid rgba(234,179,8,0.45)', borderRadius: 12, padding: 14 }}>
+                    <p style={{ margin: '0 0 6px', color: '#eab308', fontWeight: 900 }}>
+                      {vipConfirm.kind === 'color' ? 'Confirm username color' : vipConfirm.kind === 'rename' ? 'Confirm username change' : vipConfirm.kind === 'eightMics' ? (vipConfirm.nextOn ? 'Enable 8 live speakers' : 'Disable 8 live speakers') : (vipConfirm.nextOn ? 'Enable room music search' : 'Disable room music search')}
+                    </p>
+                    <p style={{ margin: '0 0 12px', color: T.text, fontSize: 13 }}>
+                      {vipConfirm.kind === 'color' ? `Apply ${vipConfirm.color} to your public username?` : vipConfirm.kind === 'rename' ? `Save @${vipNewUser.trim().replace(/^@/, '')}? This can be used only once.` : vipConfirm.kind === 'eightMics' ? (vipConfirm.nextOn ? 'Your live rooms will accept up to 8 speakers on the mic.' : 'Live rooms will go back to 4 speakers.') : (vipConfirm.nextOn ? 'A Music button will appear on your live room.' : 'The Music button will be hidden on your live room.')}
+                    </p>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button type="button" onClick={() => setVipConfirm(null)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid rgba(234,179,8,0.35)', background: 'transparent', color: T.text, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+                      <button type="button" onClick={async () => {
+                        if (!user?.id || !vipConfirm) return;
+                        if (vipConfirm.kind === 'color' && vipConfirm.color) {
+                          setVipColor(vipConfirm.color);
+                          persistVipColor(user.id, vipConfirm.color);
+                        } else if (vipConfirm.kind === 'rename') {
+                          if (vipRenameUsed(user.id)) { setVipRenameMsg('Already used'); setVipConfirm(null); return; }
+                          const next = vipNewUser.trim().replace(/^@/, '');
+                          try {
+                            const r = await fetch('/api/users/me', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: next }) });
+                            if (!r.ok) { setVipRenameMsg('Could not save username'); setVipConfirm(null); return; }
+                          } catch { setVipRenameMsg('Could not save username'); setVipConfirm(null); return; }
+                          markVipRenameUsed(user.id);
+                          setVipRenameMsg('Saved');
+                          setProfileUsername(next);
+                        } else if (vipConfirm.kind === 'eightMics') {
+                          const n = !!vipConfirm.nextOn;
+                          setVipEightMics(n);
+                          setVipFeat(user.id, 'eightMics', n);
+                        } else if (vipConfirm.kind === 'roomMusic') {
+                          const n = !!vipConfirm.nextOn;
+                          setVipRoomMusic(n);
+                          setVipFeat(user.id, 'roomMusic', n);
+                        }
+                        setVipConfirm(null);
+                      }} style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', background: '#eab308', color: '#111', fontWeight: 900, cursor: 'pointer' }}>Confirm</button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

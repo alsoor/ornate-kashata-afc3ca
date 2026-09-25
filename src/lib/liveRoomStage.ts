@@ -1,8 +1,8 @@
 /**
  * Account-live stage helpers (voice + camera).
- * Not used by the public voice room.
  * English-only.
  */
+import { getVipMaxSpeakers } from '@/lib/vipPatch';
 
 export const MAX_LIVE_SPEAKERS = 4;
 
@@ -130,7 +130,9 @@ export function subscribeLiveSignals(
       );
       if (!r.ok) return;
       const d = await r.json();
-      const list = (d.messages ?? d.signals ?? d.items ?? (Array.isArray(d) ? d : [])) as Array<{ payload?: LiveSignal; data?: LiveSignal; at?: number } | LiveSignal>;
+      const list = (d.messages ?? d.signals ?? d.items ?? (Array.isArray(d) ? d : [])) as Array<
+        { payload?: LiveSignal; data?: LiveSignal; at?: number } | LiveSignal
+      >;
       for (const item of list) {
         const payload = (item as any).payload ?? (item as any).data ?? item;
         const at = Number((item as any).at || (payload as any).at || (payload as any).ts || Date.now());
@@ -159,14 +161,7 @@ export function subscribeLiveSignals(
 
 export function canGrantSpeaker(speakers: Set<number>, uid: number, hostId?: string | null): boolean {
   if (speakers.has(uid)) return true;
-  const cap = hostId ? (typeof window !== 'undefined' && (() => {
-    try {
-      const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
-      return all?.[hostId]?.active ? 8 : 4;
-    } catch {
-      return 4;
-    }
-  })()) : MAX_LIVE_SPEAKERS;
+  const cap = getVipMaxSpeakers(hostId);
   return speakers.size < cap;
 }
 
