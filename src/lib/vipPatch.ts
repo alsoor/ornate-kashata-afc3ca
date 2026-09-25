@@ -86,7 +86,39 @@ export function markVipRenameUsed(userId: string) {
 }
 
 export function getVipMaxSpeakers(hostId?: string | null): number {
-  return isVip(hostId) ? 8 : 4;
+  if (!isVip(hostId)) return 4;
+  return getVipFeats(hostId).eightMics ? 8 : 4;
+}
+
+const FEAT_KEY = 'stooorna_vip_feats';
+
+export type VipFeats = {
+  eightMics: boolean;
+  roomMusic: boolean;
+};
+
+export function getVipFeats(userId?: string | null): VipFeats {
+  if (!userId) return { eightMics: false, roomMusic: false };
+  try {
+    const map = JSON.parse(localStorage.getItem(FEAT_KEY) || '{}');
+    const f = map[userId] || {};
+    return { eightMics: !!f.eightMics, roomMusic: !!f.roomMusic };
+  } catch {
+    return { eightMics: false, roomMusic: false };
+  }
+}
+
+export function setVipFeat(userId: string, key: keyof VipFeats, on: boolean) {
+  const cur = getVipFeats(userId);
+  const next = { ...cur, [key]: on };
+  try {
+    const map = JSON.parse(localStorage.getItem(FEAT_KEY) || '{}');
+    map[userId] = next;
+    localStorage.setItem(FEAT_KEY, JSON.stringify(map));
+    window.dispatchEvent(new CustomEvent('stooorna:vip', { detail: { userId, feats: next } }));
+  } catch {
+    /* ignore */
+  }
 }
 
 export const VIP_FAVS_KEY = 'stooorna_vip_music_favs';

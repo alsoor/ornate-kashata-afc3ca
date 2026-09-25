@@ -10,7 +10,7 @@ import LiveLocationMap from '@/components/LiveLocationMap';
 import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
-import { activateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS } from '@/lib/vipPatch';
+import { activateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, getVipFeats, setVipFeat } from '@/lib/vipPatch';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -5834,6 +5834,9 @@ export default function SettingsPage() {
   const [vipColor, setVipColor] = useState<'blue' | 'gold' | 'red' | 'green' | 'gray'>('gold');
   const [vipNewUser, setVipNewUser] = useState('');
   const [vipRenameMsg, setVipRenameMsg] = useState('');
+  const [vipFeaturesOpen, setVipFeaturesOpen] = useState(false);
+  const [vipEightMics, setVipEightMics] = useState(false);
+  const [vipRoomMusic, setVipRoomMusic] = useState(false);
   const [bizTopUpAmount, setBizTopUpAmount] = useState('10');
   const [bizProjectName, setBizProjectName] = useState('');
   const [bizLicense, setBizLicense] = useState('');
@@ -5869,6 +5872,10 @@ export default function SettingsPage() {
       setVipOn(!!all?.[user.id]?.active);
       const colors = JSON.parse(localStorage.getItem('stooorna_vip_color') || '{}');
       if (colors?.[user.id]) setVipColor(colors[user.id]);
+      const feats = JSON.parse(localStorage.getItem('stooorna_vip_feats') || '{}');
+      const f = feats?.[user.id] || {};
+      setVipEightMics(!!f.eightMics);
+      setVipRoomMusic(!!f.roomMusic);
     } catch { setVipOn(false); }
     const onBiz = () => {
       const r = getBusinessForUser(user.id);
@@ -7157,33 +7164,13 @@ export default function SettingsPage() {
                     </div>
                     {vipOn && (
                       <div style={{ marginTop: 12 }}>
-                        <p style={{ margin: '0 0 8px', color: '#eab308', fontSize: '0.7rem', fontWeight: 700 }}>Username color</p>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {(['blue', 'gold', 'red', 'green', 'gray'] as const).map(c => (
-                            <button key={c} type="button" onClick={() => { setVipColor(c); persistVipColor(user.id, c); }}
-                              style={{
-                                width: 22, height: 22, borderRadius: '50%', background: VIP_COLORS[c],
-                                border: vipColor === c ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer',
-                              }} />
-                          ))}
+                        <div style={{ background: '#eab308', borderRadius: 8, padding: '8px 10px', textAlign: 'center', marginBottom: 10 }}>
+                          <span style={{ color: '#111', fontWeight: 900, letterSpacing: 2 }}>VIP</span>
                         </div>
-                        <p style={{ margin: '12px 0 6px', color: '#eab308', fontSize: '0.7rem', fontWeight: 700 }}>Change username once</p>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <input value={vipNewUser} onChange={e => setVipNewUser(e.target.value)} disabled={vipRenameUsed(user.id)}
-                            placeholder="new username" style={{ flex: 1, borderRadius: 8, border: '1px solid rgba(234,179,8,0.35)', background: 'transparent', color: T.text, padding: '6px 8px' }} />
-                          <button type="button" disabled={vipRenameUsed(user.id) || !vipNewUser.trim()}
-                            onClick={async () => {
-                              if (vipRenameUsed(user.id)) { setVipRenameMsg('Already used'); return; }
-                              const next = vipNewUser.trim().replace(/^@/, '');
-                              try {
-                                await fetch('/api/users/me', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: next }) });
-                              } catch { /* local mark anyway */ }
-                              markVipRenameUsed(user.id);
-                              setVipRenameMsg('Saved');
-                            }}
-                            style={{ borderRadius: 8, border: 'none', background: '#eab308', color: '#111', fontWeight: 800, padding: '6px 10px', cursor: 'pointer' }}>Save</button>
-                        </div>
-                        {vipRenameMsg ? <p style={{ margin: '6px 0 0', color: '#eab308', fontSize: '0.7rem' }}>{vipRenameMsg}</p> : null}
+                        <button type="button" onClick={() => setVipFeaturesOpen(true)}
+                          style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.45)', background: 'rgba(234,179,8,0.12)', color: '#eab308', fontWeight: 800, cursor: 'pointer' }}>
+                          Features
+                        </button>
                       </div>
                     )}
                   </div>
@@ -11415,6 +11402,60 @@ export default function SettingsPage() {
               }} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: '#eab308', color: '#111', fontWeight: 900, cursor: 'pointer' }}>
                 Pay and activate VIP
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {vipFeaturesOpen && vipOn && (
+          <motion.div key="vip-feats" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 10530, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+            onClick={() => setVipFeaturesOpen(false)}>
+            <motion.div onClick={e => e.stopPropagation()} initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+              style={{ width: 'min(92vw, 360px)', maxHeight: '88vh', overflowY: 'auto', background: '#0a1f22', border: '1px solid rgba(234,179,8,0.4)', borderRadius: 16, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>VIP features</p>
+                <button type="button" onClick={() => setVipFeaturesOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
+              </div>
+              <p style={{ margin: '0 0 8px', color: '#eab308', fontSize: 12, fontWeight: 700 }}>Username color</p>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                {(['blue', 'gold', 'red', 'green', 'gray'] as const).map(c => (
+                  <button key={c} type="button" onClick={() => { setVipColor(c); persistVipColor(user.id, c); }}
+                    style={{ width: 24, height: 24, borderRadius: '50%', background: VIP_COLORS[c], border: vipColor === c ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer' }} />
+                ))}
+              </div>
+              <p style={{ margin: '0 0 6px', color: '#eab308', fontSize: 12, fontWeight: 700 }}>Change username once</p>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                <input value={vipNewUser} onChange={e => setVipNewUser(e.target.value)} disabled={vipRenameUsed(user.id)}
+                  placeholder="new username" style={{ flex: 1, borderRadius: 8, border: '1px solid rgba(234,179,8,0.35)', background: 'transparent', color: T.text, padding: '6px 8px' }} />
+                <button type="button" disabled={vipRenameUsed(user.id) || !vipNewUser.trim()}
+                  onClick={async () => {
+                    if (vipRenameUsed(user.id)) { setVipRenameMsg('Already used'); return; }
+                    const next = vipNewUser.trim().replace(/^@/, '');
+                    try {
+                      await fetch('/api/users/me', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: next }) });
+                    } catch { /* local */ }
+                    markVipRenameUsed(user.id);
+                    setVipRenameMsg('Saved');
+                  }}
+                  style={{ borderRadius: 8, border: 'none', background: '#eab308', color: '#111', fontWeight: 800, padding: '6px 10px' }}>Save</button>
+              </div>
+              {vipRenameMsg ? <p style={{ margin: '0 0 10px', color: '#eab308', fontSize: 12 }}>{vipRenameMsg}</p> : null}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ color: T.text, fontSize: 13 }}>8 speakers on live mic</span>
+                <button type="button" onClick={() => { const n = !vipEightMics; setVipEightMics(n); setVipFeat(user.id, 'eightMics', n); }}
+                  style={{ width: 46, height: 26, borderRadius: 999, border: 'none', background: vipEightMics ? '#eab308' : '#4b5563', position: 'relative' }}>
+                  <span style={{ position: 'absolute', top: 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', left: vipEightMics ? 23 : 3 }} />
+                </button>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: T.text, fontSize: 13 }}>Room music search</span>
+                <button type="button" onClick={() => { const n = !vipRoomMusic; setVipRoomMusic(n); setVipFeat(user.id, 'roomMusic', n); }}
+                  style={{ width: 46, height: 26, borderRadius: 999, border: 'none', background: vipRoomMusic ? '#eab308' : '#4b5563', position: 'relative' }}>
+                  <span style={{ position: 'absolute', top: 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', left: vipRoomMusic ? 23 : 3 }} />
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
