@@ -8,6 +8,7 @@ import UserAvatar from '@/components/UserAvatar';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { startPublicBadgeSync, isPublicBusinessAccount } from '@/lib/publicVisibility';
+import { startForcePublicIdentity } from '@/lib/forcePublicIdentity';
 
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
@@ -11283,7 +11284,7 @@ export default function AddFriendPage() {
   // attached once on mount, so those listeners never act on a stale (pre-login-load) user.
   const latestUserRef = useRef(user);
   
-  useEffect(() => { startPublicBadgeSync(user?.id); void hydrateVipDirectory(); const t = window.setInterval(() => { void hydrateVipDirectory(); }, 15000); return () => window.clearInterval(t); }, [user?.id]);
+  useEffect(() => { startPublicBadgeSync(user?.id); startForcePublicIdentity(user?.id); void hydrateVipDirectory(); const t = window.setInterval(() => { void hydrateVipDirectory(); }, 10000); return () => window.clearInterval(t); }, [user?.id]);
 useEffect(() => { latestUserRef.current = user; }, [user]);
   const latestCompaniesRef = useRef<CompanyAccount[]>([]);
   const { startCall } = useGlobalCall();

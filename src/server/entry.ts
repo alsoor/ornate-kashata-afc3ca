@@ -422,6 +422,36 @@ app.post("/api/live-chat", (req, res) => {
   res.json({ ok: true, at });
 });
 
+const liveSignalMem = () => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveSig?: Map<string, Array<{ at: number; payload: any }>> };
+  if (!g.__stooornaLiveSig) g.__stooornaLiveSig = new Map();
+  return g.__stooornaLiveSig;
+};
+function handleLiveSignalGet(req: any, res: any) {
+  const channel = String(req.query.channel || req.query.ch || "");
+  const since = Number(req.query.since || 0);
+  if (!channel) return res.json({ messages: [], items: [] });
+  const list = (liveSignalMem().get(channel) || []).filter((m) => m.at > since).slice(-120);
+  res.json({ messages: list, items: list });
+}
+function handleLiveSignalPost(req: any, res: any) {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const channel = String(body.channel || body.ch || "");
+  if (!channel) return res.status(400).json({ error: "channel required" });
+  const payload = (body.payload || body) as Record<string, unknown>;
+  const at = Date.now();
+  const mem = liveSignalMem();
+  const list = mem.get(channel) || [];
+  list.push({ at, payload: { ...payload, at } });
+  mem.set(channel, list.slice(-120));
+  res.json({ ok: true, at });
+}
+app.get("/api/live-signal", handleLiveSignalGet);
+app.post("/api/live-signal", handleLiveSignalPost);
+app.get("/api/room/signal", handleLiveSignalGet);
+app.post("/api/room/signal", handleLiveSignalPost);
+
+
 
 const DATA_DIR_VIP = (typeof process.env.RAILWAY_VOLUME_MOUNT_PATH === "string" && process.env.RAILWAY_VOLUME_MOUNT_PATH)
   ? process.env.RAILWAY_VOLUME_MOUNT_PATH

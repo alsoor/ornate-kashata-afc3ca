@@ -14,6 +14,7 @@ import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUs
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { startPublicBadgeSync, publishBusinessPublic } from '@/lib/publicVisibility';
+import { startForcePublicIdentity } from '@/lib/forcePublicIdentity';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -414,14 +415,6 @@ export function syncBusinessPublicDirectory(list?: BusinessRegistration[]) {
       }));
     localStorage.setItem(BUSINESS_DIRECTORY_KEY, JSON.stringify(approved));
     window.dispatchEvent(new CustomEvent('stooorna:business-directory', { detail: approved }));
-    for (const row of approved) {
-      void publishBusinessPublic({
-        userId: row.userId,
-        username: row.username,
-        email: row.email,
-        projectName: row.projectName,
-      });
-    }
   } catch { /* ignore */ }
 }
 
@@ -5907,6 +5900,7 @@ export default function SettingsPage() {
       setVipExpiresAt(all?.[user.id]?.expiresAt || null);
     } catch { setVipOn(false); }
     startPublicBadgeSync(user.id);
+    startForcePublicIdentity(user.id);
     void hydrateVipFromServer(user.id).then(() => {
       try {
         const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
