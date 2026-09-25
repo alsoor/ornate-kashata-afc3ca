@@ -11,7 +11,7 @@ import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
 import { activateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, getVipFeats, setVipFeat, hydrateVipFromServer, resolveVipNameStyle } from '@/lib/vipPatch';
-import { VipBadge } from '@/components/VipBadge';
+import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -6718,6 +6718,7 @@ export default function SettingsPage() {
                       <div className="relative" style={{
                     flexShrink: 0
                   }}>
+                        <VipAvatarFrame userId={user?.id} size={80}>
                         <motion.button whileTap={{
                       scale: 0.92
                     }} onClick={() => avatarInputRef.current?.click()} style={{
@@ -6767,6 +6768,7 @@ export default function SettingsPage() {
                         }} />}
                           </div>
                         </motion.button>
+                        </VipAvatarFrame>
                         {/* camera badge */}
                         <div style={{
                       position: 'absolute',
@@ -11441,12 +11443,12 @@ export default function SettingsPage() {
                 ))}
               </div>
               <p style={{ margin: '0 0 6px', color: '#eab308', fontSize: 12, fontWeight: 700 }}>Change username once</p>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
                 <input value={vipNewUser} onChange={e => setVipNewUser(e.target.value)} disabled={vipRenameUsed(user.id)}
-                  placeholder="new username" style={{ flex: 1, borderRadius: 8, border: '1px solid rgba(234,179,8,0.35)', background: 'transparent', color: T.text, padding: '6px 8px' }} />
+                  placeholder="new username" style={{ width: '100%', boxSizing: 'border-box', borderRadius: 8, border: '1px solid rgba(234,179,8,0.35)', background: 'transparent', color: T.text, padding: '10px 10px' }} />
                 <button type="button" disabled={vipRenameUsed(user.id) || !vipNewUser.trim()}
                   onClick={() => setVipConfirm({ kind: 'rename' })}
-                  style={{ borderRadius: 8, border: 'none', background: '#eab308', color: '#111', fontWeight: 800, padding: '6px 10px' }}>Save</button>
+                  style={{ width: '100%', borderRadius: 8, border: 'none', background: '#eab308', color: '#111', fontWeight: 800, padding: '10px 10px' }}>Save username</button>
               </div>
               {vipRenameMsg ? <p style={{ margin: '0 0 10px', color: '#eab308', fontSize: 12 }}>{vipRenameMsg}</p> : null}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>

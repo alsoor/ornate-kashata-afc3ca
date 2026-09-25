@@ -69,7 +69,13 @@ function readAllPlans(): Record<string, VipPlan> {
 
 export function isVip(userId?: string | null): boolean {
   if (!userId) return false;
-  return !!readAllPlans()[userId]?.active;
+  if (readAllPlans()[userId]?.active) return true;
+  try {
+    const dir = readJson<Record<string, { active?: boolean }>>('stooorna_vip_public_dir', {});
+    return !!dir[userId]?.active;
+  } catch {
+    return false;
+  }
 }
 
 export function getVipColor(userId?: string | null): VipColor {
@@ -160,14 +166,41 @@ export function setVipColor(userId: string, color: VipColor) {
   const map = readJson<Record<string, VipColor>>(COLOR_KEY, {});
   map[userId] = color;
   writeJson(COLOR_KEY, map);
+  publishVipPublic(userId);
   emitVip({ userId, color });
   void postVip({ userId, action: 'color', color });
+}
+
+const PUBLIC_DIR_KEY = 'stooorna_vip_public_dir';
+
+export function publishVipPublic(userId: string) {
+  if (!userId) return;
+  try {
+    const dir = readJson<Record<string, VipPublicState>>(PUBLIC_DIR_KEY, {});
+    const state = getVipPublicState(userId);
+    if (state) dir[userId] = state;
+    else delete dir[userId];
+    writeJson(PUBLIC_DIR_KEY, dir);
+    window.dispatchEvent(new CustomEvent('stooorna:vip-directory', { detail: dir }));
+  } catch { /* ignore */ }
+}
+
+export function isPublicVipAccount(userId?: string | null): boolean {
+  if (!userId) return false;
+  if (isVip(userId)) return true;
+  try {
+    const dir = readJson<Record<string, VipPublicState>>(PUBLIC_DIR_KEY, {});
+    return !!dir[userId]?.active;
+  } catch {
+    return false;
+  }
 }
 
 export function activateVip(userId: string) {
   const all = readAllPlans();
   all[userId] = { userId, active: true, since: Date.now() };
   writeJson(PLAN_KEY, all);
+  publishVipPublic(userId);
   emitVip({ userId, active: true });
   void postVip({ userId, action: 'activate' });
 }
@@ -189,6 +222,7 @@ export function setVipFeat(userId: string, key: keyof VipFeats, on: boolean) {
   const map = readJson<Record<string, VipFeats>>(FEAT_KEY, {});
   map[userId] = next;
   writeJson(FEAT_KEY, map);
+  publishVipPublic(userId);
   emitVip({ userId, feats: next });
   void postVip({ userId, action: 'feat', key, on });
 }

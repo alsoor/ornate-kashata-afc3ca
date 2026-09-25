@@ -5,6 +5,8 @@ import React from 'react';
 import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import UserAvatar from '@/components/UserAvatar';
+import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
+import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
 import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip } from 'lucide-react';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -5690,7 +5692,9 @@ function PostCard({
             aria-label="عرض الملف الشخصي"
             style={{ padding: 0, border: 'none', background: 'none', cursor: isMine ? 'default' : 'pointer', borderRadius: '50%', flexShrink: 0 }}
           >
-            <UserAvatar name={post.authorName} avatarUrl={resolveMediaUrl(post.authorAvatarUrl) || post.authorAvatarUrl} size={38} />
+            <VipAvatarFrame userId={post.authorId} size={38}>
+              <UserAvatar name={post.authorName} avatarUrl={resolveMediaUrl(post.authorAvatarUrl) || post.authorAvatarUrl} size={38} />
+            </VipAvatarFrame>
           </motion.button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ color: '#000000', fontSize: '0.82rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
@@ -5714,7 +5718,8 @@ function PostCard({
               )}
             </p>
             <p style={{ color: '#000000', fontSize: '0.68rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-              {post.authorUsername && <span style={{ color: 'hsl(var(--primary))', fontWeight: 700 }}>@{post.authorUsername}</span>}
+              {post.authorUsername && <span style={{ color: resolveVipNameStyle(post.authorId).color || 'hsl(var(--primary))', fontWeight: 700 }}>@{post.authorUsername}</span>}
+              <VipBadge userId={post.authorId} compact />
               {isAuthorBusinessAccount(post.authorId, post.authorUsername) && <BusinessHeadBadgeInline compact />}
             </p>
           </div>
@@ -6870,7 +6875,9 @@ const MiniProfileModal = ({
                   border: `3px solid hsl(var(--card))`, cursor: 'pointer', background: '#000',
                 }}
               >
+                <VipAvatarFrame userId={authorId} size={80}>
                 <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={80} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
+                </VipAvatarFrame>
               </motion.button>
 
               {/* ── Stats beside the profile picture: Post / Followers / Following / Likes —
@@ -7337,39 +7344,19 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           marginTop: coverUrl ? -28 : -4,
           paddingBottom: 2,
         }}>
-          <div style={{ position: 'relative', width: 80, height: 80 }}>
-            {(() => {
-              try {
-                const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
-                if (all?.[authorId]?.active) {
-                  return (
-                    <>
-                      <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid #eab308', boxShadow: '0 0 12px rgba(234,179,8,0.8)' }} />
-                      <span style={{ position: 'absolute', top: -7, left: '50%', transform: 'translateX(-50%)', background: '#eab308', color: '#111', fontSize: 9, fontWeight: 900, borderRadius: 6, padding: '1px 6px', zIndex: 2 }}>VIP</span>
-                    </>
-                  );
-                }
-              } catch { /* ignore */ }
-              return null;
-            })()}
+          <VipAvatarFrame userId={authorId} size={80}>
             <motion.button
               whileTap={{ scale: 0.94 }}
               onClick={() => setAvatarExpanded(true)}
-              style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', padding: 0, border: `3px solid ${PAGE_BG}`, cursor: 'pointer', background: '#000', position: 'absolute', left: 4, top: 4 }}
+              style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', padding: 0, border: 'none', cursor: 'pointer', background: '#000' }}
             >
-              <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={72} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
+              <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={80} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
             </motion.button>
-          </div>
+          </VipAvatarFrame>
 
           <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: '6px 0 0' }}>{name || username || '—'}</p>
-          {username && <p style={{ color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
-            {(() => {
-              try {
-                const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
-                if (all?.[authorId]?.active) return <span style={{ background: '#eab308', color: '#111', fontSize: 9, fontWeight: 900, borderRadius: 6, padding: '1px 6px' }}>VIP</span>;
-              } catch { /* ignore */ }
-              return null;
-            })()}
+          {username && <p style={{ color: resolveVipNameStyle(authorId).color || CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
+            <VipBadge userId={authorId} compact />
             {(isCompanyProfile || readBusinessApproved(authorId)) && (
               <span style={{
                 fontSize: '0.55rem', fontWeight: 900, color: '#0a0a0a',
@@ -8049,7 +8036,7 @@ function PostDetailPage({
         }}>
           <X size={20} strokeWidth={2.2} />
         </button>
-        <UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={34} />
+        <VipAvatarFrame userId={post.authorId} size={34}><UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={34} /></VipAvatarFrame>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ color: hasMedia ? '#fff' : CLR_TEXT, fontSize: '0.82rem', fontWeight: 700, margin: 0, textShadow: hasMedia ? '0 1px 3px rgba(0,0,0,0.5)' : undefined }}>
             {post.authorName || post.authorUsername || '—'}
@@ -10947,7 +10934,7 @@ function SharedPostThread({
           gap: 10,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={40} />
+            <VipAvatarFrame userId={post.authorId} size={40}><UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={40} /></VipAvatarFrame>
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ color: 'hsl(var(--foreground))', fontSize: '0.84rem', fontWeight: 700, margin: 0 }}>
                 {post.authorName || post.authorUsername || '—'}
@@ -16899,7 +16886,7 @@ export default function AddFriendPage() {
                     }}
                     style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10, cursor: 'pointer' }}
                   >
-                    <UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={32} />
+                    <VipAvatarFrame userId={post.authorId} size={32}><UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={32} /></VipAvatarFrame>
                     <div><strong style={{ color: 'hsl(var(--foreground))', fontSize: '0.8rem' }}>{post.authorName}</strong><div style={{ color: 'hsl(var(--primary))', fontSize: '0.7rem' }}>{post.authorUsername ? `@${post.authorUsername}` : ''}</div></div>
                   </div>
                   <PostText text={post.text} color="hsl(var(--primary))" textColor={CLR_TEXT_DIM} onHashtag={openHashtag} />
