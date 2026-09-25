@@ -122,7 +122,7 @@ export async function pushAllLocalBusinessToServer() {
 
 export async function hydrateBusinessDirectory() {
   try {
-    const r = await fetch('/api/business/directory', { credentials: 'include' });
+    const r = await fetch('/api/business/directory', { credentials: 'include', cache: 'no-store' });
     if (!r.ok) return;
     const d = await r.json();
     const list = (d.users || d.items || []) as PublicBusinessAccount[];

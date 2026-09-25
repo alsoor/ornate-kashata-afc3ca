@@ -200,7 +200,7 @@ async function postVip(body: Record<string, unknown>) {
 export async function hydrateVipFromServer(userId: string) {
   if (!userId) return;
   try {
-    const r = await fetch(`/api/vip?userId=${encodeURIComponent(userId)}`, { credentials: 'include' });
+    const r = await fetch(`/api/vip?userId=${encodeURIComponent(userId)}`, { credentials: 'include', cache: 'no-store' });
     if (!r.ok) return;
     const d = await r.json();
     if (d?.active) {
@@ -346,7 +346,7 @@ export function resolveVipNameStyle(userId?: string | null): { color?: string; f
 
 export async function hydrateVipDirectory() {
   try {
-    const r = await fetch('/api/vip/directory', { credentials: 'include' });
+    const r = await fetch('/api/vip/directory', { credentials: 'include', cache: 'no-store' });
     if (!r.ok) return;
     const d = await r.json();
     const list = (d.users || d.items || []) as Array<{

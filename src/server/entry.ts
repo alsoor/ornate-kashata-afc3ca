@@ -528,6 +528,9 @@ const persistBiz = () => {
   saveJsonFileSyncVip(BIZ_FILE, Array.from(bizDirMem().values()));
 };
 app.get("/api/vip/directory", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   const now = Date.now();
   const users = Array.from(vipMem().values())
     .filter((x) => x && x.active && !(x.expiresAt && now > Number(x.expiresAt)))
@@ -541,6 +544,8 @@ app.get("/api/vip/directory", (_req, res) => {
   res.json({ users });
 });
 app.get("/api/vip", (req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
   const userId = String(req.query.userId || "");
   if (!userId) return res.status(400).json({ error: "userId required" });
   const row = vipMem().get(userId) || {
@@ -587,6 +592,9 @@ app.post("/api/vip", (req, res) => {
   res.json(row);
 });
 app.get("/api/business/directory", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   const users = Array.from(bizDirMem().values());
   res.json({ users });
 });
