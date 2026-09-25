@@ -175,6 +175,9 @@ import users_id_get_161 from "./api/users/[id]/GET";
 import users_id_follow_post_162 from "./api/users/[id]/follow/POST";
 import users_id_follow_status_get_163 from "./api/users/[id]/follow-status/GET";
 import users_id_posts_get_164 from "./api/users/[id]/posts/GET";
+import * as vip_route from "./api/vip/route";
+import * as vip_directory_route from "./api/vip/directory/route";
+import * as business_directory_route from "./api/business/directory/route";
 // </api-imports>
 import { attachRoomLiveWS } from "./room-live-ws";
 import { attachLiveChatWS } from "./live-chat-ws";
@@ -315,6 +318,32 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Bridge Next-style GET/POST (Fetch Request/Response) onto Express.
+async function handleFetchApi(
+	handler: (req: globalThis.Request) => Promise<globalThis.Response>,
+	req: Request,
+	res: Response,
+): Promise<void> {
+	const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
+	const host = req.get("host") || "localhost";
+	const url = `${proto}://${host}${req.originalUrl}`;
+	const headers = new Headers();
+	for (const [key, value] of Object.entries(req.headers)) {
+		if (typeof value === "string") headers.set(key, value);
+		else if (Array.isArray(value)) headers.set(key, value.join(","));
+	}
+	const init: RequestInit = { method: req.method, headers };
+	if (req.method !== "GET" && req.method !== "HEAD") {
+		init.body = typeof req.body === "string" ? req.body : JSON.stringify(req.body ?? {});
+	}
+	const response = await handler(new globalThis.Request(url, init));
+	res.status(response.status);
+	response.headers.forEach((value, key) => {
+		if (key.toLowerCase() !== "content-length") res.setHeader(key, value);
+	});
+	res.send(Buffer.from(await response.arrayBuffer()));
+}
 
 // ── IP tracking: lightweight — stored via /api/me/update-ip ─────────────────
 
@@ -484,6 +513,21 @@ app.get("/api/users/:id", users_id_get_161);
 app.post("/api/users/:id/follow", users_id_follow_post_162);
 app.get("/api/users/:id/follow-status", users_id_follow_status_get_163);
 app.get("/api/users/:id/posts", users_id_posts_get_164);
+app.get("/api/vip", (req, res, next) => {
+	void handleFetchApi(vip_route.GET, req, res).catch(next);
+});
+app.post("/api/vip", (req, res, next) => {
+	void handleFetchApi(vip_route.POST, req, res).catch(next);
+});
+app.get("/api/vip/directory", (req, res, next) => {
+	void handleFetchApi(vip_directory_route.GET, req, res).catch(next);
+});
+app.get("/api/business/directory", (req, res, next) => {
+	void handleFetchApi(business_directory_route.GET, req, res).catch(next);
+});
+app.post("/api/business/directory", (req, res, next) => {
+	void handleFetchApi(business_directory_route.POST, req, res).catch(next);
+});
 // </api-registrations>
 
 // VAPID key generation endpoint (owner only — run once)
