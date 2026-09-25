@@ -1689,19 +1689,21 @@ export default function LiveCameraPage() {
                     position: 'relative',
                   }}
                 >
-                  <UserAvatar
-                    name={hostName}
-                    avatarUrl={hostAvatar}
-                    size={40}
-                    style={{
-                      borderRadius: '50%',
-                      border: `2.5px solid ${ring}`,
-                      boxShadow: hostTalking
-                        ? `0 0 0 1px ${ring}33, 0 0 10px ${ring}55`
-                        : '0 0 10px rgba(250,204,21,0.45)',
-                      flexShrink: 0,
-                    }}
-                  />
+                  <VipAvatarFrame userId={hostId} size={40}>
+                    <UserAvatar
+                      name={hostName}
+                      avatarUrl={hostAvatar}
+                      size={40}
+                      style={{
+                        borderRadius: '50%',
+                        border: `2.5px solid ${ring}`,
+                        boxShadow: hostTalking
+                          ? `0 0 0 1px ${ring}33, 0 0 10px ${ring}55`
+                          : '0 0 10px rgba(250,204,21,0.45)',
+                        flexShrink: 0,
+                      }}
+                    />
+                  </VipAvatarFrame>
                   <span
                     title={!hostInRoom ? 'Away' : hostBusy ? 'Busy' : 'Online'}
                     style={{
@@ -1745,6 +1747,7 @@ export default function LiveCameraPage() {
                     >
                       {hostName}
                     </span>
+                    <VipBadge userId={hostId} compact />
                   </div>
                   <p style={{ margin: '2px 0 0', fontSize: '0.66rem', color: 'rgba(150,200,200,0.55)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     {hostUsername ? <>@{hostUsername}</> : null}
