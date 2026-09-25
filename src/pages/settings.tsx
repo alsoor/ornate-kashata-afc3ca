@@ -12,6 +12,7 @@ import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
 import { activateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, getVipFeats, setVipFeat, hydrateVipFromServer, resolveVipNameStyle } from '@/lib/vipPatch';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
+import { LiveVipDock } from '@/components/LiveVipDock';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -11545,6 +11546,9 @@ export default function SettingsPage() {
         )}
       </AnimatePresence>
 
+      {showPublicVoice && user?.id && (
+        <LiveVipDock hostId={user.id} currentUserId={user.id} />
+      )}
       {showPublicVoice && (
         <PublicVoiceLive
           userId={user?.id}

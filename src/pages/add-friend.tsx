@@ -6,6 +6,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import UserAvatar from '@/components/UserAvatar';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
+import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
 import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip } from 'lucide-react';
@@ -23025,6 +23026,9 @@ export default function AddFriendPage() {
       </AnimatePresence>
 
       {/* ── Guest guard modal — يظهر عند محاولة الزائر التفاعل ── */}
+      {typeof window !== 'undefined' && window.location.pathname.includes('/live') && (
+        <LiveVipDock hostId={new URLSearchParams(window.location.search).get('hostId')} currentUserId={user?.id} />
+      )}
       {GuestModal}
     </>;
 }
