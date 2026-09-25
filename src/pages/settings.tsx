@@ -5821,11 +5821,13 @@ export default function SettingsPage() {
   const [businessRow, setBusinessRow] = useState<BusinessRegistration | null>(null);
   const [bizBalance, setBizBalance] = useState(0);
   const [bizTopUpOpen, setBizTopUpOpen] = useState(false);
+  const [bizCardName, setBizCardName] = useState('');
   const [bizCardNumber, setBizCardNumber] = useState('');
   const [bizCardExp, setBizCardExp] = useState('');
   const [bizCardCvv, setBizCardCvv] = useState('');
   const [vipOn, setVipOn] = useState(false);
   const [vipPayOpen, setVipPayOpen] = useState(false);
+  const [vipCardName, setVipCardName] = useState('');
   const [vipCard, setVipCard] = useState('');
   const [vipExp, setVipExp] = useState('');
   const [vipCvv, setVipCvv] = useState('');
@@ -11322,6 +11324,10 @@ export default function SettingsPage() {
                 <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>Add balance (Visa)</p>
                 <button type="button" onClick={() => setBizTopUpOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
               </div>
+              <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Full name</label>
+              <input value={bizCardName} onChange={e => setBizCardName(e.target.value.slice(0, 60))}
+                placeholder="Name on card"
+                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 10, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#d7eeee', outline: 'none' }} />
               <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Card number</label>
               <input value={bizCardNumber} onChange={e => setBizCardNumber(e.target.value.replace(/[^0-9 ]/g, '').slice(0, 19))}
                 placeholder="XXXX XXXX XXXX XXXX"
@@ -11346,6 +11352,7 @@ export default function SettingsPage() {
                 onClick={() => {
                   if (!user?.id) return;
                   const amt = Math.max(1, Math.floor(Number(bizTopUpAmount) || 0));
+                  if (!bizCardName.trim()) return;
                   if (bizCardNumber.replace(/\s/g, '').length < 12) return;
                   const next = bizBalance + amt;
                   try {
@@ -11353,6 +11360,7 @@ export default function SettingsPage() {
                     window.dispatchEvent(new CustomEvent('stooorna:biz-balance', { detail: { userId: user.id, balance: next } }));
                   } catch { /* */ }
                   setBizBalance(next);
+                  setBizCardName('');
                   setBizCardNumber('');
                   setBizCardExp('');
                   setBizCardCvv('');
@@ -11379,26 +11387,31 @@ export default function SettingsPage() {
             onClick={() => setVipPayOpen(false)}
           >
             <motion.div onClick={e => e.stopPropagation()} initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-              style={{ width: 'min(94vw, 380px)', background: '#0a1f22', border: '1px solid rgba(234,179,8,0.4)', borderRadius: 16, padding: 18 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              style={{ width: 'min(92vw, 340px)', maxHeight: '88vh', overflowY: 'auto', background: '#0a1f22', border: '1px solid rgba(234,179,8,0.4)', borderRadius: 16, padding: 18, display: 'flex', flexDirection: 'column', gap: 10, boxSizing: 'border-box' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>VIP (Visa)</p>
                 <button type="button" onClick={() => setVipPayOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
               </div>
-              <input value={vipCard} onChange={e => setVipCard(e.target.value.replace(/[^0-9 ]/g, '').slice(0, 19))} placeholder="Card number"
-                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 8, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                <input value={vipExp} onChange={e => setVipExp(e.target.value.slice(0, 5))} placeholder="MM/YY"
-                  style={{ flex: 1, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
-                <input value={vipCvv} onChange={e => setVipCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="CVV"
-                  style={{ flex: 1, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
-              </div>
+              <label style={{ color: 'rgba(180,210,210,0.7)', fontSize: 12 }}>Full name</label>
+              <input value={vipCardName} onChange={e => setVipCardName(e.target.value.slice(0, 60))} placeholder="Name on card"
+                style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
+              <label style={{ color: 'rgba(180,210,210,0.7)', fontSize: 12 }}>Card number</label>
+              <input value={vipCard} onChange={e => setVipCard(e.target.value.replace(/[^0-9 ]/g, '').slice(0, 19))} placeholder="XXXX XXXX XXXX XXXX"
+                style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
+              <label style={{ color: 'rgba(180,210,210,0.7)', fontSize: 12 }}>Expiry (MM/YY)</label>
+              <input value={vipExp} onChange={e => setVipExp(e.target.value.slice(0, 5))} placeholder="MM/YY"
+                style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
+              <label style={{ color: 'rgba(180,210,210,0.7)', fontSize: 12 }}>CVV</label>
+              <input value={vipCvv} onChange={e => setVipCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="CVV"
+                style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
               <button type="button" onClick={() => {
                 if (!user?.id) return;
+                if (!vipCardName.trim()) return;
                 if (vipCard.replace(/\s/g, '').length < 12) return;
                 activateVip(user.id);
                 setVipOn(true);
                 setVipPayOpen(false);
-                setVipCard(''); setVipExp(''); setVipCvv('');
+                setVipCardName(''); setVipCard(''); setVipExp(''); setVipCvv('');
               }} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: '#eab308', color: '#111', fontWeight: 900, cursor: 'pointer' }}>
                 Pay and activate VIP
               </button>
