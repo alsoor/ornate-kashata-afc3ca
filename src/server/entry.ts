@@ -427,24 +427,43 @@ const liveSignalMem = () => {
   if (!g.__stooornaLiveSig) g.__stooornaLiveSig = new Map();
   return g.__stooornaLiveSig;
 };
+function resolveSignalChannel(req: any, body: Record<string, unknown>) {
+  const payload = (body.payload && typeof body.payload === "object" ? body.payload : body) as Record<string, unknown>;
+  const candidates = [
+    body.channel, body.ch, body.roomId, body.room, body.channelName, body.roomName,
+    payload.channel, payload.ch, payload.roomId, payload.room, payload.channelName,
+    req.query?.channel, req.query?.ch, req.query?.roomId, req.query?.room,
+  ];
+  for (const c of candidates) {
+    const s = String(c || "").trim();
+    if (s) return s;
+  }
+  return "";
+}
 function handleLiveSignalGet(req: any, res: any) {
-  const channel = String(req.query.channel || req.query.ch || "");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  const channel = String(req.query.channel || req.query.ch || req.query.roomId || req.query.room || "");
   const since = Number(req.query.since || 0);
   if (!channel) return res.json({ messages: [], items: [] });
   const list = (liveSignalMem().get(channel) || []).filter((m) => m.at > since).slice(-120);
   res.json({ messages: list, items: list });
 }
 function handleLiveSignalPost(req: any, res: any) {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
   const body = (req.body || {}) as Record<string, unknown>;
-  const channel = String(body.channel || body.ch || "");
-  if (!channel) return res.status(400).json({ error: "channel required" });
-  const payload = (body.payload || body) as Record<string, unknown>;
+  let channel = resolveSignalChannel(req, body);
+  const payload = (body.payload && typeof body.payload === "object" ? body.payload : body) as Record<string, unknown>;
+  // Never hard-fail mic signals — fall back to a shared channel key
+  if (!channel) {
+    channel = String(payload.t || "signal") + ":default";
+  }
   const at = Date.now();
   const mem = liveSignalMem();
   const list = mem.get(channel) || [];
   list.push({ at, payload: { ...payload, at } });
-  mem.set(channel, list.slice(-120));
-  res.json({ ok: true, at });
+  mem.set(channel, list.slice(-200));
+  res.json({ ok: true, at, channel });
 }
 app.get("/api/live-signal", handleLiveSignalGet);
 app.post("/api/live-signal", handleLiveSignalPost);
