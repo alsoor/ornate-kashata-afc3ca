@@ -85,8 +85,13 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const userId = url.searchParams.get('userId') || '';
   if (!userId) return Response.json({ error: 'userId required' }, { status: 400 });
-  const row = await loadRow(userId);
-  return Response.json(row);
+  try {
+    const row = await loadRow(userId);
+    return Response.json(row);
+  } catch (err) {
+    console.error('[api/vip] GET failed:', err);
+    return Response.json(empty(userId));
+  }
 }
 
 export async function POST(req: Request) {
@@ -95,24 +100,29 @@ export async function POST(req: Request) {
   if (!userId) return Response.json({ error: 'userId required' }, { status: 400 });
   const action = String(body.action || '');
 
-  if (action === 'activate') {
-    const expiresAt = Number(body.expiresAt) || Date.now() + 30 * 24 * 60 * 60 * 1000;
-    await upsertRow(userId, { active: true, since: new Date(), expiresAt: new Date(expiresAt) });
-  } else if (action === 'deactivate') {
-    await upsertRow(userId, { active: false });
-  } else if (action === 'color') {
-    const c = String(body.color || '') as VipColor;
-    if (COLORS.includes(c)) await upsertRow(userId, { color: c });
-  } else if (action === 'feat') {
-    const key = body.key === 'eightMics' || body.key === 'roomMusic' ? body.key : null;
-    if (key) await upsertRow(userId, { [key]: !!body.on });
-  } else if (action === 'rename-used') {
-    await upsertRow(userId, { renameUsed: true });
-  }
-  if (typeof body.username === 'string') {
-    await upsertRow(userId, { username: body.username });
-  }
+  try {
+    if (action === 'activate') {
+      const expiresAt = Number(body.expiresAt) || Date.now() + 30 * 24 * 60 * 60 * 1000;
+      await upsertRow(userId, { active: true, since: new Date(), expiresAt: new Date(expiresAt) });
+    } else if (action === 'deactivate') {
+      await upsertRow(userId, { active: false });
+    } else if (action === 'color') {
+      const c = String(body.color || '') as VipColor;
+      if (COLORS.includes(c)) await upsertRow(userId, { color: c });
+    } else if (action === 'feat') {
+      const key = body.key === 'eightMics' || body.key === 'roomMusic' ? body.key : null;
+      if (key) await upsertRow(userId, { [key]: !!body.on });
+    } else if (action === 'rename-used') {
+      await upsertRow(userId, { renameUsed: true });
+    }
+    if (typeof body.username === 'string') {
+      await upsertRow(userId, { username: body.username });
+    }
 
-  const row = await loadRow(userId);
-  return Response.json(row);
+    const row = await loadRow(userId);
+    return Response.json(row);
+  } catch (err) {
+    console.error('[api/vip] POST failed:', err);
+    return Response.json({ error: 'db_error' }, { status: 500 });
+  }
 }

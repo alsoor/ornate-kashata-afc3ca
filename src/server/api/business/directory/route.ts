@@ -32,8 +32,12 @@ async function activeUsers() {
 }
 
 export async function GET() {
-  const users = await activeUsers();
-  return Response.json({ users });
+  try {
+    return Response.json({ users: await activeUsers() });
+  } catch (err) {
+    console.error('[api/business/directory] GET failed:', err);
+    return Response.json({ users: [] });
+  }
 }
 
 export async function POST(req: Request) {
@@ -42,43 +46,48 @@ export async function POST(req: Request) {
   const userId = String(body.userId || '');
   if (!userId) return Response.json({ error: 'userId required' }, { status: 400 });
 
-  if (action === 'remove') {
-    await db.delete(businessDirectory).where(eq(businessDirectory.userId, userId));
+  try {
+    if (action === 'remove') {
+      await db.delete(businessDirectory).where(eq(businessDirectory.userId, userId));
+      return Response.json({ users: await activeUsers() });
+    }
+
+    const existingRows = await db.select().from(businessDirectory).where(eq(businessDirectory.userId, userId)).limit(1);
+    const existing = existingRows[0];
+
+    const patch: Record<string, unknown> = {};
+    if (action === 'activate') {
+      patch.active = true;
+      patch.since = new Date();
+      patch.expiresAt = new Date(Number(body.expiresAt) || Date.now() + PERIOD_MS);
+    } else if (action === 'deactivate') {
+      patch.active = false;
+    }
+    // 'upsert' (default) only updates profile fields below and leaves the
+    // existing subscription state untouched, so editing a profile can never
+    // grant or revoke Business status on its own.
+
+    if (body.username !== undefined) patch.username = body.username ? String(body.username) : null;
+    if (body.email !== undefined) patch.email = body.email ? String(body.email) : null;
+    if (body.projectName !== undefined) patch.projectName = body.projectName ? String(body.projectName) : null;
+
+    if (!existing) {
+      await db.insert(businessDirectory).values({
+        userId,
+        username: (patch.username as string | null) ?? null,
+        email: (patch.email as string | null) ?? null,
+        projectName: (patch.projectName as string | null) ?? null,
+        active: (patch.active as boolean) ?? false,
+        since: (patch.since as Date | null) ?? null,
+        expiresAt: (patch.expiresAt as Date | null) ?? null,
+      });
+    } else {
+      await db.update(businessDirectory).set(patch).where(eq(businessDirectory.userId, userId));
+    }
+
     return Response.json({ users: await activeUsers() });
+  } catch (err) {
+    console.error('[api/business/directory] POST failed:', err);
+    return Response.json({ error: 'db_error' }, { status: 500 });
   }
-
-  const existingRows = await db.select().from(businessDirectory).where(eq(businessDirectory.userId, userId)).limit(1);
-  const existing = existingRows[0];
-
-  const patch: Record<string, unknown> = {};
-  if (action === 'activate') {
-    patch.active = true;
-    patch.since = new Date();
-    patch.expiresAt = new Date(Number(body.expiresAt) || Date.now() + PERIOD_MS);
-  } else if (action === 'deactivate') {
-    patch.active = false;
-  }
-  // 'upsert' (default) only updates profile fields below and leaves the
-  // existing subscription state untouched, so editing a profile can never
-  // grant or revoke Business status on its own.
-
-  if (body.username !== undefined) patch.username = body.username ? String(body.username) : null;
-  if (body.email !== undefined) patch.email = body.email ? String(body.email) : null;
-  if (body.projectName !== undefined) patch.projectName = body.projectName ? String(body.projectName) : null;
-
-  if (!existing) {
-    await db.insert(businessDirectory).values({
-      userId,
-      username: (patch.username as string | null) ?? null,
-      email: (patch.email as string | null) ?? null,
-      projectName: (patch.projectName as string | null) ?? null,
-      active: (patch.active as boolean) ?? false,
-      since: (patch.since as Date | null) ?? null,
-      expiresAt: (patch.expiresAt as Date | null) ?? null,
-    });
-  } else {
-    await db.update(businessDirectory).set(patch).where(eq(businessDirectory.userId, userId));
-  }
-
-  return Response.json({ users: await activeUsers() });
 }
