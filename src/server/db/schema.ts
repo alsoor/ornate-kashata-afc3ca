@@ -385,6 +385,35 @@ export const secretChatMessages = mysqlTable('secret_chat_messages', {
   createdAt: timestamp('created_at').defaultNow(),
 });
 
+// ── Public VIP + Business state (persisted so every viewer/device sees it,
+//    and it survives redeploys — replaces the old local-disk JSON files) ────
+
+export const vipStatus = mysqlTable('vip_status', {
+  userId: varchar('user_id', { length: 36 }).primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  active: boolean('active').notNull().default(false),
+  since: timestamp('since'),
+  expiresAt: timestamp('expires_at'),
+  color: mysqlEnum('color', ['blue', 'gold', 'red', 'green', 'gray', 'pink']).notNull().default('gold'),
+  eightMics: boolean('eight_mics').notNull().default(false),
+  roomMusic: boolean('room_music').notNull().default(false),
+  renameUsed: boolean('rename_used').notNull().default(false),
+  username: varchar('username', { length: 50 }),
+  updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
+});
+
+export const businessDirectory = mysqlTable('business_directory', {
+  userId: varchar('user_id', { length: 36 }).primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  username: varchar('username', { length: 50 }),
+  email: varchar('email', { length: 255 }),
+  projectName: varchar('project_name', { length: 255 }),
+  active: boolean('active').notNull().default(false),
+  since: timestamp('since'),
+  expiresAt: timestamp('expires_at'),
+  updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
+});
+
 // ── Profile-visit presence ───────────────────────────────────────────────────
 // Tracks who currently has a user's story-profile page open (heartbeat every ~4s
 // from the viewer while the profile/modal stays open). One row per (owner, viewer)

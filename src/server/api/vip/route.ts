@@ -1,9 +1,10 @@
 /**
- * /api/vip  — persist VIP so every device can read it.
- * File-backed store (survives restarts). Swap for Postgres when ready.
+ * /api/vip — persist VIP so every device can read it.
+ * Backed by MySQL (Drizzle) so state survives redeploys.
  */
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
+import { eq } from 'drizzle-orm';
+import { db } from '@/server/db/client';
+import { vipStatus } from '@/server/db/schema';
 
 type VipColor = 'blue' | 'gold' | 'red' | 'green' | 'gray' | 'pink';
 
@@ -18,25 +19,7 @@ export type VipRow = {
   username?: string | null;
 };
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const FILE = path.join(DATA_DIR, 'vip-store.json');
-
 const COLORS: VipColor[] = ['blue', 'gold', 'red', 'green', 'gray', 'pink'];
-
-async function loadStore(): Promise<Record<string, VipRow>> {
-  try {
-    const raw = await fs.readFile(FILE, 'utf8');
-    const o = JSON.parse(raw);
-    return o && typeof o === 'object' ? o : {};
-  } catch {
-    return {};
-  }
-}
-
-async function saveStore(store: Record<string, VipRow>) {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(store), 'utf8');
-}
 
 function empty(userId: string): VipRow {
   return {
@@ -49,23 +32,60 @@ function empty(userId: string): VipRow {
   };
 }
 
+function toApiRow(row: typeof vipStatus.$inferSelect): VipRow {
+  return {
+    userId: row.userId,
+    active: !!row.active,
+    since: row.since ? row.since.getTime() : 0,
+    expiresAt: row.expiresAt ? row.expiresAt.getTime() : undefined,
+    color: (row.color as VipColor) || 'gold',
+    feats: { eightMics: !!row.eightMics, roomMusic: !!row.roomMusic },
+    renameUsed: !!row.renameUsed,
+    username: row.username ?? null,
+  };
+}
+
 function stillActive(row: VipRow): boolean {
   if (!row.active) return false;
-  if (row.expiresAt && Date.now() > Number(row.expiresAt)) return false;
+  if (row.expiresAt && Date.now() > row.expiresAt) return false;
   return true;
+}
+
+async function loadRow(userId: string): Promise<VipRow> {
+  const rows = await db.select().from(vipStatus).where(eq(vipStatus.userId, userId)).limit(1);
+  if (!rows.length) return empty(userId);
+  const row = toApiRow(rows[0]);
+  if (row.active && !stillActive(row)) {
+    await db.update(vipStatus).set({ active: false }).where(eq(vipStatus.userId, userId));
+    row.active = false;
+  }
+  return row;
+}
+
+async function upsertRow(userId: string, patch: Record<string, unknown>) {
+  const existing = await db.select().from(vipStatus).where(eq(vipStatus.userId, userId)).limit(1);
+  if (!existing.length) {
+    await db.insert(vipStatus).values({
+      userId,
+      active: (patch.active as boolean) ?? false,
+      since: (patch.since as Date) ?? null,
+      expiresAt: (patch.expiresAt as Date | null) ?? null,
+      color: (patch.color as VipColor) ?? 'gold',
+      eightMics: (patch.eightMics as boolean) ?? false,
+      roomMusic: (patch.roomMusic as boolean) ?? false,
+      renameUsed: (patch.renameUsed as boolean) ?? false,
+      username: (patch.username as string | null) ?? null,
+    });
+  } else {
+    await db.update(vipStatus).set(patch).where(eq(vipStatus.userId, userId));
+  }
 }
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const userId = url.searchParams.get('userId') || '';
   if (!userId) return Response.json({ error: 'userId required' }, { status: 400 });
-  const store = await loadStore();
-  const row = store[userId] || empty(userId);
-  if (row.active && !stillActive(row)) {
-    row.active = false;
-    store[userId] = row;
-    await saveStore(store);
-  }
+  const row = await loadRow(userId);
   return Response.json(row);
 }
 
@@ -73,26 +93,26 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({} as Record<string, unknown>));
   const userId = String(body.userId || '');
   if (!userId) return Response.json({ error: 'userId required' }, { status: 400 });
-  const store = await loadStore();
-  const row = store[userId] || empty(userId);
   const action = String(body.action || '');
+
   if (action === 'activate') {
-    row.active = true;
-    row.since = Date.now();
-    row.expiresAt = Number(body.expiresAt) || Date.now() + 30 * 24 * 60 * 60 * 1000;
+    const expiresAt = Number(body.expiresAt) || Date.now() + 30 * 24 * 60 * 60 * 1000;
+    await upsertRow(userId, { active: true, since: new Date(), expiresAt: new Date(expiresAt) });
   } else if (action === 'deactivate') {
-    row.active = false;
+    await upsertRow(userId, { active: false });
   } else if (action === 'color') {
     const c = String(body.color || '') as VipColor;
-    if (COLORS.includes(c)) row.color = c;
+    if (COLORS.includes(c)) await upsertRow(userId, { color: c });
   } else if (action === 'feat') {
     const key = body.key === 'eightMics' || body.key === 'roomMusic' ? body.key : null;
-    if (key) row.feats[key] = !!body.on;
+    if (key) await upsertRow(userId, { [key]: !!body.on });
   } else if (action === 'rename-used') {
-    row.renameUsed = true;
+    await upsertRow(userId, { renameUsed: true });
   }
-  if (typeof body.username === 'string') row.username = body.username;
-  store[userId] = row;
-  await saveStore(store);
+  if (typeof body.username === 'string') {
+    await upsertRow(userId, { username: body.username });
+  }
+
+  const row = await loadRow(userId);
   return Response.json(row);
 }
