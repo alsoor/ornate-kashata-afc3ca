@@ -6,6 +6,8 @@ import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import UserAvatar from '@/components/UserAvatar';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
+import { hydrateVipDirectory } from '@/lib/vipPatch';
+
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
@@ -11278,7 +11280,9 @@ export default function AddFriendPage() {
   // Keeps the latest user/companies values reachable from event listeners that are
   // attached once on mount, so those listeners never act on a stale (pre-login-load) user.
   const latestUserRef = useRef(user);
-  useEffect(() => { latestUserRef.current = user; }, [user]);
+  
+  useEffect(() => { void hydrateVipDirectory(); const t = window.setInterval(() => { void hydrateVipDirectory(); }, 15000); return () => window.clearInterval(t); }, []);
+useEffect(() => { latestUserRef.current = user; }, [user]);
   const latestCompaniesRef = useRef<CompanyAccount[]>([]);
   const { startCall } = useGlobalCall();
   const tick = useAutoRefresh();
@@ -16309,7 +16313,9 @@ export default function AddFriendPage() {
                             />
                           )}
                           <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
-                            <UserAvatar name={g.name} avatarUrl={g.avatarUrl} size={53} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                            <VipAvatarFrame userId={g.userId} size={53}>
+                              <UserAvatar name={g.name} avatarUrl={g.avatarUrl} size={53} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                            </VipAvatarFrame>
                           </div>
                         </div>
                       </motion.button>
