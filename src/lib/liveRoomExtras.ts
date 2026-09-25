@@ -1,13 +1,15 @@
 /**
- * Shared helpers for voice live (/live) and camera live (/live-camera).
- * English-only. Used for presence, top notifications, chat payloads, end-room UX.
+ * Live chat transport used by public voice room and account live rooms.
+ * English-only.
  */
-
-export type LiveKind = 'voice' | 'camera';
+export const LIVE_ENDED_TITLE = 'Live ended';
+export const LIVE_ENDED_BODY = 'The host closed this room.';
+export const LIVE_ENDED_HINT = 'You will leave automatically.';
 
 export type LiveChatMsg = {
+  t?: string;
   id: string;
-  uid: number;
+  uid?: number;
   userId?: string;
   name: string;
   text: string;
@@ -15,159 +17,50 @@ export type LiveChatMsg = {
   isMe?: boolean;
 };
 
-export const LIVE_CHAT_MAX = 80;
-export const LIVE_CHAT_TEXT_MAX = 200;
-
-export function liveActiveStorageKey(hostId: string, kind: LiveKind): string {
-  return kind === 'camera'
-    ? `stooorna_livecam_active_${hostId}`
-    : `stooorna_live_active_${hostId}`;
-}
-
-export function liveActiveEventName(kind: LiveKind): string {
-  return kind === 'camera' ? 'stooorna:livecam-active' : 'stooorna:live-active';
-}
-
-export function publishLiveActive(opts: {
-  hostId: string;
-  kind: LiveKind;
-  active: boolean;
-  channel?: string;
-  hostName?: string | null;
-  hostUsername?: string | null;
-  hostAvatar?: string | null;
-}) {
-  const {
-    hostId,
-    kind,
-    active,
-    channel,
-    hostName,
-    hostUsername,
-    hostAvatar,
-  } = opts;
-  if (!hostId) return;
-  const payload = JSON.stringify({
-    hostId,
-    kind,
-    channel: channel || null,
-    at: Date.now(),
-    active,
-    name: hostName ?? null,
-    username: hostUsername ?? null,
-    avatarUrl: hostAvatar ?? null,
-  });
-  try {
-    const key = liveActiveStorageKey(hostId, kind);
-    if (active) localStorage.setItem(key, payload);
-    else localStorage.removeItem(key);
-    localStorage.setItem(
-      kind === 'camera' ? 'stooorna_livecam_active_current' : 'stooorna_live_active_current',
-      active ? payload : '',
-    );
-  } catch {
-    /* ignore */
-  }
-  try {
-    window.dispatchEvent(
-      new CustomEvent(liveActiveEventName(kind), {
-        detail: {
-          hostId,
-          active,
-          kind,
-          channel: channel || null,
-          hostName: hostName ?? null,
-          hostUsername: hostUsername ?? null,
-          hostAvatar: hostAvatar ?? null,
-        },
-      }),
-    );
-  } catch {
-    /* ignore */
-  }
-  // Unified banner event for app shell (top notification)
-  try {
-    window.dispatchEvent(
-      new CustomEvent('stooorna:live-banner', {
-        detail: {
-          hostId,
-          active,
-          kind,
-          hostName: hostName ?? 'User',
-          hostUsername: hostUsername ?? null,
-          hostAvatar: hostAvatar ?? null,
-          channel: channel || null,
-          message: active
-            ? kind === 'camera'
-              ? `${hostName || 'User'} started a video live`
-              : `${hostName || 'User'} started a voice live`
-            : kind === 'camera'
-              ? 'Video live has ended'
-              : 'Voice live has ended',
-        },
-      }),
-    );
-  } catch {
-    /* ignore */
-  }
-  // Registry of active hosts for same-origin tabs / soft poll
-  try {
-    const regRaw = localStorage.getItem('stooorna_any_live_hosts');
-    const reg = regRaw ? (JSON.parse(regRaw) as Record<string, { kind: string; at: number; name?: string }>) : {};
-    if (active) {
-      reg[hostId] = { kind, at: Date.now(), name: hostName || undefined };
-    } else {
-      delete reg[hostId];
-    }
-    localStorage.setItem('stooorna_any_live_hosts', JSON.stringify(reg));
-  } catch {
-    /* ignore */
-  }
-}
-
 export function makeChatPayload(opts: {
-  uid: number;
+  uid?: number;
   userId?: string;
   name: string;
   text: string;
-}): { t: 'chat'; uid: number; userId?: string; name: string; text: string; at: number; id: string } {
-  const text = String(opts.text || '').trim().slice(0, LIVE_CHAT_TEXT_MAX);
+}): LiveChatMsg {
   return {
     t: 'chat',
+    id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     uid: opts.uid,
     userId: opts.userId,
     name: opts.name || 'User',
-    text,
+    text: String(opts.text || '').slice(0, 400),
     at: Date.now(),
-    id: `c_${opts.uid}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
   };
 }
 
-export function parseIncomingChat(msg: any): LiveChatMsg | null {
-  if (!msg || msg.t !== 'chat') return null;
-  const text = String(msg.text || '').trim();
+export function parseIncomingChat(raw: unknown): LiveChatMsg | null {
+  const m = raw as Partial<LiveChatMsg> | null;
+  if (!m || (m.t && m.t !== 'chat')) {
+    if (!m || typeof m.text !== 'string') return null;
+  }
+  const text = String((m as any)?.text || '').trim();
   if (!text) return null;
   return {
-    id: String(msg.id || `c_${msg.uid}_${msg.at || Date.now()}`),
-    uid: Number(msg.uid) || 0,
-    userId: msg.userId ? String(msg.userId) : undefined,
-    name: String(msg.name || 'User'),
-    text: text.slice(0, LIVE_CHAT_TEXT_MAX),
-    at: Number(msg.at) || Date.now(),
+    t: 'chat',
+    id: String((m as any).id || `c_${Date.now()}`),
+    uid: typeof (m as any).uid === 'number' ? (m as any).uid : undefined,
+    userId: (m as any).userId ? String((m as any).userId) : undefined,
+    name: String((m as any).name || 'User'),
+    text,
+    at: Number((m as any).at || Date.now()),
   };
 }
 
-export function liveChatChannelKey(channel: string): string {
+function chatKey(channel: string) {
   return `stooorna_live_chat_${String(channel || '').slice(0, 80)}`;
 }
 
-/** Same-origin fan-out so every viewer in this live sees the message immediately. */
 export function publishLiveChat(channel: string, payload: object) {
   if (!channel) return;
-  const key = liveChatChannelKey(channel);
-  const raw = JSON.stringify(payload);
+  const key = chatKey(channel);
   try {
-    localStorage.setItem(key, raw);
+    localStorage.setItem(key, JSON.stringify({ ...payload, _at: Date.now() }));
   } catch {
     /* ignore */
   }
@@ -179,50 +72,69 @@ export function publishLiveChat(channel: string, payload: object) {
   try {
     const w = window as any;
     if (!w.__stooornaLiveChatBC) w.__stooornaLiveChatBC = {};
-    let bc = w.__stooornaLiveChatBC[key] as BroadcastChannel | undefined;
-    if (!bc && typeof BroadcastChannel !== 'undefined') {
-      bc = new BroadcastChannel(key);
-      w.__stooornaLiveChatBC[key] = bc;
+    if (!w.__stooornaLiveChatBC[key] && typeof BroadcastChannel !== 'undefined') {
+      w.__stooornaLiveChatBC[key] = new BroadcastChannel(key);
     }
-    bc?.postMessage(payload);
+    w.__stooornaLiveChatBC[key]?.postMessage(payload);
   } catch {
     /* ignore */
   }
+  void fetch('/api/live-chat', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channel, payload }),
+  }).catch(() => {});
 }
 
-export function subscribeLiveChat(
-  channel: string,
-  onMsg: (msg: LiveChatMsg) => void,
-): () => void {
+export function subscribeLiveChat(channel: string, handle: (msg: LiveChatMsg) => void): () => void {
   if (!channel) return () => {};
-  const key = liveChatChannelKey(channel);
-  const handle = (raw: unknown) => {
-    const parsed = parseIncomingChat(raw);
-    if (parsed) onMsg(parsed);
+  const key = chatKey(channel);
+  const onEvt = (e: Event) => {
+    const d = (e as CustomEvent).detail;
+    const cm = parseIncomingChat(d);
+    if (cm) handle(cm);
   };
-  const onCustom = (e: Event) => handle((e as CustomEvent).detail);
-  const onStorage = (e: StorageEvent) => {
-    if (e.key !== key || !e.newValue) return;
-    try {
-      handle(JSON.parse(e.newValue));
-    } catch {
-      /* ignore */
-    }
+  const onBc = (e: MessageEvent) => {
+    const cm = parseIncomingChat(e.data);
+    if (cm) handle(cm);
   };
-  window.addEventListener(key, onCustom as EventListener);
-  window.addEventListener('storage', onStorage);
+  window.addEventListener(key, onEvt as EventListener);
   let bc: BroadcastChannel | null = null;
   try {
     if (typeof BroadcastChannel !== 'undefined') {
       bc = new BroadcastChannel(key);
-      bc.onmessage = (ev) => handle(ev.data);
+      bc.onmessage = onBc;
     }
   } catch {
-    bc = null;
+    /* ignore */
   }
+  let since = 0;
+  let on = true;
+  const poll = async () => {
+    if (!on) return;
+    try {
+      const r = await fetch(`/api/live-chat?channel=${encodeURIComponent(channel)}&since=${since}`, { credentials: 'include' });
+      if (!r.ok) return;
+      const d = await r.json();
+      const list = (d.messages || d.items || []) as Array<{ payload?: unknown; at?: number } | LiveChatMsg>;
+      for (const item of list) {
+        const payload = (item as any).payload ?? item;
+        const at = Number((item as any).at || (payload as any).at || 0);
+        if (at > since) since = at;
+        const cm = parseIncomingChat(payload);
+        if (cm) handle(cm);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+  const timer = window.setInterval(poll, 900);
+  void poll();
   return () => {
-    window.removeEventListener(key, onCustom as EventListener);
-    window.removeEventListener('storage', onStorage);
+    on = false;
+    window.clearInterval(timer);
+    window.removeEventListener(key, onEvt as EventListener);
     try {
       bc?.close();
     } catch {
@@ -231,25 +143,17 @@ export function subscribeLiveChat(
   };
 }
 
-export const LIVE_ENDED_TITLE = 'Live ended';
-export const LIVE_ENDED_BODY =
-  'The host closed this broadcast. You have been removed from the room.';
-export const LIVE_ENDED_HINT = 'You can return to the profile or home feed.';
-
-/** Optional UI helper for profile: treat host as online while live is active. */
-export function isHostLiveOnline(hostId: string): { online: boolean; kind: LiveKind | null } {
-  if (!hostId || typeof window === 'undefined') return { online: false, kind: null };
+export function publishLiveActive(info: {
+  hostId?: string;
+  active?: boolean;
+  kind?: string;
+  name?: string;
+  username?: string | null;
+  avatarUrl?: string | null;
+} | string, active?: boolean) {
+  const hostId = typeof info === 'string' ? info : info.hostId;
+  const isActive = typeof info === 'string' ? !!active : !!info.active;
   try {
-    for (const kind of ['camera', 'voice'] as LiveKind[]) {
-      const raw = localStorage.getItem(liveActiveStorageKey(hostId, kind));
-      if (!raw) continue;
-      const d = JSON.parse(raw) as { active?: boolean; at?: number };
-      if (d?.active && d.at && Date.now() - d.at < 60_000) {
-        return { online: true, kind };
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  return { online: false, kind: null };
+    window.dispatchEvent(new CustomEvent('stooorna:live-active', { detail: { hostId, active: isActive, ...(typeof info === 'object' ? info : {}) } }));
+  } catch { /* ignore */ }
 }

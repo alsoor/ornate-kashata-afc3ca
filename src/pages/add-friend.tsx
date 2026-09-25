@@ -6,10 +6,6 @@ import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import UserAvatar from '@/components/UserAvatar';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
-import { hydrateVipDirectory } from '@/lib/vipPatch';
-import { startPublicBadgeSync, isPublicBusinessAccount } from '@/lib/publicVisibility';
-import { startForcePublicIdentity } from '@/lib/forcePublicIdentity';
-
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
@@ -5397,7 +5393,6 @@ function normalizePostMediaFields<T extends {
 /** True when author is an approved Business account (yellow badge next to @username) */
 function isAuthorBusinessAccount(authorId?: string | null, authorUsername?: string | null): boolean {
   try {
-    if (isPublicBusinessAccount({ id: authorId, username: authorUsername })) return true;
     const id = String(authorId || '').trim();
     const un = String(authorUsername || '').replace(/^@/, '').trim().toLowerCase();
     if (!id && !un) return false;
@@ -11283,9 +11278,7 @@ export default function AddFriendPage() {
   // Keeps the latest user/companies values reachable from event listeners that are
   // attached once on mount, so those listeners never act on a stale (pre-login-load) user.
   const latestUserRef = useRef(user);
-  
-  useEffect(() => { startPublicBadgeSync(user?.id); startForcePublicIdentity(user?.id); void hydrateVipDirectory(); const t = window.setInterval(() => { void hydrateVipDirectory(); }, 10000); return () => window.clearInterval(t); }, [user?.id]);
-useEffect(() => { latestUserRef.current = user; }, [user]);
+  useEffect(() => { latestUserRef.current = user; }, [user]);
   const latestCompaniesRef = useRef<CompanyAccount[]>([]);
   const { startCall } = useGlobalCall();
   const tick = useAutoRefresh();
@@ -16316,9 +16309,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                             />
                           )}
                           <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
-                            <VipAvatarFrame userId={g.userId} size={53}>
-                              <UserAvatar name={g.name} avatarUrl={g.avatarUrl} size={53} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
-                            </VipAvatarFrame>
+                            <UserAvatar name={g.name} avatarUrl={g.avatarUrl} size={53} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
                           </div>
                         </div>
                       </motion.button>

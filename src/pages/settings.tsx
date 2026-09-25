@@ -13,8 +13,6 @@ import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
 import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, getVipFeats, setVipFeat, hydrateVipFromServer, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown } from '@/lib/vipPatch';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
-import { startPublicBadgeSync, publishBusinessPublic } from '@/lib/publicVisibility';
-import { startForcePublicIdentity } from '@/lib/forcePublicIdentity';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -5844,7 +5842,7 @@ export default function SettingsPage() {
   const [vipExpiresAt, setVipExpiresAt] = useState<number | null>(null);
   const [vipTick, setVipTick] = useState(0);
   const [vipInfoOpen, setVipInfoOpen] = useState(false);
-  const [vipConfirm, setVipConfirm] = useState<null | { kind: 'color' | 'rename' | 'eightMics' | 'roomMusic'; color?: 'blue' | 'gold' | 'red' | 'green' | 'gray' | 'pink'; nextOn?: boolean }>(null);
+  const [vipConfirm, setVipConfirm] = useState<null | { kind: 'color' | 'rename' | 'eightMics' | 'roomMusic'; color?: 'blue' | 'gold' | 'red' | 'green' | 'gray'; nextOn?: boolean }>(null);
   useEffect(() => {
     const id = window.setInterval(() => setVipTick(t => t + 1), 1000);
     return () => window.clearInterval(id);
@@ -5899,8 +5897,6 @@ export default function SettingsPage() {
       setVipRoomMusic(!!f.roomMusic);
       setVipExpiresAt(all?.[user.id]?.expiresAt || null);
     } catch { setVipOn(false); }
-    startPublicBadgeSync(user.id);
-    startForcePublicIdentity(user.id);
     void hydrateVipFromServer(user.id).then(() => {
       try {
         const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
@@ -11284,12 +11280,6 @@ export default function SettingsPage() {
                           type="button"
                           onClick={() => {
                             reviewBusinessRegistration(row.id, 'approve', ownerBizNotes[row.id] || null);
-                            publishBusinessPublic({
-                              userId: String(row.userId),
-                              username: row.username || null,
-                              email: row.email || null,
-                              projectName: row.projectName || null,
-                            });
                             setOwnerBusinessList(loadBusinessRegistry());
                             setOwnerBizNotes(prev => {
                               const n = { ...prev };
@@ -11519,7 +11509,7 @@ export default function SettingsPage() {
               </div>
               <p style={{ margin: '0 0 8px', color: '#eab308', fontSize: 12, fontWeight: 700 }}>Username color</p>
               <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-                {(['blue', 'gold', 'red', 'green', 'gray', 'pink'] as const).map(c => (
+                {(['blue', 'gold', 'red', 'green', 'gray'] as const).map(c => (
                   <button key={c} type="button" onClick={() => setVipConfirm({ kind: 'color', color: c })}
                     style={{ width: 24, height: 24, borderRadius: '50%', background: VIP_COLORS[c], border: vipColor === c ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer' }} />
                 ))}
