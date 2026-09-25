@@ -12,6 +12,7 @@ import { useNotificationCounts } from '@/hooks/useNotificationCounts';
 import { playNotificationSound } from '@/lib/notificationSound';
 import SplashScreen from '@/components/SplashScreen';
 import WelcomeGuide from '@/components/WelcomeGuide';
+import { startPublicBadgeSync } from '@/lib/publicVisibility';
 interface RootLayoutProps {
   children: ReactElement;
 }
@@ -4958,6 +4959,12 @@ export default function RootLayout({
       window.removeEventListener('keydown', enablePush);
     };
   }, [session?.user?.id, subscribe]);
+
+  // Keep public VIP + Business badges in sync for every viewer (mounted once
+  // for the whole app here in RootLayout).
+  useEffect(() => {
+    startPublicBadgeSync(session?.user?.id ?? null);
+  }, [session?.user?.id]);
 
   // صفحات "ملء الشاشة" مثل الشات الفردي (/chat) تدير ارتفاعها وسكرولها الداخلي
   // بنفسها (height: 100dvh + overflow: hidden) وتُخفي الشريط السفلي أصلاً.
