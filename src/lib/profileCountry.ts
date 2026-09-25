@@ -56,3 +56,31 @@ export async function ensureMyCountry(userId?: string | null): Promise<CountryIn
   if (fresh) saveCountry(fresh, userId);
   return fresh;
 }
+
+export async function resolveUserCountry(userId: string): Promise<CountryInfo | null> {
+  const cached = readSavedCountry(userId);
+  if (cached) return cached;
+  const urls = [
+    `/api/users/${encodeURIComponent(userId)}`,
+    `/api/users/${encodeURIComponent(userId)}/profile`,
+    `/api/profile/${encodeURIComponent(userId)}`,
+  ];
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) continue;
+      const d = await r.json();
+      const src = d?.user || d?.profile || d;
+      const name = String(src?.countryName || src?.country || src?.country_name || '').trim();
+      const code = String(src?.countryCode || src?.country_code || '').trim().toUpperCase();
+      if (name) {
+        const info = { code, name };
+        saveCountry(info, userId);
+        return info;
+      }
+    } catch {
+      /* next */
+    }
+  }
+  return cached;
+}

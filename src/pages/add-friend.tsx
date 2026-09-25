@@ -6427,6 +6427,8 @@ interface MiniProfileData {
   // Optional so this still works if the backend hasn't added the field yet —
   // defaults to false (public) until then.
   isPrivate?: boolean;
+  country?: string | null;
+  countryName?: string | null;
   // Owner's manual "hide my followers list" switch — independent of isPrivate.
   // undefined/true = visible, false = hidden even on a public account. Optional so
   // this still degrades gracefully (stays visible) until the backend adds the field.
@@ -7004,6 +7006,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [loading, setLoading] = useState(true);
   const [avatarExpanded, setAvatarExpanded] = useState(false);
   const [friendState, setFriendState] = useState<'none' | 'pending' | 'accepted'>('none');
+  const [visitorCountry, setVisitorCountry] = useState('');
   const [friendLoading, setFriendLoading] = useState(false);
   const [friendMenuOpen, setFriendMenuOpen] = useState(false);
   const [authorPosts, setAuthorPosts] = useState<PostItem[]>([]);
@@ -7011,6 +7014,24 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [mediaLightbox, setMediaLightbox] = useState<{ url: string; type: 'image' | 'video'; post: PostItem } | null>(null);
   // كتم صوت معاينة الفيديو كاملة الشاشة
   const [lightboxMuted, setLightboxMuted] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    if (user?.id) {
+      void import('@/lib/profileCountry').then(m => m.ensureMyCountry(user.id));
+    }
+    if (!authorId || String(user?.id) === String(authorId)) return () => { live = false; };
+    void import('@/lib/profileCountry').then(async m => {
+      const info = await m.resolveUserCountry(authorId);
+      if (live && info?.name) setVisitorCountry(info.name);
+    });
+    return () => { live = false; };
+  }, [authorId, user?.id]);
+
+  useEffect(() => {
+    const n = (profile as MiniProfileData | null)?.countryName || (profile as MiniProfileData | null)?.country;
+    if (n) setVisitorCountry(String(n));
+  }, [profile]);
 
   useProfileVisitHeartbeat(
     authorId,
@@ -7358,7 +7379,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
             {user?.id && String(user.id) !== String(authorId) && (
               friendState === 'accepted' ? (
-                <span aria-label="صديق" title="صديق" style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span aria-label="friend" title="friend" style={{ width: 34, height: 34, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <Check size={20} strokeWidth={3} color="#22c55e" />
                 </span>
               ) : (
@@ -7406,6 +7427,9 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             </motion.button>
             )}
           </div>
+          {String(user?.id) !== String(authorId) && visitorCountry ? (
+            <p style={{ color: '#2563eb', fontSize: '0.74rem', fontWeight: 600, margin: '4px 0 0', letterSpacing: 0.2 }}>{visitorCountry}</p>
+          ) : null}
         </div>
 
         {friendState === 'accepted' && (
