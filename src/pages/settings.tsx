@@ -5842,7 +5842,7 @@ export default function SettingsPage() {
   const [vipExpiresAt, setVipExpiresAt] = useState<number | null>(null);
   const [vipTick, setVipTick] = useState(0);
   const [vipInfoOpen, setVipInfoOpen] = useState(false);
-  const [vipConfirm, setVipConfirm] = useState<null | { kind: 'color' | 'rename' | 'eightMics' | 'roomMusic'; color?: 'blue' | 'gold' | 'red' | 'green' | 'gray'; nextOn?: boolean }>(null);
+  const [vipConfirm, setVipConfirm] = useState<null | { kind: 'color' | 'rename' | 'eightMics' | 'roomMusic'; color?: 'blue' | 'gold' | 'red' | 'green' | 'gray' | 'pink'; nextOn?: boolean }>(null);
   useEffect(() => {
     const id = window.setInterval(() => setVipTick(t => t + 1), 1000);
     return () => window.clearInterval(id);
@@ -11509,7 +11509,7 @@ export default function SettingsPage() {
               </div>
               <p style={{ margin: '0 0 8px', color: '#eab308', fontSize: 12, fontWeight: 700 }}>Username color</p>
               <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-                {(['blue', 'gold', 'red', 'green', 'gray'] as const).map(c => (
+                {(['blue', 'gold', 'red', 'green', 'gray', 'pink'] as const).map(c => (
                   <button key={c} type="button" onClick={() => setVipConfirm({ kind: 'color', color: c })}
                     style={{ width: 24, height: 24, borderRadius: '50%', background: VIP_COLORS[c], border: vipColor === c ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer' }} />
                 ))}
