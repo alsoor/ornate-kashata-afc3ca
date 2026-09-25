@@ -60,7 +60,7 @@ const T = {
   primaryFaint: 'rgba(0,0,0,0.08)',
   text: '#111b21',
   textDim: '#667781',
-  bubbleMe: '#1e40af',
+  bubbleMe: '#efe6d6',
   bubbleThem: '#ffffff',
   inputBg: '#ffffff',
   navBorder: 'rgba(0,0,0,0.08)',
@@ -561,6 +561,52 @@ function osmEmbedSrc(lat: number, lng: number, _zoomDelta = 0.012): string {
   return googleEmbedSrc(lat, lng);
 }
 
+function MapPanZoom({ lat, lng, children }: { lat: number; lng: number; children?: React.ReactNode }) {
+  const [zoom, setZoom] = useState(1);
+  const [off, setOff] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number; dist?: number; z?: number } | null>(null);
+  const span = Math.max(0.004, 0.018 / zoom);
+  const src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${lng-span},${lat-span},${lng+span},${lat+span}&bboxSR=4326&imageSR=3857&size=900,1600&format=png&f=image`;
+  return (
+    <div
+      style={{ position: 'absolute', inset: 0, overflow: 'hidden', touchAction: 'none' }}
+      onPointerDown={e => {
+        (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+        drag.current = { x: e.clientX, y: e.clientY, ox: off.x, oy: off.y };
+      }}
+      onPointerMove={e => {
+        if (!drag.current) return;
+        setOff({ x: drag.current.ox + (e.clientX - drag.current.x), y: drag.current.oy + (e.clientY - drag.current.y) });
+      }}
+      onPointerUp={() => { drag.current = null; }}
+      onWheel={e => {
+        e.preventDefault();
+        setZoom(z => Math.min(4, Math.max(0.6, z + (e.deltaY < 0 ? 0.12 : -0.12))));
+      }}
+      onTouchStart={e => {
+        if (e.touches.length === 2) {
+          const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+          drag.current = { x: 0, y: 0, ox: off.x, oy: off.y, dist: d, z: zoom };
+        }
+      }}
+      onTouchMove={e => {
+        if (e.touches.length === 2 && drag.current?.dist) {
+          const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+          setZoom(Math.min(4, Math.max(0.6, (drag.current.z || 1) * (d / drag.current.dist))));
+        }
+      }}
+    >
+      <img alt="" src={src} draggable={false} style={{
+        position: 'absolute', left: '50%', top: '50%',
+        width: '140%', height: '140%', objectFit: 'cover',
+        transform: `translate(calc(-50% + ${off.x}px), calc(-50% + ${off.y}px)) scale(${zoom})`,
+        transformOrigin: 'center center', pointerEvents: 'none', userSelect: 'none',
+      }} />
+      {children}
+    </div>
+  );
+}
+
 function LocationMapBubble({
   lat,
   lng,
@@ -663,11 +709,7 @@ function LocationMapBubble({
           >
             <MapPin size={18} color="#111" />
           </button>
-          <img
-            alt=""
-            src={`https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/export?bbox=${them.lng-0.012},${them.lat-0.012},${them.lng+0.012},${them.lat+0.012}&bboxSR=4326&imageSR=3857&size=900,1600&format=png&f=image`}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', border: 0 }}
-          />
+          <MapPanZoom lat={them.lat} lng={them.lng} />
           <div style={{
             position: 'absolute', left: '50%', top: '46%', transform: 'translate(-50%, -50%)',
             display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: 'none', zIndex: 3,
@@ -765,11 +807,7 @@ function LocationPickerOverlay({
       </div>
       <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
         {lat != null && lng != null ? (
-          <iframe
-            title="Pick location map"
-            src={osmEmbedSrc(lat, lng, 0.008)}
-            style={{ width: '100%', height: '100%', border: 0 }}
-          />
+          <MapPanZoom lat={lat} lng={lng} />
         ) : (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.textDim }}>
             {loading ? 'Locating…' : (err || 'No location')}
@@ -5667,7 +5705,7 @@ export default function ChatPage() {
                           if (m.type === 'call') return null;
                           return (
                             <p style={{
-                              color: isMe ? '#ffffff' : T.text,
+                              color: T.text,
                               fontSize: '0.89rem',
                               lineHeight: 1.4,
                               margin: 0,
@@ -5703,7 +5741,7 @@ export default function ChatPage() {
                           </button>}
                           {editedIds.has(m.id) && <span style={{ color: T.textDim, fontSize: '0.62rem', fontStyle: 'italic' }}>edited</span>}
                           <p style={{
-                            color: T.textDim,
+                            color: '#111111',
                             fontSize: '0.62rem',
                             margin: 0,
                             display: 'flex',
@@ -5718,7 +5756,7 @@ export default function ChatPage() {
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   marginInlineStart: 2,
-                                  color: (m.read || m.readAt) ? '#00BCD4' : 'rgba(150,200,200,0.55)',
+                                  color: (m.read || m.readAt) ? '#00BCD4' : '#9ca3af',
                                   lineHeight: 1,
                                 }}
                               >
@@ -5779,21 +5817,20 @@ export default function ChatPage() {
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 30,
-          background: 'rgba(0,188,212,0.92)',
-          border: 'none',
+          background: '#ffffff',
+          border: '1px solid #e5e7eb',
           borderRadius: 20,
           padding: '6px 16px',
-          color: '#000',
-          fontWeight: 700,
+          color: '#111111',
+          fontWeight: 400,
           fontSize: '0.75rem',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           gap: 4,
-          boxShadow: '0 4px 16px rgba(0,188,212,0.4)',
-          backdropFilter: 'blur(8px)'
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
         }}>
-              <ChevronDown size={14} />
+              <ChevronDown size={14} color="#111" />
               New messages
             </motion.button>}
         </AnimatePresence>
