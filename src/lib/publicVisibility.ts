@@ -123,6 +123,7 @@ export function startPublicBadgeSync(_userId?: string | null) {
   const tick = () => {
     void hydrateBusinessDirectory();
     try {
+      // dynamic import avoids circular deps with vipPatch
       import('@/lib/vipPatch')
         .then((m) => {
           if (typeof m.hydrateVipDirectory === 'function') void m.hydrateVipDirectory();

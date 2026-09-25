@@ -360,8 +360,10 @@ export async function hydrateVipDirectory() {
     const dir: Record<string, VipPublicState> = { ...prevDir };
     const colorMap = readJson<Record<string, VipColor>>(COLOR_KEY, {});
     const featMap = readJson<Record<string, Partial<VipFeats>>>(FEAT_KEY, {});
+    const seen = new Set<string>();
     for (const row of list) {
       if (!row?.userId) continue;
+      seen.add(row.userId);
       const color =
         (row.color && VIP_COLORS[row.color] ? row.color : null) ||
         colorMap[row.userId] ||
@@ -386,6 +388,7 @@ export async function hydrateVipDirectory() {
         expiresAt: row.expiresAt,
       };
     }
+    // Drop expired / inactive that server no longer lists only if we had them from server before
     writeJson(COLOR_KEY, colorMap);
     writeJson(FEAT_KEY, featMap);
     writeJson(PUBLIC_DIR_KEY, dir);
