@@ -18,10 +18,14 @@ const RENAME_KEY = 'stooorna_vip_rename_used';
 const FEAT_KEY = 'stooorna_vip_feats';
 export const VIP_FAVS_KEY = 'stooorna_vip_music_favs';
 
+export const VIP_PRICE_KD = 5;
+export const VIP_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+
 export type VipPlan = {
   userId: string;
   active: boolean;
   since: number;
+  expiresAt?: number;
 };
 
 export type VipFeats = {
@@ -69,14 +73,57 @@ function readAllPlans(): Record<string, VipPlan> {
 
 export function isVip(userId?: string | null): boolean {
   if (!userId) return false;
-  if (readAllPlans()[userId]?.active) return true;
+  const p = readAllPlans()[userId];
+  if (p?.active) {
+    if (p.expiresAt && Date.now() > p.expiresAt) {
+      deactivateVip(userId);
+      return false;
+    }
+    return true;
+  }
   try {
-    const dir = readJson<Record<string, { active?: boolean }>>('stooorna_vip_public_dir', {});
-    return !!dir[userId]?.active;
+    const dir = readJson<Record<string, { active?: boolean; expiresAt?: number }>>('stooorna_vip_public_dir', {});
+    const row = dir[userId];
+    if (!row?.active) return false;
+    if (row.expiresAt && Date.now() > row.expiresAt) return false;
+    return true;
   } catch {
     return false;
   }
 }
+
+export function getVipExpiry(userId?: string | null): number | null {
+  if (!userId) return null;
+  const p = readAllPlans()[userId];
+  return p?.expiresAt || null;
+}
+
+export function deactivateVip(userId: string) {
+  const all = readAllPlans();
+  if (all[userId]) {
+    all[userId] = { ...all[userId], active: false };
+    writeJson(PLAN_KEY, all);
+  }
+  try {
+    const dir = readJson<Record<string, unknown>>('stooorna_vip_public_dir', {});
+    delete dir[userId];
+    writeJson('stooorna_vip_public_dir', dir);
+  } catch { /* ignore */ }
+  emitVip({ userId, active: false });
+  void postVip({ userId, action: 'deactivate' });
+}
+
+export function formatVipCountdown(expiresAt?: number | null): { days: number; hours: number; minutes: number; seconds: number; date: string } {
+  const end = Number(expiresAt || 0);
+  const left = Math.max(0, end - Date.now());
+  const days = Math.floor(left / 86400000);
+  const hours = Math.floor((left % 86400000) / 3600000);
+  const minutes = Math.floor((left % 3600000) / 60000);
+  const seconds = Math.floor((left % 60000) / 1000);
+  const date = end ? new Date(end).toLocaleString() : '';
+  return { days, hours, minutes, seconds, date };
+}
+
 
 export function getVipColor(userId?: string | null): VipColor {
   if (!userId) return 'gold';
@@ -133,7 +180,10 @@ export async function hydrateVipFromServer(userId: string) {
     const d = await r.json();
     if (d?.active) {
       const all = readAllPlans();
-      all[userId] = { userId, active: true, since: Number(d.since) || Date.now() };
+      all[userId] = { userId, active: true, since: Number(d.since) || Date.now(), expiresAt: Number(d.expiresAt) || (Date.now() + VIP_PERIOD_MS) };
+      if (all[userId].expiresAt && Date.now() > all[userId].expiresAt!) {
+        all[userId].active = false;
+      }
       writeJson(PLAN_KEY, all);
     }
     if (d?.color && VIP_COLORS[d.color as VipColor]) {
@@ -197,12 +247,14 @@ export function isPublicVipAccount(userId?: string | null): boolean {
 
 export function activateVip(userId: string) {
   const all = readAllPlans();
-  all[userId] = { userId, active: true, since: Date.now() };
+  const now = Date.now();
+  all[userId] = { userId, active: true, since: now, expiresAt: now + VIP_PERIOD_MS };
   writeJson(PLAN_KEY, all);
   publishVipPublic(userId);
-  emitVip({ userId, active: true });
-  void postVip({ userId, action: 'activate' });
+  emitVip({ userId, active: true, expiresAt: now + VIP_PERIOD_MS });
+  void postVip({ userId, action: 'activate', expiresAt: now + VIP_PERIOD_MS });
 }
+
 
 export function vipRenameUsed(userId: string): boolean {
   const map = readJson<Record<string, boolean>>(RENAME_KEY, {});

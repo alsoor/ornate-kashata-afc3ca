@@ -110,8 +110,7 @@ export function LiveVipDock({
   if (!vipHost && !canMusic) return null;
 
   return (
-    <div style={{ position: 'fixed', right: 14, bottom: 92, zIndex: 80, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-      <div style={{ fontSize: 10, color: '#eab308', fontWeight: 800 }}>Mic {cap}</div>
+    <div style={{ position: 'fixed', right: 16, bottom: 'calc(10px + env(safe-area-inset-bottom, 0px))', zIndex: 80, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
       {canMusic && (
         <button
           type="button"
@@ -166,7 +165,7 @@ export function LiveVipDock({
 
             {track && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, color: '#fff' }}>
-                <button type="button" onClick={() => setPlaying((v) => !v)} style={{ background: '#eab308', border: 'none', borderRadius: 20, width: 32, height: 32 }}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
+                <button type="button" onClick={() => setPlaying((v) => !v)} style={{ background: '#eab308', border: 'none', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, color: '#111' }}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ margin: 0, fontWeight: 800, fontSize: 13 }}>{track.title}</p>
                   <p style={{ margin: 0, fontSize: 11, color: 'rgba(200,220,220,0.6)' }}>{track.artist}</p>

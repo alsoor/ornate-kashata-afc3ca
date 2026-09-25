@@ -10,7 +10,7 @@ import LiveLocationMap from '@/components/LiveLocationMap';
 import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
-import { activateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, getVipFeats, setVipFeat, hydrateVipFromServer, resolveVipNameStyle } from '@/lib/vipPatch';
+import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, getVipFeats, setVipFeat, hydrateVipFromServer, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown } from '@/lib/vipPatch';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
 
@@ -5839,7 +5839,23 @@ export default function SettingsPage() {
   const [vipFeaturesOpen, setVipFeaturesOpen] = useState(false);
   const [vipEightMics, setVipEightMics] = useState(false);
   const [vipRoomMusic, setVipRoomMusic] = useState(false);
+  const [vipExpiresAt, setVipExpiresAt] = useState<number | null>(null);
+  const [vipTick, setVipTick] = useState(0);
+  const [vipInfoOpen, setVipInfoOpen] = useState(false);
   const [vipConfirm, setVipConfirm] = useState<null | { kind: 'color' | 'rename' | 'eightMics' | 'roomMusic'; color?: 'blue' | 'gold' | 'red' | 'green' | 'gray'; nextOn?: boolean }>(null);
+  useEffect(() => {
+    const id = window.setInterval(() => setVipTick(t => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  useEffect(() => {
+    if (!user?.id) return;
+    const exp = getVipExpiry(user.id);
+    setVipExpiresAt(exp);
+    if (exp && Date.now() > exp) {
+      deactivateVip(user.id);
+      setVipOn(false);
+    }
+  }, [user?.id, vipTick]);
   const [bizTopUpAmount, setBizTopUpAmount] = useState('10');
   const [bizProjectName, setBizProjectName] = useState('');
   const [bizLicense, setBizLicense] = useState('');
@@ -5879,6 +5895,7 @@ export default function SettingsPage() {
       const f = feats?.[user.id] || {};
       setVipEightMics(!!f.eightMics);
       setVipRoomMusic(!!f.roomMusic);
+      setVipExpiresAt(all?.[user.id]?.expiresAt || null);
     } catch { setVipOn(false); }
     void hydrateVipFromServer(user.id).then(() => {
       try {
@@ -7188,6 +7205,11 @@ export default function SettingsPage() {
                         <button type="button" onClick={() => setVipFeaturesOpen(true)}
                           style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.45)', background: 'rgba(234,179,8,0.12)', color: '#eab308', fontWeight: 800, cursor: 'pointer' }}>
                           Features
+                        </button>
+                        <button type="button" onClick={() => setVipInfoOpen(true)}
+                          style={{ marginTop: 10, width: 44, height: 44, borderRadius: '50%', border: '1.5px solid rgba(234,179,8,0.55)', background: 'rgba(234,179,8,0.15)', color: '#eab308', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          title="VIP period">
+                          <Clock size={18} />
                         </button>
                       </div>
                     )}
@@ -11394,32 +11416,81 @@ export default function SettingsPage() {
             <motion.div onClick={e => e.stopPropagation()} initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
               style={{ width: 'min(92vw, 340px)', maxHeight: '88vh', overflowY: 'auto', background: '#0a1f22', border: '1px solid rgba(234,179,8,0.4)', borderRadius: 16, padding: 18, display: 'flex', flexDirection: 'column', gap: 10, boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>VIP (Visa)</p>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>VIP Subscription Features</p>
                 <button type="button" onClick={() => setVipPayOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
               </div>
-              <label style={{ color: 'rgba(180,210,210,0.7)', fontSize: 12 }}>Full name</label>
-              <input value={vipCardName} onChange={e => setVipCardName(e.target.value.slice(0, 60))} placeholder="Name on card"
-                style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
-              <label style={{ color: 'rgba(180,210,210,0.7)', fontSize: 12 }}>Card number</label>
-              <input value={vipCard} onChange={e => setVipCard(e.target.value.replace(/[^0-9 ]/g, '').slice(0, 19))} placeholder="XXXX XXXX XXXX XXXX"
-                style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
-              <label style={{ color: 'rgba(180,210,210,0.7)', fontSize: 12 }}>Expiry (MM/YY)</label>
-              <input value={vipExp} onChange={e => setVipExp(e.target.value.slice(0, 5))} placeholder="MM/YY"
-                style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
-              <label style={{ color: 'rgba(180,210,210,0.7)', fontSize: 12 }}>CVV</label>
-              <input value={vipCvv} onChange={e => setVipCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="CVV"
-                style={{ width: '100%', boxSizing: 'border-box', padding: '12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(0,30,35,0.8)', color: '#fff' }} />
+                            <p style={{ margin: 0, color: '#eab308', fontWeight: 800 }}>5 KD / 30 days</p>
+              <div style={{ color: '#d7eeee', fontSize: 13, lineHeight: 1.45, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>1. VIP Profile Customization</p>
+                  <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Features an exclusive animated golden border around your profile picture, paired with a matching golden VIP header banner.</p>
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>2. Advanced Room Stage Access</p>
+                  <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Empowers hosts of audio or video rooms to invite up to 8 speakers simultaneously to the stage upon request.</p>
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>3. Custom Username Colors</p>
+                  <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Personalize your username with a selection of vibrant colors: Blue, Gold, Red, Green, or Grey.</p>
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>4. Advanced Music &amp; Media Player</p>
+                  <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Includes a dedicated search button for advanced music browsing. Play any song, track, or Quranic recitation for everyone in the room to hear. Features a personal favorites list and independent volume control for background music—allowing you to adjust the music volume without affecting normal microphone voice levels.</p>
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>5. One-Time Username Change</p>
+                  <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Allows a one-time username change, supporting short usernames down to a single character.</p>
+                </div>
+              </div>
+              {bizBalance < VIP_PRICE_KD ? (
+                <p style={{ margin: 0, color: '#facc15', fontSize: 13, lineHeight: 1.45 }}>
+                  Your My Balance is {bizBalance.toFixed(0)} KD. Add at least {VIP_PRICE_KD} KD in My Balance, then subscribe.
+                </p>
+              ) : (
+                <p style={{ margin: 0, color: '#86efac', fontSize: 13 }}>My Balance {bizBalance.toFixed(0)} KD. Subscribe to deduct {VIP_PRICE_KD} KD for 30 days.</p>
+              )}
               <button type="button" onClick={() => {
                 if (!user?.id) return;
-                if (!vipCardName.trim()) return;
-                if (vipCard.replace(/\s/g, '').length < 12) return;
+                if (bizBalance < VIP_PRICE_KD) return;
+                const next = bizBalance - VIP_PRICE_KD;
+                try {
+                  localStorage.setItem(`stooorna_biz_balance_${user.id}`, String(next));
+                  window.dispatchEvent(new CustomEvent('stooorna:biz-balance', { detail: { userId: user.id, balance: next } }));
+                } catch { /* */ }
+                setBizBalance(next);
                 activateVip(user.id);
+                setVipExpiresAt(Date.now() + 30 * 24 * 60 * 60 * 1000);
                 setVipOn(true);
                 setVipPayOpen(false);
-                setVipCardName(''); setVipCard(''); setVipExp(''); setVipCvv('');
-              }} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: '#eab308', color: '#111', fontWeight: 900, cursor: 'pointer' }}>
-                Pay and activate VIP
+              }} disabled={bizBalance < VIP_PRICE_KD} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: bizBalance < VIP_PRICE_KD ? '#4b5563' : '#eab308', color: bizBalance < VIP_PRICE_KD ? '#ccc' : '#111', fontWeight: 900, cursor: bizBalance < VIP_PRICE_KD ? 'default' : 'pointer' }}>
+                {bizBalance < VIP_PRICE_KD ? 'Add balance first' : `Subscribe · ${VIP_PRICE_KD} KD`}
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {vipInfoOpen && vipOn && (
+          <motion.div key="vip-info" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 10540, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+            onClick={() => setVipInfoOpen(false)}>
+            <motion.div onClick={e => e.stopPropagation()} initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+              style={{ width: 'min(92vw, 340px)', background: '#0a1f22', border: '1px solid rgba(234,179,8,0.4)', borderRadius: 16, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>VIP period</p>
+                <button type="button" onClick={() => setVipInfoOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308' }}><X size={18} /></button>
+              </div>
+              {(() => {
+                const c = formatVipCountdown(vipExpiresAt);
+                return (
+                  <div style={{ marginTop: 12, color: '#d7eeee' }}>
+                    <p style={{ margin: '0 0 8px', fontWeight: 800, color: '#eab308', fontSize: 22 }}>{c.days}d {String(c.hours).padStart(2,'0')}:{String(c.minutes).padStart(2,'0')}:{String(c.seconds).padStart(2,'0')}</p>
+                    <p style={{ margin: 0, fontSize: 12, color: 'rgba(200,220,220,0.75)' }}>Ends {c.date || '—'}</p>
+                    <p style={{ margin: '10px 0 0', fontSize: 12, color: 'rgba(200,220,220,0.7)' }}>When the 30 days end, VIP locks and features stop. You can subscribe again anytime from My Balance ({VIP_PRICE_KD} KD).</p>
+                  </div>
+                );
+              })()}
             </motion.div>
           </motion.div>
         )}

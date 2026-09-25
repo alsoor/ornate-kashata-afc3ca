@@ -4608,7 +4608,7 @@ function GlobalBottomNavigation() {
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 10200,
+    zIndex: 12000,
     height: 'calc(52px + env(safe-area-inset-bottom))',
     paddingBottom: 'env(safe-area-inset-bottom)',
     background: 'linear-gradient(180deg, rgba(6,14,14,0.92) 0%, rgba(6,14,14,0.99) 100%)',
@@ -5049,7 +5049,7 @@ export default function RootLayout({
               style={{
                 position: 'absolute',
                 top: 0,
-                bottom: 0,
+                bottom: 'calc(56px + env(safe-area-inset-bottom, 0px))',
                 right: 0,
                 left: 42,
                 background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
