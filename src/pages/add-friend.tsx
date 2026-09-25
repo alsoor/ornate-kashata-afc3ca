@@ -14072,10 +14072,13 @@ export default function AddFriendPage() {
       postsChromeRafRef.current = 0;
       if (current <= 4) {
         applyPostsChromeVisible(true);
+        try { window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'up' } })); } catch { /* */ }
       } else if (delta > 3) {
         applyPostsChromeVisible(false);
+        try { window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'down' } })); } catch { /* */ }
       } else if (delta < -3) {
         applyPostsChromeVisible(true);
+        try { window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'up' } })); } catch { /* */ }
       }
     });
   }
@@ -20115,7 +20118,7 @@ export default function AddFriendPage() {
               style={{
                 position: 'absolute', inset: 0,
                 paddingTop: 'calc(28px + max(4px, env(safe-area-inset-top, 0px)))',
-                paddingBottom: 'calc(57.5px + max(8px, env(safe-area-inset-bottom, 0px)))',
+                paddingBottom: 'calc(88px + max(12px, env(safe-area-inset-bottom, 0px)))',
                 WebkitOverflowScrolling: 'touch', touchAction: 'pan-y',
               }}
             >

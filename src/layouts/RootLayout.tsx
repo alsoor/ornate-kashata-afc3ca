@@ -4597,6 +4597,7 @@ function GlobalBottomNavigation() {
   {(() => {
     const hideBottomBar =
       navBarHidden
+      || textPostsOpen
       || liveMapOpen
       || isConversation
       || secretChatOpen

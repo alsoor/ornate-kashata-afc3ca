@@ -7026,6 +7026,44 @@ export default function SettingsPage() {
                     </>
                   )}
 
+                  {/* Wallet — always visible for Business and VIP */}
+                  {true && (
+                    <div style={{
+                      background: T.surface,
+                      border: `1px solid ${T.surfaceBorder}`,
+                      borderRadius: 14,
+                      padding: '14px 16px',
+                      marginBottom: 10,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <div>
+                          <p style={{
+                            color: '#eab308', fontSize: '0.62rem', letterSpacing: '0.2em',
+                            textTransform: 'uppercase', fontWeight: 700, margin: 0,
+                          }}>My balance</p>
+                          <p style={{ margin: '6px 0 0', color: '#eab308', fontSize: '1.15rem', fontWeight: 900 }}>
+                            {bizBalance.toFixed(0)} KD
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="Add balance"
+                          onClick={() => setBizTopUpOpen(true)}
+                          style={{
+                            width: 36, height: 36, borderRadius: '50%', border: '1.5px solid rgba(234,179,8,0.55)',
+                            background: 'rgba(234,179,8,0.15)', color: '#eab308', fontWeight: 900,
+                            fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1,
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+                      <p style={{ margin: '10px 0 0', color: T.primaryDim, fontSize: '0.7rem', fontWeight: 600, lineHeight: 1.45 }}>
+                        Top up here. Use this wallet to subscribe VIP (5 KD / 30 days) or Business ads (5 KD / month).
+                      </p>
+                    </div>
+                  )}
+
                   {/* ── Business toggle ── */}
                   <div style={{
                 background: T.surface,
@@ -7123,44 +7161,6 @@ export default function SettingsPage() {
                       </button>
                     )}
                   </div>
-
-                  {/* Business balance — approved only */}
-                  {businessRow?.status === 'approved' && (
-                    <div style={{
-                      background: T.surface,
-                      border: `1px solid ${T.surfaceBorder}`,
-                      borderRadius: 14,
-                      padding: '14px 16px',
-                      marginBottom: 10,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                        <div>
-                          <p style={{
-                            color: '#eab308', fontSize: '0.62rem', letterSpacing: '0.2em',
-                            textTransform: 'uppercase', fontWeight: 700, margin: 0,
-                          }}>My balance</p>
-                          <p style={{ margin: '6px 0 0', color: '#eab308', fontSize: '1.15rem', fontWeight: 900 }}>
-                            {bizBalance.toFixed(0)} KD
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          aria-label="Add balance"
-                          onClick={() => setBizTopUpOpen(true)}
-                          style={{
-                            width: 36, height: 36, borderRadius: '50%', border: '1.5px solid rgba(234,179,8,0.55)',
-                            background: 'rgba(234,179,8,0.15)', color: '#eab308', fontWeight: 900,
-                            fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1,
-                          }}
-                        >
-                          +
-                        </button>
-                      </div>
-                      <p style={{ margin: '10px 0 0', color: T.primaryDim, fontSize: '0.7rem', fontWeight: 600, lineHeight: 1.45 }}>
-                        Place ads from New Post → + Product Ad (5 KD / month). Ads appear between feed posts.
-                      </p>
-                    </div>
-                  )}
 
                   <div style={{
                     background: T.surface,
