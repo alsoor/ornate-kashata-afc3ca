@@ -53,14 +53,14 @@ function fmtCallDuration(totalSeconds: number): string {
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 const T = {
-  bg: '#efeae2',
+  bg: '#ffffff',
   primary: '#111111',
   primaryDim: 'rgba(0,0,0,0.35)',
   primaryBorder: 'rgba(0,0,0,0.22)',
   primaryFaint: 'rgba(0,0,0,0.08)',
   text: '#111b21',
   textDim: '#667781',
-  bubbleMe: '#d9fdd3',
+  bubbleMe: '#1e40af',
   bubbleThem: '#ffffff',
   inputBg: '#ffffff',
   navBorder: 'rgba(0,0,0,0.08)',
@@ -4207,15 +4207,26 @@ export default function ChatPage() {
   const fetchMsgs = useCallback(async () => {
     try {
       let url: string;
+      let raw: unknown = [];
       if (isGroup) {
-        url = `/api/groups/${groupId}/messages`;
+        const r = await fetch(`/api/groups/${groupId}/messages`, { credentials: 'include' });
+        if (r.ok) raw = await r.json();
       } else {
-        if (!scChatId) return;
-        url = `/api/secret-chat/messages?chatId=${scChatId}`;
+        const urls = [
+          scChatId ? `/api/secret-chat/messages?chatId=${scChatId}` : '',
+          peerId ? `/api/messages?peerId=${encodeURIComponent(peerId)}` : '',
+          peerId ? `/api/chat/messages?with=${encodeURIComponent(peerId)}` : '',
+        ].filter(Boolean);
+        for (const url of urls) {
+          try {
+            const r = await fetch(url, { credentials: 'include' });
+            if (!r.ok) continue;
+            const data = await r.json();
+            const list = Array.isArray(data) ? data : (data?.messages || data?.items || []);
+            if (Array.isArray(list) && list.length >= 0) { raw = list; break; }
+          } catch { /* next */ }
+        }
       }
-      const r = await fetch(url, { credentials: 'include' });
-      if (!r.ok) return;
-      const raw = await r.json();
       if (!Array.isArray(raw)) return;
       let clearedAt = 0;
       try {
@@ -4317,8 +4328,12 @@ export default function ChatPage() {
         }
       }
       if (prevMsgCountRef.current === -1 && newMsgs.length > 0) setHasNewMsg(true);
-      prevMsgCountRef.current = newMsgs.length;
-      setMsgs(newMsgs);
+      prevMsgCountRef.current = Math.max(prevMsgCountRef.current, newMsgs.length);
+      setMsgs(prev => {
+        const temps = prev.filter(m => typeof m.id === 'number' && m.id < 0);
+        if (newMsgs.length > 0) return newMsgs;
+        return temps.length ? temps : newMsgs;
+      });
     } catch {/* silent */}
   }, [isGroup, groupId, scChatId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -4422,6 +4437,29 @@ export default function ChatPage() {
     const body = text.trim();
     setText('');
     setReplyTo(null);
+    const tempId = -Date.now();
+    if (user?.id) {
+      setMsgs(prev => [...prev, {
+        id: tempId,
+        senderId: user.id,
+        type: 'text',
+        body,
+        duration: null,
+        createdAt: new Date().toISOString(),
+        read: false,
+        readAt: null,
+        delivered: false,
+        senderName: (user as any).name ?? null,
+        senderUsername: (user as any).username ?? null,
+        senderAvatarUrl: (user as any).avatarUrl ?? (user as any).image ?? null,
+        senderNameColor: null,
+        isSystem: false,
+        isStreak: false,
+        streakOpenedAt: null,
+        streakDuration: null,
+        streakMediaType: null,
+      } as Message]);
+    }
     try {
       if (isGroup) {
         await fetch(`/api/groups/${groupId}/messages`, {
@@ -4430,12 +4468,21 @@ export default function ChatPage() {
           body: JSON.stringify({ body })
         });
       } else {
-        if (!scChatId) return;
-        await fetch('/api/secret-chat/messages', {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatId: scChatId, body })
-        });
+        const posts = [
+          scChatId ? { url: '/api/secret-chat/messages', payload: { chatId: scChatId, body } } : null,
+          { url: '/api/messages', payload: { peerId, body, text: body } },
+          { url: '/api/chat/messages', payload: { with: peerId, peerId, body } },
+        ].filter(Boolean) as Array<{ url: string; payload: Record<string, unknown> }>;
+        for (const ep of posts) {
+          try {
+            const r = await fetch(ep.url, {
+              method: 'POST', credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(ep.payload),
+            });
+            if (r.ok || r.status === 201) break;
+          } catch { /* next */ }
+        }
         // تنبيهات الشريط السفلي: استفسار/رد منتج بين المستخدم والشركة
         try {
           const inquiry = parseProductInquiry(body);
@@ -4677,11 +4724,19 @@ export default function ChatPage() {
           headers: { 'Content-Type': blob.type }, body: blob
         });
       } else {
-        if (!scChatId) { setRecordSecs(0); return; }
-        await fetch(`/api/secret-chat/voice?chatId=${scChatId}&duration=${duration}`, {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': blob.type }, body: blob
-        });
+        const voiceUrls = [
+          scChatId ? `/api/secret-chat/voice?chatId=${scChatId}&duration=${duration}` : '',
+          peerId ? `/api/messages/voice?peerId=${encodeURIComponent(peerId)}&duration=${duration}` : '',
+        ].filter(Boolean);
+        for (const vurl of voiceUrls) {
+          try {
+            const vr = await fetch(vurl, {
+              method: 'POST', credentials: 'include',
+              headers: { 'Content-Type': blob.type }, body: blob
+            });
+            if (vr.ok || vr.status === 201) break;
+          } catch { /* next */ }
+        }
       }
       await fetchMsgs();
     } catch {/* silent */}
@@ -5612,7 +5667,7 @@ export default function ChatPage() {
                           if (m.type === 'call') return null;
                           return (
                             <p style={{
-                              color: T.text,
+                              color: isMe ? '#ffffff' : T.text,
                               fontSize: '0.89rem',
                               lineHeight: 1.4,
                               margin: 0,
@@ -5965,7 +6020,7 @@ export default function ChatPage() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <button type="button" onClick={() => stopRecording(false)} style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: '#fde8ef', color: '#e11d48', cursor: 'pointer' }}>
+                  <button type="button" onClick={() => stopRecording(false)} style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: '#fde8ef', color: '#e11d48', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0 }}>
                     <Trash2 size={18} />
                   </button>
                   <button type="button" onClick={() => {
@@ -6440,7 +6495,7 @@ export default function ChatPage() {
                   <Trash2 size={18} strokeWidth={2} color="hsl(var(--destructive))" />
                 </div>
                 <div>
-                  <p style={{ color: '#000000', fontSize: '0.95rem', fontWeight: 800, margin: 0 }}>
+                  <p style={{ color: '#ffffff', fontSize: '0.95rem', fontWeight: 800, margin: 0 }}>
                     Clear History?
                   </p>
                   <p style={{ color: T.textDim, fontSize: '0.73rem', margin: 0 }}>
