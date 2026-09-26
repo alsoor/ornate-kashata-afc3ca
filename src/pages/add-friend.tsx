@@ -5007,7 +5007,12 @@ function LinkMediaPreview({ url, failedNote }: { url: string; failedNote?: strin
 }
 
 
-// ── Small red circular toggle placed on the media, opens/closes the side text panel ──
+// ── Muted-red circular toggle placed on the media, opens/closes the side text panel.
+//    Positioned with a fixed negative margin (not a CSS `transform`) so the tap-scale
+//    animation Framer Motion applies to `transform` never overwrites the vertical
+//    centering — that mismatch was what made the button appear to shift on first tap
+//    and require a second tap to actually register. ──
+const MEDIA_TEXT_DOT_SIZE = 26;
 function MediaTextToggleDot({ active, disabled = false, onToggle, dark = true }: {
   active: boolean;
   disabled?: boolean;
@@ -5025,11 +5030,11 @@ function MediaTextToggleDot({ active, disabled = false, onToggle, dark = true }:
         position: 'absolute',
         top: '50%',
         insetInlineEnd: 10,
-        transform: 'translateY(-50%)',
-        width: 26,
-        height: 26,
+        marginTop: -(MEDIA_TEXT_DOT_SIZE / 2),
+        width: MEDIA_TEXT_DOT_SIZE,
+        height: MEDIA_TEXT_DOT_SIZE,
         borderRadius: '50%',
-        background: '#ef4444',
+        background: '#c25a5a',
         border: `2px solid ${dark ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.9)'}`,
         display: 'flex',
         alignItems: 'center',
@@ -5037,7 +5042,7 @@ function MediaTextToggleDot({ active, disabled = false, onToggle, dark = true }:
         cursor: 'pointer',
         padding: 0,
         zIndex: 5,
-        boxShadow: active ? '0 0 0 3px rgba(239,68,68,0.35)' : '0 2px 8px rgba(0,0,0,0.35)',
+        boxShadow: active ? '0 0 0 3px rgba(194,90,90,0.35)' : '0 2px 8px rgba(0,0,0,0.35)',
       }}
     >
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />
@@ -5047,7 +5052,44 @@ function MediaTextToggleDot({ active, disabled = false, onToggle, dark = true }:
 
 // ── Slide-in panel over the media: reads the post text, leaves a margin on the
 //    left so the media stays partially visible/anchored while reading ──
-function MediaTextSidePanel({ open, onClose, text }: { open: boolean; onClose: () => void; text: string }) {
+// ── `mode="overlay"` (default): slides in over the media from the outside edge — used
+//    for the fullscreen lightbox / single-post views, which are already "opened from
+//    inside" the app.
+//    `mode="expand"`: no overlay — the panel grows in normal flow below the media, which
+//    makes the whole post card taller ("open from outside") instead of covering the
+//    media. Used in the feed card for short captions (see PostCard below). ──
+function MediaTextSidePanel({ open, onClose, text, mode = 'overlay' }: {
+  open: boolean;
+  onClose: () => void;
+  text: string;
+  mode?: 'overlay' | 'expand';
+}) {
+  if (mode === 'expand') {
+    return (
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            onClick={e => e.stopPropagation()}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 38 }}
+            style={{ width: '100%', overflow: 'hidden', background: 'rgba(8,8,8,0.92)' }}
+          >
+            <p style={{
+              margin: 0, color: '#fff', fontSize: '0.9rem', fontWeight: 500,
+              lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              fontFamily: "'Alexandria', var(--font-sans), sans-serif",
+              padding: '14px 16px calc(14px + env(safe-area-inset-bottom, 0px))',
+              boxSizing: 'border-box',
+            }}>
+              {text}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
+  }
   return (
     <AnimatePresence>
       {open && (
@@ -5780,6 +5822,10 @@ function PostCard({
         productAd?.details || '',
       ].filter(Boolean).join('\n\n')
     : (post.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
+  // ── Short captions (≤5 lines) expand the feed card in place ("open from outside");
+  //    longer captions (6+ lines) only open once the post itself is opened fullscreen. ──
+  const mediaPanelLineCount = mediaPanelText ? mediaPanelText.split('\n').length : 0;
+  const mediaPanelIsShort = mediaPanelLineCount > 0 && mediaPanelLineCount <= 5;
 
   useEffect(() => {
     recordPostView(post.id, post.authorId);
@@ -6023,6 +6069,7 @@ function PostCard({
         {/* Media — من اليمين لليسار بعرض الشاشة كاملاً. لو أكثر من عنصر واحد: معرض قابل
             للتصفح يمين/يسار (سحب أو أزرار الأسهم) مع عداد صفحات "1/N" زي انستغرام. */}
         {hasMedia && (
+          <div style={{ width: '100%' }}>
           <div style={{ position: 'relative', width: '100%' }}>
             {mediaItems.length > 1 && (
               <style>{'.post-media-scroll::-webkit-scrollbar{display:none}'}</style>
@@ -6069,6 +6116,10 @@ function PostCard({
                     onClick={e => {
                       e.stopPropagation();
                       setMediaPage(index);
+                      if (mediaPanelIsShort) {
+                        setMediaReadPanelOpen(v => !v);
+                        return;
+                      }
                       pendingFeedMediaIndex = index;
                       onOpenPost(post);
                     }}
@@ -6089,8 +6140,12 @@ function PostCard({
                         preload="metadata"
                         onClick={e => {
                           e.stopPropagation();
-                          pendingFeedMediaIndex = index;
                           setMediaPage(index);
+                          if (mediaPanelIsShort) {
+                            setMediaReadPanelOpen(v => !v);
+                            return;
+                          }
+                          pendingFeedMediaIndex = index;
                           onOpenPost(post);
                         }}
                         style={{ width: '100%', maxHeight: '48vh', objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }}
@@ -6145,11 +6200,23 @@ function PostCard({
                 onToggle={() => setMediaReadPanelOpen(v => !v)}
               />
             )}
+            {!mediaPanelIsShort && (
+              <MediaTextSidePanel
+                open={mediaReadPanelOpen && !!mediaPanelText}
+                onClose={() => setMediaReadPanelOpen(false)}
+                text={mediaPanelText}
+                mode="overlay"
+              />
+            )}
+          </div>
+          {mediaPanelIsShort && (
             <MediaTextSidePanel
               open={mediaReadPanelOpen && !!mediaPanelText}
               onClose={() => setMediaReadPanelOpen(false)}
               text={mediaPanelText}
+              mode="expand"
             />
+          )}
           </div>
         )}
 
@@ -19832,14 +19899,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </div>
                 )}
 
-                {singlePostPanelText && (
+                {/* Circle only makes sense over actual media (image/video/PDF) — a text-only
+                    post has no media to toggle the panel over, so it never shows the dot. */}
+                {singlePostPanelText && mediaItems.length > 0 && (
                   <MediaTextToggleDot
                     active={singlePostReadPanelOpen}
                     onToggle={() => setSinglePostReadPanelOpen(v => !v)}
                   />
                 )}
                 <MediaTextSidePanel
-                  open={singlePostReadPanelOpen && !!singlePostPanelText}
+                  open={singlePostReadPanelOpen && !!singlePostPanelText && mediaItems.length > 0}
                   onClose={() => setSinglePostReadPanelOpen(false)}
                   text={singlePostPanelText}
                 />
