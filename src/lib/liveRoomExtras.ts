@@ -56,8 +56,26 @@ function chatKey(channel: string) {
   return `stooorna_live_chat_${String(channel || '').slice(0, 80)}`;
 }
 
+/**
+ * Guard: only real chat messages (t === 'chat' with non-empty text) are
+ * allowed into the chat store. Room-control signals (freeze-set, mic-req,
+ * mic-grant, speakers-set, room-ended, etc.) are sent through this same
+ * helper by callers such as sendDataPayload() in the live room pages, but
+ * they do not belong in the chat log — the host's periodic freeze-set
+ * broadcast (every ~2s for the whole duration of a private room) would
+ * otherwise flood the chat store and bury or crowd out real messages.
+ * The public room never emits host-only control signals, which is why it
+ * was unaffected while private host rooms were.
+ */
+function isRealChatPayload(payload: object): boolean {
+  const p = payload as { t?: string; text?: unknown };
+  if (p && p.t && p.t !== 'chat') return false;
+  return typeof p?.text === 'string' && p.text.trim().length > 0;
+}
+
 export function publishLiveChat(channel: string, payload: object) {
   if (!channel) return;
+  if (!isRealChatPayload(payload)) return;
   const key = chatKey(channel);
   try {
     localStorage.setItem(key, JSON.stringify({ ...payload, _at: Date.now() }));
