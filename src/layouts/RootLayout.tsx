@@ -1757,6 +1757,14 @@ function GlobalBottomNavigation() {
     };
     window.addEventListener('stooorna:home-group-call', onLocal as EventListener);
     window.addEventListener('storage', onStorage);
+    let callBc: BroadcastChannel | null = null;
+    try {
+      callBc = new BroadcastChannel('stooorna-home-call');
+      callBc.onmessage = (ev) => {
+        const d = ev?.data;
+        if (d && d.channel && String(d.hostId || '') !== String(user.id)) applyInvite(d);
+      };
+    } catch { /* */ }
     const poll = async () => {
       if (homeCallPhase !== 'idle') return;
       try {
@@ -1778,30 +1786,34 @@ function GlobalBottomNavigation() {
         }
       } catch { /* */ }
       try {
-        const ringId = `home_ring_${homeCallShortHash(user.id)}`;
-        const r = await fetch(`/api/room?id=${encodeURIComponent(ringId)}`, { credentials: 'include' });
-        if (r.ok) {
-          const d = await r.json() as { members?: { name?: string; userId?: string; avatarUrl?: string }[] };
-          const other = (d.members || []).find(m => String(m.userId || '') !== user.id);
-          if (other) {
-            let parsed: any = null;
-            try { parsed = other.name ? JSON.parse(other.name) : null; } catch { parsed = null; }
-            // Require explicit invite payload (channel + hostId). Do not invent channels from visits.
-            const ch = parsed?.channel
-              || (other.name && (String(other.name).startsWith('private_') || String(other.name).startsWith('home_group_')) ? other.name : null);
-            const hostOk = !!(parsed?.hostId || other.userId);
-            const skipped = !ch || !hostOk || !!(parsed?.ended || parsed?.answered || parsed?.clear);
-            if (!skipped) {
-              applyInvite({
-                channel: String(ch),
-                hostId: String(parsed?.hostId || other.userId),
-                hostName: parsed?.hostName || (typeof other.name === 'string' && !other.name.startsWith('{') ? other.name : null) || null,
-                hostAvatar: parsed?.hostAvatar || other.avatarUrl || null,
-                members: parsed?.members || [],
-                at: Number(parsed?.at) || Date.now(),
-                video: !!parsed?.video,
-              });
+        for (const ringId of homeRingRoomIds(user.id)) {
+          const r = await fetch(`/api/room?id=${encodeURIComponent(ringId)}`, { credentials: 'include' });
+          if (!r.ok) continue;
+          const d = await r.json() as { members?: { name?: string; username?: string; userId?: string; id?: string; avatarUrl?: string }[] };
+          const other = (d.members || []).find(m => String(m.userId || m.id || '') !== String(user.id));
+          if (!other) continue;
+          let parsed: any = null;
+          for (const raw of [other.name, other.username]) {
+            if (!raw || typeof raw !== 'string') continue;
+            if (raw.startsWith('{')) {
+              try { parsed = JSON.parse(raw); } catch { parsed = null; }
             }
+          }
+          const ch = parsed?.channel
+            || (other.name && (String(other.name).startsWith('private_') || String(other.name).startsWith('home_group_')) ? other.name : null);
+          const hostId = String(parsed?.hostId || other.userId || other.id || '');
+          const skipped = !ch || !hostId || hostId === String(user.id) || !!(parsed?.ended || parsed?.answered || parsed?.clear);
+          if (!skipped) {
+            applyInvite({
+              channel: String(ch),
+              hostId,
+              hostName: parsed?.hostName || null,
+              hostAvatar: parsed?.hostAvatar || other.avatarUrl || null,
+              members: parsed?.members || [],
+              at: Number(parsed?.at) || Date.now(),
+              video: !!parsed?.video,
+            });
+            break;
           }
         }
       } catch { /* */ }
@@ -1815,6 +1827,7 @@ function GlobalBottomNavigation() {
       window.removeEventListener('stooorna:home-group-call', onLocal as EventListener);
       window.removeEventListener('storage', onStorage);
       window.clearInterval(interval);
+      try { callBc?.close(); } catch { /* */ }
     };
   }, [user?.id, homeCallPhase, homeIncoming]);
 
@@ -1960,6 +1973,15 @@ function GlobalBottomNavigation() {
     h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
     h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
     return (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
+  }
+
+  function homeRingRoomIds(userId: string): string[] {
+    const clean = String(userId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const ids = [
+      `home_ring_${homeCallShortHash(String(userId || ''))}`,
+      clean ? `hr_${clean}`.slice(0, 64) : '',
+    ].filter(Boolean);
+    return [...new Set(ids)];
   }
 
   async function leaveHomeGroupCall(opts?: { remote?: boolean }) {
@@ -2403,32 +2425,41 @@ function GlobalBottomNavigation() {
       };
       try { localStorage.setItem(`stooorna_home_call_invite_${peer.id}`, JSON.stringify({ ...invitePayload, at })); } catch { /* */ }
       try {
+        const bc = new BroadcastChannel('stooorna-home-call');
+        bc.postMessage({ ...invitePayload, at, toUserId: peer.id, inviteeIds: picked.map(p => p.id) });
+        bc.close();
+      } catch { /* */ }
+      try {
         void fetch('/api/call/invite', {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
           keepalive: true,
         });
       } catch { /* */ }
-      try {
-        void fetch('/api/room/join', {
-          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            roomId: `home_ring_${homeCallShortHash(peer.id)}`,
-            userId: user.id,
-            name: JSON.stringify({
-              channel: invitePayload.channel,
-              hostId: user.id,
-              hostName: me.name,
-              hostUsername: me.username,
-              hostAvatar: me.avatarUrl,
-              members: [me, ...others],
-              at,
-              video: !!homeCallVideoRef.current,
+      const ringMeta = JSON.stringify({
+        channel: invitePayload.channel,
+        hostId: user.id,
+        hostName: me.name,
+        hostUsername: me.username,
+        hostAvatar: me.avatarUrl,
+        at,
+        video: !!homeCallVideoRef.current,
+      });
+      for (const roomId of homeRingRoomIds(peer.id)) {
+        try {
+          void fetch('/api/room/join', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              roomId,
+              userId: user.id,
+              name: invitePayload.channel,
+              username: ringMeta.slice(0, 240),
+              avatarUrl: me.avatarUrl,
             }),
-          }),
-          keepalive: true,
-        });
-      } catch { /* */ }
+            keepalive: true,
+          });
+        } catch { /* */ }
+      }
     };
     for (const peer of picked) pushInviteToPeer(peer, invitePayload.at);
     const callSession = ++homeCallSessionRef.current;
@@ -2520,23 +2551,26 @@ function GlobalBottomNavigation() {
           });
         } catch { /* */ }
         try {
-          await fetch('/api/room/join', {
-            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              roomId: `home_ring_${homeCallShortHash(peer.id)}`,
-              userId: user.id,
-              name: JSON.stringify({
-                channel,
-                hostId: user.id,
-                hostName: me.name,
-                hostUsername: me.username,
-                hostAvatar: me.avatarUrl,
-                members: [me, ...others],
-                at: invitePayload.at,
-                video: !!homeCallVideoRef.current,
-              }),
-            }),
+          const ringMeta = JSON.stringify({
+            channel,
+            hostId: user.id,
+            hostName: me.name,
+            hostUsername: me.username,
+            at: invitePayload.at,
+            video: !!homeCallVideoRef.current,
           });
+          for (const roomId of homeRingRoomIds(peer.id)) {
+            await fetch('/api/room/join', {
+              method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                roomId,
+                userId: user.id,
+                name: channel,
+                username: ringMeta.slice(0, 240),
+                avatarUrl: me.avatarUrl,
+              }),
+            });
+          }
         } catch { /* */ }
         try {
           const pairChannel = `private_${homeCallShortHash([user.id, peer.id].sort().join('_'))}`;
@@ -4072,9 +4106,7 @@ function GlobalBottomNavigation() {
       ? 'Ringing…'
       : '';
 
-  // Incoming Answer/Decline sheet removed — use top call bar with green Answer instead.
   const homeIncomingOverlay = null;
-
   const homeCallSheetShown = homeCallPhase === 'animating' || homeCallPhase === 'connecting' || homeCallPhase === 'live';
   // Top sticky call bar: incoming (idle+invite) OR active outgoing/live
   const showTopCallBar = homeCallSheetShown || !!(homeIncoming && homeCallPhase === 'idle');
