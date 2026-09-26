@@ -5688,6 +5688,41 @@ function PostCard({
     return () => window.removeEventListener('stooorna:media-eng', onEng as EventListener);
   }, [post.id]);
   void cardEngTick;
+  // ── Feed video autoplay-on-visibility: each video plays only while it is actually
+  // scrolled into view, and pauses as soon as it scrolls out — so swiping through the
+  // feed never leaves a previous video's sound/playback running behind the next post. ──
+  const feedVideoObserverRef = useRef<IntersectionObserver | null>(null);
+  const feedVideoElsRef = useRef<Map<number, HTMLVideoElement>>(new Map());
+  const registerFeedVideoEl = useCallback((idx: number, el: HTMLVideoElement | null) => {
+    const prev = feedVideoElsRef.current.get(idx);
+    if (prev && prev !== el) {
+      feedVideoObserverRef.current?.unobserve(prev);
+      feedVideoElsRef.current.delete(idx);
+    }
+    if (el) {
+      feedVideoElsRef.current.set(idx, el);
+      feedVideoObserverRef.current?.observe(el);
+    }
+  }, []);
+  useEffect(() => {
+    if (!hasMedia) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const v = entry.target as HTMLVideoElement;
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+          if (v.paused) void v.play().catch(() => {});
+        } else if (!v.paused) {
+          v.pause();
+        }
+      });
+    }, { threshold: [0, 0.5, 1] });
+    feedVideoObserverRef.current = observer;
+    feedVideoElsRef.current.forEach(el => observer.observe(el));
+    return () => {
+      observer.disconnect();
+      feedVideoObserverRef.current = null;
+    };
+  }, [hasMedia]);
   const multiMedia = mediaItems.length > 1;
   const pageEng = multiMedia ? getMediaEng(post.id, mediaPage) : null;
   const cardLiked = pageEng ? pageEng.likedByMe : post.likedByMe;
@@ -5994,9 +6029,9 @@ function PostCard({
                   >
                     {media.type === 'video' ? (
                       <video
+                        ref={el => registerFeedVideoEl(index, el)}
                         src={media.url}
                         muted={feedMuted[index] !== false}
-                        autoPlay
                         loop
                         playsInline
                         preload="metadata"
@@ -14141,6 +14176,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const postsChromeVisibleRef = useRef(true);
   const lastPostsScrollTopRef = useRef(0);
   const postsChromeRafRef = useRef(0);
+  // Tracks whether a post is currently open full-screen (single post view or the
+  // comments sheet), so the background feed refresh below can pause while it's open —
+  // otherwise the feed reorders behind the open post and jumps when it's closed.
+  const feedPostViewerOpenRef = useRef(false);
 
   function applyPostsChromeVisible(visible: boolean) {
     if (postsChromeVisibleRef.current === visible) return;
@@ -14195,14 +14234,21 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     };
   }, [textPostsPageOpen]);
 
+  useEffect(() => {
+    feedPostViewerOpenRef.current = !!singlePostView || !!openComments;
+  }, [singlePostView, openComments]);
+
   // Refresh text posts in the background while this page is open. The current UI
   // remains mounted, so open media, post details, and the composer are unaffected.
+  // Paused while a post is open full-screen so the feed underneath stays exactly
+  // where it was — closing the post returns to the same scroll position instead
+  // of the list having reordered while it was open.
   useEffect(() => {
     if (!textPostsPageOpen) return;
 
     let refreshing = false;
     const refreshTextPosts = () => {
-      if (refreshing || document.visibilityState !== 'visible') return;
+      if (refreshing || document.visibilityState !== 'visible' || feedPostViewerOpenRef.current) return;
       refreshing = true;
       void fetchPosts().finally(() => {
         refreshing = false;
