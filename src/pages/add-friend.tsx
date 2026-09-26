@@ -16206,7 +16206,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           boxSizing: 'border-box',
                           boxShadow: hasStory && !allSeen ? '0 0 10px rgba(14,165,233,0.45)' : '0 0 8px rgba(14,165,233,0.25)',
                         }}>
-                          <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={68} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                          {/* VIP account: gold spinning ring frame, same component used on the friends' story strip and the fullscreen story viewer */}
+                          <VipAvatarFrame userId={user?.id} size={68}>
+                            <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={68} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                          </VipAvatarFrame>
                         </div>
                       </motion.button>
                       {/* + badge — its own button now: always opens the نشر إعلان للقصة/صورة/فيديو
@@ -16235,8 +16238,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         }
                       </motion.button>
                     </div>
-                    <span style={{ fontSize: '0.58rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500 }}>
+                    <span style={{ fontSize: '0.58rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 3 }}>
                       قصتي
+                      {isAuthorBusinessAccount(user?.id, myUsername) && <BusinessHeadBadgeInline compact />}
                     </span>
                   </div>
                 );
