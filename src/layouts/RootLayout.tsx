@@ -1590,6 +1590,25 @@ function GlobalBottomNavigation() {
   const staleInviteHandledRef = useRef<Set<string>>(new Set());
   const homeCallAgoraRef = useRef<any>(null);
   const homeCallMicRef = useRef<any>(null);
+  const homeCallSignalWsRef = useRef<WebSocket | null>(null);
+  const homeCallApplyInviteRef = useRef<(raw: any) => void>(() => {});
+
+  function homeCallSignalUrl() {
+    try {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${proto}//${window.location.host}/ws/call-signal`;
+    } catch {
+      return '/ws/call-signal';
+    }
+  }
+
+  function sendHomeCallSignal(msg: Record<string, unknown>) {
+    const ws = homeCallSignalWsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify(msg)); return true; } catch { /* */ }
+    }
+    return false;
+  }
 
   useEffect(() => {
     if (!homeCallPickerOpen || !user?.id) return;
@@ -1746,6 +1765,7 @@ function GlobalBottomNavigation() {
         at: Number(raw.at) || Date.now(),
       });
     };
+    homeCallApplyInviteRef.current = applyInvite;
     const onLocal = (e: Event) => {
       const d = (e as CustomEvent).detail;
       if (d && Array.isArray(d.inviteeIds) && d.inviteeIds.includes(user.id)) applyInvite(d);
@@ -1830,6 +1850,62 @@ function GlobalBottomNavigation() {
       try { callBc?.close(); } catch { /* */ }
     };
   }, [user?.id, homeCallPhase, homeIncoming]);
+
+  useEffect(() => {
+    if (!user?.id || typeof window === 'undefined') return;
+    let closed = false;
+    let retryTimer: number | null = null;
+    const connect = () => {
+      if (closed) return;
+      try { homeCallSignalWsRef.current?.close(); } catch { /* */ }
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(homeCallSignalUrl());
+      } catch {
+        retryTimer = window.setTimeout(connect, 2500);
+        return;
+      }
+      homeCallSignalWsRef.current = ws;
+      ws.onopen = () => {
+        if (closed) return;
+        try { ws.send(JSON.stringify({ type: 'register', userId: user.id })); } catch { /* */ }
+      };
+      ws.onmessage = (ev) => {
+        if (closed) return;
+        let msg: any = null;
+        try { msg = JSON.parse(String(ev.data || '')); } catch { return; }
+        if (!msg || typeof msg !== 'object') return;
+        const type = String(msg.type || '');
+        if (type !== 'call' && type !== 'incoming-call' && type !== 'home-call') return;
+        const to = String(msg.to || msg.toUserId || '');
+        if (to && to !== String(user.id)) return;
+        homeCallApplyInviteRef.current({
+          channel: msg.channel,
+          hostId: msg.from || msg.hostId || msg.fromId,
+          hostName: msg.fromName || msg.hostName,
+          hostAvatar: msg.fromAvatar || msg.hostAvatar,
+          hostUsername: msg.fromUsername || msg.hostUsername,
+          members: msg.members || [],
+          video: msg.callType === 'video' || msg.video === true,
+          at: Number(msg.at) || Date.now(),
+        });
+      };
+      ws.onclose = () => {
+        if (closed) return;
+        retryTimer = window.setTimeout(connect, 2500);
+      };
+      ws.onerror = () => {
+        try { ws.close(); } catch { /* */ }
+      };
+    };
+    connect();
+    return () => {
+      closed = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
+      try { homeCallSignalWsRef.current?.close(); } catch { /* */ }
+      homeCallSignalWsRef.current = null;
+    };
+  }, [user?.id]);
 
   // Incoming ring: if caller hangs up, close the green Answer bar on this device
   useEffect(() => {
@@ -2424,6 +2500,22 @@ function GlobalBottomNavigation() {
         inviteeIds: picked.map(p => p.id),
       };
       try { localStorage.setItem(`stooorna_home_call_invite_${peer.id}`, JSON.stringify({ ...invitePayload, at })); } catch { /* */ }
+      sendHomeCallSignal({
+        type: 'call',
+        to: peer.id,
+        from: user.id,
+        fromName: me.name,
+        fromAvatar: me.avatarUrl,
+        fromUsername: me.username,
+        channel: invitePayload.channel,
+        callType: homeCallVideoRef.current ? 'video' : 'voice',
+        video: !!homeCallVideoRef.current,
+        hostId: user.id,
+        hostName: me.name,
+        hostAvatar: me.avatarUrl,
+        members: invitePayload.members,
+        at,
+      });
       try {
         const bc = new BroadcastChannel('stooorna-home-call');
         bc.postMessage({ ...invitePayload, at, toUserId: peer.id, inviteeIds: picked.map(p => p.id) });
