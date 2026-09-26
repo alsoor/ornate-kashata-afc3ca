@@ -12,6 +12,8 @@ export type LiveChatMsg = {
   uid?: number;
   userId?: string;
   name: string;
+  username?: string | null;
+  avatarUrl?: string | null;
   text: string;
   at: number;
   isMe?: boolean;
@@ -21,6 +23,8 @@ export function makeChatPayload(opts: {
   uid?: number;
   userId?: string;
   name: string;
+  username?: string | null;
+  avatarUrl?: string | null;
   text: string;
 }): LiveChatMsg {
   return {
@@ -29,6 +33,8 @@ export function makeChatPayload(opts: {
     uid: opts.uid,
     userId: opts.userId,
     name: opts.name || 'User',
+    username: opts.username ?? null,
+    avatarUrl: opts.avatarUrl ?? null,
     text: String(opts.text || '').slice(0, 400),
     at: Date.now(),
   };
@@ -47,6 +53,8 @@ export function parseIncomingChat(raw: unknown): LiveChatMsg | null {
     uid: typeof (m as any).uid === 'number' ? (m as any).uid : undefined,
     userId: (m as any).userId ? String((m as any).userId) : undefined,
     name: String((m as any).name || 'User'),
+    username: (m as any).username ? String((m as any).username) : null,
+    avatarUrl: (m as any).avatarUrl ? String((m as any).avatarUrl) : null,
     text,
     at: Number((m as any).at || Date.now()),
   };

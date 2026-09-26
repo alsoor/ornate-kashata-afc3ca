@@ -1282,6 +1282,8 @@ export default function LivePage() {
       uid: myUidRef.current,
       userId: myId,
       name: myName,
+      username: myUsername,
+      avatarUrl: myAvatar,
       text: raw,
     });
     setLiveChatText('');
@@ -1976,8 +1978,8 @@ export default function LivePage() {
                 )}
                 {liveChatMsgs.map(m => {
                   const mem = members.find(x => x.uid === m.uid) || members.find(x => x.userId && m.userId && x.userId === m.userId);
-                  const av = mem?.avatarUrl || null;
-                  const uname = mem?.username ? `@${mem.username}` : m.name;
+                  const av = m.avatarUrl || mem?.avatarUrl || null;
+                  const uname = m.username ? `@${m.username}` : (mem?.username ? `@${mem.username}` : m.name);
                   return (
                     <div key={m.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                       <div style={{
