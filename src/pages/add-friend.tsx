@@ -1785,6 +1785,26 @@ function readBusinessApproved(userId?: string | null): boolean {
   }
 }
 
+/** True while this author's Business subscription is cancelled — their posts
+ * should stay hidden from every other viewer (still visible, faded, to the
+ * author themselves) until they resubscribe and get re-approved. Mirrors
+ * cancelBusinessSubscription()/isBusinessPostsHidden() in settings.tsx —
+ * both read/write the same 'stooorna_business_registry' localStorage key. */
+function readBusinessPostsHidden(authorId?: string | null): boolean {
+  if (!authorId) return false;
+  try {
+    const raw = localStorage.getItem('stooorna_business_registry');
+    const list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) return false;
+    const rows = list.filter((x: any) => String(x.userId) === String(authorId));
+    if (!rows.length) return false;
+    if (rows.some((x: any) => x.status === 'approved')) return false;
+    return rows.some((x: any) => x.status === 'cancelled');
+  } catch {
+    return false;
+  }
+}
+
 /** Public Business directory synced from the server, mirroring hydrateVipDirectory.
  * Without this, isAuthorBusinessAccount/readBusinessApproved only ever read
  * whatever this one browser had written to its own localStorage, so a
@@ -5594,6 +5614,7 @@ function PostCard({
   onProductShareMenu,
   productShareAlert = false,
   isCompanyAuthor = false,
+  isBusinessHidden = false,
 }: {
   post: PostItem;
   isMine: boolean;
@@ -5628,6 +5649,9 @@ function PostCard({
   // بدل "تثبيت" في قائمة الثلاث نقاط. لا يُمرَّر إلا على منشوراتي أنا.
   isPinned?: boolean;
   onTogglePin?: (post: PostItem) => void;
+  // منشور من حساب Business تم إلغاء اشتراكه — يظهر باهتًا لصاحبه فقط مع أيقونة
+  // حذف صغيرة؛ بقية المستخدمين لا يرونه إطلاقًا (يُفلتر قبل وصوله لهنا).
+  isBusinessHidden?: boolean;
 }) {
   const postDate = new Date(post.createdAt);
   const timeAgo = storyRelativeTime(post.createdAt);
@@ -5685,7 +5709,7 @@ function PostCard({
     <>
       <motion.div
         initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
+        animate={{ opacity: isBusinessHidden ? 0.45 : 1, y: 0 }}
         style={{
           border: 'none',
           borderBottom: `1px solid ${CLR_POST_BORDER}`,
@@ -5699,6 +5723,23 @@ function PostCard({
           position: 'relative',
         }}
       >
+        {isBusinessHidden && (
+          <button
+            type="button"
+            aria-label="حذف المنشور المعطّل"
+            title="Business cancelled — post disabled"
+            onClick={e => { e.stopPropagation(); onRequestDelete(post); }}
+            style={{
+              position: 'absolute', top: 10, insetInlineEnd: 10, zIndex: 3,
+              width: 30, height: 30, borderRadius: '50%',
+              border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.14)',
+              color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', padding: 0,
+            }}
+          >
+            <Trash2 size={14} strokeWidth={2.2} />
+          </button>
+        )}
         {/* Repost attribution ribbon — only present on a feed entry created by a repost */}
         {post.repostedBy && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#000000', fontSize: '0.68rem', fontWeight: 700, paddingInline: 14, marginBottom: 8 }}>
@@ -11869,6 +11910,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     return () => window.removeEventListener('stooorna:media-eng', onEng as EventListener);
   }, []);
   const [confirmDeletePost, setConfirmDeletePost] = useState<PostItem | null>(null);
+  // ── Cancelled-Business post deletion: the first time the owner taps the delete
+  // icon on a faded/hidden post we show the fuller "resubscribe to restore"
+  // dialog; afterwards, deleting further hidden posts uses the plain confirm. ──
+  const [businessHiddenNoticeShown, setBusinessHiddenNoticeShown] = useState(false);
   const [deletingPostId, setDeletingPostId] = useState<number | null>(null);
   const [hashtagView, setHashtagView] = useState<{ tag: string; posts: PostItem[] } | null>(null);
   const [sharePost, setSharePost] = useState<PostItem | null>(null);
@@ -12230,6 +12275,19 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // المنشورات النصية: هذه المنشورات كانت تُحسب فقط ضمن myMediaPosts (للإحصائية أعلى
   // البروفايل) ولا تظهر أبدًا داخل قسم "المنشورات" ولا داخل صفحة القصص، رغم كونها
   // منشورات عامة فعلية. هنا نُلحقها بقائمة posts (بدون تكرار) لتظهر مع بقية منشوراتي. ──
+  // ── Re-run the feed filter whenever a Business account gets cancelled or
+  // re-approved (posts must disappear/reappear for everyone but the owner). ──
+  const [businessVisibilityTick, setBusinessVisibilityTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setBusinessVisibilityTick(t => t + 1);
+    window.addEventListener('stooorna:business-posts-visibility', bump);
+    window.addEventListener('stooorna:business-registry', bump);
+    return () => {
+      window.removeEventListener('stooorna:business-posts-visibility', bump);
+      window.removeEventListener('stooorna:business-registry', bump);
+    };
+  }, []);
+
   const combinedFeedPosts = useMemo(() => {
     const seenIds = new Set(posts.map(p => p.id));
     // Keep Photo/Video (story page grid) out of the text/public feed
@@ -12240,11 +12298,18 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       if (p.mediaType === 'image' || p.mediaType === 'video') return false;
       return true;
     });
-    if (extras.length === 0) return posts;
-    return [...posts, ...extras].sort(
+    const merged = extras.length === 0 ? posts : [...posts, ...extras].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-  }, [posts, myMediaPosts]);
+    void businessVisibilityTick;
+    // A cancelled Business account's posts stay visible only to their own
+    // author (faded, with a delete icon — see PostCard); everyone else must
+    // stop seeing them until the account is Business-approved again.
+    return merged.filter(p => {
+      if (user && String(p.authorId) === String(user.id)) return true;
+      return !readBusinessPostsHidden(p.authorId);
+    });
+  }, [posts, myMediaPosts, user, businessVisibilityTick]);
 
   // ── تثبيت منشور واحد على الأقل في صفحتي — محفوظ محليًا (localStorage) ومُزامَن
   // best-effort إلى /api/users/me بنفس أسلوب pinnedTrack أعلاه؛ يعمل فورًا على هذا
@@ -20383,6 +20448,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           isCompanyUserAccount({ id: post.authorId, username: post.authorUsername, name: post.authorName })
                         )
                       }
+                      isBusinessHidden={!!user && String(post.authorId) === String(user.id) && readBusinessPostsHidden(post.authorId)}
                       onRepost={toggleRepost}
                       onDownload={handleDownloadPost}
                       onOpenProfile={p => {
@@ -21518,6 +21584,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       </AnimatePresence>
 
       {/* ── Delete Post Confirmation ── */}
+      {(() => {
+        const isHiddenBusinessPost = !!(
+          confirmDeletePost && user &&
+          String(confirmDeletePost.authorId) === String(user.id) &&
+          readBusinessPostsHidden(confirmDeletePost.authorId)
+        );
+        const showResubscribeChoice = isHiddenBusinessPost && !businessHiddenNoticeShown;
+        return (
       <AnimatePresence>
         {confirmDeletePost && (
           <motion.div
@@ -21553,13 +21627,32 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 </div>
                 <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: 0 }}>حذف المنشور</p>
               </div>
-              <p style={{ color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center', margin: 0 }}>
-                هل تريد حذف هذا المنشور نهائياً؟ لا يمكن التراجع عن هذا الإجراء.
-              </p>
+              {showResubscribeChoice ? (
+                <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.22)', borderRadius: 10, padding: '10px 12px' }}>
+                  <p style={{ color: CLR_TEXT, fontSize: '0.78rem', lineHeight: 1.6, textAlign: 'right', margin: '0 0 8px' }}>
+                    حسابك للأعمال ملغى الاشتراك، لذا منشوراتك أصبحت معطّلة ولا يراها أحد سواك. يمكنك استرجاعها والحفاظ عليها بمجرد إعادة الاشتراك في Business، أو حذف هذا المنشور نهائيًا الآن.
+                  </p>
+                  <p style={{ color: CLR_TEXT_DIM, fontSize: '0.7rem', lineHeight: 1.55, margin: 0 }}>
+                    Your Business subscription is cancelled, so this post is disabled and only visible to you. Resubscribe to Business to restore it, or delete it permanently now.
+                  </p>
+                </div>
+              ) : (
+                <p style={{ color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.5, textAlign: 'center', margin: 0 }}>
+                  هل تريد حذف هذا المنشور نهائياً؟ لا يمكن التراجع عن هذا الإجراء.
+                </p>
+              )}
               <div style={{ display: 'flex', gap: 10 }}>
                 <motion.button
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => setConfirmDeletePost(null)}
+                  onClick={() => {
+                    if (showResubscribeChoice) {
+                      setBusinessHiddenNoticeShown(true);
+                      setConfirmDeletePost(null);
+                      navigate('/settings');
+                      return;
+                    }
+                    setConfirmDeletePost(null);
+                  }}
                   disabled={deletingPostId !== null}
                   style={{
                     flex: 1, padding: '10px', background: CLR_PRIMARY_FAINT,
@@ -21567,11 +21660,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     color: CLR_TEXT, fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
                   }}
                 >
-                  إلغاء
+                  {showResubscribeChoice ? 'إعادة الاشتراك · Resubscribe' : 'إلغاء'}
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => deletePost(confirmDeletePost)}
+                  onClick={() => {
+                    if (showResubscribeChoice) setBusinessHiddenNoticeShown(true);
+                    deletePost(confirmDeletePost);
+                  }}
                   disabled={deletingPostId !== null}
                   style={{
                     flex: 1, padding: '10px', background: 'rgba(239,68,68,0.18)',
@@ -21585,13 +21681,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       width: 14, height: 14, borderRadius: '50%',
                       border: '2px solid rgba(239,68,68,0.3)', borderTopColor: '#ef4444',
                     }} />
-                  ) : <><Trash2 size={13} strokeWidth={2} /> حذف</>}
+                  ) : showResubscribeChoice ? <><Trash2 size={13} strokeWidth={2} /> لا أريد ذلك</> : <><Trash2 size={13} strokeWidth={2} /> حذف</>}
                 </motion.button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+        );
+      })()}
 
       {/* قائمة Photo/Video للقصة أُلغيت — الفتح مباشرة من المعرض أو الكاميرا */}
 

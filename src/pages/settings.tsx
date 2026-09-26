@@ -369,7 +369,7 @@ export type BusinessRegistration = {
   commercialRegCertName?: string;
   tradeLicenseCert?: string;
   tradeLicenseCertName?: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   createdAt: string;
   updatedAt: string;
   approvedAt?: string | null;
@@ -537,6 +537,14 @@ export function reviewBusinessRegistration(
     };
   });
   saveBusinessRegistry(next);
+  if (action === 'approve') {
+    const approvedRow = list.find(x => x.id === id);
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:business-posts-visibility', {
+        detail: { userId: approvedRow ? String(approvedRow.userId) : null, hidden: false },
+      }));
+    } catch { /* ignore */ }
+  }
   return next;
 }
 
@@ -553,7 +561,35 @@ export function dismissBusinessOwnerNote(userId?: string | null) {
   return next;
 }
 
+// ── Business posts visibility (owner unsubscribed) ──
+// When the owner cancels their Business subscription we flip their approved
+// row to 'cancelled' (instead of deleting it), so every place that already
+// checks `status === 'approved'` (isBusinessApproved / isPublicBusinessAccount
+// / syncBusinessPublicDirectory) automatically treats the account as a
+// regular user again, and so a later re-approval can flip it back and
+// restore whatever the owner did not permanently delete in the meantime.
+export function cancelBusinessSubscription(userId?: string | null): BusinessRegistration[] {
+  if (!userId) return loadBusinessRegistry();
+  const uid = String(userId);
+  const list = loadBusinessRegistry();
+  const next = list.map(x => {
+    if (String(x.userId) !== uid || x.status !== 'approved') return x;
+    return { ...x, status: 'cancelled' as const, updatedAt: new Date().toISOString() };
+  });
+  saveBusinessRegistry(next);
+  try {
+    window.dispatchEvent(new CustomEvent('stooorna:business-posts-visibility', { detail: { userId: uid, hidden: true } }));
+  } catch { /* ignore */ }
+  return next;
+}
 
+/** True while this user's Business account is cancelled — their posts stay
+ * hidden from everyone but themselves until they resubscribe (re-approval). */
+export function isBusinessPostsHidden(userId?: string | null): boolean {
+  if (!userId) return false;
+  const row = getBusinessForUser(userId);
+  return !!(row && row.status === 'cancelled');
+}
 
 export type DeletedUserRecord = {
   id: string;
@@ -5843,6 +5879,9 @@ export default function SettingsPage() {
   const [vipTick, setVipTick] = useState(0);
   const [vipInfoOpen, setVipInfoOpen] = useState(false);
   const [vipConfirm, setVipConfirm] = useState<null | { kind: 'color' | 'rename' | 'eightMics' | 'roomMusic'; color?: 'blue' | 'gold' | 'red' | 'green' | 'gray' | 'pink'; nextOn?: boolean }>(null);
+  // ── Unsubscribe confirmation (VIP / Business) — shown before anything is cancelled ──
+  const [cancelSubConfirm, setCancelSubConfirm] = useState<null | 'vip' | 'business'>(null);
+  const [cancellingSub, setCancellingSub] = useState(false);
   useEffect(() => {
     const id = window.setInterval(() => setVipTick(t => t + 1), 1000);
     return () => window.clearInterval(id);
@@ -7091,7 +7130,9 @@ export default function SettingsPage() {
                         aria-label="Toggle Business"
                         onClick={() => {
                           if (businessRow?.status === 'approved') {
-                            setBusinessToggleOn(v => !v);
+                            // Cancelling requires an explicit confirmation first — see the
+                            // bilingual warning dialog rendered near the end of this component.
+                            setCancelSubConfirm('business');
                             return;
                           }
                           if (businessRow?.status === 'pending') {
@@ -7141,6 +7182,19 @@ export default function SettingsPage() {
                         {businessRow?.status === 'approved' ? 'Business' : 'Under review'}
                       </button>
                     )}
+                    {businessRow?.status === 'approved' && (
+                      <button
+                        type="button"
+                        onClick={() => setCancelSubConfirm('business')}
+                        style={{
+                          marginTop: 10, width: '100%', padding: '10px 12px', borderRadius: 10,
+                          border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)',
+                          color: '#ef4444', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer',
+                        }}
+                      >
+                        إلغاء الاشتراك · Cancel subscription
+                      </button>
+                    )}
                     {businessRow?.status === 'rejected' && (
                       <p style={{ margin: '10px 0 0', color: '#ef4444', fontSize: '0.72rem', fontWeight: 700 }}>
                         Request rejected — toggle is off. You may apply again.
@@ -7184,11 +7238,11 @@ export default function SettingsPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => { if (!vipOn) setVipPayOpen(true); }}
+                        onClick={() => { if (!vipOn) setVipPayOpen(true); else setCancelSubConfirm('vip'); }}
                         style={{
                           width: 46, height: 26, borderRadius: 999, border: 'none',
                           background: vipOn ? '#eab308' : '#4b5563',
-                          position: 'relative', cursor: vipOn ? 'default' : 'pointer',
+                          position: 'relative', cursor: 'pointer',
                         }}
                       >
                         <span style={{
@@ -7210,6 +7264,10 @@ export default function SettingsPage() {
                           style={{ marginTop: 10, width: 44, height: 44, borderRadius: '50%', border: '1.5px solid rgba(234,179,8,0.55)', background: 'rgba(234,179,8,0.15)', color: '#eab308', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           title="VIP period">
                           <Clock size={18} />
+                        </button>
+                        <button type="button" onClick={() => setCancelSubConfirm('vip')}
+                          style={{ marginTop: 10, width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#ef4444', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer' }}>
+                          إلغاء الاشتراك · Cancel subscription
                         </button>
                       </div>
                     )}
@@ -11584,6 +11642,83 @@ export default function SettingsPage() {
                   </div>
                 </div>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Unsubscribe confirmation — VIP / Business, bilingual warning before anything is cancelled ── */}
+      <AnimatePresence>
+        {cancelSubConfirm && (
+          <motion.div
+            key="cancel-sub-confirm"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => !cancellingSub && setCancelSubConfirm(null)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(3px)', zIndex: 12500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          >
+            <motion.div
+              onClick={e => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              style={{ width: '100%', maxWidth: 340, background: '#101f22', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 16, padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <AlertTriangle size={18} color="#ef4444" />
+                </div>
+                <p style={{ margin: 0, color: T.text, fontSize: '0.9rem', fontWeight: 800, textAlign: 'center' }}>
+                  {cancelSubConfirm === 'vip' ? 'إلغاء اشتراك VIP · Cancel VIP subscription' : 'إلغاء اشتراك Business · Cancel Business subscription'}
+                </p>
+              </div>
+              <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, padding: '10px 12px' }}>
+                <p style={{ margin: '0 0 8px', color: T.text, fontSize: '0.78rem', lineHeight: 1.6, textAlign: 'right', direction: 'rtl' }}>
+                  {cancelSubConfirm === 'vip'
+                    ? 'عند إلغاء اشتراك الحساب سوف تكون على مسؤوليتك الخاصة، لأنه سوف يتم إزالة كل مميزات الاشتراك التي كانت على حسابك.'
+                    : 'عند إلغاء اشتراك الحساب سوف تكون على مسؤوليتك الخاصة، لأنه سوف يتم تغيير حسابك من حساب الأعمال إلى حساب مستخدم عادي مع إلغاء جميع البوستات الخاصة بكم التي تم نشرها على الحساب وتعطيلها تمامًا.'}
+                </p>
+                <p style={{ margin: 0, color: T.textMuted, fontSize: '0.72rem', lineHeight: 1.55 }}>
+                  {cancelSubConfirm === 'vip'
+                    ? 'By cancelling, this is entirely at your own responsibility — every VIP feature on your account will be removed.'
+                    : 'By cancelling, this is entirely at your own responsibility — your account will switch from a Business account to a regular user account, and every post you published on it will be disabled completely.'}
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  type="button"
+                  disabled={cancellingSub}
+                  onClick={() => setCancelSubConfirm(null)}
+                  style={{ flex: 1, padding: 10, borderRadius: 10, border: `1px solid ${T.surfaceBorder}`, background: T.surface, color: T.text, fontWeight: 700, cursor: cancellingSub ? 'default' : 'pointer' }}
+                >
+                  تراجع · Keep it
+                </button>
+                <button
+                  type="button"
+                  disabled={cancellingSub}
+                  onClick={async () => {
+                    if (!user?.id || cancellingSub) { setCancelSubConfirm(null); return; }
+                    setCancellingSub(true);
+                    try {
+                      if (cancelSubConfirm === 'vip') {
+                        deactivateVip(user.id);
+                        setVipOn(false);
+                      } else if (cancelSubConfirm === 'business') {
+                        cancelBusinessSubscription(user.id);
+                        setBusinessRow(getBusinessForUser(user.id));
+                        setBusinessToggleOn(false);
+                      }
+                    } finally {
+                      setCancellingSub(false);
+                      setCancelSubConfirm(null);
+                    }
+                  }}
+                  style={{
+                    flex: 1, padding: 10, borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)',
+                    background: 'rgba(239,68,68,0.18)', color: '#ef4444', fontWeight: 800,
+                    cursor: cancellingSub ? 'default' : 'pointer',
+                  }}
+                >
+                  {cancellingSub ? '…' : 'تأكيد الإلغاء · Confirm cancellation'}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
