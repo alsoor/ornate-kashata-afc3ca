@@ -5931,7 +5931,11 @@ function PostCard({
           </div>
         )}
 
-        {/* Media posts: caption is hidden on the card — open via the three-lines button only */}
+        {hasMedia && post.text && !isProductAd && (
+          <div style={{ paddingInline: 14, paddingTop: 10, paddingBottom: 2 }}>
+            <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => setProductDetailsOpen(true)} />
+          </div>
+        )}
 
         {/* Media — من اليمين لليسار بعرض الشاشة كاملاً. لو أكثر من عنصر واحد: معرض قابل
             للتصفح يمين/يسار (سحب أو أزرار الأسهم) مع عداد صفحات "1/N" زي انستغرام. */}
@@ -14047,14 +14051,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Also auto-opens when returning from the chat page's back button after chatting
   // from a profile opened inside this flow (see FriendStoryProfile's chat button),
   // via the ?openTextPosts=1 marker left in the URL before navigating to /chat.
-  const [textPostsPageOpen, setTextPostsPageOpen] = useState(() => {
-    try {
-      if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('stooorna_return_text_posts') === '1') {
-        return true;
-      }
-    } catch { /* ignore */ }
-    return !user || searchParams.get('openTextPosts') === '1';
-  });
+  const [textPostsPageOpen, setTextPostsPageOpen] = useState(true);
   // true when the panel was opened via URL navigation (no flash animation needed)
   const textPostsOpenedFromUrl = useRef((() => {
     try {
@@ -19680,6 +19677,40 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 )}
               </div>
 
+              {postHasVisibleCaption(livePost) && !ad && (
+                <div
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    flexShrink: 0,
+                    maxHeight: '28vh',
+                    overflowY: 'auto',
+                    padding: '10px 16px 8px',
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0.35))',
+                    color: '#fff',
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, lineHeight: 1.5, whiteSpace: 'pre-wrap', color: '#fff' }}>
+                    {(livePost.text || '').replace(/\n*\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()}
+                  </p>
+                </div>
+              )}
+              {ad && (
+                <div
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    flexShrink: 0,
+                    maxHeight: '24vh',
+                    overflowY: 'auto',
+                    padding: '10px 16px 8px',
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0.35))',
+                    color: '#fff',
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>{ad.title || productAdDisplayTitle(livePost)}</p>
+                  {ad.price ? <p style={{ margin: '6px 0 0', color: '#eab308', fontWeight: 800 }}>{ad.price}</p> : null}
+                  {ad.details ? <p style={{ margin: '8px 0 0', fontSize: '0.86rem', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{ad.details}</p> : null}
+                </div>
+              )}
               <div
                 onClick={e => e.stopPropagation()}
                 style={{
