@@ -439,7 +439,7 @@ function formatVideoClock(sec: number): string {
 function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(true);
+  const [muted, setMuted] = useState(false);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const seekingRef = useRef(false);
@@ -453,12 +453,19 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
     v.muted = muted;
     if (active) {
       v.currentTime = 0;
-      void v.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      const tryPlay = (withSound: boolean) => {
+        v.muted = !withSound ? true : muted;
+        return v.play().then(() => setPlaying(true)).catch(() => {
+          if (withSound) return tryPlay(false);
+          setPlaying(false);
+        });
+      };
+      void tryPlay(true);
     } else {
       v.pause();
       setPlaying(false);
     }
-  }, [active, src]);
+  }, [active, src, muted]);
 
   useEffect(() => {
     if (!active) return;
@@ -5730,6 +5737,30 @@ function PostCard({
     else v.pause();
   }
 
+  useEffect(() => {
+    const videos = Object.values(feedVideoRefs.current).filter(Boolean) as HTMLVideoElement[];
+    if (!videos.length || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const el = entry.target as HTMLVideoElement;
+        const mostlyVisible = entry.isIntersecting && entry.intersectionRatio >= 0.55;
+        if (mostlyVisible) {
+          el.muted = false;
+          const idx = Number(Object.entries(feedVideoRefs.current).find(([, node]) => node === el)?.[0]);
+          if (Number.isFinite(idx)) setFeedMuted(prev => ({ ...prev, [idx]: false }));
+          void el.play().catch(() => {
+            el.muted = true;
+            void el.play().catch(() => {});
+          });
+        } else {
+          el.pause();
+        }
+      }
+    }, { threshold: [0, 0.25, 0.55, 0.8], rootMargin: '-12% 0px -18% 0px' });
+    videos.forEach(v => io.observe(v));
+    return () => io.disconnect();
+  }, [mediaItems.length, mediaPage, post.id]);
+
   return (
     <>
       <motion.div
@@ -6048,8 +6079,7 @@ function PostCard({
                       <video
                         ref={el => { feedVideoRefs.current[index] = el; }}
                         src={media.url}
-                        muted={feedMuted[index] !== false}
-                        autoPlay
+                        muted={feedMuted[index] === true}
                         loop
                         playsInline
                         preload="metadata"
@@ -13406,13 +13436,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }
 
   async function openHashtag(tag: string) {
+    const clean = String(tag || '').replace(/^#/, '').trim();
+    if (!clean) return;
+    setHashtagView({ tag: clean, posts: [] });
     try {
-      const response = await fetch(`/api/posts/hashtags?tag=${encodeURIComponent(tag)}`, { credentials: 'include' });
+      const response = await fetch(`/api/posts/hashtags?tag=${encodeURIComponent(clean)}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to load hashtag');
       const data = await response.json() as { tag: string; posts: PostItem[] };
-      setHashtagView({ tag: data.tag, posts: data.posts ?? [] });
+      setHashtagView({ tag: data.tag || clean, posts: data.posts ?? [] });
     } catch {
-      setHashtagView({ tag, posts: [] });
+      setHashtagView({ tag: clean, posts: [] });
     }
   }
 
@@ -17063,8 +17096,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         </div>
 
         <AnimatePresence>
-          {hashtagView && (
-            <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 10195, background: '#ffffff', overflowY: 'auto', paddingBottom: 28 }}>
+          {hashtagView && createPortal(
+            <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 12480, background: '#ffffff', overflowY: 'auto', paddingBottom: 28 }}>
               <div style={{ position: 'sticky', top: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 10, padding: '16px 14px', background: '#ffffff', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
                 <button onClick={() => setHashtagView(null)} aria-label="Close" style={{ background: 'none', border: 'none', color: '#0f1419', cursor: 'pointer', display: 'flex', width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: '50%' }}><X size={22} strokeWidth={2.2} /></button>
                 <Hash size={19} color="#1d9bf0" />
@@ -17088,7 +17121,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   <PostText text={post.text} color="hsl(var(--primary))" textColor={CLR_TEXT_DIM} onHashtag={openHashtag} />
                 </div>
               )) : <p style={{ color: 'hsl(var(--muted-foreground))', textAlign: 'center', padding: 32 }}>لا توجد منشورات لهذا الهاشتاق بعد</p>}
-            </motion.div>
+            </motion.div>,
+            document.body
           )}
         </AnimatePresence>
 
