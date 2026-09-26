@@ -6180,6 +6180,21 @@ function PostCard({
                       <Heart size={18} strokeWidth={2} fill={cardLiked ? '#ef4444' : 'none'} />
                       <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardLikes > 0 ? cardLikes : ''}</span>
                     </motion.button>
+                    <motion.button
+                      whileTap={{ scale: 0.88 }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (isProductAd && onProductShareMenu) onProductShareMenu(post);
+                        else onShare(post);
+                      }}
+                      aria-label="مشاركة"
+                      style={{
+                        display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer',
+                        color: productShareAlert ? '#eab308' : '#ffffff', flexShrink: 0,
+                      }}
+                    >
+                      <Send size={17} strokeWidth={2} color={productShareAlert ? '#eab308' : undefined} />
+                    </motion.button>
                     <button
                       type="button"
                       onClick={e => { e.stopPropagation(); if (onOpenComments) onOpenComments(post, multiMedia ? mediaPage : undefined); else onOpenPost(post); }}
@@ -6196,31 +6211,6 @@ function PostCard({
                         {cardComments > 0 ? `${cardComments} comments` : 'What do you think of this?'}
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={e => { e.stopPropagation(); if (onOpenComments) onOpenComments(post, multiMedia ? mediaPage : undefined); else onOpenPost(post); }}
-                      style={{
-                        background: 'none', border: 'none', color: 'rgba(255,255,255,0.55)',
-                        fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, padding: 0,
-                      }}
-                    >
-                      Post
-                    </button>
-                    <motion.button
-                      whileTap={{ scale: 0.88 }}
-                      onClick={e => {
-                        e.stopPropagation();
-                        if (isProductAd && onProductShareMenu) onProductShareMenu(post);
-                        else onShare(post);
-                      }}
-                      aria-label="مشاركة"
-                      style={{
-                        display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer',
-                        color: productShareAlert ? '#eab308' : '#ffffff', flexShrink: 0,
-                      }}
-                    >
-                      <Send size={17} strokeWidth={2} color={productShareAlert ? '#eab308' : undefined} />
-                    </motion.button>
                   </div>
                 </motion.div>
               )}
