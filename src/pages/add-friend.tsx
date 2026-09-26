@@ -1,4 +1,3 @@
-
 import { add_friend } from 'virtual:content';
 import { useState, useEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
@@ -739,7 +738,7 @@ function productAdDisplayTitle(post: PostItem): string {
   return (post.text || '').split('\n')[0]?.trim().slice(0, 80) || 'إعلان';
 }
 
-/** True when post has real caption text (not media-only). Used to enable caption side toggle. */
+/** True when post has real caption text (not media-only). Used to enable three-lines. */
 function postHasVisibleCaption(post: PostItem | null | undefined): boolean {
   if (!post) return false;
   const raw = (post.text || '').trim();
@@ -756,58 +755,8 @@ function postHasVisibleCaption(post: PostItem | null | undefined): boolean {
   return cleaned.length > 0;
 }
 
-/** Red circle with three bars — right side of media, opens side caption panel */
-function CaptionSideToggle({
-  visible,
-  onClick,
-  size = 28,
-}: {
-  visible: boolean;
-  onClick: () => void;
-  size?: number;
-}) {
-  if (!visible) return null;
-  const barW = Math.max(8, Math.round(size * 0.36));
-  const barH = Math.max(2, Math.round(size * 0.08));
-  return (
-    <motion.button
-      whileTap={{ scale: 0.9 }}
-      type="button"
-      onClick={e => {
-        e.stopPropagation();
-        onClick();
-      }}
-      aria-label="Read caption"
-      style={{
-        position: 'absolute',
-        right: 10,
-        top: '50%',
-        transform: 'translateY(-50%)',
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        background: '#ef4444',
-        border: '2px solid rgba(255,255,255,0.92)',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Math.max(2, Math.round(size * 0.09)),
-        cursor: 'pointer',
-        zIndex: 6,
-        padding: 0,
-      }}
-    >
-      <span style={{ width: barW, height: barH, borderRadius: 1, background: '#fff' }} />
-      <span style={{ width: barW, height: barH, borderRadius: 1, background: '#fff' }} />
-      <span style={{ width: barW, height: barH, borderRadius: 1, background: '#fff' }} />
-    </motion.button>
-  );
-}
 
-
-/** Product inquiry — sent as company chat message */
+/** استفسار عن منتج — يُرسل كرسالة شات للشركة ويظهر في صندوق شات الشركات */
 const PRODUCT_INQUIRY_PREFIX = '__PRODUCT_INQUIRY__';
 export type ProductInquiryPayload = {
   postId: number;
@@ -5975,19 +5924,14 @@ function PostCard({
           )}
         </div>
 
-        {/* Text-only posts (no media): show caption on the card + red side toggle */}
+        {/* Text-only posts (no media): show caption on the card */}
         {!hasMedia && post.text && !isProductAd && (
-          <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column' }}>
             <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => setProductDetailsOpen(true)} />
-            <CaptionSideToggle
-              visible={postHasVisibleCaption(post)}
-              onClick={() => setProductDetailsOpen(true)}
-              size={26}
-            />
           </div>
         )}
 
-        {/* Media posts: caption hidden on card — open via red circle on media */}
+        {/* Media posts: caption is hidden on the card — open via the three-lines button only */}
 
         {/* Media — من اليمين لليسار بعرض الشاشة كاملاً. لو أكثر من عنصر واحد: معرض قابل
             للتصفح يمين/يسار (سحب أو أزرار الأسهم) مع عداد صفحات "1/N" زي انستغرام. */}
@@ -6107,11 +6051,6 @@ function PostCard({
                 {mediaPage + 1}/{mediaItems.length}
               </div>
             )}
-            <CaptionSideToggle
-              visible={postHasVisibleCaption(post)}
-              onClick={() => setProductDetailsOpen(true)}
-              size={28}
-            />
           </div>
         )}
 
@@ -6161,6 +6100,25 @@ function PostCard({
               </motion.button>
             </div>
 
+            <motion.button
+              whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
+              onClick={e => { e.stopPropagation(); if (postHasVisibleCaption(post)) setProductDetailsOpen(true); }}
+              aria-label="Details"
+              disabled={!postHasVisibleCaption(post)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
+                borderRadius: 10, width: 44, height: 36,
+                cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
+                padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
+              }}
+            >
+              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+            </motion.button>
+
+            {/* موازنة المساحة بعد نقل التعليقات بين اللايك والشير */}
             <div style={{ minWidth: 72 }} />
           </div>
         ) : (
@@ -6236,11 +6194,29 @@ function PostCard({
             </motion.button>
           </div>
 
+          <motion.button
+            whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
+            onClick={e => { e.stopPropagation(); if (postHasVisibleCaption(post)) setProductDetailsOpen(true); }}
+            aria-label="Details"
+            disabled={!postHasVisibleCaption(post)}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+              background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
+              borderRadius: 10, width: 44, height: 36,
+              cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
+              padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
+            }}
+          >
+            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+          </motion.button>
+
           <div style={{ minWidth: 72 }} />
         </div>
         )}
 
-        {/* Caption / product details — side panel (leaves post media visible on the left) */}
+        {/* Caption / product details sheet — three lines only, does not open post page */}
         <AnimatePresence>
           {productDetailsOpen && (
             <motion.div
@@ -6249,56 +6225,23 @@ function PostCard({
               exit={{ opacity: 0 }}
               onClick={e => { e.stopPropagation(); setProductDetailsOpen(false); }}
               style={{
-                position: 'fixed', inset: 0, zIndex: 10600, background: 'rgba(0,0,0,0.28)',
-                display: 'flex', justifyContent: 'flex-end',
+                position: 'fixed', inset: 0, zIndex: 10600, background: 'rgba(0,0,0,0.45)',
+                display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
               }}
             >
               <motion.div
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
                 transition={{ type: 'spring', stiffness: 420, damping: 38 }}
                 onClick={e => e.stopPropagation()}
                 style={{
-                  position: 'relative',
-                  width: '78%', maxWidth: 420, height: '100%', overflowY: 'auto',
-                  background: '#fff',
-                  boxShadow: '-8px 0 28px rgba(0,0,0,0.28)',
-                  padding: '16px 16px calc(20px + env(safe-area-inset-bottom, 0px))',
-                  boxSizing: 'border-box',
+                  width: '100%', maxWidth: 520, maxHeight: '70vh', overflowY: 'auto',
+                  background: '#fff', borderRadius: '18px 18px 0 0',
+                  padding: '14px 18px calc(20px + env(safe-area-inset-bottom, 0px))',
                 }}
               >
-                <motion.button
-                  whileTap={{ scale: 0.9 }}
-                  type="button"
-                  onClick={e => { e.stopPropagation(); setProductDetailsOpen(false); }}
-                  aria-label="Close caption"
-                  style={{
-                    position: 'absolute',
-                    left: -14,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    width: 28,
-                    height: 28,
-                    borderRadius: '50%',
-                    background: '#ef4444',
-                    border: '2px solid rgba(255,255,255,0.92)',
-                    boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 2.5,
-                    cursor: 'pointer',
-                    zIndex: 6,
-                    padding: 0,
-                  }}
-                >
-                  <span style={{ width: 10, height: 2, borderRadius: 1, background: '#fff' }} />
-                  <span style={{ width: 10, height: 2, borderRadius: 1, background: '#fff' }} />
-                  <span style={{ width: 10, height: 2, borderRadius: 1, background: '#fff' }} />
-                </motion.button>
-                <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
+                                <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
                 {!isCompanyAuthor ? (
                   <p style={{ margin: 0, color: '#0a0a0a', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
                     {(post.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()}
@@ -6336,7 +6279,7 @@ function PostCard({
                     background: '#0f1419', color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
                   }}
                 >
-                  Close
+                  إغلاق
                 </button>
               </motion.div>
             </motion.div>
@@ -6344,7 +6287,7 @@ function PostCard({
         </AnimatePresence>
       </motion.div>
 
-      {/* Fullscreen media lightbox */}
+      {/* Fullscreen media — يمين/يسار كامل الشاشة + النص أعلى أو أسفل */}
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence>
         {mediaLightbox ? (
@@ -6452,7 +6395,7 @@ function PostCard({
             onClick={e => e.stopPropagation()}
             style={{
               flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: '100%', position: 'relative',
+              width: '100%',
             }}
           >
             {mediaLightbox.type === 'video' ? (
@@ -6471,14 +6414,9 @@ function PostCard({
                 style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
               />
             )}
-            <CaptionSideToggle
-              visible={postHasVisibleCaption(post)}
-              onClick={() => { setMediaLightbox(null); setProductDetailsOpen(true); }}
-              size={32}
-            />
           </div>
 
-          {/* Action bar: like, comment, share (caption via red circle on media) */}
+          {/* Same action bar as public post card: like, comment, share, three-lines */}
           <div
             onClick={e => e.stopPropagation()}
             style={{
@@ -6513,6 +6451,23 @@ function PostCard({
                 <Send size={20} strokeWidth={2} />
               </motion.button>
             </div>
+            <motion.button
+              whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
+              onClick={() => { if (!postHasVisibleCaption(post)) return; setMediaLightbox(null); setProductDetailsOpen(true); }}
+              aria-label="Details"
+              disabled={!postHasVisibleCaption(post)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+                borderRadius: 12, width: 52, height: 44,
+                cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
+                padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
+              }}
+            >
+              <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+              <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+              <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+            </motion.button>
             <motion.button
               whileTap={{ scale: 0.9 }}
               type="button"
@@ -7799,6 +7754,20 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{mediaLightbox.post.commentsCount > 0 ? mediaLightbox.post.commentsCount : ''}</span>
                 </motion.button>
               </div>
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                onClick={() => { setMediaLightbox(null); onOpenPost(mediaLightbox.post); }}
+                aria-label="Details"
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: 12, width: 52, height: 44, cursor: 'pointer', padding: 0,
+                }}
+              >
+                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+              </motion.button>
             <motion.button
               whileTap={{ scale: 0.9 }}
               type="button"
@@ -19762,11 +19731,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         {singlePostMediaPage + 1}/{mediaItems.length}
                       </div>
                     )}
-                    <CaptionSideToggle
-                      visible={postHasVisibleCaption(livePost)}
-                      onClick={() => setAdDetailsOpen(true)}
-                      size={32}
-                    />
                   </div>
                 ) : xUrls.length > 0 ? (
                   <div style={{ width: '100%', height: '100%', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '56px 12px 12px', boxSizing: 'border-box' }}>
@@ -19831,6 +19795,25 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <Send size={20} strokeWidth={2} color={productInquiryShareAlert(livePost.id) ? '#eab308' : undefined} />
                   </motion.button>
                 </div>
+
+                <motion.button
+                  whileTap={{ scale: postHasVisibleCaption(livePost) ? 0.92 : 1 }}
+                  onClick={() => { if (postHasVisibleCaption(livePost)) setAdDetailsOpen(true); }}
+                  aria-label="Details"
+                  disabled={!postHasVisibleCaption(livePost)}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+                    borderRadius: 10, width: 36, height: 36,
+                    cursor: postHasVisibleCaption(livePost) ? 'pointer' : 'default',
+                    padding: 0, opacity: postHasVisibleCaption(livePost) ? 1 : 0.28,
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                </motion.button>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
                   <motion.button
@@ -19907,54 +19890,21 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     onClick={() => setAdDetailsOpen(false)}
-                    style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(0,0,0,0.28)', display: 'flex', justifyContent: 'flex-end' }}
+                    style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end' }}
                   >
                     <motion.div
-                      initial={{ x: '100%' }}
-                      animate={{ x: 0 }}
-                      exit={{ x: '100%' }}
+                      initial={{ y: '100%' }}
+                      animate={{ y: 0 }}
+                      exit={{ y: '100%' }}
                       transition={{ type: 'spring', stiffness: 420, damping: 38 }}
                       onClick={e => e.stopPropagation()}
                       style={{
-                        position: 'relative',
-                        width: '78%', maxWidth: 420, height: '100%', overflowY: 'auto',
-                        background: '#fff',
-                        boxShadow: '-8px 0 28px rgba(0,0,0,0.28)',
-                        padding: '16px 16px calc(20px + env(safe-area-inset-bottom, 0px))',
-                        boxSizing: 'border-box',
+                        width: '100%', maxHeight: '70vh', overflowY: 'auto',
+                        background: '#fff', borderRadius: '18px 18px 0 0',
+                        padding: '14px 18px calc(20px + env(safe-area-inset-bottom, 0px))',
                       }}
                     >
-                      <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        type="button"
-                        onClick={e => { e.stopPropagation(); setAdDetailsOpen(false); }}
-                        aria-label="Close caption"
-                        style={{
-                          position: 'absolute',
-                          left: -14,
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          width: 28,
-                          height: 28,
-                          borderRadius: '50%',
-                          background: '#ef4444',
-                          border: '2px solid rgba(255,255,255,0.92)',
-                          boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 2.5,
-                          cursor: 'pointer',
-                          zIndex: 6,
-                          padding: 0,
-                        }}
-                      >
-                        <span style={{ width: 10, height: 2, borderRadius: 1, background: '#fff' }} />
-                        <span style={{ width: 10, height: 2, borderRadius: 1, background: '#fff' }} />
-                        <span style={{ width: 10, height: 2, borderRadius: 1, background: '#fff' }} />
-                      </motion.button>
-                      <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
+                                            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
                       {(() => {
                         const isCo = !!(
                           companies.some(c => String(c.id) === String(singlePostView.authorId))
@@ -19993,7 +19943,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           background: '#0f1419', color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
                         }}
                       >
-                        Close
+                        إغلاق
                       </button>
                     </motion.div>
                   </motion.div>
