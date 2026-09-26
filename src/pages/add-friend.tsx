@@ -5981,19 +5981,12 @@ function PostCard({
                     background: '#000',
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={e => {
-                      e.stopPropagation();
-                      setMediaPage(index);
-                      pendingFeedMediaIndex = index;
-                      onOpenPost(post);
-                    }}
-                    aria-label={media.type === 'video' ? 'Open video' : 'Open image'}
+                  <div
+                    aria-label={media.type === 'video' ? 'Video' : 'Image'}
                     style={{
                       position: 'relative', width: '100%', boxSizing: 'border-box', padding: 0,
                       border: 'none',
-                      background: '#000', cursor: 'pointer', display: 'block', overflow: 'hidden', maxHeight: '48vh',
+                      background: '#000', display: 'block', overflow: 'hidden', maxHeight: '85vh',
                     }}
                   >
                     {media.type === 'video' ? (
@@ -6004,22 +5997,16 @@ function PostCard({
                         loop
                         playsInline
                         preload="metadata"
-                        onClick={e => {
-                          e.stopPropagation();
-                          setMediaPage(index);
-                          pendingFeedMediaIndex = index;
-                          onOpenPost(post);
-                        }}
-                        style={{ width: '100%', maxHeight: '48vh', objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }}
+                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'cover', display: 'block', background: '#000' }}
                       />
                     ) : (
                       <img
                         src={media.url}
                         alt=""
-                        style={{ width: '100%', maxHeight: '48vh', objectFit: 'cover', display: 'block', background: '#000' }}
+                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'cover', display: 'block', background: '#000' }}
                       />
                     )}
-                  </button>
+                  </div>
                   {/* أيقونة كتم/تشغيل الصوت — تحل محل أزرار الفيديو الافتراضية (controls) على
                       معاينة الفييد الصغيرة، فتبقى الصورة/الفيديو تبين كاملة وبعيدة بدون تحكمات كبيرة تغطيها. */}
                   {media.type === 'video' && (
@@ -19761,22 +19748,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
-                  <motion.button
-                    whileTap={{ scale: 0.9 }}
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); closeSinglePostView(); }}
-                    aria-label="Close"
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
-                      borderRadius: 10, width: 36, height: 36,
-                      color: '#ef4444', cursor: 'pointer', padding: 0,
-                      fontWeight: 900, fontSize: '1rem', lineHeight: 1, flexShrink: 0,
-                      marginRight: 6,
-                    }}
-                  >
-                    X
-                  </motion.button>
                   <motion.button
                     whileTap={{ scale: 0.9 }}
                     type="button"
