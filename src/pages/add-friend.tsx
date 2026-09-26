@@ -16182,7 +16182,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 const hasStory = !!myGroup && myGroup.items.length > 0;
                 const allSeen = hasStory && myGroup!.items.every(i => i.seen);
                 return (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: -12, marginLeft: -6, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: 4, marginLeft: -6, flexShrink: 0 }}>
                     <div style={{ width: 76, height: 76, position: 'relative' }}>
                       <motion.button
                         whileTap={{ scale: 0.9 }}
@@ -16200,7 +16200,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         {/* One fixed circular frame: the photo is clipped inside it and can never overflow. */}
                         {/* إطار أزرق ثابت + صورة ثابتة */}
                         <div style={{
-                          position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'hidden',
+                          position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'visible',
                           background: 'hsl(var(--card))',
                           border: hasStory ? '4px solid #0ea5e9' : '3px solid #0ea5e9',
                           boxSizing: 'border-box',
