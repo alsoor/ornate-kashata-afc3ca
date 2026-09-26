@@ -5726,21 +5726,36 @@ function PostCard({
   // روابط X داخل نص المنشور — نص إعلان/منشور المنتج مخفي في الفييد، فنعرض وسائط الرابط مباشرة
   const postXUrls = isProductAd ? extractLinkMediaUrls(post.text) : [];
   const [productDetailsOpen, setProductDetailsOpen] = useState(false);
-  // Feed media tap: reveal caption as an overlay pinned to the top of the media
-  // (instead of navigating away to the full post page).
-  const [feedCaptionOpen, setFeedCaptionOpen] = useState(false);
+  // Feed media tap cycle:
+  //   1st tap -> media expands to full size and the caption overlay shows
+  //   2nd tap -> caption overlay hides, media stays expanded (fully visible)
+  //   3rd tap -> media collapses back to the small preview
+  const [mediaExpanded, setMediaExpanded] = useState(false);
+  const [captionTextOpen, setCaptionTextOpen] = useState(false);
+  function handleFeedMediaTap(index: number) {
+    setMediaPage(index);
+    if (!mediaExpanded) {
+      setMediaExpanded(true);
+      setCaptionTextOpen(true);
+    } else if (captionTextOpen) {
+      setCaptionTextOpen(false);
+    } else {
+      setMediaExpanded(false);
+      setCaptionTextOpen(false);
+    }
+  }
   // Root card element — used to smoothly re-center the whole post in the viewport
   // when it expands, so the card doesn't jump or shake as it grows taller.
   const postCardRootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!feedCaptionOpen) return;
+    if (!mediaExpanded) return;
     const el = postCardRootRef.current;
     if (!el) return;
     const t = setTimeout(() => {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 30);
     return () => clearTimeout(t);
-  }, [feedCaptionOpen]);
+  }, [mediaExpanded]);
   function goToMediaPage(idx: number) {
     const el = mediaScrollRef.current;
     if (!el) return;
@@ -6007,19 +6022,23 @@ function PostCard({
         {hasMedia && (
           <div style={{ position: 'relative', width: '100%' }}>
             <AnimatePresence>
-              {feedCaptionOpen && (post.text || (isProductAd && (productAd?.title || productAd?.price || productAd?.details))) && (
+              {captionTextOpen && (post.text || (isProductAd && (productAd?.title || productAd?.price || productAd?.details))) && (
                 <motion.div
                   key="feed-caption-reveal"
-                  initial={{ y: '-100%', opacity: 0 }}
+                  initial={{ y: '100%', opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: '-100%', opacity: 0 }}
+                  exit={{ y: '100%', opacity: 0 }}
                   transition={{ type: 'spring', stiffness: 420, damping: 40 }}
                   onClick={e => e.stopPropagation()}
                   style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5,
-                    maxHeight: '70%', overflowY: 'auto',
-                    background: 'linear-gradient(to bottom, rgba(0,0,0,0.88) 60%, rgba(0,0,0,0))',
-                    padding: '14px 14px 28px',
+                    position: 'absolute',
+                    // Sits just above the like/comment/share bar so it rises up from
+                    // inside the bottom of the media instead of dropping down from the top.
+                    bottom: mediaItems[mediaPage]?.type === 'video' ? 128 : 84,
+                    left: 0, right: 0, zIndex: 5,
+                    maxHeight: '55%', overflowY: 'auto',
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.88) 60%, rgba(0,0,0,0))',
+                    padding: '28px 14px 14px',
                   }}
                 >
                   {isProductAd ? (
@@ -6086,10 +6105,13 @@ function PostCard({
                     type="button"
                     onClick={e => {
                       e.stopPropagation();
-                      setMediaPage(index);
-                      setFeedCaptionOpen(v => !v);
+                      handleFeedMediaTap(index);
                     }}
-                    aria-label={feedCaptionOpen ? 'Collapse media' : (media.type === 'video' ? 'Expand video' : 'Expand image')}
+                    aria-label={
+                      !mediaExpanded
+                        ? (media.type === 'video' ? 'Expand video' : 'Expand image')
+                        : (captionTextOpen ? 'Hide caption' : 'Collapse media')
+                    }
                     style={{
                       position: 'relative', width: '100%', boxSizing: 'border-box', padding: 0,
                       border: 'none',
@@ -6119,7 +6141,7 @@ function PostCard({
                         onPause={() => setFeedVideoPlaying(prev => ({ ...prev, [index]: false }))}
                         style={{
                           width: '100%',
-                          height: feedCaptionOpen ? undefined : FEED_MEDIA_COLLAPSED_HEIGHT,
+                          height: mediaExpanded ? undefined : FEED_MEDIA_COLLAPSED_HEIGHT,
                           maxHeight: '85vh',
                           objectFit: 'cover',
                           objectPosition: 'top',
@@ -6136,7 +6158,7 @@ function PostCard({
                         alt=""
                         style={{
                           width: '100%',
-                          height: feedCaptionOpen ? undefined : FEED_MEDIA_COLLAPSED_HEIGHT,
+                          height: mediaExpanded ? undefined : FEED_MEDIA_COLLAPSED_HEIGHT,
                           maxHeight: '85vh',
                           objectFit: 'cover',
                           objectPosition: 'top',
@@ -6148,7 +6170,7 @@ function PostCard({
                   </button>
                   {/* Mute/unmute toggle for the video preview — only shown once the post is
                       expanded, so the collapsed preview stays a clean, control-free thumbnail. */}
-                  {media.type === 'video' && feedCaptionOpen && (
+                  {media.type === 'video' && mediaExpanded && (
                     <motion.button
                       whileTap={{ scale: 0.88 }}
                       onClick={e => {
@@ -6172,7 +6194,7 @@ function PostCard({
 
             {/* Page counter only (top) when post has multiple media items — hidden until expanded,
                 so the collapsed preview shows nothing but the cropped media itself. */}
-            {feedCaptionOpen && mediaItems.length > 1 && (
+            {mediaExpanded && mediaItems.length > 1 && (
               <div style={{
                 position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
                 padding: '3px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.55)',
@@ -6186,7 +6208,7 @@ function PostCard({
             {/* Actions overlay — مخفية افتراضيًا فوق الوسائط، تظهر فقط مع نفس نقرة إظهار النص
                 (خلفية تدرّج أسود خفيف من الأسفل، أيقونات بيضاء) بدل شريط أبيض ثابت تحت الوسائط. */}
             <AnimatePresence>
-              {feedCaptionOpen && (
+              {mediaExpanded && (
                 <motion.div
                   key="feed-actions-reveal"
                   initial={{ y: '100%', opacity: 0 }}
