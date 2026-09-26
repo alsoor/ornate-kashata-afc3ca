@@ -901,7 +901,6 @@ export default function LiveCameraPage() {
             }
           } else if (msg.t === 'chat') {
             const cm = parseIncomingChat(msg);
-            if (cm) publishLiveChat(channelName, msg);
             if (cm && cm.uid !== myUid && !(cm.userId && myId && cm.userId === myId)) {
               setLiveChatMsgs(prev => {
                 if (prev.some(x => x.id === cm.id)) return prev;
