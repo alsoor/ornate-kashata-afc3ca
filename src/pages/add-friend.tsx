@@ -5007,6 +5007,82 @@ function LinkMediaPreview({ url, failedNote }: { url: string; failedNote?: strin
 }
 
 
+// ── Small red circular toggle placed on the media, opens/closes the side text panel ──
+function MediaTextToggleDot({ active, disabled = false, onToggle, dark = true }: {
+  active: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+  dark?: boolean;
+}) {
+  if (disabled) return null;
+  return (
+    <motion.button
+      type="button"
+      whileTap={{ scale: 0.88 }}
+      onClick={e => { e.stopPropagation(); onToggle(); }}
+      aria-label="Read post text"
+      style={{
+        position: 'absolute',
+        top: '50%',
+        insetInlineEnd: 10,
+        transform: 'translateY(-50%)',
+        width: 26,
+        height: 26,
+        borderRadius: '50%',
+        background: '#ef4444',
+        border: `2px solid ${dark ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.9)'}`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        padding: 0,
+        zIndex: 5,
+        boxShadow: active ? '0 0 0 3px rgba(239,68,68,0.35)' : '0 2px 8px rgba(0,0,0,0.35)',
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />
+    </motion.button>
+  );
+}
+
+// ── Slide-in panel over the media: reads the post text, leaves a margin on the
+//    left so the media stays partially visible/anchored while reading ──
+function MediaTextSidePanel({ open, onClose, text }: { open: boolean; onClose: () => void; text: string }) {
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          onClick={e => { e.stopPropagation(); onClose(); }}
+          initial={{ x: '100%' }}
+          animate={{ x: 0 }}
+          exit={{ x: '100%' }}
+          transition={{ type: 'spring', stiffness: 380, damping: 42 }}
+          style={{
+            position: 'absolute',
+            insetInlineStart: 46,
+            insetInlineEnd: 0,
+            top: 0,
+            bottom: 0,
+            zIndex: 4,
+            background: 'rgba(8,8,8,0.92)',
+            overflowY: 'auto',
+            padding: '18px 16px calc(18px + env(safe-area-inset-bottom, 0px))',
+            boxSizing: 'border-box',
+          }}
+        >
+          <p style={{
+            margin: 0, color: '#fff', fontSize: '0.9rem', fontWeight: 500,
+            lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            fontFamily: "'Alexandria', var(--font-sans), sans-serif",
+          }}>
+            {text}
+          </p>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 function PostTextMoreInlineRest({ full, color, onMore }: { full: string; color: string; onMore?: () => void }) {
   const [open, setOpen] = React.useState(false);
   return (
@@ -5696,6 +5772,14 @@ function PostCard({
   const productAd = parseProductAd(post.text);
   // Product UI (hamburger + details sheet) is only for company/business authors
   const isProductAd = !!productAd && !!isCompanyAuthor;
+  // ── Plain text shown inside the new sliding media-read panel ──
+  const mediaPanelText = isCompanyAuthor
+    ? [
+        productAd?.title || productAdDisplayTitle(post) || post.authorName || '',
+        productAd?.price || '',
+        productAd?.details || '',
+      ].filter(Boolean).join('\n\n')
+    : (post.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
 
   useEffect(() => {
     recordPostView(post.id, post.authorId);
@@ -5703,6 +5787,9 @@ function PostCard({
   // روابط X داخل نص المنشور — نص إعلان/منشور المنتج مخفي في الفييد، فنعرض وسائط الرابط مباشرة
   const postXUrls = isProductAd ? extractLinkMediaUrls(post.text) : [];
   const [productDetailsOpen, setProductDetailsOpen] = useState(false);
+  // ── New: red-dot toggle on the media opens/closes the sliding text-read panel ──
+  const [mediaReadPanelOpen, setMediaReadPanelOpen] = useState(false);
+  const [lightboxReadPanelOpen, setLightboxReadPanelOpen] = useState(false);
   function goToMediaPage(idx: number) {
     const el = mediaScrollRef.current;
     if (!el) return;
@@ -6051,6 +6138,18 @@ function PostCard({
                 {mediaPage + 1}/{mediaItems.length}
               </div>
             )}
+
+            {mediaPanelText && (
+              <MediaTextToggleDot
+                active={mediaReadPanelOpen}
+                onToggle={() => setMediaReadPanelOpen(v => !v)}
+              />
+            )}
+            <MediaTextSidePanel
+              open={mediaReadPanelOpen && !!mediaPanelText}
+              onClose={() => setMediaReadPanelOpen(false)}
+              text={mediaPanelText}
+            />
           </div>
         )}
 
@@ -6100,25 +6199,7 @@ function PostCard({
               </motion.button>
             </div>
 
-            <motion.button
-              whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
-              onClick={e => { e.stopPropagation(); if (postHasVisibleCaption(post)) setProductDetailsOpen(true); }}
-              aria-label="Details"
-              disabled={!postHasVisibleCaption(post)}
-              style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
-                background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
-                borderRadius: 10, width: 44, height: 36,
-                cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
-                padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
-              }}
-            >
-              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
-              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
-              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
-            </motion.button>
-
-            {/* موازنة المساحة بعد نقل التعليقات بين اللايك والشير */}
+            {/* موازنة المساحة بعد نقل التعليقات بين اللايك والشير — three-lines button removed, reading now happens via the red dot on the media */}
             <div style={{ minWidth: 72 }} />
           </div>
         ) : (
@@ -6193,24 +6274,6 @@ function PostCard({
               <Send size={15} strokeWidth={2} />
             </motion.button>
           </div>
-
-          <motion.button
-            whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
-            onClick={e => { e.stopPropagation(); if (postHasVisibleCaption(post)) setProductDetailsOpen(true); }}
-            aria-label="Details"
-            disabled={!postHasVisibleCaption(post)}
-            style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
-              background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
-              borderRadius: 10, width: 44, height: 36,
-              cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
-              padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
-            }}
-          >
-            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
-            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
-            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
-          </motion.button>
 
           <div style={{ minWidth: 72 }} />
         </div>
@@ -6395,7 +6458,7 @@ function PostCard({
             onClick={e => e.stopPropagation()}
             style={{
               flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: '100%',
+              width: '100%', position: 'relative',
             }}
           >
             {mediaLightbox.type === 'video' ? (
@@ -6414,9 +6477,20 @@ function PostCard({
                 style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
               />
             )}
+            {mediaPanelText && (
+              <MediaTextToggleDot
+                active={lightboxReadPanelOpen}
+                onToggle={() => setLightboxReadPanelOpen(v => !v)}
+              />
+            )}
+            <MediaTextSidePanel
+              open={lightboxReadPanelOpen && !!mediaPanelText}
+              onClose={() => setLightboxReadPanelOpen(false)}
+              text={mediaPanelText}
+            />
           </div>
 
-          {/* Same action bar as public post card: like, comment, share, three-lines */}
+          {/* Same action bar as public post card: like, comment, share */}
           <div
             onClick={e => e.stopPropagation()}
             style={{
@@ -6451,23 +6525,6 @@ function PostCard({
                 <Send size={20} strokeWidth={2} />
               </motion.button>
             </div>
-            <motion.button
-              whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
-              onClick={() => { if (!postHasVisibleCaption(post)) return; setMediaLightbox(null); setProductDetailsOpen(true); }}
-              aria-label="Details"
-              disabled={!postHasVisibleCaption(post)}
-              style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
-                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
-                borderRadius: 12, width: 52, height: 44,
-                cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
-                padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
-              }}
-            >
-              <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
-              <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
-              <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
-            </motion.button>
             <motion.button
               whileTap={{ scale: 0.9 }}
               type="button"
@@ -7105,6 +7162,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [authorPosts, setAuthorPosts] = useState<PostItem[]>([]);
   // فتح الصورة/الفيديو فقط بملء الشاشة — بدون فتح صفحة المنشور الكاملة القديمة
   const [mediaLightbox, setMediaLightbox] = useState<{ url: string; type: 'image' | 'video'; post: PostItem } | null>(null);
+  // ── Red-dot toggle on the media opens/closes the sliding text-read panel ──
+  const [lightboxReadPanelOpen, setLightboxReadPanelOpen] = useState(false);
   // كتم صوت معاينة الفيديو كاملة الشاشة
   const [lightboxMuted, setLightboxMuted] = useState(false);
 
@@ -7706,7 +7765,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
 
             <div
               onClick={e => e.stopPropagation()}
-              style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}
+              style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', position: 'relative' }}
             >
               {mediaLightbox.type === 'video' ? (
                 <video
@@ -7724,9 +7783,34 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
                 />
               )}
+              {(() => {
+                const ad = parseProductAd(mediaLightbox.post.text);
+                const panelText = isCompanyProfile
+                  ? [
+                      ad?.title || mediaLightbox.post.authorName || '',
+                      ad?.price || '',
+                      ad?.details || '',
+                    ].filter(Boolean).join('\n\n')
+                  : (mediaLightbox.post.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
+                return (
+                  <>
+                    {panelText && (
+                      <MediaTextToggleDot
+                        active={lightboxReadPanelOpen}
+                        onToggle={() => setLightboxReadPanelOpen(v => !v)}
+                      />
+                    )}
+                    <MediaTextSidePanel
+                      open={lightboxReadPanelOpen && !!panelText}
+                      onClose={() => setLightboxReadPanelOpen(false)}
+                      text={panelText}
+                    />
+                  </>
+                );
+              })()}
             </div>
 
-            {/* Same bar as public post: like, comment — open full post for share/details */}
+            {/* Same bar as public post: like, comment — open full post for share */}
             <div
               onClick={e => e.stopPropagation()}
               style={{
@@ -7754,20 +7838,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{mediaLightbox.post.commentsCount > 0 ? mediaLightbox.post.commentsCount : ''}</span>
                 </motion.button>
               </div>
-              <motion.button
-                whileTap={{ scale: 0.92 }}
-                onClick={() => { setMediaLightbox(null); onOpenPost(mediaLightbox.post); }}
-                aria-label="Details"
-                style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
-                  background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
-                  borderRadius: 12, width: 52, height: 44, cursor: 'pointer', padding: 0,
-                }}
-              >
-                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
-                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
-                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
-              </motion.button>
             <motion.button
               whileTap={{ scale: 0.9 }}
               type="button"
@@ -11842,6 +11912,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   /** عند فتح بوست من داخل البروفايل — البوست فوق البروفايل؛ عند فتح بروفايل من البوست — البروفايل فوق البوست */
   const [singlePostFromProfile, setSinglePostFromProfile] = useState(false);
   const [adDetailsOpen, setAdDetailsOpen] = useState(false);
+  // ── Red-dot toggle on the media opens/closes the sliding text-read panel (single post view) ──
+  const [singlePostReadPanelOpen, setSinglePostReadPanelOpen] = useState(false);
   const [adVideoPaused, setAdVideoPaused] = useState(false);
   const [singlePostChromeVisible, setSinglePostChromeVisible] = useState(true);
   const [singlePostMediaPage, setSinglePostMediaPage] = useState(0);
@@ -19636,6 +19708,20 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           const likeActive = engForPage ? engForPage.likedByMe : livePost.likedByMe;
           const likeCount = engForPage ? engForPage.likesCount : livePost.likesCount;
           const commentCount = engForPage ? (engForPage.comments?.length || 0) : livePost.commentsCount;
+          const singlePostIsCompany = !!(
+            companies.some(c => String(c.id) === String(livePost.authorId))
+            || isCompanyUserAccount({ id: livePost.authorId, username: livePost.authorUsername, name: livePost.authorName }, companies)
+            || (livePost as any).publisherType === 'company'
+            || (livePost as any).authorIsCompany === true
+            || (livePost as any).isCompanyPost === true
+          );
+          const singlePostPanelText = singlePostIsCompany
+            ? [
+                ad?.title || productAdDisplayTitle(livePost) || '',
+                ad?.price || '',
+                ad?.details || '',
+              ].filter(Boolean).join('\n\n')
+            : (livePost.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
           return (
             <motion.div
               key="single-post-view"
@@ -19745,6 +19831,18 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     </p>
                   </div>
                 )}
+
+                {singlePostPanelText && (
+                  <MediaTextToggleDot
+                    active={singlePostReadPanelOpen}
+                    onToggle={() => setSinglePostReadPanelOpen(v => !v)}
+                  />
+                )}
+                <MediaTextSidePanel
+                  open={singlePostReadPanelOpen && !!singlePostPanelText}
+                  onClose={() => setSinglePostReadPanelOpen(false)}
+                  text={singlePostPanelText}
+                />
               </div>
 
               <div
@@ -19795,25 +19893,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <Send size={20} strokeWidth={2} color={productInquiryShareAlert(livePost.id) ? '#eab308' : undefined} />
                   </motion.button>
                 </div>
-
-                <motion.button
-                  whileTap={{ scale: postHasVisibleCaption(livePost) ? 0.92 : 1 }}
-                  onClick={() => { if (postHasVisibleCaption(livePost)) setAdDetailsOpen(true); }}
-                  aria-label="Details"
-                  disabled={!postHasVisibleCaption(livePost)}
-                  style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
-                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
-                    borderRadius: 10, width: 36, height: 36,
-                    cursor: postHasVisibleCaption(livePost) ? 'pointer' : 'default',
-                    padding: 0, opacity: postHasVisibleCaption(livePost) ? 1 : 0.28,
-                    flexShrink: 0,
-                  }}
-                >
-                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
-                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
-                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
-                </motion.button>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
                   <motion.button
@@ -19882,73 +19961,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </motion.button>
                 </div>
               </div>
-
-              <AnimatePresence>
-                {adDetailsOpen && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={() => setAdDetailsOpen(false)}
-                    style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end' }}
-                  >
-                    <motion.div
-                      initial={{ y: '100%' }}
-                      animate={{ y: 0 }}
-                      exit={{ y: '100%' }}
-                      transition={{ type: 'spring', stiffness: 420, damping: 38 }}
-                      onClick={e => e.stopPropagation()}
-                      style={{
-                        width: '100%', maxHeight: '70vh', overflowY: 'auto',
-                        background: '#fff', borderRadius: '18px 18px 0 0',
-                        padding: '14px 18px calc(20px + env(safe-area-inset-bottom, 0px))',
-                      }}
-                    >
-                                            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
-                      {(() => {
-                        const isCo = !!(
-                          companies.some(c => String(c.id) === String(singlePostView.authorId))
-                          || isCompanyUserAccount({ id: singlePostView.authorId, username: singlePostView.authorUsername, name: singlePostView.authorName }, companies)
-                          || (singlePostView as any).publisherType === 'company'
-                          || (singlePostView as any).authorIsCompany === true
-                          || (singlePostView as any).isCompanyPost === true
-                        );
-                        const plain = (singlePostView.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
-                        if (!isCo) {
-                          return (
-                            <p style={{ margin: 0, color: '#0a0a0a', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                              {plain}
-                            </p>
-                          );
-                        }
-                        return (
-                          <>
-                            <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.15rem', fontWeight: 800, lineHeight: 1.35 }}>
-                              {ad?.title || productAdDisplayTitle(singlePostView)}
-                            </p>
-                            {ad?.price ? (
-                              <p style={{ margin: '8px 0 0', color: CLR_PRIMARY, fontSize: '1rem', fontWeight: 800 }}>{ad.price}</p>
-                            ) : null}
-                            {ad?.details ? (
-                              <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{ad.details}</p>
-                            ) : null}
-                          </>
-                        );
-                      })()}
-                      <button
-                        type="button"
-                        onClick={() => setAdDetailsOpen(false)}
-                        style={{
-                          marginTop: 18, width: '100%', height: 44, borderRadius: 12, border: 'none',
-                          background: '#0f1419', color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
-                        }}
-                      >
-                        إغلاق
-                      </button>
-                    </motion.div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </motion.div>
           );
         })()}
