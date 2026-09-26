@@ -83,7 +83,7 @@ const TEXT_POST_CHAR_LIMIT = 100;
 // Every post preview — image or video, with or without a caption — uses this same
 // fixed height so the whole feed lines up. Tapping the media animates it open to
 // full size and reveals the caption + like/comment/share actions.
-const FEED_MEDIA_COLLAPSED_HEIGHT = 150;
+const FEED_MEDIA_COLLAPSED_HEIGHT = 300;
 
 // ── بث صوتي نشط: أيقونة حمراء وامضة لكل البثوث ─────────────────────────────
 function liveChannelForHost(hostId: string): string {
