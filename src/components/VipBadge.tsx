@@ -1,5 +1,39 @@
 import React from 'react';
-import { isVip, getVipColor, VIP_COLORS, type VipColor } from '@/lib/vipPatch';
+import { isVip, getVipColor, VIP_COLORS } from '@/lib/vipPatch';
+
+/**
+ * Shared VIP read for VipBadge + VipAvatarFrame. isVip()/getVipColor() are plain
+ * synchronous reads with no reactivity, so a component that mounts before the VIP
+ * directory finishes hydrating was stuck on a stale/default color forever (until an
+ * unrelated re-render happened to run it again) while another instance on the same
+ * page that mounted later showed the real color — this is what looked like the color
+ * "changing suddenly" or two colors mixing on the same profile/post. Re-reading on the
+ * 'stooorna:vip' and 'stooorna:vip-directory' events keeps every instance in sync.
+ */
+function useVipVisualState(userId?: string | null): { active: boolean; color: string } {
+  const [state, setState] = React.useState(() => ({
+    active: isVip(userId),
+    color: VIP_COLORS[getVipColor(userId)] || VIP_COLORS.gold,
+  }));
+
+  React.useEffect(() => {
+    const recompute = () => {
+      setState({
+        active: isVip(userId),
+        color: VIP_COLORS[getVipColor(userId)] || VIP_COLORS.gold,
+      });
+    };
+    recompute();
+    window.addEventListener('stooorna:vip', recompute);
+    window.addEventListener('stooorna:vip-directory', recompute);
+    return () => {
+      window.removeEventListener('stooorna:vip', recompute);
+      window.removeEventListener('stooorna:vip-directory', recompute);
+    };
+  }, [userId]);
+
+  return state;
+}
 
 /** Small VIP chip next to @username. Visible to every viewer when the account is VIP. */
 export function VipBadge({
@@ -11,9 +45,8 @@ export function VipBadge({
   compact?: boolean;
   force?: boolean;
 }) {
-  if (!force && !isVip(userId)) return null;
-  const color: VipColor = getVipColor(userId);
-  const accent = VIP_COLORS[color] || VIP_COLORS.gold;
+  const { active, color: accent } = useVipVisualState(userId);
+  if (!force && !active) return null;
   return (
     <span
       title="VIP"
@@ -41,42 +74,62 @@ export function VipBadge({
   );
 }
 
-/** Animated gold ring + VIP tab on top of an avatar. */
+/** Ring thickness added around the avatar's own edges only — the avatar itself never resizes. */
+const VIP_RING_WIDTH = 7;
+
+/**
+ * Fixed-color ring + VIP tab on top of an avatar, with a silver shine that sweeps
+ * around the ring only. The ring itself is static (no flashing, no color rotation).
+ * Pass `live` only for the account's own Voice Live / Video Live broadcast frame to
+ * bring back the pulsing glow there — everywhere else the frame stays calm.
+ */
 export function VipAvatarFrame({
   userId,
   size = 80,
+  live = false,
   children,
 }: {
   userId?: string | null;
   size?: number;
+  live?: boolean;
   children: React.ReactNode;
 }) {
-  const active = isVip(userId);
-  const color = VIP_COLORS[getVipColor(userId)] || VIP_COLORS.gold;
+  const { active, color } = useVipVisualState(userId);
   if (!active) {
     return <div style={{ position: 'relative', width: size, height: size }}>{children}</div>;
   }
   return (
     <div style={{ position: 'relative', width: size, height: size }}>
       <style>{`
-        @keyframes stooornaVipGlow {
-          0%, 100% { box-shadow: 0 0 0 2px ${color}, 0 0 10px ${color}cc, 0 0 18px ${color}66; }
-          50% { box-shadow: 0 0 0 3px ${color}, 0 0 18px ${color}, 0 0 28px ${color}aa; }
-        }
-        @keyframes stooornaVipSpin {
+        @keyframes stooornaVipShineSpin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
+        @keyframes stooornaVipLiveGlow {
+          0%, 100% { box-shadow: 0 0 0 2px ${color}, 0 0 10px ${color}cc, 0 0 18px ${color}66; }
+          50% { box-shadow: 0 0 0 3px ${color}, 0 0 18px ${color}, 0 0 28px ${color}aa; }
+        }
       `}</style>
+      {/* Static ring — solid fixed color, no flashing */}
       <div
         aria-hidden
         style={{
           position: 'absolute',
-          inset: -4,
+          inset: -VIP_RING_WIDTH,
           borderRadius: '50%',
-          background: `conic-gradient(from 0deg, transparent 0deg, ${color} 80deg, #fff3c4 140deg, ${color} 200deg, transparent 280deg)`,
-          animation: 'stooornaVipSpin 3.6s linear infinite',
-          opacity: 0.95,
+          background: color,
+          boxShadow: `0 0 8px ${color}99`,
+        }}
+      />
+      {/* Silver shine sweeping around the ring only — the ring's own color never changes */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: -VIP_RING_WIDTH,
+          borderRadius: '50%',
+          background: 'conic-gradient(from 0deg, transparent 0deg, transparent 266deg, rgba(255,255,255,0.95) 292deg, rgba(255,255,255,0.95) 308deg, transparent 334deg, transparent 360deg)',
+          animation: 'stooornaVipShineSpin 3.2s linear infinite',
         }}
       />
       <div
@@ -85,8 +138,8 @@ export function VipAvatarFrame({
           inset: 0,
           borderRadius: '50%',
           overflow: 'hidden',
-          animation: 'stooornaVipGlow 1.8s ease-in-out infinite',
           zIndex: 1,
+          ...(live ? { animation: 'stooornaVipLiveGlow 1.8s ease-in-out infinite' } : null),
         }}
       >
         {children}
@@ -94,7 +147,7 @@ export function VipAvatarFrame({
       <span
         style={{
           position: 'absolute',
-          top: -8,
+          top: -VIP_RING_WIDTH - 4,
           left: '50%',
           transform: 'translateX(-50%)',
           background: color,

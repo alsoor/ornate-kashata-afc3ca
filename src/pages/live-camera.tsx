@@ -1688,7 +1688,7 @@ export default function LiveCameraPage() {
                     position: 'relative',
                   }}
                 >
-                  <VipAvatarFrame userId={hostId} size={40}>
+                  <VipAvatarFrame userId={hostId} size={40} live>
                     <UserAvatar
                       name={hostName}
                       avatarUrl={hostAvatar}
