@@ -6202,6 +6202,7 @@ function PostCard({
                         flex: 1, minWidth: 0, height: 32, display: 'flex', alignItems: 'center',
                         padding: '0 14px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)',
                         background: 'rgba(255,255,255,0.12)', cursor: 'pointer', textAlign: 'left',
+                        marginInlineEnd: 36,
                       }}
                     >
                       <span style={{
