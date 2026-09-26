@@ -110,7 +110,7 @@ export function LiveVipDock({
   if (!vipHost && !canMusic) return null;
 
   return (
-    <div style={{ position: 'fixed', right: 16, bottom: 'calc(10px + env(safe-area-inset-bottom, 0px))', zIndex: 80, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+    <div style={{ position: 'fixed', right: 16, bottom: 'calc(170px + env(safe-area-inset-bottom, 0px))', zIndex: 80, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
       {canMusic && (
         <button
           type="button"

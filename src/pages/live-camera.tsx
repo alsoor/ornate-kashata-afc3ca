@@ -143,6 +143,10 @@ export default function LiveCameraPage() {
   const frozenUidsRef = useRef<Set<number>>(new Set());
   const [speakerUids, setSpeakerUids] = useState<Set<number>>(new Set());
   const speakerUidsRef = useRef<Set<number>>(new Set());
+  /** Uids the host has revoked mic access from — hard-muted for every listener
+   *  right away, instead of relying only on the revoked device to disable its
+   *  own mic in time. Cleared once that uid is granted the mic again. */
+  const revokedUidsRef = useRef<Set<number>>(new Set());
   const [micRequests, setMicRequests] = useState<MicRequest[]>([]);
   const [requestsOpen, setRequestsOpen] = useState(false);
   const [micRequested, setMicRequested] = useState(false);
@@ -304,6 +308,11 @@ export default function LiveCameraPage() {
   const camRef = useRef<ICameraVideoTrack | null>(null);
   const localVideoElRef = useRef<HTMLDivElement | null>(null);
   const remoteVideoElRef = useRef<HTMLDivElement | null>(null);
+  /** Last remote video track received, replayed once the viewer's video
+   *  container has actually mounted (see the effect below). Without this,
+   *  a track that arrives while the "Connecting…" screen is still showing
+   *  gets silently dropped because remoteVideoElRef isn't attached yet. */
+  const remoteVideoTrackRef = useRef<{ play: (el: HTMLElement, opts?: object) => void } | null>(null);
   const remoteTracksRef = useRef<Map<number, { stop: () => void; play: () => void }>>(new Map());
   const myUidRef = useRef<number | null>(null);
   const dataStreamIdRef = useRef<number | null>(null);
@@ -326,6 +335,7 @@ export default function LiveCameraPage() {
   }, []);
 
   const playRemoteVideo = useCallback((track: { play: (el: HTMLElement, opts?: object) => void }) => {
+    remoteVideoTrackRef.current = track;
     const el = remoteVideoElRef.current;
     if (!el) return;
     try {
@@ -426,8 +436,9 @@ export default function LiveCameraPage() {
   const applyTrackPlayback = useCallback((uid: number, track: { stop: () => void; play: () => void }) => {
     const userMuted = mutedUidsRef.current.has(uid);
     const globalMuted = speakerMutedRef.current;
+    const hostRevoked = revokedUidsRef.current.has(uid);
     try {
-      if (userMuted || globalMuted) track.stop();
+      if (userMuted || globalMuted || hostRevoked) track.stop();
       else track.play();
     } catch {
       /* ignore */
@@ -850,6 +861,7 @@ export default function LiveCameraPage() {
         remoteUser.audioTrack?.stop();
         remoteUser.videoTrack?.stop();
         remoteTracksRef.current.delete(remoteUser.uid as number);
+        revokedUidsRef.current.delete(remoteUser.uid as number);
         remoteUids.delete(remoteUser.uid as number);
         syncList();
         if (isHostRoom && !amHost && hostId) {
@@ -929,8 +941,27 @@ export default function LiveCameraPage() {
             });
           } else if ((msg.t === 'mic-grant' || msg.t === 'mic-revoke' || msg.t === 'speakers-set') && isHostRoom) {
             const list = ((msg as any).speakers || msg.uids || []).map(Number);
-            speakerUidsRef.current = new Set(list);
-            setSpeakerUids(new Set(list));
+            const nextSpeakers = new Set(list);
+            const prevSpeakers = speakerUidsRef.current;
+            // A speaker who lost the mic is hard-muted for every listener
+            // right away, instead of relying only on their own device to
+            // disable its mic in time.
+            prevSpeakers.forEach((prevUid) => {
+              if (!nextSpeakers.has(prevUid)) {
+                revokedUidsRef.current.add(prevUid);
+                const track = remoteTracksRef.current.get(prevUid);
+                if (track) applyTrackPlayback(prevUid, track);
+              }
+            });
+            nextSpeakers.forEach((uid) => {
+              if (revokedUidsRef.current.has(uid)) {
+                revokedUidsRef.current.delete(uid);
+                const track = remoteTracksRef.current.get(uid);
+                if (track) applyTrackPlayback(uid, track);
+              }
+            });
+            speakerUidsRef.current = nextSpeakers;
+            setSpeakerUids(nextSpeakers);
             const me = myUidRef.current;
             if (me != null && !amHost && !list.includes(me)) void forceMuteLocalMic();
           }
@@ -1153,6 +1184,17 @@ export default function LiveCameraPage() {
     if (joined && amHost) playLocalVideo();
   }, [joined, amHost, playLocalVideo]);
 
+  useEffect(() => {
+    // A viewer's video container only exists once `joined` flips to true and
+    // this component re-renders past the "Connecting…" screen. If the host's
+    // video track was already received before that happened, replay it now
+    // that remoteVideoElRef is actually mounted — otherwise the viewer is
+    // stuck on a black screen until the host toggles their camera off/on.
+    if (joined && !amHost && remoteVideoTrackRef.current) {
+      playRemoteVideo(remoteVideoTrackRef.current);
+    }
+  }, [joined, amHost, playRemoteVideo]);
+
   // Keep presence alive for profile visitors (local + event)
   useEffect(() => {
     if (!joined || !amHost || !hostId) return;
@@ -1360,6 +1402,24 @@ export default function LiveCameraPage() {
 
   const applySpeakerList = useCallback((uids: number[]) => {
     const next = new Set(uids.map(Number).filter(n => Number.isFinite(n)));
+    const prev = speakerUidsRef.current;
+    // A speaker who lost the mic is hard-muted for every listener right
+    // away, instead of relying only on their own device to disable its
+    // mic in time.
+    prev.forEach((prevUid) => {
+      if (!next.has(prevUid)) {
+        revokedUidsRef.current.add(prevUid);
+        const track = remoteTracksRef.current.get(prevUid);
+        if (track) applyTrackPlayback(prevUid, track);
+      }
+    });
+    next.forEach((uid) => {
+      if (revokedUidsRef.current.has(uid)) {
+        revokedUidsRef.current.delete(uid);
+        const track = remoteTracksRef.current.get(uid);
+        if (track) applyTrackPlayback(uid, track);
+      }
+    });
     speakerUidsRef.current = next;
     setSpeakerUids(next);
     const me = myUidRef.current;
@@ -1368,7 +1428,7 @@ export default function LiveCameraPage() {
       setMicRequested(false);
       void forceMuteLocalMic();
     }
-  }, [amHost, forceMuteLocalMic]);
+  }, [amHost, forceMuteLocalMic, applyTrackPlayback]);
 
   const hostSetSpeaker = useCallback(async (uid: number, grant: boolean) => {
     if (!amHost) return;
