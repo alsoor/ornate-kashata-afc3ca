@@ -76,15 +76,6 @@ const CLR_TAB_BORDER    = 'rgba(0,188,212,0.3)';
 
 const CLR_POST_BORDER   = '#0d3d33';
 
-// Max characters allowed for a plain text-only post (regular user composer, not company product posts).
-const TEXT_POST_CHAR_LIMIT = 100;
-
-// Collapsed height (px) for feed post media (image or video) before the user taps it.
-// Every post preview — image or video, with or without a caption — uses this same
-// fixed height so the whole feed lines up. Tapping the media animates it open to
-// full size and reveals the caption + like/comment/share actions.
-const FEED_MEDIA_COLLAPSED_HEIGHT = 300;
-
 // ── بث صوتي نشط: أيقونة حمراء وامضة لكل البثوث ─────────────────────────────
 function liveChannelForHost(hostId: string): string {
   const clean = String(hostId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
@@ -445,7 +436,7 @@ function formatVideoClock(sec: number): string {
 function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(true);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const seekingRef = useRef(false);
@@ -459,19 +450,12 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
     v.muted = muted;
     if (active) {
       v.currentTime = 0;
-      const tryPlay = (withSound: boolean) => {
-        v.muted = !withSound ? true : muted;
-        return v.play().then(() => setPlaying(true)).catch(() => {
-          if (withSound) return tryPlay(false);
-          setPlaying(false);
-        });
-      };
-      void tryPlay(true);
+      void v.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
     } else {
       v.pause();
       setPlaying(false);
     }
-  }, [active, src, muted]);
+  }, [active, src]);
 
   useEffect(() => {
     if (!active) return;
@@ -5695,13 +5679,6 @@ function PostCard({
   const [mediaPage, setMediaPage] = useState(0);
   const [cardEngTick, setCardEngTick] = useState(0);
   const mediaScrollRef = useRef<HTMLDivElement | null>(null);
-  // ── Feed video seek bar: per-media-index refs + progress state so the draggable
-  // line/time/play-pause row can control whichever video is currently in view. ──
-  const feedVideoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
-  const feedSeekingIndexRef = useRef<number | null>(null);
-  const [feedVideoCurrent, setFeedVideoCurrent] = useState<Record<number, number>>({});
-  const [feedVideoDuration, setFeedVideoDuration] = useState<Record<number, number>>({});
-  const [feedVideoPlaying, setFeedVideoPlaying] = useState<Record<number, boolean>>({});
   useEffect(() => {
     const onEng = (e: Event) => {
       const d = (e as CustomEvent).detail as { postId?: number } | undefined;
@@ -5726,42 +5703,6 @@ function PostCard({
   // روابط X داخل نص المنشور — نص إعلان/منشور المنتج مخفي في الفييد، فنعرض وسائط الرابط مباشرة
   const postXUrls = isProductAd ? extractLinkMediaUrls(post.text) : [];
   const [productDetailsOpen, setProductDetailsOpen] = useState(false);
-  // Feed media tap cycle:
-  //   1st tap -> media expands to full size and the caption overlay shows
-  //   2nd tap -> caption overlay hides, media stays expanded (fully visible)
-  //   3rd tap -> media collapses back to the small preview
-  const [mediaExpanded, setMediaExpanded] = useState(false);
-  const [captionTextOpen, setCaptionTextOpen] = useState(false);
-  function handleFeedMediaTap(index: number) {
-    setMediaPage(index);
-    if (!mediaExpanded) {
-      setMediaExpanded(true);
-      setCaptionTextOpen(true);
-    } else if (captionTextOpen) {
-      setCaptionTextOpen(false);
-    } else {
-      setMediaExpanded(false);
-      setCaptionTextOpen(false);
-    }
-  }
-  // Root card element — used to smoothly re-center the whole post in the viewport
-  // whenever it expands or collapses, so it never drifts up or down as its height
-  // changes (centers on open AND on close, not just on open).
-  const postCardRootRef = useRef<HTMLDivElement | null>(null);
-  const mediaExpandedMountedRef = useRef(false);
-  useEffect(() => {
-    if (!mediaExpandedMountedRef.current) {
-      // Skip the initial render so the feed doesn't jump when it first loads.
-      mediaExpandedMountedRef.current = true;
-      return;
-    }
-    const el = postCardRootRef.current;
-    if (!el) return;
-    const t = setTimeout(() => {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 30);
-    return () => clearTimeout(t);
-  }, [mediaExpanded]);
   function goToMediaPage(idx: number) {
     const el = mediaScrollRef.current;
     if (!el) return;
@@ -5769,41 +5710,10 @@ function PostCard({
     el.scrollTo({ left: clamped * el.clientWidth, behavior: 'smooth' });
     setMediaPage(clamped);
   }
-  function toggleFeedVideoPlayback(index: number) {
-    const v = feedVideoRefs.current[index];
-    if (!v) return;
-    if (v.paused) void v.play().catch(() => {});
-    else v.pause();
-  }
-
-  useEffect(() => {
-    const videos = Object.values(feedVideoRefs.current).filter(Boolean) as HTMLVideoElement[];
-    if (!videos.length || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        const el = entry.target as HTMLVideoElement;
-        const mostlyVisible = entry.isIntersecting && entry.intersectionRatio >= 0.55;
-        if (mostlyVisible) {
-          el.muted = false;
-          const idx = Number(Object.entries(feedVideoRefs.current).find(([, node]) => node === el)?.[0]);
-          if (Number.isFinite(idx)) setFeedMuted(prev => ({ ...prev, [idx]: false }));
-          void el.play().catch(() => {
-            el.muted = true;
-            void el.play().catch(() => {});
-          });
-        } else {
-          el.pause();
-        }
-      }
-    }, { threshold: [0, 0.25, 0.55, 0.8], rootMargin: '-12% 0px -18% 0px' });
-    videos.forEach(v => io.observe(v));
-    return () => io.disconnect();
-  }, [mediaItems.length, mediaPage, post.id]);
 
   return (
     <>
       <motion.div
-        ref={postCardRootRef}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: isBusinessHidden ? 0.45 : 1, y: 0 }}
         style={{
@@ -6021,50 +5931,12 @@ function PostCard({
           </div>
         )}
 
+        {/* Media posts: caption is hidden on the card — open via the three-lines button only */}
+
         {/* Media — من اليمين لليسار بعرض الشاشة كاملاً. لو أكثر من عنصر واحد: معرض قابل
-            للتصفح يمين/يسار (سحب أو أزرار الأسهم) مع عداد صفحات "1/N" زي انستغرام.
-            النص يبقى مخفي فوق الصورة/الفيديو — أي نقرة على الوسائط تفتحه وتغلقه (شتر)
-            بدل فتح صفحة منفصلة. */}
+            للتصفح يمين/يسار (سحب أو أزرار الأسهم) مع عداد صفحات "1/N" زي انستغرام. */}
         {hasMedia && (
           <div style={{ position: 'relative', width: '100%' }}>
-            <AnimatePresence>
-              {captionTextOpen && (post.text || (isProductAd && (productAd?.title || productAd?.price || productAd?.details))) && (
-                <motion.div
-                  key="feed-caption-reveal"
-                  initial={{ y: '100%', opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: '100%', opacity: 0 }}
-                  transition={{ type: 'spring', stiffness: 420, damping: 40 }}
-                  onClick={e => e.stopPropagation()}
-                  style={{
-                    position: 'absolute',
-                    // Sits just above the like/comment/share bar so it rises up from
-                    // inside the bottom of the media instead of dropping down from the top.
-                    bottom: mediaItems[mediaPage]?.type === 'video' ? 128 : 84,
-                    left: 0, right: 0, zIndex: 5,
-                    maxHeight: '55%', overflowY: 'auto',
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.88) 60%, rgba(0,0,0,0))',
-                    padding: '28px 14px 14px',
-                  }}
-                >
-                  {isProductAd ? (
-                    <>
-                      <p style={{ margin: 0, color: '#fff', fontSize: '1rem', fontWeight: 800, lineHeight: 1.4 }}>
-                        {productAd?.title || productAdDisplayTitle(post) || post.authorName || ''}
-                      </p>
-                      {productAd?.price ? (
-                        <p style={{ margin: '8px 0 0', color: '#00BCD4', fontSize: '0.92rem', fontWeight: 800 }}>{productAd.price}</p>
-                      ) : null}
-                      {productAd?.details ? (
-                        <p style={{ margin: '10px 0 0', color: 'rgba(255,255,255,0.92)', fontSize: '0.84rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{productAd.details}</p>
-                      ) : null}
-                    </>
-                  ) : (
-                    <PostText text={post.text} color="#00BCD4" textColor="#ffffff" bold onHashtag={onHashtag} />
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
             {mediaItems.length > 1 && (
               <style>{'.post-media-scroll::-webkit-scrollbar{display:none}'}</style>
             )}
@@ -6090,9 +5962,7 @@ function PostCard({
               }}
             >
               {mediaItems.map((media, index) => (
-                <motion.div
-                  layout
-                  transition={{ type: 'spring', stiffness: 300, damping: 32 }}
+                <div
                   key={`${media.type}-${index}`}
                   style={{
                     position: 'relative',
@@ -6111,79 +5981,51 @@ function PostCard({
                     type="button"
                     onClick={e => {
                       e.stopPropagation();
-                      handleFeedMediaTap(index);
+                      setMediaPage(index);
+                      pendingFeedMediaIndex = index;
+                      onOpenPost(post);
                     }}
-                    aria-label={
-                      !mediaExpanded
-                        ? (media.type === 'video' ? 'Expand video' : 'Expand image')
-                        : (captionTextOpen ? 'Hide caption' : 'Collapse media')
-                    }
+                    aria-label={media.type === 'video' ? 'Open video' : 'Open image'}
                     style={{
                       position: 'relative', width: '100%', boxSizing: 'border-box', padding: 0,
                       border: 'none',
-                      background: '#000', cursor: 'pointer', display: 'block', overflow: 'hidden', maxHeight: '85vh',
+                      background: '#000', cursor: 'pointer', display: 'block', overflow: 'hidden', maxHeight: '48vh',
                     }}
                   >
                     {media.type === 'video' ? (
-                      <motion.video
-                        layout
-                        transition={{ type: 'spring', stiffness: 300, damping: 32 }}
-                        ref={el => { feedVideoRefs.current[index] = el; }}
+                      <video
                         src={media.url}
-                        muted={feedMuted[index] === true}
+                        muted={feedMuted[index] !== false}
+                        autoPlay
                         loop
                         playsInline
                         preload="metadata"
-                        onTimeUpdate={e => {
-                          if (feedSeekingIndexRef.current === index) return;
-                          const v = e.currentTarget;
-                          setFeedVideoCurrent(prev => ({ ...prev, [index]: v.currentTime || 0 }));
+                        onClick={e => {
+                          e.stopPropagation();
+                          pendingFeedMediaIndex = index;
+                          setMediaPage(index);
+                          onOpenPost(post);
                         }}
-                        onLoadedMetadata={e => {
-                          const v = e.currentTarget;
-                          setFeedVideoDuration(prev => ({ ...prev, [index]: v.duration || 0 }));
-                        }}
-                        onPlay={() => setFeedVideoPlaying(prev => ({ ...prev, [index]: true }))}
-                        onPause={() => setFeedVideoPlaying(prev => ({ ...prev, [index]: false }))}
-                        style={{
-                          width: '100%',
-                          height: mediaExpanded ? undefined : FEED_MEDIA_COLLAPSED_HEIGHT,
-                          maxHeight: '85vh',
-                          objectFit: 'cover',
-                          objectPosition: 'top',
-                          display: 'block',
-                          background: '#000',
-                          cursor: 'pointer',
-                        }}
+                        style={{ width: '100%', maxHeight: '48vh', objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }}
                       />
                     ) : (
-                      <motion.img
-                        layout
-                        transition={{ type: 'spring', stiffness: 300, damping: 32 }}
+                      <img
                         src={media.url}
                         alt=""
-                        style={{
-                          width: '100%',
-                          height: mediaExpanded ? undefined : FEED_MEDIA_COLLAPSED_HEIGHT,
-                          maxHeight: '85vh',
-                          objectFit: 'cover',
-                          objectPosition: 'top',
-                          display: 'block',
-                          background: '#000',
-                        }}
+                        style={{ width: '100%', maxHeight: '48vh', objectFit: 'cover', display: 'block', background: '#000' }}
                       />
                     )}
                   </button>
-                  {/* Mute/unmute toggle for the video preview — only shown once the post is
-                      expanded, so the collapsed preview stays a clean, control-free thumbnail. */}
-                  {media.type === 'video' && mediaExpanded && (
+                  {/* أيقونة كتم/تشغيل الصوت — تحل محل أزرار الفيديو الافتراضية (controls) على
+                      معاينة الفييد الصغيرة، فتبقى الصورة/الفيديو تبين كاملة وبعيدة بدون تحكمات كبيرة تغطيها. */}
+                  {media.type === 'video' && (
                     <motion.button
                       whileTap={{ scale: 0.88 }}
                       onClick={e => {
                         e.stopPropagation();
                         setFeedMuted(prev => ({ ...prev, [index]: prev[index] === false ? true : false }));
                       }}
-                      aria-label={feedMuted[index] === false ? 'Mute' : 'Unmute'}
+                      aria-label={feedMuted[index] === false ? 'كتم الصوت' : 'تشغيل الصوت'}
                       style={{
                         position: 'absolute', bottom: 10, insetInlineEnd: 10, width: 30, height: 30, borderRadius: '50%',
                         background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff', cursor: 'pointer',
@@ -6194,13 +6036,12 @@ function PostCard({
                     </motion.button>
                   )}
                   {false && isMine && index === 0 && null}
-                </motion.div>
+                </div>
               ))}
             </div>
 
-            {/* Page counter only (top) when post has multiple media items — hidden until expanded,
-                so the collapsed preview shows nothing but the cropped media itself. */}
-            {mediaExpanded && mediaItems.length > 1 && (
+            {/* Page counter only (top) when post has multiple media items */}
+            {mediaItems.length > 1 && (
               <div style={{
                 position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
                 padding: '3px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.55)',
@@ -6210,113 +6051,6 @@ function PostCard({
                 {mediaPage + 1}/{mediaItems.length}
               </div>
             )}
-
-            {/* Actions overlay — مخفية افتراضيًا فوق الوسائط، تظهر فقط مع نفس نقرة إظهار النص
-                (خلفية تدرّج أسود خفيف من الأسفل، أيقونات بيضاء) بدل شريط أبيض ثابت تحت الوسائط. */}
-            <AnimatePresence>
-              {mediaExpanded && (
-                <motion.div
-                  key="feed-actions-reveal"
-                  initial={{ y: '100%', opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: '100%', opacity: 0 }}
-                  transition={{ type: 'spring', stiffness: 420, damping: 40 }}
-                  onClick={e => e.stopPropagation()}
-                  style={{
-                    position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 5,
-                    display: 'flex', flexDirection: 'column', gap: 10,
-                    padding: '20px 14px 14px',
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.85) 40%, rgba(0,0,0,0))',
-                  }}
-                >
-                  {mediaItems[mediaPage]?.type === 'video' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-                      <button
-                        type="button"
-                        onClick={e => { e.stopPropagation(); toggleFeedVideoPlayback(mediaPage); }}
-                        aria-label={feedVideoPlaying[mediaPage] === false ? 'تشغيل' : 'إيقاف'}
-                        style={{
-                          width: 26, height: 26, borderRadius: '50%', border: 'none',
-                          background: 'rgba(255,255,255,0.16)', color: '#fff', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
-                        }}
-                      >
-                        {feedVideoPlaying[mediaPage] === false
-                          ? <Play size={12} strokeWidth={2.4} style={{ marginLeft: 1 }} />
-                          : <Pause size={12} strokeWidth={2.4} />}
-                      </button>
-                      <input
-                        type="range"
-                        min={0}
-                        max={feedVideoDuration[mediaPage] || 0}
-                        step={0.05}
-                        value={Math.min(feedVideoCurrent[mediaPage] || 0, feedVideoDuration[mediaPage] || 0)}
-                        onClick={e => e.stopPropagation()}
-                        onChange={e => {
-                          const next = Number(e.target.value);
-                          const v = feedVideoRefs.current[mediaPage];
-                          if (v) v.currentTime = next;
-                          setFeedVideoCurrent(prev => ({ ...prev, [mediaPage]: next }));
-                        }}
-                        onMouseDown={e => { e.stopPropagation(); feedSeekingIndexRef.current = mediaPage; }}
-                        onMouseUp={e => { e.stopPropagation(); feedSeekingIndexRef.current = null; }}
-                        onTouchStart={e => { e.stopPropagation(); feedSeekingIndexRef.current = mediaPage; }}
-                        onTouchEnd={e => { e.stopPropagation(); feedSeekingIndexRef.current = null; }}
-                        aria-label="تقدّم الفيديو"
-                        style={{ flex: 1, height: 4, margin: 0, padding: 0, cursor: 'pointer', accentColor: '#ffffff' }}
-                      />
-                      <span style={{
-                        color: '#fff', fontSize: '0.62rem', fontWeight: 700,
-                        fontVariantNumeric: 'tabular-nums', minWidth: 62, flexShrink: 0, textAlign: 'right',
-                      }}>
-                        {formatVideoClock(feedVideoCurrent[mediaPage] || 0)} / {formatVideoClock(feedVideoDuration[mediaPage] || 0)}
-                      </span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-                    <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post, multiMedia ? mediaPage : undefined); }} style={{
-                      display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
-                      color: cardLiked ? '#ef4444' : '#ffffff', flexShrink: 0,
-                    }}>
-                      <Heart size={18} strokeWidth={2} fill={cardLiked ? '#ef4444' : 'none'} />
-                      <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardLikes > 0 ? cardLikes : ''}</span>
-                    </motion.button>
-                    <motion.button
-                      whileTap={{ scale: 0.88 }}
-                      onClick={e => {
-                        e.stopPropagation();
-                        if (isProductAd && onProductShareMenu) onProductShareMenu(post);
-                        else onShare(post);
-                      }}
-                      aria-label="مشاركة"
-                      style={{
-                        display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer',
-                        color: productShareAlert ? '#eab308' : '#ffffff', flexShrink: 0,
-                      }}
-                    >
-                      <Send size={17} strokeWidth={2} color={productShareAlert ? '#eab308' : undefined} />
-                    </motion.button>
-                    <button
-                      type="button"
-                      onClick={e => { e.stopPropagation(); if (onOpenComments) onOpenComments(post, multiMedia ? mediaPage : undefined); else onOpenPost(post); }}
-                      style={{
-                        flex: 1, minWidth: 0, height: 32, display: 'flex', alignItems: 'center',
-                        padding: '0 14px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)',
-                        background: 'rgba(255,255,255,0.12)', cursor: 'pointer', textAlign: 'left',
-                        marginInlineEnd: 36,
-                      }}
-                    >
-                      <span style={{
-                        color: 'rgba(255,255,255,0.75)', fontSize: '0.78rem', fontWeight: 500,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>
-                        {cardComments > 0 ? `${cardComments} comments` : 'What do you think of this?'}
-                      </span>
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         )}
 
@@ -6327,9 +6061,8 @@ function PostCard({
           </div>
         )}
 
-        {/* Actions — تظهر كشريط ثابت أسفل البوست فقط للمنشورات بدون وسائط (نصية) —
-            منشورات الوسائط تستخدم شريط الأزرار المخفي فوق الصورة/الفيديو أعلاه. */}
-        {!hasMedia && ((isProductAd || isCompanyAuthor) ? (
+        {/* Actions — منتج أو شركة: لايك → تعليقات → شير | تفاصيل (نفس داخل البوست) */}
+        {(isProductAd || isCompanyAuthor) ? (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             paddingTop: 12, paddingInline: hasMedia ? 14 : 0, gap: 8,
@@ -6367,7 +6100,25 @@ function PostCard({
               </motion.button>
             </div>
 
-            {/* موازنة المساحة بعد نقل التعليقات بين اللايك والشير — three-lines button removed, reading now happens via the red dot on the media */}
+            <motion.button
+              whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
+              onClick={e => { e.stopPropagation(); if (postHasVisibleCaption(post)) setProductDetailsOpen(true); }}
+              aria-label="Details"
+              disabled={!postHasVisibleCaption(post)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
+                borderRadius: 10, width: 44, height: 36,
+                cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
+                padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
+              }}
+            >
+              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+            </motion.button>
+
+            {/* موازنة المساحة بعد نقل التعليقات بين اللايك والشير */}
             <div style={{ minWidth: 72 }} />
           </div>
         ) : (
@@ -6443,9 +6194,27 @@ function PostCard({
             </motion.button>
           </div>
 
+          <motion.button
+            whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
+            onClick={e => { e.stopPropagation(); if (postHasVisibleCaption(post)) setProductDetailsOpen(true); }}
+            aria-label="Details"
+            disabled={!postHasVisibleCaption(post)}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+              background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
+              borderRadius: 10, width: 44, height: 36,
+              cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
+              padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
+            }}
+          >
+            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
+          </motion.button>
+
           <div style={{ minWidth: 72 }} />
         </div>
-        ))}
+        )}
 
         {/* Caption / product details sheet — three lines only, does not open post page */}
         <AnimatePresence>
@@ -6626,7 +6395,7 @@ function PostCard({
             onClick={e => e.stopPropagation()}
             style={{
               flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: '100%', position: 'relative',
+              width: '100%',
             }}
           >
             {mediaLightbox.type === 'video' ? (
@@ -6647,7 +6416,7 @@ function PostCard({
             )}
           </div>
 
-          {/* Same action bar as public post card: like, comment, share */}
+          {/* Same action bar as public post card: like, comment, share, three-lines */}
           <div
             onClick={e => e.stopPropagation()}
             style={{
@@ -6682,6 +6451,23 @@ function PostCard({
                 <Send size={20} strokeWidth={2} />
               </motion.button>
             </div>
+            <motion.button
+              whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
+              onClick={() => { if (!postHasVisibleCaption(post)) return; setMediaLightbox(null); setProductDetailsOpen(true); }}
+              aria-label="Details"
+              disabled={!postHasVisibleCaption(post)}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+                borderRadius: 12, width: 52, height: 44,
+                cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
+                padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
+              }}
+            >
+              <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+              <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+              <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+            </motion.button>
             <motion.button
               whileTap={{ scale: 0.9 }}
               type="button"
@@ -7920,7 +7706,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
 
             <div
               onClick={e => e.stopPropagation()}
-              style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', position: 'relative' }}
+              style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}
             >
               {mediaLightbox.type === 'video' ? (
                 <video
@@ -7940,7 +7726,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               )}
             </div>
 
-            {/* Same bar as public post: like, comment — open full post for share */}
+            {/* Same bar as public post: like, comment — open full post for share/details */}
             <div
               onClick={e => e.stopPropagation()}
               style={{
@@ -7968,6 +7754,20 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{mediaLightbox.post.commentsCount > 0 ? mediaLightbox.post.commentsCount : ''}</span>
                 </motion.button>
               </div>
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                onClick={() => { setMediaLightbox(null); onOpenPost(mediaLightbox.post); }}
+                aria-label="Details"
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: 12, width: 52, height: 44, cursor: 'pointer', padding: 0,
+                }}
+              >
+                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+              </motion.button>
             <motion.button
               whileTap={{ scale: 0.9 }}
               type="button"
@@ -13507,16 +13307,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }
 
   async function openHashtag(tag: string) {
-    const clean = String(tag || '').replace(/^#/, '').trim();
-    if (!clean) return;
-    setHashtagView({ tag: clean, posts: [] });
     try {
-      const response = await fetch(`/api/posts/hashtags?tag=${encodeURIComponent(clean)}`, { credentials: 'include' });
+      const response = await fetch(`/api/posts/hashtags?tag=${encodeURIComponent(tag)}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to load hashtag');
       const data = await response.json() as { tag: string; posts: PostItem[] };
-      setHashtagView({ tag: data.tag || clean, posts: data.posts ?? [] });
+      setHashtagView({ tag: data.tag, posts: data.posts ?? [] });
     } catch {
-      setHashtagView({ tag: clean, posts: [] });
+      setHashtagView({ tag, posts: [] });
     }
   }
 
@@ -14317,7 +14114,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Also auto-opens when returning from the chat page's back button after chatting
   // from a profile opened inside this flow (see FriendStoryProfile's chat button),
   // via the ?openTextPosts=1 marker left in the URL before navigating to /chat.
-  const [textPostsPageOpen, setTextPostsPageOpen] = useState(true);
+  const [textPostsPageOpen, setTextPostsPageOpen] = useState(() => {
+    try {
+      if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('stooorna_return_text_posts') === '1') {
+        return true;
+      }
+    } catch { /* ignore */ }
+    return !user || searchParams.get('openTextPosts') === '1';
+  });
   // true when the panel was opened via URL navigation (no flash animation needed)
   const textPostsOpenedFromUrl = useRef((() => {
     try {
@@ -17167,8 +16971,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         </div>
 
         <AnimatePresence>
-          {hashtagView && createPortal(
-            <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 12480, background: '#ffffff', overflowY: 'auto', paddingBottom: 28 }}>
+          {hashtagView && (
+            <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 10195, background: '#ffffff', overflowY: 'auto', paddingBottom: 28 }}>
               <div style={{ position: 'sticky', top: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 10, padding: '16px 14px', background: '#ffffff', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
                 <button onClick={() => setHashtagView(null)} aria-label="Close" style={{ background: 'none', border: 'none', color: '#0f1419', cursor: 'pointer', display: 'flex', width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: '50%' }}><X size={22} strokeWidth={2.2} /></button>
                 <Hash size={19} color="#1d9bf0" />
@@ -17192,8 +16996,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   <PostText text={post.text} color="hsl(var(--primary))" textColor={CLR_TEXT_DIM} onHashtag={openHashtag} />
                 </div>
               )) : <p style={{ color: 'hsl(var(--muted-foreground))', textAlign: 'center', padding: 32 }}>لا توجد منشورات لهذا الهاشتاق بعد</p>}
-            </motion.div>,
-            document.body
+            </motion.div>
           )}
         </AnimatePresence>
 
@@ -18888,14 +18691,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 whileTap={{ scale: 0.96 }}
                 animate={composerPosting ? { scale: [1, 1.08, 1], boxShadow: ['0 0 0 0 rgba(29,155,240,0.5)', '0 0 0 12px rgba(29,155,240,0)', '0 0 0 0 rgba(29,155,240,0.35)'] } : { scale: 1, boxShadow: '0 0 0 0 rgba(29,155,240,0)' }}
                 transition={composerPosting ? { duration: 0.95, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
-                disabled={composerPosting || !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) || (!isCompanyPublisher && composerProductDetails.length > TEXT_POST_CHAR_LIMIT)}
+                disabled={composerPosting || !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)}
                 onClick={() => void submitPost('text')}
                 style={{
                   minWidth: 72, height: 34, padding: '0 18px', borderRadius: 999, border: 'none',
-                  background: (!(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) || (!isCompanyPublisher && composerProductDetails.length > TEXT_POST_CHAR_LIMIT))
+                  background: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)
                     ? 'rgba(29,155,240,0.45)' : '#1d9bf0',
                   color: '#fff', fontWeight: 700, fontSize: '0.88rem',
-                  cursor: (!(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) || (!isCompanyPublisher && composerProductDetails.length > TEXT_POST_CHAR_LIMIT)) ? 'default' : 'pointer',
+                  cursor: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) ? 'default' : 'pointer',
                   opacity: composerPosting ? 0.95 : 1,
                 }}
               >
@@ -18966,16 +18769,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       minHeight: '42vh',
                     }}
                   />
-                  <div style={{
-                    display: 'flex', justifyContent: 'flex-end', padding: '2px 4px 0',
-                  }}>
-                    <span style={{
-                      fontSize: '0.78rem', fontWeight: 700,
-                      color: composerProductDetails.length > TEXT_POST_CHAR_LIMIT ? '#ef4444' : '#536471',
-                    }}>
-                      {composerProductDetails.length}/{TEXT_POST_CHAR_LIMIT}
-                    </span>
-                  </div>
                 </div>
                 )}
 {/* ── مستطيل Paste: رابط صورة أو فيديو (X أو رابط مباشر) — للمستخدمين والشركات ── */}
@@ -19954,40 +19747,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 )}
               </div>
 
-              {postHasVisibleCaption(livePost) && !ad && (
-                <div
-                  onClick={e => e.stopPropagation()}
-                  style={{
-                    flexShrink: 0,
-                    maxHeight: '28vh',
-                    overflowY: 'auto',
-                    padding: '10px 16px 8px',
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0.35))',
-                    color: '#fff',
-                  }}
-                >
-                  <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, lineHeight: 1.5, whiteSpace: 'pre-wrap', color: '#fff' }}>
-                    {(livePost.text || '').replace(/\n*\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()}
-                  </p>
-                </div>
-              )}
-              {ad && (
-                <div
-                  onClick={e => e.stopPropagation()}
-                  style={{
-                    flexShrink: 0,
-                    maxHeight: '24vh',
-                    overflowY: 'auto',
-                    padding: '10px 16px 8px',
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0.35))',
-                    color: '#fff',
-                  }}
-                >
-                  <p style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>{ad.title || productAdDisplayTitle(livePost)}</p>
-                  {ad.price ? <p style={{ margin: '6px 0 0', color: '#eab308', fontWeight: 800 }}>{ad.price}</p> : null}
-                  {ad.details ? <p style={{ margin: '8px 0 0', fontSize: '0.86rem', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{ad.details}</p> : null}
-                </div>
-              )}
               <div
                 onClick={e => e.stopPropagation()}
                 style={{
@@ -20036,6 +19795,25 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <Send size={20} strokeWidth={2} color={productInquiryShareAlert(livePost.id) ? '#eab308' : undefined} />
                   </motion.button>
                 </div>
+
+                <motion.button
+                  whileTap={{ scale: postHasVisibleCaption(livePost) ? 0.92 : 1 }}
+                  onClick={() => { if (postHasVisibleCaption(livePost)) setAdDetailsOpen(true); }}
+                  aria-label="Details"
+                  disabled={!postHasVisibleCaption(livePost)}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+                    borderRadius: 10, width: 36, height: 36,
+                    cursor: postHasVisibleCaption(livePost) ? 'pointer' : 'default',
+                    padding: 0, opacity: postHasVisibleCaption(livePost) ? 1 : 0.28,
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                </motion.button>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
                   <motion.button
@@ -20104,6 +19882,73 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </motion.button>
                 </div>
               </div>
+
+              <AnimatePresence>
+                {adDetailsOpen && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setAdDetailsOpen(false)}
+                    style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end' }}
+                  >
+                    <motion.div
+                      initial={{ y: '100%' }}
+                      animate={{ y: 0 }}
+                      exit={{ y: '100%' }}
+                      transition={{ type: 'spring', stiffness: 420, damping: 38 }}
+                      onClick={e => e.stopPropagation()}
+                      style={{
+                        width: '100%', maxHeight: '70vh', overflowY: 'auto',
+                        background: '#fff', borderRadius: '18px 18px 0 0',
+                        padding: '14px 18px calc(20px + env(safe-area-inset-bottom, 0px))',
+                      }}
+                    >
+                                            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
+                      {(() => {
+                        const isCo = !!(
+                          companies.some(c => String(c.id) === String(singlePostView.authorId))
+                          || isCompanyUserAccount({ id: singlePostView.authorId, username: singlePostView.authorUsername, name: singlePostView.authorName }, companies)
+                          || (singlePostView as any).publisherType === 'company'
+                          || (singlePostView as any).authorIsCompany === true
+                          || (singlePostView as any).isCompanyPost === true
+                        );
+                        const plain = (singlePostView.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
+                        if (!isCo) {
+                          return (
+                            <p style={{ margin: 0, color: '#0a0a0a', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                              {plain}
+                            </p>
+                          );
+                        }
+                        return (
+                          <>
+                            <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.15rem', fontWeight: 800, lineHeight: 1.35 }}>
+                              {ad?.title || productAdDisplayTitle(singlePostView)}
+                            </p>
+                            {ad?.price ? (
+                              <p style={{ margin: '8px 0 0', color: CLR_PRIMARY, fontSize: '1rem', fontWeight: 800 }}>{ad.price}</p>
+                            ) : null}
+                            {ad?.details ? (
+                              <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{ad.details}</p>
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                      <button
+                        type="button"
+                        onClick={() => setAdDetailsOpen(false)}
+                        style={{
+                          marginTop: 18, width: '100%', height: 44, borderRadius: 12, border: 'none',
+                          background: '#0f1419', color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                        }}
+                      >
+                        إغلاق
+                      </button>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           );
         })()}
