@@ -7424,7 +7424,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: '6px 0 0' }}>{name || username || '—'}</p>
           {username && <p style={{ color: resolveVipNameStyle(authorId).color || CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
             <VipBadge userId={authorId} compact />
-            {(isCompanyProfile || readBusinessApproved(authorId)) && (
+            {(isCompanyProfile || isAuthorBusinessAccount(authorId, authorUsername)) && (
               <span style={{
                 fontSize: '0.55rem', fontWeight: 900, color: '#0a0a0a',
                 background: '#eab308', borderRadius: 5, padding: '2px 6px',
@@ -7565,7 +7565,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               background: CLR_TAB_ACTIVE,
             }}>
               <FileText size={14} strokeWidth={2} />
-              {(isCompanyProfile || readBusinessApproved(authorId)) ? 'Products' : 'Post'}
+              {(isCompanyProfile || isAuthorBusinessAccount(authorId, authorUsername)) ? 'Products' : 'Post'}
             </div>
           </>
         )}
@@ -16466,7 +16466,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 background: CLR_TAB_ACTIVE,
               }}>
                 <FileText size={14} strokeWidth={2} />
-                {isCompanyPublisher ? 'المنتجات' : 'Post'}
+                {isCompanyPublisher ? 'Products' : 'Post'}
               </div>
               <div style={{ height: 1, background: CLR_NAV_BORDER }} />
             </div>
