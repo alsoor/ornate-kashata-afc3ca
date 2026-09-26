@@ -1571,6 +1571,7 @@ function GlobalBottomNavigation() {
   const homeIncomingSwipeY = useRef<number | null>(null);
   const homeIncomingSwipeStart = useRef<number | null>(null);
   const [homeCallChannel, setHomeCallChannel] = useState<string | null>(null);
+  useEffect(() => { homeCallChannelRef.current = homeCallChannel; }, [homeCallChannel]);
   const [homeIncoming, setHomeIncoming] = useState<{
     video?: boolean;
     channel: string;
@@ -1593,6 +1594,7 @@ function GlobalBottomNavigation() {
   const homeCallSignalWsRef = useRef<WebSocket | null>(null);
   const homeCallApplyInviteRef = useRef<(raw: any) => void>(() => {});
   const homeCallEndedAtRef = useRef<Map<string, number>>(new Map());
+  const homeCallChannelRef = useRef<string | null>(null);
 
   function markHomeCallChannelEnded(channel: string) {
     const ch = String(channel || '').trim();
@@ -1905,6 +1907,22 @@ function GlobalBottomNavigation() {
         try { msg = JSON.parse(String(ev.data || '')); } catch { return; }
         if (!msg || typeof msg !== 'object') return;
         const type = String(msg.type || '');
+        if (type === 'answered' || type === 'call-answered') {
+          const ch = String(msg.channel || '');
+          if (ch && homeCallChannelRef.current && ch === String(homeCallChannelRef.current)) {
+            if (homeCallPhaseRef.current === 'connecting' || homeCallPhaseRef.current === 'animating') {
+              setHomeCallPhase('live');
+              if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
+              if (homeCallNoAnswerTimer.current) {
+                window.clearTimeout(homeCallNoAnswerTimer.current);
+                homeCallNoAnswerTimer.current = null;
+              }
+              stopHomeIncomingRing();
+              try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
+            }
+          }
+          return;
+        }
         if (type === 'hangup' || type === 'call-end' || type === 'ended') {
           const ch = String(msg.channel || '');
           if (ch) markHomeCallChannelEnded(ch);
@@ -2668,10 +2686,59 @@ function GlobalBottomNavigation() {
       }
       void leaveHomeGroupCall();
     }, HOME_CALL_NO_ANSWER_MS);
+    const joinCallerAgora = async () => {
+      try {
+        const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
+        if (homeCallAgoraRef.current) {
+          try { await homeCallAgoraRef.current.leave?.(); } catch { /* */ }
+        }
+        const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
+        homeCallAgoraRef.current = client;
+        client.on('user-published', async (remoteUser: any, mediaType: string) => {
+          try {
+            await client.subscribe(remoteUser, mediaType);
+            if (mediaType === 'audio') remoteUser.audioTrack?.play();
+            if (mediaType === 'video') {
+              requestAnimationFrame(() => { try { remoteUser.videoTrack?.play(remoteVideoRef.current || undefined); } catch { /* */ } });
+            }
+            if (homeCallPhaseRef.current === 'connecting' || homeCallPhaseRef.current === 'animating') {
+              setHomeCallPhase('live');
+              if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
+              if (homeCallNoAnswerTimer.current) {
+                window.clearTimeout(homeCallNoAnswerTimer.current);
+                homeCallNoAnswerTimer.current = null;
+              }
+              stopHomeIncomingRing();
+            }
+          } catch { /* */ }
+        });
+        const [tokenResponse, micTrack] = await Promise.all([
+          fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(user.id)}`, { credentials: 'include' }),
+          AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' }),
+        ]);
+        if (!tokenResponse.ok) return;
+        const tokenData = await tokenResponse.json() as { token: string; uid: number; appId?: string };
+        await client.join(tokenData.appId || '149ef04e839c4132a08efb49d717c436', channel, tokenData.token, tokenData.uid);
+        try { await micTrack.setMuted(false); } catch { /* */ }
+        try { await micTrack.setEnabled(true); } catch { /* */ }
+        homeCallMicRef.current = micTrack;
+        await client.publish([micTrack]);
+        await Promise.all((client.remoteUsers || []).map(async (remoteUser: any) => {
+          try {
+            if (remoteUser.hasAudio) {
+              await client.subscribe(remoteUser, 'audio');
+              remoteUser.audioTrack?.play();
+            }
+          } catch { /* */ }
+        }));
+      } catch { /* */ }
+    };
+    void joinCallerAgora();
     try {
-      await fetch('/api/room/join', {
+      void fetch('/api/room/join', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomId: channel, userId: user.id, name: me.name }),
+        keepalive: true,
       });
       for (const peer of picked) {
         try {
@@ -2716,61 +2783,8 @@ function GlobalBottomNavigation() {
           });
         } catch { /* */ }
       }
-      const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
-      const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
-      homeCallAgoraRef.current = client;
-      client.on('user-published', async (remoteUser: any, mediaType: string) => {
-        try {
-          await client.subscribe(remoteUser, mediaType);
-          if (mediaType === 'audio') remoteUser.audioTrack?.play();
-          if (mediaType === 'video') {
-            requestAnimationFrame(() => { try { remoteUser.videoTrack?.play(remoteVideoRef.current || undefined); } catch { /* */ } });
-          }
-          if (homeCallPhaseRef.current === 'connecting') {
-            setHomeCallPhase('live');
-            if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
-            if (homeCallNoAnswerTimer.current) {
-              window.clearTimeout(homeCallNoAnswerTimer.current);
-              homeCallNoAnswerTimer.current = null;
-            }
-          }
-        } catch { /* */ }
-      });
-      const [tokenResponse, micTrack] = await Promise.all([
-        fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(user.id)}`, { credentials: 'include' }),
-        AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' }),
-      ]);
-      if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json() as { token: string; uid: number; appId?: string };
-        await client.join(tokenData.appId || '149ef04e839c4132a08efb49d717c436', channel, tokenData.token, tokenData.uid);
-        try { await micTrack.setMuted(false); } catch { /* */ }
-        try { await micTrack.setEnabled(true); } catch { /* */ }
-        homeCallMicRef.current = micTrack;
-        const tracks: any[] = [micTrack];
-        if (homeCallVideoRef.current) {
-          try {
-            const cam = await AgoraRTC.createCameraVideoTrack();
-            homeCallCamRef.current = cam;
-            tracks.push(cam);
-            requestAnimationFrame(() => { try { cam.play(localVideoRef.current || undefined); } catch { /* */ } });
-          } catch { /* camera permission */ }
-        }
-        await client.publish(tracks);
-        await Promise.all((client.remoteUsers || []).map(async (remoteUser: any) => {
-          try {
-            if (remoteUser.hasAudio) {
-              await client.subscribe(remoteUser, 'audio');
-              remoteUser.audioTrack?.play();
-            }
-            if (remoteUser.hasVideo) {
-              await client.subscribe(remoteUser, 'video');
-              requestAnimationFrame(() => { try { remoteUser.videoTrack?.play(remoteVideoRef.current || undefined); } catch { /* */ } });
-            }
-          } catch { /* */ }
-        }));
-      }
     } catch { /* partial room connect even if Agora fails */ }
-    if (homeCallSessionRef.current !== session) return;
+    if (homeCallSessionRef.current !== callSession) return;
     // Stay on connecting (Ringing) until the other party joins the room
     setHomeCallMinimized(true); setHomeCallPhase('connecting');
     const poll = async () => {
@@ -2803,7 +2817,7 @@ function GlobalBottomNavigation() {
       } catch { /* */ }
     };
     void poll();
-    homeCallPollRef.current = window.setInterval(poll, 3000);
+    homeCallPollRef.current = window.setInterval(poll, 800);
   }
 
   // Direct 1:1 call from chat header: start immediately with that peer only
@@ -3407,7 +3421,7 @@ function GlobalBottomNavigation() {
     };
     void poll();
     if (homeCallPollRef.current) window.clearInterval(homeCallPollRef.current);
-    homeCallPollRef.current = window.setInterval(poll, 3000);
+    homeCallPollRef.current = window.setInterval(poll, 800);
     try { localStorage.removeItem(`stooorna_home_call_invite_${user.id}`); } catch { /* */ }
   }
 
