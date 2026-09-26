@@ -99,7 +99,7 @@ export function VipAvatarFrame({
     return <div style={{ position: 'relative', width: size, height: size }}>{children}</div>;
   }
   return (
-    <div style={{ position: 'relative', width: size, height: size }}>
+    <div style={{ position: 'relative', width: size, height: size, borderRadius: '50%' }}>
       <style>{`
         @keyframes stooornaVipShineSpin {
           from { transform: rotate(0deg); }
@@ -110,28 +110,6 @@ export function VipAvatarFrame({
           50% { box-shadow: 0 0 0 3px ${color}, 0 0 18px ${color}, 0 0 28px ${color}aa; }
         }
       `}</style>
-      {/* Static ring — solid fixed color, no flashing */}
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          inset: -VIP_RING_WIDTH,
-          borderRadius: '50%',
-          background: color,
-          boxShadow: `0 0 8px ${color}99`,
-        }}
-      />
-      {/* Silver shine sweeping around the ring only — the ring's own color never changes */}
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          inset: -VIP_RING_WIDTH,
-          borderRadius: '50%',
-          background: 'conic-gradient(from 0deg, transparent 0deg, transparent 266deg, rgba(255,255,255,0.95) 292deg, rgba(255,255,255,0.95) 308deg, transparent 334deg, transparent 360deg)',
-          animation: 'stooornaVipShineSpin 3.2s linear infinite',
-        }}
-      />
       <div
         style={{
           position: 'absolute',
@@ -144,10 +122,49 @@ export function VipAvatarFrame({
       >
         {children}
       </div>
+      {/*
+        Static ring — drawn as an inward border sized exactly to this box (inset: 0,
+        box-sizing: border-box) instead of bulging outward past the box with a negative
+        inset. A negative inset made the ring extend beyond the width/height the caller
+        declared, so any wrapper sized to match `size` with overflow hidden (used all
+        over the app for round avatar buttons) clipped most of the ring away, leaving the
+        partial/cut-looking arc seen in the app. Keeping the ring fully inside the box
+        guarantees a complete, evenly round ring everywhere the frame is used, whether or
+        not the parent clips overflow.
+      */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: '50%',
+          boxSizing: 'border-box',
+          border: `${VIP_RING_WIDTH}px solid ${color}`,
+          boxShadow: `0 0 8px ${color}99`,
+          zIndex: 2,
+          pointerEvents: 'none',
+        }}
+      />
+      {/* Silver shine sweeping around the ring only — masked down to the ring's own band
+          so it never fills the avatar's face and the ring's base color never changes. */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: '50%',
+          background: 'conic-gradient(from 0deg, transparent 0deg, transparent 266deg, rgba(255,255,255,0.95) 292deg, rgba(255,255,255,0.95) 308deg, transparent 334deg, transparent 360deg)',
+          WebkitMask: `radial-gradient(circle, transparent calc(50% - ${VIP_RING_WIDTH}px), #000 calc(50% - ${VIP_RING_WIDTH}px))`,
+          mask: `radial-gradient(circle, transparent calc(50% - ${VIP_RING_WIDTH}px), #000 calc(50% - ${VIP_RING_WIDTH}px))`,
+          animation: 'stooornaVipShineSpin 3.2s linear infinite',
+          zIndex: 3,
+          pointerEvents: 'none',
+        }}
+      />
       <span
         style={{
           position: 'absolute',
-          top: -VIP_RING_WIDTH - 4,
+          top: 2,
           left: '50%',
           transform: 'translateX(-50%)',
           background: color,
@@ -156,7 +173,7 @@ export function VipAvatarFrame({
           fontWeight: 900,
           borderRadius: 6,
           padding: '1px 7px',
-          zIndex: 3,
+          zIndex: 4,
           letterSpacing: '0.06em',
           boxShadow: `0 2px 8px ${color}99`,
         }}
