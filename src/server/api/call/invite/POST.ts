@@ -28,6 +28,7 @@ export default async function handler(req: Request, res: Response) {
       channel?: string;
       kind?: string;
       video?: boolean;
+      answered?: boolean;
       hostId?: string;
       hostName?: string | null;
       hostAvatar?: string | null;
@@ -58,6 +59,7 @@ export default async function handler(req: Request, res: Response) {
       members: Array.isArray(body.members) ? body.members : [],
       video,
       kind: video ? 'video' : 'voice',
+      answered: body.answered === true,
       at: Date.now(),
     };
 
