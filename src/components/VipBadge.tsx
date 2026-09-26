@@ -87,11 +87,14 @@ export function VipAvatarFrame({
   userId,
   size = 80,
   live = false,
+  hideLabel = false,
   children,
 }: {
   userId?: string | null;
   size?: number;
   live?: boolean;
+  /** When true, keeps the color ring + shine but hides the floating "VIP" text tag above it. Defaults to false so every existing call site keeps showing the tag exactly as before. */
+  hideLabel?: boolean;
   children: React.ReactNode;
 }) {
   const { active, color } = useVipVisualState(userId);
@@ -161,25 +164,27 @@ export function VipAvatarFrame({
           pointerEvents: 'none',
         }}
       />
-      <span
-        style={{
-          position: 'absolute',
-          top: -VIP_RING_WIDTH - 4,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: color,
-          color: '#111',
-          fontSize: size >= 70 ? 9 : 8,
-          fontWeight: 900,
-          borderRadius: 6,
-          padding: '1px 7px',
-          zIndex: 4,
-          letterSpacing: '0.06em',
-          boxShadow: `0 2px 8px ${color}99`,
-        }}
-      >
-        VIP
-      </span>
+      {!hideLabel && (
+        <span
+          style={{
+            position: 'absolute',
+            top: -VIP_RING_WIDTH - 4,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: color,
+            color: '#111',
+            fontSize: size >= 70 ? 9 : 8,
+            fontWeight: 900,
+            borderRadius: 6,
+            padding: '1px 7px',
+            zIndex: 4,
+            letterSpacing: '0.06em',
+            boxShadow: `0 2px 8px ${color}99`,
+          }}
+        >
+          VIP
+        </span>
+      )}
     </div>
   );
 }

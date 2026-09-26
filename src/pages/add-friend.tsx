@@ -16206,8 +16206,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           boxSizing: 'border-box',
                           boxShadow: hasStory && !allSeen ? '0 0 10px rgba(14,165,233,0.45)' : '0 0 8px rgba(14,165,233,0.25)',
                         }}>
-                          {/* VIP account: gold spinning ring frame, same component used on the friends' story strip and the fullscreen story viewer */}
-                          <VipAvatarFrame userId={user?.id} size={68}>
+                          {/* VIP account: gold spinning ring frame, same component used on the friends' story strip and the fullscreen story viewer.
+                              hideLabel here only — keeps the ring sized exactly to this avatar without the floating "VIP" text tag poking above it. */}
+                          <VipAvatarFrame userId={user?.id} size={68} hideLabel>
                             <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={68} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
                           </VipAvatarFrame>
                         </div>
@@ -16240,7 +16241,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     </div>
                     <span style={{ fontSize: '0.58rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 3 }}>
                       قصتي
-                      {isAuthorBusinessAccount(user?.id, myUsername) && <BusinessHeadBadgeInline compact />}
                     </span>
                   </div>
                 );
@@ -16254,13 +16254,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     {myUsername && (
                       <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         @{myUsername}
-                        {businessApproved && (
-                          <span style={{
-                            fontSize: '0.55rem', fontWeight: 900, color: '#0a0a0a',
-                            background: '#eab308', borderRadius: 5, padding: '2px 6px',
-                            letterSpacing: '0.03em',
-                          }}>Business</span>
-                        )}
                       </span>
                     )}
                     {myBio && (
