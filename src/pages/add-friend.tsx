@@ -76,6 +76,9 @@ const CLR_TAB_BORDER    = 'rgba(0,188,212,0.3)';
 
 const CLR_POST_BORDER   = '#0d3d33';
 
+// Max characters allowed for a plain text-only post (regular user composer, not company product posts).
+const TEXT_POST_CHAR_LIMIT = 100;
+
 // ── بث صوتي نشط: أيقونة حمراء وامضة لكل البثوث ─────────────────────────────
 function liveChannelForHost(hostId: string): string {
   const clean = String(hostId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
@@ -5679,6 +5682,13 @@ function PostCard({
   const [mediaPage, setMediaPage] = useState(0);
   const [cardEngTick, setCardEngTick] = useState(0);
   const mediaScrollRef = useRef<HTMLDivElement | null>(null);
+  // ── Feed video seek bar: per-media-index refs + progress state so the draggable
+  // line/time/play-pause row can control whichever video is currently in view. ──
+  const feedVideoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
+  const feedSeekingIndexRef = useRef<number | null>(null);
+  const [feedVideoCurrent, setFeedVideoCurrent] = useState<Record<number, number>>({});
+  const [feedVideoDuration, setFeedVideoDuration] = useState<Record<number, number>>({});
+  const [feedVideoPlaying, setFeedVideoPlaying] = useState<Record<number, boolean>>({});
   useEffect(() => {
     const onEng = (e: Event) => {
       const d = (e as CustomEvent).detail as { postId?: number } | undefined;
@@ -5712,6 +5722,12 @@ function PostCard({
     const clamped = Math.max(0, Math.min(idx, mediaItems.length - 1));
     el.scrollTo({ left: clamped * el.clientWidth, behavior: 'smooth' });
     setMediaPage(clamped);
+  }
+  function toggleFeedVideoPlayback(index: number) {
+    const v = feedVideoRefs.current[index];
+    if (!v) return;
+    if (v.paused) void v.play().catch(() => {});
+    else v.pause();
   }
 
   return (
@@ -6030,12 +6046,24 @@ function PostCard({
                   >
                     {media.type === 'video' ? (
                       <video
+                        ref={el => { feedVideoRefs.current[index] = el; }}
                         src={media.url}
                         muted={feedMuted[index] !== false}
                         autoPlay
                         loop
                         playsInline
                         preload="metadata"
+                        onTimeUpdate={e => {
+                          if (feedSeekingIndexRef.current === index) return;
+                          const v = e.currentTarget;
+                          setFeedVideoCurrent(prev => ({ ...prev, [index]: v.currentTime || 0 }));
+                        }}
+                        onLoadedMetadata={e => {
+                          const v = e.currentTarget;
+                          setFeedVideoDuration(prev => ({ ...prev, [index]: v.duration || 0 }));
+                        }}
+                        onPlay={() => setFeedVideoPlaying(prev => ({ ...prev, [index]: true }))}
+                        onPause={() => setFeedVideoPlaying(prev => ({ ...prev, [index]: false }))}
                         style={{ width: '100%', maxHeight: '85vh', objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }}
                       />
                     ) : (
@@ -6095,27 +6123,89 @@ function PostCard({
                   onClick={e => e.stopPropagation()}
                   style={{
                     position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 5,
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    display: 'flex', flexDirection: 'column', gap: 10,
                     padding: '20px 14px 14px',
                     background: 'linear-gradient(to top, rgba(0,0,0,0.85) 40%, rgba(0,0,0,0))',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 72 }}>
+                  {mediaItems[mediaPage]?.type === 'video' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); toggleFeedVideoPlayback(mediaPage); }}
+                        aria-label={feedVideoPlaying[mediaPage] === false ? 'تشغيل' : 'إيقاف'}
+                        style={{
+                          width: 26, height: 26, borderRadius: '50%', border: 'none',
+                          background: 'rgba(255,255,255,0.16)', color: '#fff', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+                        }}
+                      >
+                        {feedVideoPlaying[mediaPage] === false
+                          ? <Play size={12} strokeWidth={2.4} style={{ marginLeft: 1 }} />
+                          : <Pause size={12} strokeWidth={2.4} />}
+                      </button>
+                      <input
+                        type="range"
+                        min={0}
+                        max={feedVideoDuration[mediaPage] || 0}
+                        step={0.05}
+                        value={Math.min(feedVideoCurrent[mediaPage] || 0, feedVideoDuration[mediaPage] || 0)}
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => {
+                          const next = Number(e.target.value);
+                          const v = feedVideoRefs.current[mediaPage];
+                          if (v) v.currentTime = next;
+                          setFeedVideoCurrent(prev => ({ ...prev, [mediaPage]: next }));
+                        }}
+                        onMouseDown={e => { e.stopPropagation(); feedSeekingIndexRef.current = mediaPage; }}
+                        onMouseUp={e => { e.stopPropagation(); feedSeekingIndexRef.current = null; }}
+                        onTouchStart={e => { e.stopPropagation(); feedSeekingIndexRef.current = mediaPage; }}
+                        onTouchEnd={e => { e.stopPropagation(); feedSeekingIndexRef.current = null; }}
+                        aria-label="تقدّم الفيديو"
+                        style={{ flex: 1, height: 4, margin: 0, padding: 0, cursor: 'pointer', accentColor: '#ffffff' }}
+                      />
+                      <span style={{
+                        color: '#fff', fontSize: '0.62rem', fontWeight: 700,
+                        fontVariantNumeric: 'tabular-nums', minWidth: 62, flexShrink: 0, textAlign: 'right',
+                      }}>
+                        {formatVideoClock(feedVideoCurrent[mediaPage] || 0)} / {formatVideoClock(feedVideoDuration[mediaPage] || 0)}
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
                     <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post, multiMedia ? mediaPage : undefined); }} style={{
                       display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
-                      color: cardLiked ? '#ef4444' : '#ffffff',
+                      color: cardLiked ? '#ef4444' : '#ffffff', flexShrink: 0,
                     }}>
                       <Heart size={18} strokeWidth={2} fill={cardLiked ? '#ef4444' : 'none'} />
                       <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardLikes > 0 ? cardLikes : ''}</span>
                     </motion.button>
-                    <motion.button
-                      whileTap={{ scale: 0.88 }}
+                    <button
+                      type="button"
                       onClick={e => { e.stopPropagation(); if (onOpenComments) onOpenComments(post, multiMedia ? mediaPage : undefined); else onOpenPost(post); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#ffffff' }}
+                      style={{
+                        flex: 1, minWidth: 0, height: 32, display: 'flex', alignItems: 'center',
+                        padding: '0 14px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)',
+                        background: 'rgba(255,255,255,0.12)', cursor: 'pointer', textAlign: 'left',
+                      }}
                     >
-                      <MessageCircle size={18} strokeWidth={2} />
-                      <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardComments > 0 ? cardComments : ''}</span>
-                    </motion.button>
+                      <span style={{
+                        color: 'rgba(255,255,255,0.75)', fontSize: '0.78rem', fontWeight: 500,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {cardComments > 0 ? `${cardComments} comments` : 'What do you think of this?'}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); if (onOpenComments) onOpenComments(post, multiMedia ? mediaPage : undefined); else onOpenPost(post); }}
+                      style={{
+                        background: 'none', border: 'none', color: 'rgba(255,255,255,0.55)',
+                        fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, padding: 0,
+                      }}
+                    >
+                      Post
+                    </button>
                     <motion.button
                       whileTap={{ scale: 0.88 }}
                       onClick={e => {
@@ -6126,13 +6216,12 @@ function PostCard({
                       aria-label="مشاركة"
                       style={{
                         display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer',
-                        color: productShareAlert ? '#eab308' : '#ffffff',
+                        color: productShareAlert ? '#eab308' : '#ffffff', flexShrink: 0,
                       }}
                     >
                       <Send size={17} strokeWidth={2} color={productShareAlert ? '#eab308' : undefined} />
                     </motion.button>
                   </div>
-                  <div style={{ minWidth: 72 }} />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -18703,14 +18792,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 whileTap={{ scale: 0.96 }}
                 animate={composerPosting ? { scale: [1, 1.08, 1], boxShadow: ['0 0 0 0 rgba(29,155,240,0.5)', '0 0 0 12px rgba(29,155,240,0)', '0 0 0 0 rgba(29,155,240,0.35)'] } : { scale: 1, boxShadow: '0 0 0 0 rgba(29,155,240,0)' }}
                 transition={composerPosting ? { duration: 0.95, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
-                disabled={composerPosting || !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)}
+                disabled={composerPosting || !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) || (!isCompanyPublisher && composerProductDetails.length > TEXT_POST_CHAR_LIMIT)}
                 onClick={() => void submitPost('text')}
                 style={{
                   minWidth: 72, height: 34, padding: '0 18px', borderRadius: 999, border: 'none',
-                  background: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)
+                  background: (!(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) || (!isCompanyPublisher && composerProductDetails.length > TEXT_POST_CHAR_LIMIT))
                     ? 'rgba(29,155,240,0.45)' : '#1d9bf0',
                   color: '#fff', fontWeight: 700, fontSize: '0.88rem',
-                  cursor: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) ? 'default' : 'pointer',
+                  cursor: (!(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) || (!isCompanyPublisher && composerProductDetails.length > TEXT_POST_CHAR_LIMIT)) ? 'default' : 'pointer',
                   opacity: composerPosting ? 0.95 : 1,
                 }}
               >
@@ -18781,6 +18870,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       minHeight: '42vh',
                     }}
                   />
+                  <div style={{
+                    display: 'flex', justifyContent: 'flex-end', padding: '2px 4px 0',
+                  }}>
+                    <span style={{
+                      fontSize: '0.78rem', fontWeight: 700,
+                      color: composerProductDetails.length > TEXT_POST_CHAR_LIMIT ? '#ef4444' : '#536471',
+                    }}>
+                      {composerProductDetails.length}/{TEXT_POST_CHAR_LIMIT}
+                    </span>
+                  </div>
                 </div>
                 )}
 {/* ── مستطيل Paste: رابط صورة أو فيديو (X أو رابط مباشر) — للمستخدمين والشركات ── */}
