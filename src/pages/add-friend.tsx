@@ -4985,6 +4985,23 @@ function extractLinkMediaUrls(text: string | null | undefined): string[] {
   return out;
 }
 
+/** All hashtags found in a post's text (deduped, lowercase, no leading #) —
+ * sent along when the post is published so it shows up on the matching hashtag page. */
+function extractHashtagsFromText(text: string | null | undefined): string[] {
+  if (!text) return [];
+  const matches = text.match(/#[\p{L}\p{N}_]+/gu) || [];
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const m of matches) {
+    const tag = m.slice(1).toLowerCase();
+    if (tag && !seen.has(tag)) {
+      seen.add(tag);
+      tags.push(tag);
+    }
+  }
+  return tags;
+}
+
 /** أول رابط داخل نص الحافظة (يقبل: https://… أو www… أو x.com/…) وإلا null */
 function pickLinkFromText(raw: string | null | undefined): string | null {
   const t = (raw || '').trim();
@@ -5673,7 +5690,7 @@ function PostCard({
   // ── قائمة الثلاث نقاط + كتم الصوت داخل المعاينة كاملة الشاشة (mediaLightbox) ──
   const [lightboxMenuOpen, setLightboxMenuOpen] = useState(false);
   const [lightboxMuted, setLightboxMuted] = useState(false);
-  // ── كتم الصوت لكل عنصر فيديو داخل معاينة الفييد الصغيرة (مكتوم افتراضياً كمعاينة) ──
+  // ── Per-video mute state for the small feed preview (sound is ON by default while scrolling) ──
   const [feedMuted, setFeedMuted] = useState<Record<number, boolean>>({});
   // ── معرض الصور المتعددة داخل المنشور — تنقل يمين/يسار + عداد صفحات (1/N) زي انستغرام ──
   const [mediaPage, setMediaPage] = useState(0);
@@ -5688,8 +5705,9 @@ function PostCard({
     return () => window.removeEventListener('stooorna:media-eng', onEng as EventListener);
   }, [post.id]);
   void cardEngTick;
-  // ── Feed video autoplay-on-visibility: each video plays only while it is actually
-  // scrolled into view, and pauses as soon as it scrolls out — so swiping through the
+  // ── Feed video autoplay-on-visibility: each video plays (with sound, unless the
+  // person taps the mute icon) as soon as it is scrolled into view — even without
+  // opening the post — and pauses as soon as it scrolls out, so swiping through the
   // feed never leaves a previous video's sound/playback running behind the next post. ──
   const feedVideoObserverRef = useRef<IntersectionObserver | null>(null);
   const feedVideoElsRef = useRef<Map<number, HTMLVideoElement>>(new Map());
@@ -6032,7 +6050,7 @@ function PostCard({
                       <video
                         ref={el => registerFeedVideoEl(index, el)}
                         src={media.url}
-                        muted={feedMuted[index] !== false}
+                        muted={feedMuted[index] === true}
                         loop
                         playsInline
                         preload="metadata"
@@ -6061,14 +6079,14 @@ function PostCard({
                         e.stopPropagation();
                         setFeedMuted(prev => ({ ...prev, [index]: prev[index] === false ? true : false }));
                       }}
-                      aria-label={feedMuted[index] === false ? 'كتم الصوت' : 'تشغيل الصوت'}
+                      aria-label={feedMuted[index] === true ? 'تشغيل الصوت' : 'كتم الصوت'}
                       style={{
                         position: 'absolute', bottom: 10, insetInlineEnd: 10, width: 30, height: 30, borderRadius: '50%',
                         background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff', cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
                       }}
                     >
-                      {feedMuted[index] === false ? <Volume2 size={14} strokeWidth={2.2} /> : <VolumeX size={14} strokeWidth={2.2} />}
+                      {feedMuted[index] === true ? <VolumeX size={14} strokeWidth={2.2} /> : <Volume2 size={14} strokeWidth={2.2} />}
                     </motion.button>
                   )}
                   {false && isMine && index === 0 && null}
@@ -12660,6 +12678,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             extras,
           })
         : (detailsWithLink || title || '').trim();
+      // Hashtags typed in the caption — sent with the post so it shows up on the matching hashtag page
+      const postHashtags = extractHashtagsFromText(finalText);
 
       // ── رفع الوسائط (صور / فيديو / PDF) ──
       const uploadedMedia: { url: string; type: 'image' | 'video' }[] = [];
@@ -13058,7 +13078,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             mediaType,
             mediaUrls,
             mediaTypes,
-            hashtags: [],
+            hashtags: postHashtags,
             audience: primaryAudience,
             destination: primaryDest,
             publisherType: isCompanyPublisher ? 'company' : 'user',
@@ -13077,7 +13097,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               mediaType,
               mediaUrls,
               mediaTypes,
-              hashtags: [],
+              hashtags: postHashtags,
               audience: 'text',
               destination: 'text',
               publisherType: isCompanyPublisher ? 'company' : 'user',
@@ -13097,7 +13117,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               mediaType,
               mediaUrls,
               mediaTypes,
-              hashtags: [],
+              hashtags: postHashtags,
               audience: 'public',
               destination: mediaDest,
               publisherType: isCompanyPublisher ? 'company' : 'user',
@@ -13120,7 +13140,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             mediaType,
             mediaUrls,
             mediaTypes,
-            hashtags: [],
+            hashtags: postHashtags,
             createdAt: new Date().toISOString(),
             likesCount: 0,
             likedByMe: false,
@@ -13179,7 +13199,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               method: 'PATCH',
               credentials: 'include',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: finalText }),
+              body: JSON.stringify({ text: finalText, hashtags: postHashtags }),
             });
           } catch { /* keep local */ }
           saved = {
@@ -13189,6 +13209,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             mediaType: keepTypes[0] || serverMediaType,
             mediaUrls: keepUrls,
             mediaTypes: keepTypes,
+            hashtags: postHashtags,
             audience: resolvedAudience === 'public' && !finalText.trim() ? 'public' : (resolvedAudience || 'text'),
             destination: resolvedDest || 'text',
           };
@@ -13206,7 +13227,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             mediaType: null,
             mediaUrls: [],
             mediaTypes: [],
-            hashtags: [],
+            hashtags: postHashtags,
             audience: 'text',
             destination: 'text',
             publisherType: isCompanyPublisher ? 'company' : 'user',
@@ -13233,6 +13254,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           audience: 'text',
           destination: 'text',
           text: createData.post.text || finalText,
+          hashtags: (Array.isArray(createData.post.hashtags) && createData.post.hashtags.length) ? createData.post.hashtags : postHashtags,
           publisherType: isCompanyPublisher ? 'company' : 'user',
           isCompanyPost: !!isCompanyPublisher,
           authorIsCompany: !!isCompanyPublisher,
@@ -22143,7 +22165,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           mediaType: type,
                           mediaUrls: [url],
                           mediaTypes: [type],
-                          hashtags: [],
+                          hashtags: extractHashtagsFromText(storyMediaText),
                           audience: 'public',
                           destination: dest,
                         }),
@@ -22160,6 +22182,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         audience: 'public',
                         destination: dest,
                         text: d.post.text || storyMediaText.trim(),
+                        hashtags: (Array.isArray(d.post.hashtags) && d.post.hashtags.length) ? d.post.hashtags : extractHashtagsFromText(storyMediaText),
                         authorId: d.post.authorId || String(user.id),
                       };
                       setMyMediaPosts(prev => {
