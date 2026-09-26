@@ -5749,6 +5749,7 @@ function PostCard({
   return (
     <>
       <motion.div
+        id={`feed-post-${post.id}`}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: isBusinessHidden ? 0.45 : 1, y: 0 }}
         style={{
@@ -6097,7 +6098,10 @@ function PostCard({
         )}
 
         {/* Actions — منتج أو شركة: لايك → تعليقات → شير | تفاصيل (نفس داخل البوست) */}
-        {(isProductAd || isCompanyAuthor) ? (
+        {/* Hidden on the feed card (outside view): the card shows only the post box.
+            Everything below is unchanged and fully available inside the full-screen
+            post view once opened — only the outside preview hides these buttons. */}
+        {false && ((isProductAd || isCompanyAuthor) ? (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             paddingTop: 12, paddingInline: hasMedia ? 14 : 0, gap: 8,
@@ -6249,7 +6253,7 @@ function PostCard({
 
           <div style={{ minWidth: 72 }} />
         </div>
-        )}
+        ))}
 
         {/* Caption / product details sheet — three lines only, does not open post page */}
         <AnimatePresence>
@@ -11904,11 +11908,20 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }
 
   function closeSinglePostView() {
+    // Re-center the feed on the post that was just open, so closing lands back
+    // on it in the middle of the screen instead of wherever the list happened
+    // to be scrolled to.
+    const closedPostId = singlePostView?.id;
     setSinglePostView(null);
     setSinglePostFromProfile(false);
     setAdDetailsOpen(false);
     setAdVideoPaused(false);
     setSinglePostChromeVisible(true);
+    if (closedPostId != null) {
+      requestAnimationFrame(() => {
+        document.getElementById(`feed-post-${closedPostId}`)?.scrollIntoView({ block: 'center', behavior: 'auto' });
+      });
+    }
   }
   function getAuthorPostPlaylist(authorId: string): PostItem[] {
     const list = (posts || []).filter(p => String(p.authorId) === String(authorId));
@@ -17018,7 +17031,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
         <AnimatePresence>
           {hashtagView && (
-            <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 10195, background: '#ffffff', overflowY: 'auto', paddingBottom: 28 }}>
+            <motion.div initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} style={{ position: 'fixed', inset: 0, zIndex: 12500, background: '#ffffff', overflowY: 'auto', paddingBottom: 28 }}>
               <div style={{ position: 'sticky', top: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 10, padding: '16px 14px', background: '#ffffff', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
                 <button onClick={() => setHashtagView(null)} aria-label="Close" style={{ background: 'none', border: 'none', color: '#0f1419', cursor: 'pointer', display: 'flex', width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: '50%' }}><X size={22} strokeWidth={2.2} /></button>
                 <Hash size={19} color="#1d9bf0" />
@@ -19842,17 +19855,19 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </motion.button>
                 </div>
 
+                {/* Details (three lines) — only rendered when the post actually has caption
+                    text to show; a caption-less post keeps every other button as-is. */}
+                {postHasVisibleCaption(livePost) && (
                 <motion.button
-                  whileTap={{ scale: postHasVisibleCaption(livePost) ? 0.92 : 1 }}
-                  onClick={() => { if (postHasVisibleCaption(livePost)) setAdDetailsOpen(true); }}
+                  whileTap={{ scale: 0.92 }}
+                  onClick={() => setAdDetailsOpen(true)}
                   aria-label="Details"
-                  disabled={!postHasVisibleCaption(livePost)}
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                     background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
                     borderRadius: 10, width: 36, height: 36,
-                    cursor: postHasVisibleCaption(livePost) ? 'pointer' : 'default',
-                    padding: 0, opacity: postHasVisibleCaption(livePost) ? 1 : 0.28,
+                    cursor: 'pointer',
+                    padding: 0, opacity: 1,
                     flexShrink: 0,
                   }}
                 >
@@ -19860,6 +19875,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
                   <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
                 </motion.button>
+                )}
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
                   <motion.button
@@ -19936,7 +19952,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     onClick={() => setAdDetailsOpen(false)}
-                    style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end' }}
+                    style={{ position: 'absolute', inset: 0, zIndex: 30, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end' }}
                   >
                     <motion.div
                       initial={{ y: '100%' }}
@@ -19946,11 +19962,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       onClick={e => e.stopPropagation()}
                       style={{
                         width: '100%', maxHeight: '70vh', overflowY: 'auto',
-                        background: '#fff', borderRadius: '18px 18px 0 0',
+                        background: 'rgba(6,14,14,0.96)', borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
+                        borderRadius: '18px 18px 0 0',
                         padding: '14px 18px calc(20px + env(safe-area-inset-bottom, 0px))',
                       }}
                     >
-                                            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
+                                            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.25)', margin: '0 auto 14px' }} />
                       {(() => {
                         const isCo = !!(
                           companies.some(c => String(c.id) === String(singlePostView.authorId))
@@ -19962,21 +19979,21 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         const plain = (singlePostView.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
                         if (!isCo) {
                           return (
-                            <p style={{ margin: 0, color: '#0a0a0a', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                              {plain}
-                            </p>
+                            <PostText text={plain} color={CLR_PRIMARY} textColor={CLR_TEXT} onHashtag={openHashtag} />
                           );
                         }
                         return (
                           <>
-                            <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.15rem', fontWeight: 800, lineHeight: 1.35 }}>
+                            <p style={{ margin: 0, color: CLR_TEXT, fontSize: '1.15rem', fontWeight: 800, lineHeight: 1.35 }}>
                               {ad?.title || productAdDisplayTitle(singlePostView)}
                             </p>
                             {ad?.price ? (
                               <p style={{ margin: '8px 0 0', color: CLR_PRIMARY, fontSize: '1rem', fontWeight: 800 }}>{ad.price}</p>
                             ) : null}
                             {ad?.details ? (
-                              <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{ad.details}</p>
+                              <div style={{ marginTop: 14 }}>
+                                <PostText text={ad.details} color={CLR_PRIMARY} textColor={CLR_TEXT} onHashtag={openHashtag} />
+                              </div>
                             ) : null}
                           </>
                         );
@@ -19986,7 +20003,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         onClick={() => setAdDetailsOpen(false)}
                         style={{
                           marginTop: 18, width: '100%', height: 44, borderRadius: 12, border: 'none',
-                          background: '#0f1419', color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
+                          background: CLR_PRIMARY, color: '#041018', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
                         }}
                       >
                         إغلاق
