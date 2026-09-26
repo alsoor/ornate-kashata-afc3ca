@@ -16205,11 +16205,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           border: hasStory ? '4px solid #0ea5e9' : '3px solid #0ea5e9',
                           boxSizing: 'border-box',
                           boxShadow: hasStory && !allSeen ? '0 0 10px rgba(14,165,233,0.45)' : '0 0 8px rgba(14,165,233,0.25)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
                           {/* VIP account: gold spinning ring frame, same component used on the friends' story strip and the fullscreen story viewer.
-                              hideLabel here only — keeps the ring sized exactly to this avatar without the floating "VIP" text tag poking above it. */}
-                          <VipAvatarFrame userId={user?.id} size={68} hideLabel>
-                            <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={68} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                              hideLabel here only — keeps the ring sized exactly to this avatar without the floating "VIP" text tag poking above it.
+                              size raised to 76 (was 68) to match the outer story circle exactly, so the VIP ring sits right on the picture's own edge instead of nested inside it with a gap. */}
+                          <VipAvatarFrame userId={user?.id} size={76} hideLabel>
+                            <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={76} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
                           </VipAvatarFrame>
                         </div>
                       </motion.button>
@@ -16230,6 +16232,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           padding: 0, cursor: 'pointer',
                           boxShadow: '0 0 8px rgba(239,68,68,0.55)',
+                          zIndex: 5,
                         }}
                       >
                         {storyUploading || quickPublishing

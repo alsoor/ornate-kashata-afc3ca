@@ -6826,7 +6826,7 @@ export default function SettingsPage() {
                           </div>
                         </motion.button>
                         </VipAvatarFrame>
-                        {/* camera badge */}
+                        {/* camera badge — zIndex matches the online dot below so it renders above the VIP ring instead of behind it */}
                         <div style={{
                       position: 'absolute',
                       bottom: 2,
@@ -6839,7 +6839,8 @@ export default function SettingsPage() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      pointerEvents: 'none'
+                      pointerEvents: 'none',
+                      zIndex: 2
                     }}>
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
