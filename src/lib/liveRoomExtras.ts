@@ -137,6 +137,17 @@ export function subscribeLiveChat(channel: string, handle: (msg: LiveChatMsg) =>
     if (cm) handle(cm);
   };
   window.addEventListener(key, onEvt as EventListener);
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== key || !e.newValue) return;
+    try {
+      const parsed = JSON.parse(e.newValue);
+      const cm = parseIncomingChat(parsed);
+      if (cm) handle(cm);
+    } catch {
+      /* ignore */
+    }
+  };
+  window.addEventListener('storage', onStorage);
   let bc: BroadcastChannel | null = null;
   try {
     if (typeof BroadcastChannel !== 'undefined') {
@@ -177,6 +188,7 @@ export function subscribeLiveChat(channel: string, handle: (msg: LiveChatMsg) =>
     on = false;
     window.clearInterval(timer);
     window.removeEventListener(key, onEvt as EventListener);
+    window.removeEventListener('storage', onStorage);
     try {
       bc?.close();
     } catch {

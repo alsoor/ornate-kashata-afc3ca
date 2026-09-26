@@ -366,6 +366,57 @@ app.get("/api/live/recordings", live_recordings_get_32);
 app.post("/api/live/recordings/upload", live_recordings_upload_post_33);
 app.delete("/api/live/recordings/:id", live_recordings_id_delete_34);
 app.get("/api/live/status", live_status_get_35);
+
+const liveChatMem = () => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveChat?: Map<string, Array<{ at: number; payload: any }>> };
+  if (!g.__stooornaLiveChat) g.__stooornaLiveChat = new Map();
+  return g.__stooornaLiveChat;
+};
+app.get("/api/live-chat", (req, res) => {
+  const channel = String(req.query.channel || "");
+  const since = Number(req.query.since || 0);
+  if (!channel) return res.json({ messages: [] });
+  const list = (liveChatMem().get(channel) || []).filter((m) => m.at > since).slice(-80);
+  res.json({ messages: list });
+});
+app.post("/api/live-chat", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const channel = String(body.channel || "");
+  if (!channel) return res.status(400).json({ error: "channel required" });
+  const payload = (body.payload || body) as Record<string, unknown>;
+  const at = Date.now();
+  const mem = liveChatMem();
+  const list = mem.get(channel) || [];
+  list.push({ at, payload: { ...payload, at } });
+  mem.set(channel, list.slice(-120));
+  res.json({ ok: true, at });
+});
+
+const liveSignalMem = () => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveSig?: Map<string, Array<{ at: number; payload: any }>> };
+  if (!g.__stooornaLiveSig) g.__stooornaLiveSig = new Map();
+  return g.__stooornaLiveSig;
+};
+app.get("/api/room/signal", (req, res) => {
+  const roomId = String(req.query.roomId || req.query.channel || "");
+  const since = Number(req.query.since || 0);
+  if (!roomId) return res.json({ messages: [], signals: [] });
+  const list = (liveSignalMem().get(roomId) || []).filter((m) => m.at > since).slice(-80);
+  res.json({ messages: list, signals: list });
+});
+app.post("/api/room/signal", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const roomId = String(body.roomId || body.channel || "");
+  if (!roomId) return res.status(400).json({ error: "roomId required" });
+  const payload = (body.payload || body.data || body) as Record<string, unknown>;
+  const at = Date.now();
+  const mem = liveSignalMem();
+  const list = mem.get(roomId) || [];
+  list.push({ at, payload: { ...payload, at } });
+  mem.set(roomId, list.slice(-160));
+  res.json({ ok: true, at });
+});
+
 app.get("/api/me/ban-status", me_ban_status_get_36);
 app.post("/api/me/update-ip", me_update_ip_post_37);
 app.get("/api/messages", messages_get_38);

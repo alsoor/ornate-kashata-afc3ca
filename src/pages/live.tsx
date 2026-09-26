@@ -420,7 +420,7 @@ export default function LivePage() {
         dataStreamIdRef.current = sid;
         return sid;
       }
-      // بعض إصدارات Agora تُرجع true أو تستخدم streamId = 0
+      // Some Agora builds return true or use streamId = 0
       if (sid === true || sid === 0) {
         dataStreamIdRef.current = 0;
         return 0;
@@ -445,7 +445,7 @@ export default function LivePage() {
       console.warn('[LiveVoice] createDataStream promise', err);
     }
 
-    // 2) Callback-style createDataStream (إصدارات أقدم)
+    // 2) Callback-style createDataStream (older SDK)
     try {
       if (typeof client.createDataStream === 'function') {
         const sid = await new Promise<unknown>((resolve) => {
@@ -467,9 +467,9 @@ export default function LivePage() {
                 }
               },
             );
-            // إن رجعت قيمة مباشرة بدون كولباك
+            // Direct return without callback
             if (ret != null && typeof (ret as any).then !== 'function') {
-              // انتظر قليلاً للكولباك ثم استخدم ret
+              // Wait briefly for callback then use ret
               setTimeout(() => done(ret), 0);
             } else {
               setTimeout(() => {
@@ -487,7 +487,7 @@ export default function LivePage() {
       console.warn('[LiveVoice] createDataStream callback', err);
     }
 
-    // 3) افتراضي شائع في Agora Web: streamId = 0
+    // 3) Common Agora Web default: streamId = 0
     dataStreamIdRef.current = 0;
     return 0;
   }, []);
@@ -506,7 +506,7 @@ export default function LivePage() {
     }
 
     const json = JSON.stringify(payload);
-    // حد Agora لرسالة البيانات ~1KB — اقتطع النص إن لزم
+    // Agora data message limit ~1KB — trim text if needed
     const safeJson = json.length > 900 ? JSON.stringify({
       ...payload,
       text: typeof (payload as any).text === 'string' ? String((payload as any).text).slice(0, 200) : (payload as any).text,
@@ -517,7 +517,7 @@ export default function LivePage() {
     for (let attempt = 0; attempt < 4 && !ok; attempt++) {
       try {
         if (typeof client.sendStreamMessage !== 'function') break;
-        // جرب bytes ثم string
+        // Try bytes then string
         try {
           const r = client.sendStreamMessage(streamId, bytes);
           if (r && typeof r.then === 'function') await r;
@@ -531,7 +531,7 @@ export default function LivePage() {
         }
       } catch (err) {
         console.warn('[LiveVoice] sendStreamMessage', attempt, err);
-        // أعد إنشاء القناة ثم أعد المحاولة
+        // Recreate the data stream then retry
         dataStreamIdRef.current = null;
         streamId = await ensureDataStream();
         if (streamId == null) streamId = 0;
@@ -811,10 +811,10 @@ export default function LivePage() {
         }
       });
 
-      // أوامر تجميد المايك من المضيف
+      // Host freeze commands
       const onStreamMessage = (...args: any[]) => {
         try {
-          // Agora: (uid, data) — بعض الإصدارات تمرّر كائنًا واحدًا
+          // Agora: (uid, data) — some builds pass a single object
           let data: any = args.length >= 2 ? args[1] : args[0];
           if (data && typeof data === 'object' && 'data' in data && !ArrayBuffer.isView(data) && !(data instanceof ArrayBuffer)) {
             data = (data as any).data;
@@ -891,7 +891,7 @@ export default function LivePage() {
       };
       client.on('stream-message' as any, onStreamMessage);
       (client as any).on?.('streamMessage', onStreamMessage);
-      // أسماء أحداث بديلة حسب إصدار Agora
+      // Alternate event names by Agora version
       try {
         (client as any).on?.('stream-message', onStreamMessage);
         client.on('streamMessage' as any, onStreamMessage);
@@ -899,7 +899,7 @@ export default function LivePage() {
 
       client.enableAudioVolumeIndicator();
       client.on('volume-indicator', (vols: Array<{ uid: number; level: number }>) => {
-        // مستوى منخفض قليلاً لاستجابة أسرع عند التحدث
+        // Slightly lower threshold for faster speaking detection
         setSpeakingUids(new Set(vols.filter(v => v.level > 5).map(v => v.uid)));
       });
 
@@ -929,7 +929,7 @@ export default function LivePage() {
       } catch {
         dataStreamIdRef.current = null;
       }
-      // المضيف يعيد بث قائمة التجميد كل ثانيتين ليصل الأمر للجميع
+      // Host rebroadcasts freeze list every 2s so all clients receive it
       if (amHost) {
         const freezeBroadcast = window.setInterval(() => {
           if (leftRef.current || !clientRef.current) {
@@ -970,8 +970,8 @@ export default function LivePage() {
         AGC: true,
       });
       micRef.current = mic;
-      // يجب تفعيل المسار قبل publish — Agora يرفض publish لمسار disabled
-      // الضيوف يبدأون مكتومين عبر setMuted بعد النشر (وليس setEnabled false قبلها)
+      // Enable track before publish — Agora rejects publish on a disabled track
+      // Guests start muted via setMuted after publish (not setEnabled false before it)
       const startLive = amHost || !isHostRoom;
       await mic.setEnabled(true);
       try {
@@ -1012,7 +1012,7 @@ export default function LivePage() {
         setSpeakerUids(new Set());
       }
 
-      // سجّل الغرفة على السيرفر (حضور البث)
+      // Register the room on the server (live presence)
       try {
         await fetch('/api/room/join', {
           method: 'POST',
@@ -1064,7 +1064,7 @@ export default function LivePage() {
     sendDataPayload,
   ]);
 
-  // طالما التجميد مفعّل: أبقِ المايك مكتومًا ولا تسمح بإعادة فتحه
+  // While frozen: keep mic muted and block unmute
   useEffect(() => {
     if (!micFrozenByHost) return;
     void forceMuteLocalMic();
@@ -1331,7 +1331,7 @@ export default function LivePage() {
       toggleHostFreeze(m.uid, m.isMe);
       return;
     }
-    // الزوار/المستمعون: كتم صوت هذا المستخدم عندهم فقط (بعضهم البعض)
+    // Listeners: mute this user locally only
     toggleUserListenMute(m.uid, m.isMe);
   };
 
@@ -1437,7 +1437,7 @@ export default function LivePage() {
         <meta name="robots" content="noindex" />
       </Helmet>
 
-      {/* أعلى: المضيف + مشاهدات + خروج */}
+      {/* Top: host + views + leave */}
       <div
         style={{
           display: 'flex',
@@ -1452,7 +1452,7 @@ export default function LivePage() {
             {(() => {
               const hostUid = hostId ? uidFromString(hostId) : null;
               const hostInRoom = amHost || members.some(m => m.isHost || (hostUid != null && m.uid === hostUid));
-              // إطار أخضر عند التحدث فعلياً، أصفر عند الصمت
+              // Green frame while speaking, yellow when silent
               const hostTalking = amHost
                 ? (!!myUidRef.current && speakingUids.has(myUidRef.current) && micOn && !micFrozenByHost)
                 : (hostUid != null && speakingUids.has(hostUid));
@@ -1689,9 +1689,9 @@ export default function LivePage() {
         </p>
       )}
 
-      {/* وسط: قائمة المتصلين */}
+      {/* Center: members list */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0, padding: '4px 10px 0', gap: 8 }}>
-        {/* يمين — المتصلون */}
+        {/* Right — members */}
         <div
           style={{
             width: 100,
@@ -1722,7 +1722,7 @@ export default function LivePage() {
                   // Side rail: only active speakers (not silent viewers)
                   return talking || (m.isMe && micActive && speakingUids.has(m.uid));
                 }).map(m => {
-                                // أخضر فقط عند التحدث الفعلي (مؤشر الصوت) — أصفر عند الصمت
+                                // Green only while speaking, yellow when silent
                 const talking = speakingUids.has(m.uid) && !(m.isMe && (micFrozenByHost || !micOn));
                 const hostFrozen = frozenUids.has(m.uid);
                 const userMuted = mutedUids.has(m.uid);
@@ -1765,7 +1765,7 @@ export default function LivePage() {
                           transition: 'border-color 0.15s, box-shadow 0.15s',
                         }}
                       />
-                      {/* نقطة الحالة: أخضر Online / أحمر Busy */}
+                      {/* Status dot: green Online / red Busy */}
                       <span
                         title={statusOnline ? 'Online' : 'Busy'}
                         style={{
@@ -1830,7 +1830,7 @@ export default function LivePage() {
         </div>
       </div>
 
-      {/* أسفل: مايك صغير + كتم البث */}
+      {/* Bottom: mic + mute live */}
       <div
         style={{
           flexShrink: 0,
@@ -2272,7 +2272,7 @@ export default function LivePage() {
         </div>
       )}
 
-      {/* شيت منشورات المضيف — من الأسفل، البث مستمر */}
+      {/* Host posts sheet — live stays on */}
       <AnimatePresence>
         {hostPostsOpen && !viewPost && (
           <motion.div
@@ -2367,7 +2367,7 @@ export default function LivePage() {
         )}
       </AnimatePresence>
 
-      {/* منتج بملء الشاشة أثناء البث */}
+      {/* Full-screen product while live */}
       <AnimatePresence>
         {viewPost && (
           <motion.div
