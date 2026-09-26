@@ -5729,6 +5729,18 @@ function PostCard({
   // Feed media tap: reveal caption as an overlay pinned to the top of the media
   // (instead of navigating away to the full post page).
   const [feedCaptionOpen, setFeedCaptionOpen] = useState(false);
+  // Root card element — used to smoothly re-center the whole post in the viewport
+  // when it expands, so the card doesn't jump or shake as it grows taller.
+  const postCardRootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!feedCaptionOpen) return;
+    const el = postCardRootRef.current;
+    if (!el) return;
+    const t = setTimeout(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 30);
+    return () => clearTimeout(t);
+  }, [feedCaptionOpen]);
   function goToMediaPage(idx: number) {
     const el = mediaScrollRef.current;
     if (!el) return;
@@ -5770,6 +5782,7 @@ function PostCard({
   return (
     <>
       <motion.div
+        ref={postCardRootRef}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: isBusinessHidden ? 0.45 : 1, y: 0 }}
         style={{
