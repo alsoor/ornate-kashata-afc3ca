@@ -79,6 +79,12 @@ const CLR_POST_BORDER   = '#0d3d33';
 // Max characters allowed for a plain text-only post (regular user composer, not company product posts).
 const TEXT_POST_CHAR_LIMIT = 100;
 
+// Collapsed height (px) for feed post media (image or video) before the user taps it.
+// Every post preview — image or video, with or without a caption — uses this same
+// fixed height so the whole feed lines up. Tapping the media animates it open to
+// full size and reveals the caption + like/comment/share actions.
+const FEED_MEDIA_COLLAPSED_HEIGHT = 150;
+
 // ── بث صوتي نشط: أيقونة حمراء وامضة لكل البثوث ─────────────────────────────
 function liveChannelForHost(hostId: string): string {
   const clean = String(hostId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
@@ -6046,7 +6052,9 @@ function PostCard({
               }}
             >
               {mediaItems.map((media, index) => (
-                <div
+                <motion.div
+                  layout
+                  transition={{ type: 'spring', stiffness: 300, damping: 32 }}
                   key={`${media.type}-${index}`}
                   style={{
                     position: 'relative',
@@ -6068,7 +6076,7 @@ function PostCard({
                       setMediaPage(index);
                       setFeedCaptionOpen(v => !v);
                     }}
-                    aria-label={media.type === 'video' ? 'Open video' : 'Open image'}
+                    aria-label={feedCaptionOpen ? 'Collapse media' : (media.type === 'video' ? 'Expand video' : 'Expand image')}
                     style={{
                       position: 'relative', width: '100%', boxSizing: 'border-box', padding: 0,
                       border: 'none',
@@ -6076,7 +6084,9 @@ function PostCard({
                     }}
                   >
                     {media.type === 'video' ? (
-                      <video
+                      <motion.video
+                        layout
+                        transition={{ type: 'spring', stiffness: 300, damping: 32 }}
                         ref={el => { feedVideoRefs.current[index] = el; }}
                         src={media.url}
                         muted={feedMuted[index] === true}
@@ -6094,26 +6104,45 @@ function PostCard({
                         }}
                         onPlay={() => setFeedVideoPlaying(prev => ({ ...prev, [index]: true }))}
                         onPause={() => setFeedVideoPlaying(prev => ({ ...prev, [index]: false }))}
-                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }}
+                        style={{
+                          width: '100%',
+                          height: feedCaptionOpen ? undefined : FEED_MEDIA_COLLAPSED_HEIGHT,
+                          maxHeight: '85vh',
+                          objectFit: 'cover',
+                          objectPosition: 'top',
+                          display: 'block',
+                          background: '#000',
+                          cursor: 'pointer',
+                        }}
                       />
                     ) : (
-                      <img
+                      <motion.img
+                        layout
+                        transition={{ type: 'spring', stiffness: 300, damping: 32 }}
                         src={media.url}
                         alt=""
-                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'cover', display: 'block', background: '#000' }}
+                        style={{
+                          width: '100%',
+                          height: feedCaptionOpen ? undefined : FEED_MEDIA_COLLAPSED_HEIGHT,
+                          maxHeight: '85vh',
+                          objectFit: 'cover',
+                          objectPosition: 'top',
+                          display: 'block',
+                          background: '#000',
+                        }}
                       />
                     )}
                   </button>
-                  {/* أيقونة كتم/تشغيل الصوت — تحل محل أزرار الفيديو الافتراضية (controls) على
-                      معاينة الفييد الصغيرة، فتبقى الصورة/الفيديو تبين كاملة وبعيدة بدون تحكمات كبيرة تغطيها. */}
-                  {media.type === 'video' && (
+                  {/* Mute/unmute toggle for the video preview — only shown once the post is
+                      expanded, so the collapsed preview stays a clean, control-free thumbnail. */}
+                  {media.type === 'video' && feedCaptionOpen && (
                     <motion.button
                       whileTap={{ scale: 0.88 }}
                       onClick={e => {
                         e.stopPropagation();
                         setFeedMuted(prev => ({ ...prev, [index]: prev[index] === false ? true : false }));
                       }}
-                      aria-label={feedMuted[index] === false ? 'كتم الصوت' : 'تشغيل الصوت'}
+                      aria-label={feedMuted[index] === false ? 'Mute' : 'Unmute'}
                       style={{
                         position: 'absolute', bottom: 10, insetInlineEnd: 10, width: 30, height: 30, borderRadius: '50%',
                         background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff', cursor: 'pointer',
@@ -6124,12 +6153,13 @@ function PostCard({
                     </motion.button>
                   )}
                   {false && isMine && index === 0 && null}
-                </div>
+                </motion.div>
               ))}
             </div>
 
-            {/* Page counter only (top) when post has multiple media items */}
-            {mediaItems.length > 1 && (
+            {/* Page counter only (top) when post has multiple media items — hidden until expanded,
+                so the collapsed preview shows nothing but the cropped media itself. */}
+            {feedCaptionOpen && mediaItems.length > 1 && (
               <div style={{
                 position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
                 padding: '3px 10px', borderRadius: 999, background: 'rgba(0,0,0,0.55)',
