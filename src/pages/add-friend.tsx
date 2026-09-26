@@ -5007,124 +5007,6 @@ function LinkMediaPreview({ url, failedNote }: { url: string; failedNote?: strin
 }
 
 
-// ── Muted-red circular toggle placed on the media, opens/closes the side text panel.
-//    Positioned with a fixed negative margin (not a CSS `transform`) so the tap-scale
-//    animation Framer Motion applies to `transform` never overwrites the vertical
-//    centering — that mismatch was what made the button appear to shift on first tap
-//    and require a second tap to actually register. ──
-const MEDIA_TEXT_DOT_SIZE = 26;
-function MediaTextToggleDot({ active, disabled = false, onToggle, dark = true }: {
-  active: boolean;
-  disabled?: boolean;
-  onToggle: () => void;
-  dark?: boolean;
-}) {
-  if (disabled) return null;
-  return (
-    <motion.button
-      type="button"
-      whileTap={{ scale: 0.88 }}
-      onClick={e => { e.stopPropagation(); onToggle(); }}
-      aria-label="Read post text"
-      style={{
-        position: 'absolute',
-        top: '50%',
-        insetInlineEnd: 10,
-        marginTop: -(MEDIA_TEXT_DOT_SIZE / 2),
-        width: MEDIA_TEXT_DOT_SIZE,
-        height: MEDIA_TEXT_DOT_SIZE,
-        borderRadius: '50%',
-        background: '#c25a5a',
-        border: `2px solid ${dark ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.9)'}`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-        padding: 0,
-        zIndex: 5,
-        boxShadow: active ? '0 0 0 3px rgba(194,90,90,0.35)' : '0 2px 8px rgba(0,0,0,0.35)',
-      }}
-    >
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />
-    </motion.button>
-  );
-}
-
-// ── Slide-in panel over the media: reads the post text, leaves a margin on the
-//    left so the media stays partially visible/anchored while reading ──
-// ── `mode="overlay"` (default): slides in over the media from the outside edge — used
-//    for the fullscreen lightbox / single-post views, which are already "opened from
-//    inside" the app.
-//    `mode="expand"`: no overlay — the panel grows in normal flow below the media, which
-//    makes the whole post card taller ("open from outside") instead of covering the
-//    media. Used in the feed card for short captions (see PostCard below). ──
-function MediaTextSidePanel({ open, onClose, text, mode = 'overlay' }: {
-  open: boolean;
-  onClose: () => void;
-  text: string;
-  mode?: 'overlay' | 'expand';
-}) {
-  if (mode === 'expand') {
-    return (
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            onClick={e => e.stopPropagation()}
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 38 }}
-            style={{ width: '100%', overflow: 'hidden', background: 'rgba(8,8,8,0.92)' }}
-          >
-            <p style={{
-              margin: 0, color: '#fff', fontSize: '0.9rem', fontWeight: 500,
-              lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              fontFamily: "'Alexandria', var(--font-sans), sans-serif",
-              padding: '14px 16px calc(14px + env(safe-area-inset-bottom, 0px))',
-              boxSizing: 'border-box',
-            }}>
-              {text}
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    );
-  }
-  return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          onClick={e => { e.stopPropagation(); onClose(); }}
-          initial={{ x: '100%' }}
-          animate={{ x: 0 }}
-          exit={{ x: '100%' }}
-          transition={{ type: 'spring', stiffness: 380, damping: 42 }}
-          style={{
-            position: 'absolute',
-            insetInlineStart: 46,
-            insetInlineEnd: 0,
-            top: 0,
-            bottom: 0,
-            zIndex: 4,
-            background: 'rgba(8,8,8,0.92)',
-            overflowY: 'auto',
-            padding: '18px 16px calc(18px + env(safe-area-inset-bottom, 0px))',
-            boxSizing: 'border-box',
-          }}
-        >
-          <p style={{
-            margin: 0, color: '#fff', fontSize: '0.9rem', fontWeight: 500,
-            lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            fontFamily: "'Alexandria', var(--font-sans), sans-serif",
-          }}>
-            {text}
-          </p>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-}
-
 function PostTextMoreInlineRest({ full, color, onMore }: { full: string; color: string; onMore?: () => void }) {
   const [open, setOpen] = React.useState(false);
   return (
@@ -5814,18 +5696,6 @@ function PostCard({
   const productAd = parseProductAd(post.text);
   // Product UI (hamburger + details sheet) is only for company/business authors
   const isProductAd = !!productAd && !!isCompanyAuthor;
-  // ── Plain text shown inside the new sliding media-read panel ──
-  const mediaPanelText = isCompanyAuthor
-    ? [
-        productAd?.title || productAdDisplayTitle(post) || post.authorName || '',
-        productAd?.price || '',
-        productAd?.details || '',
-      ].filter(Boolean).join('\n\n')
-    : (post.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
-  // ── Short captions (≤5 lines) expand the feed card in place ("open from outside");
-  //    longer captions (6+ lines) only open once the post itself is opened fullscreen. ──
-  const mediaPanelLineCount = mediaPanelText ? mediaPanelText.split('\n').length : 0;
-  const mediaPanelIsShort = mediaPanelLineCount > 0 && mediaPanelLineCount <= 5;
 
   useEffect(() => {
     recordPostView(post.id, post.authorId);
@@ -5833,9 +5703,6 @@ function PostCard({
   // روابط X داخل نص المنشور — نص إعلان/منشور المنتج مخفي في الفييد، فنعرض وسائط الرابط مباشرة
   const postXUrls = isProductAd ? extractLinkMediaUrls(post.text) : [];
   const [productDetailsOpen, setProductDetailsOpen] = useState(false);
-  // ── New: red-dot toggle on the media opens/closes the sliding text-read panel ──
-  const [mediaReadPanelOpen, setMediaReadPanelOpen] = useState(false);
-  const [lightboxReadPanelOpen, setLightboxReadPanelOpen] = useState(false);
   function goToMediaPage(idx: number) {
     const el = mediaScrollRef.current;
     if (!el) return;
@@ -6069,7 +5936,6 @@ function PostCard({
         {/* Media — من اليمين لليسار بعرض الشاشة كاملاً. لو أكثر من عنصر واحد: معرض قابل
             للتصفح يمين/يسار (سحب أو أزرار الأسهم) مع عداد صفحات "1/N" زي انستغرام. */}
         {hasMedia && (
-          <div style={{ width: '100%' }}>
           <div style={{ position: 'relative', width: '100%' }}>
             {mediaItems.length > 1 && (
               <style>{'.post-media-scroll::-webkit-scrollbar{display:none}'}</style>
@@ -6116,10 +5982,6 @@ function PostCard({
                     onClick={e => {
                       e.stopPropagation();
                       setMediaPage(index);
-                      if (mediaPanelIsShort) {
-                        setMediaReadPanelOpen(v => !v);
-                        return;
-                      }
                       pendingFeedMediaIndex = index;
                       onOpenPost(post);
                     }}
@@ -6141,10 +6003,6 @@ function PostCard({
                         onClick={e => {
                           e.stopPropagation();
                           setMediaPage(index);
-                          if (mediaPanelIsShort) {
-                            setMediaReadPanelOpen(v => !v);
-                            return;
-                          }
                           pendingFeedMediaIndex = index;
                           onOpenPost(post);
                         }}
@@ -6193,30 +6051,6 @@ function PostCard({
                 {mediaPage + 1}/{mediaItems.length}
               </div>
             )}
-
-            {mediaPanelText && (
-              <MediaTextToggleDot
-                active={mediaReadPanelOpen}
-                onToggle={() => setMediaReadPanelOpen(v => !v)}
-              />
-            )}
-            {!mediaPanelIsShort && (
-              <MediaTextSidePanel
-                open={mediaReadPanelOpen && !!mediaPanelText}
-                onClose={() => setMediaReadPanelOpen(false)}
-                text={mediaPanelText}
-                mode="overlay"
-              />
-            )}
-          </div>
-          {mediaPanelIsShort && (
-            <MediaTextSidePanel
-              open={mediaReadPanelOpen && !!mediaPanelText}
-              onClose={() => setMediaReadPanelOpen(false)}
-              text={mediaPanelText}
-              mode="expand"
-            />
-          )}
           </div>
         )}
 
@@ -6544,17 +6378,6 @@ function PostCard({
                 style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
               />
             )}
-            {mediaPanelText && (
-              <MediaTextToggleDot
-                active={lightboxReadPanelOpen}
-                onToggle={() => setLightboxReadPanelOpen(v => !v)}
-              />
-            )}
-            <MediaTextSidePanel
-              open={lightboxReadPanelOpen && !!mediaPanelText}
-              onClose={() => setLightboxReadPanelOpen(false)}
-              text={mediaPanelText}
-            />
           </div>
 
           {/* Same action bar as public post card: like, comment, share */}
@@ -7229,8 +7052,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [authorPosts, setAuthorPosts] = useState<PostItem[]>([]);
   // فتح الصورة/الفيديو فقط بملء الشاشة — بدون فتح صفحة المنشور الكاملة القديمة
   const [mediaLightbox, setMediaLightbox] = useState<{ url: string; type: 'image' | 'video'; post: PostItem } | null>(null);
-  // ── Red-dot toggle on the media opens/closes the sliding text-read panel ──
-  const [lightboxReadPanelOpen, setLightboxReadPanelOpen] = useState(false);
   // كتم صوت معاينة الفيديو كاملة الشاشة
   const [lightboxMuted, setLightboxMuted] = useState(false);
 
@@ -7850,31 +7671,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
                 />
               )}
-              {(() => {
-                const ad = parseProductAd(mediaLightbox.post.text);
-                const panelText = isCompanyProfile
-                  ? [
-                      ad?.title || mediaLightbox.post.authorName || '',
-                      ad?.price || '',
-                      ad?.details || '',
-                    ].filter(Boolean).join('\n\n')
-                  : (mediaLightbox.post.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
-                return (
-                  <>
-                    {panelText && (
-                      <MediaTextToggleDot
-                        active={lightboxReadPanelOpen}
-                        onToggle={() => setLightboxReadPanelOpen(v => !v)}
-                      />
-                    )}
-                    <MediaTextSidePanel
-                      open={lightboxReadPanelOpen && !!panelText}
-                      onClose={() => setLightboxReadPanelOpen(false)}
-                      text={panelText}
-                    />
-                  </>
-                );
-              })()}
             </div>
 
             {/* Same bar as public post: like, comment — open full post for share */}
@@ -11979,8 +11775,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   /** عند فتح بوست من داخل البروفايل — البوست فوق البروفايل؛ عند فتح بروفايل من البوست — البروفايل فوق البوست */
   const [singlePostFromProfile, setSinglePostFromProfile] = useState(false);
   const [adDetailsOpen, setAdDetailsOpen] = useState(false);
-  // ── Red-dot toggle on the media opens/closes the sliding text-read panel (single post view) ──
-  const [singlePostReadPanelOpen, setSinglePostReadPanelOpen] = useState(false);
   const [adVideoPaused, setAdVideoPaused] = useState(false);
   const [singlePostChromeVisible, setSinglePostChromeVisible] = useState(true);
   const [singlePostMediaPage, setSinglePostMediaPage] = useState(0);
@@ -19775,20 +19569,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           const likeActive = engForPage ? engForPage.likedByMe : livePost.likedByMe;
           const likeCount = engForPage ? engForPage.likesCount : livePost.likesCount;
           const commentCount = engForPage ? (engForPage.comments?.length || 0) : livePost.commentsCount;
-          const singlePostIsCompany = !!(
-            companies.some(c => String(c.id) === String(livePost.authorId))
-            || isCompanyUserAccount({ id: livePost.authorId, username: livePost.authorUsername, name: livePost.authorName }, companies)
-            || (livePost as any).publisherType === 'company'
-            || (livePost as any).authorIsCompany === true
-            || (livePost as any).isCompanyPost === true
-          );
-          const singlePostPanelText = singlePostIsCompany
-            ? [
-                ad?.title || productAdDisplayTitle(livePost) || '',
-                ad?.price || '',
-                ad?.details || '',
-              ].filter(Boolean).join('\n\n')
-            : (livePost.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
           return (
             <motion.div
               key="single-post-view"
@@ -19898,20 +19678,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     </p>
                   </div>
                 )}
-
-                {/* Circle only makes sense over actual media (image/video/PDF) — a text-only
-                    post has no media to toggle the panel over, so it never shows the dot. */}
-                {singlePostPanelText && mediaItems.length > 0 && (
-                  <MediaTextToggleDot
-                    active={singlePostReadPanelOpen}
-                    onToggle={() => setSinglePostReadPanelOpen(v => !v)}
-                  />
-                )}
-                <MediaTextSidePanel
-                  open={singlePostReadPanelOpen && !!singlePostPanelText && mediaItems.length > 0}
-                  onClose={() => setSinglePostReadPanelOpen(false)}
-                  text={singlePostPanelText}
-                />
               </div>
 
               <div
