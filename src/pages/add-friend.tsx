@@ -6081,6 +6081,61 @@ function PostCard({
                 {mediaPage + 1}/{mediaItems.length}
               </div>
             )}
+
+            {/* Actions overlay — مخفية افتراضيًا فوق الوسائط، تظهر فقط مع نفس نقرة إظهار النص
+                (خلفية تدرّج أسود خفيف من الأسفل، أيقونات بيضاء) بدل شريط أبيض ثابت تحت الوسائط. */}
+            <AnimatePresence>
+              {feedCaptionOpen && (
+                <motion.div
+                  key="feed-actions-reveal"
+                  initial={{ y: '100%', opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: '100%', opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 40 }}
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 5,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '20px 14px 14px',
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.85) 40%, rgba(0,0,0,0))',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 72 }}>
+                    <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post, multiMedia ? mediaPage : undefined); }} style={{
+                      display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
+                      color: cardLiked ? '#ef4444' : '#ffffff',
+                    }}>
+                      <Heart size={18} strokeWidth={2} fill={cardLiked ? '#ef4444' : 'none'} />
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardLikes > 0 ? cardLikes : ''}</span>
+                    </motion.button>
+                    <motion.button
+                      whileTap={{ scale: 0.88 }}
+                      onClick={e => { e.stopPropagation(); if (onOpenComments) onOpenComments(post, multiMedia ? mediaPage : undefined); else onOpenPost(post); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#ffffff' }}
+                    >
+                      <MessageCircle size={18} strokeWidth={2} />
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardComments > 0 ? cardComments : ''}</span>
+                    </motion.button>
+                    <motion.button
+                      whileTap={{ scale: 0.88 }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (isProductAd && onProductShareMenu) onProductShareMenu(post);
+                        else onShare(post);
+                      }}
+                      aria-label="مشاركة"
+                      style={{
+                        display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer',
+                        color: productShareAlert ? '#eab308' : '#ffffff',
+                      }}
+                    >
+                      <Send size={17} strokeWidth={2} color={productShareAlert ? '#eab308' : undefined} />
+                    </motion.button>
+                  </div>
+                  <div style={{ minWidth: 72 }} />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
 
@@ -6091,8 +6146,9 @@ function PostCard({
           </div>
         )}
 
-        {/* Actions — منتج أو شركة: لايك → تعليقات → شير | تفاصيل (نفس داخل البوست) */}
-        {(isProductAd || isCompanyAuthor) ? (
+        {/* Actions — تظهر كشريط ثابت أسفل البوست فقط للمنشورات بدون وسائط (نصية) —
+            منشورات الوسائط تستخدم شريط الأزرار المخفي فوق الصورة/الفيديو أعلاه. */}
+        {!hasMedia && ((isProductAd || isCompanyAuthor) ? (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             paddingTop: 12, paddingInline: hasMedia ? 14 : 0, gap: 8,
@@ -6208,7 +6264,7 @@ function PostCard({
 
           <div style={{ minWidth: 72 }} />
         </div>
-        )}
+        ))}
 
         {/* Caption / product details sheet — three lines only, does not open post page */}
         <AnimatePresence>
