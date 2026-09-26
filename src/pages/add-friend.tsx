@@ -436,7 +436,7 @@ function formatVideoClock(sec: number): string {
 function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(true);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const seekingRef = useRef(false);
@@ -5537,6 +5537,12 @@ function setMediaEng(postId: number | string, mediaIndex: number, next: MediaEng
 }
 
 
+function isPostVideoUrl(url: string, typeHint?: string | null): boolean {
+  const hint = String(typeHint || '').toLowerCase();
+  if (hint.includes('video') || hint.includes('mp4') || hint.includes('webm') || hint.includes('quicktime')) return true;
+  return /\.(mp4|webm|mov|m4v|ogg)(\?|#|$)/i.test(String(url || ''));
+}
+
 function PostMediaItems(post: PostItem): { url: string; type: 'image' | 'video' }[] {
   let urls = post.mediaUrls?.length ? post.mediaUrls : null;
   let types = post.mediaTypes;
@@ -5550,11 +5556,11 @@ function PostMediaItems(post: PostItem): { url: string; type: 'image' | 'video' 
   if (urls?.length) {
     return urls.map((url, index) => ({
       url: resolveMediaUrl(url),
-      type: (types && types[index] === 'video') ? 'video' as const : 'image' as const,
+      type: isPostVideoUrl(url, types?.[index] || post.mediaType) ? 'video' as const : 'image' as const,
     })).filter(m => !!m.url);
   }
   return post.mediaUrl
-    ? [{ url: resolveMediaUrl(post.mediaUrl), type: post.mediaType === 'video' ? 'video' : 'image' }]
+    ? [{ url: resolveMediaUrl(post.mediaUrl), type: isPostVideoUrl(post.mediaUrl, post.mediaType) ? 'video' : 'image' }]
     : [];
 }
 

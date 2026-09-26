@@ -111,6 +111,17 @@ export function publishLiveChat(channel: string, payload: object) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ channel, payload }),
   }).catch(() => {});
+  void fetch('/api/room/signal', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      roomId: channel,
+      t: 'chat',
+      data: payload,
+      payload,
+    }),
+  }).catch(() => {});
 }
 
 export function subscribeLiveChat(channel: string, handle: (msg: LiveChatMsg) => void): () => void {
@@ -140,16 +151,21 @@ export function subscribeLiveChat(channel: string, handle: (msg: LiveChatMsg) =>
   const poll = async () => {
     if (!on) return;
     try {
-      const r = await fetch(`/api/live-chat?channel=${encodeURIComponent(channel)}&since=${since}`, { credentials: 'include' });
-      if (!r.ok) return;
-      const d = await r.json();
-      const list = (d.messages || d.items || []) as Array<{ payload?: unknown; at?: number } | LiveChatMsg>;
-      for (const item of list) {
-        const payload = (item as any).payload ?? item;
-        const at = Number((item as any).at || (payload as any).at || 0);
-        if (at > since) since = at;
-        const cm = parseIncomingChat(payload);
-        if (cm) handle(cm);
+      const pulls = await Promise.allSettled([
+        fetch(`/api/live-chat?channel=${encodeURIComponent(channel)}&since=${since}`, { credentials: 'include' }),
+        fetch(`/api/room/signal?roomId=${encodeURIComponent(channel)}&since=${since}`, { credentials: 'include' }),
+      ]);
+      for (const result of pulls) {
+        if (result.status !== 'fulfilled' || !result.value.ok) continue;
+        const d = await result.value.json();
+        const list = (d.messages || d.items || d.signals || []) as Array<{ payload?: unknown; data?: unknown; at?: number } | LiveChatMsg>;
+        for (const item of list) {
+          const payload = (item as any).payload ?? (item as any).data ?? item;
+          const at = Number((item as any).at || (payload as any).at || 0);
+          if (at > since) since = at;
+          const cm = parseIncomingChat(payload);
+          if (cm) handle(cm);
+        }
       }
     } catch {
       /* ignore */
