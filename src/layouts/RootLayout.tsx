@@ -1592,6 +1592,34 @@ function GlobalBottomNavigation() {
   const homeCallMicRef = useRef<any>(null);
   const homeCallSignalWsRef = useRef<WebSocket | null>(null);
   const homeCallApplyInviteRef = useRef<(raw: any) => void>(() => {});
+  const homeCallEndedAtRef = useRef<Map<string, number>>(new Map());
+
+  function markHomeCallChannelEnded(channel: string) {
+    const ch = String(channel || '').trim();
+    if (!ch) return;
+    homeCallEndedAtRef.current.set(ch, Date.now());
+  }
+
+  function isHomeCallChannelJustEnded(channel: string) {
+    const ch = String(channel || '').trim();
+    if (!ch) return false;
+    const at = homeCallEndedAtRef.current.get(ch);
+    return !!at && Date.now() - at < 20_000;
+  }
+
+  function clearServerCallInvite(targetUserId?: string | null, channel?: string | null) {
+    const uid = String(targetUserId || '').trim();
+    if (!uid) return;
+    try {
+      void fetch('/api/call/invite/clear', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: uid, channel: channel || undefined }),
+        keepalive: true,
+      });
+    } catch { /* */ }
+  }
 
   function homeCallSignalUrl() {
     try {
@@ -1698,6 +1726,7 @@ function GlobalBottomNavigation() {
       const hostId = String(rawIn.hostId || rawIn.fromId || rawIn.callerId || '');
       const channel = String(rawIn.channel || rawIn.roomId || rawIn.room || '');
       if (!channel || !hostId || hostId === String(user.id)) return;
+      if (isHomeCallChannelJustEnded(channel)) return;
       const raw = {
         ...rawIn,
         channel,
@@ -1876,9 +1905,18 @@ function GlobalBottomNavigation() {
         try { msg = JSON.parse(String(ev.data || '')); } catch { return; }
         if (!msg || typeof msg !== 'object') return;
         const type = String(msg.type || '');
+        if (type === 'hangup' || type === 'call-end' || type === 'ended') {
+          const ch = String(msg.channel || '');
+          if (ch) markHomeCallChannelEnded(ch);
+          if (homeCallPhaseRef.current !== 'idle' || homeIncoming) {
+            void leaveHomeGroupCall({ remote: true });
+          }
+          return;
+        }
         if (type !== 'call' && type !== 'incoming-call' && type !== 'home-call') return;
         const to = String(msg.to || msg.toUserId || '');
         if (to && to !== String(user.id)) return;
+        if (isHomeCallChannelJustEnded(String(msg.channel || ''))) return;
         homeCallApplyInviteRef.current({
           channel: msg.channel,
           hostId: msg.from || msg.hostId || msg.fromId,
@@ -2093,6 +2131,7 @@ function GlobalBottomNavigation() {
       : 0;
     homeCallLiveStartedAt.current = null;
     homeCallSessionRef.current += 1;
+    if (endedChannel) markHomeCallChannelEnded(endedChannel);
     // Notify remote party so their UI closes automatically (local hang-up only)
     if (!remoteEnd && endedChannel && user?.id) {
       try {
@@ -2112,17 +2151,22 @@ function GlobalBottomNavigation() {
             localStorage.setItem(`stooorna_home_call_invite_${m.id}`, JSON.stringify({ ended: true, channel: endedChannel, at: endedAt, clear: true }));
             localStorage.removeItem(`stooorna_home_call_invite_${m.id}`);
           } catch { /* */ }
+          clearServerCallInvite(m.id, endedChannel);
+          sendHomeCallSignal({
+            type: 'hangup',
+            to: m.id,
+            from: user.id,
+            channel: endedChannel,
+            at: endedAt,
+          });
           try {
-            void fetch('/api/call/invite', {
-              method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ clear: true, toUserId: m.id, userId: m.id, channel: endedChannel, ended: true }),
-            });
-          } catch { /* */ }
-          try {
-            void fetch('/api/room/leave', {
-              method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ roomId: `home_ring_${homeCallShortHash(m.id)}`, userId: user.id, endRoom: true }),
-            });
+            for (const roomId of homeRingRoomIds(m.id)) {
+              void fetch('/api/room/leave', {
+                method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomId, userId: user.id, endRoom: true }),
+                keepalive: true,
+              });
+            }
           } catch { /* */ }
         }
         try {
@@ -2692,11 +2736,13 @@ function GlobalBottomNavigation() {
           }
         } catch { /* */ }
       });
-      const tokenResponse = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(user.id)}`, { credentials: 'include' });
+      const [tokenResponse, micTrack] = await Promise.all([
+        fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(user.id)}`, { credentials: 'include' }),
+        AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' }),
+      ]);
       if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json() as { token: string; uid: number };
-        await client.join('149ef04e839c4132a08efb49d717c436', channel, tokenData.token, tokenData.uid);
-        const micTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' });
+        const tokenData = await tokenResponse.json() as { token: string; uid: number; appId?: string };
+        await client.join(tokenData.appId || '149ef04e839c4132a08efb49d717c436', channel, tokenData.token, tokenData.uid);
         try { await micTrack.setMuted(false); } catch { /* */ }
         try { await micTrack.setEnabled(true); } catch { /* */ }
         homeCallMicRef.current = micTrack;
@@ -3146,13 +3192,9 @@ function GlobalBottomNavigation() {
             localStorage.setItem(`stooorna_home_call_invite_${hostId}`, JSON.stringify({ ended: true, channel, at: endedAt, reason: 'declined' }));
             localStorage.removeItem(`stooorna_home_call_invite_${hostId}`);
           } catch { /* */ }
-          try {
-            void fetch('/api/call/invite', {
-              method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ clear: true, toUserId: hostId, userId: hostId, channel, ended: true, declined: true }),
-              keepalive: true,
-            });
-          } catch { /* */ }
+          clearServerCallInvite(hostId, channel);
+          sendHomeCallSignal({ type: 'hangup', to: hostId, from: user?.id, channel, at: endedAt, reason: 'declined' });
+          if (channel) markHomeCallChannelEnded(channel);
         }
       }
       if (user?.id) {
@@ -3207,20 +3249,15 @@ function GlobalBottomNavigation() {
     try { window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } })); } catch { /* */ }
     try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
     try { window.dispatchEvent(new CustomEvent('stooorna:call-answered', { detail: { channel: invite.channel, hostId: invite.hostId } })); } catch { /* */ }
-    try {
-      void fetch('/api/call/invite', {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clear: true, toUserId: user.id, userId: user.id, channel: invite.channel }),
-      });
-    } catch { /* */ }
-    try {
-      if (invite.hostId) {
-        void fetch('/api/call/invite', {
-          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clear: true, toUserId: invite.hostId, userId: invite.hostId, channel: invite.channel, answered: true }),
-        });
-      }
-    } catch { /* */ }
+    clearServerCallInvite(user.id, invite.channel);
+    if (invite.hostId) clearServerCallInvite(invite.hostId, invite.channel);
+    sendHomeCallSignal({
+      type: 'answered',
+      to: invite.hostId,
+      from: user.id,
+      channel: invite.channel,
+      at: Date.now(),
+    });
     try {
       localStorage.setItem(`stooorna_call_answered_${invite.channel}`, JSON.stringify({ at: Date.now(), by: user.id }));
       window.dispatchEvent(new StorageEvent('storage', { key: `stooorna_call_answered_${invite.channel}` }));
@@ -3230,27 +3267,6 @@ function GlobalBottomNavigation() {
       localStorage.removeItem('stooorna_home_call_active_invite');
     } catch { /* */ }
     let channel = String(invite.channel || '').trim();
-    if (!channel && invite.hostId) {
-      channel = `private_${homeCallShortHash([user.id, invite.hostId].sort().join('_'))}`;
-    }
-    try {
-      const ringId = `home_ring_${homeCallShortHash(user.id)}`;
-      const rr = await fetch(`/api/room?id=${encodeURIComponent(ringId)}`, { credentials: 'include' });
-      if (rr.ok) {
-        const rd = await rr.json() as { members?: { name?: string; userId?: string }[] };
-        const other = (rd.members || []).find(m => String(m.userId || '') !== user.id);
-        if (other?.name) {
-          if (other.name.startsWith('private_') || other.name.startsWith('home_group_')) {
-            channel = other.name;
-          } else {
-            try {
-              const parsed = JSON.parse(other.name);
-              if (parsed?.channel) channel = String(parsed.channel);
-            } catch { /* */ }
-          }
-        }
-      }
-    } catch { /* */ }
     if (!channel && invite.hostId) {
       channel = `private_${homeCallShortHash([user.id, invite.hostId].sort().join('_'))}`;
     }
@@ -3294,28 +3310,14 @@ function GlobalBottomNavigation() {
     setHomeCallChannel(channel);
     setHomeCallMembers(members);
     const session = ++homeCallSessionRef.current;
-    setHomeCallPhase('animating');
-    // Answering should not open the full call screen — keep it minimized
-    // as a top bar. Tapping the bar opens the full call UI.
+    setHomeCallPhase('connecting');
     setHomeCallMinimized(true);
-    window.setTimeout(() => {
-      if (homeCallSessionRef.current !== session) return;
-      setHomeCallMinimized(true); setHomeCallPhase('connecting');
-    }, 400);
     try {
-      await fetch('/api/room/join', {
+      void fetch('/api/room/join', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomId: channel, userId: user.id, name: me.name }),
+        keepalive: true,
       });
-      if (invite.hostId) {
-        const pair = `private_${homeCallShortHash([user.id, invite.hostId].sort().join('_'))}`;
-        if (pair !== channel) {
-          await fetch('/api/room/join', {
-            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ roomId: pair, userId: user.id, name: me.name }),
-          });
-        }
-      }
       const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
       if (homeCallAgoraRef.current) {
         try { await homeCallAgoraRef.current.leave?.(); } catch { /* */ }
@@ -3348,11 +3350,13 @@ function GlobalBottomNavigation() {
           }
         } catch { /* */ }
       });
-      const tokenResponse = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(user.id)}`, { credentials: 'include' });
+      const [tokenResponse, micTrack] = await Promise.all([
+        fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(user.id)}`, { credentials: 'include' }),
+        AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' }),
+      ]);
       if (tokenResponse.ok) {
-        const tokenData = await tokenResponse.json() as { token: string; uid: number };
-        await client.join('149ef04e839c4132a08efb49d717c436', channel, tokenData.token, tokenData.uid);
-        const micTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' });
+        const tokenData = await tokenResponse.json() as { token: string; uid: number; appId?: string };
+        await client.join(tokenData.appId || '149ef04e839c4132a08efb49d717c436', channel, tokenData.token, tokenData.uid);
         try { await micTrack.setMuted(false); } catch { /* */ }
         try { await micTrack.setEnabled(true); } catch { /* */ }
         homeCallMicRef.current = micTrack;
