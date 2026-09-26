@@ -1804,6 +1804,7 @@ export default function LiveCameraPage() {
               else void toggleMic();
             }}
             style={{
+              position: 'relative',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -1823,6 +1824,30 @@ export default function LiveCameraPage() {
             title="Mic requests"
           >
             <Hand size={16} color="#111" />
+            {amHost && micRequests.length > 0 && (
+              <span
+                style={{
+                  position: 'absolute',
+                  top: -4,
+                  right: -4,
+                  minWidth: 18,
+                  height: 18,
+                  borderRadius: 9,
+                  background: '#ef4444',
+                  color: '#fff',
+                  fontSize: '0.62rem',
+                  fontWeight: 900,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 4px',
+                  border: '1.5px solid #0a1f22',
+                  lineHeight: 1,
+                }}
+              >
+                {micRequests.length > 9 ? '9+' : micRequests.length}
+              </span>
+            )}
           </button>
           <button type="button" onClick={dismissLivePage} aria-label="Leave live"
             style={{
