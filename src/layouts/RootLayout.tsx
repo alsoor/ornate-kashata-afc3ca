@@ -1674,8 +1674,21 @@ function GlobalBottomNavigation() {
 
   useEffect(() => {
     if (!user?.id) return;
-    const applyInvite = (raw: any) => {
-      if (!raw?.channel || raw.hostId === user.id) return;
+    const applyInvite = (rawIn: any) => {
+      if (!rawIn || typeof rawIn !== 'object') return;
+      const hostId = String(rawIn.hostId || rawIn.fromId || rawIn.callerId || '');
+      const channel = String(rawIn.channel || rawIn.roomId || rawIn.room || '');
+      if (!channel || !hostId || hostId === String(user.id)) return;
+      const raw = {
+        ...rawIn,
+        channel,
+        hostId,
+        hostName: rawIn.hostName || rawIn.fromName || rawIn.callerName || rawIn.name || null,
+        hostAvatar: rawIn.hostAvatar || rawIn.fromAvatar || rawIn.avatarUrl || null,
+        at: Number(rawIn.at || rawIn.ts || rawIn.createdAt) || Date.now(),
+        video: !!(rawIn.video || rawIn.kind === 'video'),
+        members: Array.isArray(rawIn.members) ? rawIn.members : [],
+      };
       const ch = String(raw.channel);
       const inviteKey = homeInviteKey(ch, raw.at);
       if (isHomeCallRecentlyDeclined(user.id, inviteKey)) {
@@ -1750,10 +1763,11 @@ function GlobalBottomNavigation() {
         const raw = localStorage.getItem(`stooorna_home_call_invite_${user.id}`);
         if (raw) applyInvite(JSON.parse(raw));
         try {
-          const invRes = await fetch(`/api/call/invite?userId=${encodeURIComponent(user.id)}`, { credentials: 'include' });
+          const invRes = await fetch(`/api/call/invite?userId=${encodeURIComponent(user.id)}&toUserId=${encodeURIComponent(user.id)}`, { credentials: 'include' });
           if (invRes.ok) {
-            const invData = await invRes.json() as { invite?: any };
-            if (invData?.invite) applyInvite(invData.invite);
+            const invData = await invRes.json() as any;
+            const inviteObj = invData?.invite || invData?.data || invData?.call || (invData?.channel ? invData : null);
+            if (inviteObj) applyInvite(inviteObj);
           }
         } catch { /* */ }
         const active = localStorage.getItem('stooorna_home_call_active_invite');
@@ -1965,6 +1979,13 @@ function GlobalBottomNavigation() {
     setHomeCallElapsedSec(0);
     setHomeCallPickerOpen(false);
     stopHomeIncomingRing();
+    try {
+      const pulse = (homeCallAgoraRef as any)._invitePulse as number | undefined;
+      if (pulse) {
+        window.clearInterval(pulse);
+        (homeCallAgoraRef as any)._invitePulse = null;
+      }
+    } catch { /* */ }
     try {
       window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
       window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring'));
@@ -2361,29 +2382,79 @@ function GlobalBottomNavigation() {
         inviteeIds: picked.map(p => p.id),
       }));
     } catch { /* */ }
-    for (const peer of picked) {
-      try { localStorage.setItem(`stooorna_home_call_invite_${peer.id}`, JSON.stringify(invitePayload)); } catch { /* */ }
+    const pushInviteToPeer = (peer: HomeCallFriend, at: number) => {
+      const body = {
+        toUserId: peer.id,
+        userId: peer.id,
+        targetUserId: peer.id,
+        channel: invitePayload.channel,
+        roomId: invitePayload.channel,
+        video: !!(invitePayload as any).video,
+        kind: (invitePayload as any).video ? 'video' : 'voice',
+        hostId: invitePayload.hostId,
+        fromId: invitePayload.hostId,
+        hostName: invitePayload.hostName,
+        hostAvatar: invitePayload.hostAvatar,
+        members: invitePayload.members,
+        at,
+        ts: at,
+        hostUsername: invitePayload.hostUsername,
+        inviteeIds: picked.map(p => p.id),
+      };
+      try { localStorage.setItem(`stooorna_home_call_invite_${peer.id}`, JSON.stringify({ ...invitePayload, at })); } catch { /* */ }
       try {
         void fetch('/api/call/invite', {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            toUserId: peer.id,
-            channel: invitePayload.channel,
-            video: !!(invitePayload as any).video,
-            kind: (invitePayload as any).video ? 'video' : 'voice',
-            hostId: invitePayload.hostId,
-            hostName: invitePayload.hostName,
-            hostAvatar: invitePayload.hostAvatar,
-            members: invitePayload.members,
-            at: invitePayload.at,
-            hostUsername: invitePayload.hostUsername,
-          }),
+          body: JSON.stringify(body),
+          keepalive: true,
         });
       } catch { /* */ }
-    }
-    const session = ++homeCallSessionRef.current;
+      try {
+        void fetch('/api/room/join', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            roomId: `home_ring_${homeCallShortHash(peer.id)}`,
+            userId: user.id,
+            name: JSON.stringify({
+              channel: invitePayload.channel,
+              hostId: user.id,
+              hostName: me.name,
+              hostUsername: me.username,
+              hostAvatar: me.avatarUrl,
+              members: [me, ...others],
+              at,
+              video: !!homeCallVideoRef.current,
+            }),
+          }),
+          keepalive: true,
+        });
+      } catch { /* */ }
+    };
+    for (const peer of picked) pushInviteToPeer(peer, invitePayload.at);
+    const callSession = ++homeCallSessionRef.current;
+    const invitePulse = window.setInterval(() => {
+      if (homeCallSessionRef.current !== callSession) {
+        window.clearInterval(invitePulse);
+        return;
+      }
+      if (homeCallPhaseRef.current === 'live' || homeCallPhaseRef.current === 'idle') {
+        window.clearInterval(invitePulse);
+        return;
+      }
+      try {
+        localStorage.setItem('stooorna_home_call_active_invite', JSON.stringify({
+          ...invitePayload,
+          inviteeIds: picked.map(p => p.id),
+        }));
+      } catch { /* */ }
+      window.dispatchEvent(new CustomEvent('stooorna:home-group-call', {
+        detail: { ...invitePayload, inviteeIds: picked.map(p => p.id) },
+      }));
+      for (const peer of picked) pushInviteToPeer(peer, invitePayload.at);
+    }, 2000);
+    (homeCallAgoraRef as any)._invitePulse = invitePulse;
     window.setTimeout(() => {
-      if (homeCallSessionRef.current !== session) return;
+      if (homeCallSessionRef.current !== callSession) return;
       setHomeCallMinimized(true); setHomeCallPhase('connecting');
       // Outgoing ringback while waiting for answer
       try {
@@ -2400,7 +2471,7 @@ function GlobalBottomNavigation() {
     }, 900);
     if (homeCallNoAnswerTimer.current) window.clearTimeout(homeCallNoAnswerTimer.current);
     homeCallNoAnswerTimer.current = window.setTimeout(() => {
-      if (homeCallSessionRef.current !== session) return;
+      if (homeCallSessionRef.current !== callSession) return;
       if (homeCallPhaseRef.current === 'live') return;
       const myId = user?.id;
       if (myId) {
