@@ -5745,10 +5745,16 @@ function PostCard({
     }
   }
   // Root card element — used to smoothly re-center the whole post in the viewport
-  // when it expands, so the card doesn't jump or shake as it grows taller.
+  // whenever it expands or collapses, so it never drifts up or down as its height
+  // changes (centers on open AND on close, not just on open).
   const postCardRootRef = useRef<HTMLDivElement | null>(null);
+  const mediaExpandedMountedRef = useRef(false);
   useEffect(() => {
-    if (!mediaExpanded) return;
+    if (!mediaExpandedMountedRef.current) {
+      // Skip the initial render so the feed doesn't jump when it first loads.
+      mediaExpandedMountedRef.current = true;
+      return;
+    }
     const el = postCardRootRef.current;
     if (!el) return;
     const t = setTimeout(() => {
