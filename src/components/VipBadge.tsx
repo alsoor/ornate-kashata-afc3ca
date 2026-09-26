@@ -76,8 +76,6 @@ export function VipBadge({
 
 /** Ring thickness added around the avatar's own edges only — the avatar itself never resizes. */
 const VIP_RING_WIDTH = 3;
-/** Fixed outline color for the ring itself — independent of the account's VIP tag color. */
-const VIP_RING_COLOR = '#ef4444';
 
 /**
  * Fixed-color ring + VIP tab on top of an avatar, with a silver shine that sweeps
@@ -141,8 +139,8 @@ export function VipAvatarFrame({
           inset: 0,
           borderRadius: '50%',
           boxSizing: 'border-box',
-          border: `${VIP_RING_WIDTH}px solid ${VIP_RING_COLOR}`,
-          boxShadow: `0 0 8px ${VIP_RING_COLOR}99`,
+          border: `${VIP_RING_WIDTH}px solid ${color}`,
+          boxShadow: `0 0 8px ${color}99`,
           zIndex: 2,
           pointerEvents: 'none',
         }}
