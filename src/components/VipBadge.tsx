@@ -164,7 +164,7 @@ export function VipAvatarFrame({
       <span
         style={{
           position: 'absolute',
-          top: 2,
+          top: -VIP_RING_WIDTH - 4,
           left: '50%',
           transform: 'translateX(-50%)',
           background: color,
