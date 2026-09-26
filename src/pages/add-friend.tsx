@@ -76,8 +76,6 @@ const CLR_TAB_BORDER    = 'rgba(0,188,212,0.3)';
 
 const CLR_POST_BORDER   = '#0d3d33';
 
-const FEED_COMPACT_MEDIA_H = 216;
-
 // Max characters allowed for a plain text-only post (regular user composer, not company product posts).
 const TEXT_POST_CHAR_LIMIT = 100;
 
@@ -5976,31 +5974,11 @@ function PostCard({
           )}
         </div>
 
+        {/* Text-only posts (no media): show caption on the card */}
         {!hasMedia && post.text && !isProductAd && (
-          <button
-            type="button"
-            onClick={e => { e.stopPropagation(); onOpenPost(post); }}
-            style={{
-              background: '#0b1212', border: 'none', borderRadius: 0, padding: '12px 14px', margin: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              height: FEED_COMPACT_MEDIA_H, minHeight: FEED_COMPACT_MEDIA_H, maxHeight: FEED_COMPACT_MEDIA_H,
-              width: '100%', boxSizing: 'border-box', cursor: 'pointer', overflow: 'hidden',
-            }}
-          >
-            <div style={{ width: '100%', maxHeight: '100%', overflow: 'hidden' }}>
-              <PostText text={post.text} color="hsl(var(--primary))" textColor="#ffffff" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => onOpenPost(post)} />
-            </div>
-          </button>
-        )}
-        {!hasMedia && !post.text && (
-          <button
-            type="button"
-            onClick={e => { e.stopPropagation(); onOpenPost(post); }}
-            style={{
-              background: '#0b1212', border: 'none', height: FEED_COMPACT_MEDIA_H, minHeight: FEED_COMPACT_MEDIA_H,
-              width: '100%', cursor: 'pointer',
-            }}
-          />
+          <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column' }}>
+            <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => setProductDetailsOpen(true)} />
+          </div>
         )}
 
         {/* Media — من اليمين لليسار بعرض الشاشة كاملاً. لو أكثر من عنصر واحد: معرض قابل
@@ -6008,7 +5986,7 @@ function PostCard({
             النص يبقى مخفي فوق الصورة/الفيديو — أي نقرة على الوسائط تفتحه وتغلقه (شتر)
             بدل فتح صفحة منفصلة. */}
         {hasMedia && (
-          <div style={{ position: 'relative', width: '100%', height: FEED_COMPACT_MEDIA_H, minHeight: FEED_COMPACT_MEDIA_H, maxHeight: FEED_COMPACT_MEDIA_H, overflow: 'hidden', background: '#000' }}>
+          <div style={{ position: 'relative', width: '100%' }}>
             <AnimatePresence>
               {feedCaptionOpen && (post.text || (isProductAd && (productAd?.title || productAd?.price || productAd?.details))) && (
                 <motion.div
@@ -6088,13 +6066,13 @@ function PostCard({
                     onClick={e => {
                       e.stopPropagation();
                       setMediaPage(index);
-                      onOpenPost(post);
+                      setFeedCaptionOpen(v => !v);
                     }}
                     aria-label={media.type === 'video' ? 'Open video' : 'Open image'}
                     style={{
-                      position: 'relative', width: '100%', height: FEED_COMPACT_MEDIA_H, boxSizing: 'border-box', padding: 0,
+                      position: 'relative', width: '100%', boxSizing: 'border-box', padding: 0,
                       border: 'none',
-                      background: '#000', cursor: 'pointer', display: 'block', overflow: 'hidden',
+                      background: '#000', cursor: 'pointer', display: 'block', overflow: 'hidden', maxHeight: '85vh',
                     }}
                   >
                     {media.type === 'video' ? (
@@ -6116,13 +6094,13 @@ function PostCard({
                         }}
                         onPlay={() => setFeedVideoPlaying(prev => ({ ...prev, [index]: true }))}
                         onPause={() => setFeedVideoPlaying(prev => ({ ...prev, [index]: false }))}
-                        style={{ width: '100%', height: FEED_COMPACT_MEDIA_H, objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }}
+                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }}
                       />
                     ) : (
                       <img
                         src={media.url}
                         alt=""
-                        style={{ width: '100%', height: FEED_COMPACT_MEDIA_H, objectFit: 'cover', display: 'block', background: '#000' }}
+                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'cover', display: 'block', background: '#000' }}
                       />
                     )}
                   </button>
@@ -8236,10 +8214,7 @@ function PostDetailPage({
 
   return (
     <motion.div
-      initial={{ clipPath: 'inset(0% 0% 100% 0%)' }}
-      animate={{ clipPath: 'inset(0% 0% 0% 0%)' }}
-      exit={{ clipPath: 'inset(0% 0% 100% 0%)' }}
-      transition={{ duration: 0.42, ease: [0.22, 1, 0.32, 1] }}
+      initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }}
       style={{
         position: 'fixed', inset: 0, zIndex: 10400,
         background: PAGE_BG,
@@ -19800,12 +19775,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           return (
             <motion.div
               key="single-post-view"
-              initial={{ clipPath: 'inset(0% 0% 100% 0%)' }}
-              animate={{ clipPath: 'inset(0% 0% 0% 0%)' }}
-              exit={{ clipPath: 'inset(0% 0% 100% 0%)' }}
-              transition={{ duration: 0.42, ease: [0.22, 1, 0.32, 1] }}
+              initial={{ y: 0, opacity: 1 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: '100%', opacity: 0.85 }}
+              transition={{ duration: 0.38, ease: [0.32, 0.72, 0, 1] }}
               style={{
                 position: 'fixed', inset: 0,
+                // من البروفايل: فوق البروفايل (10420) — من الفيد: تحت البروفايل لو فُتح بروفايل فوقه
                 zIndex: singlePostFromProfile || storyHomeSheetOpen ? 12110 : 10380,
                 background: '#000', display: 'flex', flexDirection: 'column', overflow: 'hidden',
               }}
