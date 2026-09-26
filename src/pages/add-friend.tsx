@@ -5703,6 +5703,9 @@ function PostCard({
   // روابط X داخل نص المنشور — نص إعلان/منشور المنتج مخفي في الفييد، فنعرض وسائط الرابط مباشرة
   const postXUrls = isProductAd ? extractLinkMediaUrls(post.text) : [];
   const [productDetailsOpen, setProductDetailsOpen] = useState(false);
+  // Feed media tap: reveal caption as an overlay pinned to the top of the media
+  // (instead of navigating away to the full post page).
+  const [feedCaptionOpen, setFeedCaptionOpen] = useState(false);
   function goToMediaPage(idx: number) {
     const el = mediaScrollRef.current;
     if (!el) return;
@@ -5931,16 +5934,46 @@ function PostCard({
           </div>
         )}
 
-        {hasMedia && post.text && !isProductAd && (
-          <div style={{ paddingInline: 14, paddingTop: 10, paddingBottom: 2 }}>
-            <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => setProductDetailsOpen(true)} />
-          </div>
-        )}
-
         {/* Media — من اليمين لليسار بعرض الشاشة كاملاً. لو أكثر من عنصر واحد: معرض قابل
-            للتصفح يمين/يسار (سحب أو أزرار الأسهم) مع عداد صفحات "1/N" زي انستغرام. */}
+            للتصفح يمين/يسار (سحب أو أزرار الأسهم) مع عداد صفحات "1/N" زي انستغرام.
+            النص يبقى مخفي فوق الصورة/الفيديو — أي نقرة على الوسائط تفتحه وتغلقه (شتر)
+            بدل فتح صفحة منفصلة. */}
         {hasMedia && (
           <div style={{ position: 'relative', width: '100%' }}>
+            <AnimatePresence>
+              {feedCaptionOpen && (post.text || (isProductAd && (productAd?.title || productAd?.price || productAd?.details))) && (
+                <motion.div
+                  key="feed-caption-reveal"
+                  initial={{ y: '-100%', opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: '-100%', opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 40 }}
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5,
+                    maxHeight: '70%', overflowY: 'auto',
+                    background: 'linear-gradient(to bottom, rgba(0,0,0,0.88) 60%, rgba(0,0,0,0))',
+                    padding: '14px 14px 28px',
+                  }}
+                >
+                  {isProductAd ? (
+                    <>
+                      <p style={{ margin: 0, color: '#fff', fontSize: '1rem', fontWeight: 800, lineHeight: 1.4 }}>
+                        {productAd?.title || productAdDisplayTitle(post) || post.authorName || ''}
+                      </p>
+                      {productAd?.price ? (
+                        <p style={{ margin: '8px 0 0', color: '#00BCD4', fontSize: '0.92rem', fontWeight: 800 }}>{productAd.price}</p>
+                      ) : null}
+                      {productAd?.details ? (
+                        <p style={{ margin: '10px 0 0', color: 'rgba(255,255,255,0.92)', fontSize: '0.84rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{productAd.details}</p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <PostText text={post.text} color="#00BCD4" textColor="#ffffff" bold onHashtag={onHashtag} />
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
             {mediaItems.length > 1 && (
               <style>{'.post-media-scroll::-webkit-scrollbar{display:none}'}</style>
             )}
@@ -5981,12 +6014,18 @@ function PostCard({
                     background: '#000',
                   }}
                 >
-                  <div
-                    aria-label={media.type === 'video' ? 'Video' : 'Image'}
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      setMediaPage(index);
+                      setFeedCaptionOpen(v => !v);
+                    }}
+                    aria-label={media.type === 'video' ? 'Open video' : 'Open image'}
                     style={{
                       position: 'relative', width: '100%', boxSizing: 'border-box', padding: 0,
                       border: 'none',
-                      background: '#000', display: 'block', overflow: 'hidden', maxHeight: '85vh',
+                      background: '#000', cursor: 'pointer', display: 'block', overflow: 'hidden', maxHeight: '85vh',
                     }}
                   >
                     {media.type === 'video' ? (
@@ -5997,7 +6036,7 @@ function PostCard({
                         loop
                         playsInline
                         preload="metadata"
-                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'cover', display: 'block', background: '#000' }}
+                        style={{ width: '100%', maxHeight: '85vh', objectFit: 'cover', display: 'block', background: '#000', cursor: 'pointer' }}
                       />
                     ) : (
                       <img
@@ -6006,7 +6045,7 @@ function PostCard({
                         style={{ width: '100%', maxHeight: '85vh', objectFit: 'cover', display: 'block', background: '#000' }}
                       />
                     )}
-                  </div>
+                  </button>
                   {/* أيقونة كتم/تشغيل الصوت — تحل محل أزرار الفيديو الافتراضية (controls) على
                       معاينة الفييد الصغيرة، فتبقى الصورة/الفيديو تبين كاملة وبعيدة بدون تحكمات كبيرة تغطيها. */}
                   {media.type === 'video' && (
@@ -19748,6 +19787,22 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); closeSinglePostView(); }}
+                    aria-label="Close"
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
+                      borderRadius: 10, width: 36, height: 36,
+                      color: '#ef4444', cursor: 'pointer', padding: 0,
+                      fontWeight: 900, fontSize: '1rem', lineHeight: 1, flexShrink: 0,
+                      marginRight: 6,
+                    }}
+                  >
+                    X
+                  </motion.button>
                   <motion.button
                     whileTap={{ scale: 0.9 }}
                     type="button"
