@@ -2481,7 +2481,17 @@ function GlobalBottomNavigation() {
           if (p?.at && Date.now() - Number(p.at) < 120000) promote();
         }
       } catch { /* */ }
-    }, 1000);
+      void (async () => {
+        try {
+          const uid = encodeURIComponent(String((window as any).__stooornaUserId || ''));
+          const r = await fetch(`/api/call/invite?userId=${encodeURIComponent(String(user?.id || ''))}`, { credentials: 'include' });
+          if (!r.ok) return;
+          const d = await r.json() as { invite?: { channel?: string; answered?: boolean; kind?: string } };
+          const inv = d?.invite;
+          if (inv?.answered && String(inv.channel || '') === String(channel)) promote();
+        } catch { /* */ }
+      })();
+    }, 400);
     return () => {
       window.removeEventListener('stooorna:call-answered', onAnswered as EventListener);
       window.removeEventListener('storage', onStorage);
@@ -3264,7 +3274,6 @@ function GlobalBottomNavigation() {
     try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
     try { window.dispatchEvent(new CustomEvent('stooorna:call-answered', { detail: { channel: invite.channel, hostId: invite.hostId } })); } catch { /* */ }
     clearServerCallInvite(user.id, invite.channel);
-    if (invite.hostId) clearServerCallInvite(invite.hostId, invite.channel);
     sendHomeCallSignal({
       type: 'answered',
       to: invite.hostId,
@@ -3272,6 +3281,24 @@ function GlobalBottomNavigation() {
       channel: invite.channel,
       at: Date.now(),
     });
+    if (invite.hostId) {
+      try {
+        void fetch('/api/call/invite', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            toUserId: invite.hostId,
+            channel: invite.channel,
+            kind: 'voice',
+            hostId: invite.hostId,
+            answered: true,
+            at: Date.now(),
+          }),
+          keepalive: true,
+        });
+      } catch { /* */ }
+    }
     try {
       localStorage.setItem(`stooorna_call_answered_${invite.channel}`, JSON.stringify({ at: Date.now(), by: user.id }));
       window.dispatchEvent(new StorageEvent('storage', { key: `stooorna_call_answered_${invite.channel}` }));
