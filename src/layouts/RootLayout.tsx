@@ -813,6 +813,21 @@ function GlobalBottomNavigation() {
   // Purely local to the bar itself — nothing above it is ever affected.
   const [navBarHidden, setNavBarHidden] = useState(false);
   void navBarHidden; // no longer hides the bar (see hideBottomBar below) — kept for future use
+  // True while the profile/story tab (add-friend.tsx) is the active tab —
+  // the "+" now lives inline there, so the whole bottom nav bar is removed
+  // (not just hidden) on that page.
+  const [storyPageActive, setStoryPageActive] = useState(false);
+  useEffect(() => {
+    const onStoryPage = (e: Event) => {
+      const active = !!(e as CustomEvent).detail?.active;
+      setStoryPageActive(active);
+    };
+    window.addEventListener('stooorna:story-page-active', onStoryPage);
+    return () => window.removeEventListener('stooorna:story-page-active', onStoryPage);
+  }, []);
+  useEffect(() => {
+    if (!location.pathname.startsWith('/add-friend')) setStoryPageActive(false);
+  }, [location.pathname]);
   const [liveMapOpen, setLiveMapOpen] = useState(false);
   useEffect(() => {
     const onFeedScroll = (e: Event) => {
@@ -4851,6 +4866,7 @@ function GlobalBottomNavigation() {
       )}
 
   {(() => {
+    if (storyPageActive) return null;
     const hideBottomBar =
       // navBarHidden (auto-hide on scroll in the profile/story page) intentionally
       // excluded — the "+" button lives on this bar and must always stay reachable
@@ -5338,6 +5354,20 @@ export default function RootLayout({
   const isPrivacyPage = location.pathname === '/privacy' || location.pathname.startsWith('/privacy/');
   const isVoiceRoom = location.pathname === '/live' || location.pathname.startsWith('/live/') || location.pathname === '/live-camera' || location.pathname.startsWith('/live-camera');
   const isFullBleed = isFullScreenChat || isPrivacyPage || isVoiceRoom;
+  // Mirrors the same flag inside GlobalBottomNavigation: true while the
+  // profile/story tab is active, so the space reserved for the bottom nav
+  // bar collapses too (the bar itself is fully removed there, not just hidden).
+  const [storyPageActive, setStoryPageActive] = useState(false);
+  useEffect(() => {
+    const onStoryPage = (e: Event) => {
+      setStoryPageActive(!!(e as CustomEvent).detail?.active);
+    };
+    window.addEventListener('stooorna:story-page-active', onStoryPage);
+    return () => window.removeEventListener('stooorna:story-page-active', onStoryPage);
+  }, []);
+  useEffect(() => {
+    if (!location.pathname.startsWith('/add-friend')) setStoryPageActive(false);
+  }, [location.pathname]);
   const isSettingsPage = location.pathname === '/settings' || location.pathname.startsWith('/settings');
   const [settingsClosing, setSettingsClosing] = useState(false);
   const [textPostsOverlayOpen, setTextPostsOverlayOpen] = useState(() => {
@@ -5395,7 +5425,7 @@ export default function RootLayout({
       boxSizing: 'border-box'
     } : {
       minHeight: '100dvh',
-      paddingBottom: 'calc(52px + env(safe-area-inset-bottom))',
+      paddingBottom: storyPageActive ? 0 : 'calc(52px + env(safe-area-inset-bottom))',
       boxSizing: 'border-box'
     }}>
         {isSettingsPage ? (

@@ -15027,6 +15027,24 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   );
   const isFriendManagement = pageTab === 'add';
 
+  // Tell RootLayout whether we're on the profile/story tab, so it can remove
+  // the bottom nav bar entirely there (the "+" now lives inline under the
+  // header grabber instead).
+  useEffect(() => {
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:story-page-active', {
+        detail: { active: pageTab === 'profile' },
+      }));
+    } catch { /* ignore */ }
+  }, [pageTab]);
+  useEffect(() => {
+    return () => {
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:story-page-active', { detail: { active: false } }));
+      } catch { /* ignore */ }
+    };
+  }, []);
+
   // ── Header show/hide toggle ────────────────────────────────────────────────
   // Grabber bar above the content switcher: tap toggles the header (avatar/stats,
   // stories strip, new-post + inbox) like a shutter. Swiping up on the posts feed
