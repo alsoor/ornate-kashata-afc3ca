@@ -4136,7 +4136,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 }
 
 // ── StoryViewer — fullscreen viewer ───────────────────────────────────────────
-function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia, onPublishPhoto, onPublishVideo, onOpenCamera, onDeleteItem, onSendComment, isCompanyPublisher = false }: {
+function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia, onPublishPhoto, onPublishVideo, onOpenCamera, onDeleteItem, onSendComment, isCompanyPublisher = false, onOpenSettings, onOpenFriends, onOpenChat }: {
   groups: StoryGroup[];
   startGroupIdx: number;
   myId: string;
@@ -4150,6 +4150,10 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
   onSendComment: (storyId: number, text: string) => Promise<boolean>;
   /** شركة = إعلان للقصة؛ فرد = نشر قصة (مع موسيقى/نص في الكاميرا) */
   isCompanyPublisher?: boolean;
+  /** الزائد المنقول من الشريط السفلي للبوست العام — إعدادات / أصدقاء / دردشة */
+  onOpenSettings?: () => void;
+  onOpenFriends?: () => void;
+  onOpenChat?: () => void;
 }) {
   const [gIdx, setGIdx] = useState(startGroupIdx);
   const [iIdx, setIIdx] = useState(0);
@@ -4167,6 +4171,10 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
   const [commentSent, setCommentSent] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const commentInputRef = useRef<HTMLInputElement>(null);
+  // ── الزائد المنقول من الشريط السفلي للبوست العام (إعدادات/أصدقاء/اتصال/دردشة/بث) ──
+  const [storyPlusOpen, setStoryPlusOpen] = useState(false);
+  const incomingCallUi = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
+  const storyPlusCallPressRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; long: boolean }>({ timer: null, long: false });
 
   const group = groups[gIdx];
   const item = group?.items[iIdx];
@@ -4558,6 +4566,216 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
                 }} />
               ) : <Send size={15} strokeWidth={2.4} />}
             </motion.button>
+
+            {/* الزائد المنقول من الشريط السفلي للبوست العام — نفس الإجراءات */}
+            <div style={{ position: 'relative', width: 38, height: 38, flexShrink: 0 }}>
+              {storyPlusOpen && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close menu"
+                    onClick={() => setStoryPlusOpen(false)}
+                    style={{
+                      position: 'fixed', inset: 0, zIndex: 10210,
+                      background: 'transparent', border: 'none', cursor: 'default',
+                    }}
+                  />
+                  <div style={{
+                    position: 'absolute',
+                    bottom: 46,
+                    right: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 10,
+                    zIndex: 10620,
+                    animation: 'stooornaPlusFanIn 0.28s ease-out',
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStoryPlusOpen(false);
+                        onOpenSettings?.();
+                      }}
+                      aria-label="Settings"
+                      style={{
+                        width: 44, height: 44, borderRadius: '50%',
+                        border: '1px solid rgba(0,188,212,0.4)',
+                        background: 'rgba(6,20,22,0.96)',
+                        color: '#00BCD4',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                      }}
+                    >
+                      <Settings size={20} strokeWidth={2.2} />
+                    </button>
+                    {myId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStoryPlusOpen(false);
+                          onOpenFriends?.();
+                        }}
+                        aria-label="Friends"
+                        style={{
+                          width: 44, height: 44, borderRadius: '50%',
+                          border: '1px solid rgba(0,188,212,0.4)',
+                          background: 'rgba(6,20,22,0.96)',
+                          color: '#00BCD4',
+                          cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                        }}
+                      >
+                        <Users size={20} strokeWidth={2.2} />
+                      </button>
+                    )}
+                    {myId && (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, position: 'relative' }}>
+                        <button
+                          type="button"
+                          onPointerDown={() => {
+                            if (!incomingCallUi.ringing) return;
+                            storyPlusCallPressRef.current.long = false;
+                            if (storyPlusCallPressRef.current.timer) clearTimeout(storyPlusCallPressRef.current.timer);
+                            storyPlusCallPressRef.current.timer = setTimeout(() => {
+                              storyPlusCallPressRef.current.long = true;
+                              void declineIncomingCallGlobally(myId ?? null);
+                              try { window.dispatchEvent(new CustomEvent('stooorna:decline-home-incoming')); } catch { /* ignore */ }
+                              setStoryPlusOpen(false);
+                            }, 550);
+                          }}
+                          onPointerUp={() => {
+                            if (storyPlusCallPressRef.current.timer) {
+                              clearTimeout(storyPlusCallPressRef.current.timer);
+                              storyPlusCallPressRef.current.timer = null;
+                            }
+                          }}
+                          onPointerLeave={() => {
+                            if (storyPlusCallPressRef.current.timer) {
+                              clearTimeout(storyPlusCallPressRef.current.timer);
+                              storyPlusCallPressRef.current.timer = null;
+                            }
+                          }}
+                          onClick={() => {
+                            if (storyPlusCallPressRef.current.long) {
+                              storyPlusCallPressRef.current.long = false;
+                              return;
+                            }
+                            if (incomingCallUi.ringing) {
+                              setStoryPlusOpen(false);
+                              try {
+                                window.dispatchEvent(new CustomEvent('stooorna:answer-home-incoming', {
+                                  detail: {
+                                    channel: incomingCallUi.channel,
+                                    hostId: incomingCallUi.callerId,
+                                    hostName: incomingCallUi.callerLabel,
+                                  },
+                                }));
+                              } catch { /* ignore */ }
+                              return;
+                            }
+                            setStoryPlusOpen(false);
+                            try {
+                              window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
+                                detail: { overPosts: true },
+                              }));
+                            } catch { /* */ }
+                          }}
+                          aria-label={incomingCallUi.ringing ? 'Answer call' : 'Call'}
+                          style={{
+                            width: 44, height: 44, borderRadius: '50%',
+                            border: '1px solid rgba(0,188,212,0.4)',
+                            background: 'rgba(6,20,22,0.96)',
+                            color: '#00BCD4',
+                            cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                          }}
+                        >
+                          <Phone size={20} strokeWidth={2.2} />
+                        </button>
+                      </div>
+                    )}
+                    {myId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStoryPlusOpen(false);
+                          onOpenChat?.();
+                        }}
+                        aria-label="Chat"
+                        style={{
+                          width: 44, height: 44, borderRadius: '50%',
+                          border: '1px solid rgba(0,188,212,0.4)',
+                          background: 'rgba(6,20,22,0.96)',
+                          color: '#00BCD4',
+                          cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                        }}
+                      >
+                        <MessageCircle size={20} strokeWidth={2.2} />
+                      </button>
+                    )}
+                    {myId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStoryPlusOpen(false);
+                          try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
+                          try {
+                            window.dispatchEvent(new CustomEvent('stooorna:open-live-kind', {
+                              detail: { overPosts: true, returnTo: 'text-posts' },
+                            }));
+                          } catch { /* */ }
+                        }}
+                        aria-label="Live broadcast"
+                        style={{
+                          width: 44, height: 44, borderRadius: '50%',
+                          border: '1px solid rgba(0,188,212,0.4)',
+                          background: 'rgba(6,20,22,0.96)',
+                          color: '#00BCD4',
+                          cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                        }}
+                      >
+                        <Radio size={20} strokeWidth={2.2} />
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setStoryPlusOpen(o => !o);
+                }}
+                aria-label={incomingCallUi.ringing ? 'Incoming call menu' : 'Open menu'}
+                aria-expanded={storyPlusOpen}
+                style={{
+                  width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+                  border: 'none',
+                  background: storyPlusOpen ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.12)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                <span style={{
+                  display: 'flex',
+                  transition: 'transform 0.25s ease',
+                  transform: storyPlusOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+                  transformOrigin: 'center center',
+                }}>
+                  <Plus size={18} strokeWidth={2.4} />
+                </span>
+              </button>
+            </div>
           </div>
           <AnimatePresence>
             {commentSent && (
@@ -15635,9 +15853,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       isCompany: searchParams.get('openProfileCompany') === '1',
     };
   });
-  const [textPostsPlusOpen, setTextPostsPlusOpen] = useState(false);
-  const incomingCallUi = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
-  const plusCallPressRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; long: boolean }>({ timer: null, long: false });
   /** Story / account page sheet over public posts */
   const [storyHomeSheetOpen, setStoryHomeSheetOpen] = useState(false);
   /** When true, public posts dismiss to the right while the account page enters from the left */
@@ -21441,247 +21656,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </button>
                 )}
 
-                {/* Right: plus menu (same actions as bottom-bar plus) */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    right: 8,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    width: 44,
-                    height: 40,
-                    zIndex: 3,
-                  }}
-                >
-                  {textPostsPlusOpen && (
-                    <>
-                      <button
-                        type="button"
-                        aria-label="Close menu"
-                        onClick={() => setTextPostsPlusOpen(false)}
-                        style={{
-                          position: 'fixed', inset: 0, zIndex: 10210,
-                          background: 'transparent', border: 'none', cursor: 'default',
-                        }}
-                      />
-                      <div style={{
-                        position: 'absolute',
-                        bottom: 48,
-                        right: 0,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 10,
-                        zIndex: 10620,
-                        animation: 'stooornaPlusFanIn 0.28s ease-out',
-                      }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTextPostsPlusOpen(false);
-                            // Open settings sheet on top of public posts (do not close text posts)
-                            try {
-                              window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts'));
-                            } catch { /* */ }
-                            navigate('/settings');
-                          }}
-                          aria-label="Settings"
-                          style={{
-                            width: 44, height: 44, borderRadius: '50%',
-                            border: '1px solid rgba(0,188,212,0.4)',
-                            background: 'rgba(6,20,22,0.96)',
-                            color: '#00BCD4',
-                            cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                          }}
-                        >
-                          <Settings size={20} strokeWidth={2.2} />
-                        </button>
-                        {user && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTextPostsPlusOpen(false);
-                              // Open friends panel over public posts (keep text posts open)
-                              setFriendsPanelTab('friends');
-                              setNamesBarOpen(true);
-                              try {
-                                window.dispatchEvent(new CustomEvent('stooorna:friends-panel-opened'));
-                                window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', {
-                                  detail: { tab: 'friends', overPosts: true },
-                                }));
-                              } catch { /* */ }
-                            }}
-                            aria-label="Friends"
-                            style={{
-                              width: 44, height: 44, borderRadius: '50%',
-                              border: '1px solid rgba(0,188,212,0.4)',
-                              background: 'rgba(6,20,22,0.96)',
-                              color: '#00BCD4',
-                              cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                            }}
-                          >
-                            <Users size={20} strokeWidth={2.2} />
-                          </button>
-                        )}
-                        {user && (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, position: 'relative' }}>
-                            <button
-                              type="button"
-                              onPointerDown={() => {
-                                if (!incomingCallUi.ringing) return;
-                                plusCallPressRef.current.long = false;
-                                if (plusCallPressRef.current.timer) clearTimeout(plusCallPressRef.current.timer);
-                                plusCallPressRef.current.timer = setTimeout(() => {
-                                  plusCallPressRef.current.long = true;
-                                  void declineIncomingCallGlobally(user?.id ?? null);
-                                  try { window.dispatchEvent(new CustomEvent('stooorna:decline-home-incoming')); } catch { /* ignore */ }
-                                  setTextPostsPlusOpen(false);
-                                }, 550);
-                              }}
-                              onPointerUp={() => {
-                                if (plusCallPressRef.current.timer) {
-                                  clearTimeout(plusCallPressRef.current.timer);
-                                  plusCallPressRef.current.timer = null;
-                                }
-                              }}
-                              onPointerLeave={() => {
-                                if (plusCallPressRef.current.timer) {
-                                  clearTimeout(plusCallPressRef.current.timer);
-                                  plusCallPressRef.current.timer = null;
-                                }
-                              }}
-                              onClick={() => {
-                                if (plusCallPressRef.current.long) {
-                                  plusCallPressRef.current.long = false;
-                                  return;
-                                }
-                                if (incomingCallUi.ringing) {
-                                  setTextPostsPlusOpen(false);
-                                  try {
-                                    window.dispatchEvent(new CustomEvent('stooorna:answer-home-incoming', {
-                                      detail: {
-                                        channel: incomingCallUi.channel,
-                                        hostId: incomingCallUi.callerId,
-                                        hostName: incomingCallUi.callerLabel,
-                                      },
-                                    }));
-                                  } catch { /* ignore */ }
-                                  return;
-                                }
-                                setTextPostsPlusOpen(false);
-                                try {
-                                  window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
-                                    detail: { overPosts: true },
-                                  }));
-                                } catch { /* */ }
-                              }}
-                              aria-label={incomingCallUi.ringing ? 'Answer call' : 'Call'}
-                              style={{
-                                width: 44, height: 44, borderRadius: '50%',
-                                border: '1px solid rgba(0,188,212,0.4)',
-                                background: 'rgba(6,20,22,0.96)',
-                                color: '#00BCD4',
-                                cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                              }}
-                            >
-                              <Phone size={20} strokeWidth={2.2} />
-                            </button>
-                          </div>
-                        )}
-                        {user && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTextPostsPlusOpen(false);
-                              setNormalChatPickerOpen(true);
-                              void loadFriends();
-                            }}
-                            aria-label="Chat"
-                            style={{
-                              width: 44, height: 44, borderRadius: '50%',
-                              border: '1px solid rgba(0,188,212,0.4)',
-                              background: 'rgba(6,20,22,0.96)',
-                              color: '#00BCD4',
-                              cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                            }}
-                          >
-                            <MessageCircle size={20} strokeWidth={2.2} />
-                          </button>
-                        )}
-                        {user && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTextPostsPlusOpen(false);
-                              try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
-                              try {
-                                window.dispatchEvent(new CustomEvent('stooorna:open-live-kind', {
-                                  detail: { overPosts: true, returnTo: 'text-posts' },
-                                }));
-                              } catch { /* */ }
-                            }}
-                            aria-label="Live broadcast"
-                            style={{
-                              width: 44, height: 44, borderRadius: '50%',
-                              border: '1px solid rgba(0,188,212,0.4)',
-                              background: 'rgba(6,20,22,0.96)',
-                              color: '#00BCD4',
-                              cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                            }}
-                          >
-                            <Radio size={20} strokeWidth={2.2} />
-                          </button>
-                        )}
-                      </div>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setTextPostsPlusOpen(o => !o);
-                    }}
-                    aria-label={incomingCallUi.ringing ? 'Incoming call menu' : 'Open menu'}
-                    aria-expanded={textPostsPlusOpen}
-                    style={{
-                      position: 'absolute',
-                      right: 0,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      width: 44,
-                      height: 36,
-                      border: 'none',
-                      background: textPostsPlusOpen ? 'rgba(0,188,212,0.14)' : 'transparent',
-                      borderRadius: 12,
-                      color: textPostsPlusOpen ? '#00BCD4' : 'rgba(0,188,212,0.85)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      zIndex: 2,
-                      WebkitTapHighlightColor: 'transparent',
-                    }}
-                  >
-                    <span style={{
-                      display: 'flex',
-                      transition: 'transform 0.25s ease',
-                      transform: textPostsPlusOpen ? 'rotate(45deg)' : 'rotate(0deg)',
-                      transformOrigin: 'center center',
-                    }}>
-                      <Plus size={26} strokeWidth={2.4} />
-                    </span>
-                  </button>
-                </div>
               </>
             </div>
           </motion.div>
@@ -22608,6 +22582,26 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             onOpenCamera={() => setCameraCaptureOpen(true)}
             isCompanyPublisher={isCompanyPublisher}
             onSendComment={sendStoryComment}
+            onOpenSettings={() => {
+              try {
+                window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts'));
+              } catch { /* */ }
+              navigate('/settings');
+            }}
+            onOpenFriends={() => {
+              setFriendsPanelTab('friends');
+              setNamesBarOpen(true);
+              try {
+                window.dispatchEvent(new CustomEvent('stooorna:friends-panel-opened'));
+                window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', {
+                  detail: { tab: 'friends', overPosts: true },
+                }));
+              } catch { /* */ }
+            }}
+            onOpenChat={() => {
+              setNormalChatPickerOpen(true);
+              void loadFriends();
+            }}
             onDeleteItem={(storyId) => {
               // نسجّل المعرّف كمحذوف محلياً أولاً حتى لو رجع الريفرش التلقائي
               // (كل ثانيتين) بنسخة كان قد طلبها قبل اكتمال الحذف على السيرفر،
