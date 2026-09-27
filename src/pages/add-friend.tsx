@@ -5085,21 +5085,81 @@ function inAppEmbedSrc(raw: string): string | null {
       const id = host === 'dai.ly' ? path.replace(/^\//, '') : (path.match(/\/video\/([^/?#]+)/) || [])[1];
       return id ? `https://www.dailymotion.com/embed/video/${id}` : null;
     }
+    if (host === 'google.com' || host.endsWith('.google.com')) {
+      if (path.startsWith('/search')) {
+        const q = u.searchParams.get('q') || '';
+        return `https://www.google.com/search?igu=1&q=${encodeURIComponent(q)}`;
+      }
+      return 'https://www.google.com/webhp?igu=1';
+    }
+  } catch { /* */ }
+  return null;
+}
+
+function rewriteHtmlForInApp(html: string, pageUrl: string): string {
+  let base = pageUrl;
+  try { base = new URL(pageUrl).href; } catch { /* */ }
+  const cleaned = String(html || '')
+    .replace(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi, '')
+    .replace(/<meta[^>]+http-equiv=["']?x-frame-options["']?[^>]*>/gi, '');
+  if (/<base\s/i.test(cleaned)) return cleaned;
+  return cleaned.replace(/<head([^>]*)>/i, `<head$1><base href="${base}">`);
+}
+
+async function fetchInAppHtml(pageUrl: string): Promise<string | null> {
+  const proxies = [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(pageUrl)}`,
+    `https://corsproxy.io/?${encodeURIComponent(pageUrl)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(pageUrl)}`,
+  ];
+  for (const src of proxies) {
+    try {
+      const r = await fetch(src);
+      if (!r.ok) continue;
+      const text = await r.text();
+      if (text && /<html|<body|<div|<p|<img|<article/i.test(text)) return rewriteHtmlForInApp(text, pageUrl);
+    } catch { /* next */ }
+  }
+  try {
+    const r = await fetch(`https://r.jina.ai/${pageUrl}`);
+    if (r.ok) {
+      const text = await r.text();
+      if (text.trim()) {
+        const safe = text.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string));
+        return `<html><head><meta charset="utf-8"><base href="${pageUrl}"><style>body{font-family:sans-serif;padding:16px;line-height:1.55;color:#111;background:#fff;white-space:pre-wrap}</style></head><body>${safe}</body></html>`;
+      }
+    }
   } catch { /* */ }
   return null;
 }
 
 function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void }) {
   const href = composerNormalizeUrl(url) || String(url || '').trim();
-  const [frameSrc, setFrameSrc] = useState(href);
+  const [frameSrc, setFrameSrc] = useState<string | null>(null);
+  const [srcDoc, setSrcDoc] = useState<string | null>(null);
   const [xMedia, setXMedia] = useState<{ url: string; type: 'image' | 'video' }[] | null>(null);
+  const [kind, setKind] = useState<'site' | 'image' | 'video' | 'pdf' | 'x'>('site');
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     let cancelled = false;
     setXMedia(null);
+    setSrcDoc(null);
+    setFrameSrc(null);
     setLoading(true);
-    setFrameSrc(href);
-    if (!href) return;
+    setKind('site');
+    if (!href) { setLoading(false); return; }
+    const mediaKind = classifyMediaUrl(href) || classifyDirectMediaUrl(href);
+    if (mediaKind === 'image' || mediaKind === 'video') {
+      setKind(mediaKind);
+      setLoading(false);
+      return;
+    }
+    if (/\.pdf(\?|$)/i.test(href)) {
+      setKind('pdf');
+      setFrameSrc(`https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(href)}`);
+      setLoading(false);
+      return;
+    }
     const embed = inAppEmbedSrc(href);
     if (embed) {
       setFrameSrc(embed);
@@ -5107,19 +5167,32 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
       return;
     }
     if (parseXStatusId(href)) {
-      void resolveXStatusMedia(href).then(items => {
+      setKind('x');
+      void resolveXStatusMedia(href).then(async items => {
         if (cancelled) return;
-        if (items.length) setXMedia(items);
+        if (items.length) {
+          setXMedia(items);
+          setLoading(false);
+          return;
+        }
+        const html = await fetchInAppHtml(href);
+        if (cancelled) return;
+        if (html) setSrcDoc(html);
+        else setFrameSrc(href);
+        setKind('site');
         setLoading(false);
       });
       return;
     }
-    setLoading(false);
+    void fetchInAppHtml(href).then(html => {
+      if (cancelled) return;
+      if (html) setSrcDoc(html);
+      else setFrameSrc(href);
+      setLoading(false);
+    });
     return () => { cancelled = true; };
   }, [href]);
   if (!href) return null;
-  const mediaKind = classifyMediaUrl(href) || classifyDirectMediaUrl(href);
-  const isPdf = /\.pdf(\?|$)/i.test(href);
   const node = (
     <motion.div
       initial={{ y: '100%' }}
@@ -5152,15 +5225,13 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
         </button>
         <p style={{ margin: 0, flex: 1, fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{href}</p>
       </div>
-      <div style={{ flex: 1, minHeight: 0, height: '100%', background: '#fff', position: 'relative' }}>
+      <div style={{ flex: 1, minHeight: 0, background: '#fff', position: 'relative' }}>
         {loading ? (
           <p style={{ color: '#888', textAlign: 'center', marginTop: 40 }}>Loading…</p>
-        ) : mediaKind === 'image' ? (
+        ) : kind === 'image' ? (
           <img src={resolveMediaUrl(href)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
-        ) : mediaKind === 'video' ? (
+        ) : kind === 'video' ? (
           <video src={resolveMediaUrl(href)} controls autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
-        ) : isPdf ? (
-          <iframe title="PDF" src={href} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#111' }} />
         ) : xMedia && xMedia.length ? (
           <div style={{ position: 'absolute', inset: 0, overflowY: 'auto', background: '#000' }}>
             {xMedia.map((m, i) => m.type === 'video'
@@ -5168,10 +5239,16 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
               : <img key={i} src={m.url} alt="" style={{ width: '100%', objectFit: 'contain' }} />
             )}
           </div>
+        ) : srcDoc ? (
+          <iframe
+            title="Site preview"
+            srcDoc={srcDoc}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#fff' }}
+          />
         ) : (
           <iframe
             title="Site preview"
-            src={frameSrc}
+            src={frameSrc || href}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             referrerPolicy="no-referrer-when-downgrade"
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#fff' }}
@@ -5183,7 +5260,6 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
   if (typeof document === 'undefined') return node;
   return createPortal(node, document.body);
 }
-
 
 function PostTextMoreInlineRest({ full, color, onMore }: { full: string; color: string; onMore?: () => void }) {
   const [open, setOpen] = React.useState(false);
