@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin, Smile, Paperclip, Video as VideoIcon, Plus } from 'lucide-react';
+import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin, Smile, Paperclip, Video as VideoIcon, Plus, Eye } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import { useHeartbeat, usePresenceQuery, formatLastSeen, useTypingPublisher, usePeerTyping } from '@/hooks/usePresence';
 import InAppNotification, { type AppNotification } from '@/components/InAppNotification';
@@ -951,13 +951,29 @@ function ImageBubble({
     ? `${src}${src.includes('?') ? '&' : '?'}_r=${retryAttempt}`
     : src;
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); }, []);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+  }, []);
   const handleImageError = () => {
     if (canRetryWithCacheBust && retryAttempt < MAX_IMAGE_RETRIES) {
       retryTimerRef.current = setTimeout(() => setRetryAttempt(a => a + 1), 650 * (retryAttempt + 1));
     } else {
       setBroken(true);
     }
+  };
+  const startHold = (e: React.TouchEvent | React.MouseEvent) => {
+    try { e.preventDefault?.(); } catch { /* */ }
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => setOpen(true), 220);
+  };
+  const endHold = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    setOpen(false);
   };
   if (!src || !looksLikeUrl || broken) {
     return (
@@ -971,51 +987,105 @@ function ImageBubble({
     );
   }
   return <>
-      <img src={displaySrc} alt="" onClick={() => setOpen(true)} onError={handleImageError} style={{
-      display: 'block',
-      width: '100%',
-      maxWidth: 240,
-      height: 'auto',
-      maxHeight: 300,
-      borderRadius: 8,
-      cursor: 'pointer',
-      objectFit: 'cover',
-    }} loading="lazy" />
+      <div
+        style={{
+          position: 'relative',
+          display: 'inline-block',
+          maxWidth: 240,
+          width: '100%',
+          borderRadius: 8,
+          overflow: 'hidden',
+          WebkitUserSelect: 'none',
+          userSelect: 'none',
+          touchAction: 'none',
+        }}
+        onTouchStart={startHold}
+        onTouchEnd={endHold}
+        onTouchCancel={endHold}
+        onMouseDown={startHold}
+        onMouseUp={endHold}
+        onMouseLeave={endHold}
+        onContextMenu={e => e.preventDefault()}
+      >
+        <img
+          src={displaySrc}
+          alt=""
+          draggable={false}
+          onError={handleImageError}
+          style={{
+            display: 'block',
+            width: '100%',
+            maxWidth: 240,
+            height: 'auto',
+            maxHeight: 300,
+            borderRadius: 8,
+            cursor: 'pointer',
+            objectFit: 'cover',
+            pointerEvents: 'none',
+          }}
+          loading="lazy"
+        />
+        {/* Eye in center — hold to view full, release to close */}
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: 44,
+            height: 44,
+            borderRadius: '50%',
+            background: 'rgba(0,0,0,0.42)',
+            border: '1.5px solid rgba(255,255,255,0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.25)',
+          }}
+        >
+          <Eye size={20} color="#fff" strokeWidth={2.2} />
+        </div>
+      </div>
       <AnimatePresence>
-        {open && <motion.div initial={{
-        opacity: 0
-      }} animate={{
-        opacity: 1
-      }} exit={{
-        opacity: 0
-      }} onClick={() => setOpen(false)} style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 200,
-        background: 'hsl(var(--background)/0.95)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20
-      }}>
-            <button onClick={() => setOpen(false)} style={{
-          position: 'absolute',
-          top: 20,
-          right: 20,
-          background: 'none',
-          border: 'none',
-          color: 'hsl(var(--foreground))',
-          cursor: 'pointer'
-        }}>
-              <X size={28} />
-            </button>
-            <img src={displaySrc} alt="" style={{
-          maxWidth: '100%',
-          maxHeight: '90vh',
-          objectFit: 'contain',
-          borderRadius: 12
-        }} />
-          </motion.div>}
+        {open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            onTouchEnd={endHold}
+            onTouchCancel={endHold}
+            onMouseUp={endHold}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 200,
+              background: 'rgba(0,0,0,0.92)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 12,
+              touchAction: 'none',
+            }}
+          >
+            {/* Full image — no X; release finger to close */}
+            <img
+              src={displaySrc}
+              alt=""
+              draggable={false}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100vh',
+                objectFit: 'contain',
+                borderRadius: 8,
+                pointerEvents: 'none',
+                userSelect: 'none',
+              }}
+            />
+          </motion.div>
+        )}
       </AnimatePresence>
     </>;
 }
@@ -4573,7 +4643,45 @@ export default function ChatPage() {
           }
           // 4) Final sticky pass
           merged = merged.map(m => chatApplyStickyBody(m));
-          return merged;
+          // 5) Drop empty "Shared image" rows when a real/local image from same sender exists nearby
+          //    (prevents image + Shared image duplicate under the same send)
+          const cleaned: typeof merged = [];
+          for (const m of merged) {
+            const isBrokenImg =
+              (m.type === 'image' || m.type === 'file' || m.type === 'video') &&
+              !isPlayableChatMediaBody(m.body);
+            if (isBrokenImg) {
+              const mAt = m.createdAt ? new Date(m.createdAt).getTime() : 0;
+              const hasGoodSibling = merged.some(o => {
+                if (o.id === m.id) return false;
+                if (o.senderId !== m.senderId) return false;
+                if (!(o.type === 'image' || o.type === 'video' || o.type === 'file')) return false;
+                if (!isPlayableChatMediaBody(o.body)) return false;
+                const oAt = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+                if (mAt && oAt && Math.abs(mAt - oAt) > 180000) return false;
+                return true;
+              });
+              // Also drop if sticky already shows the same content on another row
+              if (hasGoodSibling) continue;
+              // Orphan broken placeholder with no sibling — try sticky on id, else drop if empty
+              const sticky = chatStickyMediaBodies.get(m.id);
+              if (sticky) {
+                cleaned.push({ ...m, body: sticky, type: m.type === 'video' ? 'video' : 'image' });
+                continue;
+              }
+              // Keep nothing for pure empty Shared image with no local preview
+              continue;
+            }
+            cleaned.push(m);
+          }
+          // 6) Prefer not to keep negative-id temps if a server image row already carries sticky body
+          const hasServerSticky = cleaned.some(
+            m => typeof m.id === 'number' && m.id >= 0 && (m.type === 'image' || m.type === 'video') && isPlayableChatMediaBody(m.body)
+          );
+          const finalMsgs = hasServerSticky
+            ? cleaned.filter(m => !(typeof m.id === 'number' && m.id < 0 && (m.type === 'image' || m.type === 'video')))
+            : cleaned;
+          return finalMsgs;
         }
         // The fetch came back with nothing usable. If the user just cleared
         // their history, raw had items but clearedAt filtered them all out —
@@ -6432,22 +6540,7 @@ export default function ChatPage() {
                         }}
                       >
                         <Images size={18} strokeWidth={2} color="#00BCD4" />
-                        صور
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setChatAttachOpen(false);
-                          setTimeout(() => videoInputRef.current?.click(), 80);
-                        }}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '10px 12px', border: 'none', background: 'transparent',
-                          borderRadius: 10, cursor: 'pointer', color: '#111', fontWeight: 600, fontSize: '0.88rem',
-                        }}
-                      >
-                        <VideoIcon size={18} strokeWidth={2} color="#00BCD4" />
-                        فيديو
+                        Photo
                       </button>
                       <button
                         type="button"
@@ -6462,7 +6555,22 @@ export default function ChatPage() {
                         }}
                       >
                         <FileText size={18} strokeWidth={2} color="#00BCD4" />
-                        ملف
+                        File
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChatAttachOpen(false);
+                          setTimeout(() => setLocationPickerOpen(true), 80);
+                        }}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', border: 'none', background: 'transparent',
+                          borderRadius: 10, cursor: 'pointer', color: '#111', fontWeight: 600, fontSize: '0.88rem',
+                        }}
+                      >
+                        <MapPin size={18} strokeWidth={2} color="#00BCD4" />
+                        Location
                       </button>
                     </motion.div>
                   )}
