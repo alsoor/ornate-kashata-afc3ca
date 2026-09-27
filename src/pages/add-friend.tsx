@@ -13407,19 +13407,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         }
       }
       if (composerMediaFiles.length > 0 && uploadedMedia.length === 0) {
-        // Last resort for video/image: keep local blob URL so publish still lands in feed
-        for (const item of composerMediaFiles) {
-          if (item.type === 'pdf') continue;
-          try {
-            const localUrl = item.preview || URL.createObjectURL(item.file);
-            uploadedMedia.push({ url: localUrl, type: item.type === 'video' ? 'video' : 'image' });
-          } catch { /* */ }
-        }
-        if (uploadedMedia.length === 0) {
-          setComposerError(lastUploadError || 'Media upload failed');
-          setComposerPosting(false);
-          return;
-        }
+        // Upload genuinely failed for every attempt. We used to fall back to a
+        // local blob: URL here so the post would still "publish" — but a blob:
+        // URL only exists in this browser tab's memory, so the post would look
+        // fine to the poster and show as a broken/black image or video for
+        // everyone else (and even for the poster after a refresh). Surface the
+        // real error instead of silently publishing unusable media.
+        setComposerError(lastUploadError || 'Media upload failed');
+        setComposerPosting(false);
+        return;
       }
 
       // Preview links become media, not text
