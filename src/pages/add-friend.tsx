@@ -5165,11 +5165,13 @@ function openInAppSite(url: string, e?: { preventDefault?: () => void; stopPropa
   const looked = composerLookupOriginalUrl(raw);
   const href = composerNormalizeUrl(looked) || composerNormalizeUrl(raw) || (/^https?:\/\//i.test(looked) ? looked : `https://${looked}`);
   if (!href || href === 'https://') return;
-  if (inAppSiteOpener) {
-    inAppSiteOpener(href);
+  const kind = classifyMediaUrl(href) || classifyDirectMediaUrl(href);
+  if (kind === 'image' || kind === 'video' || /\.pdf(\?|$)/i.test(href) || parseXStatusId(href) || inAppEmbedSrc(href)) {
+    if (inAppSiteOpener) { inAppSiteOpener(href); return; }
+    try { window.dispatchEvent(new CustomEvent('stooorna:open-inapp-site', { detail: { url: href } })); } catch { /* */ }
     return;
   }
-  try { window.dispatchEvent(new CustomEvent('stooorna:open-inapp-site', { detail: { url: href } })); } catch { /* */ }
+  try { window.open(href, '_blank', 'noopener,noreferrer'); } catch { /* */ }
 }
 
 function inAppEmbedSrc(raw: string): string | null {
@@ -5311,19 +5313,19 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
       setLoading(false);
     };
     void run();
-    const failSafe = window.setTimeout(() => { if (!cancelled) setLoading(false); }, 8000);
+    const failSafe = window.setTimeout(() => { if (!cancelled) setLoading(false); }, 1200);
     return () => { cancelled = true; window.clearTimeout(failSafe); };
   }, [hrefIn]);
   if (!href) return null;
   const node = (
     <motion.div
-      initial={{ y: '100%' }}
-      animate={{ y: 0 }}
-      exit={{ y: '100%' }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       transition={{ type: 'spring', stiffness: 380, damping: 38 }}
       onClick={e => e.stopPropagation()}
       style={{
-        position: 'fixed', inset: 0, zIndex: 16000, background: '#0b0b0b',
+        position: 'fixed', inset: 0, zIndex: 2147483000, background: '#0b0b0b',
         display: 'flex', flexDirection: 'column', pointerEvents: 'auto',
       }}
     >
@@ -19285,14 +19287,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <LinkMediaPreview
                       url={composerLinkPreviewUrl}
                       failedNote="Paste an image, video, or website URL"
-                      onOpenSite={(href) => setComposerSiteViewerUrl(href)}
+                      onOpenSite={(href) => openInAppSite(href)}
                     />
                   )}
                 </div>
                 {composerXUrls.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {composerXUrls.map(u => (
-                      <LinkMediaPreview key={u} url={u} failedNote="No media found on this link" onOpenSite={(href) => setComposerSiteViewerUrl(href)} />
+                      <LinkMediaPreview key={u} url={u} failedNote="No media found on this link" onOpenSite={(href) => openInAppSite(href)} />
                     ))}
                   </div>
                 )}
