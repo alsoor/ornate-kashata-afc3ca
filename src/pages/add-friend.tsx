@@ -4709,6 +4709,8 @@ async function resolveXStatusMedia(statusUrl: string): Promise<{ url: string; ty
 
 function classifyMediaUrl(raw: string): 'image' | 'video' | null {
   try {
+    if (/^data:image\//i.test(raw)) return 'image';
+    if (/^data:video\//i.test(raw)) return 'video';
     // حلّ الروابط القصيرة المحلية إلى الأصل قبل التصنيف
     const resolved = composerLookupOriginalUrl(raw);
     const u = new URL(resolved);
@@ -5032,6 +5034,9 @@ function classifyDirectMediaUrl(raw: string): 'image' | 'video' | null {
     if (VIDEO_EXT_RE.test(raw) || /\/(video|mp4)\b/i.test(raw)) return 'video';
     if (IMAGE_EXT_RE.test(raw) || /\/(upload|media|file|storage|posts?)\b/i.test(raw)) return 'image';
   }
+  // data: URLs (Railway fallback when file storage is not mounted)
+  if (typeof raw === 'string' && /^data:image\//i.test(raw)) return 'image';
+  if (typeof raw === 'string' && /^data:video\//i.test(raw)) return 'video';
   return null;
 }
 
@@ -13209,7 +13214,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     return file;
   }
 
-  /** Fast + reliable media upload: FormData first (one request), then raw, then helper. Validates URL. */
+  /** Fast + reliable media upload for Railway/any host: FormData → raw → JSON base64 → helper. */
   async function fastUploadMediaFile(file: File, mediaType: 'image' | 'video'): Promise<string | null> {
     const ext = (file.name.split('.').pop() || (mediaType === 'video' ? 'mp4' : 'jpg')).replace(/^\./, '');
     let contentType = (file.type || '').split(';')[0].toLowerCase();
@@ -13221,24 +13226,43 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       const s = u.trim();
       if (!s || s === 'null' || s === 'undefined') return false;
       if (/^(https?:\/\/|\/|blob:|data:)/i.test(s)) return true;
-      // relative path without leading slash (e.g. uploads/x.jpg)
       if (/^[a-z0-9_\-./]+\.(jpe?g|png|webp|gif|mp4|webm|mov|m4v)(\?|$)/i.test(s)) return true;
       return false;
     };
+    const toAbsolute = (u: string): string => {
+      const s = String(u).trim();
+      if (/^(https?:|blob:|data:)/i.test(s)) return s;
+      try {
+        if (typeof window !== 'undefined') {
+          if (s.startsWith('/')) return new URL(s, window.location.origin).href;
+          // bare path like uploads/x.jpg
+          if (/^[a-z0-9_\-./]+\.(jpe?g|png|webp|gif|mp4|webm|mov|m4v)/i.test(s)) {
+            return new URL('/' + s.replace(/^\/+/, ''), window.location.origin).href;
+          }
+        }
+      } catch { /* */ }
+      return resolveMediaUrl(s) || s;
+    };
     const extract = async (res: Response): Promise<string | null> => {
       try {
+        const loc = res.headers.get('location') || res.headers.get('x-file-url') || res.headers.get('x-media-url');
+        if (isValidMediaUrl(loc)) return toAbsolute(String(loc).trim());
         const ct = (res.headers.get('content-type') || '').toLowerCase();
         if (ct.includes('application/json')) {
           const d = await res.json() as any;
           const u =
-            d?.url || d?.mediaUrl || d?.fileUrl || d?.path ||
-            d?.data?.url || d?.data?.mediaUrl || d?.result?.url ||
-            d?.file?.url || d?.media?.url || d?.location || d?.href;
-          if (isValidMediaUrl(u)) return resolveMediaUrl(String(u).trim());
+            d?.url || d?.mediaUrl || d?.fileUrl || d?.path || d?.publicUrl || d?.src ||
+            d?.data?.url || d?.data?.mediaUrl || d?.data?.path || d?.data?.publicUrl ||
+            d?.result?.url || d?.file?.url || d?.media?.url || d?.location || d?.href ||
+            d?.key || d?.filename;
+          if (isValidMediaUrl(u)) return toAbsolute(String(u).trim());
+          // some APIs return { path: "uploads/.." } without leading slash
+          if (typeof u === 'string' && u.length > 2) return toAbsolute(u);
           return null;
         }
         const t = (await res.text()).trim();
-        if (isValidMediaUrl(t.split(/\s/)[0])) return resolveMediaUrl(t.split(/\s/)[0]);
+        const first = t.split(/\s/)[0];
+        if (isValidMediaUrl(first)) return toAbsolute(first);
       } catch { /* */ }
       return null;
     };
@@ -13289,9 +13313,88 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     }
     try {
       const extra = await uploadPostMedia(file, { kind: mediaType, fileName: file.name });
-      if (extra.ok && isValidMediaUrl(extra.url)) return resolveMediaUrl(String(extra.url));
+      if (extra.ok && isValidMediaUrl(extra.url)) return toAbsolute(String(extra.url));
     } catch { /* */ }
+
+    // Railway-friendly extra endpoints
+    for (const endpoint of ['/api/upload', '/api/media', '/api/files/upload', '/api/posts/upload']) {
+      try {
+        const fd = new FormData();
+        fd.append('file', file, file.name || `media.${ext}`);
+        fd.append('type', mediaType);
+        fd.append('mediaType', mediaType);
+        const res = await fetch(endpoint, { method: 'POST', credentials: 'include', body: fd });
+        if (res.ok) {
+          const u = await extract(res);
+          if (u) return u;
+        }
+      } catch { /* next */ }
+    }
+
+    // JSON base64 body (some Railway/MySQL backends store mediaUrl as data URL or path)
+    if (mediaType === 'image' && file.size < 2_500_000) {
+      try {
+        const buf = await file.arrayBuffer();
+        let binary = '';
+        const bytes = new Uint8Array(buf);
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+        }
+        const b64 = btoa(binary);
+        const dataUrl = `data:${contentType};base64,${b64}`;
+        for (const endpoint of ['/api/posts/media', '/api/upload', '/api/media']) {
+          try {
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                data: b64,
+                dataUrl,
+                base64: b64,
+                type: mediaType,
+                mediaType,
+                contentType,
+                mime: contentType,
+                filename: file.name || `photo.${ext}`,
+                name: file.name || `photo.${ext}`,
+              }),
+            });
+            if (res.ok) {
+              const u = await extract(res);
+              if (u) return u;
+            }
+          } catch { /* next */ }
+        }
+        // Last resort for images: use data URL itself (works without file storage / any host)
+        return dataUrl;
+      } catch { /* */ }
+    }
     return null;
+  }
+
+  /** Compress image then produce a durable data: URL when server storage is unavailable (Railway without volume). */
+  async function fileToPlayableDataUrl(file: File, mediaType: 'image' | 'video'): Promise<string | null> {
+    try {
+      if (mediaType === 'video') {
+        // videos stay blob for local preview only — not durable across devices
+        return URL.createObjectURL(file);
+      }
+      let f = file;
+      try { f = await normalizeGalleryFileForUpload(file, 'image'); } catch { /* keep */ }
+      const buf = await f.arrayBuffer();
+      let binary = '';
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      }
+      const mime = (f.type || 'image/jpeg').split(';')[0] || 'image/jpeg';
+      return `data:${mime};base64,${btoa(binary)}`;
+    } catch {
+      return null;
+    }
   }
 
   async function submitPost(destination: 'text' | 'photos' | 'videos' = 'text') {
@@ -19648,7 +19751,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           const mediaType: 'image' | 'video' = isVid ? 'video' : 'image';
                           let f = file;
                           try { f = await normalizeGalleryFileForUpload(file, mediaType); } catch { /* keep */ }
-                          const url = await fastUploadMediaFile(f, mediaType);
+                          let url = await fastUploadMediaFile(f, mediaType);
+                          // Railway / no-storage fallback: durable data URL for images so the link always works
+                          if (!url) {
+                            url = await fileToPlayableDataUrl(f, mediaType);
+                          }
                           if (url) {
                             const abs = resolvePlayableMediaHref(String(url)) || resolveMediaUrl(String(url)) || String(url);
                             items.push({ url: abs, type: mediaType });
