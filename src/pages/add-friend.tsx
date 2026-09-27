@@ -17246,10 +17246,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 6, flex: 1 }}>
                 {/* Pinned track — shown right above my name/username, playable from here too. */}
                 {pinnedTrack && <PinnedTrackBar track={pinnedTrack} />}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, paddingRight: 52 }}>
+                <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingRight: 52, rowGap: 3 }}>
                     {myUsername && (
-                      <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                         @{myUsername}
+                      </span>
+                    )}
+                    {myUsername && myBio && (
+                      <span aria-hidden="true" style={{ fontSize: '0.72rem', fontWeight: 500, color: 'rgba(255,255,255,0.4)', lineHeight: 1.35, flexShrink: 0 }}>
+                        |
                       </span>
                     )}
                     {myBio && (
