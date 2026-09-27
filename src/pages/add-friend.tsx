@@ -6321,7 +6321,7 @@ function PostCard({
                         }}
                       >
                         {isPinned ? <PinOff size={15} color={CLR_PRIMARY} /> : <Pin size={15} color={CLR_PRIMARY} />}
-                        {isPinned ? 'إلغاء التثبيت' : 'تثبيت المنشور'}
+                        {isPinned ? 'Unpin Post' : 'Pin Post'}
                       </button>
                     )}
                     {hasMedia && (
@@ -6339,7 +6339,7 @@ function PostCard({
                         }}
                       >
                         <ImageIcon size={15} color={CLR_PRIMARY} />
-                        حذف الوسائط
+                        Delete Media
                       </button>
                     )}
                     <button
@@ -6356,7 +6356,7 @@ function PostCard({
                       }}
                     >
                       <Trash2 size={15} />
-                      حذف المنشور
+                      Delete Post
                     </button>
                   </div>
                 </>
@@ -6781,7 +6781,7 @@ function PostCard({
                           }}
                         >
                           {isPinned ? <PinOff size={15} color={CLR_PRIMARY} /> : <Pin size={15} color={CLR_PRIMARY} />}
-                          {isPinned ? 'إلغاء التثبيت' : 'تثبيت المنشور'}
+                          {isPinned ? 'Unpin Post' : 'Pin Post'}
                         </button>
                       )}
                       <button
@@ -6795,7 +6795,7 @@ function PostCard({
                         }}
                       >
                         <ImageIcon size={15} color={CLR_PRIMARY} />
-                        حذف الوسائط
+                        Delete Media
                       </button>
                       <button
                         type="button"
@@ -6808,7 +6808,7 @@ function PostCard({
                         }}
                       >
                         <Trash2 size={15} />
-                        حذف المنشور
+                        Delete Post
                       </button>
                     </div>
                   </>
