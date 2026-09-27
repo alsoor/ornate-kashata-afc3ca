@@ -2581,12 +2581,12 @@ function MediaLibraryModal({
       if (m.type === 'image' && m.body) {
         let url = m.body;
         try { const p = JSON.parse(m.body); if (p?.url) url = p.url; } catch { /* */ }
-        items.push({ id: m.id, kind: 'image', url, at: m.createdAt ?? '' });
+        items.push({ id: m.id, kind: 'image', url: resolveMediaUrl(url) || url, at: m.createdAt ?? '' });
       } else if (m.type === 'video' && m.body) {
         let url = m.body;
         try { const p = JSON.parse(m.body); if (p?.url) url = p.url; } catch { /* */ }
         // استثناء video note من شبكة الوسائط العادية اختياري — نعرضها كوسائط أيضاً
-        items.push({ id: m.id, kind: 'video', url, at: m.createdAt ?? '' });
+        items.push({ id: m.id, kind: 'video', url: resolveMediaUrl(url) || url, at: m.createdAt ?? '' });
       }
     }
     return items.reverse();
@@ -4714,39 +4714,53 @@ export default function ChatPage() {
     try {
       const { makeOptimisticMedia, postChatMedia } = await import('@/lib/chatMediaSendPatch');
       if (user?.id) setMsgs(prev => [...prev, makeOptimisticMedia(file, user.id) as any]);
-      await postChatMedia({ file, groupId: groupId || null, chatId: scChatId || null, peerId });
-      const ct = file.type || 'image/jpeg';
-      const fd = new FormData();
-      fd.append('file', file, file.name || 'image.jpg');
-      fd.append('image', file, file.name || 'image.jpg');
-      let res: Response | null = null;
-      if (isGroup) {
-        res = await fetch(`/api/groups/${groupId}/messages/image`, {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': ct }, body: file
-        });
-        if (!res.ok) {
+      // postChatMedia already performs the real upload + message creation.
+      // The block below used to run unconditionally right after it, which
+      // uploaded the same file a second time through the older endpoints —
+      // the two uploads raced each other and the chat could end up pointing
+      // at the incomplete/overwritten one, which is what produced a
+      // permanent "Shared image" placeholder for an image that had actually
+      // sent fine. Now the manual upload only runs as a fallback if
+      // postChatMedia itself fails.
+      let handledByPatch = false;
+      try {
+        await postChatMedia({ file, groupId: groupId || null, chatId: scChatId || null, peerId });
+        handledByPatch = true;
+      } catch { /* fall through to legacy upload below */ }
+      if (!handledByPatch) {
+        const ct = file.type || 'image/jpeg';
+        const fd = new FormData();
+        fd.append('file', file, file.name || 'image.jpg');
+        fd.append('image', file, file.name || 'image.jpg');
+        let res: Response | null = null;
+        if (isGroup) {
           res = await fetch(`/api/groups/${groupId}/messages/image`, {
-            method: 'POST', credentials: 'include', body: fd
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': ct }, body: file
           });
-        }
-      } else {
-        if (!scChatId && !peerId) return;
-        const imageUrls = [
-          scChatId ? `/api/secret-chat/image?chatId=${scChatId}` : '',
-          peerId ? `/api/messages/image?peerId=${encodeURIComponent(peerId)}` : '',
-        ].filter(Boolean) as string[];
-        for (const iurl of imageUrls) {
-          try {
-            res = await fetch(iurl, {
-              method: 'POST', credentials: 'include',
-              headers: { 'Content-Type': ct }, body: file
+          if (!res.ok) {
+            res = await fetch(`/api/groups/${groupId}/messages/image`, {
+              method: 'POST', credentials: 'include', body: fd
             });
-            if (!res.ok) {
-              res = await fetch(iurl, { method: 'POST', credentials: 'include', body: fd });
-            }
-            if (res.ok || res.status === 201) break;
-          } catch { /* next */ }
+          }
+        } else {
+          if (!scChatId && !peerId) return;
+          const imageUrls = [
+            scChatId ? `/api/secret-chat/image?chatId=${scChatId}` : '',
+            peerId ? `/api/messages/image?peerId=${encodeURIComponent(peerId)}` : '',
+          ].filter(Boolean) as string[];
+          for (const iurl of imageUrls) {
+            try {
+              res = await fetch(iurl, {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': ct }, body: file
+              });
+              if (!res.ok) {
+                res = await fetch(iurl, { method: 'POST', credentials: 'include', body: fd });
+              }
+              if (res.ok || res.status === 201) break;
+            } catch { /* next */ }
+          }
         }
       }
       await fetchMsgs();
