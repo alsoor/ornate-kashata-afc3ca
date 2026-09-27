@@ -4747,23 +4747,36 @@ function composerSaveShortLink(entry: { code: string; url: string; shortUrl: str
     localStorage.setItem(COMPOSER_SHORT_LINKS_KEY, JSON.stringify(next));
   } catch { /* ignore */ }
 }
+function composerPublicShortUrl(url: string): string {
+  try {
+    const list = JSON.parse(localStorage.getItem(COMPOSER_SHORT_LINKS_KEY) || '[]') as Array<{ url: string; shortUrl: string }>;
+    const n = composerNormalizeUrl(url) || url;
+    const hit = list.find(e => e.url === n || e.shortUrl === url || e.shortUrl === n);
+    if (hit?.shortUrl) return hit.shortUrl;
+  } catch { /* */ }
+  return url;
+}
+
+function composerLocalShortUrl(normalized: string): string {
+  const existing = (() => {
+    try {
+      const list = JSON.parse(localStorage.getItem(COMPOSER_SHORT_LINKS_KEY) || '[]') as Array<{ url: string; shortUrl: string }>;
+      const hit = list.find(e => e.url === normalized);
+      if (hit?.shortUrl) return hit.shortUrl;
+    } catch { /* */ }
+    return '';
+  })();
+  if (existing) return existing;
+  const code = composerMakeShortCode();
+  const shortUrl = `https://stooorna.com/s/${code}`;
+  composerSaveShortLink({ code, url: normalized, shortUrl, createdAt: Date.now() });
+  return shortUrl;
+}
+
 async function composerCreateShortLink(rawUrl: string): Promise<string | null> {
   const normalized = composerNormalizeUrl(rawUrl);
   if (!normalized) return null;
-  // رابط قصير قديم محلي → أرجع الأصل إن وُجد (حتى لا يفتح 404)
-  if (/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(normalized)) {
-    const original = composerLookupOriginalUrl(normalized);
-    // إن لم نجد الأصل لا نُعيد /s/ المعطوب — أفضل إرجاع null ليظهر خطأ واضح
-    if (original && !/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(original)) return original;
-    return null;
-  }
-  // صورة/فيديو مباشرة: الرابط الأصلي كما هو → يُعرض كبيرًا داخل البوست
-  const mediaKind = classifyMediaUrl(normalized);
-  if (mediaKind === 'image' || mediaKind === 'video') {
-    return normalized;
-  }
-  // صفحات (مثل x.com / مقالات): جرّب API السيرفر فقط — إن فشل نُبقي الرابط الأصلي
-  // ولا نختلق أبدًا stooorna.com/s/xxx بدون مسار حقيقي على السيرفر (سبب الـ 404)
+  if (/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(normalized)) return normalized;
   try {
     const r = await fetch('/api/short-links', {
       method: 'POST',
@@ -4775,16 +4788,13 @@ async function composerCreateShortLink(rawUrl: string): Promise<string | null> {
       const d = await r.json() as { code?: string; shortUrl?: string; url?: string; id?: string };
       const code = d.code || d.id;
       const shortUrl = d.shortUrl || (code ? `https://stooorna.com/s/${code}` : null);
-      // نقبل القصير فقط إن السيرفر أكّد الحفظ (ok) — وإلا الأصل
       if (shortUrl && code) {
         composerSaveShortLink({ code, url: normalized, shortUrl, createdAt: Date.now() });
         return shortUrl;
       }
-      if (shortUrl && !/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(shortUrl)) return shortUrl;
     }
-  } catch { /* keep original */ }
-  // لا اختصار وهمي — الرابط الأصلي (x.com وغيره) يبقى كما هو ويعمل
-  return normalized;
+  } catch { /* local short link */ }
+  return composerLocalShortUrl(normalized);
 }
 
 // ── X status → full image/video embed (fetches direct media) ───────────────────
@@ -5051,7 +5061,8 @@ function openInAppSite(url: string, e?: { preventDefault?: () => void; stopPropa
   try { e?.stopPropagation?.(); } catch { /* */ }
   const raw = String(url || '').trim();
   if (!raw) return;
-  const href = composerNormalizeUrl(raw) || (/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  const looked = composerLookupOriginalUrl(raw);
+  const href = composerNormalizeUrl(looked) || composerNormalizeUrl(raw) || (/^https?:\/\//i.test(looked) ? looked : `https://${looked}`);
   if (!href || href === 'https://') return;
   if (inAppSiteOpener) {
     inAppSiteOpener(href);
@@ -5223,7 +5234,7 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
         >
           <X size={18} strokeWidth={2.4} />
         </button>
-        <p style={{ margin: 0, flex: 1, fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{href}</p>
+        <p style={{ margin: 0, flex: 1, fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{composerPublicShortUrl(href)}</p>
       </div>
       <div style={{ flex: 1, minHeight: 0, background: '#fff', position: 'relative' }}>
         {loading ? (
@@ -12927,7 +12938,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       }
       const detailsWithLink = [details, ...nonMediaLinks].filter(Boolean).join('\n');
       // Company accounts: product ad format. Regular users: plain caption (no default "منتج")
-      const finalText = isCompanyPublisher
+      let finalText = isCompanyPublisher
         ? buildProductPostText({
             title: title || 'منتج',
             details: detailsWithLink,
@@ -12935,7 +12946,20 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             extras,
           })
         : (detailsWithLink || title || '').trim();
-      // Hashtags typed in the caption — sent with the post so it shows up on the matching hashtag page
+      {
+        const parts = String(finalText || '').split(/(https?:\/\/[^\s<>"')\]]+|www\.[^\s<>"')\]]+)/gi);
+        const out: string[] = [];
+        for (const part of parts) {
+          if (/^(https?:\/\/|www\.)/i.test(part) && !/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(part)) {
+            out.push((await composerCreateShortLink(part)) || part);
+          } else out.push(part);
+        }
+        finalText = out.join('');
+      }
+      if (linkNormalized && !/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(linkNormalized)) {
+        const short = await composerCreateShortLink(linkNormalized);
+        if (short) setComposerLinkInput(short);
+      }
       const postHashtags = extractHashtagsFromText(finalText);
 
       // ── رفع الوسائط (صور / فيديو / PDF) ──
@@ -19131,6 +19155,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         setComposerError('');
                         setComposerLinkInput(link);
                         setComposerLinkPreviewUrl(link);
+                        void composerCreateShortLink(link).then(short => { if (short) setComposerLinkInput(short); });
                       }}
                       placeholder="Paste a URL"
                       style={{

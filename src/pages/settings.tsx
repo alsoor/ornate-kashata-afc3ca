@@ -6027,7 +6027,13 @@ export default function SettingsPage() {
       if (localUn && !sessionUn) setProfileUsername(localUn);
     } catch { /* ignore */ }
     fetch('/api/users/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(async d => {
-      if (d?.avatarUrl) setAvatarUrl(resolveMediaUrl(d.avatarUrl));
+      if (d?.avatarUrl) {
+        const resolved = resolveMediaUrl(d.avatarUrl);
+        const probe = new Image();
+        probe.onload = () => setAvatarUrl(resolved);
+        probe.onerror = () => {};
+        probe.src = resolved;
+      }
       if (d?.username) {
         setProfileUsername(d.username);
         try {
@@ -6056,7 +6062,13 @@ export default function SettingsPage() {
         }
       }
       if (d?.phoneNumber) setProfilePhone(d.phoneNumber);
-      if (d?.coverUrl) setCoverUrl(resolveMediaUrl(d.coverUrl));
+      if (d?.coverUrl) {
+        const resolved = resolveMediaUrl(d.coverUrl);
+        const probe = new Image();
+        probe.onload = () => setCoverUrl(resolved);
+        probe.onerror = () => {};
+        probe.src = resolved;
+      }
       if (d?.name) setDisplayNameState(d.name);
     });
   }, [user]);
@@ -6486,12 +6498,15 @@ export default function SettingsPage() {
       if (r.ok && d.avatarUrl) {
         const resolved = resolveMediaUrl(d.avatarUrl);
         const fresh = resolved + (resolved.includes('?') ? '&' : '?') + 't=' + Date.now();
-        setAvatarUrl(fresh);
-        window.dispatchEvent(new CustomEvent('stooorna:avatar-updated', {
-          detail: {
-            avatarUrl: fresh
-          }
-        }));
+        const probe = new Image();
+        probe.onload = () => {
+          setAvatarUrl(fresh);
+          window.dispatchEvent(new CustomEvent('stooorna:avatar-updated', { detail: { avatarUrl: fresh } }));
+        };
+        probe.onerror = () => {
+          window.dispatchEvent(new CustomEvent('stooorna:avatar-updated', { detail: { avatarUrl: localPreview } }));
+        };
+        probe.src = fresh;
       }
     } catch {/* silent */} finally {
       setAvatarUploading(false);
@@ -6513,7 +6528,10 @@ export default function SettingsPage() {
       const d = await r.json();
       if (r.ok && d.coverUrl) {
         const resolved = resolveMediaUrl(d.coverUrl);
-        setCoverUrl(resolved + (resolved.includes('?') ? '&' : '?') + 't=' + Date.now());
+        const fresh = resolved + (resolved.includes('?') ? '&' : '?') + 't=' + Date.now();
+        const probe = new Image();
+        probe.onload = () => setCoverUrl(fresh);
+        probe.src = fresh;
       }
     } catch {/* silent */} finally {
       setCoverUploading(false);
