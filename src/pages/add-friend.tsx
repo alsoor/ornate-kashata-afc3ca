@@ -4295,6 +4295,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
     }
     setConfirmDelete(false);
     setDeleting(false);
+    const mediaUrl = item.mediaUrl;
     void deleteStoryInstant(id);
     // Best-effort server delete (any matching route)
     const attempts: Array<() => Promise<Response>> = [
@@ -4317,13 +4318,42 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, statusId: id }),
       }),
+      // نفس اصطلاح { statusId } المستخدم فعليًا في markStorySeen (/api/status/view)
+      () => fetch('/api/status', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statusId: id }),
+      }),
     ];
+    let storyDeletedOnServer = false;
     for (const run of attempts) {
       try {
         const res = await run();
-        if (res.ok || res.status === 204) break;
+        if (res.ok || res.status === 204) { storyDeletedOnServer = true; break; }
       } catch { /* try next */ }
     }
+    // ── حذف ملف الصورة/الفيديو الفعلي من التخزين ──
+    // حذف سجل القصة وحده قد لا يحذف الملف نفسه من السيرفر. نحاول هنا — بأفضل
+    // جهد وبصمت — على أشهر مسارات رفع/حذف الوسائط المستخدمة فعليًا في هذا
+    // الملف (uploadPostMedia وغيرها)، فقط إذا كان الملف مرفوعًا فعليًا
+    // (وليس data:/blob: محليًا لا يحتاج حذفًا من السيرفر أصلًا).
+    if (mediaUrl && !/^(data:|blob:)/i.test(String(mediaUrl))) {
+      const mediaDeleteAttempts: Array<() => Promise<Response>> = [
+        () => fetch('/api/status/media', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statusId: id, url: mediaUrl }) }),
+        () => fetch('/api/upload', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: mediaUrl }) }),
+        () => fetch('/api/media', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: mediaUrl }) }),
+        () => fetch('/api/files/upload', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: mediaUrl }) }),
+        () => fetch('/api/posts/upload', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: mediaUrl }) }),
+        () => fetch('/api/posts/media', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: mediaUrl }) }),
+      ];
+      for (const run of mediaDeleteAttempts) {
+        try {
+          const res = await run();
+          if (res.ok || res.status === 204) break;
+        } catch { /* try next — best effort only, never blocks the UI */ }
+      }
+    }
+    void storyDeletedOnServer; // متاح للتشخيص لاحقًا لو احتجنا نعرض تحذيرًا عند فشل كل المحاولات
   }
 
   async function handleSubmitComment() {
@@ -4572,7 +4602,8 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
             </motion.button>
             )}
 
-            {/* الزائد — يظهر دائمًا في شريط صفحة القصة (لصاحب القصة ولغيره) */}
+            {/* الزائد — مخفي حاليًا داخل صفحة عرض القصة فقط (باقي أماكن الزر + الأخرى لم تُمس) */}
+            {false && (
             <div style={{ position: 'relative', width: 38, height: 38, flexShrink: 0 }}>
               {storyPlusOpen && (
                 <>
@@ -4781,6 +4812,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
                 </span>
               </button>
             </div>
+            )}
           </div>
           {!isMyStory && (
           <AnimatePresence>
@@ -5809,6 +5841,29 @@ function resolveMediaUrl(url: string | null | undefined): string {
   }
 }
 
+
+// ── تخزين محلي دائم لمعرّفات القصص المحذوفة ─────────────────────────────────
+// المشكلة: الحذف كان "بصريًا" فقط أحيانًا — إن لم يطابق أي من مسارات
+// السيرفر التخمينية أدناه المسار الفعلي (أو حصل خطأ شبكة)، يختفي العنصر
+// من الواجهة لحظيًا ثم يعود بعد أول تحديث صفحة (refresh) لأن السيرفر لم
+// يحذفه فعليًا. نحتفظ الآن بقائمة محليّة دائمة (localStorage) لكل معرّف
+// حذفه المستخدم، ونستبعدها من أي نتيجة قادمة من السيرفر — حتى بعد إغلاق
+// وفتح التطبيق من جديد — بغض النظر عن نجاح الحذف على السيرفر أم لا. ──
+const DELETED_STORY_IDS_KEY = 'stooorna_deleted_story_ids';
+function loadDeletedStoryIds(): Set<number> {
+  try {
+    const raw = localStorage.getItem(DELETED_STORY_IDS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr.map((n: any) => Number(n)).filter((n: number) => !Number.isNaN(n)) : []);
+  } catch { return new Set(); }
+}
+function saveDeletedStoryIds(ids: Set<number>) {
+  try {
+    // نحدّ الحجم حتى لا تكبر القائمة بلا نهاية مع مرور الوقت
+    const arr = Array.from(ids).slice(-300);
+    localStorage.setItem(DELETED_STORY_IDS_KEY, JSON.stringify(arr));
+  } catch { /* storage optional */ }
+}
 
 /** Record a unique post view (server dedupes per viewer). Fire-and-forget. */
 const recordedPostViews = new Set<string>();
@@ -12252,7 +12307,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // طلبه بدأ قبل اكتمال طلب الحذف على السيرفر (race condition)، فيرجع بنسخة
   // قديمة تتضمّن العنصر المحذوف ويُعيد ظهوره فوراً بعد اختفائه. نحتفظ بقائمة
   // المعرّفات المحذوفة ونستبعدها من أي نتيجة fetch لاحقة حتى لو رجعت متأخرة. ──
-  const deletedStoryIdsRef = useRef<Set<number>>(new Set());
+  const deletedStoryIdsRef = useRef<Set<number>>(loadDeletedStoryIds());
   const fetchStories = useCallback(async () => {
     try {
       const r = await fetch('/api/status', { credentials: 'include' });
@@ -22696,6 +22751,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               // (كل ثانيتين) بنسخة كان قد طلبها قبل اكتمال الحذف على السيرفر،
               // ما يخلي الستوري يرجع يظهر بعد ما اختفى.
               deletedStoryIdsRef.current.add(storyId);
+              saveDeletedStoryIds(deletedStoryIdsRef.current);
               setStoryGroups(prev => prev.map(g => ({
                 ...g,
                 items: g.items.filter(it => it.id !== storyId),
