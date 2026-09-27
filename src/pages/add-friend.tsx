@@ -17303,18 +17303,26 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       border: '1.5px solid hsl(var(--background))',
                     }} />
                   </div>
-                  <span
-                    aria-label={myLiveBroadcastKind ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
-                    title={myLiveBroadcastKind ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
-                    style={{
-                      width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
-                      background: 'rgba(225,225,225,0.1)',
-                      color: myLiveBroadcastKind ? '#22c55e' : '#9ca3af',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    }}
-                  >
-                    <Radio size={12} strokeWidth={2.3} />
-                  </span>
+                  <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
+                    <span
+                      aria-label={myLiveBroadcastKind ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
+                      title={myLiveBroadcastKind ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
+                      style={{
+                        width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
+                        background: 'rgba(225,225,225,0.1)',
+                        color: myLiveBroadcastKind ? '#22c55e' : '#9ca3af',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}
+                    >
+                      <Radio size={12} strokeWidth={2.3} />
+                    </span>
+                    <span aria-hidden="true" style={{
+                      position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: myLiveBroadcastKind ? '#22c55e' : '#9ca3af',
+                      border: '1.5px solid hsl(var(--background))',
+                    }} />
+                  </div>
 
                 </div>
               </div>
