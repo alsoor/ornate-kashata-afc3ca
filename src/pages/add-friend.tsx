@@ -5161,23 +5161,25 @@ async function fetchWithTimeout(resource: string, ms = 4500): Promise<Response |
   }
 }
 
+function inAppVisualFrame(pageUrl: string): string {
+  const embed = inAppEmbedSrc(pageUrl);
+  if (embed) return embed;
+  return `https://translate.google.com/translate?hl=ar&sl=auto&tl=ar&u=${encodeURIComponent(pageUrl)}&anno=0`;
+}
+
 async function fetchInAppHtml(pageUrl: string): Promise<string | null> {
   const proxies = [
-    `https://r.jina.ai/${pageUrl}`,
     `https://api.allorigins.win/raw?url=${encodeURIComponent(pageUrl)}`,
     `https://corsproxy.io/?${encodeURIComponent(pageUrl)}`,
   ];
   for (const src of proxies) {
-    const r = await fetchWithTimeout(src, 4500);
+    const r = await fetchWithTimeout(src, 4000);
     if (!r || !r.ok) continue;
     try {
       const text = await r.text();
       if (!text.trim()) continue;
-      if (src.includes('r.jina.ai')) {
-        const safe = text.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string));
-        return `<html><head><meta charset="utf-8"><base href="${pageUrl}"><style>body{font-family:sans-serif;padding:16px;line-height:1.55;color:#111;background:#fff;white-space:pre-wrap;word-break:break-word}</style></head><body>${safe}</body></html>`;
-      }
-      if (/<html|<body|<div|<p|<img|<article/i.test(text)) return rewriteHtmlForInApp(text, pageUrl);
+      if (/Title:\s|Markdown Content:/i.test(text) && !/<html/i.test(text)) continue;
+      if (/<html|<body|<img|<article|<div/i.test(text)) return rewriteHtmlForInApp(text, pageUrl);
     } catch { /* next */ }
   }
   return null;
@@ -5230,13 +5232,7 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
           return;
         }
       }
-      const html = await fetchInAppHtml(target);
-      if (cancelled) return;
-      if (html) setSrcDoc(html);
-      else {
-        const fallbackEmbed = inAppEmbedSrc(target);
-        setFrameSrc(fallbackEmbed || `https://r.jina.ai/${target}`);
-      }
+      setFrameSrc(inAppVisualFrame(target));
       setKind('site');
       setLoading(false);
     };
