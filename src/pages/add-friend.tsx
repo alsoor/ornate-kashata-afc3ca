@@ -5387,6 +5387,11 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
 }
 
 /** Normalize media/avatar URLs so relative paths load on every route */
+function readCachedProfileMedia(userId: string | null | undefined, kind: 'avatar' | 'cover' = 'avatar'): string | null {
+  if (!userId) return null;
+  try { return localStorage.getItem('stooorna_' + kind + '_' + String(userId)); } catch { return null; }
+}
+
 function resolveMediaUrl(url: string | null | undefined): string {
   if (!url) return '';
   const raw = String(url).trim();
@@ -16620,7 +16625,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                               hideLabel here only — keeps the ring sized exactly to this avatar without the floating "VIP" text tag poking above it.
                               size raised to 76 (was 68) to match the outer story circle exactly, so the VIP ring sits right on the picture's own edge instead of nested inside it with a gap. */}
                           <VipAvatarFrame userId={user?.id} size={76} hideLabel>
-                            <UserAvatar name={user?.name ?? ''} avatarUrl={(user as any)?.avatarUrl ?? null} size={76} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                            <UserAvatar name={user?.name ?? ''} avatarUrl={resolveMediaUrl((user as any)?.avatarUrl) || readCachedProfileMedia(user?.id, 'avatar') || (user as any)?.avatarUrl || null} size={76} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
                           </VipAvatarFrame>
                         </div>
                       </motion.button>

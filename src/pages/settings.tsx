@@ -237,6 +237,23 @@ const AUTH_COPY: Record<AuthLang, AuthCopy> = {
   },
 };
 
+function cacheProfileMedia(userId: string | null | undefined, kind: 'avatar' | 'cover', dataUrl: string) {
+  if (!userId || !dataUrl) return;
+  try { localStorage.setItem('stooorna_' + kind + '_' + String(userId), dataUrl); } catch { /* */ }
+}
+function readCachedProfileMedia(userId: string | null | undefined, kind: 'avatar' | 'cover'): string | null {
+  if (!userId) return null;
+  try { return localStorage.getItem('stooorna_' + kind + '_' + String(userId)); } catch { return null; }
+}
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 function resolveMediaUrl(url: string | null | undefined): string {
   if (!url) return '';
   const raw = String(url).trim();
@@ -6031,8 +6048,14 @@ export default function SettingsPage() {
         const resolved = resolveMediaUrl(d.avatarUrl);
         const probe = new Image();
         probe.onload = () => setAvatarUrl(resolved);
-        probe.onerror = () => {};
+        probe.onerror = () => {
+          const cached = readCachedProfileMedia((user as { id?: string }).id, 'avatar');
+          if (cached) setAvatarUrl(cached);
+        };
         probe.src = resolved;
+      } else {
+        const cached = readCachedProfileMedia((user as { id?: string }).id, 'avatar');
+        if (cached) setAvatarUrl(cached);
       }
       if (d?.username) {
         setProfileUsername(d.username);
@@ -6066,8 +6089,14 @@ export default function SettingsPage() {
         const resolved = resolveMediaUrl(d.coverUrl);
         const probe = new Image();
         probe.onload = () => setCoverUrl(resolved);
-        probe.onerror = () => {};
+        probe.onerror = () => {
+          const cached = readCachedProfileMedia((user as { id?: string }).id, 'cover');
+          if (cached) setCoverUrl(cached);
+        };
         probe.src = resolved;
+      } else {
+        const cached = readCachedProfileMedia((user as { id?: string }).id, 'cover');
+        if (cached) setCoverUrl(cached);
       }
       if (d?.name) setDisplayNameState(d.name);
     });
@@ -6484,8 +6513,9 @@ export default function SettingsPage() {
   async function uploadAvatar(file: File) {
     setAvatarUploading(true);
     try {
-      const localPreview = URL.createObjectURL(file);
+      const localPreview = await fileToDataUrl(file);
       setAvatarUrl(localPreview);
+      cacheProfileMedia(user?.id, 'avatar', localPreview);
       const r = await fetch('/api/users/me/avatar', {
         method: 'POST',
         credentials: 'include',
@@ -6515,8 +6545,9 @@ export default function SettingsPage() {
   async function uploadCover(file: File) {
     setCoverUploading(true);
     try {
-      const localPreview = URL.createObjectURL(file);
+      const localPreview = await fileToDataUrl(file);
       setCoverUrl(localPreview);
+      cacheProfileMedia(user?.id, 'cover', localPreview);
       const r = await fetch('/api/users/me/cover', {
         method: 'POST',
         credentials: 'include',
