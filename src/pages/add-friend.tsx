@@ -12956,50 +12956,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       try {
         file = await normalizeGalleryFileForUpload(file, type);
       } catch { /* keep original */ }
-      const ext = file.name.split('.').pop() ?? (type === 'video' ? 'mp4' : 'jpg');
-      let url: string | undefined;
-      // raw
-      try {
-        const uploadRes = await fetch('/api/posts/media', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg'), 'X-File-Ext': `.${ext}`, 'X-Media-Type': type },
-          body: file,
-        });
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json().catch(() => ({} as any));
-          url = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
-        }
-      } catch { /* next */ }
-      // FormData
-      if (!url) {
-        const fd = new FormData();
-        fd.append('file', file, file.name);
-        fd.append('type', type);
-        fd.append('mediaType', type);
-        try {
-          const uploadRes = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
-          if (uploadRes.ok) {
-            const uploadData = await uploadRes.json().catch(() => ({} as any));
-            url = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
-          }
-        } catch { /* next */ }
-      }
-      if (!url) {
-        const fd = new FormData();
-        fd.append('file', file, file.name);
-        fd.append('media', file, file.name);
-        for (const ep of ['/api/upload', '/api/support/upload', '/api/media/upload']) {
-          try {
-            const uploadRes = await fetch(ep, { method: 'POST', credentials: 'include', body: fd });
-            if (uploadRes.ok) {
-              const uploadData = await uploadRes.json().catch(() => ({} as any));
-              url = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
-              if (url) break;
-            }
-          } catch { /* next endpoint */ }
-        }
-      }
+      let url: string | undefined = (await fastUploadMediaFile(file, type)) || undefined;
       if (!url) throw new Error('Upload did not return a URL');
       url = resolveMediaUrl(String(url));
       const r = await fetch('/api/posts', {
@@ -13094,7 +13051,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }
 
 
-  /** Convert gallery HEIC/HEIF or typeless image blobs to JPEG so /api/posts/media accepts them. */
+  /** Fast gallery prep: HEIC→JPEG + downscale large photos so upload finishes in ~1–2s. */
   async function normalizeGalleryFileForUpload(file: File, kind: 'image' | 'video'): Promise<File> {
     if (kind === 'video') return file;
     const name = (file.name || '').toLowerCase();
@@ -13103,53 +13060,153 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       mime.includes('heic') || mime.includes('heif') ||
       name.endsWith('.heic') || name.endsWith('.heif') ||
       (!mime && !name.match(/\.(jpe?g|png|webp|gif|mp4|mov|webm|m4v)$/i));
-    if (!needsConvert && mime.startsWith('image/')) return file;
+    // Already small JPEG/PNG/WebP under ~900KB — skip heavy work
+    const smallOk = !needsConvert && mime.startsWith('image/') && file.size > 0 && file.size < 900_000
+      && !mime.includes('heic') && !mime.includes('heif');
+    if (smallOk) return file;
+
+    const MAX_EDGE = 1600;
+    const QUALITY = 0.82;
+    const toJpegFile = async (source: CanvasImageSource, w: number, h: number, baseName: string): Promise<File | null> => {
+      if (!w || !h) return null;
+      let tw = w;
+      let th = h;
+      if (Math.max(tw, th) > MAX_EDGE) {
+        const scale = MAX_EDGE / Math.max(tw, th);
+        tw = Math.max(1, Math.round(tw * scale));
+        th = Math.max(1, Math.round(th * scale));
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = tw;
+      canvas.height = th;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.drawImage(source, 0, 0, tw, th);
+      const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', QUALITY));
+      if (!blob || blob.size <= 0) return null;
+      const base = (baseName || 'photo').replace(/\.[^.]+$/, '') || 'photo';
+      return new File([blob], `${base}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
+    };
+
     try {
-      const bmp = typeof createImageBitmap === 'function' ? await createImageBitmap(file) : null;
-      if (bmp) {
-        const canvas = document.createElement('canvas');
-        canvas.width = bmp.width;
-        canvas.height = bmp.height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(bmp, 0, 0);
-          bmp.close?.();
-          const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
-          if (blob && blob.size > 0) {
-            const base = (file.name || 'photo').replace(/\.[^.]+$/, '') || 'photo';
-            return new File([blob], `${base}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
-          }
+      if (typeof createImageBitmap === 'function') {
+        const bmp = await createImageBitmap(file);
+        try {
+          const out = await toJpegFile(bmp, bmp.width, bmp.height, file.name || 'photo');
+          if (out) return out;
+        } finally {
+          try { bmp.close?.(); } catch { /* */ }
         }
       }
     } catch { /* fall through */ }
     try {
       const url = URL.createObjectURL(file);
-      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const el = new Image();
-        el.onload = () => resolve(el);
-        el.onerror = () => reject(new Error('img load'));
-        el.src = url;
-      });
-      URL.revokeObjectURL(url);
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx && canvas.width > 0 && canvas.height > 0) {
-        ctx.drawImage(img, 0, 0);
-        const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
-        if (blob && blob.size > 0) {
-          const base = (file.name || 'photo').replace(/\.[^.]+$/, '') || 'photo';
-          return new File([blob], `${base}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
-        }
+      try {
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const el = new Image();
+          el.onload = () => resolve(el);
+          el.onerror = () => reject(new Error('img load'));
+          el.src = url;
+        });
+        const out = await toJpegFile(img, img.naturalWidth || img.width, img.naturalHeight || img.height, file.name || 'photo');
+        if (out) return out;
+      } finally {
+        URL.revokeObjectURL(url);
       }
     } catch { /* keep original */ }
     if (!file.type || file.type === 'application/octet-stream') {
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
       const type = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
-      return new File([file], file.name || `photo.${ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'webp' || ext === 'gif' ? ext : 'jpg'}`, { type, lastModified: file.lastModified || Date.now() });
+      const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext) ? ext : 'jpg';
+      return new File([file], file.name || `photo.${safeExt}`, { type, lastModified: file.lastModified || Date.now() });
     }
     return file;
+  }
+
+  /** Single fast media upload: race FormData + raw, first success wins (no long sequential chain). */
+  async function fastUploadMediaFile(file: File, mediaType: 'image' | 'video'): Promise<string | null> {
+    const ext = (file.name.split('.').pop() || (mediaType === 'video' ? 'mp4' : 'jpg')).replace(/^\./, '');
+    let contentType = (file.type || '').split(';')[0].toLowerCase();
+    if (!contentType.startsWith('image/') && !contentType.startsWith('video/')) {
+      contentType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
+    }
+    const extract = async (res: Response): Promise<string | null> => {
+      try {
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        if (ct.includes('application/json')) {
+          const d = await res.json() as any;
+          const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path || d?.data?.url || d?.data?.mediaUrl || d?.result?.url || d?.file?.url || d?.media?.url;
+          return u ? resolveMediaUrl(String(u)) : null;
+        }
+        const t = (await res.text()).trim();
+        if (t && (t.startsWith('http') || t.startsWith('/') || t.startsWith('blob:'))) {
+          return resolveMediaUrl(t.split(/\s/)[0]);
+        }
+      } catch { /* */ }
+      return null;
+    };
+    const tryOne = async (run: () => Promise<Response>): Promise<string | null> => {
+      try {
+        const res = await run();
+        if (!res.ok) return null;
+        return await extract(res);
+      } catch {
+        return null;
+      }
+    };
+    // Parallel primary methods — first valid URL wins without waiting on failures
+    const primary = await Promise.all([
+      tryOne(async () => {
+        const fd = new FormData();
+        fd.append('file', file, file.name || `media.${ext}`);
+        fd.append('type', mediaType);
+        fd.append('mediaType', mediaType);
+        return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+      }),
+      tryOne(async () => fetch('/api/posts/media', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': contentType,
+          'X-File-Ext': `.${ext}`,
+          'X-Media-Type': mediaType,
+        },
+        body: file,
+      })),
+    ]);
+    const raced = primary.find(u => !!u) || null;
+    if (raced) return raced;
+    // Quick sequential fallbacks only if race timed out / both failed
+    for (const run of [
+      async () => {
+        const fd = new FormData();
+        fd.append('file', file, file.name || `media.${ext}`);
+        fd.append('type', mediaType);
+        return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+      },
+      async () => {
+        const fd = new FormData();
+        fd.append('media', file, file.name || `media.${ext}`);
+        fd.append('kind', mediaType);
+        return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+      },
+      async () => {
+        const extra = await uploadPostMedia(file, { kind: mediaType, fileName: file.name });
+        if (extra.ok && extra.url) return extra.url as any;
+        throw new Error('no');
+      },
+    ] as Array<() => Promise<any>>) {
+      try {
+        const res = await run();
+        if (typeof res === 'string' && res) return resolveMediaUrl(res);
+        if (res && typeof res.ok === 'boolean') {
+          if (!res.ok) continue;
+          const u = await extract(res);
+          if (u) return u;
+        }
+      } catch { /* next */ }
+    }
+    return null;
   }
 
   async function submitPost(destination: 'text' | 'photos' | 'videos' = 'text') {
@@ -13382,168 +13439,58 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         throw new Error('تعذر رفع PDF ولا تحويله إلى صورة');
       };
 
-      for (const item of composerMediaFiles) {
-        try {
-          let file = item.file;
-          const isPdf =
-            item.type === 'pdf' ||
-            (file.type || '') === 'application/pdf' ||
-            /\.pdf$/i.test(file.name);
-          const isVideo =
-            item.type === 'video' ||
-            (file.type || '').startsWith('video/') ||
-            /\.(mp4|mov|webm|m4v|mkv|3gp)$/i.test(file.name);
+      // ── Fast parallel upload: normalize + race upload per file, all files together ──
+      {
+        const nonPdfItems = composerMediaFiles.filter(item => {
+          const f = item.file;
+          return !(item.type === 'pdf' || (f.type || '') === 'application/pdf' || /\.pdf$/i.test(f.name || ''));
+        });
+        const pdfItems = composerMediaFiles.filter(item => {
+          const f = item.file;
+          return item.type === 'pdf' || (f.type || '') === 'application/pdf' || /\.pdf$/i.test(f.name || '');
+        });
 
-          // PDF: مسار رفع منفصل (السيرفر يرفض PDF على posts/media كصورة/فيديو)
-          if (isPdf) {
+        // PDFs stay sequential (cover conversion) but still run while images race
+        const pdfPromise = (async () => {
+          for (const item of pdfItems) {
             try {
-              const pdfUrl = await uploadPdfFile(file);
-              if (pdfUrl) {
-                // صورة غلاف / صفحة PDF أو رابط الملف — يُنشر كـ image لقبول السيرفر
-                uploadedMedia.push({ url: String(pdfUrl), type: 'image' });
-              } else {
-                lastUploadError = 'رفع PDF نجح بدون رابط';
-              }
+              const pdfUrl = await uploadPdfFile(item.file);
+              if (pdfUrl) uploadedMedia.push({ url: String(pdfUrl), type: 'image' });
+              else lastUploadError = 'رفع PDF نجح بدون رابط';
             } catch (e) {
               lastUploadError = `فشل رفع PDF: ${e instanceof Error ? e.message : String(e)}`;
               console.error('[Post PDF upload]', lastUploadError);
             }
-            continue;
           }
+        })();
 
-          const mediaType: 'image' | 'video' = isVideo ? 'video' : 'image';
+        const mediaResults = await Promise.all(nonPdfItems.map(async (item) => {
           try {
-            file = await normalizeGalleryFileForUpload(file, mediaType);
-          } catch { /* keep original file */ }
-          const ext = (
-            file.name.split('.').pop() ||
-            (isVideo ? 'mp4' : 'jpg')
-          ).replace(/^\./, '');
-          // Server accepts raw body only with image/* or video/* Content-Type
-          let contentType = (file.type || '').split(';')[0].toLowerCase();
-          if (!contentType.startsWith('image/') && !contentType.startsWith('video/')) {
-            contentType = isVideo ? 'video/mp4' : 'image/jpeg';
-          }
-
-          let uploadRes: Response | null = null;
-          let lastBody = '';
-          let uploadedUrl: string | null = null;
-
-          // 1) FormData (most reliable on many hosts)
-          try {
-            const fd = new FormData();
-            fd.append('file', file, file.name || `media.${ext}`);
-            fd.append('type', mediaType);
-            fd.append('mediaType', mediaType);
-            uploadRes = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
-            if (uploadRes.ok) {
-              uploadedUrl = await extractUploadUrl(uploadRes);
-            } else {
-              lastBody = await uploadRes.text().catch(() => '');
+            let file = item.file;
+            const isVideo =
+              item.type === 'video' ||
+              (file.type || '').startsWith('video/') ||
+              /\.(mp4|mov|webm|m4v|mkv|3gp)$/i.test(file.name || '');
+            const mediaType: 'image' | 'video' = isVideo ? 'video' : 'image';
+            try { file = await normalizeGalleryFileForUpload(file, mediaType); } catch { /* keep */ }
+            const url = await fastUploadMediaFile(file, mediaType);
+            if (!url) {
+              const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+              return { error: `Media upload failed [${mediaType} ${sizeMb}MB]` as string, url: null as string | null, mediaType };
             }
-          } catch (e) {
-            lastBody = e instanceof Error ? e.message : 'formdata fail';
-            uploadRes = null;
+            return { error: null as string | null, url, mediaType };
+          } catch (err) {
+            return { error: err instanceof Error ? err.message : 'خطأ رفع', url: null as string | null, mediaType: 'image' as const };
           }
+        }));
 
-          // 2) Raw body with Content-Type
-          if (!uploadedUrl) {
-            try {
-              uploadRes = await fetch('/api/posts/media', {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                  'Content-Type': contentType,
-                  'X-File-Ext': `.${ext}`,
-                  'X-Media-Type': mediaType,
-                },
-                body: file,
-              });
-              if (uploadRes.ok) {
-                uploadedUrl = await extractUploadUrl(uploadRes);
-              } else {
-                lastBody = await uploadRes.text().catch(() => '');
-              }
-            } catch (e) {
-              lastBody = e instanceof Error ? e.message : 'raw fail';
-              uploadRes = null;
-            }
-          }
-
-          // 3) Fallback endpoints (network / route differences)
-          if (!uploadedUrl) {
-            const fallbacks: Array<() => Promise<Response>> = [
-              async () => {
-                const fd = new FormData();
-                fd.append('file', file, file.name || `media.${ext}`);
-                fd.append('type', mediaType);
-                return fetch('/api/upload', { method: 'POST', credentials: 'include', body: fd });
-              },
-              async () => {
-                const fd = new FormData();
-                fd.append('file', file, file.name || `media.${ext}`);
-                return fetch('/api/support/upload', { method: 'POST', credentials: 'include', body: fd });
-              },
-              async () => {
-                const fd = new FormData();
-                fd.append('media', file, file.name || `media.${ext}`);
-                fd.append('kind', mediaType);
-                return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
-              },
-              async () => {
-                const fd = new FormData();
-                fd.append('video', file, file.name || `media.${ext}`);
-                fd.append('type', 'video');
-                return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
-              },
-              async () => {
-                const fd = new FormData();
-                fd.append('upload', file, file.name || `media.${ext}`);
-                fd.append('mediaType', mediaType);
-                return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
-              },
-              async () => {
-                const fd = new FormData();
-                fd.append('file', file, file.name || `video.${ext}`);
-                fd.append('destination', mediaType === 'video' ? 'videos' : 'photos');
-                return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
-              },
-            ];
-            for (const run of fallbacks) {
-              try {
-                uploadRes = await run();
-                if (uploadRes.ok) {
-                  uploadedUrl = await extractUploadUrl(uploadRes);
-                  if (uploadedUrl) break;
-                } else {
-                  lastBody = await uploadRes.text().catch(() => '');
-                }
-              } catch (e) {
-                lastBody = e instanceof Error ? e.message : 'fallback fail';
-                uploadRes = null;
-              }
-            }
-          }
-
-          if (!uploadedUrl) {
-            try {
-              const extra = await uploadPostMedia(file, { kind: mediaType, fileName: file.name });
-              if (extra.ok && extra.url) uploadedUrl = extra.url;
-            } catch { /* keep last error */ }
-          }
-          if (!uploadedUrl) {
-            const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-            lastUploadError = `Media upload failed${uploadRes ? ` (${uploadRes.status})` : ''} ${lastBody.slice(0, 80)} [${mediaType} ${sizeMb}MB]`.trim();
-            console.error('[Post media upload]', lastUploadError);
-            continue;
-          }
-          uploadedMedia.push({ url: String(uploadedUrl), type: mediaType });
-        } catch (err) {
-          lastUploadError = err instanceof Error ? err.message : 'خطأ رفع';
-          console.error('[Post media upload]', err);
+        for (const r of mediaResults) {
+          if (r.url) uploadedMedia.push({ url: r.url, type: r.mediaType });
+          else if (r.error) lastUploadError = r.error;
         }
+        await pdfPromise;
       }
-      if (composerMediaFiles.length > 0 && uploadedMedia.length === 0) {
+            if (composerMediaFiles.length > 0 && uploadedMedia.length === 0) {
         // Upload genuinely failed for every attempt. We used to fall back to a
         // local blob: URL here so the post would still "publish" — but a blob:
         // URL only exists in this browser tab's memory, so the post would look
@@ -13594,11 +13541,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         const mediaDest = mediaType === 'video' ? 'videos' : 'photos';
         const primaryAudience = hasCaption ? 'text' : 'public';
         const primaryDest = hasCaption ? 'text' : mediaDest;
-        let createRes = await fetch('/api/posts', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const postBodies = [
+          {
             text: hasCaption ? finalText : '',
             mediaUrl,
             mediaType,
@@ -13610,47 +13554,52 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             publisherType: isCompanyPublisher ? 'company' : 'user',
             isCompanyPost: !!isCompanyPublisher,
             authorIsCompany: !!isCompanyPublisher,
-          }),
+          },
+          {
+            text: finalText || '',
+            mediaUrl,
+            mediaType,
+            mediaUrls,
+            mediaTypes,
+            hashtags: postHashtags,
+            audience: 'text',
+            destination: 'text',
+            publisherType: isCompanyPublisher ? 'company' : 'user',
+            isCompanyPost: !!isCompanyPublisher,
+            authorIsCompany: !!isCompanyPublisher,
+          },
+          {
+            text: '',
+            mediaUrl,
+            mediaType,
+            mediaUrls,
+            mediaTypes,
+            hashtags: postHashtags,
+            audience: 'public',
+            destination: mediaDest,
+            publisherType: isCompanyPublisher ? 'company' : 'user',
+            isCompanyPost: !!isCompanyPublisher,
+            authorIsCompany: !!isCompanyPublisher,
+          },
+        ];
+        // Try primary body first (fast path); only then race the two fallbacks
+        let createRes = await fetch('/api/posts', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(postBodies[0]),
         });
         if (!createRes.ok) {
-          createRes = await fetch('/api/posts', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: finalText || '',
-              mediaUrl,
-              mediaType,
-              mediaUrls,
-              mediaTypes,
-              hashtags: postHashtags,
-              audience: 'text',
-              destination: 'text',
-              publisherType: isCompanyPublisher ? 'company' : 'user',
-              isCompanyPost: !!isCompanyPublisher,
-              authorIsCompany: !!isCompanyPublisher,
-            }),
-          });
-        }
-        if (!createRes.ok) {
-          createRes = await fetch('/api/posts', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: '',
-              mediaUrl,
-              mediaType,
-              mediaUrls,
-              mediaTypes,
-              hashtags: postHashtags,
-              audience: 'public',
-              destination: mediaDest,
-              publisherType: isCompanyPublisher ? 'company' : 'user',
-              isCompanyPost: !!isCompanyPublisher,
-              authorIsCompany: !!isCompanyPublisher,
-            }),
-          });
+          const raced = await Promise.all(postBodies.slice(1).map(body =>
+            fetch('/api/posts', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            }).then(async r => ({ r, ok: r.ok })).catch(() => ({ r: null as Response | null, ok: false }))
+          ));
+          const hit = raced.find(x => x.ok && x.r);
+          if (hit?.r) createRes = hit.r;
         }
         if (!createRes.ok) {
           // Optimistic local post when server rejects (e.g. blob URL after upload fail)
@@ -22681,33 +22630,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         type = (file.type || '').startsWith('video') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '') ? 'video' : 'image';
                         try { file = await normalizeGalleryFileForUpload(file, type); } catch { /* keep */ }
                         type = (file.type || '').startsWith('video') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '') ? 'video' : type;
-                        let urlFromUpload: string | undefined;
-                        try {
-                          const uploadRes = await fetch('/api/posts/media', {
-                            method: 'POST',
-                            credentials: 'include',
-                            headers: {
-                              'Content-Type': file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg'),
-                              'X-File-Ext': '.' + ((file.name.split('.').pop()) || (type === 'video' ? 'mp4' : 'jpg')),
-                              'X-Media-Type': type,
-                            },
-                            body: file,
-                          });
-                          if (uploadRes.ok) {
-                            const uploadData = await uploadRes.json().catch(() => ({} as any));
-                            urlFromUpload = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
-                          }
-                        } catch { /* try FormData */ }
-                        if (!urlFromUpload) {
-                          const fd = new FormData();
-                          fd.append('file', file, file.name || (type === 'video' ? 'video.mp4' : 'photo.jpg'));
-                          fd.append('type', type);
-                          fd.append('mediaType', type);
-                          const uploadRes = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
-                          if (!uploadRes.ok) throw new Error('Upload failed');
-                          const uploadData = await uploadRes.json().catch(() => ({} as any));
-                          urlFromUpload = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
-                        }
+                        const urlFromUpload = await fastUploadMediaFile(file, type);
                         if (!urlFromUpload) throw new Error('No URL from upload');
                         url = resolveMediaUrl(String(urlFromUpload)) || String(urlFromUpload);
                       }
