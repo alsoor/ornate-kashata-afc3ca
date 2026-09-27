@@ -4496,18 +4496,17 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
         </motion.div>
       )}
 
-      {/* ── Inline comment composer — لا يفتح صفحة ثانية، كتابة وإرسال في نفس المكان ── */}
-      {!isMyStory && (
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 4,
-            padding: '10px 12px calc(10px + env(safe-area-inset-bottom))',
-            background: 'linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0))',
-            display: 'flex', flexDirection: 'column', gap: 8,
-          }}
-        >
-          {emojiOpen && (
+      {/* ── الشريط السفلي لصفحة القصة — يظهر دائمًا (فيه زر الزائد)، وصندوق التعليق يظهر فقط لغير صاحب القصة ── */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 4,
+          padding: '10px 12px calc(10px + env(safe-area-inset-bottom))',
+          background: 'linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0))',
+          display: 'flex', flexDirection: 'column', gap: 8,
+        }}
+      >
+          {!isMyStory && emojiOpen && (
             <div style={{
               display: 'flex', gap: 6, padding: '8px 10px', borderRadius: 14,
               background: 'rgba(20,20,20,0.72)', backdropFilter: 'blur(10px)',
@@ -4524,7 +4523,8 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
               ))}
             </div>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: isMyStory ? 'flex-end' : 'flex-start' }}>
+            {!isMyStory && (
             <button
               onClick={() => setEmojiOpen(o => !o)}
               aria-label="إيموجي"
@@ -4537,6 +4537,8 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
             >
               <Smile size={18} strokeWidth={2} />
             </button>
+            )}
+            {!isMyStory && (
             <input
               ref={commentInputRef}
               value={commentText}
@@ -4548,6 +4550,8 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
                 borderRadius: 22, padding: '10px 16px', color: '#fff', fontSize: '0.85rem', outline: 'none',
               }}
             />
+            )}
+            {!isMyStory && (
             <motion.button
               whileTap={{ scale: 0.9 }}
               disabled={commentSending || !commentText.trim()}
@@ -4566,8 +4570,9 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
                 }} />
               ) : <Send size={15} strokeWidth={2.4} />}
             </motion.button>
+            )}
 
-            {/* الزائد المنقول من الشريط السفلي للبوست العام — نفس الإجراءات */}
+            {/* الزائد — يظهر دائمًا في شريط صفحة القصة (لصاحب القصة ولغيره) */}
             <div style={{ position: 'relative', width: 38, height: 38, flexShrink: 0 }}>
               {storyPlusOpen && (
                 <>
@@ -4777,6 +4782,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
               </button>
             </div>
           </div>
+          {!isMyStory && (
           <AnimatePresence>
             {commentSent && (
               <motion.p
@@ -4787,8 +4793,8 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
               </motion.p>
             )}
           </AnimatePresence>
+          )}
         </div>
-      )}
     </motion.div>
   );
 }
@@ -17510,22 +17516,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           </div>
 
 
-          {/* Content header — single Post section */}
-          {pageTab === 'profile' && (
-            <div style={{ padding: '0 0 8px' }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                padding: '9px 4px', marginBottom: 8,
-                borderTop: `1px solid ${CLR_TAB_BORDER}`, borderBottom: `1px solid ${CLR_TAB_BORDER}`,
-                color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800,
-                background: CLR_TAB_ACTIVE,
-              }}>
-                <FileText size={14} strokeWidth={2} />
-                {null /* Post/Products header removed */}
-              </div>
-              <div style={{ height: 1, background: CLR_NAV_BORDER }} />
-            </div>
-          )}
         </div>
         </>}
 
@@ -17595,116 +17585,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 )}
 
 
-                {/* ── My posts (text posts + publicly-published photos/videos, Video/Photo
-                    grids removed — everything I publish lands here). Same as the story/friend
-                    profile page: shown three-per-row regardless of type (text+video, text
-                    alone, or text+image), pinned post first. Tapping any tile opens the full
-                    post page the same way a text post opens (openTextPostDetail). ── */}
-                {(() => {
-                  let myTextPosts = combinedFeedPosts.filter(p =>
-                    !!user && String(p.authorId) === String(user.id)
-                  );
-                  // Single Post section — show all posts (no Video/Photo split)
-                  ;
-                  // المنشور المثبّت (إن وُجد) يظهر أولًا، والباقي يتبعه بترتيبه الطبيعي
-                  if (pinnedPostId !== null) {
-                    const pinnedIndex = myTextPosts.findIndex(p => p.id === pinnedPostId);
-                    if (pinnedIndex > 0) {
-                      const [pinned] = myTextPosts.splice(pinnedIndex, 1);
-                      myTextPosts.unshift(pinned);
-                    }
-                  }
-                  if (myTextPosts.length === 0) {
-                    return (
-                      <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 32 }}>
-                        <div style={{
-                          width: 52, height: 52, borderRadius: '50%',
-                          background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_PRIMARY_DIM,
-                        }}>
-                          <FileText size={20} strokeWidth={1.5} />
-                        </div>
-                        <p style={{ color: CLR_TEXT_DIM, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
-                          لا توجد منشورات نصية بعد
-                        </p>
-                      </div>
-                    );
-                  }
-                  const enrichedMyPosts = myTextPosts.map(post => {
-                    const rawThumbUrl = post.mediaUrls?.[0] ?? post.mediaUrl;
-                    const rawIsVideo = (post.mediaTypes?.[0] ?? post.mediaType) === 'video';
-                    // إذا المنشور بدون وسائط مرفقة لكن نصّه يحتوي رابط صورة/فيديو مباشر —
-                    // نستخرجه ونعرضه كصورة/فيديو مصغّر بدل ترك الرابط الخام يظهر كنص عادي.
-                    const productAd = parseProductAd(post.text);
-                    const textEmbed = !rawThumbUrl && post.text && !productAd ? extractTextMediaEmbeds(post.text) : null;
-                    const embeddedMedia = textEmbed?.embeds?.[0] ?? null;
-                    const thumbUrl = rawThumbUrl ?? embeddedMedia?.url;
-                    const isVideo = rawThumbUrl ? rawIsVideo : embeddedMedia?.type === 'video';
-                    const displayText = productAd
-                      ? [productAd.title, productAd.price].filter(Boolean).join(' · ')
-                      : textEmbed ? textEmbed.cleanText : post.text;
-                    const isPinnedPost = pinnedPostId === post.id;
-                    return { post, thumbUrl, isVideo, displayText, isPinnedPost };
-                  });
-                  return (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
-                      {enrichedMyPosts.map(({ post, thumbUrl, isVideo, displayText, isPinnedPost }) => (
-                        <button
-                          key={post.repostKey ?? post.id}
-                          type="button"
-                          onClick={() => openSinglePostView(post, true)}
-                          aria-label={thumbUrl ? (isVideo ? 'فتح الفيديو' : 'فتح الصورة') : 'فتح المنشور'}
-                          style={{
-                            position: 'relative', width: '100%', aspectRatio: '1 / 1', overflow: 'hidden',
-                            border: isPinnedPost ? '3px solid #ef4444' : 'none', boxSizing: 'border-box', padding: 0,
-                            background: thumbUrl ? '#000' : CLR_CARD_BG, cursor: 'pointer', display: 'block',
-                          }}
-                        >
-                          {thumbUrl ? (
-                            <>
-                              {isVideo ? (
-                                <video src={resolveMediaUrl(thumbUrl) || thumbUrl} muted autoPlay loop playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                              ) : (
-                                <img src={resolveMediaUrl(thumbUrl) || thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                              )}
-                              {isVideo && (
-                                <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
-                                  <Play size={13} strokeWidth={2.4} color="#fff" fill="#fff" />
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <div style={{
-                              width: '100%', height: '100%', padding: '8px 7px',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              border: `1px solid ${CLR_CARD_BORDER}`, boxSizing: 'border-box',
-                            }}>
-                              <p style={{
-                                color: CLR_TEXT, fontSize: '0.64rem', lineHeight: 1.45, margin: 0,
-                                textAlign: 'center',
-                                display: '-webkit-box', WebkitLineClamp: 6, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                              }}>
-                                {displayText}
-                              </p>
-                            </div>
-                          )}
-                          {/* المنشور المثبّت يبين بالأحمر */}
-                          {isPinnedPost && (
-                            <div style={{
-                              position: 'absolute', top: 6, insetInlineStart: 6,
-                              color: '#ef4444', filter: thumbUrl ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.7))' : 'none',
-                              display: 'flex', alignItems: 'center',
-                            }}>
-                              <Pin size={15} strokeWidth={2.6} fill="#ef4444" />
-                            </div>
-                          )}
-                          <PostGridTimeFooter createdAt={post.createdAt} onMedia={!!thumbUrl} />
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })()}
               </motion.div>}
 
             {/* ══ ADD TAB: Search + Requests ══ */}
