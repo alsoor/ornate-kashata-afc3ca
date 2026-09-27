@@ -15470,6 +15470,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [friendChatCallLogOpen, setFriendChatCallLogOpen] = useState(false);
   const [friendChatCallLogMenuOpen, setFriendChatCallLogMenuOpen] = useState(false);
   const callHistoryDotState = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
+  const myLiveBroadcastKind = useLiveBroadcastKind(user?.id);
   const [storyRequestsBoxOpen, setStoryRequestsBoxOpen] = useState(false);
   const [storyReqRespondingId, setStoryReqRespondingId] = useState<number | null>(null);
   const [storyReqTab, setStoryReqTab] = useState<'search' | 'requests'>('requests');
@@ -17298,14 +17299,22 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <span aria-hidden="true" style={{
                       position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
                       width: 7, height: 7, borderRadius: '50%',
-                      background: callHistoryDotState.joined ? '#22c55e' : '#ef4444',
+                      background: callHistoryDotState.joined ? '#22c55e' : '#9ca3af',
                       border: '1.5px solid hsl(var(--background))',
                     }} />
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(myMediaLikesTotal)}</span>
-                    <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
-                  </div>
+                  <span
+                    aria-label={myLiveBroadcastKind ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
+                    title={myLiveBroadcastKind ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
+                    style={{
+                      width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
+                      background: 'rgba(225,225,225,0.1)',
+                      color: myLiveBroadcastKind ? '#22c55e' : '#9ca3af',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}
+                  >
+                    <Radio size={12} strokeWidth={2.3} />
+                  </span>
 
                 </div>
               </div>
