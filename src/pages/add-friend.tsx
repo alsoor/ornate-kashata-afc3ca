@@ -17284,30 +17284,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(myMediaLikesTotal)}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
                   </div>
-                  <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 12, flexShrink: 0, position: 'relative', zIndex: 2, minWidth: 36, paddingTop: 2 }}>
-                    <motion.button
-                      type="button"
-                      whileTap={{ scale: 0.9 }}
-                      onClick={() => { setStoryRequestsBoxOpen(true); setStoryReqTab('requests'); setStoryReqQuery(''); }}
-                      aria-label="Friend requests"
-                      style={{
-                        width: 28, height: 28, borderRadius: '50%',
-                        background: incoming.length > 0 ? 'rgba(239,68,68,0.28)' : 'rgba(0,188,212,0.2)',
-                        border: `2px solid ${incoming.length > 0 ? '#ef4444' : CLR_PRIMARY}`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                        padding: 0, position: 'relative', flexShrink: 0,
-                      }}
-                    >
-                      <UserPlus size={13} color={incoming.length > 0 ? '#ef4444' : CLR_PRIMARY} strokeWidth={2.4} />
-                      {incoming.length > 0 && (
-                        <span style={{
-                          position: 'absolute', top: -4, right: -4, minWidth: 14, height: 14, borderRadius: 8,
-                          background: '#ef4444', color: '#fff', fontSize: '0.5rem', fontWeight: 800,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
-                        }}>{incoming.length > 9 ? '9+' : incoming.length}</span>
-                      )}
-                    </motion.button>
-                  </div>
 
                 </div>
               </div>
@@ -17457,6 +17433,37 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   zIndex: 10620,
                   animation: 'stooornaPlusFanIn 0.28s ease-out',
                 }}>
+                  {user?.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfilePlusOpen(false);
+                        setStoryRequestsBoxOpen(true);
+                        setStoryReqTab('requests');
+                        setStoryReqQuery('');
+                      }}
+                      aria-label="Friend requests"
+                      style={{
+                        width: 38, height: 38, borderRadius: '50%', position: 'relative',
+                        border: `1px solid ${incoming.length > 0 ? 'rgba(239,68,68,0.5)' : 'rgba(0,188,212,0.4)'}`,
+                        background: incoming.length > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(6,20,22,0.96)',
+                        color: incoming.length > 0 ? '#ef4444' : '#00BCD4',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                      }}
+                    >
+                      <UserPlus size={18} strokeWidth={2.2} />
+                      {incoming.length > 0 && (
+                        <span style={{
+                          position: 'absolute', top: -4, right: -4, minWidth: 15, height: 15, borderRadius: 8,
+                          background: '#ef4444', color: '#fff', fontSize: '0.52rem', fontWeight: 800,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
+                          border: '1.5px solid rgba(6,20,22,0.96)',
+                        }}>{incoming.length > 9 ? '9+' : incoming.length}</span>
+                      )}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -17608,16 +17615,24 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 }}
                 aria-label="خيارات إضافية"
                 style={{
-                  width: 32, height: 32, borderRadius: '50%',
-                  border: `1.5px solid ${CLR_PRIMARY_BORDER}`,
-                  background: 'rgba(0,188,212,0.12)',
-                  color: CLR_PRIMARY,
+                  width: 32, height: 32, borderRadius: '50%', position: 'relative',
+                  border: `1.5px solid ${incoming.length > 0 ? 'rgba(239,68,68,0.5)' : CLR_PRIMARY_BORDER}`,
+                  background: incoming.length > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(0,188,212,0.12)',
+                  color: incoming.length > 0 ? '#ef4444' : CLR_PRIMARY,
                   cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 0 10px rgba(0,188,212,0.25)',
+                  boxShadow: incoming.length > 0 ? '0 0 10px rgba(239,68,68,0.3)' : '0 0 10px rgba(0,188,212,0.25)',
                 }}
               >
                 <Plus size={16} strokeWidth={2.4} />
+                {incoming.length > 0 && (
+                  <span style={{
+                    position: 'absolute', top: -4, right: -4, minWidth: 14, height: 14, borderRadius: 8,
+                    background: '#ef4444', color: '#fff', fontSize: '0.5rem', fontWeight: 800,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
+                    border: '1.5px solid hsl(var(--background))',
+                  }}>{incoming.length > 9 ? '9+' : incoming.length}</span>
+                )}
               </motion.button>
             )}
           </div>
