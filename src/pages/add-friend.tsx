@@ -5349,7 +5349,7 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
         >
           <X size={18} strokeWidth={2.4} />
         </button>
-        <p style={{ margin: 0, flex: 1, fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{href || hrefIn}</p>
+        <p style={{ margin: 0, flex: 1, fontSize: '0.78rem', color: 'transparent', userSelect: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{href || hrefIn}</p>
       </div>
       <div style={{ flex: 1, minHeight: 0, background: '#fff', position: 'relative' }}>
         {loading ? (
