@@ -683,11 +683,16 @@ interface ProductAdData {
   extras: string[];
 }
 function buildProductPostText(data: { title: string; details: string; price: string; extras: string[] }): string {
-  const title = (data.title || 'منتج').trim();
+  // NOTE: no default title here — an empty title must stay empty. Injecting a
+  // placeholder like "منتج" used to leak into every text/link-only post that
+  // had no explicit title (shown as the post's title everywhere: feed,
+  // full-screen view, details sheet…). Never fill this in automatically.
+  const title = (data.title || '').trim();
   const price = (data.price || '').trim();
   const details = (data.details || '').trim();
   const extras = (data.extras || []).map(s => s.trim()).filter(Boolean);
-  const parts: string[] = [title];
+  const parts: string[] = [];
+  if (title) parts.push(title);
   if (price) parts.push(`السعر: ${price}`);
   if (details) parts.push(details);
   for (const ex of extras) parts.push(ex);
@@ -13066,7 +13071,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       // Company accounts: product ad format. Regular users: plain caption (no default "منتج")
       let finalText = isCompanyPublisher
         ? buildProductPostText({
-            title: title || 'منتج',
+            title,
             details: detailsWithLink,
             price,
             extras,
