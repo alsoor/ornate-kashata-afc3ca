@@ -17433,6 +17433,26 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   zIndex: 10620,
                   animation: 'stooornaPlusFanIn 0.28s ease-out',
                 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfilePlusOpen(false);
+                      try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
+                      navigate('/settings');
+                    }}
+                    aria-label="Settings"
+                    style={{
+                      width: 38, height: 38, borderRadius: '50%',
+                      border: '1px solid rgba(0,188,212,0.4)',
+                      background: 'rgba(6,20,22,0.96)',
+                      color: '#00BCD4',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                    }}
+                  >
+                    <Settings size={18} strokeWidth={2.2} />
+                  </button>
                   {user?.id && (
                     <button
                       type="button"
@@ -17464,26 +17484,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       )}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProfilePlusOpen(false);
-                      try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
-                      navigate('/settings');
-                    }}
-                    aria-label="Settings"
-                    style={{
-                      width: 38, height: 38, borderRadius: '50%',
-                      border: '1px solid rgba(0,188,212,0.4)',
-                      background: 'rgba(6,20,22,0.96)',
-                      color: '#00BCD4',
-                      cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                    }}
-                  >
-                    <Settings size={18} strokeWidth={2.2} />
-                  </button>
                   {user?.id && (
                     <button
                       type="button"
@@ -21904,37 +21904,84 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           3-dot menu (Delete / Block), and a WhatsApp-style 1:1 chat screen per friend. ── */}
       <AnimatePresence>
         {storyRequestsBoxOpen && (
-          <div
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
             onClick={() => setStoryRequestsBoxOpen(false)}
             style={{
               position: 'fixed', inset: 0, zIndex: 20050,
-              background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: 20,
+              background: 'rgba(0,0,0,0.45)',
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
+              boxSizing: 'border-box',
             }}
           >
-            <div
+            <motion.div
               onClick={e => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.88 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
               style={{
-                width: '100%', maxWidth: 340,
-                height: 420,
-                background: 'rgba(12,18,18,0.96)',
-                border: '1px solid rgba(255,255,255,0.12)',
-                borderRadius: 18,
-                padding: '18px 16px 14px',
-                boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
+                position: 'relative',
+                width: 'min(92vw, 360px)',
+                height: 'min(56vh, 420px)',
+                maxHeight: 'min(56vh, 420px)',
                 display: 'flex',
                 flexDirection: 'column',
+                background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
+                border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                borderRadius: 18,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+                overflow: 'hidden',
                 boxSizing: 'border-box',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>Add friends</span>
-                <button type="button" onClick={() => setStoryRequestsBoxOpen(false)}
-                  style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <X size={16} />
-                </button>
+              {/* Header inside card: Requests + close — same pill/border style as the Friends panel */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+                padding: '12px 12px 10px',
+                flexShrink: 0,
+                borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
+                boxSizing: 'border-box',
+                width: '100%',
+                minWidth: 0,
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                }}>
+                  <div
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      padding: '6px 10px', borderRadius: 999,
+                      background: 'rgba(0,188,212,0.18)',
+                      border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      color: CLR_PRIMARY,
+                      fontSize: '0.72rem', fontWeight: 800,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <UserPlus size={13} strokeWidth={2.2} />
+                    Requests
+                  </div>
+                </div>
+                <button type="button" onClick={() => setStoryRequestsBoxOpen(false)} aria-label="Close" style={{
+                  width: 28, height: 28, borderRadius: '50%', border: 'none',
+                  background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}><X size={14} /></button>
               </div>
+              <div style={{
+                display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0,
+                padding: '12px 16px 14px', boxSizing: 'border-box',
+              }}>
               <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
                 <button type="button" onClick={() => setStoryReqTab('search')} style={{
                   flex: 1, height: 34, borderRadius: 10, cursor: 'pointer', fontWeight: 800, fontSize: '0.75rem',
@@ -22037,8 +22084,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   ))}
                 </div>
               )}
-            </div>
-          </div>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
         <AnimatePresence>
           {normalChatPickerOpen && (
