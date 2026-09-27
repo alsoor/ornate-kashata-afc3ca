@@ -5157,23 +5157,6 @@ let inAppSiteOpener: ((url: string) => void) | null = null;
 function bindInAppSiteOpener(fn: ((url: string) => void) | null) {
   inAppSiteOpener = fn;
 }
-function openInBraveBrowser(href: string): boolean {
-  try {
-    const u = new URL(href);
-    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-    if (/Android/i.test(ua)) {
-      const intent = `intent://${u.host}${u.pathname}${u.search}${u.hash}#Intent;scheme=${u.protocol.replace(':','')};package=com.brave.browser;S.browser_fallback_url=${encodeURIComponent(href)};end`;
-      window.location.href = intent;
-      return true;
-    }
-    if (/iPhone|iPad|iPod/i.test(ua)) {
-      window.location.href = `brave://open-url?url=${encodeURIComponent(href)}`;
-      return true;
-    }
-  } catch { /* */ }
-  return false;
-}
-
 function openInAppSite(url: string, e?: { preventDefault?: () => void; stopPropagation?: () => void }) {
   try { e?.preventDefault?.(); } catch { /* */ }
   try { e?.stopPropagation?.(); } catch { /* */ }
@@ -5182,14 +5165,10 @@ function openInAppSite(url: string, e?: { preventDefault?: () => void; stopPropa
   const looked = composerLookupOriginalUrl(raw);
   const href = composerNormalizeUrl(looked) || composerNormalizeUrl(raw) || (/^https?:\/\//i.test(looked) ? looked : `https://${looked}`);
   if (!href || href === 'https://') return;
-  const kind = classifyMediaUrl(href) || classifyDirectMediaUrl(href);
-  if (kind === 'image' || kind === 'video' || /\.pdf(\?|$)/i.test(href) || parseXStatusId(href) || inAppEmbedSrc(href)) {
-    if (inAppSiteOpener) { inAppSiteOpener(href); return; }
-    try { window.dispatchEvent(new CustomEvent('stooorna:open-inapp-site', { detail: { url: href } })); } catch { /* */ }
+  if (inAppSiteOpener) {
+    inAppSiteOpener(href);
     return;
   }
-  if (openInBraveBrowser(href)) return;
-  if (inAppSiteOpener) { inAppSiteOpener(href); return; }
   try { window.dispatchEvent(new CustomEvent('stooorna:open-inapp-site', { detail: { url: href } })); } catch { /* */ }
 }
 
@@ -5330,7 +5309,7 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
       try { (window as any).__stooornaFrameStage = 0; } catch { /* */ }
       setKind('site');
       setLoading(false);
-      setFrameSrc(inAppSiteShot(target));
+      setFrameSrc(target);
       const html = await fetchInAppHtml(target);
       if (cancelled) return;
       if (html) setSrcDoc(html);
