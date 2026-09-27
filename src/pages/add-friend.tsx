@@ -659,6 +659,8 @@ interface PostItem {
   repostsCount: number;
   repostedByMe: boolean;
   commentsCount: number;
+  viewsCount?: number;
+  views?: number;
   // Present only on a feed entry that represents someone reposting this post —
   // used to render the "X reposted this" ribbon above the (otherwise unchanged) post card.
   repostedBy?: { id: string; name: string | null; username: string | null; avatarUrl: string | null } | null;
@@ -5771,6 +5773,13 @@ function getLocalPostViewCount(postId: number | string | null | undefined): numb
   if (postId == null || postId === '') return 0;
   return Number(readLocalPostViews()[String(postId)] || 0) || 0;
 }
+/** Server views + local recorded views (session-unique) for a single post */
+function resolvePostViewsCount(post: { id?: number | string | null; viewsCount?: number; views?: number } | null | undefined): number {
+  if (!post || post.id == null || post.id === '') return 0;
+  const server = Number((post as any).viewsCount ?? (post as any).views ?? 0) || 0;
+  const local = getLocalPostViewCount(post.id);
+  return Math.max(server, local);
+}
 function getLocalAuthorViewCount(authorId: string | null | undefined): number {
   if (!authorId) return 0;
   return Number(readLocalAuthorViews()[String(authorId)] || 0) || 0;
@@ -5982,16 +5991,29 @@ function mergePostsPreservingMedia(prevPosts: PostItem[], serverPosts: PostItem[
   const merged = serverPosts.map(serverPost => {
     const existing = prevById.get(serverPost.id);
     const normalized = normalizePostMediaFields(serverPost);
-    if (!existing) return normalized;
+    if (!existing) {
+      // Restore from local media cache when server omitted media fields
+      const cached = readLocalPostMediaCache(normalized.id);
+      if (cached && cached.mediaUrls.length && !(normalized.mediaUrl || (normalized.mediaUrls && normalized.mediaUrls.length))) {
+        return normalizePostMediaFields({
+          ...normalized,
+          mediaUrl: cached.mediaUrls[0],
+          mediaType: cached.mediaTypes[0] || normalized.mediaType,
+          mediaUrls: cached.mediaUrls,
+          mediaTypes: cached.mediaTypes,
+        });
+      }
+      return normalized;
+    }
     const existingCount = existing.mediaUrls?.length ?? (existing.mediaUrl ? 1 : 0);
     const serverCount = normalized.mediaUrls?.length ?? (normalized.mediaUrl ? 1 : 0);
-    if (existingCount > serverCount) {
+    if (existingCount > serverCount || (existingCount > 0 && serverCount === 0)) {
       return normalizePostMediaFields({
         ...normalized,
-        mediaUrl: existing.mediaUrl,
-        mediaType: existing.mediaType,
-        mediaUrls: existing.mediaUrls,
-        mediaTypes: existing.mediaTypes,
+        mediaUrl: existing.mediaUrl || existing.mediaUrls?.[0] || normalized.mediaUrl,
+        mediaType: existing.mediaType || existing.mediaTypes?.[0] || normalized.mediaType,
+        mediaUrls: (existing.mediaUrls && existing.mediaUrls.length) ? existing.mediaUrls : (existing.mediaUrl ? [existing.mediaUrl] : normalized.mediaUrls),
+        mediaTypes: (existing.mediaTypes && existing.mediaTypes.length) ? existing.mediaTypes : (existing.mediaType ? [existing.mediaType] : normalized.mediaTypes),
       });
     }
     return normalized;
@@ -6514,6 +6536,14 @@ function PostCard({
                 <MessageCircle size={18} strokeWidth={2} />
                 <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardComments > 0 ? cardComments : ''}</span>
               </motion.button>
+              <span
+                aria-label="Views"
+                title="Views"
+                style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#000000', flexShrink: 0 }}
+              >
+                <Eye size={16} strokeWidth={2} />
+                <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{(() => { const v = resolvePostViewsCount(post); return v > 0 ? formatCompactCount(v) : ''; })()}</span>
+              </span>
               <motion.button
                 whileTap={{ scale: 0.88 }}
                 onClick={e => {
@@ -6615,6 +6645,14 @@ function PostCard({
               <MessageCircle size={15} strokeWidth={2} />
               <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardComments > 0 ? cardComments : ''}</span>
             </motion.button>
+            <span
+              aria-label="Views"
+              title="Views"
+              style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#000000', flexShrink: 0 }}
+            >
+              <Eye size={15} strokeWidth={2} />
+              <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{(() => { const v = resolvePostViewsCount(post); return v > 0 ? formatCompactCount(v) : ''; })()}</span>
+            </span>
             <motion.button
               whileTap={{ scale: 0.88 }}
               onClick={e => { e.stopPropagation(); onShare(post); }}
@@ -6873,6 +6911,14 @@ function PostCard({
                 <MessageCircle size={22} strokeWidth={2} />
                 <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{cardComments > 0 ? cardComments : ''}</span>
               </motion.button>
+              <span
+                aria-label="Views"
+                title="Views"
+                style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'rgba(255,255,255,0.92)', flexShrink: 0 }}
+              >
+                <Eye size={20} strokeWidth={2} />
+                <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{(() => { const v = resolvePostViewsCount(post); return v > 0 ? formatCompactCount(v) : ''; })()}</span>
+              </span>
               <motion.button
                 whileTap={{ scale: 0.9 }}
                 onClick={() => onShare(post)}
@@ -8183,6 +8229,14 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   <MessageCircle size={22} strokeWidth={2} />
                   <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{mediaLightbox.post.commentsCount > 0 ? mediaLightbox.post.commentsCount : ''}</span>
                 </motion.button>
+                <span
+                  aria-label="Views"
+                  title="Views"
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'rgba(255,255,255,0.92)', flexShrink: 0 }}
+                >
+                  <Eye size={20} strokeWidth={2} />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{(() => { const v = resolvePostViewsCount(mediaLightbox.post); return v > 0 ? formatCompactCount(v) : ''; })()}</span>
+                </span>
               </div>
               <motion.button
                 whileTap={{ scale: 0.92 }}
@@ -12899,6 +12953,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     setQuickPublishing(true);
     setQuickPublishError('');
     try {
+      try {
+        file = await normalizeGalleryFileForUpload(file, type);
+      } catch { /* keep original */ }
       const ext = file.name.split('.').pop() ?? (type === 'video' ? 'mp4' : 'jpg');
       let url: string | undefined;
       // raw
@@ -12954,7 +13011,20 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       if (!r.ok) throw new Error('Failed to publish post');
       const d = await r.json();
       if (!d?.post?.id) throw new Error('Post was not saved');
-      const saved: PostItem = { ...d.post, audience: 'public', destination: type === 'video' ? 'videos' : 'photos' };
+      const saved: PostItem = {
+        ...d.post,
+        mediaUrl: resolveMediaUrl(String(d.post.mediaUrl || url || '')) || url || d.post.mediaUrl,
+        mediaType: type,
+        mediaUrls: (Array.isArray(d.post.mediaUrls) && d.post.mediaUrls.length)
+          ? d.post.mediaUrls.map((u: string) => resolveMediaUrl(String(u))).filter(Boolean)
+          : (url ? [resolveMediaUrl(String(url))] : []),
+        mediaTypes: [type],
+        audience: 'public',
+        destination: type === 'video' ? 'videos' : 'photos',
+      };
+      if (saved.mediaUrl) {
+        try { saveLocalPostMediaCache(saved.id, saved.mediaUrls?.length ? saved.mediaUrls : [saved.mediaUrl], [type]); } catch { /* */ }
+      }
       setMyMediaPosts(prev => [saved, ...prev]);
       playNewPostSound();
     } catch (error) {
@@ -13021,6 +13091,65 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     e.preventDefault();
     setComposerLinkStep(true);
     await shortenComposerLink(pasted);
+  }
+
+
+  /** Convert gallery HEIC/HEIF or typeless image blobs to JPEG so /api/posts/media accepts them. */
+  async function normalizeGalleryFileForUpload(file: File, kind: 'image' | 'video'): Promise<File> {
+    if (kind === 'video') return file;
+    const name = (file.name || '').toLowerCase();
+    const mime = (file.type || '').toLowerCase();
+    const needsConvert =
+      mime.includes('heic') || mime.includes('heif') ||
+      name.endsWith('.heic') || name.endsWith('.heif') ||
+      (!mime && !name.match(/\.(jpe?g|png|webp|gif|mp4|mov|webm|m4v)$/i));
+    if (!needsConvert && mime.startsWith('image/')) return file;
+    try {
+      const bmp = typeof createImageBitmap === 'function' ? await createImageBitmap(file) : null;
+      if (bmp) {
+        const canvas = document.createElement('canvas');
+        canvas.width = bmp.width;
+        canvas.height = bmp.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(bmp, 0, 0);
+          bmp.close?.();
+          const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+          if (blob && blob.size > 0) {
+            const base = (file.name || 'photo').replace(/\.[^.]+$/, '') || 'photo';
+            return new File([blob], `${base}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
+          }
+        }
+      }
+    } catch { /* fall through */ }
+    try {
+      const url = URL.createObjectURL(file);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('img load'));
+        el.src = url;
+      });
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx && canvas.width > 0 && canvas.height > 0) {
+        ctx.drawImage(img, 0, 0);
+        const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (blob && blob.size > 0) {
+          const base = (file.name || 'photo').replace(/\.[^.]+$/, '') || 'photo';
+          return new File([blob], `${base}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
+        }
+      }
+    } catch { /* keep original */ }
+    if (!file.type || file.type === 'application/octet-stream') {
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const type = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+      return new File([file], file.name || `photo.${ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'webp' || ext === 'gif' ? ext : 'jpg'}`, { type, lastModified: file.lastModified || Date.now() });
+    }
+    return file;
   }
 
   async function submitPost(destination: 'text' | 'photos' | 'videos' = 'text') {
@@ -13255,7 +13384,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
       for (const item of composerMediaFiles) {
         try {
-          const file = item.file;
+          let file = item.file;
           const isPdf =
             item.type === 'pdf' ||
             (file.type || '') === 'application/pdf' ||
@@ -13283,6 +13412,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           }
 
           const mediaType: 'image' | 'video' = isVideo ? 'video' : 'image';
+          try {
+            file = await normalizeGalleryFileForUpload(file, mediaType);
+          } catch { /* keep original file */ }
           const ext = (
             file.name.split('.').pop() ||
             (isVideo ? 'mp4' : 'jpg')
@@ -13658,19 +13790,34 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       if (!saved?.id) throw new Error('المنشور لم يُحفظ');
 
       // Tag post by publisher type so it lands in the correct feed tab
+      // Always re-attach uploaded media so the public feed never shows an empty card
+      // when the server omits mediaUrl/mediaUrls on the create response.
+      const forcedUrls = (uploadedMedia.length
+        ? uploadedMedia.map(m => m.url)
+        : (saved!.mediaUrls?.length ? saved!.mediaUrls : (saved!.mediaUrl ? [saved!.mediaUrl] : []))
+      ).map(u => resolveMediaUrl(String(u))).filter(Boolean);
+      const forcedTypes = uploadedMedia.length
+        ? uploadedMedia.map(m => m.type)
+        : (saved!.mediaTypes?.length ? saved!.mediaTypes : (saved!.mediaType ? [saved!.mediaType as 'image' | 'video'] : [])) as ('image' | 'video')[];
       const tagged = normalizePostMediaFields({
         ...saved!,
+        mediaUrl: forcedUrls[0] || saved!.mediaUrl || null,
+        mediaType: (forcedTypes[0] || saved!.mediaType || null) as any,
+        mediaUrls: forcedUrls.length ? forcedUrls : (saved!.mediaUrls || []),
+        mediaTypes: forcedTypes.length ? forcedTypes : (saved!.mediaTypes || []),
         publisherType: isCompanyPublisher ? 'company' as const : 'user' as const,
         isCompanyPost: !!isCompanyPublisher,
         authorIsCompany: !!isCompanyPublisher,
       } as PostItem);
-      if (tagged.mediaUrls && tagged.mediaUrls.length > 1) {
-        saveLocalPostMediaCache(tagged.id, tagged.mediaUrls, (tagged.mediaTypes || []) as ('image' | 'video')[]);
+      if (tagged.mediaUrls && tagged.mediaUrls.length > 0) {
+        saveLocalPostMediaCache(tagged.id, tagged.mediaUrls, (tagged.mediaTypes || forcedTypes || []) as ('image' | 'video')[]);
+      } else if (tagged.mediaUrl) {
+        saveLocalPostMediaCache(tagged.id, [tagged.mediaUrl], [(tagged.mediaType as 'image' | 'video') || 'image']);
       }
       setPosts(prev => [tagged, ...prev]);
       // Grid media (photos/videos destination)
       if (tagged.mediaUrl && tagged.audience !== 'text' && tagged.destination !== 'text') {
-        setMyMediaPosts(prev => [tagged, ...prev]);
+        setMyMediaPosts(prev => [tagged, ...prev.filter(p => p.id !== tagged.id)]);
       } else if (tagged.mediaUrl) {
         // Caption+media still visible in text feed; keep in local list
         setMyMediaPosts(prev => {
@@ -20240,6 +20387,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <MessageCircle size={22} strokeWidth={2} />
                     <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{commentCount > 0 ? livePost.commentsCount : ''}</span>
                   </motion.button>
+                  <span
+                    aria-label="Views"
+                    title="Views"
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'rgba(255,255,255,0.92)', flexShrink: 0 }}
+                  >
+                    <Eye size={20} strokeWidth={2} />
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{(() => { void viewsTick; const v = resolvePostViewsCount(livePost); return v > 0 ? formatCompactCount(v) : ''; })()}</span>
+                  </span>
                   <motion.button
                     whileTap={{ scale: 0.9 }}
                     onClick={() => {
@@ -22522,21 +22677,39 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       let url = storyMediaPreview?.url || '';
                       let type: 'image' | 'video' = storyMediaPreview?.type || 'image';
                       if (storyMediaFile) {
-                        const file = storyMediaFile;
-                        type = file.type.startsWith('video') ? 'video' : 'image';
-                        const uploadRes = await fetch('/api/posts/media', {
-                          method: 'POST',
-                          credentials: 'include',
-                          headers: {
-                            'Content-Type': file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg'),
-                            'X-File-Ext': '.' + ((file.name.split('.').pop()) || (type === 'video' ? 'mp4' : 'jpg')),
-                          },
-                          body: file,
-                        });
-                        if (!uploadRes.ok) throw new Error('Upload failed');
-                        const uploadData = await uploadRes.json();
-                        url = uploadData?.url;
-                        if (!url) throw new Error('No URL from upload');
+                        let file = storyMediaFile;
+                        type = (file.type || '').startsWith('video') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '') ? 'video' : 'image';
+                        try { file = await normalizeGalleryFileForUpload(file, type); } catch { /* keep */ }
+                        type = (file.type || '').startsWith('video') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '') ? 'video' : type;
+                        let urlFromUpload: string | undefined;
+                        try {
+                          const uploadRes = await fetch('/api/posts/media', {
+                            method: 'POST',
+                            credentials: 'include',
+                            headers: {
+                              'Content-Type': file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg'),
+                              'X-File-Ext': '.' + ((file.name.split('.').pop()) || (type === 'video' ? 'mp4' : 'jpg')),
+                              'X-Media-Type': type,
+                            },
+                            body: file,
+                          });
+                          if (uploadRes.ok) {
+                            const uploadData = await uploadRes.json().catch(() => ({} as any));
+                            urlFromUpload = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
+                          }
+                        } catch { /* try FormData */ }
+                        if (!urlFromUpload) {
+                          const fd = new FormData();
+                          fd.append('file', file, file.name || (type === 'video' ? 'video.mp4' : 'photo.jpg'));
+                          fd.append('type', type);
+                          fd.append('mediaType', type);
+                          const uploadRes = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+                          if (!uploadRes.ok) throw new Error('Upload failed');
+                          const uploadData = await uploadRes.json().catch(() => ({} as any));
+                          urlFromUpload = uploadData?.url || uploadData?.mediaUrl || uploadData?.fileUrl || uploadData?.path;
+                        }
+                        if (!urlFromUpload) throw new Error('No URL from upload');
+                        url = resolveMediaUrl(String(urlFromUpload)) || String(urlFromUpload);
                       }
                       const dest = type === 'video' ? 'videos' : 'photos';
                       const r = await fetch('/api/posts', {
@@ -22557,11 +22730,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       if (!r.ok) throw new Error('Publish failed');
                       const d = await r.json();
                       if (!d?.post?.id) throw new Error('Post not saved');
+                      const resolvedUrl = resolveMediaUrl(String(d.post.mediaUrl || url || '')) || String(url || d.post.mediaUrl || '');
                       const saved: PostItem = {
                         ...d.post,
-                        mediaUrl: d.post.mediaUrl || url,
+                        mediaUrl: resolvedUrl,
                         mediaType: type,
-                        mediaUrls: d.post.mediaUrls?.length ? d.post.mediaUrls : [url],
+                        mediaUrls: d.post.mediaUrls?.length
+                          ? d.post.mediaUrls.map((u: string) => resolveMediaUrl(String(u)) || u).filter(Boolean)
+                          : (resolvedUrl ? [resolvedUrl] : []),
                         mediaTypes: [type],
                         audience: 'public',
                         destination: dest,
@@ -22569,9 +22745,19 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         hashtags: (Array.isArray(d.post.hashtags) && d.post.hashtags.length) ? d.post.hashtags : extractHashtagsFromText(storyMediaText),
                         authorId: d.post.authorId || String(user.id),
                       };
+                      if (saved.mediaUrl) {
+                        try { saveLocalPostMediaCache(saved.id, saved.mediaUrls?.length ? saved.mediaUrls : [saved.mediaUrl], [type]); } catch { /* */ }
+                      }
                       setMyMediaPosts(prev => {
                         const without = prev.filter(p => p.id !== saved.id);
                         return [saved, ...without];
+                      });
+                      // Also surface in public text feed so the post is not "empty" there
+                      setPosts(prev => {
+                        if (prev.some(p => p.id === saved.id)) {
+                          return prev.map(p => p.id === saved.id ? { ...p, ...saved, mediaUrl: saved.mediaUrl, mediaUrls: saved.mediaUrls, mediaTypes: saved.mediaTypes } : p);
+                        }
+                        return [saved, ...prev];
                       });
                       try { void fetchMyMediaPosts(); } catch { /* */ }
                       try { playNewPostSound(); } catch { /* */ }
