@@ -1,14 +1,12 @@
 /**
- * mediaAiPatch.ts — Real automatic media pipeline for Stooorna
+ * mediaAiPatch.ts — Fast automatic media pipeline (target ≤ 5s)
  *
- * When the user picks an image/video:
- *  1) Re-encode image to browser-safe JPEG (canvas)
- *  2) Try server upload (optional)
- *  3) REJECT legacy broken hosts (airo-assets / offline CDN paths)
- *  4) ALWAYS return a playable URL (data: for images, blob: for video fallback)
- *  5) URL does NOT have to be the site domain — data: works everywhere
+ * 1) Quick JPEG re-encode (skip if already small)
+ * 2) Instant data: URL (always works — any domain)
+ * 3) Optional server upload with hard timeout (no airo-assets)
+ * 4) No long image-load probes
  *
- * Install: copy to src/lib/mediaAiPatch.ts
+ * Install: src/lib/mediaAiPatch.ts
  */
 
 export type MediaAiKind = 'image' | 'video';
@@ -20,7 +18,11 @@ export type MediaAiItem = {
   source: 'upload' | 'data' | 'blob';
 };
 
-/** Legacy Airo storage + other known-dead patterns after Railway migration */
+/** Hard ceiling for the whole AI media step (ms). */
+export const MEDIA_AI_MAX_MS = 5000;
+/** Server upload attempt budget (ms) — local data URL is ready first. */
+const UPLOAD_BUDGET_MS = 2200;
+
 export function mediaAiIsBrokenHostUrl(url: string | null | undefined): boolean {
   const s = String(url || '').trim();
   if (!s) return true;
@@ -57,48 +59,36 @@ function isPlayableHref(u: string | null | undefined): u is string {
     /^[a-z0-9_\-./]+\.(jpe?g|png|webp|gif|mp4|webm|mov|m4v)(\?|$)/i.test(s);
 }
 
-/** Probe that an image URL actually loads in the browser (timeout 4s). */
-export function mediaAiProbeImageLoads(url: string, timeoutMs = 4000): Promise<boolean> {
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
   return new Promise(resolve => {
-    if (/^data:image\//i.test(url)) {
-      resolve(true);
-      return;
-    }
-    if (/^blob:/i.test(url)) {
-      resolve(true);
-      return;
-    }
-    if (mediaAiIsBrokenHostUrl(url)) {
-      resolve(false);
-      return;
-    }
-    const img = new Image();
     let done = false;
-    const finish = (ok: boolean) => {
-      if (done) return;
-      done = true;
-      resolve(ok);
-    };
-    const t = window.setTimeout(() => finish(false), timeoutMs);
-    img.onload = () => {
-      window.clearTimeout(t);
-      finish(true);
-    };
-    img.onerror = () => {
-      window.clearTimeout(t);
-      finish(false);
-    };
-    try {
-      img.referrerPolicy = 'no-referrer';
-    } catch {
-      /* */
-    }
-    img.src = url;
+    const t = window.setTimeout(() => {
+      if (!done) {
+        done = true;
+        resolve(null);
+      }
+    }, ms);
+    p.then(
+      v => {
+        if (!done) {
+          done = true;
+          window.clearTimeout(t);
+          resolve(v);
+        }
+      },
+      () => {
+        if (!done) {
+          done = true;
+          window.clearTimeout(t);
+          resolve(null);
+        }
+      },
+    );
   });
 }
 
-/** Re-encode image via canvas → JPEG (always displayable). */
-export async function mediaAiNormalizeImage(file: File, maxEdge = 1600, quality = 0.85): Promise<File> {
+/** Fast JPEG normalize — skip work when file is already small enough. */
+export async function mediaAiNormalizeImage(file: File, maxEdge = 1280, quality = 0.78): Promise<File> {
   const name = (file.name || '').toLowerCase();
   const mime = (file.type || '').toLowerCase();
   const needsConvert =
@@ -106,14 +96,14 @@ export async function mediaAiNormalizeImage(file: File, maxEdge = 1600, quality 
     name.endsWith('.heic') || name.endsWith('.heif') ||
     (!mime.startsWith('image/') && !name.match(/\.(jpe?g|png|webp|gif)$/i));
 
+  // Fast path: already a reasonable JPEG/PNG/WebP under ~1.2MB
   const smallOk =
     !needsConvert &&
     mime.startsWith('image/') &&
     file.size > 0 &&
-    file.size < 900_000 &&
+    file.size < 1_200_000 &&
     !mime.includes('heic') &&
     !mime.includes('heif');
-
   if (smallOk) return file;
 
   const toJpeg = async (source: CanvasImageSource, w: number, h: number, baseName: string): Promise<File | null> => {
@@ -128,7 +118,7 @@ export async function mediaAiNormalizeImage(file: File, maxEdge = 1600, quality 
     const canvas = document.createElement('canvas');
     canvas.width = tw;
     canvas.height = th;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: false } as any) || canvas.getContext('2d');
     if (!ctx) return null;
     ctx.drawImage(source, 0, 0, tw, th);
     const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
@@ -181,13 +171,13 @@ export async function mediaAiNormalizeImage(file: File, maxEdge = 1600, quality 
   return file;
 }
 
-/** Durable data: URL for images (works without any site domain / CDN). */
+/** Fast file → data: URL (chunked base64). */
 export async function mediaAiToDataUrl(file: File): Promise<string | null> {
   try {
     const normalized = await mediaAiNormalizeImage(file);
     const buf = await normalized.arrayBuffer();
-    let binary = '';
     const bytes = new Uint8Array(buf);
+    let binary = '';
     const chunk = 0x8000;
     for (let i = 0; i < bytes.length; i += chunk) {
       binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
@@ -199,12 +189,19 @@ export async function mediaAiToDataUrl(file: File): Promise<string | null> {
   }
 }
 
+/** Kept for API compat — no long waits (data/blob always true, airo always false). */
+export function mediaAiProbeImageLoads(url: string, _timeoutMs = 500): Promise<boolean> {
+  if (/^data:image\//i.test(url) || /^blob:/i.test(url)) return Promise.resolve(true);
+  if (mediaAiIsBrokenHostUrl(url)) return Promise.resolve(false);
+  // Do not wait on remote hosts — treat unknown remote as usable only if not airo
+  return Promise.resolve(/^https?:\/\//i.test(url));
+}
+
 type UploadFn = (file: File, kind: MediaAiKind) => Promise<string | null>;
 
 /**
- * Force a working media URL — not tied to stooorna.com domain.
- * Server upload is used only if the returned URL is NOT airo-assets and actually loads.
- * Otherwise image → data: URL (always works in preview + post).
+ * Fast force-working media (≤ MEDIA_AI_MAX_MS overall when used per file).
+ * Local data/blob URL is produced first; upload races with a short budget.
  */
 export async function mediaAiForceWorkingMedia(
   file: File,
@@ -212,7 +209,8 @@ export async function mediaAiForceWorkingMedia(
   upload?: UploadFn,
   onStatus?: (msg: string) => void,
 ): Promise<MediaAiItem | null> {
-  onStatus?.(kind === 'video' ? 'جاري معالجة الفيديو…' : 'جاري معالجة الصورة بالذكاء الاصطناعي…');
+  const started = Date.now();
+  onStatus?.(kind === 'video' ? 'جاري معالجة الفيديو…' : 'جاري معالجة الصورة…');
 
   let work = file;
   if (kind === 'image') {
@@ -223,7 +221,7 @@ export async function mediaAiForceWorkingMedia(
     }
   }
 
-  // 1) Always build a local durable/playable URL first (guarantees preview works)
+  // Instant local playable URL (preview + publish always work)
   let localUrl: string | null = null;
   if (kind === 'image') {
     localUrl = await mediaAiToDataUrl(work);
@@ -232,28 +230,30 @@ export async function mediaAiForceWorkingMedia(
   }
   if (!localUrl) return null;
 
-  // 2) Try server upload — accept only if not legacy airo-assets AND image actually loads
+  const remaining = Math.max(400, MEDIA_AI_MAX_MS - (Date.now() - started));
+  const uploadMs = Math.min(UPLOAD_BUDGET_MS, remaining);
+
   if (upload) {
-    onStatus?.('جاري رفع الوسائط…');
-    try {
-      const uploaded = await upload(work, kind);
-      if (uploaded && isPlayableHref(uploaded) && !mediaAiIsBrokenHostUrl(uploaded)) {
-        const abs = absUrl(uploaded);
-        if (kind === 'image') {
-          const ok = await mediaAiProbeImageLoads(abs, 3500);
-          if (ok) {
-            return { url: abs, type: kind, preview: abs, source: 'upload' };
-          }
-        } else if (/^https?:\/\//i.test(abs)) {
-          return { url: abs, type: kind, preview: abs, source: 'upload' };
+    onStatus?.('جاري تجهيز الرابط…');
+    const uploaded = await withTimeout(
+      (async () => {
+        try {
+          const u = await upload(work, kind);
+          if (!u || mediaAiIsBrokenHostUrl(u) || /airo-assets/i.test(u)) return null;
+          if (!isPlayableHref(u)) return null;
+          return absUrl(u);
+        } catch {
+          return null;
         }
-      }
-    } catch {
-      /* fall back to local */
+      })(),
+      uploadMs,
+    );
+    if (uploaded && !mediaAiIsBrokenHostUrl(uploaded)) {
+      return { url: uploaded, type: kind, preview: uploaded, source: 'upload' };
     }
   }
 
-  onStatus?.('تم تجهيز رابط وسائط يعمل');
+  onStatus?.('جاهز للنشر');
   return {
     url: localUrl,
     type: kind,
@@ -262,31 +262,57 @@ export async function mediaAiForceWorkingMedia(
   };
 }
 
-/** Process many gallery files → working media items + optional status callback. */
 export async function mediaAiProcessGalleryFiles(
   files: File[],
   upload?: UploadFn,
   onStatus?: (msg: string) => void,
 ): Promise<MediaAiItem[]> {
-  const out: MediaAiItem[] = [];
-  let i = 0;
-  for (const file of files) {
-    i += 1;
+  const mediaFiles = files.filter(file => {
     const t = (file.type || '').toLowerCase();
-    if (t === 'application/pdf' || /\.pdf$/i.test(file.name || '')) continue;
+    return !(t === 'application/pdf' || /\.pdf$/i.test(file.name || ''));
+  });
+
+  // Parallel process all files under a shared 5s budget
+  const started = Date.now();
+  onStatus?.(
+    mediaFiles.length > 1
+      ? `جاري معالجة ${mediaFiles.length} وسائط…`
+      : mediaFiles[0] && ((mediaFiles[0].type || '').startsWith('video/') || /\.(mp4|webm|mov|m4v)/i.test(mediaFiles[0].name || ''))
+        ? 'جاري معالجة الفيديو…'
+        : 'جاري معالجة الصورة…',
+  );
+
+  const tasks = mediaFiles.map(async file => {
+    const t = (file.type || '').toLowerCase();
     const isVid =
       t.startsWith('video/') ||
       /\.(mp4|webm|mov|m4v|mkv|3gp)$/i.test(file.name || '');
     const kind: MediaAiKind = isVid ? 'video' : 'image';
-    onStatus?.(
-      files.length > 1
-        ? `جاري معالجة الوسائط (${i}/${files.length})…`
-        : kind === 'video'
-          ? 'جاري معالجة الفيديو بالذكاء الاصطناعي…'
-          : 'جاري معالجة الصورة بالذكاء الاصطناعي…',
-    );
-    const item = await mediaAiForceWorkingMedia(file, kind, upload, onStatus);
-    if (item) out.push(item);
+    // Per-file upload disabled inside parallel map if budget almost gone — still build local URL
+    const left = MEDIA_AI_MAX_MS - (Date.now() - started);
+    const useUpload = left > 800 ? upload : undefined;
+    return mediaAiForceWorkingMedia(file, kind, useUpload, undefined);
+  });
+
+  const results = await withTimeout(Promise.all(tasks), MEDIA_AI_MAX_MS);
+  const out: MediaAiItem[] = [];
+  if (results) {
+    for (const item of results) {
+      if (item) out.push(item);
+    }
+  } else {
+    // Timeout: still try sequential fast local-only for first file
+    for (const file of mediaFiles.slice(0, 3)) {
+      const t = (file.type || '').toLowerCase();
+      const isVid =
+        t.startsWith('video/') ||
+        /\.(mp4|webm|mov|m4v|mkv|3gp)$/i.test(file.name || '');
+      const kind: MediaAiKind = isVid ? 'video' : 'image';
+      const item = await mediaAiForceWorkingMedia(file, kind, undefined, onStatus);
+      if (item) out.push(item);
+    }
   }
+
+  onStatus?.(out.length ? 'جاهز للنشر' : '');
   return out;
 }
