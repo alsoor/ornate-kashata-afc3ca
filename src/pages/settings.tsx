@@ -248,7 +248,25 @@ function readCachedProfileMedia(userId: string | null | undefined, kind: 'avatar
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onload = () => {
+      const raw = String(reader.result || '');
+      const img = new Image();
+      img.onload = () => {
+        const max = 480;
+        const scale = Math.min(1, max / Math.max(img.width || 1, img.height || 1));
+        const w = Math.max(1, Math.round((img.width || 1) * scale));
+        const h = Math.max(1, Math.round((img.height || 1) * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(raw); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = () => resolve(raw);
+      img.src = raw;
+    };
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
@@ -6516,6 +6534,15 @@ export default function SettingsPage() {
       const localPreview = await fileToDataUrl(file);
       setAvatarUrl(localPreview);
       cacheProfileMedia(user?.id, 'avatar', localPreview);
+      window.dispatchEvent(new CustomEvent('stooorna:avatar-updated', { detail: { avatarUrl: localPreview, userId: user?.id } }));
+      try {
+        await fetch('/api/users/me', {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ avatarUrl: localPreview }),
+        });
+      } catch { /* optional */ }
       const r = await fetch('/api/users/me/avatar', {
         method: 'POST',
         credentials: 'include',
@@ -6524,17 +6551,18 @@ export default function SettingsPage() {
         },
         body: file
       });
-      const d = await r.json();
-      if (r.ok && d.avatarUrl) {
-        const resolved = resolveMediaUrl(d.avatarUrl);
+      const d = await r.json().catch(() => ({} as { avatarUrl?: string; url?: string; image?: string }));
+      const remote = d?.avatarUrl || d?.url || d?.image;
+      if (r.ok && remote) {
+        const resolved = resolveMediaUrl(remote);
         const fresh = resolved + (resolved.includes('?') ? '&' : '?') + 't=' + Date.now();
         const probe = new Image();
         probe.onload = () => {
           setAvatarUrl(fresh);
-          window.dispatchEvent(new CustomEvent('stooorna:avatar-updated', { detail: { avatarUrl: fresh } }));
+          window.dispatchEvent(new CustomEvent('stooorna:avatar-updated', { detail: { avatarUrl: fresh, userId: user?.id } }));
         };
         probe.onerror = () => {
-          window.dispatchEvent(new CustomEvent('stooorna:avatar-updated', { detail: { avatarUrl: localPreview } }));
+          window.dispatchEvent(new CustomEvent('stooorna:avatar-updated', { detail: { avatarUrl: localPreview, userId: user?.id } }));
         };
         probe.src = fresh;
       }
@@ -6548,6 +6576,14 @@ export default function SettingsPage() {
       const localPreview = await fileToDataUrl(file);
       setCoverUrl(localPreview);
       cacheProfileMedia(user?.id, 'cover', localPreview);
+      try {
+        await fetch('/api/users/me', {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ coverUrl: localPreview }),
+        });
+      } catch { /* optional */ }
       const r = await fetch('/api/users/me/cover', {
         method: 'POST',
         credentials: 'include',

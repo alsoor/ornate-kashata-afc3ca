@@ -11700,6 +11700,18 @@ export default function AddFriendPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isPending } = useSession();
+  const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const uid = user?.id;
+    if (uid) setLocalAvatarUrl(readCachedProfileMedia(uid, 'avatar'));
+    const onUp = (ev: Event) => {
+      const d = (ev as CustomEvent).detail || {};
+      if (d.avatarUrl) setLocalAvatarUrl(String(d.avatarUrl));
+    };
+    window.addEventListener('stooorna:avatar-updated', onUp as EventListener);
+    return () => window.removeEventListener('stooorna:avatar-updated', onUp as EventListener);
+  }, [user?.id]);
+
   // Keeps the latest user/companies values reachable from event listeners that are
   // attached once on mount, so those listeners never act on a stale (pre-login-load) user.
   const latestUserRef = useRef(user);
@@ -16621,7 +16633,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                               hideLabel here only — keeps the ring sized exactly to this avatar without the floating "VIP" text tag poking above it.
                               size raised to 76 (was 68) to match the outer story circle exactly, so the VIP ring sits right on the picture's own edge instead of nested inside it with a gap. */}
                           <VipAvatarFrame userId={user?.id} size={76} hideLabel>
-                            <UserAvatar name={user?.name ?? ''} avatarUrl={resolveMediaUrl((user as any)?.avatarUrl) || readCachedProfileMedia(user?.id, 'avatar') || (user as any)?.avatarUrl || null} size={76} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                            <UserAvatar name={user?.name ?? ''} avatarUrl={localAvatarUrl || resolveMediaUrl((user as any)?.avatarUrl) || readCachedProfileMedia(user?.id, 'avatar') || (user as any)?.avatarUrl || null} size={76} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
                           </VipAvatarFrame>
                         </div>
                       </motion.button>
