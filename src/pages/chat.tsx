@@ -560,7 +560,12 @@ function chatMsgsStorageKey(parts: { userId?: string | null; peerId?: string; sc
   const uid = parts.userId || 'anon';
   const other = parts.isGroup
     ? `g_${parts.groupId || 'x'}`
-    : (parts.scChatId ? `sc_${parts.scChatId}` : (parts.peerId || parts.peerUsername || parts.peerName || 'unknown'));
+    : (parts.scChatId
+      ? `sc_${parts.scChatId}`
+      : (String(parts.peerId || '').trim()
+        || String(parts.peerUsername || '').trim()
+        || String(parts.peerName || '').trim()
+        || 'direct'));
   return `stooorna_chat_msgs_v1_${uid}_${other}`;
 }
 
@@ -3846,7 +3851,7 @@ export default function ChatPage() {
 
   // Persist every msgs change so leave/return keeps chat
   useEffect(() => {
-    if (!chatPersistKey || chatPersistKey.includes('_unknown')) return;
+    if (!chatPersistKey) return;
     if (msgs.length === 0) return;
     savePersistedChatMsgs(chatPersistKey, msgs);
   }, [msgs, chatPersistKey]);
@@ -4749,6 +4754,10 @@ export default function ChatPage() {
         const prevPlayableLocal = prev.filter(
           m => (m.type === 'image' || m.type === 'video' || m.type === 'file') && isPlayableChatMediaBody(m.body)
         );
+        // HARD LOCK: during skip window after image send, never replace prev if it has images
+        if (Date.now() < chatSkipFetchUntil && prevPlayableLocal.length > 0) {
+          return prev;
+        }
         if (newMsgs.length > 0) {
           // 1) Apply sticky bodies so polls never wipe a working local preview
           let merged = newMsgs.map(m => chatApplyStickyBody({ ...m }));
@@ -5139,10 +5148,56 @@ export default function ChatPage() {
       try {
         if (kind === 'image') await sendImage(outFile);
         else await sendFile(outFile);
+        // Force image to stay visible after status changes to تم الإرسال
+        setMsgs(prev => {
+          const hasImg = prev.some(m => (m.type === 'image' || m.type === 'video') && isPlayableChatMediaBody(m.body));
+          if (hasImg) {
+            try { savePersistedChatMsgs(chatPersistKey, prev); } catch { /* */ }
+            return prev;
+          }
+          const pins = chatPinnedLocalMedia.filter(p => isPlayableChatMediaBody(p.body));
+          if (!pins.length) return prev;
+          const next = [
+            ...prev,
+            ...pins.map(pin => ({
+              id: pin.id,
+              senderId: pin.senderId,
+              type: pin.type,
+              body: pin.body,
+              duration: null,
+              createdAt: pin.createdAt,
+              senderName: pin.senderName,
+              senderUsername: pin.senderUsername,
+              senderAvatarUrl: pin.senderAvatarUrl,
+            } as Message)),
+          ];
+          try { savePersistedChatMsgs(chatPersistKey, next); } catch { /* */ }
+          return next;
+        });
         setChatMediaStatus('تم الإرسال');
         window.setTimeout(() => {
           setChatMediaStatus('');
           setChatMediaReady(null);
+          // Re-assert once more after status clears
+          setMsgs(prev => {
+            if (prev.some(m => (m.type === 'image' || m.type === 'video') && isPlayableChatMediaBody(m.body))) return prev;
+            const pins = chatPinnedLocalMedia.filter(p => isPlayableChatMediaBody(p.body));
+            if (!pins.length) return prev;
+            return [
+              ...prev,
+              ...pins.map(pin => ({
+                id: pin.id,
+                senderId: pin.senderId,
+                type: pin.type,
+                body: pin.body,
+                duration: null,
+                createdAt: pin.createdAt,
+                senderName: pin.senderName,
+                senderUsername: pin.senderUsername,
+                senderAvatarUrl: pin.senderAvatarUrl,
+              } as Message)),
+            ];
+          });
         }, 1400);
       } catch {
         setChatMediaStatus('فشل الإرسال — حاول مرة ثانية');
@@ -5259,8 +5314,14 @@ export default function ChatPage() {
         }
       }
       // Keep local image on screen — soft refresh later so poll does not wipe it
-      chatSkipFetchUntil = Date.now() + 8000;
-      window.setTimeout(() => { void fetchMsgs(); }, 8500);
+      chatSkipFetchUntil = Date.now() + 15000;
+      try {
+        setMsgs(prev => {
+          try { savePersistedChatMsgs(chatPersistKey, prev); } catch { /* */ }
+          return prev;
+        });
+      } catch { /* */ }
+      window.setTimeout(() => { void fetchMsgs(); }, 15000);
     } catch (err) {
       console.error('[chat sendImage]', err);
       throw err;
