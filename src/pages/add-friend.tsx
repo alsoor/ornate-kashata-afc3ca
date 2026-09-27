@@ -5165,13 +5165,11 @@ function openInAppSite(url: string, e?: { preventDefault?: () => void; stopPropa
   const looked = composerLookupOriginalUrl(raw);
   const href = composerNormalizeUrl(looked) || composerNormalizeUrl(raw) || (/^https?:\/\//i.test(looked) ? looked : `https://${looked}`);
   if (!href || href === 'https://') return;
-  const kind = classifyMediaUrl(href) || classifyDirectMediaUrl(href);
-  if (kind === 'image' || kind === 'video' || /\.pdf(\?|$)/i.test(href) || parseXStatusId(href) || inAppEmbedSrc(href)) {
-    if (inAppSiteOpener) { inAppSiteOpener(href); return; }
-    try { window.dispatchEvent(new CustomEvent('stooorna:open-inapp-site', { detail: { url: href } })); } catch { /* */ }
+  if (inAppSiteOpener) {
+    inAppSiteOpener(href);
     return;
   }
-  try { window.open(href, '_blank', 'noopener,noreferrer'); } catch { /* */ }
+  try { window.dispatchEvent(new CustomEvent('stooorna:open-inapp-site', { detail: { url: href } })); } catch { /* */ }
 }
 
 function inAppEmbedSrc(raw: string): string | null {
@@ -5230,6 +5228,10 @@ async function fetchWithTimeout(resource: string, ms = 4500): Promise<Response |
   } finally {
     window.clearTimeout(t);
   }
+}
+
+function inAppSiteShot(pageUrl: string): string {
+  return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(pageUrl)}?w=1080`;
 }
 
 function inAppVisualFrame(pageUrl: string, stage = 0): string {
@@ -5305,12 +5307,12 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
         }
       }
       try { (window as any).__stooornaFrameStage = 0; } catch { /* */ }
+      setKind('site');
+      setLoading(false);
+      setFrameSrc(inAppSiteShot(target));
       const html = await fetchInAppHtml(target);
       if (cancelled) return;
       if (html) setSrcDoc(html);
-      else setFrameSrc(inAppVisualFrame(target, 0));
-      setKind('site');
-      setLoading(false);
     };
     void run();
     const failSafe = window.setTimeout(() => { if (!cancelled) setLoading(false); }, 1200);
@@ -5369,6 +5371,10 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
             srcDoc={srcDoc}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#fff' }}
           />
+        ) : frameSrc && /mshots\/v1|thum\.io|microlink/i.test(frameSrc) ? (
+          <div style={{ position: 'absolute', inset: 0, overflowY: 'auto', background: '#fff' }}>
+            <img src={frameSrc} alt="" style={{ width: '100%', display: 'block' }} />
+          </div>
         ) : (
           <iframe
             title="Site preview"
