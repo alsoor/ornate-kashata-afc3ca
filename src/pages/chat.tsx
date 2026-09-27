@@ -4713,42 +4713,73 @@ export default function ChatPage() {
     }
   }
 
-  // ── AI media prep (chat only) — wait in input, then Send; never show URL ──
+  // ── AI media: process → real send → status in input (never show URL) ──
   async function prepareChatMedia(file: File) {
+    if (sending || chatMediaWait) return;
     setChatAttachOpen(false);
     setChatMediaWait(true);
     setChatMediaReady(null);
-    setChatMediaStatus('يرجى الانتظار');
+    setChatMediaStatus('جاري معالجة الوسائط…');
     try {
-      const ready = await chatMediaAiPrepare(file, msg => setChatMediaStatus(msg || 'يرجى الانتظار'));
-      if (ready) {
-        setChatMediaReady(ready);
-        setChatMediaStatus('');
-      } else {
-        setChatMediaStatus('');
-        setChatMediaReady({ file, kind: (file.type || '').startsWith('video/') ? 'video' : (file.type || '').startsWith('image/') ? 'image' : 'file' });
+      const ready = await chatMediaAiPrepare(file, msg => {
+        setChatMediaStatus(msg || 'جاري معالجة الوسائط…');
+      });
+      const kind = ready?.kind
+        || ((file.type || '').startsWith('video/') ? 'video' as const
+          : (file.type || '').startsWith('image/') ? 'image' as const
+          : 'file' as const);
+      const outFile = ready?.file || file;
+
+      // Real upload + message create (not empty placeholder)
+      setChatMediaStatus('جاري إرسال الوسائط…');
+      setSending(true);
+      try {
+        if (kind === 'image') await sendImage(outFile);
+        else await sendFile(outFile);
+        setChatMediaStatus('تم الإرسال');
+        window.setTimeout(() => {
+          setChatMediaStatus('');
+          setChatMediaReady(null);
+        }, 1400);
+      } catch {
+        setChatMediaStatus('فشل الإرسال — حاول مرة ثانية');
+        window.setTimeout(() => setChatMediaStatus(''), 2200);
+      } finally {
+        setSending(false);
       }
     } catch {
-      setChatMediaReady({ file, kind: (file.type || '').startsWith('image/') ? 'image' : (file.type || '').startsWith('video/') ? 'video' : 'file' });
-      setChatMediaStatus('');
+      setChatMediaStatus('فشل التجهيز — حاول مرة ثانية');
+      window.setTimeout(() => setChatMediaStatus(''), 2200);
     } finally {
       setChatMediaWait(false);
     }
   }
 
   async function sendPreparedChatMedia() {
+    // Kept for send-button compatibility; primary path auto-sends after AI prep
     if (!chatMediaReady || sending) return;
     const { file, kind } = chatMediaReady;
     setChatMediaReady(null);
-    setChatMediaStatus('');
-    if (kind === 'image') await sendImage(file);
-    else await sendFile(file);
+    setChatMediaStatus('جاري إرسال الوسائط…');
+    setSending(true);
+    try {
+      if (kind === 'image') await sendImage(file);
+      else await sendFile(file);
+      setChatMediaStatus('تم الإرسال');
+      window.setTimeout(() => setChatMediaStatus(''), 1400);
+    } catch {
+      setChatMediaStatus('فشل الإرسال');
+      window.setTimeout(() => setChatMediaStatus(''), 2200);
+    } finally {
+      setSending(false);
+    }
   }
 
   // ── Send image ──────────────────────────────────────────────────────────────
 
   async function sendImage(file: File) {
     playBubblePop('send');
+    if (!file || file.size <= 0) throw new Error('ملف فارغ');
     try {
       const { makeOptimisticMedia, postChatMedia } = await import('@/lib/chatMediaSendPatch');
       if (user?.id) setMsgs(prev => [...prev, makeOptimisticMedia(file, user.id) as any]);
@@ -4802,7 +4833,10 @@ export default function ChatPage() {
         }
       }
       await fetchMsgs();
-    } catch {/* silent */}
+    } catch (err) {
+      console.error('[chat sendImage]', err);
+      throw err;
+    }
   }
 
   // ── Send video / document file ───────────────────────────────────────────────
@@ -6382,7 +6416,8 @@ export default function ChatPage() {
             position: 'relative',
             flex: 1
           }}>
-              <textarea ref={inputRef} value={text} onChange={e => {
+              <textarea ref={inputRef} value={chatMediaStatus || text} onChange={e => {
+              if (chatMediaWait || chatMediaStatus === 'جاري إرسال الوسائط…' || chatMediaStatus === 'جاري معالجة الوسائط…') return;
               const val = e.target.value;
               if (scChatId) {
                 handleScTyping(val);
@@ -6395,7 +6430,7 @@ export default function ChatPage() {
                 e.preventDefault();
                 sendText();
               }
-            }} placeholder={chatMediaWait ? 'يرجى الانتظار' : (chatMediaReady ? 'جاهز للإرسال — اضغط إرسال' : (replyTo ? 'Reply…' : 'Message'))} readOnly={chatMediaWait} rows={1} style={{
+            }} placeholder={chatMediaStatus || (chatMediaWait ? 'جاري معالجة الوسائط…' : (replyTo ? 'Reply…' : 'Message'))} readOnly={chatMediaWait} rows={1} style={{
               width: '100%',
               boxSizing: 'border-box',
               resize: 'none',
