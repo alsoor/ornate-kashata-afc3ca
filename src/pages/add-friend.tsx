@@ -447,10 +447,18 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    v.muted = muted;
     if (active) {
       v.currentTime = 0;
-      void v.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      v.muted = true;
+      void v.play().then(() => {
+        v.muted = false;
+        setMuted(false);
+        setPlaying(true);
+      }).catch(() => {
+        v.muted = true;
+        setMuted(true);
+        void v.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      });
     } else {
       v.pause();
       setPlaying(false);
@@ -580,12 +588,12 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
             onClick={e => { e.stopPropagation(); setMuted(m => !m); }}
             aria-label={muted ? 'Unmute' : 'Mute'}
             style={{
-              width: 52, height: 52, borderRadius: '50%', border: 'none',
-              background: 'rgba(255,255,255,0.18)', color: '#fff', cursor: 'pointer',
+              width: 44, height: 44, borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.16)', color: '#fff', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
             }}
           >
-            {muted ? <VolumeX size={26} strokeWidth={2.2} /> : <Volume2 size={26} strokeWidth={2.2} />}
+            {muted ? <VolumeX size={22} strokeWidth={2.2} /> : <Volume2 size={22} strokeWidth={2.2} />}
           </button>
         </div>
       </div>
@@ -6800,7 +6808,6 @@ function PostCard({
                 src={mediaLightbox.url}
                 controls
                 autoPlay
-                muted={false}
                 playsInline
                 style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
               />
