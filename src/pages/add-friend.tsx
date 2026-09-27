@@ -4387,8 +4387,8 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
       </div>
       {/* Media */}
       {item.mediaType === 'video'
-        ? <video src={item.mediaUrl} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-        : <img src={item.mediaUrl} alt="story" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        ? <video src={resolveMediaUrl(item.mediaUrl)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+        : <img src={resolveMediaUrl(item.mediaUrl)} alt="story" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
       }
       {/* نص overlay على القصة */}
       {item.overlayText && (
@@ -5052,6 +5052,7 @@ function openInAppSite(url: string, e?: { preventDefault?: () => void; stopPropa
   const raw = String(url || '').trim();
   if (!raw) return;
   const href = composerNormalizeUrl(raw) || (/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  if (!href || href === 'https://') return;
   if (inAppSiteOpener) {
     inAppSiteOpener(href);
     return;
@@ -5059,22 +5060,83 @@ function openInAppSite(url: string, e?: { preventDefault?: () => void; stopPropa
   try { window.dispatchEvent(new CustomEvent('stooorna:open-inapp-site', { detail: { url: href } })); } catch { /* */ }
 }
 
+function inAppEmbedSrc(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
+    const path = u.pathname;
+    if (host === 'youtu.be') {
+      const id = path.replace(/^\//, '').split('/')[0];
+      return id ? `https://www.youtube.com/embed/${id}?autoplay=1&rel=0` : null;
+    }
+    if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'youtube-nocookie.com') {
+      const id = u.searchParams.get('v') || (path.match(/\/(embed|shorts|live)\/([^/?#]+)/) || [])[2];
+      return id ? `https://www.youtube.com/embed/${id}?autoplay=1&rel=0` : null;
+    }
+    if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+      const id = (path.match(/\/(?:video\/)?(\d+)/) || [])[1];
+      return id ? `https://player.vimeo.com/video/${id}?autoplay=1` : null;
+    }
+    if (host.endsWith('tiktok.com')) {
+      const id = (path.match(/\/video\/(\d+)/) || [])[1];
+      return id ? `https://www.tiktok.com/embed/v2/${id}` : null;
+    }
+    if (host === 'dailymotion.com' || host === 'dai.ly') {
+      const id = host === 'dai.ly' ? path.replace(/^\//, '') : (path.match(/\/video\/([^/?#]+)/) || [])[1];
+      return id ? `https://www.dailymotion.com/embed/video/${id}` : null;
+    }
+  } catch { /* */ }
+  return null;
+}
+
 function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void }) {
+  const href = composerNormalizeUrl(url) || String(url || '').trim();
+  const [frameSrc, setFrameSrc] = useState(href);
+  const [xMedia, setXMedia] = useState<{ url: string; type: 'image' | 'video' }[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    setXMedia(null);
+    setLoading(true);
+    setFrameSrc(href);
+    if (!href) return;
+    const embed = inAppEmbedSrc(href);
+    if (embed) {
+      setFrameSrc(embed);
+      setLoading(false);
+      return;
+    }
+    if (parseXStatusId(href)) {
+      void resolveXStatusMedia(href).then(items => {
+        if (cancelled) return;
+        if (items.length) setXMedia(items);
+        setLoading(false);
+      });
+      return;
+    }
+    setLoading(false);
+    return () => { cancelled = true; };
+  }, [href]);
+  if (!href) return null;
+  const mediaKind = classifyMediaUrl(href) || classifyDirectMediaUrl(href);
+  const isPdf = /\.pdf(\?|$)/i.test(href);
   const node = (
     <motion.div
       initial={{ y: '100%' }}
       animate={{ y: 0 }}
       exit={{ y: '100%' }}
       transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+      onClick={e => e.stopPropagation()}
       style={{
-        position: 'fixed', inset: 0, zIndex: 2147483000, background: '#fff',
-        display: 'flex', flexDirection: 'column',
+        position: 'fixed', inset: 0, zIndex: 16000, background: '#0b0b0b',
+        display: 'flex', flexDirection: 'column', pointerEvents: 'auto',
       }}
     >
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
+        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
         padding: 'max(10px, env(safe-area-inset-top)) 12px 10px',
-        borderBottom: '1px solid rgba(0,0,0,0.08)',
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        background: '#111',
       }}>
         <button
           type="button"
@@ -5082,21 +5144,40 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
           aria-label="Close site"
           style={{
             width: 36, height: 36, borderRadius: '50%', border: 'none',
-            background: 'rgba(15,20,25,0.08)', color: '#0f1419', cursor: 'pointer',
+            background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
           <X size={18} strokeWidth={2.4} />
         </button>
-        <p style={{ margin: 0, flex: 1, fontSize: '0.78rem', color: '#536471', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{url}</p>
+        <p style={{ margin: 0, flex: 1, fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{href}</p>
       </div>
-      <iframe
-        title="Site preview"
-        src={url}
-        sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation-by-user-activation"
-        referrerPolicy="no-referrer"
-        style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }}
-      />
+      <div style={{ flex: 1, minHeight: 0, height: '100%', background: '#fff', position: 'relative' }}>
+        {loading ? (
+          <p style={{ color: '#888', textAlign: 'center', marginTop: 40 }}>Loading…</p>
+        ) : mediaKind === 'image' ? (
+          <img src={resolveMediaUrl(href)} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+        ) : mediaKind === 'video' ? (
+          <video src={resolveMediaUrl(href)} controls autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+        ) : isPdf ? (
+          <iframe title="PDF" src={href} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#111' }} />
+        ) : xMedia && xMedia.length ? (
+          <div style={{ position: 'absolute', inset: 0, overflowY: 'auto', background: '#000' }}>
+            {xMedia.map((m, i) => m.type === 'video'
+              ? <video key={i} src={m.url} controls autoPlay playsInline style={{ width: '100%', maxHeight: '100%', background: '#000' }} />
+              : <img key={i} src={m.url} alt="" style={{ width: '100%', objectFit: 'contain' }} />
+            )}
+          </div>
+        ) : (
+          <iframe
+            title="Site preview"
+            src={frameSrc}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            referrerPolicy="no-referrer-when-downgrade"
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#fff' }}
+          />
+        )}
+      </div>
     </motion.div>
   );
   if (typeof document === 'undefined') return node;
@@ -19178,7 +19259,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       </AnimatePresence>
 
       <AnimatePresence>
-        {composerSiteViewerUrl && (
+        {composerSiteViewerUrl && /^https?:\/\//i.test(composerSiteViewerUrl) && (
           <ComposerSiteViewer
             url={composerSiteViewerUrl}
             onClose={() => setComposerSiteViewerUrl(null)}
