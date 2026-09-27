@@ -15865,7 +15865,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [accountSlideFromLeft, setAccountSlideFromLeft] = useState(false);
   useEffect(() => {
     if (!textPostsPageOpen) {
-      setTextPostsPlusOpen(false);
+      // (removed: setTextPostsPlusOpen — dead state, was never declared, caused a crash)
     }
   }, [textPostsPageOpen]);
   useEffect(() => {
@@ -21003,7 +21003,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   <button
                     type="button"
                     onClick={() => {
-                      setTextPostsPlusOpen(false);
                       setViewingProfile(null);
                       setAccountSlideFromLeft(false);
                       try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
@@ -21508,7 +21507,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setTextPostsPlusOpen(false);
                       window.setTimeout(() => setShowComposer(true), 0);
                     }}
                     aria-label="New post"
