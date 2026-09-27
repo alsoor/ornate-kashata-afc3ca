@@ -1075,43 +1075,53 @@ function ImageBubble({
           loading="lazy"
         />
       </div>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
-            onClick={() => setOpen(false)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 200,
-              background: 'rgba(0,0,0,0.92)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 12,
-              cursor: 'pointer',
-            }}
-          >
-            {/* Full image — tap anywhere to close; no X button */}
-            <img
-              src={displaySrc}
-              alt=""
-              draggable={false}
+      {/* Rendered via a portal straight onto <body>: the message row this
+          bubble lives in (SwipeRow) applies a Framer Motion `x` transform for
+          the swipe-to-reply gesture, and a `transform` on any ancestor turns
+          `position: fixed` into "fixed relative to that ancestor" instead of
+          the real viewport. That's what caused the full-image view to render
+          as a small clipped black box instead of covering the whole screen.
+          Portaling to document.body sidesteps that entirely. */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12 }}
+              onClick={() => setOpen(false)}
               style={{
-                maxWidth: '100%',
-                maxHeight: '100vh',
-                objectFit: 'contain',
-                borderRadius: 8,
-                pointerEvents: 'none',
-                userSelect: 'none',
+                position: 'fixed',
+                inset: 0,
+                zIndex: 200,
+                background: 'rgba(0,0,0,0.92)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 12,
+                cursor: 'pointer',
               }}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+            >
+              {/* Full image — tap anywhere to close; no X button */}
+              <img
+                src={displaySrc}
+                alt=""
+                draggable={false}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100vh',
+                  objectFit: 'contain',
+                  borderRadius: 8,
+                  pointerEvents: 'none',
+                  userSelect: 'none',
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </>;
 }
 
