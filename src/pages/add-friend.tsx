@@ -13123,25 +13123,36 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     return file;
   }
 
-  /** Single fast media upload: race FormData + raw, first success wins (no long sequential chain). */
+  /** Fast + reliable media upload: FormData first (one request), then raw, then helper. Validates URL. */
   async function fastUploadMediaFile(file: File, mediaType: 'image' | 'video'): Promise<string | null> {
     const ext = (file.name.split('.').pop() || (mediaType === 'video' ? 'mp4' : 'jpg')).replace(/^\./, '');
     let contentType = (file.type || '').split(';')[0].toLowerCase();
     if (!contentType.startsWith('image/') && !contentType.startsWith('video/')) {
       contentType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
     }
+    const isValidMediaUrl = (u: string | null | undefined): u is string => {
+      if (!u || typeof u !== 'string') return false;
+      const s = u.trim();
+      if (!s || s === 'null' || s === 'undefined') return false;
+      if (/^(https?:\/\/|\/|blob:|data:)/i.test(s)) return true;
+      // relative path without leading slash (e.g. uploads/x.jpg)
+      if (/^[a-z0-9_\-./]+\.(jpe?g|png|webp|gif|mp4|webm|mov|m4v)(\?|$)/i.test(s)) return true;
+      return false;
+    };
     const extract = async (res: Response): Promise<string | null> => {
       try {
         const ct = (res.headers.get('content-type') || '').toLowerCase();
         if (ct.includes('application/json')) {
           const d = await res.json() as any;
-          const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path || d?.data?.url || d?.data?.mediaUrl || d?.result?.url || d?.file?.url || d?.media?.url;
-          return u ? resolveMediaUrl(String(u)) : null;
+          const u =
+            d?.url || d?.mediaUrl || d?.fileUrl || d?.path ||
+            d?.data?.url || d?.data?.mediaUrl || d?.result?.url ||
+            d?.file?.url || d?.media?.url || d?.location || d?.href;
+          if (isValidMediaUrl(u)) return resolveMediaUrl(String(u).trim());
+          return null;
         }
         const t = (await res.text()).trim();
-        if (t && (t.startsWith('http') || t.startsWith('/') || t.startsWith('blob:'))) {
-          return resolveMediaUrl(t.split(/\s/)[0]);
-        }
+        if (isValidMediaUrl(t.split(/\s/)[0])) return resolveMediaUrl(t.split(/\s/)[0]);
       } catch { /* */ }
       return null;
     };
@@ -13154,16 +13165,21 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         return null;
       }
     };
-    // Parallel primary methods — first valid URL wins without waiting on failures
-    const primary = await Promise.all([
-      tryOne(async () => {
+
+    // 1) FormData — most reliable on hosts (single request, no double-body race)
+    {
+      const u = await tryOne(async () => {
         const fd = new FormData();
         fd.append('file', file, file.name || `media.${ext}`);
         fd.append('type', mediaType);
         fd.append('mediaType', mediaType);
         return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
-      }),
-      tryOne(async () => fetch('/api/posts/media', {
+      });
+      if (u) return u;
+    }
+    // 2) Raw body
+    {
+      const u = await tryOne(async () => fetch('/api/posts/media', {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -13172,40 +13188,23 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           'X-Media-Type': mediaType,
         },
         body: file,
-      })),
-    ]);
-    const raced = primary.find(u => !!u) || null;
-    if (raced) return raced;
-    // Quick sequential fallbacks only if race timed out / both failed
-    for (const run of [
-      async () => {
-        const fd = new FormData();
-        fd.append('file', file, file.name || `media.${ext}`);
-        fd.append('type', mediaType);
-        return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
-      },
-      async () => {
+      }));
+      if (u) return u;
+    }
+    // 3) Alternate field names / helper
+    {
+      const u = await tryOne(async () => {
         const fd = new FormData();
         fd.append('media', file, file.name || `media.${ext}`);
         fd.append('kind', mediaType);
         return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
-      },
-      async () => {
-        const extra = await uploadPostMedia(file, { kind: mediaType, fileName: file.name });
-        if (extra.ok && extra.url) return extra.url as any;
-        throw new Error('no');
-      },
-    ] as Array<() => Promise<any>>) {
-      try {
-        const res = await run();
-        if (typeof res === 'string' && res) return resolveMediaUrl(res);
-        if (res && typeof res.ok === 'boolean') {
-          if (!res.ok) continue;
-          const u = await extract(res);
-          if (u) return u;
-        }
-      } catch { /* next */ }
+      });
+      if (u) return u;
     }
+    try {
+      const extra = await uploadPostMedia(file, { kind: mediaType, fileName: file.name });
+      if (extra.ok && isValidMediaUrl(extra.url)) return resolveMediaUrl(String(extra.url));
+    } catch { /* */ }
     return null;
   }
 
@@ -13490,13 +13489,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         }
         await pdfPromise;
       }
-            if (composerMediaFiles.length > 0 && uploadedMedia.length === 0) {
-        // Upload genuinely failed for every attempt. We used to fall back to a
-        // local blob: URL here so the post would still "publish" — but a blob:
-        // URL only exists in this browser tab's memory, so the post would look
-        // fine to the poster and show as a broken/black image or video for
-        // everyone else (and even for the poster after a refresh). Surface the
-        // real error instead of silently publishing unusable media.
+      // Drop any invalid/empty URLs so we never publish a "header-only" empty post
+      for (let i = uploadedMedia.length - 1; i >= 0; i--) {
+        const u = String(uploadedMedia[i]?.url || '').trim();
+        if (!u || u === 'null' || u === 'undefined' || !(u.startsWith('http') || u.startsWith('/') || u.startsWith('blob:') || u.startsWith('data:'))) {
+          uploadedMedia.splice(i, 1);
+        }
+      }
+      if (composerMediaFiles.length > 0 && uploadedMedia.length === 0) {
+        // Upload genuinely failed — do NOT create an empty post card
         setComposerError(lastUploadError || 'Media upload failed');
         setComposerPosting(false);
         return;
@@ -13541,12 +13542,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         const mediaDest = mediaType === 'video' ? 'videos' : 'photos';
         const primaryAudience = hasCaption ? 'text' : 'public';
         const primaryDest = hasCaption ? 'text' : mediaDest;
+        const absMediaUrl = resolveMediaUrl(String(mediaUrl || '')) || mediaUrl;
+        const absMediaUrls = mediaUrls.map(u => resolveMediaUrl(String(u || '')) || u).filter(Boolean);
         const postBodies = [
           {
             text: hasCaption ? finalText : '',
-            mediaUrl,
+            mediaUrl: absMediaUrl,
             mediaType,
-            mediaUrls,
+            mediaUrls: absMediaUrls,
             mediaTypes,
             hashtags: postHashtags,
             audience: primaryAudience,
@@ -13557,9 +13560,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           },
           {
             text: finalText || '',
-            mediaUrl,
+            mediaUrl: absMediaUrl,
             mediaType,
-            mediaUrls,
+            mediaUrls: absMediaUrls,
             mediaTypes,
             hashtags: postHashtags,
             audience: 'text',
@@ -13570,9 +13573,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           },
           {
             text: '',
-            mediaUrl,
+            mediaUrl: absMediaUrl,
             mediaType,
-            mediaUrls,
+            mediaUrls: absMediaUrls,
             mediaTypes,
             hashtags: postHashtags,
             audience: 'public',
@@ -13648,19 +13651,25 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
         const resolvedAudience = (createData.post.audience as string) || primaryAudience;
         const resolvedDest = (createData.post.destination as string) || primaryDest;
-        const keepUrls = (mediaUrls.length >= (serverMediaUrls?.length || 0) && mediaUrls.length > 0)
+        // Always prefer locally uploaded URLs — server often omits media on create
+        const keepUrls = (mediaUrls.length > 0
           ? mediaUrls
-          : (serverMediaUrls?.length ? serverMediaUrls : mediaUrls);
-        const keepTypes = (mediaTypes.length >= (serverMediaTypes?.length || 0) && mediaTypes.length > 0)
+          : (serverMediaUrls?.length ? serverMediaUrls : [])
+        ).map(u => resolveMediaUrl(String(u || ''))).filter(u => !!u && u !== 'null' && u !== 'undefined');
+        const keepTypes = (mediaTypes.length > 0
           ? mediaTypes
-          : (serverMediaTypes?.length ? serverMediaTypes : mediaTypes);
+          : (serverMediaTypes?.length ? serverMediaTypes : [])
+        ) as ('image' | 'video')[];
+        while (keepTypes.length < keepUrls.length) {
+          keepTypes.push((keepTypes[0] || mediaType || 'image') as 'image' | 'video');
+        }
         saved = {
           ...createData.post,
           text: createData.post.text || finalText || '',
-          mediaUrl: keepUrls[0] || serverMediaUrl,
-          mediaType: keepTypes[0] || serverMediaType,
-          mediaUrls: keepUrls,
-          mediaTypes: keepTypes,
+          mediaUrl: keepUrls[0] || resolveMediaUrl(String(serverMediaUrl || mediaUrl || '')) || mediaUrl,
+          mediaType: keepTypes[0] || serverMediaType || mediaType,
+          mediaUrls: keepUrls.length ? keepUrls : (mediaUrl ? [String(mediaUrl)] : []),
+          mediaTypes: keepTypes.length ? keepTypes : (mediaType ? [mediaType] : []),
           audience: resolvedAudience,
           destination: resolvedDest,
           publisherType: isCompanyPublisher ? 'company' : 'user',
@@ -13762,6 +13771,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         saveLocalPostMediaCache(tagged.id, tagged.mediaUrls, (tagged.mediaTypes || forcedTypes || []) as ('image' | 'video')[]);
       } else if (tagged.mediaUrl) {
         saveLocalPostMediaCache(tagged.id, [tagged.mediaUrl], [(tagged.mediaType as 'image' | 'video') || 'image']);
+      }
+      // Guard: never insert a media-intended post with no displayable media into the feed
+      if (composerMediaFiles.length > 0 && !(tagged.mediaUrl || (tagged.mediaUrls && tagged.mediaUrls.length))) {
+        setComposerError(lastUploadError || 'Media upload failed — post not published');
+        setComposerPosting(false);
+        return;
       }
       setPosts(prev => [tagged, ...prev]);
       // Grid media (photos/videos destination)
