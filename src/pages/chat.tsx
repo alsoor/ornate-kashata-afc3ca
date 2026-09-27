@@ -553,11 +553,52 @@ function isPlayableChatMediaBody(body: string | null | undefined): boolean {
 
 /** Survives fetchMsgs polls — keeps image/video visible when server body is empty/broken */
 const chatStickyMediaBodies = new Map<number, string>();
+/** Pinned local image messages — always re-injected after fetch until server has real URL */
+let chatSkipFetchUntil = 0;
+const chatPinnedLocalMedia: Array<{
+  id: number;
+  senderId: string;
+  type: 'image' | 'video' | 'file';
+  body: string;
+  createdAt: string | null;
+  senderName?: string | null;
+  senderUsername?: string | null;
+  senderAvatarUrl?: string | null;
+}> = [];
 
 function chatRememberMediaBody(id: number, body: string | null | undefined) {
   const s = String(body || '').trim();
   if (!id || !isPlayableChatMediaBody(s)) return;
   chatStickyMediaBodies.set(id, s);
+}
+
+function chatPinLocalMedia(msg: {
+  id: number;
+  senderId: string;
+  type: 'image' | 'video' | 'file';
+  body: string;
+  createdAt?: string | null;
+  senderName?: string | null;
+  senderUsername?: string | null;
+  senderAvatarUrl?: string | null;
+}) {
+  if (!isPlayableChatMediaBody(msg.body)) return;
+  chatRememberMediaBody(msg.id, msg.body);
+  const i = chatPinnedLocalMedia.findIndex(x => x.id === msg.id);
+  const row = {
+    id: msg.id,
+    senderId: msg.senderId,
+    type: msg.type,
+    body: msg.body,
+    createdAt: msg.createdAt ?? new Date().toISOString(),
+    senderName: msg.senderName ?? null,
+    senderUsername: msg.senderUsername ?? null,
+    senderAvatarUrl: msg.senderAvatarUrl ?? null,
+  };
+  if (i >= 0) chatPinnedLocalMedia[i] = row;
+  else chatPinnedLocalMedia.push(row);
+  // keep last 20
+  while (chatPinnedLocalMedia.length > 20) chatPinnedLocalMedia.shift();
 }
 
 function chatApplyStickyBody<T extends { id: number; type?: string; body?: string | null }>(m: T): T {
@@ -4675,6 +4716,30 @@ export default function ChatPage() {
               finalMsgs = [...finalMsgs, p];
             }
           }
+          // Always re-inject pinned local media that is still missing
+          for (const pin of chatPinnedLocalMedia) {
+            if (!isPlayableChatMediaBody(pin.body)) continue;
+            const already = finalMsgs.some(
+              m => m.id === pin.id
+                || (isPlayableChatMediaBody(m.body) && String(m.body) === String(pin.body))
+                || (typeof m.id === 'number' && m.id >= 0 && chatStickyMediaBodies.get(m.id) === pin.body)
+            );
+            if (already) continue;
+            finalMsgs = [...finalMsgs, {
+              id: pin.id,
+              senderId: pin.senderId,
+              type: pin.type,
+              body: pin.body,
+              duration: null,
+              createdAt: pin.createdAt,
+              senderName: pin.senderName,
+              senderUsername: pin.senderUsername,
+              senderAvatarUrl: pin.senderAvatarUrl,
+            } as Message];
+          }
+          if (finalMsgs.length === 0 && (prev.length > 0 || chatPinnedLocalMedia.length > 0)) {
+            return prev.length > 0 ? prev : finalMsgs;
+          }
           return finalMsgs;
         }
         // The fetch came back with nothing usable. If the user just cleared
@@ -4686,8 +4751,41 @@ export default function ChatPage() {
         // issue (e.g. scChatId not resolved yet on this cycle) rather than
         // a real deletion — never wipe messages already on screen.
         const existingReal = prev.filter(m => typeof m.id === 'number' && m.id >= 0);
-        if (existingReal.length > 0) return prev;
-        return temps.length ? temps : newMsgs;
+        if (existingReal.length > 0) {
+          // still re-inject pins missing from prev
+          const missingPins = chatPinnedLocalMedia.filter(
+            pin => isPlayableChatMediaBody(pin.body) && !prev.some(m => m.id === pin.id || String(m.body) === String(pin.body))
+          );
+          if (missingPins.length) {
+            return [...prev, ...missingPins.map(pin => ({
+              id: pin.id,
+              senderId: pin.senderId,
+              type: pin.type,
+              body: pin.body,
+              duration: null,
+              createdAt: pin.createdAt,
+              senderName: pin.senderName,
+              senderUsername: pin.senderUsername,
+              senderAvatarUrl: pin.senderAvatarUrl,
+            } as Message))];
+          }
+          return prev;
+        }
+        if (temps.length) return temps;
+        if (chatPinnedLocalMedia.length) {
+          return chatPinnedLocalMedia.map(pin => ({
+            id: pin.id,
+            senderId: pin.senderId,
+            type: pin.type,
+            body: pin.body,
+            duration: null,
+            createdAt: pin.createdAt,
+            senderName: pin.senderName,
+            senderUsername: pin.senderUsername,
+            senderAvatarUrl: pin.senderAvatarUrl,
+          } as Message));
+        }
+        return newMsgs;
       });
     } catch {/* silent */}
   }, [isGroup, groupId, scChatId, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -4700,6 +4798,7 @@ export default function ChatPage() {
       // response can land mid-delete with stale data and make a message
       // that was just deleted server-side reappear in the UI.
       if (isBulkDeleting) return;
+      if (Date.now() < chatSkipFetchUntil) return;
       fetchMsgs();
     }, 3000);
     return () => clearInterval(id);
@@ -4973,7 +5072,7 @@ export default function ChatPage() {
     chatRememberMediaBody(tempId, localPreview);
     try {
       if (user?.id) {
-        setMsgs(prev => [...prev, {
+        const opt = {
           id: tempId,
           senderId: user.id,
           type: 'image' as const,
@@ -4983,7 +5082,21 @@ export default function ChatPage() {
           senderName: (user as any)?.name || null,
           senderUsername: (user as any)?.username || null,
           senderAvatarUrl: (user as any)?.image || (user as any)?.avatarUrl || null,
-        } as Message]);
+        } as Message;
+        chatPinLocalMedia({
+          id: tempId,
+          senderId: user.id,
+          type: 'image',
+          body: localPreview,
+          createdAt: opt.createdAt,
+          senderName: opt.senderName,
+          senderUsername: opt.senderUsername,
+          senderAvatarUrl: opt.senderAvatarUrl,
+        });
+        setMsgs(prev => {
+          if (prev.some(m => m.id === tempId)) return prev;
+          return [...prev, opt];
+        });
       }
       const { postChatMedia } = await import('@/lib/chatMediaSendPatch');
       // postChatMedia performs the real upload + message creation.
@@ -5029,7 +5142,9 @@ export default function ChatPage() {
           }
         }
       }
-      await fetchMsgs();
+      // Keep local image on screen — soft refresh later so poll does not wipe it
+      chatSkipFetchUntil = Date.now() + 8000;
+      window.setTimeout(() => { void fetchMsgs(); }, 8500);
     } catch (err) {
       console.error('[chat sendImage]', err);
       throw err;
