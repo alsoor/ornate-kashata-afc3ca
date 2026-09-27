@@ -787,6 +787,20 @@ function GlobalBottomNavigation() {
   /** فقاعات النقر — مرة واحدة عند الضغط ثم تُزال تلقائياً (لا تتكرر كل ثانية) */
   const [navBubble, setNavBubble] = useState<Record<string, number>>({});
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  // Plus button that lives inline in the profile/story page (under the header
+  // grabber) instead of the bottom nav. Same menu, opens DOWNWARD since the
+  // button sits near the top of the screen instead of the bottom.
+  const [storyPlusMenuOpen, setStoryPlusMenuOpen] = useState(false);
+  useEffect(() => {
+    const onToggle = () => setStoryPlusMenuOpen(v => !v);
+    const onClose = () => setStoryPlusMenuOpen(false);
+    window.addEventListener('stooorna:profile-plus-toggle', onToggle);
+    window.addEventListener('stooorna:profile-plus-close', onClose);
+    return () => {
+      window.removeEventListener('stooorna:profile-plus-toggle', onToggle);
+      window.removeEventListener('stooorna:profile-plus-close', onClose);
+    };
+  }, []);
   const [liveKindOpen, setLiveKindOpen] = useState(false);
   const [friendsPanelOpen, setFriendsPanelOpen] = useState(false);
   const [storyMediaOpen, setStoryMediaOpen] = useState(false);
@@ -5094,6 +5108,138 @@ function GlobalBottomNavigation() {
     </nav>
     );
   })()}
+  {storyPlusMenuOpen && (
+    <>
+      <button
+        type="button"
+        aria-label="Close menu"
+        onClick={() => setStoryPlusMenuOpen(false)}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 10210,
+          background: 'transparent', border: 'none', cursor: 'default',
+        }}
+      />
+      {/* Same 4 actions as the bottom-nav plus fan, but anchored near the top
+          grabber on the profile/story page and expanding DOWNWARD. */}
+      <div style={{
+        position: 'fixed',
+        top: 'calc(150px + env(safe-area-inset-top, 0px))',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 10,
+        zIndex: 10220,
+        animation: 'stooornaStoryPlusFanIn 0.28s ease-out',
+      }}>
+        <button
+          type="button"
+          onClick={() => {
+            setStoryPlusMenuOpen(false);
+            if (settingsSheetOpen) {
+              window.dispatchEvent(new CustomEvent('stooorna:close-settings-sheet'));
+              return;
+            }
+            navigate('/settings');
+          }}
+          aria-label="Settings"
+          style={{
+            width: 44, height: 44, borderRadius: '50%',
+            border: '1px solid rgba(0,188,212,0.4)',
+            background: 'rgba(6,20,22,0.96)',
+            color: '#00BCD4',
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+          }}
+        >
+          <Settings size={20} strokeWidth={2.2} />
+        </button>
+        {user && (
+          <button
+            type="button"
+            onClick={() => {
+              setStoryPlusMenuOpen(false);
+              setHomeCallPickerOpen(true);
+            }}
+            aria-label="Call"
+            style={{
+              width: 44, height: 44, borderRadius: '50%',
+              border: '1px solid rgba(0,188,212,0.4)',
+              background: 'rgba(6,20,22,0.96)',
+              color: '#00BCD4',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+            }}
+          >
+            <Phone size={20} strokeWidth={2.2} />
+          </button>
+        )}
+        {user && (
+          <button
+            type="button"
+            onClick={() => {
+              setStoryPlusMenuOpen(false);
+              popNavBubble('friends');
+              setFriendsPanelOpen(true);
+              const open = () => {
+                try {
+                  window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', {
+                    detail: { tab: 'friends' },
+                  }));
+                } catch { /* */ }
+              };
+              if (location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend')) {
+                open();
+                return;
+              }
+              navigate('/add-friend?tab=friends&openFriendsPanel=1');
+              window.setTimeout(open, 80);
+            }}
+            aria-label="Friends"
+            style={{
+              width: 44, height: 44, borderRadius: '50%',
+              border: '1px solid rgba(0,188,212,0.4)',
+              background: 'rgba(6,20,22,0.96)',
+              color: '#00BCD4',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+            }}
+          >
+            <Users size={20} strokeWidth={2.2} />
+          </button>
+        )}
+        {user && (
+          <button
+            type="button"
+            onClick={() => {
+              setStoryPlusMenuOpen(false);
+              try { sessionStorage.removeItem('stooorna_return_text_posts'); } catch { /* ignore */ }
+              setLiveKindOpen(true);
+            }}
+            aria-label="Account live broadcast"
+            style={{
+              width: 44, height: 44, borderRadius: '50%',
+              border: myLiveActive ? '1px solid rgba(239,68,68,0.65)' : '1px solid rgba(0,188,212,0.4)',
+              background: myLiveActive ? 'rgba(239,68,68,0.12)' : 'rgba(6,20,22,0.96)',
+              color: myLiveActive ? '#ef4444' : '#00BCD4',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: myLiveActive
+                ? '0 0 14px rgba(239,68,68,0.55)'
+                : '0 4px 16px rgba(0,0,0,0.45)',
+              animation: myLiveActive ? 'stooornaLivePulse 1s ease-in-out infinite' : 'none',
+            }}
+          >
+            <Radio size={20} strokeWidth={2.2} />
+          </button>
+        )}
+      </div>
+    </>
+  )}
   {user ? (
     <LiveKindPicker
       open={liveKindOpen}
@@ -5291,6 +5437,6 @@ export default function RootLayout({
       </div>
       <LiveJoinBanner />
       <GlobalBottomNavigation />
-      <style>{`@keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeIncomingSheetIn { from { transform: translateY(-100%); opacity: 0.6; } to { transform: translateY(0); opacity: 1; } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } } @keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } } @keyframes stooornaLiveBannerIn { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaTextPostSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes stooornaPlusFanIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaStoryPlusFanIn { from { opacity: 0; transform: translateY(-10px) translateX(-50%); } to { opacity: 1; transform: translateY(0) translateX(-50%); } } @keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeIncomingSheetIn { from { transform: translateY(-100%); opacity: 0.6; } to { transform: translateY(0); opacity: 1; } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } } @keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } } @keyframes stooornaLiveBannerIn { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaTextPostSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </Website>;
 }

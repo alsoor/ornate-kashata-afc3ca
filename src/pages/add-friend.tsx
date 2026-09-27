@@ -17515,6 +17515,31 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             </motion.button>
           </div>
 
+          {/* ── Quick "+" menu button — moved here from the bottom nav so it
+              stays reachable even while that bar hides/scrolls. Opens the
+              same Settings/Call/Friends/Live menu, but expanding DOWNWARD
+              since this button sits near the top of the screen. ── */}
+          <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 10 }}>
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.9 }}
+              onClick={() => {
+                try { window.dispatchEvent(new CustomEvent('stooorna:profile-plus-toggle')); } catch { /* ignore */ }
+              }}
+              aria-label="خيارات إضافية"
+              style={{
+                width: 40, height: 40, borderRadius: '50%',
+                border: `1.5px solid ${CLR_PRIMARY_BORDER}`,
+                background: 'rgba(0,188,212,0.12)',
+                color: CLR_PRIMARY,
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 10px rgba(0,188,212,0.25)',
+              }}
+            >
+              <Plus size={20} strokeWidth={2.4} />
+            </motion.button>
+          </div>
 
         </div>
         </>}
