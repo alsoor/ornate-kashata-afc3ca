@@ -1933,6 +1933,15 @@ function HeaderStoryCircle({
   const hasStory = items.length > 0;
   const hasUnseen = items.some(it => !it.seen);
   const [choiceOpen, setChoiceOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  // ── موضع القائمة المنبثقة (View Story / Video Live / Voice Live) ─────────
+  // كانت القائمة تُرسم داخل هذا العنصر مباشرة (position: absolute)، فإن كانت
+  // الدائرة داخل شريط قصص قابل للتمرير أفقياً (overflow) تُقصّ القائمة أو
+  // تظهر في مكان خاطئ تماماً. الآن نحسب موضعها الفعلي على الشاشة عبر
+  // getBoundingClientRect ونرسمها بـ portal داخل document.body بموضع
+  // "fixed" فوق كل شيء، فتظهر دائماً في مكانها الصحيح بغض النظر عن أي
+  // تمرير أو قصّ (overflow/clip) من العناصر الأب. ──────────────────────────
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
 
   // لا شيء لعرضه: لا ستوري ولا بث مباشر
   if (!hasStory && !liveActive) return null;
@@ -1945,15 +1954,44 @@ function HeaderStoryCircle({
     navigate(`${path}?${qs.toString()}`);
   };
 
+  const openChoiceMenu = () => {
+    const rect = btnRef.current?.getBoundingClientRect();
+    const menuWidth = 190;
+    if (rect) {
+      let left = rect.left + rect.width / 2 - menuWidth / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8));
+      setMenuPos({ top: rect.bottom + 6, left });
+    }
+    setChoiceOpen(true);
+  };
+
   const handleClick = () => {
-    if (liveActive && hasStory) { setChoiceOpen(o => !o); return; }
+    if (liveActive && hasStory) {
+      if (choiceOpen) { setChoiceOpen(false); return; }
+      openChoiceMenu();
+      return;
+    }
     if (liveActive) { goLive(); return; }
     onOpenStory();
   };
 
+  // إغلاق تلقائي عند أي تمرير (نافذة أو شريط القصص الأفقي) أو تغيير حجم
+  // الشاشة، حتى لا تبقى القائمة معلّقة بموضع قديم لم يعد يطابق مكان الزر.
+  useEffect(() => {
+    if (!choiceOpen) return;
+    const close = () => setChoiceOpen(false);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [choiceOpen]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0, position: 'relative' }}>
       <motion.button
+        ref={btnRef}
         whileTap={{ scale: 0.9 }}
         onClick={handleClick}
         style={{ width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', ...extraButtonStyle }}
@@ -1990,7 +2028,7 @@ function HeaderStoryCircle({
         {username ? `@${username}` : name}
       </span>
 
-      {choiceOpen && (
+      {choiceOpen && menuPos && typeof document !== 'undefined' && createPortal(
         <>
           <button
             type="button"
@@ -1999,8 +2037,8 @@ function HeaderStoryCircle({
             style={{ position: 'fixed', inset: 0, zIndex: 10210, background: 'transparent', border: 'none', cursor: 'default' }}
           />
           <div style={{
-            position: 'absolute', top: 66, left: '50%', transform: 'translateX(-50%)',
-            zIndex: 10220, minWidth: 176, padding: 6, borderRadius: 12,
+            position: 'fixed', top: menuPos.top, left: menuPos.left,
+            zIndex: 10220, minWidth: 190, padding: 6, borderRadius: 12,
             background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))',
             boxShadow: '0 12px 28px hsl(var(--background)/0.5)',
             display: 'flex', flexDirection: 'column', gap: 2,
@@ -2008,20 +2046,21 @@ function HeaderStoryCircle({
             <button
               type="button"
               onClick={() => { setChoiceOpen(false); onOpenStory(); }}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'left' }}
             >
-              مشاهدة الستوري
+              View Story
             </button>
             <button
               type="button"
               onClick={() => { setChoiceOpen(false); goLive(); }}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'left' }}
             >
               <Radio size={15} strokeWidth={2.3} color="#ef4444" />
-              {liveKind === 'camera' ? 'الدخول على البث المرئي' : 'الدخول على البث الصوتي'}
+              {liveKind === 'camera' ? 'Video Live' : 'Voice Live'}
             </button>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

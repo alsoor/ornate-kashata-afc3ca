@@ -349,7 +349,15 @@ function purgeStoryLocalCaches(storyId: string | number) {
 async function tryDelete(url: string, init: RequestInit): Promise<boolean> {
   try {
     const res = await fetch(url, { credentials: 'include', ...init });
-    return res.ok || res.status === 404 || res.status === 204;
+    // ── لماذا لا نعتبر أي 404 نجاحاً ────────────────────────────────────────
+    // كان الكود يعتبر أي استجابة 404 = "تم الحذف بالفعل" ويوقف كل المحاولات
+    // التالية فوراً. المشكلة: أول رابط بالقائمة أدناه كان تخميناً (مسار غير
+    // موجود أصلاً في السيرفر)، فإطار العمل يرجع له 404 "المسار غير موجود"
+    // العام — وهذا 404 مختلف تماماً عن "القصة محذوفة مسبقاً". النتيجة: الكود
+    // كان يتوقف عند أول رابط خاطئ ظنّاً منه أن الحذف نجح، فلا يصل أبداً
+    // للرابط الصحيح، ويبقى السجل الفعلي على السيرفر — فيظهر عند الأصدقاء رغم
+    // اختفائه محلياً. الآن ننجح فقط باستجابة ناجحة فعلياً (2xx) أو 204. ──────
+    return res.ok || res.status === 204;
   } catch {
     return false;
   }
@@ -377,9 +385,10 @@ export async function deleteStoryInstant(
   const json = { 'Content-Type': 'application/json' };
 
   const attempts: Array<() => Promise<boolean>> = [
+    // المسار الحقيقي المطابق للـ handler الفعلي على السيرفر — يُجرَّب أولاً.
+    () => tryDelete(`/api/status/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     () => tryDelete(`/api/status?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
     () => tryDelete('/api/status', { method: 'DELETE', headers: json, body: payload }),
-    () => tryDelete(`/api/status/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     () => tryDelete('/api/status/delete', { method: 'POST', headers: json, body: payload }),
     () => tryDelete(`/api/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     () => tryDelete(`/api/stories/${encodeURIComponent(id)}`, { method: 'DELETE' }),
