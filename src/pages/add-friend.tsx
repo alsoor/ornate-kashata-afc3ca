@@ -17258,10 +17258,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(myMediaPosts.length)}</span>
-                    <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Post</span>
-                  </div>
                   <motion.button
                     whileTap={{ scale: 0.94 }}
                     onClick={() => setFollowersModalOpen(true)}
@@ -17274,12 +17270,20 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     )}
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Followers</span>
                   </motion.button>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>
-                      {(() => { void viewsTick; return formatCompactCount(resolveProfileViewsCount(user as any, [...myMediaPosts, ...posts.filter(p => user && String(p.authorId) === String(user.id))])); })()}
-                    </span>
-                    <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Views</span>
-                  </div>
+                  {/* Call history — moved here from the "Call a friend" picker header in RootLayout.tsx, taking the Views slot */}
+                  <button
+                    type="button"
+                    onClick={() => { setFriendChatPeer(null); setFriendChatCallLogMenuOpen(false); setFriendChatCallLogOpen(true); }}
+                    aria-label="Call history"
+                    title="Call history"
+                    style={{
+                      width: 34, height: 34, borderRadius: '50%', border: '1.5px solid rgba(0,188,212,0.4)',
+                      background: 'rgba(0,188,212,0.12)', color: CLR_PRIMARY, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+                    }}
+                  >
+                    <Clock size={16} strokeWidth={2.3} />
+                  </button>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(myMediaLikesTotal)}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>

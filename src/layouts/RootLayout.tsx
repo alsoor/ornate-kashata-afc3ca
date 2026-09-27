@@ -4298,19 +4298,6 @@ function GlobalBottomNavigation() {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <p style={{ margin: 0, flex: 1, color: '#00BCD4', fontWeight: 800, fontSize: 16 }}>Call a friend</p>
-            <button
-              type="button"
-              onClick={() => { setHomeCallLogOpen(true); setHomeCallLogTick(x => x + 1); }}
-              aria-label="Call history"
-              title="Call history"
-              style={{
-                width: 36, height: 36, borderRadius: '50%', border: '1.5px solid rgba(0,188,212,0.4)',
-                background: 'rgba(0,188,212,0.12)', color: '#00BCD4', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
-              }}
-            >
-              <Clock size={17} strokeWidth={2.3} />
-            </button>
             <button type="button" onClick={() => setHomeCallPickerOpen(false)} aria-label="Close" style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 0 }}>
               <X size={18} strokeWidth={2.4} style={{ display: 'block' }} />
             </button>
