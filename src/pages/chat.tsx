@@ -4,6 +4,12 @@ import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin, Smile, Paperclip, Video as VideoIcon, Plus, Eye } from 'lucide-react';
+import {
+  guardMergeMessages,
+  guardPinMessage,
+  guardLoadMessages,
+  guardClearMessages,
+} from '@/lib/chatMessagesGuardPatch';
 import { useSession } from '@/lib/auth/auth-client';
 import { useHeartbeat, usePresenceQuery, formatLastSeen, useTypingPublisher, usePeerTyping } from '@/hooks/usePresence';
 import InAppNotification, { type AppNotification } from '@/components/InAppNotification';
@@ -1109,28 +1115,39 @@ function ImageBubble({
           }}
           loading="lazy"
         />
-        {/* Eye in center — hold to view full, release to close */}
-        <div
-          aria-hidden
+        {/* Eye in center — hold image OR press eye to view full; release to close */}
+        <button
+          type="button"
+          aria-label="View full image"
+          onPointerDown={e => {
+            e.stopPropagation();
+            holdingRef.current = true;
+            setOpen(true);
+          }}
+          onPointerUp={e => { e.stopPropagation(); endHold(); }}
+          onPointerCancel={e => { e.stopPropagation(); endHold(); }}
           style={{
             position: 'absolute',
             left: '50%',
             top: '50%',
             transform: 'translate(-50%, -50%)',
-            width: 44,
-            height: 44,
+            width: 48,
+            height: 48,
             borderRadius: '50%',
-            background: 'rgba(0,0,0,0.42)',
+            background: 'rgba(0,0,0,0.45)',
             border: '1.5px solid rgba(255,255,255,0.55)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            pointerEvents: 'none',
+            pointerEvents: 'auto',
             boxShadow: '0 2px 10px rgba(0,0,0,0.25)',
+            cursor: 'pointer',
+            padding: 0,
+            zIndex: 2,
           }}
         >
           <Eye size={20} color="#fff" strokeWidth={2.2} />
-        </div>
+        </button>
       </div>
       <AnimatePresence>
         {open && (
@@ -3808,10 +3825,20 @@ export default function ChatPage() {
     peerName,
     isGroup,
   });
+  const guardKeyParts = {
+    userId: user?.id,
+    peerId,
+    scChatId,
+    groupId,
+    peerUsername: peerUsername || undefined,
+    peerName: peerName || undefined,
+    isGroup,
+  };
   // Load cached messages once key is known (survives leave/return)
   useEffect(() => {
     if (!user?.id && !peerId && !scChatId && !isGroup) return;
-    const cached = loadPersistedChatMsgs(chatPersistKey);
+    const cachedGuard = guardLoadMessages(guardKeyParts) as Message[];
+    const cached = cachedGuard.length ? cachedGuard : loadPersistedChatMsgs(chatPersistKey);
     if (cached.length) {
       setMsgs(prev => {
         if (prev.length >= cached.length) {
@@ -3955,6 +3982,7 @@ export default function ChatPage() {
       localStorage.setItem(key, String(Date.now()));
       // Also clear message cache so Clear History is permanent
       try { localStorage.removeItem(chatPersistKey); } catch { /* */ }
+      try { guardClearMessages(guardKeyParts); } catch { /* */ }
       chatPinnedLocalMedia.length = 0;
     } catch { /* ignore */ }
     try {
@@ -4758,6 +4786,11 @@ export default function ChatPage() {
         if (Date.now() < chatSkipFetchUntil && prevPlayableLocal.length > 0) {
           return prev;
         }
+        // Independent guard patch: merge server + local store (never drop sent media)
+        try {
+          const guarded = guardMergeMessages(guardKeyParts, newMsgs as any, prev as any) as Message[];
+          if (guarded.length > 0) return guarded;
+        } catch { /* fall through to legacy merge */ }
         if (newMsgs.length > 0) {
           // 1) Apply sticky bodies so polls never wipe a working local preview
           let merged = newMsgs.map(m => chatApplyStickyBody({ ...m }));
@@ -5264,9 +5297,14 @@ export default function ChatPage() {
           senderUsername: opt.senderUsername,
           senderAvatarUrl: opt.senderAvatarUrl,
         });
+        try {
+          guardPinMessage(guardKeyParts, opt as any);
+        } catch { /* */ }
         setMsgs(prev => {
           if (prev.some(m => m.id === tempId)) return prev;
-          return [...prev, opt];
+          const next = [...prev, opt];
+          try { savePersistedChatMsgs(chatPersistKey, next); } catch { /* */ }
+          return next;
         });
       }
       const { postChatMedia } = await import('@/lib/chatMediaSendPatch');
