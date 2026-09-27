@@ -17432,6 +17432,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               type="button"
               whileTap={{ scale: 0.9 }}
               onClick={() => {
+                toggleHeaderOpen();
                 try { window.dispatchEvent(new CustomEvent('stooorna:profile-plus-toggle')); } catch { /* ignore */ }
               }}
               aria-label="خيارات إضافية"
