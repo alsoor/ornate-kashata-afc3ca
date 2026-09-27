@@ -4819,8 +4819,8 @@ function XStatusEmbed({ statusUrl }: { statusUrl: string }) {
   }
   if (failed || !items.length) {
     return (
-      <a href={statusUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-        style={{ color: CLR_PRIMARY, fontSize: '0.75rem', wordBreak: 'break-all' }}>
+      <a href={statusUrl} onClick={e => openInAppSite(statusUrl, e)}
+        style={{ color: CLR_PRIMARY, fontSize: '0.75rem', wordBreak: 'break-all', cursor: 'pointer' }}>
         {statusUrl}
       </a>
     );
@@ -4940,8 +4940,8 @@ function XLinkMedia({ statusUrl, failedNote }: { statusUrl: string; failedNote?:
       return <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p>;
     }
     return (
-      <a href={statusUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-        style={{ color: CLR_PRIMARY, fontSize: '0.75rem', wordBreak: 'break-all' }}>
+      <a href={statusUrl} onClick={e => openInAppSite(statusUrl, e)}
+        style={{ color: CLR_PRIMARY, fontSize: '0.75rem', wordBreak: 'break-all', cursor: 'pointer' }}>
         {statusUrl}
       </a>
     );
@@ -5041,6 +5041,14 @@ function LinkMediaPreview({ url, failedNote, onOpenSite }: { url: string; failed
   return failedNote ? <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p> : null;
 }
 
+
+function openInAppSite(url: string, e?: { preventDefault?: () => void; stopPropagation?: () => void }) {
+  try { e?.preventDefault?.(); e?.stopPropagation?.(); } catch { /* */ }
+  const href = String(url || '').trim();
+  if (!href) return;
+  try { window.dispatchEvent(new CustomEvent('stooorna:open-inapp-site', { detail: { url: href } })); } catch { /* */ }
+}
+
 function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void }) {
   return (
     <motion.div
@@ -5134,7 +5142,7 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
               return <span key={i} style={{ color: 'hsl(var(--primary))', fontWeight: 700 }}>{part}</span>;
             }
             if (/^https?:\/\//i.test(part)) {
-              return <a key={i} href={part} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color, fontWeight: 600, wordBreak: 'break-all' }}>{part}</a>;
+              return <a key={i} href={part} onClick={e => openInAppSite(part, e)} style={{ color, fontWeight: 600, wordBreak: 'break-all', cursor: 'pointer' }}>{part}</a>;
             }
             return <React.Fragment key={i}>{part}</React.Fragment>;
           })}
@@ -11915,6 +11923,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // ── مستطيل «Paste»: الرابط المُلصق (composerLinkInput) يُعرض كاملًا فورًا مع النص ──
   const [composerLinkPreviewUrl, setComposerLinkPreviewUrl] = useState('');
   const [composerSiteViewerUrl, setComposerSiteViewerUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const onOpen = (ev: Event) => {
+      const url = String((ev as CustomEvent)?.detail?.url || '');
+      if (url) setComposerSiteViewerUrl(url);
+    };
+    window.addEventListener('stooorna:open-inapp-site', onOpen);
+    return () => window.removeEventListener('stooorna:open-inapp-site', onOpen);
+  }, []);
   useEffect(() => {
     const t = window.setTimeout(() => setComposerLinkPreviewUrl(composerLinkInput.trim()), 250);
     return () => window.clearTimeout(t);
@@ -19126,14 +19142,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 {composerPosting ? '…' : 'Share'}
               </motion.button>
             </div>
-            <AnimatePresence>
-              {composerSiteViewerUrl && (
-                <ComposerSiteViewer
-                  url={composerSiteViewerUrl}
-                  onClose={() => setComposerSiteViewerUrl(null)}
-                />
-              )}
-            </AnimatePresence>
             {composerBizHint && isBusinessUser && (
 
               <p style={{ margin: '0 14px 10px', color: '#1d9bf0', fontSize: '0.72rem', fontWeight: 700 }}>
@@ -19144,6 +19152,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {composerSiteViewerUrl && (
+          <ComposerSiteViewer
+            url={composerSiteViewerUrl}
+            onClose={() => setComposerSiteViewerUrl(null)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Feed Ad fullscreen viewer (ad-style, not like normal posts) */}
       <AnimatePresence>
