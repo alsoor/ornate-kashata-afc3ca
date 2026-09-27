@@ -4385,6 +4385,16 @@ export default function ChatPage() {
       setMsgs(prev => {
         const temps = prev.filter(m => typeof m.id === 'number' && m.id < 0);
         if (newMsgs.length > 0) return newMsgs;
+        // The fetch came back with nothing usable. If the user just cleared
+        // their history, raw had items but clearedAt filtered them all out —
+        // respect that intentional action and show empty.
+        const clearedEverything = raw.length > 0 && clearedAt > 0;
+        if (clearedEverything) return newMsgs;
+        // Otherwise an empty result is most likely a transient fetch/race
+        // issue (e.g. scChatId not resolved yet on this cycle) rather than
+        // a real deletion — never wipe messages already on screen.
+        const existingReal = prev.filter(m => typeof m.id === 'number' && m.id >= 0);
+        if (existingReal.length > 0) return prev;
         return temps.length ? temps : newMsgs;
       });
     } catch {/* silent */}
@@ -4623,15 +4633,22 @@ export default function ChatPage() {
           });
         }
       } else {
-        if (!scChatId) return;
-        res = await fetch(`/api/secret-chat/image?chatId=${scChatId}`, {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': ct }, body: file
-        });
-        if (!res.ok) {
-          res = await fetch(`/api/secret-chat/image?chatId=${scChatId}`, {
-            method: 'POST', credentials: 'include', body: fd
-          });
+        if (!scChatId && !peerId) return;
+        const imageUrls = [
+          scChatId ? `/api/secret-chat/image?chatId=${scChatId}` : '',
+          peerId ? `/api/messages/image?peerId=${encodeURIComponent(peerId)}` : '',
+        ].filter(Boolean) as string[];
+        for (const iurl of imageUrls) {
+          try {
+            res = await fetch(iurl, {
+              method: 'POST', credentials: 'include',
+              headers: { 'Content-Type': ct }, body: file
+            });
+            if (!res.ok) {
+              res = await fetch(iurl, { method: 'POST', credentials: 'include', body: fd });
+            }
+            if (res.ok || res.status === 201) break;
+          } catch { /* next */ }
         }
       }
       await fetchMsgs();
@@ -4655,18 +4672,25 @@ export default function ChatPage() {
           headers: { 'Content-Type': ct }, body: file
         });
       } else {
-        if (!scChatId) return;
+        if (!scChatId && !peerId) return;
         // Prefer dedicated image endpoint when mime is image
-        if (isImg) {
-          await fetch(`/api/secret-chat/image?chatId=${scChatId}`, {
-            method: 'POST', credentials: 'include',
-            headers: { 'Content-Type': ct }, body: file
-          });
-        } else {
-          await fetch(`/api/secret-chat/file?chatId=${scChatId}&name=${encodeURIComponent(file.name)}`, {
-            method: 'POST', credentials: 'include',
-            headers: { 'Content-Type': ct }, body: file
-          });
+        const fileUrls = isImg
+          ? [
+              scChatId ? `/api/secret-chat/image?chatId=${scChatId}` : '',
+              peerId ? `/api/messages/image?peerId=${encodeURIComponent(peerId)}` : '',
+            ].filter(Boolean) as string[]
+          : [
+              scChatId ? `/api/secret-chat/file?chatId=${scChatId}&name=${encodeURIComponent(file.name)}` : '',
+              peerId ? `/api/messages/file?peerId=${encodeURIComponent(peerId)}&name=${encodeURIComponent(file.name)}` : '',
+            ].filter(Boolean) as string[];
+        for (const furl of fileUrls) {
+          try {
+            const r = await fetch(furl, {
+              method: 'POST', credentials: 'include',
+              headers: { 'Content-Type': ct }, body: file
+            });
+            if (r.ok || r.status === 201) break;
+          } catch { /* next */ }
         }
       }
       await fetchMsgs();
@@ -4688,11 +4712,20 @@ export default function ChatPage() {
           headers: { 'Content-Type': named.type }, body: named
         });
       } else {
-        if (!scChatId) return;
-        await fetch(`/api/secret-chat/file?chatId=${scChatId}&name=${encodeURIComponent(safeName)}${q}`, {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': named.type }, body: named
-        });
+        if (!scChatId && !peerId) return;
+        const vnUrls = [
+          scChatId ? `/api/secret-chat/file?chatId=${scChatId}&name=${encodeURIComponent(safeName)}${q}` : '',
+          peerId ? `/api/messages/file?peerId=${encodeURIComponent(peerId)}&name=${encodeURIComponent(safeName)}${q}` : '',
+        ].filter(Boolean) as string[];
+        for (const vnurl of vnUrls) {
+          try {
+            const r = await fetch(vnurl, {
+              method: 'POST', credentials: 'include',
+              headers: { 'Content-Type': named.type }, body: named
+            });
+            if (r.ok || r.status === 201) break;
+          } catch { /* next */ }
+        }
       }
       await fetchMsgs();
     } catch {/* silent */}
