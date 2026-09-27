@@ -588,12 +588,12 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
             onClick={e => { e.stopPropagation(); setMuted(m => !m); }}
             aria-label={muted ? 'Unmute' : 'Mute'}
             style={{
-              width: 44, height: 44, borderRadius: '50%', border: 'none',
-              background: 'rgba(255,255,255,0.16)', color: '#fff', cursor: 'pointer',
+              width: 36, height: 36, borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
             }}
           >
-            {muted ? <VolumeX size={22} strokeWidth={2.2} /> : <Volume2 size={22} strokeWidth={2.2} />}
+            {muted ? <VolumeX size={16} strokeWidth={2.4} /> : <Volume2 size={16} strokeWidth={2.4} />}
           </button>
         </div>
       </div>
@@ -5230,10 +5230,12 @@ async function fetchWithTimeout(resource: string, ms = 4500): Promise<Response |
   }
 }
 
-function inAppVisualFrame(pageUrl: string): string {
+function inAppVisualFrame(pageUrl: string, stage = 0): string {
   const embed = inAppEmbedSrc(pageUrl);
   if (embed) return embed;
-  return `https://translate.google.com/translate?hl=ar&sl=auto&tl=ar&u=${encodeURIComponent(pageUrl)}&anno=0`;
+  if (stage <= 0) return `/api/proxy-page?url=${encodeURIComponent(pageUrl)}`;
+  if (stage === 1) return `https://api.allorigins.win/raw?url=${encodeURIComponent(pageUrl)}`;
+  return `https://corsproxy.io/?${encodeURIComponent(pageUrl)}`;
 }
 
 async function fetchInAppHtml(pageUrl: string): Promise<string | null> {
@@ -5301,7 +5303,8 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
           return;
         }
       }
-      setFrameSrc(inAppVisualFrame(target));
+      try { (window as any).__stooornaFrameStage = 0; } catch { /* */ }
+      setFrameSrc(inAppVisualFrame(target, 0));
       setKind('site');
       setLoading(false);
     };
@@ -5368,6 +5371,14 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
             src={frameSrc || href}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             referrerPolicy="no-referrer-when-downgrade"
+            onError={() => {
+              const next = (Number((window as any).__stooornaFrameStage || 0) + 1);
+              (window as any).__stooornaFrameStage = next;
+              if (next <= 2) setFrameSrc(inAppVisualFrame(href, next));
+              else {
+                try { window.open(href, '_blank', 'noopener,noreferrer'); } catch { /* */ }
+              }
+            }}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#fff' }}
           />
         )}
