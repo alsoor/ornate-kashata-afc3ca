@@ -17427,7 +17427,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             zone next to the show/hide grabber. Opens the same
             Settings/Call/Friends/Live menu, expanding DOWNWARD. ── */}
         {!isFriendManagement && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '2px 0 8px' }}>
             <motion.button
               type="button"
               whileTap={{ scale: 0.9 }}
@@ -17436,7 +17436,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               }}
               aria-label="خيارات إضافية"
               style={{
-                width: 40, height: 40, borderRadius: '50%',
+                width: 32, height: 32, borderRadius: '50%',
                 border: `1.5px solid ${CLR_PRIMARY_BORDER}`,
                 background: 'rgba(0,188,212,0.12)',
                 color: CLR_PRIMARY,
@@ -17445,7 +17445,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 boxShadow: '0 0 10px rgba(0,188,212,0.25)',
               }}
             >
-              <Plus size={20} strokeWidth={2.4} />
+              <Plus size={16} strokeWidth={2.4} />
             </motion.button>
           </div>
         )}
