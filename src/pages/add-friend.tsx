@@ -15469,6 +15469,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [friendChatText, setFriendChatText] = useState('');
   const [friendChatCallLogOpen, setFriendChatCallLogOpen] = useState(false);
   const [friendChatCallLogMenuOpen, setFriendChatCallLogMenuOpen] = useState(false);
+  const callHistoryDotState = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
   const [storyRequestsBoxOpen, setStoryRequestsBoxOpen] = useState(false);
   const [storyReqRespondingId, setStoryReqRespondingId] = useState<number | null>(null);
   const [storyReqTab, setStoryReqTab] = useState<'search' | 'requests'>('requests');
@@ -17271,19 +17272,27 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Followers</span>
                   </motion.button>
                   {/* Call history — moved here from the "Call a friend" picker header in RootLayout.tsx, taking the Views slot */}
-                  <button
-                    type="button"
-                    onClick={() => { setFriendChatPeer(null); setFriendChatCallLogMenuOpen(false); setFriendChatCallLogOpen(true); }}
-                    aria-label="Call history"
-                    title="Call history"
-                    style={{
-                      width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
-                      background: 'rgba(225,225,225,0.1)', color: 'rgba(230,230,230,0.9)', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
-                    }}
-                  >
-                    <Clock size={12} strokeWidth={2.3} />
-                  </button>
+                  <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => { setFriendChatPeer(null); setFriendChatCallLogMenuOpen(false); setFriendChatCallLogOpen(true); }}
+                      aria-label="Call history"
+                      title="Call history"
+                      style={{
+                        width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
+                        background: 'rgba(225,225,225,0.1)', color: 'rgba(230,230,230,0.9)', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+                      }}
+                    >
+                      <Clock size={12} strokeWidth={2.3} />
+                    </button>
+                    <span aria-hidden="true" style={{
+                      position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: callHistoryDotState.joined ? '#22c55e' : '#ef4444',
+                      border: '1.5px solid hsl(var(--background))',
+                    }} />
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(myMediaLikesTotal)}</span>
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
