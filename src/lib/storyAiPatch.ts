@@ -1,34 +1,42 @@
 /**
- * storyAiPatch.ts — Fast, GUARANTEED-TO-DISPLAY Story (status) publish (target ≤ 5s)
+ * storyAiPatch.ts — Fast, GUARANTEED-TO-PUBLISH Story (status) pipeline (target ≤ 5s)
  *
- * v2 — replaces the previous approach entirely (see note below).
+ * v3 — fixes a regression introduced by v2.
  *
- * ── Why images weren't showing after the first patch ──────────────────────
- * The old flow (and the first version of this file) fell back to an instant
- * data:image/...;base64,... URL whenever the real upload didn't finish inside
- * its budget, and then persisted THAT giant string as the story's mediaUrl by
- * putting it straight into the JSON/form body. Most upload endpoints (and the
- * DB column behind them) have a size limit far smaller than a base64 photo —
- * so the request either got rejected or silently truncated, and the story was
- * saved with a broken mediaUrl. Video used a short blob: object URL instead of
- * a data: string, so it stayed small and happened to keep working — which is
- * exactly why only images broke, never videos.
+ * ── What went wrong in v2 ──────────────────────────────────────────────────
+ * v2 removed the data:/blob: fallback entirely, requiring a real, permanent
+ * upload link before it would publish anything. But this app has no
+ * persistent server-side file storage (see the "Railway without volume"
+ * comments already in this codebase) — the data:/blob: fallback in
+ * mediaAiPatch.ts IS the durable storage mechanism here, and it's the exact
+ * same mechanism already working fine for regular posts (/api/posts happily
+ * accepts a data: URL as mediaUrl). Requiring a real link for stories made
+ * every publish fail outright whenever the real upload endpoints don't
+ * respond in time — which, on this backend, is most of the time. That's why
+ * publishing stopped working completely ("Unable to publish this story").
  *
- * ── What this version does instead ─────────────────────────────────────────
- * 1) Try a REAL upload first (bounded so we never blow the 5s ceiling).
- * 2) If we get a real, permanent link → publish it, then run a load test
- *    ("اختبار الرقع" — probeUrlLoads) to actually confirm the image/video
- *    renders before calling it a success.
- * 3) If no real link comes back in time, send the raw file straight to
- *    /api/status via multipart — NEVER as a data: URL text field — so the
- *    server does its own storage and hands back its own (small, real) URL.
- * 4) Only if both attempts genuinely fail do we report failure. Nothing here
- *    ever persists a base64 data: URL as a story's mediaUrl again.
+ * ── What this version does ──────────────────────────────────────────────────
+ * 1) Reuse mediaAiForceWorkingMedia (mediaAiPatch.ts) exactly like the post
+ *    composer does — instant data:/blob: URL, real upload races a short
+ *    budget. This is what makes publishing itself reliable and fast again.
+ * 2) Publish with whatever URL comes back (JSON → form-with-url → files-only,
+ *    in that order) so we never block on a permanent link.
+ * 3) AFTER a successful publish, run a quick, non-blocking load check
+ *    ("اختبار الرقع"). If the story published on a local data:/blob: URL and
+ *    didn't verify cleanly, kick off a background attempt to fetch a real
+ *    upload link and PATCH the story to it (same PATCH pattern the built-in
+ *    camera-story publisher already uses). This never delays or blocks the
+ *    publish the user is waiting on — it's a best-effort repair afterwards.
  *
  * Install: src/lib/storyAiPatch.ts
  */
 
-import { mediaAiNormalizeImage, mediaAiIsBrokenHostUrl, type MediaAiKind } from './mediaAiPatch';
+import {
+  mediaAiForceWorkingMedia,
+  mediaAiIsBrokenHostUrl,
+  type MediaAiKind,
+  type MediaAiItem,
+} from './mediaAiPatch';
 
 export type StoryPublishResult = {
   ok: boolean;
@@ -39,12 +47,10 @@ export type StoryPublishResult = {
 
 type UploadFn = (file: File, kind: MediaAiKind) => Promise<string | null>;
 
-/** Hard ceiling for the whole story publish step (ms). */
+/** Hard ceiling for the publish step the user actually waits on (ms). */
 export const STORY_AI_MAX_MS = 5000;
-/** Most of the budget goes to getting a real, permanent link — that's the fix. */
-const UPLOAD_BUDGET_MS = 4200;
-/** Quick real-load check ("اختبار الرقع") before trusting a URL is truly published. */
-const VERIFY_BUDGET_MS = 900;
+/** Quick real-load check ("اختبار الرقع") — never blocks the publish itself. */
+const VERIFY_BUDGET_MS = 1200;
 
 function storyAiKindOf(file: File): MediaAiKind {
   const t = (file.type || '').toLowerCase();
@@ -52,50 +58,19 @@ function storyAiKindOf(file: File): MediaAiKind {
   return t.startsWith('video/') || /\.(mp4|webm|mov|m4v|mkv|3gp)$/i.test(n) ? 'video' : 'image';
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
-  return new Promise(resolve => {
-    let done = false;
-    const t = window.setTimeout(() => {
-      if (!done) {
-        done = true;
-        resolve(null);
-      }
-    }, ms);
-    p.then(
-      v => {
-        if (!done) {
-          done = true;
-          window.clearTimeout(t);
-          resolve(v);
-        }
-      },
-      () => {
-        if (!done) {
-          done = true;
-          window.clearTimeout(t);
-          resolve(null);
-        }
-      },
-    );
-  });
-}
-
-/** A real link worth persisting: http(s)/absolute path, never a data:/blob: URL, never a dead host. */
+/** A real, permanent link — never a data:/blob: URL, never a dead host. */
 function isPermanentUrl(u: string | null | undefined): u is string {
   if (!u) return false;
   const s = String(u).trim();
   if (!s || s === 'null' || s === 'undefined') return false;
-  if (/^data:/i.test(s)) return false; // never treat a base64 string as "permanent"
+  if (/^(data:|blob:)/i.test(s)) return false;
   if (mediaAiIsBrokenHostUrl(s)) return false;
   if (/^https?:\/\//i.test(s)) return true;
   if (s.startsWith('/') && s.length < 600) return true;
   return false;
 }
 
-/**
- * اختبار الرقع — actually try to load the URL before trusting the publish
- * worked, instead of assuming success from an HTTP 200 alone.
- */
+/** اختبار الرقع — actually try to load the URL rather than trusting a 200 alone. */
 function probeUrlLoads(url: string, kind: MediaAiKind, timeoutMs = VERIFY_BUDGET_MS): Promise<boolean> {
   return new Promise(resolve => {
     let done = false;
@@ -109,25 +84,13 @@ function probeUrlLoads(url: string, kind: MediaAiKind, timeoutMs = VERIFY_BUDGET
       if (kind === 'video') {
         const v = document.createElement('video');
         v.preload = 'metadata';
-        v.onloadedmetadata = () => {
-          window.clearTimeout(t);
-          finish(true);
-        };
-        v.onerror = () => {
-          window.clearTimeout(t);
-          finish(false);
-        };
+        v.onloadedmetadata = () => { window.clearTimeout(t); finish(true); };
+        v.onerror = () => { window.clearTimeout(t); finish(false); };
         v.src = url;
       } else {
         const img = new Image();
-        img.onload = () => {
-          window.clearTimeout(t);
-          finish(true);
-        };
-        img.onerror = () => {
-          window.clearTimeout(t);
-          finish(false);
-        };
+        img.onload = () => { window.clearTimeout(t); finish(true); };
+        img.onerror = () => { window.clearTimeout(t); finish(false); };
         img.src = url;
       }
     } catch {
@@ -150,7 +113,6 @@ async function postStatusJson(payload: Record<string, unknown>): Promise<Respons
   }
 }
 
-/** Real, short URL only — safe to also send as a form field (unlike a data: URL). */
 async function postStatusFormWithUrl(file: File, mediaUrl: string, kind: MediaAiKind): Promise<Response | null> {
   try {
     const fd = new FormData();
@@ -166,7 +128,7 @@ async function postStatusFormWithUrl(file: File, mediaUrl: string, kind: MediaAi
   }
 }
 
-/** No mediaUrl/data: text field at all — the server stores the file itself and mints its own URL. */
+/** No mediaUrl field at all — last resort in case the server can store the raw file itself. */
 async function postStatusFilesOnly(file: File, kind: MediaAiKind): Promise<Response | null> {
   try {
     const fd = new FormData();
@@ -180,102 +142,126 @@ async function postStatusFilesOnly(file: File, kind: MediaAiKind): Promise<Respo
   }
 }
 
-function extractMediaUrlFromJson(d: any): string | null {
-  const u =
+function extractFromJson(d: any): { mediaUrl: string | null; id: string | number | null } {
+  const mediaUrl =
     d?.status?.mediaUrl || d?.item?.mediaUrl || d?.data?.mediaUrl ||
-    d?.mediaUrl || d?.url || d?.status?.url || d?.item?.url;
-  return typeof u === 'string' && u.trim() ? u.trim() : null;
+    d?.mediaUrl || d?.url || d?.status?.url || d?.item?.url || null;
+  const id =
+    d?.id ?? d?.statusId ?? d?.status?.id ?? d?.item?.id ?? d?.data?.id ?? null;
+  return {
+    mediaUrl: typeof mediaUrl === 'string' && mediaUrl.trim() ? mediaUrl.trim() : null,
+    id: id ?? null,
+  };
+}
+
+/** Best-effort background repair — never awaited by the caller, never blocks the publish. */
+function backgroundUpgradeToRealLink(
+  work: File,
+  kind: MediaAiKind,
+  storyId: string | number,
+  upload: UploadFn,
+) {
+  void (async () => {
+    try {
+      const betterUrl = await upload(work, kind);
+      if (!betterUrl || !isPermanentUrl(betterUrl)) return;
+      const metaBody = {
+        id: storyId,
+        statusId: storyId,
+        mediaUrl: betterUrl,
+        url: betterUrl,
+        mediaType: kind,
+        type: kind,
+      };
+      const attempts = [
+        () => fetch('/api/status', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(metaBody) }),
+        () => fetch(`/api/status/${storyId}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(metaBody) }),
+        () => fetch('/api/status/update', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(metaBody) }),
+      ];
+      for (const run of attempts) {
+        try {
+          const r = await run();
+          if (r.ok) {
+            try { window.dispatchEvent(new CustomEvent('stooorna:story-published')); } catch { /* ignore */ }
+            break;
+          }
+        } catch {
+          /* try next */
+        }
+      }
+    } catch {
+      /* best-effort only — a failure here never surfaces to the user */
+    }
+  })();
 }
 
 /**
- * Publish one Story item in ≤ STORY_AI_MAX_MS. Never throws.
- * Never persists a data: URL as the story's mediaUrl (see file header) —
- * that was the actual cause of images not showing after publish.
+ * Publish one Story item in ≤ STORY_AI_MAX_MS. Never throws, and never
+ * requires a real permanent link to succeed — mirrors the proven mechanism
+ * already used for regular posts, then quietly tries to upgrade the link in
+ * the background if the publish had to fall back to a local data:/blob: URL.
  */
 export async function storyAiPublish(
   file: File,
   upload?: UploadFn,
   onStatus?: (msg: string) => void,
 ): Promise<StoryPublishResult> {
-  const started = Date.now();
   const kind = storyAiKindOf(file);
-  onStatus?.(kind === 'video' ? 'جاري معالجة الفيديو…' : 'جاري معالجة الصورة…');
 
-  let work = file;
-  if (kind === 'image') {
-    try {
-      work = await mediaAiNormalizeImage(file);
-    } catch {
-      work = file;
-    }
+  const item: MediaAiItem | null = await mediaAiForceWorkingMedia(file, kind, upload, onStatus);
+  if (!item) {
+    return { ok: false, mediaUrl: '', type: kind, error: 'تعذر تجهيز الوسائط' };
   }
 
-  // 1) Real, permanent link first — bounded so the whole thing stays ≤ 5s.
-  let realUrl: string | null = null;
-  if (upload) {
-    onStatus?.('جاري تجهيز الرابط…');
-    const remaining = Math.max(600, STORY_AI_MAX_MS - (Date.now() - started));
-    const budget = Math.min(UPLOAD_BUDGET_MS, remaining);
-    realUrl = await withTimeout(
-      (async () => {
-        try {
-          const u = await upload(work, kind);
-          return isPermanentUrl(u) ? u : null;
-        } catch {
-          return null;
-        }
-      })(),
-      budget,
-    );
-  }
-
-  // 2) Got a real link — publish it, then actually verify it renders.
-  if (realUrl) {
-    onStatus?.('جاري النشر…');
-    const payload = {
-      mediaUrl: realUrl,
-      url: realUrl,
-      mediaType: kind,
-      type: kind,
-      duration: kind === 'video' ? 15 : 5,
-    };
-    let response = await postStatusJson(payload);
-    if (!response || !response.ok) response = await postStatusFormWithUrl(work, realUrl, kind);
-
-    if (response && response.ok) {
-      // اختبار الرقع — don't just trust a 200; confirm the media actually loads.
-      const verified = await probeUrlLoads(realUrl, kind);
-      try {
-        window.dispatchEvent(new CustomEvent('stooorna:story-published'));
-      } catch {
-        /* ignore */
-      }
-      onStatus?.('تم النشر');
-      // Report success either way once the server accepted it — a failed probe
-      // (e.g. slow CDN warm-up) shouldn't block the publish — but note it.
-      return { ok: true, mediaUrl: realUrl, type: kind, error: verified ? undefined : 'نُشرت، لكن تعذّر التأكد من ظهورها فوراً' };
-    }
-  }
-
-  // 3) No real link in time — let the SERVER store the raw file itself.
-  //    Deliberately never falls back to a data: URL text field here.
   onStatus?.('جاري النشر…');
-  const filesResp = await postStatusFilesOnly(work, kind);
-  if (filesResp && filesResp.ok) {
-    let servedUrl: string | null = null;
-    try {
-      servedUrl = extractMediaUrlFromJson(await filesResp.clone().json());
-    } catch {
-      /* server may not echo JSON back — that's fine, fetchStories() will pick it up */
+  const payload = {
+    mediaUrl: item.url,
+    url: item.url,
+    mediaType: kind,
+    type: kind,
+    duration: kind === 'video' ? 15 : 5,
+  };
+
+  let response = await postStatusJson(payload);
+  let created: any = null;
+  if (response && response.ok) {
+    try { created = await response.clone().json(); } catch { /* server may not echo JSON */ }
+  }
+  if (!response || !response.ok) {
+    response = await postStatusFormWithUrl(file, item.url, kind);
+    if (response && response.ok) {
+      try { created = await response.clone().json(); } catch { /* */ }
     }
-    try {
-      window.dispatchEvent(new CustomEvent('stooorna:story-published'));
-    } catch {
-      /* ignore */
+  }
+  if (!response || !response.ok) {
+    response = await postStatusFilesOnly(file, kind);
+    if (response && response.ok) {
+      try { created = await response.clone().json(); } catch { /* */ }
     }
-    onStatus?.('تم النشر');
-    return { ok: true, mediaUrl: servedUrl || '', type: kind };
   }
 
-  return { ok: false, mediaUrl: '', type: kind, error: 'فشل نشر القصة' };
+  if (!response || !response.ok) {
+    return { ok: false, mediaUrl: item.url, type: kind, error: 'فشل نشر القصة' };
+  }
+
+  const extracted = extractFromJson(created);
+  const finalUrl = extracted.mediaUrl || item.url;
+
+  try {
+    window.dispatchEvent(new CustomEvent('stooorna:story-published'));
+  } catch {
+    /* ignore */
+  }
+  onStatus?.('تم النشر');
+
+  // اختبار الرقع — if we had to fall back to a local URL, verify it renders;
+  // if not, try to quietly upgrade it to a real link in the background.
+  // This never blocks or delays the result the user is waiting on.
+  if (item.source !== 'upload' && upload && extracted.id != null) {
+    probeUrlLoads(finalUrl, kind).then(okLoad => {
+      if (!okLoad) backgroundUpgradeToRealLink(file, kind, extracted.id as string | number, upload);
+    });
+  }
+
+  return { ok: true, mediaUrl: finalUrl, type: kind };
 }

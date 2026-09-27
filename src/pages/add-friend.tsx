@@ -14,7 +14,7 @@ import DirectChatScreen from '@/components/DirectChatScreen';
 import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip } from 'lucide-react';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { usePresenceQuery } from '@/hooks/usePresence';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useGlobalCall } from '@/components/GlobalCallProvider';
@@ -4334,6 +4334,11 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
   const commentInputRef = useRef<HTMLInputElement>(null);
   // ── شيت التعليقات العامة على القصة — يفتح فوق نفس شاشة عرض القصة، ويشوفه أي شخص يدخل يعلق ──
   const [commentsSheetOpen, setCommentsSheetOpen] = useState(false);
+  // الشيت كامل كان draggable بالكامل، فأي لمسة قصيرة (زي زر الإعجاب) كانت أحياناً
+  // تُفسَّر كبداية سحب فتُلغى إعادة onClick على الزر — نحصر السحب الآن بمقبض
+  // السحب فقط (dragListener={false} + useDragControls) بدل كل الشيت، فتبقى
+  // كل الأزرار جوّا (لايك/رد/إيموجي) تستقبل نقراتها بشكل طبيعي.
+  const commentsSheetDragControls = useDragControls();
   const [publicComments, setPublicComments] = useState<StoryComment[]>([]);
   const [publicCommentsLoading, setPublicCommentsLoading] = useState(false);
   const [publicCommentsCount, setPublicCommentsCount] = useState<number>(0);
@@ -4624,6 +4629,12 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
       exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }}
       style={{ position: 'fixed', inset: 0, zIndex: 13000, background: 'hsl(var(--background))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       onClick={e => {
+        // نافذة التعليقات مفتوحة — أي نقرة على القصة تُغلق شيت التعليقات فقط
+        // ولا تنتقل للستوري التالية ولا تُخرج المستخدم من صفحة القصة (كانت
+        // قبل هذا التعديل تصل لهذا onClick وتستدعي goNext مباشرة، واللي عند
+        // آخر عنصر بالقصة كان يستدعي onClose() ويطرد المستخدم للقائمة
+        // الرئيسية). النقرة التالية بعد الإغلاق تتصرف بشكل طبيعي كالمعتاد.
+        if (commentsSheetOpen) { setCommentsSheetOpen(false); return; }
         const x = (e as React.MouseEvent).clientX;
         if (x < window.innerWidth * 0.35) goPrev(); else goNext();
       }}
@@ -5051,6 +5062,8 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
             exit={{ y: '100%' }}
             transition={{ type: 'spring', stiffness: 380, damping: 34, mass: 0.9 }}
             drag="y"
+            dragListener={false}
+            dragControls={commentsSheetDragControls}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0, bottom: 0.5 }}
             onDragEnd={(_e, info) => { if (info.offset.y > 110) setCommentsSheetOpen(false); }}
@@ -5062,8 +5075,11 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
               boxShadow: '0 -8px 30px rgba(0,0,0,0.45)',
             }}
           >
-            {/* مقبض السحب */}
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 6px', flexShrink: 0 }}>
+            {/* مقبض السحب — هو الوحيد المسؤول عن بدء السحب الآن */}
+            <div
+              onPointerDown={e => commentsSheetDragControls.start(e)}
+              style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 6px', flexShrink: 0, touchAction: 'none', cursor: 'grab' }}
+            >
               <div style={{ width: 42, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.32)' }} />
             </div>
 
