@@ -689,112 +689,72 @@ function LocationMapBubble({
   username?: string | null;
   avatarUrl?: string | null;
 }) {
-  const [open, setOpen] = useState(false);
-  const [me, setMe] = useState<{ lat: number; lng: number } | null>(null);
-  const [them, setThem] = useState({ lat, lng });
-  useEffect(() => {
-    if (!open) return;
-    let watch = 0;
-    if (navigator.geolocation) {
-      watch = navigator.geolocation.watchPosition(
-        pos => setMe({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => {},
-        { enableHighAccuracy: true },
-      );
+  const mapsUrl = `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}`;
+  const handleOpen = () => {
+    try {
+      window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+    } catch {
+      window.location.href = mapsUrl;
     }
-    const id = window.setInterval(() => {
-      if (!live) return;
-      setThem(t => ({ lat: t.lat + (Math.random() - 0.5) * 0.00015, lng: t.lng + (Math.random() - 0.5) * 0.00015 }));
-    }, 2500);
-    return () => {
-      if (watch) navigator.geolocation.clearWatch(watch);
-      window.clearInterval(id);
-    };
-  }, [open, live]);
-  const distKm = me
-    ? Math.max(0.1, Math.hypot((them.lat - me.lat) * 111, (them.lng - me.lng) * 85))
-    : 0;
-  const etaMin = Math.max(1, Math.round((distKm / 30) * 60));
-  const embed = `https://maps.google.com/maps?q=${them.lat},${them.lng}&z=15&output=embed`;
+  };
+  const handle = username ? `@${String(username).replace(/^@/, '')}` : (name || 'User');
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 8, width: 250, height: 52,
-          borderRadius: 16, overflow: 'hidden', background: '#fff',
-          border: '1px solid rgba(0,0,0,0.08)', padding: '0 8px', cursor: 'pointer', textAlign: 'left',
-        }}
-      >
-        <div style={{ position: 'relative', width: 52, height: 40, borderRadius: 10, overflow: 'hidden', background: '#e8f4f8', flexShrink: 0 }}>
-          <iframe title="preview" src={embed} style={{ width: '160%', height: '160%', border: 0, pointerEvents: 'none', transform: 'scale(0.72)', transformOrigin: '0 0' }} />
-          {live && (
-            <div style={{
-              position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
-            }}>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', border: '2px solid #22c55e', background: '#eee' }}>
-                {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
-              </div>
-            </div>
-          )}
+    <button
+      type="button"
+      onClick={handleOpen}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        width: 240,
+        minHeight: 56,
+        borderRadius: 14,
+        overflow: 'hidden',
+        background: '#ffffff',
+        border: '1px solid rgba(0,0,0,0.08)',
+        padding: '8px 12px 8px 8px',
+        cursor: 'pointer',
+        textAlign: 'left',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+      }}
+    >
+      {/* Google-style pin badge */}
+      <div style={{
+        width: 44, height: 44, borderRadius: 10, flexShrink: 0,
+        background: 'linear-gradient(180deg, #f8f9fa 0%, #eef1f4 100%)',
+        border: '1px solid rgba(0,0,0,0.06)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        position: 'relative',
+      }}>
+        <div style={{
+          width: 22, height: 22, borderRadius: '50%',
+          background: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+        }}>
+          <span style={{
+            width: 12, height: 12, borderRadius: '50% 50% 50% 0',
+            background: '#ea4335',
+            transform: 'rotate(-45deg)',
+            display: 'block',
+            position: 'relative',
+          }} />
         </div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          {live ? (
-            <p style={{ margin: 0, fontSize: 12, color: '#111', fontWeight: 600 }}>Live location</p>
-          ) : (
-            <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: '#111' }}>{label || 'Location'}</p>
-          )}
-          <p style={{ margin: 0, fontSize: 10, color: '#667781' }}>{username ? `@${String(username).replace(/^@/, '')}` : ''}</p>
-        </div>
-      </button>
-      {open && createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 40000, background: '#0a1a1c' }}>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            style={{
-              position: 'absolute', top: 14, left: 12, zIndex: 3, width: 36, height: 36, borderRadius: '50%',
-              border: '1px solid rgba(0,0,0,0.12)', background: '#fff', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 1,
-            }}
-          >
-            <X size={18} color="#111" strokeWidth={2} />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (me) setThem({ lat: me.lat, lng: me.lng });
-            }}
-            style={{
-              position: 'absolute', bottom: 28, right: 14, zIndex: 4, width: 44, height: 44, borderRadius: '50%',
-              border: '1px solid rgba(0,0,0,0.12)', background: '#fff', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-            }}
-          >
-            <MapPin size={18} color="#111" />
-          </button>
-          <MapPanZoom lat={them.lat} lng={them.lng} />
-          <div style={{
-            position: 'absolute', left: '50%', top: '46%', transform: 'translate(-50%, -50%)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', pointerEvents: 'none', zIndex: 3,
-          }}>
-            <div style={{
-              width: 58, height: 58, borderRadius: '50%', overflow: 'hidden',
-              border: '3px solid #22c55e', background: '#eee', boxShadow: '0 6px 16px rgba(0,0,0,0.28)',
-            }}>
-              {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
-            </div>
-            <span style={{
-              marginTop: 6, padding: '3px 10px', borderRadius: 999,
-              background: '#06261f', color: '#fff', fontWeight: 800, fontSize: 12,
-            }}>
-              {username ? `@${String(username).replace(/^@/, '')}` : (name || 'User')}
-            </span>
-          </div>
-        </div>
-      , document.body)}
-    </>
+        <span style={{
+          position: 'absolute', bottom: 3, left: 0, right: 0,
+          textAlign: 'center', fontSize: 7, fontWeight: 700,
+          color: '#5f6368', letterSpacing: 0.2,
+        }}>Google</span>
+      </div>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: '#202124', lineHeight: 1.2 }}>
+          {label || (live ? 'Live location' : 'Location')}
+        </span>
+        <span style={{ fontSize: 12, fontWeight: 500, color: '#5f6368', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {handle}
+        </span>
+      </div>
+    </button>
   );
 }
 
@@ -952,10 +912,28 @@ function ImageBubble({
     : src;
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdingRef = useRef(false);
   useEffect(() => () => {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
   }, []);
+  useEffect(() => {
+    if (!open) return;
+    const release = () => {
+      holdingRef.current = false;
+      setOpen(false);
+    };
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    window.addEventListener('touchend', release);
+    window.addEventListener('mouseup', release);
+    return () => {
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
+      window.removeEventListener('touchend', release);
+      window.removeEventListener('mouseup', release);
+    };
+  }, [open]);
   const handleImageError = () => {
     if (canRetryWithCacheBust && retryAttempt < MAX_IMAGE_RETRIES) {
       retryTimerRef.current = setTimeout(() => setRetryAttempt(a => a + 1), 650 * (retryAttempt + 1));
@@ -963,12 +941,15 @@ function ImageBubble({
       setBroken(true);
     }
   };
-  const startHold = (e: React.TouchEvent | React.MouseEvent) => {
-    try { e.preventDefault?.(); } catch { /* */ }
+  const startHold = (e: React.PointerEvent | React.TouchEvent | React.MouseEvent) => {
+    holdingRef.current = true;
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
-    longPressTimerRef.current = setTimeout(() => setOpen(true), 220);
+    longPressTimerRef.current = setTimeout(() => {
+      if (holdingRef.current) setOpen(true);
+    }, 300);
   };
   const endHold = () => {
+    holdingRef.current = false;
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
@@ -998,13 +979,14 @@ function ImageBubble({
           WebkitUserSelect: 'none',
           userSelect: 'none',
           touchAction: 'none',
+          WebkitTouchCallout: 'none',
         }}
-        onTouchStart={startHold}
-        onTouchEnd={endHold}
-        onTouchCancel={endHold}
-        onMouseDown={startHold}
-        onMouseUp={endHold}
-        onMouseLeave={endHold}
+        onPointerDown={e => {
+          try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* */ }
+          startHold(e);
+        }}
+        onPointerUp={endHold}
+        onPointerCancel={endHold}
         onContextMenu={e => e.preventDefault()}
       >
         <img
