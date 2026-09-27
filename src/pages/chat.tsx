@@ -987,7 +987,7 @@ function ImageBubble({
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
       if (holdingRef.current) setOpen(true);
-    }, 300);
+    }, 250);
   };
   const endHold = () => {
     holdingRef.current = false;
@@ -6161,6 +6161,8 @@ export default function ChatPage() {
                       scale: 0.98
                     }} onContextMenu={e => {
                       e.preventDefault();
+                      // Images/videos: long-press opens full view (eye) — no Delete menu
+                      if (m.type === 'image' || m.type === 'video') return;
                       setMenuMsgId(m.id);
                     }} style={{
                       background: isMe ? T.bubbleMe : T.bubbleThem,
@@ -6337,7 +6339,7 @@ export default function ChatPage() {
 
                       {/* Action menu */}
                       <AnimatePresence>
-                        {isMenuOpen && <ActionMenu isMe={isMe} msgType={m.type} msgBody={m.body} canEdit={isWithinEditWindow(m.createdAt) && !m.isStreak} onReply={() => startReply(m)} onCopy={() => {
+                        {isMenuOpen && m.type !== 'image' && m.type !== 'video' && <ActionMenu isMe={isMe} msgType={m.type} msgBody={m.body} canEdit={isWithinEditWindow(m.createdAt) && !m.isStreak} onReply={() => startReply(m)} onCopy={() => {
                         if (m.body) navigator.clipboard.writeText(m.body).catch(() => {});
                       }} onEdit={() => startEdit(m)} onDelete={() => deleteMessage(m.id)} onClose={() => setMenuMsgId(null)} />}
                       </AnimatePresence>
@@ -6650,36 +6652,6 @@ export default function ChatPage() {
                       >
                         <Images size={18} strokeWidth={2} color="#00BCD4" />
                         Photo
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setChatAttachOpen(false);
-                          setTimeout(() => docInputRef.current?.click(), 80);
-                        }}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '10px 12px', border: 'none', background: 'transparent',
-                          borderRadius: 10, cursor: 'pointer', color: '#111', fontWeight: 600, fontSize: '0.88rem',
-                        }}
-                      >
-                        <FileText size={18} strokeWidth={2} color="#00BCD4" />
-                        File
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setChatAttachOpen(false);
-                          setTimeout(() => setLocationPickerOpen(true), 80);
-                        }}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '10px 12px', border: 'none', background: 'transparent',
-                          borderRadius: 10, cursor: 'pointer', color: '#111', fontWeight: 600, fontSize: '0.88rem',
-                        }}
-                      >
-                        <MapPin size={18} strokeWidth={2} color="#00BCD4" />
-                        Location
                       </button>
                     </motion.div>
                   )}
