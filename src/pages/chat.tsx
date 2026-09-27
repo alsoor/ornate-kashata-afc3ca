@@ -4059,6 +4059,7 @@ export default function ChatPage() {
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [hideChatChrome, setHideChatChrome] = useState(false);
   const headerMenuRef = useRef<HTMLDivElement | null>(null);
+  const emojiPickerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!headerMenuOpen) return;
     const handler = (e: MouseEvent) => {
@@ -4070,6 +4071,16 @@ export default function ChatPage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [headerMenuOpen]);
+  useEffect(() => {
+    if (!emojiPickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setEmojiPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [emojiPickerOpen]);
   const [leaving, setLeaving] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollBoxRef = useRef<HTMLDivElement>(null);
@@ -6099,7 +6110,7 @@ export default function ChatPage() {
                 </div>
               </div>
             ) : (
-            <div style={{
+            <div ref={emojiPickerRef} style={{
             position: 'relative',
             flex: 1
           }}>
@@ -6143,7 +6154,7 @@ export default function ChatPage() {
               {emojiPickerOpen && (
                 <div style={{
                   position: 'absolute', bottom: 'calc(100% + 8px)', left: 0,
-                  width: 260, maxHeight: 200, overflowY: 'auto',
+                  width: 280, boxSizing: 'border-box', overflow: 'visible',
                   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
                   padding: 8, boxShadow: '0 4px 18px rgba(0,0,0,0.18)', zIndex: 50,
                   display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4,
@@ -6173,7 +6184,7 @@ export default function ChatPage() {
               whileTap={{ scale: 0.92 }}
               onClick={() => {
                 if (isRecording) { void stopRecording(true); return; }
-                if (text.trim()) { void sendText(); return; }
+                if (text.trim()) { setEmojiPickerOpen(false); void sendText(); return; }
                 void startRecording();
               }}
               disabled={sending}
