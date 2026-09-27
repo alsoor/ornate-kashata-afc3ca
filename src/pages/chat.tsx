@@ -4588,6 +4588,10 @@ export default function ChatPage() {
       prevMsgCountRef.current = Math.max(prevMsgCountRef.current, newMsgs.length);
       setMsgs(prev => {
         const temps = prev.filter(m => typeof m.id === 'number' && m.id < 0);
+        // Always keep local playable media currently on screen (never wipe chat empty)
+        const prevPlayableLocal = prev.filter(
+          m => (m.type === 'image' || m.type === 'video' || m.type === 'file') && isPlayableChatMediaBody(m.body)
+        );
         if (newMsgs.length > 0) {
           // 1) Apply sticky bodies so polls never wipe a working local preview
           let merged = newMsgs.map(m => chatApplyStickyBody({ ...m }));
@@ -4598,7 +4602,7 @@ export default function ChatPage() {
             }
           }
           // 3) Attach / patch from optimistic temps (blob/data)
-          for (const t of temps) {
+          for (const t of [...temps, ...prevPlayableLocal.filter(m => typeof m.id === 'number' && m.id < 0)]) {
             const tBody = String(t.body || '');
             const isLocalMedia =
               (t.type === 'image' || t.type === 'video' || t.type === 'file') &&
@@ -4611,58 +4615,66 @@ export default function ChatPage() {
               if (m.senderId !== t.senderId) continue;
               if (!(m.type === 'image' || m.type === 'video' || m.type === 'file')) continue;
               if (isPlayableChatMediaBody(m.body) && !String(m.body).startsWith('blob:') && !String(m.body).startsWith('data:')) {
-                // Real server URL — keep it, drop temp
                 patched = true;
                 break;
               }
-              // Broken/empty server row — sticky local preview on this server id
               chatRememberMediaBody(m.id, tBody);
               merged[i] = { ...m, body: tBody, type: t.type === 'video' ? 'video' : 'image' };
               patched = true;
               break;
             }
-            if (!patched) merged.push(t);
+            if (!patched) {
+              // No server row yet — keep the local bubble so the photo stays visible
+              if (!merged.some(x => x.id === t.id)) merged.push(t);
+            }
           }
           // 4) Final sticky pass
           merged = merged.map(m => chatApplyStickyBody(m));
-          // 5) Drop empty "Shared image" rows when a real/local image from same sender exists nearby
-          //    (prevents image + Shared image duplicate under the same send)
+          // 5) Drop ONLY empty Shared-image rows when a good sibling exists; never drop good local
           const cleaned: typeof merged = [];
           for (const m of merged) {
             const isBrokenImg =
               (m.type === 'image' || m.type === 'file' || m.type === 'video') &&
               !isPlayableChatMediaBody(m.body);
             if (isBrokenImg) {
-              const mAt = m.createdAt ? new Date(m.createdAt).getTime() : 0;
-              const hasGoodSibling = merged.some(o => {
-                if (o.id === m.id) return false;
-                if (o.senderId !== m.senderId) return false;
-                if (!(o.type === 'image' || o.type === 'video' || o.type === 'file')) return false;
-                if (!isPlayableChatMediaBody(o.body)) return false;
-                const oAt = o.createdAt ? new Date(o.createdAt).getTime() : 0;
-                if (mAt && oAt && Math.abs(mAt - oAt) > 180000) return false;
-                return true;
-              });
-              // Also drop if sticky already shows the same content on another row
-              if (hasGoodSibling) continue;
-              // Orphan broken placeholder with no sibling — try sticky on id, else drop if empty
               const sticky = chatStickyMediaBodies.get(m.id);
               if (sticky) {
                 cleaned.push({ ...m, body: sticky, type: m.type === 'video' ? 'video' : 'image' });
                 continue;
               }
-              // Keep nothing for pure empty Shared image with no local preview
+              // Try latest sticky from same sender temps
+              let found = false;
+              for (const [sid, body] of chatStickyMediaBodies) {
+                if (sid < 0 && isPlayableChatMediaBody(body)) {
+                  chatRememberMediaBody(m.id, body);
+                  cleaned.push({ ...m, body, type: 'image' });
+                  found = true;
+                  break;
+                }
+              }
+              if (found) continue;
+              // Drop pure empty placeholder only
               continue;
             }
             cleaned.push(m);
           }
-          // 6) Prefer not to keep negative-id temps if a server image row already carries sticky body
-          const hasServerSticky = cleaned.some(
+          // 6) Remove temp only if server row already shows same playable body
+          const hasServerPlayable = cleaned.some(
             m => typeof m.id === 'number' && m.id >= 0 && (m.type === 'image' || m.type === 'video') && isPlayableChatMediaBody(m.body)
           );
-          const finalMsgs = hasServerSticky
-            ? cleaned.filter(m => !(typeof m.id === 'number' && m.id < 0 && (m.type === 'image' || m.type === 'video')))
+          let finalMsgs = hasServerPlayable
+            ? cleaned.filter(m => !(typeof m.id === 'number' && m.id < 0 && (m.type === 'image' || m.type === 'video') && isPlayableChatMediaBody(m.body)))
             : cleaned;
+          // Safety: never wipe the chat to empty if we had local media
+          if (finalMsgs.length === 0 && prev.length > 0) {
+            return prev;
+          }
+          // Safety: if local playable was lost, re-append
+          for (const p of prevPlayableLocal) {
+            if (isPlayableChatMediaBody(p.body) && !finalMsgs.some(m => isPlayableChatMediaBody(m.body) && m.senderId === p.senderId)) {
+              finalMsgs = [...finalMsgs, p];
+            }
+          }
           return finalMsgs;
         }
         // The fetch came back with nothing usable. If the user just cleared
