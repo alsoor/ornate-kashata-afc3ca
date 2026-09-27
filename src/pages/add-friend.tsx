@@ -620,6 +620,7 @@ interface StoryItem {
   musicBadgeX?: number | null;
   musicBadgeY?: number | null;
   musicBadgeScale?: number | null;
+  commentsCount?: number;
 }
 interface StoryGroup {
   userId: string;
@@ -4292,10 +4293,13 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 }
 
 // ── StoryViewer — fullscreen viewer ───────────────────────────────────────────
-function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia, onPublishPhoto, onPublishVideo, onOpenCamera, onDeleteItem, onSendComment, isCompanyPublisher = false, onOpenSettings, onOpenFriends, onOpenChat }: {
+function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = null, onClose, onSeen, onAddMedia, onPublishPhoto, onPublishVideo, onOpenCamera, onDeleteItem, onSendComment, isCompanyPublisher = false, onOpenSettings, onOpenFriends, onOpenChat }: {
   groups: StoryGroup[];
   startGroupIdx: number;
   myId: string;
+  /** اسم/صورة المستخدم الحالي — تظهر بجانب مستطيل التعليق (خارج الشيت وداخله) لأنه هو من يعلّق ── */
+  myName?: string;
+  myAvatarUrl?: string | null;
   onClose: () => void;
   onSeen: (storyId: number) => void;
   onAddMedia: () => void;
@@ -4327,6 +4331,11 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
   const [commentSent, setCommentSent] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const commentInputRef = useRef<HTMLInputElement>(null);
+  // ── شيت التعليقات العامة على القصة — يفتح فوق نفس شاشة عرض القصة، ويشوفه أي شخص يدخل يعلق ──
+  const [commentsSheetOpen, setCommentsSheetOpen] = useState(false);
+  const [publicComments, setPublicComments] = useState<StoryComment[]>([]);
+  const [publicCommentsLoading, setPublicCommentsLoading] = useState(false);
+  const [publicCommentsCount, setPublicCommentsCount] = useState<number>(0);
   // ── الزائد المنقول من الشريط السفلي للبوست العام (إعدادات/أصدقاء/اتصال/دردشة/بث) ──
   const [storyPlusOpen, setStoryPlusOpen] = useState(false);
   const incomingCallUi = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
@@ -4420,6 +4429,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
     const tick = 50;
     timerRef.current = setInterval(() => {
       setProgress(p => {
+        if (commentsSheetOpenRef.current) return p; // موقوف مؤقتاً — شيت التعليقات مفتوح
         const next = p + (tick / dur) * 100;
         if (next >= 100) { clearInterval(timerRef.current!); goNext(); return 100; }
         return next;
@@ -4433,7 +4443,51 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
     setCommentSent(false);
     setEmojiOpen(false);
     setDeleteError(null);
+    setCommentsSheetOpen(false);
+    setPublicComments([]);
+    setPublicCommentsCount(0);
   }, [item?.id]);
+
+  // ── يجلب التعليقات العامة على هذه القصة — نفس نقطة /api/status/:id/comments المستخدمة
+  // أصلاً في صندوق تعليقات صاحب القصة، لكن هنا يقرأها أي شخص يشاهد القصة (مو بس صاحبها) ──
+  const fetchPublicStoryComments = useCallback(async (storyId: number) => {
+    setPublicCommentsLoading(true);
+    try {
+      const r = await fetch(`/api/status/${storyId}/comments`, { credentials: 'include' });
+      if (!r.ok) return;
+      const d = await r.json() as { comments: StoryComment[] };
+      const list = d.comments ?? [];
+      setPublicComments(list);
+      setPublicCommentsCount(list.length);
+    } catch { /* silent — العداد يبقى على آخر قيمة معروفة */ }
+    finally { setPublicCommentsLoading(false); }
+  }, []);
+
+  // يجلب العدّاد بصمت بمجرد ظهور القصة، حتى يظهر رقم التعليقات خارج المستطيل قبل الدخول
+  useEffect(() => {
+    if (!item) return;
+    void fetchPublicStoryComments(item.id);
+  }, [item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // يوقف عدّاد تقدّم القصة التلقائي أثناء فتح شيت التعليقات، حتى لا تنتقل القصة والمستخدم يقرأ/يعلّق
+  const commentsSheetOpenRef = useRef(false);
+  useEffect(() => { commentsSheetOpenRef.current = commentsSheetOpen; }, [commentsSheetOpen]);
+
+  // إعجاب/إلغاء إعجاب بتعليق داخل شيت التعليقات العامة — نفس نقطة الإعجاب المستخدمة في صندوق صاحب القصة
+  async function togglePublicCommentLike(comment: StoryComment) {
+    const previous = publicComments;
+    setPublicComments(list => list.map(c => c.id === comment.id
+      ? { ...c, likedByMe: !c.likedByMe, likesCount: Math.max(0, c.likesCount + (c.likedByMe ? -1 : 1)) }
+      : c));
+    try {
+      const response = await fetch(`/api/status/comments/${comment.id}/like`, { method: 'POST', credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to save like');
+      const data = await response.json() as { liked: boolean; likeCount: number };
+      setPublicComments(list => list.map(c => c.id === comment.id ? { ...c, likedByMe: data.liked, likesCount: data.likeCount } : c));
+    } catch {
+      setPublicComments(previous);
+    }
+  }
 
   if (!group || !item) return null;
 
@@ -4524,6 +4578,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
       if (sent) {
         setCommentSent(true);
         setTimeout(() => setCommentSent(false), 1600);
+        void fetchPublicStoryComments(storyId); // يحدّث قائمة التعليقات العامة + العداد فوراً بعد الإرسال
       } else {
         setCommentText(trimmed);
       }
@@ -4692,71 +4747,39 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
           display: 'flex', flexDirection: 'column', gap: 8,
         }}
       >
-          {!isMyStory && emojiOpen && (
-            <div style={{
-              display: 'flex', gap: 6, padding: '8px 10px', borderRadius: 14,
-              background: 'rgba(20,20,20,0.72)', backdropFilter: 'blur(10px)',
-              width: 'fit-content',
-            }}>
-              {add_friend.QUICK_EMOJIS.map(em => (
-                <button
-                  key={em}
-                  onClick={() => { setCommentText(t => t + em); commentInputRef.current?.focus(); }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.15rem', padding: 2, lineHeight: 1 }}
-                >
-                  {em}
-                </button>
-              ))}
+          {/* ── صف الإيموجي السريع القديم انتقل لداخل شيت التعليقات العامة الجديد (أسفل الملف) — نفس QUICK_EMOJIS ولم يُحذف ── */}
+          {publicCommentsCount > 0 && (
+            <div style={{ display: 'flex', justifyContent: isMyStory ? 'flex-end' : 'flex-start' }}>
+              <button
+                type="button"
+                onClick={() => setCommentsSheetOpen(true)}
+                style={{ background: 'none', border: 'none', padding: '0 6px', cursor: 'pointer', color: 'rgba(255,255,255,0.75)', fontSize: '0.7rem', fontWeight: 700 }}
+              >
+                {formatCompactCount(publicCommentsCount)} تعليق
+              </button>
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: isMyStory ? 'flex-end' : 'flex-start' }}>
-            {!isMyStory && (
+            <UserAvatar name={myName} avatarUrl={myAvatarUrl ?? null} size={34} />
             <button
-              onClick={() => setEmojiOpen(o => !o)}
-              aria-label="إيموجي"
+              type="button"
+              onClick={() => setCommentsSheetOpen(true)}
+              aria-label="فتح التعليقات"
               style={{
-                width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
-                background: emojiOpen ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.12)',
-                border: 'none', color: '#fff', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flex: 1, maxWidth: 280, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)',
+                borderRadius: 22, padding: '9px 8px 9px 16px', color: 'rgba(255,255,255,0.75)', fontSize: '0.85rem',
+                cursor: 'pointer', textAlign: 'start', fontFamily: 'inherit',
               }}
             >
-              <Smile size={18} strokeWidth={2} />
+              <span>ما رأيك بهذا؟</span>
+              <span style={{
+                width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                background: 'rgba(255,255,255,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Smile size={15} strokeWidth={2} color="#fff" />
+              </span>
             </button>
-            )}
-            {!isMyStory && (
-            <input
-              ref={commentInputRef}
-              value={commentText}
-              onChange={e => setCommentText(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !commentSending) handleSubmitComment(); }}
-              placeholder="اكتب تعليقاً..."
-              style={{
-                flex: 1, background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.22)',
-                borderRadius: 22, padding: '10px 16px', color: '#fff', fontSize: '0.85rem', outline: 'none',
-              }}
-            />
-            )}
-            {!isMyStory && (
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              disabled={commentSending || !commentText.trim()}
-              onClick={handleSubmitComment}
-              aria-label="إرسال التعليق"
-              style={{
-                width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
-                background: commentText.trim() ? 'hsl(var(--primary))' : 'rgba(255,255,255,0.14)',
-                border: 'none', color: commentText.trim() ? '#06171a' : 'rgba(255,255,255,0.6)',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >
-              {commentSending ? (
-                <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }} style={{
-                  width: 13, height: 13, borderRadius: '50%', border: '2px solid rgba(0,0,0,0.25)', borderTopColor: '#06171a',
-                }} />
-              ) : <Send size={15} strokeWidth={2.4} />}
-            </motion.button>
-            )}
 
             {/* الزائد — مخفي حاليًا داخل صفحة عرض القصة فقط (باقي أماكن الزر + الأخرى لم تُمس) */}
             {false && (
@@ -4983,6 +5006,161 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
           </AnimatePresence>
           )}
         </div>
+
+      {/* ── شيت التعليقات العامة على القصة — يفتح من مستطيل "ما رأيك بهذا؟" بالأسفل، يشوفه ويكتب فيه أي شخص يدخل القصة ── */}
+      <AnimatePresence>
+        {commentsSheetOpen && (
+          <motion.div
+            key="story-comments-sheet"
+            onClick={e => e.stopPropagation()}
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', stiffness: 380, damping: 34, mass: 0.9 }}
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.5 }}
+            onDragEnd={(_e, info) => { if (info.offset.y > 110) setCommentsSheetOpen(false); }}
+            style={{
+              position: 'absolute', left: 0, right: 0, bottom: 0, top: '20%', zIndex: 20,
+              background: '#161616',
+              borderTopLeftRadius: 20, borderTopRightRadius: 20,
+              display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              boxShadow: '0 -8px 30px rgba(0,0,0,0.45)',
+            }}
+          >
+            {/* مقبض السحب */}
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 6px', flexShrink: 0 }}>
+              <div style={{ width: 42, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.32)' }} />
+            </div>
+
+            {/* قائمة التعليقات */}
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', padding: '0 16px 8px' }}>
+              {publicCommentsLoading && publicComments.length === 0 && (
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem', textAlign: 'center', padding: '28px 0' }}>...جارِ التحميل</p>
+              )}
+              {!publicCommentsLoading && publicComments.length === 0 && (
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.78rem', textAlign: 'center', padding: '28px 0' }}>لا توجد تعليقات بعد — كن أول من يعلّق</p>
+              )}
+              {publicComments.map(c => (
+                <div key={c.id} style={{ display: 'flex', gap: 10, padding: '9px 0', marginInlineStart: c.parentCommentId ? 26 : 0 }}>
+                  <UserAvatar name={c.authorName} avatarUrl={c.authorAvatarUrl} size={32} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                      <span style={{ color: '#fff', fontSize: '0.8rem', fontWeight: 700 }}>{c.authorName}</span>
+                      <VipBadge userId={c.authorId} compact />
+                      <span style={{ color: 'rgba(255,255,255,0.42)', fontSize: '0.64rem' }}>{storyRelativeTime(c.createdAt)}</span>
+                    </div>
+                    <p style={{ color: 'rgba(255,255,255,0.92)', fontSize: '0.85rem', margin: '3px 0 0', lineHeight: 1.45, wordBreak: 'break-word' }}>{c.text}</p>
+                    <button
+                      type="button"
+                      onClick={() => { setCommentText(t => (t ? t : `@${c.authorName} `)); commentInputRef.current?.focus(); }}
+                      style={{ background: 'none', border: 'none', padding: 0, marginTop: 4, color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      رد
+                    </button>
+                  </div>
+                  <motion.button
+                    whileTap={{ scale: 0.85 }}
+                    onClick={() => togglePublicCommentLike(c)}
+                    aria-label="إعجاب بالتعليق"
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                      background: 'none', border: 'none', cursor: 'pointer', padding: '4px 2px', flexShrink: 0,
+                      color: c.likedByMe ? '#ef4444' : 'rgba(255,255,255,0.5)',
+                    }}
+                  >
+                    <Heart size={15} strokeWidth={2} fill={c.likedByMe ? '#ef4444' : 'none'} />
+                    <span style={{ fontSize: '0.6rem', fontWeight: 600 }}>{c.likesCount > 0 ? formatCompactCount(c.likesCount) : ''}</span>
+                  </motion.button>
+                </div>
+              ))}
+            </div>
+
+            {/* شريط ردود فعل سريعة — لمسة واحدة تضيفها لصندوق التعليق */}
+            <div style={{ display: 'flex', gap: 4, padding: '4px 12px', overflowX: 'auto', flexShrink: 0 }}>
+              {['❤️', '🩶', '🔥', '👏', '😍', '💔', '🤍', '🙌'].map(em => (
+                <button
+                  key={em}
+                  type="button"
+                  onClick={() => { setCommentText(t => t + em); commentInputRef.current?.focus(); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.35rem', padding: '4px 6px', lineHeight: 1, flexShrink: 0 }}
+                >
+                  {em}
+                </button>
+              ))}
+            </div>
+
+            {/* لوحة إيموجي إضافية — نفس QUICK_EMOJIS المنقولة من الشريط القديم، تفتح بزر الإيموجي بالأسفل */}
+            {emojiOpen && (
+              <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px', flexWrap: 'wrap', flexShrink: 0 }}>
+                {add_friend.QUICK_EMOJIS.map(em => (
+                  <button
+                    key={em}
+                    type="button"
+                    onClick={() => { setCommentText(t => t + em); commentInputRef.current?.focus(); }}
+                    style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: '1.05rem', padding: '4px 8px', lineHeight: 1 }}
+                  >
+                    {em}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* صندوق الكتابة — صورة المستخدم الحالي بجانبه (نفس الشخص الي داش على القصة ويبي يعلّق) */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 14px calc(10px + env(safe-area-inset-bottom))',
+              borderTop: '1px solid rgba(255,255,255,0.08)', flexShrink: 0,
+            }}>
+              <UserAvatar name={myName} avatarUrl={myAvatarUrl ?? null} size={30} />
+              <input
+                ref={commentInputRef}
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !commentSending) handleSubmitComment(); }}
+                placeholder="ما رأيك بهذا؟"
+                style={{
+                  flex: 1, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: 22, padding: '10px 16px', color: '#fff', fontSize: '0.85rem', outline: 'none',
+                }}
+              />
+              {/* أيقونة الإيموجي — محل أيقونة الـ gift في التصميم المرجعي */}
+              <button
+                type="button"
+                onClick={() => setEmojiOpen(o => !o)}
+                aria-label="إيموجي"
+                style={{
+                  width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                  background: emojiOpen ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.1)',
+                  border: 'none', color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <Smile size={17} strokeWidth={2} />
+              </button>
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                disabled={commentSending || !commentText.trim()}
+                onClick={handleSubmitComment}
+                aria-label="إرسال التعليق"
+                style={{
+                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                  background: commentText.trim() ? 'hsl(var(--primary))' : 'rgba(255,255,255,0.12)',
+                  border: 'none', color: commentText.trim() ? '#06171a' : 'rgba(255,255,255,0.5)',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                {commentSending ? (
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }} style={{
+                    width: 13, height: 13, borderRadius: '50%', border: '2px solid rgba(0,0,0,0.25)', borderTopColor: '#06171a',
+                  }} />
+                ) : <Send size={14} strokeWidth={2.4} />}
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -22865,6 +23043,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             groups={storyGroups}
             startGroupIdx={viewerGroupIdx}
             myId={user?.id ?? ''}
+            myName={user?.name ?? ''}
+            myAvatarUrl={localAvatarUrl ?? (user as any)?.avatarUrl ?? null}
             onClose={() => setViewerGroupIdx(null)}
             onSeen={markStorySeen}
             onAddMedia={() => { requestAnimationFrame(() => storyAddFileRef.current?.click()); }}
