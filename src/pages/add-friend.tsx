@@ -5233,8 +5233,7 @@ async function fetchWithTimeout(resource: string, ms = 4500): Promise<Response |
 function inAppVisualFrame(pageUrl: string, stage = 0): string {
   const embed = inAppEmbedSrc(pageUrl);
   if (embed) return embed;
-  if (stage <= 0) return `/api/proxy-page?url=${encodeURIComponent(pageUrl)}`;
-  if (stage === 1) return `https://api.allorigins.win/raw?url=${encodeURIComponent(pageUrl)}`;
+  if (stage <= 0) return `https://api.allorigins.win/raw?url=${encodeURIComponent(pageUrl)}`;
   return `https://corsproxy.io/?${encodeURIComponent(pageUrl)}`;
 }
 
@@ -5304,7 +5303,15 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
         }
       }
       try { (window as any).__stooornaFrameStage = 0; } catch { /* */ }
-      setFrameSrc(inAppVisualFrame(target, 0));
+      const embed = inAppEmbedSrc(target);
+      if (embed) {
+        setFrameSrc(embed);
+      } else {
+        const html = await fetchInAppHtml(target);
+        if (cancelled) return;
+        if (html) setSrcDoc(html);
+        else setFrameSrc(inAppVisualFrame(target, 0));
+      }
       setKind('site');
       setLoading(false);
     };
