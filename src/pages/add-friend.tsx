@@ -1910,6 +1910,123 @@ function storyRingColor(items: StoryItem[], unseenColor: string, seenColor: stri
   return hasUnseen ? unseenColor : seenColor;
 }
 
+// ── HeaderStoryCircle — دائرة واحدة في شريط قصص الهيدر تدعم حالة البث المباشر ──
+// تُستخدم لكل من: (أ) المستخدمين الذين نشروا ستوري (items غير فارغة)، و
+// (ب) الأصدقاء المباشرين بدون أي ستوري منشورة (items فارغة) — تظهر فقط إن
+// كانوا في بث مباشر فعلاً، بنفس مكان وشكل دائرة الستوري لكن بإطار أحمر.
+// - بث بدون ستوري: نقرة واحدة تفتح البث مباشرة.
+// - ستوري + بث معاً: نقرة تفتح قائمة اختيار (مشاهدة الستوري / الدخول للبث).
+function HeaderStoryCircle({
+  userId, name, username, avatarUrl, items, onOpenStory, extraButtonStyle,
+}: {
+  userId: string;
+  name: string | null;
+  username: string | null;
+  avatarUrl: string | null;
+  items: StoryItem[];
+  onOpenStory: () => void;
+  extraButtonStyle?: React.CSSProperties;
+}) {
+  const navigate = useNavigate();
+  const liveKind = useLiveBroadcastKind(userId);
+  const liveActive = liveKind != null;
+  const hasStory = items.length > 0;
+  const hasUnseen = items.some(it => !it.seen);
+  const [choiceOpen, setChoiceOpen] = useState(false);
+
+  // لا شيء لعرضه: لا ستوري ولا بث مباشر
+  if (!hasStory && !liveActive) return null;
+
+  const goLive = () => {
+    const qs = new URLSearchParams({ hostId: userId, hostName: name || username || 'Host' });
+    if (username) qs.set('hostUsername', username);
+    if (avatarUrl) qs.set('hostAvatar', avatarUrl);
+    const path = liveKind === 'camera' ? '/live-camera' : '/live';
+    navigate(`${path}?${qs.toString()}`);
+  };
+
+  const handleClick = () => {
+    if (liveActive && hasStory) { setChoiceOpen(o => !o); return; }
+    if (liveActive) { goLive(); return; }
+    onOpenStory();
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0, position: 'relative' }}>
+      <motion.button
+        whileTap={{ scale: 0.9 }}
+        onClick={handleClick}
+        style={{ width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', ...extraButtonStyle }}
+      >
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: '50%',
+          background: liveActive ? '#ef4444' : storyRingColor(items, '#facc15', '#0ea5e9'),
+          padding: 3, boxSizing: 'border-box',
+          boxShadow: liveActive ? '0 0 10px rgba(239,68,68,0.55)' : (hasUnseen ? '0 0 8px rgba(250,204,21,0.45)' : 'none'),
+        }}>
+          {liveActive ? (
+            <motion.div
+              animate={{ opacity: [1, 0.45, 1] }}
+              transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+              style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid #ef4444' }}
+            />
+          ) : (!hasUnseen && hasStory && (
+            <div
+              className="story-ring-shimmer"
+              style={{
+                position: 'absolute', inset: 0, borderRadius: '50%',
+                background: 'conic-gradient(from 0deg, transparent 0%, transparent 80%, rgba(224,242,254,0.95) 92%, #38bdf8 97%, transparent 100%)',
+              }}
+            />
+          ))}
+          <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
+            <VipAvatarFrame userId={userId} size={53}>
+              <UserAvatar name={name ?? ''} avatarUrl={avatarUrl} size={53} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+            </VipAvatarFrame>
+          </div>
+        </div>
+      </motion.button>
+      <span style={{ fontSize: '0.55rem', color: CLR_TEXT_DIM, maxWidth: 60, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {username ? `@${username}` : name}
+      </span>
+
+      {choiceOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={() => setChoiceOpen(false)}
+            style={{ position: 'fixed', inset: 0, zIndex: 10210, background: 'transparent', border: 'none', cursor: 'default' }}
+          />
+          <div style={{
+            position: 'absolute', top: 66, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 10220, minWidth: 176, padding: 6, borderRadius: 12,
+            background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))',
+            boxShadow: '0 12px 28px hsl(var(--background)/0.5)',
+            display: 'flex', flexDirection: 'column', gap: 2,
+          }}>
+            <button
+              type="button"
+              onClick={() => { setChoiceOpen(false); onOpenStory(); }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}
+            >
+              مشاهدة الستوري
+            </button>
+            <button
+              type="button"
+              onClick={() => { setChoiceOpen(false); goLive(); }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'right' }}
+            >
+              <Radio size={15} strokeWidth={2.3} color="#ef4444" />
+              {liveKind === 'camera' ? 'الدخول على البث المرئي' : 'الدخول على البث الصوتي'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── CameraStoryCapture — كاميرا مدمجة لنشر القصة مباشرة ────────────────────────
 // نقرة قصيرة على الدائرة = صورة، ضغط مطوّل = تسجيل فيديو (مع عدّاد مدة)،
 // نقرتان متتاليتان على الشاشة = تبديل الكاميرا الأمامية/الخلفية، وأزرار التحكم
@@ -17417,52 +17534,43 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   return !isCompanyUserAccount({ id: g.userId, username: g.username, name: g.name }, companies);
                 }).map((g) => {
                   const realIdx = storyGroups.indexOf(g);
-                  const hasUnseen = g.items.some(it => !it.seen);
                   return (
-                    <div key={g.userId} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-                      <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => setViewerGroupIdx(realIdx)}
-                        style={{
-                          width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative',
-                          transform: storyPullProgress > 0 ? `scale(${1 + storyPullProgress * 0.28})` : undefined,
-                          transformOrigin: 'center center',
-                          transition: storyPullProgress > 0 ? 'none' : 'transform 0.22s ease',
-                          zIndex: storyPullProgress > 0.2 ? 5 : undefined,
-                        }}
-                      >
-                        {/* حلقة بلونين فقط: أصفر كامل ما دام في عنصر غير مُشاهَد،
-                            وأزرق كامل (نفس أزرق دائرة "قصتي") بعد مشاهدة كل العناصر */}
-                        <div style={{
-                          position: 'absolute', inset: 0, borderRadius: '50%',
-                          background: storyRingColor(g.items, '#facc15', '#0ea5e9'),
-                          padding: 3, boxSizing: 'border-box',
-                          boxShadow: hasUnseen ? '0 0 8px rgba(250,204,21,0.45)' : 'none',
-                        }}>
-                          {/* وميض دوّار يظهر فقط داخل شريط الحلقة الزرقاء (بعد المشاهدة)
-                              ليثبت إن فيه ستوري حالي — الحلقة الصفراء تبقى ثابتة بدون حركة */}
-                          {!hasUnseen && g.items.length > 0 && (
-                            <div
-                              className="story-ring-shimmer"
-                              style={{
-                                position: 'absolute', inset: 0, borderRadius: '50%',
-                                background: 'conic-gradient(from 0deg, transparent 0%, transparent 80%, rgba(224,242,254,0.95) 92%, #38bdf8 97%, transparent 100%)',
-                              }}
-                            />
-                          )}
-                          <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
-                            <VipAvatarFrame userId={g.userId} size={53}>
-                              <UserAvatar name={g.name} avatarUrl={g.avatarUrl} size={53} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
-                            </VipAvatarFrame>
-                          </div>
-                        </div>
-                      </motion.button>
-                      <span style={{ fontSize: '0.55rem', color: CLR_TEXT_DIM, maxWidth: 60, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {g.username ? `@${g.username}` : g.name}
-                      </span>
-                    </div>
+                    <HeaderStoryCircle
+                      key={g.userId}
+                      userId={g.userId}
+                      name={g.name}
+                      username={g.username}
+                      avatarUrl={g.avatarUrl}
+                      items={g.items}
+                      onOpenStory={() => setViewerGroupIdx(realIdx)}
+                      extraButtonStyle={{
+                        transform: storyPullProgress > 0 ? `scale(${1 + storyPullProgress * 0.28})` : undefined,
+                        transformOrigin: 'center center',
+                        transition: storyPullProgress > 0 ? 'none' : 'transform 0.22s ease',
+                        zIndex: storyPullProgress > 0.2 ? 5 : undefined,
+                      }}
+                    />
                   );
                 })}
+                {/* ── أصدقاء بلا ستوري منشورة لكنهم في بث صوتي/مرئي مباشر الآن —
+                    تظهر بنفس مكان دوائر الستوري وبنفس الشكل تمامًا، لكن بإطار
+                    أحمر بدل الأصفر/الأزرق، وتختفي تلقائيًا بمجرد انتهاء البث
+                    (HeaderStoryCircle نفسها ترجع null إن لم يعد هناك بث ولا ستوري). ── */}
+                {friends.filter(f => {
+                  if (!f.friendId || f.friendId === user?.id) return false;
+                  if (storyGroups.some(g => g.userId === f.friendId)) return false; // له ستوري بالفعل — عولج أعلاه
+                  return !isCompanyUserAccount({ id: f.friendId, username: f.username, name: f.name }, companies);
+                }).map((f) => (
+                  <HeaderStoryCircle
+                    key={`live-${f.friendId}`}
+                    userId={f.friendId}
+                    name={f.name}
+                    username={f.username}
+                    avatarUrl={f.avatarUrl ?? null}
+                    items={[]}
+                    onOpenStory={() => {}}
+                  />
+                ))}
               </div>
             </>
           )}
