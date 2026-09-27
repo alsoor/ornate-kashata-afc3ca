@@ -580,12 +580,12 @@ function SinglePostVideoPlayer({ src, active }: { src: string; active: boolean }
             onClick={e => { e.stopPropagation(); setMuted(m => !m); }}
             aria-label={muted ? 'Unmute' : 'Mute'}
             style={{
-              width: 36, height: 36, borderRadius: '50%', border: 'none',
-              background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
+              width: 52, height: 52, borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.18)', color: '#fff', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
             }}
           >
-            {muted ? <VolumeX size={16} strokeWidth={2.2} /> : <Volume2 size={16} strokeWidth={2.2} />}
+            {muted ? <VolumeX size={26} strokeWidth={2.2} /> : <Volume2 size={26} strokeWidth={2.2} />}
           </button>
         </div>
       </div>
@@ -6085,6 +6085,7 @@ function PostCard({
       entries.forEach(entry => {
         const v = entry.target as HTMLVideoElement;
         if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+          v.muted = true;
           if (v.paused) void v.play().catch(() => {});
         } else if (!v.paused) {
           v.pause();
@@ -6407,7 +6408,8 @@ function PostCard({
                       <video
                         ref={el => registerFeedVideoEl(index, el)}
                         src={media.url}
-                        muted={feedMuted[index] === true}
+                        muted
+                        autoPlay
                         loop
                         playsInline
                         preload="metadata"
@@ -6427,25 +6429,6 @@ function PostCard({
                       />
                     )}
                   </button>
-                  {/* أيقونة كتم/تشغيل الصوت — تحل محل أزرار الفيديو الافتراضية (controls) على
-                      معاينة الفييد الصغيرة، فتبقى الصورة/الفيديو تبين كاملة وبعيدة بدون تحكمات كبيرة تغطيها. */}
-                  {media.type === 'video' && (
-                    <motion.button
-                      whileTap={{ scale: 0.88 }}
-                      onClick={e => {
-                        e.stopPropagation();
-                        setFeedMuted(prev => ({ ...prev, [index]: prev[index] === false ? true : false }));
-                      }}
-                      aria-label={feedMuted[index] === true ? 'تشغيل الصوت' : 'كتم الصوت'}
-                      style={{
-                        position: 'absolute', bottom: 10, insetInlineEnd: 10, width: 30, height: 30, borderRadius: '50%',
-                        background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
-                      }}
-                    >
-                      {feedMuted[index] === true ? <VolumeX size={14} strokeWidth={2.2} /> : <Volume2 size={14} strokeWidth={2.2} />}
-                    </motion.button>
-                  )}
                   {false && isMine && index === 0 && null}
                 </div>
               ))}
@@ -6817,7 +6800,7 @@ function PostCard({
                 src={mediaLightbox.url}
                 controls
                 autoPlay
-                muted={lightboxMuted}
+                muted={false}
                 playsInline
                 style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
               />
@@ -8127,7 +8110,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   src={mediaLightbox.url}
                   controls
                   autoPlay
-                  muted={lightboxMuted}
+                  muted={false}
                   playsInline
                   style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
                 />
