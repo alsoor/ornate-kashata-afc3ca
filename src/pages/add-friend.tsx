@@ -5010,7 +5010,8 @@ function XLinkMedia({ statusUrl, failedNote }: { statusUrl: string; failedNote?:
 /** تصنيف صارم لروابط الملفات المباشرة (امتداد/format=/مضيفات معروفة) — حتى لا نُدرج صفحات عادية كفيديو */
 function classifyDirectMediaUrl(raw: string): 'image' | 'video' | null {
   try {
-    const u = new URL(raw);
+    const base = (typeof window !== 'undefined' && window.location?.origin) ? window.location.origin : 'https://local';
+    const u = raw.startsWith('/') ? new URL(raw, base) : new URL(raw);
     const full = u.href;
     if (IMAGE_EXT_RE.test(u.pathname) || IMAGE_EXT_RE.test(full)) return 'image';
     if (VIDEO_EXT_RE.test(u.pathname) || VIDEO_EXT_RE.test(full)) return 'video';
@@ -5018,7 +5019,19 @@ function classifyDirectMediaUrl(raw: string): 'image' | 'video' | null {
     if (/[?&](format|ext|type)=(mp4|webm|mov)/i.test(full)) return 'video';
     if (/(^|\.)video\.twimg\.com$/i.test(u.hostname)) return 'video';
     if (/(^|\.)(pbs\.twimg\.com|images\.unsplash\.com|i\.imgur\.com|cdn\.discordapp\.com|media\.tenor\.com)$/i.test(u.hostname)) return 'image';
+    // Same-origin storage paths from /api/posts/media (may lack file extension)
+    if (typeof window !== 'undefined' && window.location?.hostname && u.hostname === window.location.hostname) {
+      if (/\/(upload|media|file|storage|cdn|posts?|blob|assets?)\b/i.test(u.pathname)) {
+        if (/video|mp4|webm|mov/i.test(u.pathname + full)) return 'video';
+        return 'image';
+      }
+    }
   } catch { /* not a url */ }
+  // Relative path without origin
+  if (typeof raw === 'string' && raw.startsWith('/')) {
+    if (VIDEO_EXT_RE.test(raw) || /\/(video|mp4)\b/i.test(raw)) return 'video';
+    if (IMAGE_EXT_RE.test(raw) || /\/(upload|media|file|storage|posts?)\b/i.test(raw)) return 'image';
+  }
   return null;
 }
 
@@ -13225,7 +13238,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const linkCandidates = linkRaw
       ? linkRaw.split(/[\s\n]+/).map(s => s.trim()).filter(Boolean).map(s => {
           try {
-            const withProto = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+            // Relative media path from our uploader (e.g. /uploads/x.jpg)
+            if (s.startsWith('/')) {
+              return resolveMediaUrl(s) || s;
+            }
+            if (/^https?:\/\//i.test(s)) {
+              const u = new URL(s);
+              if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+              return u.toString();
+            }
+            // www. or host/path without protocol
+            const withProto = `https://${s}`;
             const u = new URL(withProto);
             if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
             return u.toString();
@@ -13503,13 +13526,22 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         return;
       }
 
-      // Preview links become media, not text
+      // Preview links become media, not text (gallery picks land here as uploaded URLs)
       if (linkCandidates.length) {
         const seenMedia = new Set(uploadedMedia.map(m => m.url));
         for (const raw of linkCandidates) {
           try {
-            const resolved = composerLookupOriginalUrl(raw);
-            const kind = classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved);
+            const resolved = resolveMediaUrl(composerLookupOriginalUrl(raw) || raw) || composerLookupOriginalUrl(raw) || raw;
+            const kind =
+              classifyMediaUrl(resolved) ||
+              classifyDirectMediaUrl(resolved) ||
+              classifyDirectMediaUrl(raw) ||
+              (VIDEO_EXT_RE.test(resolved) || VIDEO_EXT_RE.test(raw) ? 'video' as const : null) ||
+              (IMAGE_EXT_RE.test(resolved) || IMAGE_EXT_RE.test(raw) ? 'image' as const : null) ||
+              // Gallery-uploaded same-origin storage without extension → image
+              ((resolved.startsWith('/') || (typeof window !== 'undefined' && window.location?.hostname && resolved.includes(window.location.hostname)))
+                && /\/(upload|media|file|storage|cdn|posts?|blob|assets?)\b/i.test(resolved)
+                ? 'image' as const : null);
             if (kind && !seenMedia.has(resolved)) {
               seenMedia.add(resolved);
               uploadedMedia.push({ url: resolved, type: kind });
@@ -19492,29 +19524,48 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     accept="image/jpeg,image/png,image/webp,image/heic,image/gif,image/*,video/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.m4v"
                     multiple
                     style={{ display: 'none' }}
-                    onChange={e => {
+                    onChange={async e => {
                       const list = e.target.files;
                       const files = list ? Array.from(list) : [];
                       e.target.value = '';
                       if (!files.length) return;
                       setComposerError('');
-                      setComposerMediaFiles(prev => {
-                        const next = [...prev];
+                      // Gallery → upload → put real URL(s) into the link rectangle, then full media preview
+                      setComposerPosting(true);
+                      try {
+                        const urls: string[] = [];
                         for (const file of files) {
                           const t = (file.type || '').toLowerCase();
                           if (t === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
-                            next.push({ file, type: 'pdf' as const, preview: URL.createObjectURL(file) });
+                            // PDFs stay as local attach (not a media link)
+                            setComposerMediaFiles(prev => [...prev, { file, type: 'pdf' as const, preview: URL.createObjectURL(file) }]);
                             continue;
                           }
                           const isVid = t.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '');
-                          next.push({
-                            file,
-                            type: isVid ? 'video' as const : 'image' as const,
-                            preview: URL.createObjectURL(file),
-                          });
+                          const mediaType: 'image' | 'video' = isVid ? 'video' : 'image';
+                          let f = file;
+                          try { f = await normalizeGalleryFileForUpload(file, mediaType); } catch { /* keep */ }
+                          const url = await fastUploadMediaFile(f, mediaType);
+                          if (url) {
+                            const abs = resolveMediaUrl(String(url)) || String(url);
+                            urls.push(abs);
+                          }
                         }
-                        return next;
-                      });
+                        if (urls.length) {
+                          // Put uploaded URL(s) into the link rectangle (one per line)
+                          setComposerLinkInput(urls.join('\n'));
+                          setComposerLinkPreviewUrl(urls[0]);
+                          setComposerLinkStep(true);
+                          // Media is the link now — no need for local blob files
+                          setComposerMediaFiles(prev => prev.filter(x => x.type === 'pdf'));
+                        } else if (!files.some(f => (f.type || '').includes('pdf') || /\.pdf$/i.test(f.name || ''))) {
+                          setComposerError('تعذر تحويل الصورة/الفيديو إلى رابط — حاول مرة ثانية');
+                        }
+                      } catch (err) {
+                        setComposerError(err instanceof Error ? err.message : 'تعذر رفع الوسائط');
+                      } finally {
+                        setComposerPosting(false);
+                      }
                     }}
                   />
                 </label>
