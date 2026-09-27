@@ -8351,19 +8351,20 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{(() => { const v = resolvePostViewsCount(mediaLightbox.post); return v > 0 ? formatCompactCount(v) : ''; })()}</span>
                 </span>
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, marginLeft: 12 }}>
               <motion.button
                 whileTap={{ scale: 0.92 }}
                 onClick={() => { setMediaLightbox(null); onOpenPost(mediaLightbox.post); }}
                 aria-label="Details"
                 style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
                   background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
-                  borderRadius: 12, width: 52, height: 44, cursor: 'pointer', padding: 0,
+                  borderRadius: 10, width: 36, height: 36, cursor: 'pointer', padding: 0, flexShrink: 0,
                 }}
               >
-                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
-                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
-                <span style={{ width: 18, height: 2, borderRadius: 1, background: '#fff' }} />
+                <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
               </motion.button>
             <motion.button
               whileTap={{ scale: 0.9 }}
@@ -8373,16 +8374,16 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.5)',
-                borderRadius: 12, width: 44, height: 44,
+                borderRadius: 10, width: 36, height: 36,
                 color: '#ef4444', cursor: 'pointer', padding: 0,
                 fontWeight: 900, fontSize: '1.2rem', lineHeight: 1, flexShrink: 0,
-                marginLeft: 22,
               }}
             >
               X
             </motion.button>
+              </div>
 
-              <div style={{ minWidth: 88 }} />
+              <div style={{ minWidth: 12 }} />
             </div>
           </motion.div>,
           document.body
@@ -20700,29 +20701,28 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </motion.button>
                 </div>
 
-                {/* Details (three lines) — only rendered when the post actually has caption
-                    text to show; a caption-less post keeps every other button as-is. */}
-                {postHasVisibleCaption(livePost) && (
-                <motion.button
-                  whileTap={{ scale: 0.92 }}
-                  onClick={() => setAdDetailsOpen(true)}
-                  aria-label="Details"
-                  style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
-                    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
-                    borderRadius: 10, width: 36, height: 36,
-                    cursor: 'pointer',
-                    padding: 0, opacity: 1,
-                    flexShrink: 0,
-                  }}
-                >
-                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
-                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
-                  <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
-                </motion.button>
-                )}
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, justifyContent: 'flex-end' }}>
+                  {/* Details (three lines) — beside X + profile, not stuck to share */}
+                  {postHasVisibleCaption(livePost) && (
+                  <motion.button
+                    whileTap={{ scale: 0.92 }}
+                    onClick={() => setAdDetailsOpen(true)}
+                    aria-label="Details"
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+                      background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+                      borderRadius: 10, width: 36, height: 36,
+                      cursor: 'pointer',
+                      padding: 0, opacity: 1,
+                      flexShrink: 0,
+                      marginRight: 4,
+                    }}
+                  >
+                    <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                    <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                    <span style={{ width: 14, height: 2, borderRadius: 1, background: '#fff' }} />
+                  </motion.button>
+                  )}
                   <motion.button
                     whileTap={{ scale: 0.9 }}
                     type="button"
