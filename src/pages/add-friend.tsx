@@ -5303,15 +5303,10 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
         }
       }
       try { (window as any).__stooornaFrameStage = 0; } catch { /* */ }
-      const embed = inAppEmbedSrc(target);
-      if (embed) {
-        setFrameSrc(embed);
-      } else {
-        const html = await fetchInAppHtml(target);
-        if (cancelled) return;
-        if (html) setSrcDoc(html);
-        else setFrameSrc(inAppVisualFrame(target, 0));
-      }
+      const html = await fetchInAppHtml(target);
+      if (cancelled) return;
+      if (html) setSrcDoc(html);
+      else setFrameSrc(inAppVisualFrame(target, 0));
       setKind('site');
       setLoading(false);
     };
