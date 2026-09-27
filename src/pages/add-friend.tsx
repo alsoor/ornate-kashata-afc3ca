@@ -17262,14 +17262,23 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   <motion.button
                     whileTap={{ scale: 0.94 }}
                     onClick={() => setFollowersModalOpen(true)}
-                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    aria-label="Followers"
+                    title="Followers"
+                    style={{ position: 'relative', display: 'flex', flexShrink: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                   >
-                    {!followersVisible ? (
-                      <Lock size={14} strokeWidth={2.2} color={CLR_TEXT_DIM} />
-                    ) : (
-                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(friends.length)}</span>
-                    )}
-                    <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Followers</span>
+                    <span style={{
+                      width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
+                      background: 'rgba(225,225,225,0.1)', color: 'rgba(230,230,230,0.9)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}>
+                      {!followersVisible ? <Lock size={12} strokeWidth={2.2} /> : <Users size={12} strokeWidth={2.3} />}
+                    </span>
+                    <span aria-hidden="true" style={{
+                      position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: friends.some(f => !!(presence[f.friendId] as any)?.online) ? '#22c55e' : '#9ca3af',
+                      border: '1.5px solid hsl(var(--background))',
+                    }} />
                   </motion.button>
                   {/* Call history — moved here from the "Call a friend" picker header in RootLayout.tsx, taking the Views slot */}
                   <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
