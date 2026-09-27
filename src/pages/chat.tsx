@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin, Smile, Paperclip, Video as VideoIcon, Plus, Eye } from 'lucide-react';
+import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin, Smile, Paperclip, Video as VideoIcon, Plus } from 'lucide-react';
 import {
   guardMergeMessages,
   guardPinMessage,
@@ -1019,50 +1019,15 @@ function ImageBubble({
     ? `${src}${src.includes('?') ? '&' : '?'}_r=${retryAttempt}`
     : src;
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const holdingRef = useRef(false);
   useEffect(() => () => {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
   }, []);
-  useEffect(() => {
-    if (!open) return;
-    const release = () => {
-      holdingRef.current = false;
-      setOpen(false);
-    };
-    window.addEventListener('pointerup', release);
-    window.addEventListener('pointercancel', release);
-    window.addEventListener('touchend', release);
-    window.addEventListener('mouseup', release);
-    return () => {
-      window.removeEventListener('pointerup', release);
-      window.removeEventListener('pointercancel', release);
-      window.removeEventListener('touchend', release);
-      window.removeEventListener('mouseup', release);
-    };
-  }, [open]);
   const handleImageError = () => {
     if (canRetryWithCacheBust && retryAttempt < MAX_IMAGE_RETRIES) {
       retryTimerRef.current = setTimeout(() => setRetryAttempt(a => a + 1), 650 * (retryAttempt + 1));
     } else {
       setBroken(true);
     }
-  };
-  const startHold = (e: React.PointerEvent | React.TouchEvent | React.MouseEvent) => {
-    holdingRef.current = true;
-    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
-    longPressTimerRef.current = setTimeout(() => {
-      if (holdingRef.current) setOpen(true);
-    }, 250);
-  };
-  const endHold = () => {
-    holdingRef.current = false;
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-    setOpen(false);
   };
   if (!src || !looksLikeUrl || broken) {
     return (
@@ -1086,15 +1051,9 @@ function ImageBubble({
           overflow: 'hidden',
           WebkitUserSelect: 'none',
           userSelect: 'none',
-          touchAction: 'none',
           WebkitTouchCallout: 'none',
         }}
-        onPointerDown={e => {
-          try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* */ }
-          startHold(e);
-        }}
-        onPointerUp={endHold}
-        onPointerCancel={endHold}
+        onClick={() => setOpen(true)}
         onContextMenu={e => e.preventDefault()}
       >
         <img
@@ -1115,39 +1074,6 @@ function ImageBubble({
           }}
           loading="lazy"
         />
-        {/* Eye in center — hold image OR press eye to view full; release to close */}
-        <button
-          type="button"
-          aria-label="View full image"
-          onPointerDown={e => {
-            e.stopPropagation();
-            holdingRef.current = true;
-            setOpen(true);
-          }}
-          onPointerUp={e => { e.stopPropagation(); endHold(); }}
-          onPointerCancel={e => { e.stopPropagation(); endHold(); }}
-          style={{
-            position: 'absolute',
-            left: '50%',
-            top: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: 48,
-            height: 48,
-            borderRadius: '50%',
-            background: 'rgba(0,0,0,0.45)',
-            border: '1.5px solid rgba(255,255,255,0.55)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            pointerEvents: 'auto',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.25)',
-            cursor: 'pointer',
-            padding: 0,
-            zIndex: 2,
-          }}
-        >
-          <Eye size={20} color="#fff" strokeWidth={2.2} />
-        </button>
       </div>
       <AnimatePresence>
         {open && (
@@ -1156,9 +1082,7 @@ function ImageBubble({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.12 }}
-            onTouchEnd={endHold}
-            onTouchCancel={endHold}
-            onMouseUp={endHold}
+            onClick={() => setOpen(false)}
             style={{
               position: 'fixed',
               inset: 0,
@@ -1168,10 +1092,10 @@ function ImageBubble({
               alignItems: 'center',
               justifyContent: 'center',
               padding: 12,
-              touchAction: 'none',
+              cursor: 'pointer',
             }}
           >
-            {/* Full image — no X; release finger to close */}
+            {/* Full image — tap anywhere to close; no X button */}
             <img
               src={displaySrc}
               alt=""
