@@ -14,6 +14,7 @@ import LiveVoiceBanner from '@/components/LiveVoiceBanner';
 import GroupVoiceBar from '@/components/GroupVoiceBar';
 import { useGlobalCall } from '@/components/GlobalCallProvider';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { chatMediaAiPrepare, type ChatMediaReady } from '@/lib/chatMediaAiPatch';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Message {
@@ -3598,6 +3599,10 @@ export default function ChatPage() {
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  /** AI media prep for chat — URL never shown; only wait → ready → send */
+  const [chatMediaWait, setChatMediaWait] = useState(false);
+  const [chatMediaReady, setChatMediaReady] = useState<ChatMediaReady | null>(null);
+  const [chatMediaStatus, setChatMediaStatus] = useState('');
   const prevMsgCountRef = useRef(-1); // -1 = first load, skip notification
 
   // ── Show messages only when there's at least one new message ──────────────────
@@ -4705,6 +4710,37 @@ export default function ChatPage() {
     } catch {/* silent */} finally {
       setSending(false);
     }
+  }
+
+  // ── AI media prep (chat only) — wait in input, then Send; never show URL ──
+  async function prepareChatMedia(file: File) {
+    setChatMediaWait(true);
+    setChatMediaReady(null);
+    setChatMediaStatus('يرجى الانتظار');
+    try {
+      const ready = await chatMediaAiPrepare(file, msg => setChatMediaStatus(msg || 'يرجى الانتظار'));
+      if (ready) {
+        setChatMediaReady(ready);
+        setChatMediaStatus('');
+      } else {
+        setChatMediaStatus('');
+        setChatMediaReady({ file, kind: (file.type || '').startsWith('video/') ? 'video' : (file.type || '').startsWith('image/') ? 'image' : 'file' });
+      }
+    } catch {
+      setChatMediaReady({ file, kind: (file.type || '').startsWith('image/') ? 'image' : (file.type || '').startsWith('video/') ? 'video' : 'file' });
+      setChatMediaStatus('');
+    } finally {
+      setChatMediaWait(false);
+    }
+  }
+
+  async function sendPreparedChatMedia() {
+    if (!chatMediaReady || sending) return;
+    const { file, kind } = chatMediaReady;
+    setChatMediaReady(null);
+    setChatMediaStatus('');
+    if (kind === 'image') await sendImage(file);
+    else await sendFile(file);
   }
 
   // ── Send image ──────────────────────────────────────────────────────────────
@@ -6192,22 +6228,22 @@ export default function ChatPage() {
           display: 'none'
         }} onChange={e => {
           const f = e.target.files?.[0];
-          if (f) sendImage(f);
           e.target.value = '';
+          if (f) void prepareChatMedia(f);
         }} />
           <input ref={videoInputRef} type="file" accept="video/*,.mp4,.webm,.mov,.m4v,.mkv,.avi,.3gp" style={{
           display: 'none'
         }} onChange={e => {
           const f = e.target.files?.[0];
-          if (f) sendFile(f);
           e.target.value = '';
+          if (f) void prepareChatMedia(f);
         }} />
           <input ref={docInputRef} type="file" accept="*/*" style={{
           display: 'none'
         }} onChange={e => {
           const f = e.target.files?.[0];
-          if (f) sendFile(f);
           e.target.value = '';
+          if (f) void prepareChatMedia(f);
         }} />
 
           {/* ── Input row ── */}
@@ -6272,7 +6308,7 @@ export default function ChatPage() {
                 e.preventDefault();
                 sendText();
               }
-            }} placeholder={replyTo ? 'Reply…' : 'Message'} rows={1} style={{
+            }} placeholder={chatMediaWait ? 'يرجى الانتظار' : (chatMediaReady ? 'جاهز للإرسال — اضغط إرسال' : (replyTo ? 'Reply…' : 'Message'))} readOnly={chatMediaWait} rows={1} style={{
               width: '100%',
               boxSizing: 'border-box',
               resize: 'none',
@@ -6329,17 +6365,25 @@ export default function ChatPage() {
               whileTap={{ scale: 0.92 }}
               onClick={() => {
                 if (isRecording) { void stopRecording(true); return; }
+                if (chatMediaWait) return;
+                if (chatMediaReady) { void sendPreparedChatMedia(); return; }
                 if (text.trim()) { setEmojiPickerOpen(false); void sendText(); return; }
                 void startRecording();
               }}
-              disabled={sending}
+              disabled={sending || chatMediaWait}
               style={{
                 width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
-                background: '#111b21', border: 'none', color: '#fff', cursor: 'pointer',
+                background: chatMediaReady ? '#00BCD4' : '#111b21', border: 'none', color: '#fff',
+                cursor: chatMediaWait ? 'wait' : 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                opacity: chatMediaWait ? 0.55 : 1,
               }}
             >
-              {isRecording || text.trim() ? <Play size={18} fill="#fff" /> : <Mic size={20} strokeWidth={2.2} />}
+              {chatMediaWait
+                ? <span style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #fff', borderTopColor: 'transparent', display: 'inline-block' }} />
+                : (chatMediaReady || isRecording || text.trim())
+                  ? <Send size={18} strokeWidth={2.2} />
+                  : <Mic size={20} strokeWidth={2.2} />}
             </motion.button>
           </div>
         </div>
