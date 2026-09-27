@@ -17419,11 +17419,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             </motion.button>
           </div>
 
-          {/* ── Quick "+" menu button — moved here from the bottom nav so it
-              stays reachable even while that bar hides/scrolls. Opens the
-              same Settings/Call/Friends/Live menu, but expanding DOWNWARD
-              since this button sits near the top of the screen. ── */}
-          <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 10 }}>
+        </div>
+        </>}
+
+        {/* ── Quick "+" menu button — moved here, below the sticky header's own
+            divider line, so it no longer sits inside the header's tap/swipe
+            zone next to the show/hide grabber. Opens the same
+            Settings/Call/Friends/Live menu, expanding DOWNWARD. ── */}
+        {!isFriendManagement && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0' }}>
             <motion.button
               type="button"
               whileTap={{ scale: 0.9 }}
@@ -17444,9 +17448,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <Plus size={20} strokeWidth={2.4} />
             </motion.button>
           </div>
-
-        </div>
-        </>}
+        )}
 
         {/* ── Content ── */}
         <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
