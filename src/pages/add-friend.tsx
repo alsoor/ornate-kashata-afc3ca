@@ -22,7 +22,7 @@ import { normalizeComment, sortCommentsTree, authorCountryLabel } from '@/lib/po
 import { useGuestGuard } from '@/hooks/useGuestGuard';
 import PostTextMore from '@/components/PostTextMore';
 import { publishFeedPost, uploadPostMedia, deleteStoryInstant, POST_TEXT_MAX_CHARS } from '@/lib/postStoryPatch';
-import { mediaAiProcessGalleryFiles, mediaAiForceWorkingMedia, mediaAiNormalizeImage } from '@/lib/mediaAiPatch';
+import { mediaAiProcessGalleryFiles, mediaAiForceWorkingMedia, mediaAiNormalizeImage, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
 interface SearchUser {
   id: string;
   name: string | null;
@@ -12359,6 +12359,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // الحد الأقصى لعدد الصور التي يمكن إرفاقها بالمنشور الواحد (تُعرض بعدها كمعرض قابل للتصفح يمين/يسار)
   const MAX_COMPOSER_IMAGES = 10;
   const [composerPosting, setComposerPosting] = useState(false);
+  const [composerStatus, setComposerStatus] = useState('');
   const [composerError, setComposerError] = useState('');
   // setters used in clearPostMedia — values not read directly
   const [, setComposerAwaitingMedia] = useState(false);
@@ -13247,7 +13248,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const extract = async (res: Response): Promise<string | null> => {
       try {
         const loc = res.headers.get('location') || res.headers.get('x-file-url') || res.headers.get('x-media-url');
-        if (isValidMediaUrl(loc)) return toAbsolute(String(loc).trim());
+        if (isValidMediaUrl(loc)) {
+          const abs = toAbsolute(String(loc).trim());
+          if (mediaAiIsBrokenHostUrl(abs) || /airo-assets/i.test(abs)) return null;
+          return abs;
+        }
         const ct = (res.headers.get('content-type') || '').toLowerCase();
         if (ct.includes('application/json')) {
           const d = await res.json() as any;
@@ -13256,9 +13261,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             d?.data?.url || d?.data?.mediaUrl || d?.data?.path || d?.data?.publicUrl ||
             d?.result?.url || d?.file?.url || d?.media?.url || d?.location || d?.href ||
             d?.key || d?.filename;
-          if (isValidMediaUrl(u)) return toAbsolute(String(u).trim());
-          // some APIs return { path: "uploads/.." } without leading slash
-          if (typeof u === 'string' && u.length > 2) return toAbsolute(u);
+          if (isValidMediaUrl(u)) {
+            const abs = toAbsolute(String(u).trim());
+            // Reject legacy Airo CDN paths that no longer serve files on Railway
+            if (mediaAiIsBrokenHostUrl(abs) || /airo-assets/i.test(abs)) return null;
+            return abs;
+          }
+          if (typeof u === 'string' && u.length > 2) {
+            const abs = toAbsolute(u);
+            if (mediaAiIsBrokenHostUrl(abs) || /airo-assets/i.test(abs)) return null;
+            return abs;
+          }
           return null;
         }
         const t = (await res.text()).trim();
@@ -13441,6 +13454,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
     setComposerPosting(true);
     setComposerError('');
+    setComposerStatus('جاري النشر…');
     try {
       // Do not store image/video/X preview URLs inside product text
       const nonMediaLinks: string[] = [];
@@ -14018,11 +14032,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       setComposerLinkInput('');
       setComposerLinkMediaItems([]);
       setComposerLinkPreviewUrl('');
+      setComposerStatus('');
       clearPostMedia();
       setShowComposer(false);
     } catch (error) {
       console.error('[Post publish]', error);
       setComposerError(error instanceof Error && error.message ? error.message : 'تعذر نشر المنشور — حاول مرة ثانية');
+      setComposerStatus('');
     } finally {
       setComposerPosting(false);
     }
@@ -19711,6 +19727,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 )}
               </div>
 
+              {composerStatus && !composerError && (
+                <p style={{ color: '#1d9bf0', fontSize: '0.8rem', margin: '12px 0 0', fontWeight: 700 }}>{composerStatus}</p>
+              )}
               {composerError && (
                 <p style={{ color: '#f4212e', fontSize: '0.8rem', margin: '12px 0 0' }}>{composerError}</p>
               )}
@@ -19738,7 +19757,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       e.target.value = '';
                       if (!files.length) return;
                       setComposerError('');
-                      // AI media pipeline: force working URL into link rectangle + live preview (always)
+                      setComposerStatus('جاري معالجة الوسائط بالذكاء الاصطناعي…');
                       setComposerPosting(true);
                       try {
                         for (const file of files) {
@@ -19751,28 +19770,35 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           files,
                           async (f, kind) => {
                             try {
-                              return await fastUploadMediaFile(f, kind);
+                              const u = await fastUploadMediaFile(f, kind);
+                              // Never accept dead Airo CDN links
+                              if (u && (mediaAiIsBrokenHostUrl(u) || /airo-assets/i.test(u))) return null;
+                              return u;
                             } catch {
                               return null;
                             }
                           },
+                          (msg) => setComposerStatus(msg),
                         );
                         if (aiItems.length) {
                           const items = aiItems.map(i => ({
                             url: resolvePlayableMediaHref(i.url) || i.url,
                             type: i.type as 'image' | 'video',
-                          }));
+                          })).filter(i => i.url && !mediaAiIsBrokenHostUrl(i.url));
                           const urls = items.map(i => i.url);
                           setComposerLinkInput(urls.join('\n'));
-                          setComposerLinkPreviewUrl(urls[0]);
+                          setComposerLinkPreviewUrl(urls[0] || '');
                           setComposerLinkMediaItems(items);
                           setComposerLinkStep(true);
                           setComposerMediaFiles(prev => prev.filter(x => x.type === 'pdf'));
+                          setComposerStatus(urls.length ? 'تم تجهيز رابط الوسائط — جاهز للنشر' : '');
                         } else if (!files.some(f => (f.type || '').includes('pdf') || /\.pdf$/i.test(f.name || ''))) {
                           setComposerError('تعذر تحويل الصورة/الفيديو إلى رابط يعمل — حاول مرة ثانية');
+                          setComposerStatus('');
                         }
                       } catch (err) {
                         setComposerError(err instanceof Error ? err.message : 'تعذر معالجة الوسائط');
+                        setComposerStatus('');
                       } finally {
                         setComposerPosting(false);
                       }
@@ -19829,7 +19855,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   cursor: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) ? 'default' : 'pointer',
                 }}
               >
-                {composerPosting ? '…' : 'Share'}
+                {composerPosting ? (composerStatus || 'جاري النشر…') : 'Share'}
               </motion.button>
             </div>
             {composerBizHint && isBusinessUser && (
