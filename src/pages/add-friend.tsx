@@ -5161,13 +5161,78 @@ function SitePreviewCard({ url, onOpen }: { url: string; onOpen: (href: string) 
   );
 }
 
+/** Resolve any gallery/upload/paste URL into an absolute playable media href. */
+function resolvePlayableMediaHref(url: string | null | undefined): string {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  if (/^(blob:|data:)/i.test(raw)) return raw;
+  const looked = composerLookupOriginalUrl(raw) || raw;
+  const viaResolve = resolveMediaUrl(looked);
+  if (viaResolve) {
+    if (/^(https?:|blob:|data:)/i.test(viaResolve)) return viaResolve;
+    if (viaResolve.startsWith('/')) {
+      try {
+        if (typeof window !== 'undefined') return new URL(viaResolve, window.location.origin).href;
+      } catch { /* */ }
+      return viaResolve;
+    }
+  }
+  const norm = composerNormalizeUrl(looked) || composerNormalizeUrl(raw);
+  if (norm) return norm;
+  if (looked.startsWith('/')) {
+    try {
+      if (typeof window !== 'undefined') return new URL(looked, window.location.origin).href;
+    } catch { /* */ }
+  }
+  return viaResolve || looked;
+}
+
+/** Unknown URL → try image, then video, so media works without app domain / extension. */
+function MediaProbePreview({ url, failedNote, onOpenSite }: { url: string; failedNote?: string; onOpenSite?: (href: string) => void }) {
+  const [mode, setMode] = useState<'image' | 'video' | 'fail'>('image');
+  if (mode === 'image') {
+    return (
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', marginTop: 8, borderRadius: 14, overflow: 'hidden', background: '#000' }}>
+        <img
+          src={url}
+          alt=""
+          onError={() => setMode('video')}
+          style={{ width: '100%', maxHeight: 320, objectFit: 'contain', display: 'block', background: '#000' }}
+        />
+      </div>
+    );
+  }
+  if (mode === 'video') {
+    return (
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', marginTop: 8, borderRadius: 14, overflow: 'hidden', background: '#000' }}>
+        <video
+          src={url}
+          controls
+          playsInline
+          preload="metadata"
+          onError={() => setMode('fail')}
+          style={{ width: '100%', maxHeight: 320, objectFit: 'contain', display: 'block', background: '#000' }}
+        />
+      </div>
+    );
+  }
+  if (onOpenSite) return <SitePreviewCard url={url} onOpen={onOpenSite} />;
+  return failedNote ? <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p> : null;
+}
+
 function LinkMediaPreview({ url, failedNote, onOpenSite }: { url: string; failedNote?: string; onOpenSite?: (href: string) => void }) {
-  const normalized = composerNormalizeUrl(url);
-  if (!normalized) return null;
-  const resolved = composerLookupOriginalUrl(normalized);
+  const resolved = resolvePlayableMediaHref(url);
+  if (!resolved) return null;
   if (parseXStatusId(resolved)) return <XLinkMedia statusUrl={resolved} failedNote={failedNote} />;
-  const kind = classifyDirectMediaUrl(resolved);
+  const kind =
+    classifyMediaUrl(resolved) ||
+    classifyDirectMediaUrl(resolved) ||
+    classifyDirectMediaUrl(url);
   if (kind) return <PostLinkEmbeds embeds={[{ url: resolved, type: kind }]} />;
+  // No extension / unknown host — still try to render as real image or video
+  if (/^(https?:|blob:|data:)/i.test(resolved) || resolved.startsWith('/')) {
+    return <MediaProbePreview url={resolved} failedNote={failedNote} onOpenSite={onOpenSite} />;
+  }
   if (onOpenSite) return <SitePreviewCard url={resolved} onOpen={onOpenSite} />;
   return failedNote ? <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p> : null;
 }
@@ -12294,6 +12359,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // composerLinkStep: يتحكم بإظهار/إخفاء مستطيل «رابط صورة أو فيديو» داخل صفحة كتابة البوست
   const [composerLinkStep, setComposerLinkStep] = useState(false);
   const [composerLinkInput, setComposerLinkInput] = useState('');
+  /** Media URLs from gallery/paste that must publish as real image/video */
+  const [composerLinkMediaItems, setComposerLinkMediaItems] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
   const [composerLinkShortening, setComposerLinkShortening] = useState(false);
   // ── روابط X داخل مربع الكتابة (العنوان + التفاصيل + الحقول الإضافية) ──
   // بمجرد لصق/كتابة الرابط تظهر الصورة أو الفيديو كاملة أسفل المربع (مستخدم + شركة — نفس الـ composer).
@@ -12340,8 +12407,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         setComposerError(clip?.trim() ? 'الحافظة لا تحتوي رابطًا صالحًا' : 'الحافظة فارغة');
         return;
       }
-      setComposerLinkInput(link);
-      setComposerLinkPreviewUrl(link);
+      const abs = resolvePlayableMediaHref(link) || link;
+      setComposerLinkInput(abs);
+      setComposerLinkPreviewUrl(abs);
+      const kind = classifyMediaUrl(abs) || classifyDirectMediaUrl(abs);
+      if (kind) setComposerLinkMediaItems([{ url: abs, type: kind }]);
+      else setComposerLinkMediaItems([{ url: abs, type: 'image' }]);
     } catch {
       setComposerError('تعذر القراءة من الحافظة — اضغط مطولًا داخل المستطيل والصق الرابط');
     }
@@ -12953,6 +13024,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     setComposerAwaitingMedia(false);
     setComposerLinkStep(false);
     setComposerLinkInput('');
+    setComposerLinkMediaItems([]);
+    setComposerLinkPreviewUrl('');
   }
 
   // ── Quick publish — "نشر صورة" / "نشر فيديو": one-tap post with a single photo or video and no
@@ -13290,6 +13363,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       // ── رفع الوسائط (صور / فيديو / PDF) ──
       const uploadedMedia: { url: string; type: 'image' | 'video' }[] = [];
       let lastUploadError = '';
+      // Gallery/paste URLs already playable — attach as real media (any host)
+      for (const it of composerLinkMediaItems) {
+        const abs = resolvePlayableMediaHref(it.url) || it.url;
+        if (abs && !uploadedMedia.some(m => m.url === abs)) {
+          uploadedMedia.push({ url: abs, type: it.type });
+        }
+      }
 
       const extractUploadUrl = async (res: Response): Promise<string | null> => {
         try {
@@ -13832,6 +13912,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       setComposerProductPrice('');
       setComposerProductExtras([]);
       setComposerLinkInput('');
+      setComposerLinkMediaItems([]);
+      setComposerLinkPreviewUrl('');
       clearPostMedia();
       setShowComposer(false);
     } catch (error) {
@@ -19403,14 +19485,36 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       autoCorrect="off"
                       spellCheck={false}
                       value={composerLinkInput}
-                      onChange={e => setComposerLinkInput(e.target.value)}
+                      onChange={e => {
+                        const v = e.target.value;
+                        setComposerLinkInput(v);
+                        const first = v.trim().split(/[\s\n]+/).filter(Boolean)[0] || '';
+                        if (first) {
+                          const abs = resolvePlayableMediaHref(first) || first;
+                          setComposerLinkPreviewUrl(abs);
+                          const kind = classifyMediaUrl(abs) || classifyDirectMediaUrl(abs) || classifyDirectMediaUrl(first);
+                          if (kind) {
+                            setComposerLinkMediaItems(prev => {
+                              const rest = prev.filter(p => p.url !== abs);
+                              return [...rest, { url: abs, type: kind }];
+                            });
+                          }
+                        } else {
+                          setComposerLinkMediaItems([]);
+                          setComposerLinkPreviewUrl('');
+                        }
+                      }}
                       onPaste={e => {
                         const link = pickLinkFromText(e.clipboardData?.getData('text'));
                         if (!link) return;
                         e.preventDefault();
                         setComposerError('');
-                        setComposerLinkInput(link);
-                        setComposerLinkPreviewUrl(link);
+                        const abs = resolvePlayableMediaHref(link) || link;
+                        setComposerLinkInput(abs);
+                        setComposerLinkPreviewUrl(abs);
+                        const kind = classifyMediaUrl(abs) || classifyDirectMediaUrl(abs);
+                        if (kind) setComposerLinkMediaItems([{ url: abs, type: kind }]);
+                        else setComposerLinkMediaItems([{ url: abs, type: 'image' }]);
                       }}
                       placeholder="Paste a URL"
                       style={{
@@ -19533,11 +19637,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       // Gallery → upload → put real URL(s) into the link rectangle, then full media preview
                       setComposerPosting(true);
                       try {
-                        const urls: string[] = [];
+                        const items: { url: string; type: 'image' | 'video' }[] = [];
                         for (const file of files) {
                           const t = (file.type || '').toLowerCase();
                           if (t === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
-                            // PDFs stay as local attach (not a media link)
                             setComposerMediaFiles(prev => [...prev, { file, type: 'pdf' as const, preview: URL.createObjectURL(file) }]);
                             continue;
                           }
@@ -19547,19 +19650,19 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           try { f = await normalizeGalleryFileForUpload(file, mediaType); } catch { /* keep */ }
                           const url = await fastUploadMediaFile(f, mediaType);
                           if (url) {
-                            const abs = resolveMediaUrl(String(url)) || String(url);
-                            urls.push(abs);
+                            const abs = resolvePlayableMediaHref(String(url)) || resolveMediaUrl(String(url)) || String(url);
+                            items.push({ url: abs, type: mediaType });
                           }
                         }
-                        if (urls.length) {
-                          // Put uploaded URL(s) into the link rectangle (one per line)
+                        if (items.length) {
+                          const urls = items.map(i => i.url);
                           setComposerLinkInput(urls.join('\n'));
                           setComposerLinkPreviewUrl(urls[0]);
+                          setComposerLinkMediaItems(items);
                           setComposerLinkStep(true);
-                          // Media is the link now — no need for local blob files
                           setComposerMediaFiles(prev => prev.filter(x => x.type === 'pdf'));
                         } else if (!files.some(f => (f.type || '').includes('pdf') || /\.pdf$/i.test(f.name || ''))) {
-                          setComposerError('تعذر تحويل الصورة/الفيديو إلى رابط — حاول مرة ثانية');
+                          setComposerError('تعذر تحويل الصورة/الفيديو إلى رابط يعمل — حاول مرة ثانية');
                         }
                       } catch (err) {
                         setComposerError(err instanceof Error ? err.message : 'تعذر رفع الوسائط');
