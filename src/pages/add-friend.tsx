@@ -686,19 +686,17 @@ interface ProductAdData {
   extras: string[];
 }
 function buildProductPostText(data: { title: string; details: string; price: string; extras: string[] }): string {
-  // NOTE: no default title here — an empty title must stay empty. Injecting a
-  // placeholder like "منتج" used to leak into every text/link-only post that
-  // had no explicit title (shown as the post's title everywhere: feed,
-  // full-screen view, details sheet…). Never fill this in automatically.
+  // Order must match the composer: Title → Details → Price (price always last).
+  // NOTE: no default title here — an empty title must stay empty.
   const title = (data.title || '').trim();
   const price = (data.price || '').trim();
   const details = (data.details || '').trim();
   const extras = (data.extras || []).map(s => s.trim()).filter(Boolean);
   const parts: string[] = [];
   if (title) parts.push(title);
-  if (price) parts.push(`السعر: ${price}`);
   if (details) parts.push(details);
   for (const ex of extras) parts.push(ex);
+  if (price) parts.push(`السعر: ${price}`);
   return parts.join('\n\n');
 }
 function parseProductAd(text: string | null | undefined): ProductAdData | null {
@@ -6477,7 +6475,36 @@ function PostCard({
         </div>
 
         {/* Text-only posts (no media): show caption on the card */}
-        {!hasMedia && post.text && !isProductAd && (
+        {/* Business product: Title (thin) → Details (normal) → Price (thin, last) */}
+        {!hasMedia && post.text && (isProductAd || (isCompanyAuthor && productAd)) && productAd && (
+          <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {productAd.title ? (
+              <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.02rem', fontWeight: 400, lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>
+                {productAd.title}
+              </p>
+            ) : null}
+            {productAd.details ? (
+              <p style={{ margin: 0, color: '#1a1a1a', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                {productAd.details}
+              </p>
+            ) : null}
+            {(productAd.extras || []).map((ex, i) => {
+              const cleaned = String(ex || '').trim();
+              if (!cleaned) return null;
+              return (
+                <p key={i} style={{ margin: 0, color: '#333', fontSize: '0.9rem', fontWeight: 500, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                  {cleaned}
+                </p>
+              );
+            })}
+            {productAd.price ? (
+              <p style={{ margin: 0, color: '#536471', fontSize: '0.92rem', fontWeight: 400, lineHeight: 1.4 }}>
+                {/^السعر\s*:/.test(productAd.price) ? productAd.price : `السعر: ${productAd.price}`}
+              </p>
+            ) : null}
+          </div>
+        )}
+        {!hasMedia && post.text && !(isProductAd || (isCompanyAuthor && productAd)) && (
           <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column' }}>
             <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => setProductDetailsOpen(true)} />
           </div>
@@ -6801,14 +6828,16 @@ function PostCard({
                   </p>
                 ) : (
                   <>
-                    <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.1rem', fontWeight: 800, lineHeight: 1.35 }}>
+                    <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.05rem', fontWeight: 400, lineHeight: 1.35 }}>
                       {productAd?.title || productAdDisplayTitle(post) || post.authorName || 'تفاصيل'}
                     </p>
-                    {productAd?.price ? (
-                      <p style={{ margin: '8px 0 0', color: '#00BCD4', fontSize: '1rem', fontWeight: 800 }}>{productAd.price}</p>
-                    ) : null}
                     {productAd?.details ? (
-                      <p style={{ margin: '14px 0 0', color: '#1a1a1a', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{productAd.details}</p>
+                      <p style={{ margin: '12px 0 0', color: '#1a1a1a', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{productAd.details}</p>
+                    ) : null}
+                    {productAd?.price ? (
+                      <p style={{ margin: '12px 0 0', color: '#536471', fontSize: '0.92rem', fontWeight: 400 }}>
+                        {/^السعر\s*:/.test(productAd.price) ? productAd.price : `السعر: ${productAd.price}`}
+                      </p>
                     ) : null}
                   </>
                 )}
@@ -12704,7 +12733,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const ad = parseProductAd(post.text);
     const title = ad?.title || productAdDisplayTitle(post) || 'منشور';
     const textBody = ad
-      ? [ad.title, ad.price ? `السعر: ${ad.price}` : '', ad.details].filter(Boolean).join('\n')
+      ? [ad.title, ad.details, ad.price ? (`السعر: ${ad.price}`.replace(/^السعر:\s*السعر:\s*/i, 'السعر: ')) : ''].filter(Boolean).join('\n')
       : (post.text || title);
     const url = typeof window !== 'undefined' ? window.location.href : '';
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
@@ -13428,6 +13457,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const linkCandidates = linkRaw
       ? linkRaw.split(/[\s\n]+/).map(s => s.trim()).filter(Boolean).map(s => {
           try {
+            // data: / blob: from AI gallery pipeline — publish without text
+            if (/^(data:|blob:)/i.test(s)) return s;
             // Relative media path from our uploader (e.g. /uploads/x.jpg)
             if (s.startsWith('/')) {
               return resolveMediaUrl(s) || s;
@@ -13446,8 +13477,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         }).filter(Boolean)
       : [];
     const linkNormalized = linkCandidates[0] || '';
+    const hasGalleryMedia = composerLinkMediaItems.length > 0 || composerMediaFiles.length > 0 || !!linkNormalized;
 
-    if (!title && !details && !price && extras.length === 0 && !linkNormalized && composerMediaFiles.length === 0) {
+    // Allow publish with media/link only — text/title/details are optional
+    if (!title && !details && !price && extras.length === 0 && !hasGalleryMedia) {
       setComposerError('أضف عنوان المنتج أو تفاصيل أو وسائط قبل النشر');
       return;
     }
@@ -19845,14 +19878,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.98 }}
-                disabled={composerPosting || !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)}
+                disabled={composerPosting || !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerLinkMediaItems.length > 0 || composerMediaFiles.length)}
                 onClick={() => void submitPost('text')}
                 style={{
                   width: '100%', height: 48, borderRadius: 999, border: 'none',
-                  background: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)
+                  background: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerLinkMediaItems.length > 0 || composerMediaFiles.length)
                     ? '#94a3b8' : '#2563eb',
                   color: '#fff', fontWeight: 800, fontSize: '1rem',
-                  cursor: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) ? 'default' : 'pointer',
+                  cursor: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerLinkMediaItems.length > 0 || composerMediaFiles.length) ? 'default' : 'pointer',
                 }}
               >
                 {composerPosting ? (composerStatus || 'جاري النشر…') : 'Share'}
@@ -20796,16 +20829,18 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         }
                         return (
                           <>
-                            <p style={{ margin: 0, color: CLR_TEXT, fontSize: '1.15rem', fontWeight: 800, lineHeight: 1.35 }}>
+                            <p style={{ margin: 0, color: CLR_TEXT, fontSize: '1.05rem', fontWeight: 400, lineHeight: 1.35 }}>
                               {ad?.title || productAdDisplayTitle(singlePostView)}
                             </p>
-                            {ad?.price ? (
-                              <p style={{ margin: '8px 0 0', color: CLR_PRIMARY, fontSize: '1rem', fontWeight: 800 }}>{ad.price}</p>
-                            ) : null}
                             {ad?.details ? (
-                              <div style={{ marginTop: 14 }}>
+                              <div style={{ marginTop: 12 }}>
                                 <PostText text={ad.details} color={CLR_PRIMARY} textColor={CLR_TEXT} onHashtag={openHashtag} />
                               </div>
+                            ) : null}
+                            {ad?.price ? (
+                              <p style={{ margin: '12px 0 0', color: 'rgba(200,230,230,0.75)', fontSize: '0.92rem', fontWeight: 400 }}>
+                                {/^السعر\s*:/.test(String(ad.price)) ? ad.price : `السعر: ${ad.price}`}
+                              </p>
                             ) : null}
                           </>
                         );
@@ -23636,11 +23671,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   <p style={{ margin: 0, color: CLR_PRIMARY, fontWeight: 800, fontSize: '1rem' }}>
                     {ad?.title || productAdDisplayTitle(productInquiryPost)}
                   </p>
-                  {ad?.price ? (
-                    <p style={{ margin: '6px 0 0', color: '#eab308', fontWeight: 800, fontSize: '0.95rem' }}>{ad.price}</p>
-                  ) : null}
                   {ad?.details ? (
-                    <p style={{ margin: '8px 0 0', color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.45 }}>{ad.details}</p>
+                    <p style={{ margin: '8px 0 0', color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.45, fontWeight: 600 }}>{ad.details}</p>
+                  ) : null}
+                  {ad?.price ? (
+                    <p style={{ margin: '6px 0 0', color: '#eab308', fontWeight: 400, fontSize: '0.9rem' }}>
+                      {/^السعر\s*:/.test(String(ad.price)) ? ad.price : `السعر: ${ad.price}`}
+                    </p>
                   ) : null}
                   <p style={{ margin: '10px 0 0', color: CLR_TEXT_DIM, fontSize: '0.72rem' }}>
                     الشركة: {productInquiryPost.authorName || productInquiryPost.authorUsername || '—'}
