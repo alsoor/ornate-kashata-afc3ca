@@ -4587,7 +4587,7 @@ function StoryViewer({ groups, startGroupIdx, myId, onClose, onSeen, onAddMedia,
                   />
                   <div style={{
                     position: 'absolute',
-                    bottom: 46,
+                    top: 46,
                     right: 0,
                     display: 'flex',
                     flexDirection: 'column',
@@ -8373,124 +8373,10 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               Add {name ?? 'this user'} as a friend to see their posts
             </p>
           </div>
-        ) : (
-          <>
-            {/* Products / Post section header — sticky with profile chrome */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              padding: '7px 0', marginTop: 4,
-              borderTop: `1px solid ${CLR_NAV_BORDER}`, borderBottom: `1px solid ${CLR_NAV_BORDER}`,
-              color: CLR_PRIMARY, fontSize: '0.76rem', fontWeight: 800,
-              background: CLR_TAB_ACTIVE,
-            }}>
-              <FileText size={14} strokeWidth={2} />
-              {null /* Post/Products header removed */}
-            </div>
-          </>
-        )}
+        ) : null}
       </div>
 
-      {/* Scrollable posts grid only */}
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
-        {!isHiddenPrivate && (
-          <>
-            {loading ? (
-              <div className="flex items-center justify-center" style={{ padding: '24px 0' }}>
-                <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${CLR_PRIMARY_BORDER}`, borderTopColor: CLR_PRIMARY }} />
-              </div>
-            ) : sortedAuthorPosts.length > 0 ? (
-              (() => {
-                const enrichedPosts = sortedAuthorPosts.map(post => {
-                  const rawThumbUrl = post.mediaUrls?.[0] ?? post.mediaUrl;
-                  const rawIsVideo = (post.mediaTypes?.[0] ?? post.mediaType) === 'video';
-                  // إذا المنشور بدون وسائط مرفقة لكن نصّه يحتوي رابط صورة/فيديو مباشر (مثل
-                  // video.twimg.com) — نستخرجه ونعرضه كصورة/فيديو مصغّر بدل ترك الرابط الخام
-                  // يظهر كنص عادي بلا معاينة.
-                  const textEmbed = !rawThumbUrl && post.text ? extractTextMediaEmbeds(post.text) : null;
-                  const embeddedMedia = textEmbed?.embeds?.[0] ?? null;
-                  const thumbUrl = rawThumbUrl ?? embeddedMedia?.url;
-                  const isVideo = rawThumbUrl ? rawIsVideo : embeddedMedia?.type === 'video';
-                  const displayText = textEmbed ? textEmbed.cleanText : post.text;
-                  const isPinnedPost = profile?.pinnedPostId != null && profile.pinnedPostId === post.id;
-                  return { post, thumbUrl, isVideo, displayText, isPinnedPost };
-                });
-                // كل المنشورات — نصيّة أو فيها وسائط — تعرض الآن سوا في شبكة واحدة ثلاثة
-                // جمب بعض (نفس ترتيب sortedAuthorPosts، والمنشور المثبّت أولًا). المربع
-                // اللي فيه صورة/فيديو يعرض المعاينة، والمربع النصي البحت يعرض مقتطف من
-                // النص. النقر على أي مربع (نصي أو وسائط) يفتح صفحة المنشور الكاملة بنفس
-                // الطريقة اللي تفتح فيها المنشورات النصية بالضبط.
-                return (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, padding: '4px 0 24px' }}>
-                    {enrichedPosts.map(({ post, thumbUrl, isVideo, displayText, isPinnedPost }) => (
-                      <button
-                        key={post.id}
-                        type="button"
-                        onClick={() => onOpenPost(post)}
-                        aria-label={thumbUrl ? (isVideo ? 'فتح الفيديو' : 'فتح الصورة') : 'فتح المنشور'}
-                        style={{
-                          position: 'relative', width: '100%', aspectRatio: '1 / 1', overflow: 'hidden',
-                          border: isPinnedPost ? '3px solid #ef4444' : 'none', boxSizing: 'border-box', padding: 0,
-                          background: thumbUrl ? '#000' : CLR_CARD_BG, cursor: 'pointer', display: 'block',
-                        }}
-                      >
-                        {thumbUrl ? (
-                          <>
-                            {isVideo ? (
-                              <video src={resolveMediaUrl(thumbUrl) || thumbUrl} muted autoPlay loop playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                            ) : (
-                              <img src={resolveMediaUrl(thumbUrl) || thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                            )}
-                            {isVideo && (
-                              <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
-                                <Play size={13} strokeWidth={2.4} color="#fff" fill="#fff" />
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <div style={{
-                            width: '100%', height: '100%', padding: '8px 7px',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            border: `1px solid ${CLR_CARD_BORDER}`, boxSizing: 'border-box',
-                          }}>
-                            <p style={{
-                              color: CLR_TEXT, fontSize: '0.64rem', lineHeight: 1.45, margin: 0,
-                              textAlign: 'center',
-                              display: '-webkit-box', WebkitLineClamp: 6, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                            }}>
-                              {displayText}
-                            </p>
-                          </div>
-                        )}
-                        {/* المنشور المثبّت يبين بالأحمر */}
-                        {isPinnedPost && (
-                          <div style={{
-                            position: 'absolute', top: 6, insetInlineStart: 6,
-                            color: '#ef4444', filter: thumbUrl ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.7))' : 'none',
-                            display: 'flex', alignItems: 'center',
-                          }}>
-                            <Pin size={15} strokeWidth={2.6} fill="#ef4444" />
-                          </div>
-                        )}
-                        <PostGridTimeFooter createdAt={post.createdAt} onMedia={!!thumbUrl} />
-                      </button>
-                    ))}
-                  </div>
-                );
-              })()
-            ) : (
-              <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 32, paddingBottom: 40 }}>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_PRIMARY_DIM }}>
-                  <FileText size={20} strokeWidth={1.5} />
-                </div>
-                <p style={{ color: CLR_TEXT_DIM, fontSize: '0.82rem', textAlign: 'center', maxWidth: 220, lineHeight: 1.6 }}>
-                  No posts yet
-                </p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      {/* Posts tab + posts grid removed from the visitor profile view per request. */}
 
       {/* Fullscreen media lightbox only — comments open via icon (bottom sheet from parent). */}
       <AnimatePresence>
@@ -21518,7 +21404,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               })()}
             </div>
 
-            <style>{`@keyframes stooornaPlusFanIn { from { opacity: 0; transform: translateY(8px) scale(0.92); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
+            <style>{`@keyframes stooornaPlusFanIn { from { opacity: 0; transform: translateY(-8px) scale(0.92); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
             {/* Bottom chrome: New Post (center) | plus menu (right) */}
             <div
               ref={postsChromeBottomRef}
