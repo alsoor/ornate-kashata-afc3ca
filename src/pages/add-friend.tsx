@@ -5013,14 +5013,73 @@ function pickLinkFromText(raw: string | null | undefined): string | null {
 }
 
 /** رابط واحد (X أو صورة/فيديو مباشر) → الصورة/الفيديو كاملة مباشرة. failedNote يظهر إن تعذّر العرض */
-function LinkMediaPreview({ url, failedNote }: { url: string; failedNote?: string }) {
+function LinkMediaPreview({ url, failedNote, onOpenSite }: { url: string; failedNote?: string; onOpenSite?: (href: string) => void }) {
   const normalized = composerNormalizeUrl(url);
   if (!normalized) return null;
   const resolved = composerLookupOriginalUrl(normalized);
   if (parseXStatusId(resolved)) return <XLinkMedia statusUrl={resolved} failedNote={failedNote} />;
   const kind = classifyDirectMediaUrl(resolved);
   if (kind) return <PostLinkEmbeds embeds={[{ url: resolved, type: kind }]} />;
+  if (onOpenSite) {
+    let host = resolved;
+    try { host = new URL(resolved).hostname.replace(/^www\./, ''); } catch { /* */ }
+    return (
+      <button
+        type="button"
+        onClick={() => onOpenSite(resolved)}
+        style={{
+          marginTop: 8, width: '100%', textAlign: 'left', cursor: 'pointer',
+          border: '1px solid rgba(0,0,0,0.1)', borderRadius: 12, padding: '10px 12px',
+          background: '#f7f9f9', color: '#0f1419',
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#1d9bf0' }}>{host}</div>
+        <div style={{ fontSize: '0.72rem', color: '#536471', marginTop: 4, wordBreak: 'break-all' }}>{resolved}</div>
+      </button>
+    );
+  }
   return failedNote ? <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p> : null;
+}
+
+function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void }) {
+  return (
+    <motion.div
+      initial={{ y: '100%' }}
+      animate={{ y: 0 }}
+      exit={{ y: '100%' }}
+      transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 14000, background: '#fff',
+        display: 'flex', flexDirection: 'column',
+      }}
+    >
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: 'max(10px, env(safe-area-inset-top)) 12px 10px',
+        borderBottom: '1px solid rgba(0,0,0,0.08)',
+      }}>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close site"
+          style={{
+            width: 36, height: 36, borderRadius: '50%', border: 'none',
+            background: 'rgba(15,20,25,0.08)', color: '#0f1419', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <X size={18} strokeWidth={2.4} />
+        </button>
+        <p style={{ margin: 0, flex: 1, fontSize: '0.78rem', color: '#536471', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{url}</p>
+      </div>
+      <iframe
+        title="Site preview"
+        src={url}
+        sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+        style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }}
+      />
+    </motion.div>
+  );
 }
 
 
@@ -11855,6 +11914,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }, [composerProductTitle, composerProductDetails, composerProductExtras]);
   // ── مستطيل «Paste»: الرابط المُلصق (composerLinkInput) يُعرض كاملًا فورًا مع النص ──
   const [composerLinkPreviewUrl, setComposerLinkPreviewUrl] = useState('');
+  const [composerSiteViewerUrl, setComposerSiteViewerUrl] = useState<string | null>(null);
   useEffect(() => {
     const t = window.setTimeout(() => setComposerLinkPreviewUrl(composerLinkInput.trim()), 250);
     return () => window.clearTimeout(t);
@@ -13216,7 +13276,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         }
       } else {
         // ── بدون وسائط: منشور نصي مباشر ──
-        const textBody = String(finalText || '').slice(0, POST_TEXT_MAX_CHARS);
+        const textBody = String(finalText || '');
         let createRes = await fetch('/api/posts', {
           method: 'POST',
           credentials: 'include',
@@ -18749,15 +18809,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               display: 'flex', flexDirection: 'column',
             }}
           >
-            {/* Top bar: X | Post */}
+            {/* Top bar: back | New post */}
             <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              display: 'flex', alignItems: 'center', gap: 8,
               padding: 'max(10px, env(safe-area-inset-top, 0px)) 14px 10px',
               borderBottom: '1px solid rgba(0,0,0,0.06)',
             }}>
               <button
                 type="button"
-                onClick={() => { if (!composerPosting) { setShowComposer(false); setComposerError(''); } }}
+                onClick={() => { if (!composerPosting) { setShowComposer(false); setComposerError(''); setComposerSiteViewerUrl(null); } }}
                 aria-label="Close"
                 style={{
                   width: 36, height: 36, borderRadius: '50%', border: 'none',
@@ -18765,26 +18825,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >
-                <X size={22} strokeWidth={2.2} />
+                <ArrowLeft size={22} strokeWidth={2.2} />
               </button>
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.96 }}
-                animate={composerPosting ? { scale: [1, 1.08, 1], boxShadow: ['0 0 0 0 rgba(29,155,240,0.5)', '0 0 0 12px rgba(29,155,240,0)', '0 0 0 0 rgba(29,155,240,0.35)'] } : { scale: 1, boxShadow: '0 0 0 0 rgba(29,155,240,0)' }}
-                transition={composerPosting ? { duration: 0.95, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
-                disabled={composerPosting || !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)}
-                onClick={() => void submitPost('text')}
-                style={{
-                  minWidth: 72, height: 34, padding: '0 18px', borderRadius: 999, border: 'none',
-                  background: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)
-                    ? 'rgba(29,155,240,0.45)' : '#1d9bf0',
-                  color: '#fff', fontWeight: 700, fontSize: '0.88rem',
-                  cursor: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) ? 'default' : 'pointer',
-                  opacity: composerPosting ? 0.95 : 1,
-                }}
-              >
-                {composerPosting ? '…' : 'Post'}
-              </motion.button>
+              <p style={{ margin: 0, flex: 1, textAlign: 'center', fontWeight: 800, fontSize: '1.05rem', color: '#0f1419' }}>New post</p>
+              <span style={{ width: 36 }} />
             </div>
 
             {/* Body: company keeps title+details; regular user = single text area */}
@@ -18805,7 +18849,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 {isCompanyPublisher ? (
                 <>
                 <div>
-                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>عنوان المنتج / الموضوع</label>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>Title</label>
                   <input
                     value={composerProductTitle}
                     onChange={e => setComposerProductTitle(e.target.value)}
@@ -18818,7 +18862,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>تفاصيل المنتج</label>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>Details</label>
                   <textarea
                     value={composerProductDetails}
                     onChange={e => setComposerProductDetails(e.target.value)}
@@ -18840,7 +18884,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       setComposerProductDetails(e.target.value);
                       setComposerProductTitle('');
                     }}
-                    placeholder=""
+                    placeholder="Add a caption..."
                     rows={10}
                     autoFocus
                     style={{
@@ -18852,10 +18896,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   />
                 </div>
                 )}
-{/* ── مستطيل Paste: رابط صورة أو فيديو (X أو رابط مباشر) — للمستخدمين والشركات ── */}
+{/* paste link box */}
                 <div>
                   <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>
-                    {isCompanyPublisher ? 'رابط إعلان (صورة أو فيديو)' : 'رابط صورة أو فيديو'}
+                    'Link (image, video, or website)'
                   </label>
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 8, minHeight: 48, boxSizing: 'border-box',
@@ -18891,7 +18935,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         setComposerLinkInput(link);
                         setComposerLinkPreviewUrl(link);
                       }}
-                      placeholder={isCompanyPublisher ? 'الصق رابط الإعلان (صورة أو فيديو)' : 'الصق رابط صورة أو فيديو'}
+                      placeholder="Paste a URL"
                       style={{
                         flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
                         fontSize: '0.85rem', color: '#1a1a1a', fontFamily: 'inherit', textAlign: 'left',
@@ -18901,7 +18945,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <button
                         type="button"
                         onClick={() => { setComposerLinkInput(''); setComposerLinkPreviewUrl(''); setComposerError(''); }}
-                        aria-label="مسح الرابط"
+                        aria-label="Clear link"
                         style={{
                           width: 30, height: 30, borderRadius: '50%', border: 'none', flexShrink: 0,
                           background: 'rgba(15,20,25,0.08)', color: '#0f1419', cursor: 'pointer',
@@ -18915,25 +18959,25 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   {composerLinkPreviewUrl.includes('.') && (
                     <LinkMediaPreview
                       url={composerLinkPreviewUrl}
-                      failedNote="الرابط لا يبدو صورة أو فيديو — الصق رابط X أو رابط ملف مباشر (jpg / png / mp4)"
+                      failedNote="Paste an image, video, or website URL"
+                      onOpenSite={(href) => setComposerSiteViewerUrl(href)}
                     />
                   )}
                 </div>
-                {/* معاينة فورية لروابط X: الصورة/الفيديو تظهر كاملة بمجرد وضع الرابط (مستخدم أو شركة) */}
                 {composerXUrls.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {composerXUrls.map(u => (
-                      <LinkMediaPreview key={u} url={u} failedNote="لا توجد صورة أو فيديو في هذا الرابط" />
+                      <LinkMediaPreview key={u} url={u} failedNote="No media found on this link" onOpenSite={(href) => setComposerSiteViewerUrl(href)} />
                     ))}
                   </div>
                 )}
 {isCompanyPublisher && (
                 <div>
-                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>السعر</label>
+                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>Price</label>
                   <input
                     value={composerProductPrice}
                     onChange={e => setComposerProductPrice(e.target.value)}
-                    placeholder="مثال: 25 د.ك أو مجاني"
+                    placeholder="Price"
                     style={{
                       width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
                       padding: '12px 14px', fontSize: '0.95rem', fontWeight: 700, color: '#0a0a0a',
@@ -18987,105 +19031,111 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               )}
             </div>
 
-            {/* Bottom toolbar — photo+video picker, camera, PDF (business), Ads */}
             <div style={{
               borderTop: '1px solid rgba(0,0,0,0.08)',
-              padding: '10px 14px calc(12px + env(safe-area-inset-bottom, 0px))',
-              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '10px 16px calc(14px + env(safe-area-inset-bottom, 0px))',
+              display: 'flex', flexDirection: 'column', gap: 10,
             }}>
-              <label style={{
-                width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: '#1d9bf0',
-              }} title="Photo or video">
-                <Images size={20} strokeWidth={2} />
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic,image/gif,image/*,video/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.m4v"
-                  multiple
-                  style={{ display: 'none' }}
-                  onChange={e => {
-                    const list = e.target.files;
-                    const files = list ? Array.from(list) : [];
-                    e.target.value = '';
-                    if (!files.length) return;
-                    setComposerError('');
-                    setComposerMediaFiles(prev => {
-                      const next = [...prev];
-                      for (const file of files) {
-                        const t = (file.type || '').toLowerCase();
-                        if (t === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
-                          if (isCompanyPublisher) next.push({ file, type: 'pdf' as const, preview: URL.createObjectURL(file) });
-                          continue;
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 22 }}>
+                <label style={{
+                  width: 44, height: 44, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: '#0f1419', background: 'rgba(15,20,25,0.05)',
+                }} title="Photo or video">
+                  <Images size={22} strokeWidth={2} />
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/gif,image/*,video/*,video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm,.m4v"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      const list = e.target.files;
+                      const files = list ? Array.from(list) : [];
+                      e.target.value = '';
+                      if (!files.length) return;
+                      setComposerError('');
+                      setComposerMediaFiles(prev => {
+                        const next = [...prev];
+                        for (const file of files) {
+                          const t = (file.type || '').toLowerCase();
+                          if (t === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
+                            next.push({ file, type: 'pdf' as const, preview: URL.createObjectURL(file) });
+                            continue;
+                          }
+                          const isVid = t.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '');
+                          next.push({
+                            file,
+                            type: isVid ? 'video' as const : 'image' as const,
+                            preview: URL.createObjectURL(file),
+                          });
                         }
-                        const isVid = t.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '');
-                        next.push({
-                          file,
-                          type: isVid ? 'video' as const : 'image' as const,
-                          preview: URL.createObjectURL(file),
-                        });
-                      }
-                      return next;
-                    });
-                  }}
-                />
-              </label>
-              <button
+                        return next;
+                      });
+                    }}
+                  />
+                </label>
+                <label style={{
+                  width: 44, height: 44, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: '#0f1419', background: 'rgba(15,20,25,0.05)',
+                }} title="PDF">
+                  <FileText size={22} strokeWidth={2} />
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setComposerMediaFiles(prev => [
+                        ...prev,
+                        { file, type: 'pdf' as const, preview: URL.createObjectURL(file) },
+                      ]);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                {(isCompanyPublisher || isBusinessUser) && (
+                  <button
+                    type="button"
+                    title="Ads"
+                    onClick={() => { setBusinessAdsOpen(true); }}
+                    style={{
+                      width: 44, height: 44, borderRadius: 12, border: 'none',
+                      background: '#eab308', color: '#0a0a0a', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 900, fontSize: '0.72rem',
+                    }}
+                  >
+                    Ads
+                  </button>
+                )}
+              </div>
+              <p style={{ margin: 0, textAlign: 'center', color: '#536471', fontSize: '0.72rem', fontWeight: 700 }}>No Limits</p>
+              <motion.button
                 type="button"
-                title="Camera"
-                onClick={() => {
-                  setComposerCameraForPost(true);
-                  setCameraCaptureOpen(true);
-                }}
+                whileTap={{ scale: 0.98 }}
+                disabled={composerPosting || !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)}
+                onClick={() => void submitPost('text')}
                 style={{
-                  width: 40, height: 40, borderRadius: '50%', border: 'none',
-                  background: 'transparent', color: '#1d9bf0', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: '100%', height: 48, borderRadius: 999, border: 'none',
+                  background: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length)
+                    ? '#94a3b8' : '#2563eb',
+                  color: '#fff', fontWeight: 800, fontSize: '1rem',
+                  cursor: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerMediaFiles.length) ? 'default' : 'pointer',
                 }}
               >
-                <Camera size={20} strokeWidth={2} />
-              </button>
-              {isCompanyPublisher && (
-              <label style={{
-                width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: '#1d9bf0',
-              }} title="PDF">
-                <FileText size={20} strokeWidth={2} />
-                <input
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  style={{ display: 'none' }}
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    setComposerMediaFiles(prev => [
-                      ...prev,
-                      { file, type: 'pdf' as const, preview: URL.createObjectURL(file) },
-                    ]);
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-              )}
-              <div style={{ flex: 1 }} />
-              {isBusinessUser && (
-                <button
-                  type="button"
-                  onClick={() => { setBusinessAdsOpen(true); }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'transparent',
-                    color: '#1d9bf0', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer', padding: '6px 4px',
-                  }}
-                >
-                  <span style={{
-                    width: 22, height: 22, borderRadius: '50%', border: '1.5px solid #eab308',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', lineHeight: 1,
-                    background: '#eab308', color: '#0a0a0a', fontWeight: 900,
-                  }}>Ad</span>
-                  Ads
-                </button>
-              )}
+                {composerPosting ? '…' : 'Share'}
+              </motion.button>
             </div>
+            <AnimatePresence>
+              {composerSiteViewerUrl && (
+                <ComposerSiteViewer
+                  url={composerSiteViewerUrl}
+                  onClose={() => setComposerSiteViewerUrl(null)}
+                />
+              )}
+            </AnimatePresence>
             {composerBizHint && isBusinessUser && (
+
               <p style={{ margin: '0 14px 10px', color: '#1d9bf0', fontSize: '0.72rem', fontWeight: 700 }}>
                 Tip: use + Product Ad to place a paid ad between posts (5 KD / month).
               </p>
