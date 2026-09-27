@@ -551,6 +551,44 @@ function isPlayableChatMediaBody(body: string | null | undefined): boolean {
   return false;
 }
 
+/** Survives fetchMsgs polls — keeps image/video visible when server body is empty/broken */
+const chatStickyMediaBodies = new Map<number, string>();
+
+function chatRememberMediaBody(id: number, body: string | null | undefined) {
+  const s = String(body || '').trim();
+  if (!id || !isPlayableChatMediaBody(s)) return;
+  chatStickyMediaBodies.set(id, s);
+}
+
+function chatApplyStickyBody<T extends { id: number; type?: string; body?: string | null }>(m: T): T {
+  if (!(m.type === 'image' || m.type === 'video' || m.type === 'file')) return m;
+  if (isPlayableChatMediaBody(m.body)) {
+    chatRememberMediaBody(m.id, m.body);
+    return m;
+  }
+  const sticky = chatStickyMediaBodies.get(m.id);
+  if (sticky) return { ...m, body: sticky, type: (m.type === 'video' ? 'video' : 'image') as any };
+  return m;
+}
+
+async function fileToStickyDataUrl(file: File): Promise<string> {
+  // Prefer data: so preview survives without depending on blob lifetime
+  try {
+    if ((file.type || '').startsWith('image/') && file.size < 2_800_000) {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      }
+      const mime = (file.type || 'image/jpeg').split(';')[0] || 'image/jpeg';
+      return `data:${mime};base64,${btoa(binary)}`;
+    }
+  } catch { /* fall through */ }
+  return URL.createObjectURL(file);
+}
+
 function isLikelyImageUrl(url: string): boolean {
   const u = url.toLowerCase().split('?')[0];
   return /\.(jpg|jpeg|png|gif|webp|bmp|heic|heif|avif|svg)$/i.test(u)
@@ -4499,36 +4537,42 @@ export default function ChatPage() {
       setMsgs(prev => {
         const temps = prev.filter(m => typeof m.id === 'number' && m.id < 0);
         if (newMsgs.length > 0) {
-          // Keep optimistic image/video (blob:/data:) so they do not flash then
-          // disappear when the server row has no playable URL yet (Shared image).
-          const merged = newMsgs.map(m => ({ ...m }));
+          // 1) Apply sticky bodies so polls never wipe a working local preview
+          let merged = newMsgs.map(m => chatApplyStickyBody({ ...m }));
+          // 2) Remember any playable server bodies
+          for (const m of merged) {
+            if ((m.type === 'image' || m.type === 'video') && isPlayableChatMediaBody(m.body)) {
+              chatRememberMediaBody(m.id, m.body);
+            }
+          }
+          // 3) Attach / patch from optimistic temps (blob/data)
           for (const t of temps) {
             const tBody = String(t.body || '');
             const isLocalMedia =
               (t.type === 'image' || t.type === 'video' || t.type === 'file') &&
-              (tBody.startsWith('blob:') || tBody.startsWith('data:'));
+              isPlayableChatMediaBody(tBody);
             if (!isLocalMedia) continue;
-            // If a server message from me has image type but broken/empty body,
-            // patch it with the local preview so the photo stays visible.
+            chatRememberMediaBody(t.id, tBody);
             let patched = false;
             for (let i = merged.length - 1; i >= 0; i--) {
               const m = merged[i];
               if (m.senderId !== t.senderId) continue;
               if (!(m.type === 'image' || m.type === 'video' || m.type === 'file')) continue;
-              if (isPlayableChatMediaBody(m.body)) {
+              if (isPlayableChatMediaBody(m.body) && !String(m.body).startsWith('blob:') && !String(m.body).startsWith('data:')) {
+                // Real server URL — keep it, drop temp
                 patched = true;
                 break;
               }
-              // Server placeholder — keep showing local blob/data
+              // Broken/empty server row — sticky local preview on this server id
+              chatRememberMediaBody(m.id, tBody);
               merged[i] = { ...m, body: tBody, type: t.type === 'video' ? 'video' : 'image' };
               patched = true;
               break;
             }
-            if (!patched) {
-              // Server has not returned the message yet — keep temp bubble
-              merged.push(t);
-            }
+            if (!patched) merged.push(t);
           }
+          // 4) Final sticky pass
+          merged = merged.map(m => chatApplyStickyBody(m));
           return merged;
         }
         // The fetch came back with nothing usable. If the user just cleared
@@ -4822,8 +4866,9 @@ export default function ChatPage() {
   async function sendImage(file: File) {
     playBubblePop('send');
     if (!file || file.size <= 0) throw new Error('ملف فارغ');
-    const localPreview = URL.createObjectURL(file);
     const tempId = -Math.floor(Date.now() % 1_000_000_000) - 1;
+    const localPreview = await fileToStickyDataUrl(file);
+    chatRememberMediaBody(tempId, localPreview);
     try {
       if (user?.id) {
         setMsgs(prev => [...prev, {
