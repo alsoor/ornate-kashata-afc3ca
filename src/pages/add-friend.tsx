@@ -15035,16 +15035,18 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     if (feedScrollRafRef.current) return;
     feedScrollRafRef.current = requestAnimationFrame(() => {
       feedScrollRafRef.current = 0;
-      // ── Header auto-hide on swipe-up permanently disabled — the header stays
-      // open regardless of scroll direction. The bottom-bar hide/show dispatch on
-      // scroll is kept as-is (unrelated to the header shutter now). ──
+      // Finger swipe up (content scrolls down) -> collapse header AND hide bottom bar
       if (delta > 2 && current > 4) {
+        setHeaderOpen(false);
+        setHeaderHintSeen(true);
         try {
           window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'down' } }));
         } catch { /* ignore */ }
         return;
       }
+      // Only near the very top: expand header and show bottom bar
       if (current <= 10) {
+        setHeaderOpen(true);
         try {
           window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'up' } }));
         } catch { /* ignore */ }
@@ -15052,11 +15054,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     });
   }
 
-  // Header shutter toggle permanently disabled per request — kept as a no-op so
-  // any existing callers (e.g. openFirstAvailableStory) don't need to change,
-  // but it no longer flips headerOpen or fires the feed-scroll event.
   function toggleHeaderOpen() {
-    /* intentionally disabled: header no longer collapses */
+    setHeaderOpen(prev => {
+      const next = !prev;
+      setHeaderHintSeen(true);
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', {
+          detail: { dir: next ? 'up' : 'down' },
+        }));
+      } catch { /* ignore */ }
+      return next;
+    });
   }
 
   // Keep bottom nav in sync with header shutter (scroll or grabber)
@@ -17384,25 +17392,31 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             </div>
           </div>
 
-          {/* ── Decorative grabber line — hide/show-on-tap feature permanently
-              removed per request. Purely visual now: no button, no onClick,
-              no bounce hint, header can no longer be collapsed from here. ── */}
+          {/* ── Header show/hide grabber — sits above the content switcher.
+              Tap toggles header open/closed. Swipe-up on posts also collapses it. ── */}
           <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
-            <div
-              aria-hidden
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={toggleHeaderOpen}
+              aria-label={headerOpen ? 'Hide header' : 'Show header'}
               style={{
+                background: 'none', border: 'none', cursor: 'pointer',
                 padding: '8px 30px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
-              <span
+              <motion.span
+                animate={headerHintSeen ? { y: 0 } : { y: [0, -5, 0, -5, 0] }}
+                transition={headerHintSeen ? { duration: 0.2 } : {
+                  duration: 1.6, repeat: Infinity, repeatDelay: 0.9, ease: 'easeInOut',
+                }}
                 style={{
                   display: 'block',
                   width: 36, height: 4, borderRadius: 2,
                   background: CLR_PRIMARY_BORDER,
                 }}
               />
-            </div>
+            </motion.button>
           </div>
 
         </div>
@@ -17410,15 +17424,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
         {/* ── Quick "+" menu button — moved here, below the sticky header's own
             divider line, so it no longer sits inside the header's tap/swipe
-            zone next to the grabber. Opens the same Settings/Call/Friends/Live
-            menu directly — it no longer touches the header's open/closed state,
-            which is now permanently open. ── */}
+            zone next to the show/hide grabber. Opens the same
+            Settings/Call/Friends/Live menu, expanding DOWNWARD. ── */}
         {!isFriendManagement && (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '2px 0 8px' }}>
             <motion.button
               type="button"
               whileTap={{ scale: 0.9 }}
               onClick={() => {
+                toggleHeaderOpen();
                 try { window.dispatchEvent(new CustomEvent('stooorna:profile-plus-toggle')); } catch { /* ignore */ }
               }}
               aria-label="خيارات إضافية"
