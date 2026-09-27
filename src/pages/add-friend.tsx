@@ -4819,10 +4819,10 @@ function XStatusEmbed({ statusUrl }: { statusUrl: string }) {
   }
   if (failed || !items.length) {
     return (
-      <a href={statusUrl} onClick={e => openInAppSite(statusUrl, e)}
-        style={{ color: CLR_PRIMARY, fontSize: '0.75rem', wordBreak: 'break-all', cursor: 'pointer' }}>
+      <button type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); openInAppSite(statusUrl, e); }}
+        style={{ color: CLR_PRIMARY, fontSize: '0.75rem', wordBreak: 'break-all', cursor: 'pointer', background: 'none', border: 'none', padding: 0, font: 'inherit', textAlign: 'left' }}>
         {statusUrl}
-      </a>
+      </button>
     );
   }
   return <PostLinkEmbeds embeds={items} />;
@@ -4940,10 +4940,10 @@ function XLinkMedia({ statusUrl, failedNote }: { statusUrl: string; failedNote?:
       return <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p>;
     }
     return (
-      <a href={statusUrl} onClick={e => openInAppSite(statusUrl, e)}
-        style={{ color: CLR_PRIMARY, fontSize: '0.75rem', wordBreak: 'break-all', cursor: 'pointer' }}>
+      <button type="button" onClick={e => { e.preventDefault(); e.stopPropagation(); openInAppSite(statusUrl, e); }}
+        style={{ color: CLR_PRIMARY, fontSize: '0.75rem', wordBreak: 'break-all', cursor: 'pointer', background: 'none', border: 'none', padding: 0, font: 'inherit', textAlign: 'left' }}>
         {statusUrl}
-      </a>
+      </button>
     );
   }
   return <PostLinkEmbeds embeds={items} />;
@@ -5042,22 +5042,32 @@ function LinkMediaPreview({ url, failedNote, onOpenSite }: { url: string; failed
 }
 
 
+let inAppSiteOpener: ((url: string) => void) | null = null;
+function bindInAppSiteOpener(fn: ((url: string) => void) | null) {
+  inAppSiteOpener = fn;
+}
 function openInAppSite(url: string, e?: { preventDefault?: () => void; stopPropagation?: () => void }) {
-  try { e?.preventDefault?.(); e?.stopPropagation?.(); } catch { /* */ }
-  const href = String(url || '').trim();
-  if (!href) return;
+  try { e?.preventDefault?.(); } catch { /* */ }
+  try { e?.stopPropagation?.(); } catch { /* */ }
+  const raw = String(url || '').trim();
+  if (!raw) return;
+  const href = composerNormalizeUrl(raw) || (/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  if (inAppSiteOpener) {
+    inAppSiteOpener(href);
+    return;
+  }
   try { window.dispatchEvent(new CustomEvent('stooorna:open-inapp-site', { detail: { url: href } })); } catch { /* */ }
 }
 
 function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void }) {
-  return (
+  const node = (
     <motion.div
       initial={{ y: '100%' }}
       animate={{ y: 0 }}
       exit={{ y: '100%' }}
       transition={{ type: 'spring', stiffness: 380, damping: 38 }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 14000, background: '#fff',
+        position: 'fixed', inset: 0, zIndex: 2147483000, background: '#fff',
         display: 'flex', flexDirection: 'column',
       }}
     >
@@ -5083,11 +5093,14 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
       <iframe
         title="Site preview"
         src={url}
-        sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+        sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation-by-user-activation"
+        referrerPolicy="no-referrer"
         style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }}
       />
     </motion.div>
   );
+  if (typeof document === 'undefined') return node;
+  return createPortal(node, document.body);
 }
 
 
@@ -5129,7 +5142,7 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
   const visibleText = shouldCollapse
     ? allLines.slice(0, PREVIEW_LINES).join('\n') + (allLines.length > PREVIEW_LINES ? '\n…' : '')
     : cleanText;
-  const parts = visibleText ? visibleText.split(/(#[\p{L}\p{N}_]+|@[\p{L}\p{N}_]+|https?:\/\/[^\s<>"')\]]+)/gu) : [];
+  const parts = visibleText ? visibleText.split(/(#[\p{L}\p{N}_]+|@[\p{L}\p{N}_]+|https?:\/\/[^\s<>"')\]]+|www\.[^\s<>"')\]]+)/gu) : [];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {visibleText ? (
@@ -5141,8 +5154,15 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
             if (part.startsWith('@')) {
               return <span key={i} style={{ color: 'hsl(var(--primary))', fontWeight: 700 }}>{part}</span>;
             }
-            if (/^https?:\/\//i.test(part)) {
-              return <a key={i} href={part} onClick={e => openInAppSite(part, e)} style={{ color, fontWeight: 600, wordBreak: 'break-all', cursor: 'pointer' }}>{part}</a>;
+            if (/^(https?:\/\/|www\.)/i.test(part)) {
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={event => { event.preventDefault(); event.stopPropagation(); openInAppSite(part, event); }}
+                  style={{ color, fontWeight: 600, wordBreak: 'break-all', cursor: 'pointer', background: 'none', border: 'none', padding: 0, font: 'inherit', textAlign: 'inherit' }}
+                >{part}</button>
+              );
             }
             return <React.Fragment key={i}>{part}</React.Fragment>;
           })}
@@ -11924,12 +11944,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [composerLinkPreviewUrl, setComposerLinkPreviewUrl] = useState('');
   const [composerSiteViewerUrl, setComposerSiteViewerUrl] = useState<string | null>(null);
   useEffect(() => {
+    const open = (url: string) => setComposerSiteViewerUrl(url);
+    bindInAppSiteOpener(open);
     const onOpen = (ev: Event) => {
       const url = String((ev as CustomEvent)?.detail?.url || '');
       if (url) setComposerSiteViewerUrl(url);
     };
     window.addEventListener('stooorna:open-inapp-site', onOpen);
-    return () => window.removeEventListener('stooorna:open-inapp-site', onOpen);
+    return () => {
+      bindInAppSiteOpener(null);
+      window.removeEventListener('stooorna:open-inapp-site', onOpen);
+    };
   }, []);
   useEffect(() => {
     const t = window.setTimeout(() => setComposerLinkPreviewUrl(composerLinkInput.trim()), 250);
