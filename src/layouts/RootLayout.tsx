@@ -798,6 +798,7 @@ function GlobalBottomNavigation() {
   // posts get the full screen; scrolling back toward the top brings it back.
   // Purely local to the bar itself — nothing above it is ever affected.
   const [navBarHidden, setNavBarHidden] = useState(false);
+  void navBarHidden; // no longer hides the bar (see hideBottomBar below) — kept for future use
   const [liveMapOpen, setLiveMapOpen] = useState(false);
   useEffect(() => {
     const onFeedScroll = (e: Event) => {
@@ -4837,8 +4838,10 @@ function GlobalBottomNavigation() {
 
   {(() => {
     const hideBottomBar =
-      navBarHidden
-      || textPostsOpen
+      // navBarHidden (auto-hide on scroll in the profile/story page) intentionally
+      // excluded — the "+" button lives on this bar and must always stay reachable
+      // there, so the bar now stays fixed instead of sliding down on scroll.
+      textPostsOpen
       || liveMapOpen
       || isConversation
       || secretChatOpen
