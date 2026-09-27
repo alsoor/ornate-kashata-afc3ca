@@ -5055,6 +5055,84 @@ function pickLinkFromText(raw: string | null | undefined): string | null {
 }
 
 /** رابط واحد (X أو صورة/فيديو مباشر) → الصورة/الفيديو كاملة مباشرة. failedNote يظهر إن تعذّر العرض */
+function parseOgFromHtml(html: string, pageUrl: string): { title: string; description: string; image: string } {
+  const pick = (keys: string[]) => {
+    for (const key of keys) {
+      const re = new RegExp(`<meta[^>]+(?:property|name)=["']${key}["'][^>]+content=["']([^"']+)["']`, 'i');
+      const re2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${key}["']`, 'i');
+      const m = html.match(re) || html.match(re2);
+      if (m && m[1]) return m[1].trim();
+    }
+    return '';
+  };
+  const title = pick(['og:title', 'twitter:title']) || (html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1] || '';
+  const description = pick(['og:description', 'description', 'twitter:description']);
+  let image = pick(['og:image', 'og:image:url', 'twitter:image']);
+  if (image && !/^https?:/i.test(image)) {
+    try { image = new URL(image, pageUrl).href; } catch { /* */ }
+  }
+  return { title: title.slice(0, 140), description: description.slice(0, 220), image };
+}
+
+function SitePreviewCard({ url, onOpen }: { url: string; onOpen: (href: string) => void }) {
+  const resolved = composerLookupOriginalUrl(composerNormalizeUrl(url) || url);
+  const href = composerNormalizeUrl(resolved) || resolved;
+  const [meta, setMeta] = useState<{ title: string; description: string; image: string }>({ title: '', description: '', image: '' });
+  useEffect(() => {
+    let cancelled = false;
+    if (!href) return;
+    const load = async () => {
+      try {
+        const r = await fetchWithTimeout(`https://api.microlink.io/?url=${encodeURIComponent(href)}`, 4000);
+        if (r && r.ok) {
+          const d = await r.json() as { status?: string; data?: { title?: string; description?: string; image?: { url?: string } } };
+          if (d?.status === 'success' && d.data && !cancelled) {
+            setMeta({
+              title: String(d.data.title || ''),
+              description: String(d.data.description || ''),
+              image: String(d.data.image?.url || ''),
+            });
+            return;
+          }
+        }
+      } catch { /* */ }
+      try {
+        const r = await fetchWithTimeout(`https://api.allorigins.win/raw?url=${encodeURIComponent(href)}`, 4000);
+        if (r && r.ok) {
+          const html = await r.text();
+          if (!cancelled) setMeta(parseOgFromHtml(html, href));
+        }
+      } catch { /* */ }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [href]);
+  let host = href;
+  try { host = new URL(href).hostname.replace(/^www\./, ''); } catch { /* */ }
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(href)}
+      style={{
+        marginTop: 8, width: '100%', textAlign: 'left', cursor: 'pointer', overflow: 'hidden',
+        border: '1px solid rgba(0,0,0,0.1)', borderRadius: 14, padding: 0,
+        background: '#fff', color: '#0f1419',
+      }}
+    >
+      {meta.image ? (
+        <img src={meta.image} alt="" style={{ width: '100%', height: 148, objectFit: 'cover', display: 'block', background: '#eef2f3' }} />
+      ) : (
+        <div style={{ width: '100%', height: 88, background: '#eef2f3' }} />
+      )}
+      <div style={{ padding: '10px 12px 12px' }}>
+        <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1d9bf0', letterSpacing: '0.02em' }}>{host}</div>
+        <div style={{ fontWeight: 800, fontSize: '0.88rem', marginTop: 4, lineHeight: 1.3 }}>{meta.title || host}</div>
+        {meta.description ? <div style={{ fontSize: '0.74rem', color: '#536471', marginTop: 4, lineHeight: 1.4 }}>{meta.description}</div> : null}
+      </div>
+    </button>
+  );
+}
+
 function LinkMediaPreview({ url, failedNote, onOpenSite }: { url: string; failedNote?: string; onOpenSite?: (href: string) => void }) {
   const normalized = composerNormalizeUrl(url);
   if (!normalized) return null;
@@ -5062,24 +5140,7 @@ function LinkMediaPreview({ url, failedNote, onOpenSite }: { url: string; failed
   if (parseXStatusId(resolved)) return <XLinkMedia statusUrl={resolved} failedNote={failedNote} />;
   const kind = classifyDirectMediaUrl(resolved);
   if (kind) return <PostLinkEmbeds embeds={[{ url: resolved, type: kind }]} />;
-  if (onOpenSite) {
-    let host = resolved;
-    try { host = new URL(resolved).hostname.replace(/^www\./, ''); } catch { /* */ }
-    return (
-      <button
-        type="button"
-        onClick={() => onOpenSite(resolved)}
-        style={{
-          marginTop: 8, width: '100%', textAlign: 'left', cursor: 'pointer',
-          border: '1px solid rgba(0,0,0,0.1)', borderRadius: 12, padding: '10px 12px',
-          background: '#f7f9f9', color: '#0f1419',
-        }}
-      >
-        <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#1d9bf0' }}>{host}</div>
-        <div style={{ fontSize: '0.72rem', color: '#536471', marginTop: 4, wordBreak: 'break-all' }}>{resolved}</div>
-      </button>
-    );
-  }
+  if (onOpenSite) return <SitePreviewCard url={resolved} onOpen={onOpenSite} />;
   return failedNote ? <p style={{ margin: '6px 0 0', color: '#536471', fontSize: '0.75rem' }}>{failedNote}</p> : null;
 }
 
@@ -5271,7 +5332,7 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
         >
           <X size={18} strokeWidth={2.4} />
         </button>
-        <p style={{ margin: 0, flex: 1, fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{composerPublicShortUrl(hrefIn) || composerPublicShortUrl(href)}</p>
+        <p style={{ margin: 0, flex: 1, fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{href || hrefIn}</p>
       </div>
       <div style={{ flex: 1, minHeight: 0, background: '#fff', position: 'relative' }}>
         {loading ? (
@@ -13000,20 +13061,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             extras,
           })
         : (detailsWithLink || title || '').trim();
-      {
-        const parts = String(finalText || '').split(/(https?:\/\/[^\s<>"')\]]+|www\.[^\s<>"')\]]+)/gi);
-        const out: string[] = [];
-        for (const part of parts) {
-          if (/^(https?:\/\/|www\.)/i.test(part) && !/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(part)) {
-            out.push((await composerCreateShortLink(part)) || part);
-          } else out.push(part);
-        }
-        finalText = out.join('');
-      }
-      if (linkNormalized && !/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(linkNormalized)) {
-        const short = await composerCreateShortLink(linkNormalized);
-        if (short) setComposerLinkInput(short);
-      }
       const postHashtags = extractHashtagsFromText(finalText);
 
       // ── رفع الوسائط (صور / فيديو / PDF) ──
@@ -19209,7 +19256,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         setComposerError('');
                         setComposerLinkInput(link);
                         setComposerLinkPreviewUrl(link);
-                        void composerCreateShortLink(link).then(short => { if (short) setComposerLinkInput(short); });
                       }}
                       placeholder="Paste a URL"
                       style={{
