@@ -555,6 +555,62 @@ function isPlayableChatMediaBody(body: string | null | undefined): boolean {
 const chatStickyMediaBodies = new Map<number, string>();
 /** Pinned local image messages — always re-injected after fetch until server has real URL */
 let chatSkipFetchUntil = 0;
+
+function chatMsgsStorageKey(parts: { userId?: string | null; peerId?: string; scChatId?: number | null; groupId?: string; peerUsername?: string; peerName?: string; isGroup?: boolean }) {
+  const uid = parts.userId || 'anon';
+  const other = parts.isGroup
+    ? `g_${parts.groupId || 'x'}`
+    : (parts.scChatId ? `sc_${parts.scChatId}` : (parts.peerId || parts.peerUsername || parts.peerName || 'unknown'));
+  return `stooorna_chat_msgs_v1_${uid}_${other}`;
+}
+
+function loadPersistedChatMsgs(key: string): Message[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((m: any) => m && (m.body != null || m.type === 'image' || m.type === 'video')) as Message[];
+  } catch {
+    return [];
+  }
+}
+
+function savePersistedChatMsgs(key: string, list: Message[]) {
+  try {
+    // Cap size: keep last 80 messages; for data: bodies keep as-is (needed for images)
+    const slim = list.slice(-80).map(m => ({
+      id: m.id,
+      senderId: m.senderId,
+      type: m.type,
+      body: m.body,
+      duration: m.duration ?? null,
+      createdAt: m.createdAt ?? null,
+      read: m.read,
+      readAt: m.readAt ?? null,
+      delivered: m.delivered,
+      senderName: m.senderName ?? null,
+      senderUsername: m.senderUsername ?? null,
+      senderAvatarUrl: m.senderAvatarUrl ?? null,
+      isSystem: m.isSystem,
+      isStreak: m.isStreak,
+    }));
+    localStorage.setItem(key, JSON.stringify(slim));
+  } catch {
+    // quota — drop oldest image bodies gradually
+    try {
+      const lighter = list.slice(-40).map(m => {
+        const body = String(m.body || '');
+        if (body.startsWith('data:') && body.length > 120000) {
+          return { ...m, body: body.slice(0, 80) + '…' };
+        }
+        return m;
+      });
+      localStorage.setItem(key, JSON.stringify(lighter.slice(-40)));
+    } catch { /* */ }
+  }
+}
+
 const chatPinnedLocalMedia: Array<{
   id: number;
   senderId: string;
@@ -3738,6 +3794,63 @@ export default function ChatPage() {
   // ── Secret chat DM state ─────────────────────────────────────────────────────
   const [scChatId, setScChatId] = useState<number | null>(null);
   const [msgs, setMsgs] = useState<Message[]>([]);
+  const chatPersistKey = chatMsgsStorageKey({
+    userId: user?.id,
+    peerId,
+    scChatId,
+    groupId,
+    peerUsername,
+    peerName,
+    isGroup,
+  });
+  // Load cached messages once key is known (survives leave/return)
+  useEffect(() => {
+    if (!user?.id && !peerId && !scChatId && !isGroup) return;
+    const cached = loadPersistedChatMsgs(chatPersistKey);
+    if (cached.length) {
+      setMsgs(prev => {
+        if (prev.length >= cached.length) {
+          // merge any missing cached
+          const ids = new Set(prev.map(m => m.id));
+          const extra = cached.filter(m => !ids.has(m.id));
+          return extra.length ? [...prev, ...extra] : prev;
+        }
+        // prefer union by id
+        const map = new Map<number, Message>();
+        for (const m of cached) map.set(m.id as number, m);
+        for (const m of prev) map.set(m.id as number, m);
+        return Array.from(map.values()).sort((a, b) => {
+          const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return ta - tb;
+        });
+      });
+      // restore pins for images
+      for (const m of cached) {
+        if ((m.type === 'image' || m.type === 'video') && isPlayableChatMediaBody(m.body)) {
+          chatPinLocalMedia({
+            id: m.id as number,
+            senderId: String(m.senderId),
+            type: m.type as 'image' | 'video' | 'file',
+            body: String(m.body),
+            createdAt: m.createdAt,
+            senderName: m.senderName,
+            senderUsername: m.senderUsername,
+            senderAvatarUrl: m.senderAvatarUrl,
+          });
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatPersistKey, user?.id]);
+
+  // Persist every msgs change so leave/return keeps chat
+  useEffect(() => {
+    if (!chatPersistKey || chatPersistKey.includes('_unknown')) return;
+    if (msgs.length === 0) return;
+    savePersistedChatMsgs(chatPersistKey, msgs);
+  }, [msgs, chatPersistKey]);
+
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   /** AI media prep for chat — URL never shown; only wait → ready → send */
@@ -3835,6 +3948,9 @@ export default function ChatPage() {
     try {
       const key = `stooorna_chat_cleared_${isGroup ? `g_${groupId}` : (scChatId || peerId || 'x')}`;
       localStorage.setItem(key, String(Date.now()));
+      // Also clear message cache so Clear History is permanent
+      try { localStorage.removeItem(chatPersistKey); } catch { /* */ }
+      chatPinnedLocalMedia.length = 0;
     } catch { /* ignore */ }
     try {
       const { clearChatHistory } = await import('@/lib/chatClearHistoryPatch');
