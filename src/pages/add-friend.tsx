@@ -22,6 +22,7 @@ import { normalizeComment, sortCommentsTree, authorCountryLabel } from '@/lib/po
 import { useGuestGuard } from '@/hooks/useGuestGuard';
 import PostTextMore from '@/components/PostTextMore';
 import { publishFeedPost, uploadPostMedia, deleteStoryInstant, POST_TEXT_MAX_CHARS } from '@/lib/postStoryPatch';
+import { mediaAiProcessGalleryFiles, mediaAiForceWorkingMedia, mediaAiNormalizeImage } from '@/lib/mediaAiPatch';
 interface SearchUser {
   id: string;
   name: string | null;
@@ -19737,31 +19738,30 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       e.target.value = '';
                       if (!files.length) return;
                       setComposerError('');
-                      // Gallery → upload → put real URL(s) into the link rectangle, then full media preview
+                      // AI media pipeline: force working URL into link rectangle + live preview (always)
                       setComposerPosting(true);
                       try {
-                        const items: { url: string; type: 'image' | 'video' }[] = [];
                         for (const file of files) {
                           const t = (file.type || '').toLowerCase();
                           if (t === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
                             setComposerMediaFiles(prev => [...prev, { file, type: 'pdf' as const, preview: URL.createObjectURL(file) }]);
-                            continue;
-                          }
-                          const isVid = t.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '');
-                          const mediaType: 'image' | 'video' = isVid ? 'video' : 'image';
-                          let f = file;
-                          try { f = await normalizeGalleryFileForUpload(file, mediaType); } catch { /* keep */ }
-                          let url = await fastUploadMediaFile(f, mediaType);
-                          // Railway / no-storage fallback: durable data URL for images so the link always works
-                          if (!url) {
-                            url = await fileToPlayableDataUrl(f, mediaType);
-                          }
-                          if (url) {
-                            const abs = resolvePlayableMediaHref(String(url)) || resolveMediaUrl(String(url)) || String(url);
-                            items.push({ url: abs, type: mediaType });
                           }
                         }
-                        if (items.length) {
+                        const aiItems = await mediaAiProcessGalleryFiles(
+                          files,
+                          async (f, kind) => {
+                            try {
+                              return await fastUploadMediaFile(f, kind);
+                            } catch {
+                              return null;
+                            }
+                          },
+                        );
+                        if (aiItems.length) {
+                          const items = aiItems.map(i => ({
+                            url: resolvePlayableMediaHref(i.url) || i.url,
+                            type: i.type as 'image' | 'video',
+                          }));
                           const urls = items.map(i => i.url);
                           setComposerLinkInput(urls.join('\n'));
                           setComposerLinkPreviewUrl(urls[0]);
@@ -19772,7 +19772,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           setComposerError('تعذر تحويل الصورة/الفيديو إلى رابط يعمل — حاول مرة ثانية');
                         }
                       } catch (err) {
-                        setComposerError(err instanceof Error ? err.message : 'تعذر رفع الوسائط');
+                        setComposerError(err instanceof Error ? err.message : 'تعذر معالجة الوسائط');
                       } finally {
                         setComposerPosting(false);
                       }
