@@ -644,6 +644,19 @@ export function isBusinessPostsHidden(userId?: string | null): boolean {
   return !!(row && row.status === 'cancelled');
 }
 
+/** Owner action: permanently deletes a cancelled Business application/account.
+ * Only removes the business registration row for this user — the user's
+ * regular account, posts, and profile are untouched. Only ever applied to
+ * rows already in 'cancelled' status, as a safety guard. */
+export function deleteBusinessAccount(id: string): BusinessRegistration[] {
+  const list = loadBusinessRegistry();
+  const row = list.find(x => x.id === id);
+  if (!row || row.status !== 'cancelled') return list;
+  const next = list.filter(x => x.id !== id);
+  saveBusinessRegistry(next);
+  return next;
+}
+
 export type DeletedUserRecord = {
   id: string;
   email?: string | null;
@@ -11318,6 +11331,24 @@ export default function SettingsPage() {
                     <p style={{ margin: '8px 0 0', fontSize: 11, color: 'rgba(180,180,160,0.7)' }}>
                       Note sent: {row.ownerNote}
                     </p>
+                  )}
+                  {row.status === 'cancelled' && (
+                    <div style={{ marginTop: 12 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm('Delete this business account? This only deletes the Business account, not the user, and cannot be undone.')) return;
+                          deleteBusinessAccount(row.id);
+                          setOwnerBusinessList(loadBusinessRegistry());
+                        }}
+                        style={{
+                          width: '100%', padding: '10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                          background: '#ef4444', color: '#fff', fontSize: 12, fontWeight: 800,
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
