@@ -8160,7 +8160,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               background: CLR_TAB_ACTIVE,
             }}>
               <FileText size={14} strokeWidth={2} />
-              {(isCompanyProfile || isAuthorBusinessAccount(authorId, authorUsername)) ? 'Products' : 'Post'}
+              {null /* Post/Products header removed */}
             </div>
           </>
         )}
@@ -16964,7 +16964,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     }}>
       <div
         data-account-surface="1"
-        style={storyHomeSheetOpen && textPostsPageOpen ? {
+        style={false && storyHomeSheetOpen && textPostsPageOpen ? {
           position: 'fixed',
           top: 0,
           bottom: 0,
@@ -17154,22 +17154,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <span style={{ fontSize: '0.65rem', color: CLR_TEXT_DIM }}>Likes</span>
                   </div>
                   <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 12, flexShrink: 0, position: 'relative', zIndex: 2, minWidth: 36, paddingTop: 2 }}>
-                    {businessApproved && (
-                      <motion.button
-                        type="button"
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => { setMyAdsHubTab('video'); setMyAdsHubOpen(true); }}
-                        aria-label="My Ads"
-                        style={{
-                          width: 28, height: 28, borderRadius: '50%', border: '2px solid #eab308',
-                          background: 'rgba(234,179,8,0.2)', color: '#eab308', cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-                          boxShadow: '0 0 10px rgba(234,179,8,0.45)',
-                        }}
-                      >
-                        <span style={{ fontSize: '0.55rem', fontWeight: 900, letterSpacing: '-0.02em' }}>Ads</span>
-                      </motion.button>
-                    )}
                     <motion.button
                       type="button"
                       whileTap={{ scale: 0.9 }}
@@ -17322,7 +17306,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 background: CLR_TAB_ACTIVE,
               }}>
                 <FileText size={14} strokeWidth={2} />
-                {isCompanyPublisher ? 'Products' : 'Post'}
+                {null /* Post/Products header removed */}
               </div>
               <div style={{ height: 1, background: CLR_NAV_BORDER }} />
             </div>
@@ -20868,7 +20852,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
       {/* ── Text Posts Page — X أحمر متحرك بالأعلى + New Post تحتها بالمنتصف؛ الشريط السفلي مخفي ── */}
       <AnimatePresence>
-      {textPostsPageOpen && (
+      {false && textPostsPageOpen && (
           <motion.div
             key="text-posts-page"
             initial={textPostsOpenedFromUrl.current ? false : { opacity: 0, y: -36 }}
@@ -21706,7 +21690,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
       {/* Account page sheet — slides in from the left over public posts */}
       <AnimatePresence>
-        {storyHomeSheetOpen && textPostsPageOpen && (
+        {false && storyHomeSheetOpen && textPostsPageOpen && (
           <>
             <motion.div
               key="story-home-sheet-backdrop"

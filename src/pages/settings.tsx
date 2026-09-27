@@ -7018,9 +7018,7 @@ export default function SettingsPage() {
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap',
                     }}><span style={resolveVipNameStyle(user?.id)}>@{profileUsername}</span>
                       <VipBadge userId={user?.id} compact />
-                      {(businessRow?.status === 'approved' || isPublicBusinessAccount({ id: user?.id, username: profileUsername, email: user?.email })) && (
-                        <BusinessHeadBadge />
-                      )}
+                      {false && <BusinessHeadBadge />}
                     </p>}
                     {profileCountry ? (
                       <p style={{ margin: '4px 0 0', color: 'rgba(160,200,200,0.75)', fontSize: '0.7rem', fontWeight: 700 }}>
@@ -7177,7 +7175,7 @@ export default function SettingsPage() {
                   )}
 
                   {/* Wallet — always visible for Business and VIP */}
-                  {true && (
+                  {false && (
                     <div style={{
                       background: T.surface,
                       border: `1px solid ${T.surfaceBorder}`,
@@ -7209,180 +7207,12 @@ export default function SettingsPage() {
                         </button>
                       </div>
                       <p style={{ margin: '10px 0 0', color: T.primaryDim, fontSize: '0.7rem', fontWeight: 600, lineHeight: 1.45 }}>
-                        Top up here. Use this wallet to subscribe VIP (5 KD / 30 days) or Business ads (5 KD / month).
+                        /* wallet copy removed */
                       </p>
                     </div>
                   )}
 
-                  {/* ── Business toggle ── */}
-                  <div style={{
-                background: T.surface,
-                border: `1px solid ${T.surfaceBorder}`,
-                borderRadius: 14,
-                padding: '14px 16px',
-                marginBottom: 10,
-              }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <p style={{
-                          color: T.textMuted, fontSize: '0.62rem', letterSpacing: '0.2em',
-                          textTransform: 'uppercase', fontWeight: 500, margin: 0,
-                        }}>Business</p>
-                        <p style={{ margin: '4px 0 0', color: T.primaryDim, fontSize: '0.72rem', fontWeight: 600 }}>
-                          {businessRow?.status === 'approved'
-                            ? 'Active'
-                            : businessRow?.status === 'pending'
-                              ? 'Under review'
-                              : 'Register your project'}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        aria-label="Toggle Business"
-                        onClick={() => {
-                          if (businessRow?.status === 'approved') {
-                            // Cancelling requires an explicit confirmation first — see the
-                            // bilingual warning dialog rendered near the end of this component.
-                            setCancelSubConfirm('business');
-                            return;
-                          }
-                          if (businessRow?.status === 'pending') {
-                            setBusinessToggleOn(true);
-                            setBusinessModalOpen(true);
-                            return;
-                          }
-                          const next = !businessToggleOn;
-                          setBusinessToggleOn(next);
-                          if (next) {
-                            setBizProjectName('');
-                            setBizLicense('');
-                            setBizTradeLicense('');
-                            setBizCommCert('');
-                            setBizCommCertName('');
-                            setBizTradeCert('');
-                            setBizTradeCertName('');
-                            setBusinessModalOpen(true);
-                          }
-                        }}
-                        style={{
-                          width: 48, height: 28, borderRadius: 999, border: 'none', cursor: 'pointer',
-                          background: (businessToggleOn || businessRow?.status === 'approved' || businessRow?.status === 'pending')
-                            ? '#eab308' : 'rgba(150,190,190,0.25)',
-                          position: 'relative', flexShrink: 0, padding: 0,
-                        }}
-                      >
-                        <span style={{
-                          position: 'absolute', top: 3, width: 22, height: 22, borderRadius: '50%',
-                          background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
-                          left: (businessToggleOn || businessRow?.status === 'approved' || businessRow?.status === 'pending') ? 23 : 3,
-                          transition: 'left 0.2s',
-                        }} />
-                      </button>
-                    </div>
-                    {(businessRow?.status === 'pending' || businessRow?.status === 'approved') && (
-                      <button
-                        type="button"
-                        onClick={() => setBusinessModalOpen(true)}
-                        style={{
-                          marginTop: 10, width: '100%', padding: '10px 12px', borderRadius: 10, border: 'none',
-                          background: businessRow?.status === 'approved' ? 'rgba(234,179,8,0.18)' : 'rgba(0,188,212,0.12)',
-                          color: businessRow?.status === 'approved' ? '#eab308' : '#00BCD4',
-                          fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer',
-                        }}
-                      >
-                        {businessRow?.status === 'approved' ? 'Business' : 'Under review'}
-                      </button>
-                    )}
-                    {businessRow?.status === 'approved' && (
-                      <button
-                        type="button"
-                        onClick={() => setCancelSubConfirm('business')}
-                        style={{
-                          marginTop: 10, width: '100%', padding: '10px 12px', borderRadius: 10,
-                          border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)',
-                          color: '#ef4444', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer',
-                        }}
-                      >
-                        إلغاء الاشتراك · Cancel subscription
-                      </button>
-                    )}
-                    {businessRow?.status === 'rejected' && (
-                      <p style={{ margin: '10px 0 0', color: '#ef4444', fontSize: '0.72rem', fontWeight: 700 }}>
-                        Request rejected — toggle is off. You may apply again.
-                      </p>
-                    )}
-                    {!!(businessRow?.ownerNote && !businessRow?.ownerNoteSeen) && (
-                      <button
-                        type="button"
-                        onClick={() => setBizOwnerNoteOpen(true)}
-                        style={{
-                          marginTop: 10, width: '100%', padding: '10px 12px', borderRadius: 10,
-                          border: '1px solid rgba(234,179,8,0.45)', background: 'rgba(234,179,8,0.12)',
-                          color: '#eab308', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer',
-                          textAlign: 'left',
-                        }}
-                      >
-                        Message from owner — tap to read
-                      </button>
-                    )}
-                  </div>
-
-                  <div style={{
-                    background: T.surface,
-                    border: `1px solid ${vipOn ? 'rgba(234,179,8,0.45)' : T.surfaceBorder}`,
-                    borderRadius: 14,
-                    padding: '14px 16px',
-                    marginBottom: 10,
-                    opacity: vipOn ? 1 : 0.55,
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div>
-                        <p style={{
-                          margin: 0,
-                          color: '#eab308',
-                          fontSize: '0.62rem',
-                          letterSpacing: '0.2em',
-                          textTransform: 'uppercase',
-                          fontWeight: 800,
-                        }}>{vipOn ? 'VIP' : 'Subscribe'}</p>
-                        <p style={{ margin: '6px 0 0', color: T.text, fontSize: '0.82rem', fontWeight: 700 }}>VIP</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { if (!vipOn) setVipPayOpen(true); else setCancelSubConfirm('vip'); }}
-                        style={{
-                          width: 46, height: 26, borderRadius: 999, border: 'none',
-                          background: vipOn ? '#eab308' : '#4b5563',
-                          position: 'relative', cursor: 'pointer',
-                        }}
-                      >
-                        <span style={{
-                          position: 'absolute', top: 3, width: 20, height: 20, borderRadius: '50%',
-                          background: '#fff', left: vipOn ? 23 : 3, transition: 'left 0.18s',
-                        }} />
-                      </button>
-                    </div>
-                    {vipOn && (
-                      <div style={{ marginTop: 12 }}>
-                        <div style={{ background: '#eab308', borderRadius: 8, padding: '8px 10px', textAlign: 'center', marginBottom: 10 }}>
-                          <span style={{ color: '#111', fontWeight: 900, letterSpacing: 2 }}>VIP</span>
-                        </div>
-                        <button type="button" onClick={() => setVipFeaturesOpen(true)}
-                          style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(234,179,8,0.45)', background: 'rgba(234,179,8,0.12)', color: '#eab308', fontWeight: 800, cursor: 'pointer' }}>
-                          Features
-                        </button>
-                        <button type="button" onClick={() => setVipInfoOpen(true)}
-                          style={{ marginTop: 10, width: 44, height: 44, borderRadius: '50%', border: '1.5px solid rgba(234,179,8,0.55)', background: 'rgba(234,179,8,0.15)', color: '#eab308', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          title="VIP period">
-                          <Clock size={18} />
-                        </button>
-                        <button type="button" onClick={() => setCancelSubConfirm('vip')}
-                          style={{ marginTop: 10, width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)', color: '#ef4444', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer' }}>
-                          إلغاء الاشتراك · Cancel subscription
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  {/* Business + VIP account sections removed */}
 
                   {/* ── Display Name ── */}
                   <div style={{
@@ -7533,7 +7363,7 @@ export default function SettingsPage() {
                     letterSpacing: (businessRow?.status === 'approved' || isPublicBusinessAccount({ id: user?.id, username: profileUsername, email: user?.email })) ? '0.02em' : '0.2em',
                     textTransform: (businessRow?.status === 'approved' || isPublicBusinessAccount({ id: user?.id, username: profileUsername, email: user?.email })) ? 'none' : 'uppercase',
                     fontWeight: 500
-                  }}>{(businessRow?.status === 'approved' || isPublicBusinessAccount({ id: user?.id, username: profileUsername, email: user?.email })) ? 'What is a business activity?' : 'BIO'}</p>
+                  }}>{'BIO'}</p>
                       {!editingBio && <motion.button whileTap={{
                     scale: 0.9
                   }} onClick={() => {
@@ -7558,7 +7388,7 @@ export default function SettingsPage() {
                   }} exit={{
                     opacity: 0
                   }}>
-                          <textarea value={bioInput} onChange={e => setBioInput(e.target.value.slice(0, 160))} rows={3} placeholder={(businessRow?.status === 'approved' || isPublicBusinessAccount({ id: user?.id, username: profileUsername, email: user?.email })) ? 'Describe your business activity' : 'Write something about yourself'} style={{
+                          <textarea value={bioInput} onChange={e => setBioInput(e.target.value.slice(0, 160))} rows={3} placeholder={'Write something about yourself'} style={{
                       width: '100%',
                       resize: 'none',
                       padding: '9px 11px',
@@ -9125,7 +8955,7 @@ export default function SettingsPage() {
                     color: T.text,
                     cursor: 'pointer',
                   }}
-                  aria-label="Business applications"
+                  aria-label="Business applications" hidden
                 >
                   <div className="flex items-center gap-3">
                     <span className="flex items-center justify-center" style={{
@@ -11575,7 +11405,7 @@ export default function SettingsPage() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {vipPayOpen && (
+        {false && vipPayOpen && (
           <motion.div
             key="vip-pay"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -11640,7 +11470,7 @@ export default function SettingsPage() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {vipInfoOpen && vipOn && (
+        {false && vipInfoOpen && vipOn && (
           <motion.div key="vip-info" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             style={{ position: 'fixed', inset: 0, zIndex: 10540, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
             onClick={() => setVipInfoOpen(false)}>
@@ -11666,7 +11496,7 @@ export default function SettingsPage() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {vipFeaturesOpen && vipOn && (
+        {false && vipFeaturesOpen && vipOn && (
           <motion.div key="vip-feats" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             style={{ position: 'fixed', inset: 0, zIndex: 10530, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
             onClick={() => setVipFeaturesOpen(false)}>
@@ -11760,7 +11590,7 @@ export default function SettingsPage() {
 
       {/* ── Unsubscribe confirmation — VIP / Business, bilingual warning before anything is cancelled ── */}
       <AnimatePresence>
-        {cancelSubConfirm && (
+        {false && cancelSubConfirm && (
           <motion.div
             key="cancel-sub-confirm"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

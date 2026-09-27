@@ -4961,33 +4961,6 @@ function GlobalBottomNavigation() {
                   type="button"
                   onClick={() => {
                     setPlusMenuOpen(false);
-                    popNavBubble('chat');
-                    try {
-                      window.dispatchEvent(new CustomEvent('stooorna:open-normal-chat-picker'));
-                    } catch { /* */ }
-                    if (!(location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend'))) {
-                      navigate('/add-friend?tab=friends&openChatPicker=1');
-                    }
-                  }}
-                  aria-label="Chat"
-                  style={{
-                    width: 44, height: 44, borderRadius: '50%',
-                    border: '1px solid rgba(0,188,212,0.4)',
-                    background: 'rgba(6,20,22,0.96)',
-                    color: '#00BCD4',
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                  }}
-                >
-                  <MessageCircle size={20} strokeWidth={2.2} />
-                </button>
-                )}
-                {user && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlusMenuOpen(false);
                     popNavBubble('friends');
                     setFriendsPanelOpen(true);
                     const open = () => {
@@ -5167,7 +5140,7 @@ export default function RootLayout({
   // عند فتح التطبيق على / نوجّه مباشرة لصفحة الهوم مع فتح البوستات النصية
   useEffect(() => {
     if (location.pathname === '/' || location.pathname === '') {
-      navigate('/add-friend?tab=friends&openTextPosts=1', { replace: true });
+      navigate('/add-friend?tab=friends', { replace: true });
     }
   }, [location.pathname, navigate]);
 
@@ -5182,8 +5155,7 @@ export default function RootLayout({
       return;
     }
     const params = new URLSearchParams(location.search);
-    if (params.get('openTextPosts') === '1') return;
-    navigate('/add-friend?tab=friends&openTextPosts=1', { replace: true });
+    /* public text posts page removed */
   }, [location.pathname, location.search, navigate]);
 
   useEffect(() => {
@@ -5241,7 +5213,7 @@ export default function RootLayout({
     window.setTimeout(() => {
       setSettingsClosing(false);
       // Public posts is the primary app page — always return there
-      navigate('/add-friend?tab=friends&openTextPosts=1');
+      navigate('/add-friend?tab=friends');
     }, 320);
   };
 
