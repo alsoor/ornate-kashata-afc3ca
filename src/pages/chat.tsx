@@ -541,6 +541,16 @@ function resolveMediaUrl(raw: string | null | undefined): string {
   return s;
 }
 
+
+function isPlayableChatMediaBody(body: string | null | undefined): boolean {
+  const s = String(body || '').trim();
+  if (!s) return false;
+  if (/airo-assets/i.test(s) || /\/airo\//i.test(s)) return false;
+  if (/^(blob:|data:)/i.test(s)) return true;
+  if (/^https?:\/\//i.test(s) || s.startsWith('/')) return true;
+  return false;
+}
+
 function isLikelyImageUrl(url: string): boolean {
   const u = url.toLowerCase().split('?')[0];
   return /\.(jpg|jpeg|png|gif|webp|bmp|heic|heif|avif|svg)$/i.test(u)
@@ -891,7 +901,7 @@ function ImageBubble({
   const [broken, setBroken] = useState(false);
   const [retryAttempt, setRetryAttempt] = useState(0);
   const src = resolveMediaUrl(url);
-  const looksLikeUrl = !!src && (src.startsWith('http') || src.startsWith('/') || src.startsWith('blob:') || src.startsWith('data:'));
+  const looksLikeUrl = !!src && (src.startsWith('http') || src.startsWith('/') || src.startsWith('blob:') || src.startsWith('data:')) && !/airo-assets/i.test(src);
   // A freshly-uploaded image can briefly 404 while the storage/CDN finishes
   // propagating it. Rather than giving up on the very first failed load
   // (which is what produced the permanent "Shared image" placeholder even
@@ -4488,7 +4498,39 @@ export default function ChatPage() {
       prevMsgCountRef.current = Math.max(prevMsgCountRef.current, newMsgs.length);
       setMsgs(prev => {
         const temps = prev.filter(m => typeof m.id === 'number' && m.id < 0);
-        if (newMsgs.length > 0) return newMsgs;
+        if (newMsgs.length > 0) {
+          // Keep optimistic image/video (blob:/data:) so they do not flash then
+          // disappear when the server row has no playable URL yet (Shared image).
+          const merged = newMsgs.map(m => ({ ...m }));
+          for (const t of temps) {
+            const tBody = String(t.body || '');
+            const isLocalMedia =
+              (t.type === 'image' || t.type === 'video' || t.type === 'file') &&
+              (tBody.startsWith('blob:') || tBody.startsWith('data:'));
+            if (!isLocalMedia) continue;
+            // If a server message from me has image type but broken/empty body,
+            // patch it with the local preview so the photo stays visible.
+            let patched = false;
+            for (let i = merged.length - 1; i >= 0; i--) {
+              const m = merged[i];
+              if (m.senderId !== t.senderId) continue;
+              if (!(m.type === 'image' || m.type === 'video' || m.type === 'file')) continue;
+              if (isPlayableChatMediaBody(m.body)) {
+                patched = true;
+                break;
+              }
+              // Server placeholder — keep showing local blob/data
+              merged[i] = { ...m, body: tBody, type: t.type === 'video' ? 'video' : 'image' };
+              patched = true;
+              break;
+            }
+            if (!patched) {
+              // Server has not returned the message yet — keep temp bubble
+              merged.push(t);
+            }
+          }
+          return merged;
+        }
         // The fetch came back with nothing usable. If the user just cleared
         // their history, raw had items but clearedAt filtered them all out —
         // respect that intentional action and show empty.
@@ -4780,17 +4822,25 @@ export default function ChatPage() {
   async function sendImage(file: File) {
     playBubblePop('send');
     if (!file || file.size <= 0) throw new Error('ملف فارغ');
+    const localPreview = URL.createObjectURL(file);
+    const tempId = -Math.floor(Date.now() % 1_000_000_000) - 1;
     try {
-      const { makeOptimisticMedia, postChatMedia } = await import('@/lib/chatMediaSendPatch');
-      if (user?.id) setMsgs(prev => [...prev, makeOptimisticMedia(file, user.id) as any]);
-      // postChatMedia already performs the real upload + message creation.
-      // The block below used to run unconditionally right after it, which
-      // uploaded the same file a second time through the older endpoints —
-      // the two uploads raced each other and the chat could end up pointing
-      // at the incomplete/overwritten one, which is what produced a
-      // permanent "Shared image" placeholder for an image that had actually
-      // sent fine. Now the manual upload only runs as a fallback if
-      // postChatMedia itself fails.
+      if (user?.id) {
+        setMsgs(prev => [...prev, {
+          id: tempId,
+          senderId: user.id,
+          type: 'image' as const,
+          body: localPreview,
+          duration: null,
+          createdAt: new Date().toISOString(),
+          senderName: (user as any)?.name || null,
+          senderUsername: (user as any)?.username || null,
+          senderAvatarUrl: (user as any)?.image || (user as any)?.avatarUrl || null,
+        } as Message]);
+      }
+      const { postChatMedia } = await import('@/lib/chatMediaSendPatch');
+      // postChatMedia performs the real upload + message creation.
+      // Legacy endpoints only if the patch fails.
       let handledByPatch = false;
       try {
         await postChatMedia({ file, groupId: groupId || null, chatId: scChatId || null, peerId });
