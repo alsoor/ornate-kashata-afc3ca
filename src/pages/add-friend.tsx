@@ -14938,6 +14938,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [headerOpen, setHeaderOpen] = useState(true);
   // Once true, the grabber's attention-drawing bounce animation stops for good.
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
+  // Quick "+" menu below the header: no longer touches headerOpen at all. Clicking it
+  // hides the "+" itself and reveals the Settings/Friends/Call/Chat/Live row; closing
+  // the menu (backdrop tap or picking an item) brings the "+" back.
+  const [profilePlusOpen, setProfilePlusOpen] = useState(false);
+  const profilePlusCallPressRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; long: boolean }>({ timer: null, long: false });
+  const profilePlusIncomingCallUi = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
   const lastFeedScrollTopRef = useRef(0);
   const feedScrollRafRef = useRef(0);
   // Telegram-style pull-down: scale story rings and open first available story
@@ -17424,30 +17430,218 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
         {/* ── Quick "+" menu button — moved here, below the sticky header's own
             divider line, so it no longer sits inside the header's tap/swipe
-            zone next to the show/hide grabber. Opens the same
-            Settings/Call/Friends/Live menu, expanding DOWNWARD. ── */}
+            zone next to the show/hide grabber. Never touches headerOpen anymore:
+            clicking it just hides the "+" itself and expands the
+            Settings/Friends/Call/Chat/Live row directly below in its place;
+            picking an item (or tapping the backdrop) closes the row and the
+            "+" reappears. ── */}
         {!isFriendManagement && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '2px 0 8px' }}>
-            <motion.button
-              type="button"
-              whileTap={{ scale: 0.9 }}
-              onClick={() => {
-                toggleHeaderOpen();
-                try { window.dispatchEvent(new CustomEvent('stooorna:profile-plus-toggle')); } catch { /* ignore */ }
-              }}
-              aria-label="خيارات إضافية"
-              style={{
-                width: 32, height: 32, borderRadius: '50%',
-                border: `1.5px solid ${CLR_PRIMARY_BORDER}`,
-                background: 'rgba(0,188,212,0.12)',
-                color: CLR_PRIMARY,
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 0 10px rgba(0,188,212,0.25)',
-              }}
-            >
-              <Plus size={16} strokeWidth={2.4} />
-            </motion.button>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '2px 0 8px', position: 'relative' }}>
+            {profilePlusOpen ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="Close menu"
+                  onClick={() => setProfilePlusOpen(false)}
+                  style={{
+                    position: 'fixed', inset: 0, zIndex: 10210,
+                    background: 'transparent', border: 'none', cursor: 'default',
+                  }}
+                />
+                <div style={{
+                  position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  zIndex: 10620,
+                  animation: 'stooornaPlusFanIn 0.28s ease-out',
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfilePlusOpen(false);
+                      try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
+                      navigate('/settings');
+                    }}
+                    aria-label="Settings"
+                    style={{
+                      width: 38, height: 38, borderRadius: '50%',
+                      border: '1px solid rgba(0,188,212,0.4)',
+                      background: 'rgba(6,20,22,0.96)',
+                      color: '#00BCD4',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                    }}
+                  >
+                    <Settings size={18} strokeWidth={2.2} />
+                  </button>
+                  {user?.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfilePlusOpen(false);
+                        setFriendsPanelTab('friends');
+                        setNamesBarOpen(true);
+                        try {
+                          window.dispatchEvent(new CustomEvent('stooorna:friends-panel-opened'));
+                          window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', {
+                            detail: { tab: 'friends', overPosts: true },
+                          }));
+                        } catch { /* */ }
+                      }}
+                      aria-label="Friends"
+                      style={{
+                        width: 38, height: 38, borderRadius: '50%',
+                        border: '1px solid rgba(0,188,212,0.4)',
+                        background: 'rgba(6,20,22,0.96)',
+                        color: '#00BCD4',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                      }}
+                    >
+                      <Users size={18} strokeWidth={2.2} />
+                    </button>
+                  )}
+                  {user?.id && (
+                    <button
+                      type="button"
+                      onPointerDown={() => {
+                        if (!profilePlusIncomingCallUi.ringing) return;
+                        profilePlusCallPressRef.current.long = false;
+                        if (profilePlusCallPressRef.current.timer) clearTimeout(profilePlusCallPressRef.current.timer);
+                        profilePlusCallPressRef.current.timer = setTimeout(() => {
+                          profilePlusCallPressRef.current.long = true;
+                          void declineIncomingCallGlobally(user?.id ?? null);
+                          try { window.dispatchEvent(new CustomEvent('stooorna:decline-home-incoming')); } catch { /* ignore */ }
+                          setProfilePlusOpen(false);
+                        }, 550);
+                      }}
+                      onPointerUp={() => {
+                        if (profilePlusCallPressRef.current.timer) {
+                          clearTimeout(profilePlusCallPressRef.current.timer);
+                          profilePlusCallPressRef.current.timer = null;
+                        }
+                      }}
+                      onPointerLeave={() => {
+                        if (profilePlusCallPressRef.current.timer) {
+                          clearTimeout(profilePlusCallPressRef.current.timer);
+                          profilePlusCallPressRef.current.timer = null;
+                        }
+                      }}
+                      onClick={() => {
+                        if (profilePlusCallPressRef.current.long) {
+                          profilePlusCallPressRef.current.long = false;
+                          return;
+                        }
+                        if (profilePlusIncomingCallUi.ringing) {
+                          setProfilePlusOpen(false);
+                          try {
+                            window.dispatchEvent(new CustomEvent('stooorna:answer-home-incoming', {
+                              detail: {
+                                channel: profilePlusIncomingCallUi.channel,
+                                hostId: profilePlusIncomingCallUi.callerId,
+                                hostName: profilePlusIncomingCallUi.callerLabel,
+                              },
+                            }));
+                          } catch { /* ignore */ }
+                          return;
+                        }
+                        setProfilePlusOpen(false);
+                        try {
+                          window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
+                            detail: { overPosts: true },
+                          }));
+                        } catch { /* */ }
+                      }}
+                      aria-label={profilePlusIncomingCallUi.ringing ? 'Answer call' : 'Call'}
+                      style={{
+                        width: 38, height: 38, borderRadius: '50%',
+                        border: '1px solid rgba(0,188,212,0.4)',
+                        background: 'rgba(6,20,22,0.96)',
+                        color: '#00BCD4',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                      }}
+                    >
+                      <Phone size={18} strokeWidth={2.2} />
+                    </button>
+                  )}
+                  {user?.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfilePlusOpen(false);
+                        setNormalChatPickerOpen(true);
+                        void loadFriends();
+                      }}
+                      aria-label="Chat"
+                      style={{
+                        width: 38, height: 38, borderRadius: '50%',
+                        border: '1px solid rgba(0,188,212,0.4)',
+                        background: 'rgba(6,20,22,0.96)',
+                        color: '#00BCD4',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                      }}
+                    >
+                      <MessageCircle size={18} strokeWidth={2.2} />
+                    </button>
+                  )}
+                  {user?.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfilePlusOpen(false);
+                        try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
+                        try {
+                          window.dispatchEvent(new CustomEvent('stooorna:open-live-kind', {
+                            detail: { overPosts: true, returnTo: 'text-posts' },
+                          }));
+                        } catch { /* */ }
+                      }}
+                      aria-label="Live broadcast"
+                      style={{
+                        width: 38, height: 38, borderRadius: '50%',
+                        border: '1px solid rgba(0,188,212,0.4)',
+                        background: 'rgba(6,20,22,0.96)',
+                        color: '#00BCD4',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                      }}
+                    >
+                      <Radio size={18} strokeWidth={2.2} />
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.9 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setProfilePlusOpen(true);
+                }}
+                aria-label="خيارات إضافية"
+                style={{
+                  width: 32, height: 32, borderRadius: '50%',
+                  border: `1.5px solid ${CLR_PRIMARY_BORDER}`,
+                  background: 'rgba(0,188,212,0.12)',
+                  color: CLR_PRIMARY,
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 0 10px rgba(0,188,212,0.25)',
+                }}
+              >
+                <Plus size={16} strokeWidth={2.4} />
+              </motion.button>
+            )}
           </div>
         )}
 
