@@ -17575,28 +17575,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       type="button"
                       onClick={() => {
                         setProfilePlusOpen(false);
-                        setNormalChatPickerOpen(true);
-                        void loadFriends();
-                      }}
-                      aria-label="Chat"
-                      style={{
-                        width: 38, height: 38, borderRadius: '50%',
-                        border: '1px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
-                        cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                      }}
-                    >
-                      <MessageCircle size={18} strokeWidth={2.2} />
-                    </button>
-                  )}
-                  {user?.id && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setProfilePlusOpen(false);
                         try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
                         try {
                           window.dispatchEvent(new CustomEvent('stooorna:open-live-kind', {
