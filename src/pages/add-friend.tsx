@@ -4453,10 +4453,21 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
   const fetchPublicStoryComments = useCallback(async (storyId: number) => {
     setPublicCommentsLoading(true);
     try {
-      const r = await fetch(`/api/status/${storyId}/comments`, { credentials: 'include' });
-      if (!r.ok) return;
-      const d = await r.json() as { comments: StoryComment[] };
-      const list = d.comments ?? [];
+      const urls = [
+        `/api/status/${storyId}/comments`,
+        `/api/stories/${storyId}/comments`,
+        `/api/status/comments?statusId=${encodeURIComponent(String(storyId))}`,
+      ];
+      let list: StoryComment[] = [];
+      for (const u of urls) {
+        try {
+          const r = await fetch(u, { credentials: 'include' });
+          if (!r.ok) continue;
+          const d = await r.json() as { comments?: StoryComment[] };
+          list = d.comments ?? (Array.isArray(d) ? d as StoryComment[] : []);
+          break;
+        } catch { /* try next */ }
+      }
       setPublicComments(list);
       setPublicCommentsCount(list.length);
     } catch { /* silent — العداد يبقى على آخر قيمة معروفة */ }
@@ -4480,10 +4491,22 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
       ? { ...c, likedByMe: !c.likedByMe, likesCount: Math.max(0, c.likesCount + (c.likedByMe ? -1 : 1)) }
       : c));
     try {
-      const response = await fetch(`/api/status/comments/${comment.id}/like`, { method: 'POST', credentials: 'include' });
-      if (!response.ok) throw new Error('Failed to save like');
-      const data = await response.json() as { liked: boolean; likeCount: number };
-      setPublicComments(list => list.map(c => c.id === comment.id ? { ...c, likedByMe: data.liked, likesCount: data.likeCount } : c));
+      const attempts = [
+        () => fetch(`/api/status/comments/${comment.id}/like`, { method: 'POST', credentials: 'include' }),
+        () => fetch('/api/status/comments/like', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commentId: comment.id, id: comment.id }) }),
+        () => fetch(`/api/stories/comments/${comment.id}/like`, { method: 'POST', credentials: 'include' }),
+      ];
+      let data: { liked?: boolean; likeCount?: number } | null = null;
+      for (const run of attempts) {
+        try {
+          const response = await run();
+          if (!response.ok) continue;
+          data = await response.json() as { liked: boolean; likeCount: number };
+          break;
+        } catch { /* next */ }
+      }
+      if (!data) throw new Error('Failed to save like');
+      setPublicComments(list => list.map(c => c.id === comment.id ? { ...c, likedByMe: data!.liked ?? !c.likedByMe, likesCount: data!.likeCount ?? c.likesCount } : c));
     } catch {
       setPublicComments(previous);
     }
@@ -4534,6 +4557,12 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ statusId: id }),
       }),
+      () => fetch('/api/status/remove', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, statusId: id, storyId: id, mediaUrl }),
+      }),
+      () => fetch(`/api/status/${id}?force=1`, { method: 'DELETE', credentials: 'include' }),
     ];
     let storyDeletedOnServer = false;
     for (const run of attempts) {
@@ -4649,9 +4678,12 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
         </button>
       </div>
       {/* Media */}
-      {item.mediaType === 'video'
-        ? <video src={resolveMediaUrl(item.mediaUrl)} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
-        : <img src={resolveMediaUrl(item.mediaUrl)} alt="story" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+      {storyItemIsVideo(item)
+        ? <video key={item.id} src={resolveMediaUrl(item.mediaUrl)} autoPlay muted playsInline controls={false} loop
+            onCanPlay={e => { const v = e.currentTarget; v.muted = true; void v.play().catch(() => {}); }}
+            onError={() => { /* keep poster black rather than crash viewer */ }}
+            style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+        : <img key={item.id} src={resolveMediaUrl(item.mediaUrl)} alt="story" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
       }
       {/* نص overlay على القصة */}
       {item.overlayText && (
@@ -6165,7 +6197,10 @@ function resolveMediaUrl(url: string | null | undefined): string {
   if (typeof window === 'undefined') return raw;
   try {
     if (raw.startsWith('//')) return `${window.location.protocol}${raw}`;
-    const u = raw.startsWith('/') ? new URL(raw, window.location.origin) : new URL(raw, window.location.origin);
+    // bare storage keys / relative paths without leading slash (common after status upload)
+    const looksBareFile = !raw.includes('://') && !raw.startsWith('/') && /[a-z0-9_\-./]+\.(jpe?g|png|webp|gif|mp4|webm|mov|m4v)(\?|$)/i.test(raw);
+    const path = looksBareFile ? '/' + raw.replace(/^\/+/, '') : raw;
+    const u = path.startsWith('/') ? new URL(path, window.location.origin) : new URL(path, window.location.origin);
     if (u.protocol === 'http:' && window.location.protocol === 'https:' && u.hostname === window.location.hostname) {
       u.protocol = 'https:';
     }
@@ -6173,6 +6208,20 @@ function resolveMediaUrl(url: string | null | undefined): string {
   } catch {
     return raw;
   }
+}
+
+function storyItemIsVideo(item: { mediaType?: string | null; mediaUrl?: string | null }): boolean {
+  const t = String(item?.mediaType || '').toLowerCase();
+  const u = String(item?.mediaUrl || '');
+  if (t.includes('video')) return true;
+  if (t.includes('image') || t.includes('photo')) return false;
+  return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u) || /\/video\//i.test(u);
+}
+
+function normalizeStoryItem(it: StoryItem): StoryItem {
+  const mediaUrl = resolveMediaUrl(it.mediaUrl) || it.mediaUrl;
+  const mediaType = storyItemIsVideo({ ...it, mediaUrl }) ? 'video' : (String(it.mediaType || '').toLowerCase().includes('image') ? 'image' : (storyItemIsVideo({ ...it, mediaUrl }) ? 'video' : (it.mediaType || 'image')));
+  return { ...it, mediaUrl, mediaType: mediaType as any };
 }
 
 
@@ -12654,7 +12703,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         .map(g => ({
           ...g,
           items: [...g.items]
-            .filter(it => !deletedStoryIdsRef.current.has(it.id))
+            .map(it => normalizeStoryItem(it))
+            .filter(it => !deletedStoryIdsRef.current.has(it.id) && !!resolveMediaUrl(it.mediaUrl))
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
         }))
         .filter(g => g.items.length > 0);
@@ -12696,7 +12746,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
   // Upload a story
   async function uploadStory(file: File) {
-    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+    const kind: 'image' | 'video' = (file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '')) ? 'video' : 'image';
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/') && kind !== 'video') {
       setQuickPublishError('Please choose an image or video for your story.');
       return;
     }
@@ -12704,23 +12755,55 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     setQuickPublishError('');
     setStoryUploading(true);
     try {
-      const ext = file.name.split('.').pop() ?? (file.type.startsWith('video/') ? 'mp4' : 'jpg');
+      let mediaFile = file;
+      try { mediaFile = await normalizeGalleryFileForUpload(file, kind); } catch { /* keep original */ }
+      const ext = mediaFile.name.split('.').pop() ?? (kind === 'video' ? 'mp4' : 'jpg');
+      let mediaUrl: string | null = null;
+      try { mediaUrl = await fastUploadMediaFile(mediaFile, kind); } catch { mediaUrl = null; }
       let response: Response | null = null;
-      // 1) raw body (legacy)
-      try {
-        response = await fetch('/api/status', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-File-Ext': `.${ext}` },
-          body: file,
-        });
-      } catch { response = null; }
-      // 2) FormData media/file
+      if (mediaUrl) {
+        const payload = {
+          mediaUrl,
+          url: mediaUrl,
+          mediaType: kind,
+          type: kind,
+          duration: kind === 'video' ? 15 : 5,
+        };
+        try {
+          response = await fetch('/api/status', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        } catch { response = null; }
+        if (!response || !response.ok) {
+          const fd = new FormData();
+          fd.append('mediaUrl', mediaUrl);
+          fd.append('url', mediaUrl);
+          fd.append('media', mediaFile, mediaFile.name);
+          fd.append('file', mediaFile, mediaFile.name);
+          fd.append('type', kind);
+          fd.append('mediaType', kind);
+          try { response = await fetch('/api/status', { method: 'POST', credentials: 'include', body: fd }); } catch { response = null; }
+        }
+      }
+      // raw body (legacy)
+      if (!response || !response.ok) {
+        try {
+          response = await fetch('/api/status', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': mediaFile.type || 'application/octet-stream', 'X-File-Ext': `.${ext}` },
+            body: mediaFile,
+          });
+        } catch { response = null; }
+      }
       if (!response || !response.ok) {
         const fd = new FormData();
-        fd.append('media', file, file.name);
-        fd.append('file', file, file.name);
-        fd.append('type', file.type.startsWith('video/') ? 'video' : 'image');
+        fd.append('media', mediaFile, mediaFile.name);
+        fd.append('file', mediaFile, mediaFile.name);
+        fd.append('type', kind);
         try {
           response = await fetch('/api/status', { method: 'POST', credentials: 'include', body: fd });
         } catch { response = null; }
@@ -12728,6 +12811,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       if (!response || !response.ok) {
         throw new Error('Story upload failed');
       }
+      try { window.dispatchEvent(new CustomEvent('stooorna:story-published')); } catch { /* */ }
       await fetchStories();
     } catch {
       setQuickPublishError('Unable to publish this story. Please try a different image or video.');
@@ -15048,13 +15132,28 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Called directly from the story viewer's inline composer — comments on a friend's story, no page navigation
   async function sendStoryComment(storyId: number, text: string): Promise<boolean> {
     try {
-      const response = await fetch(`/api/status/${storyId}/comments`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: text, parentCommentId: null }),
-      });
-      if (!response.ok) return false;
+      const payloads = [
+        () => fetch(`/api/status/${storyId}/comments`, {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: text, text, comment: text, parentCommentId: null, statusId: storyId }),
+        }),
+        () => fetch('/api/status/comments', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: text, text, statusId: storyId, storyId }),
+        }),
+        () => fetch(`/api/stories/${storyId}/comments`, {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: text, text, parentCommentId: null }),
+        }),
+      ];
+      let response: Response | null = null;
+      for (const run of payloads) {
+        try {
+          response = await run();
+          if (response.ok) break;
+        } catch { response = null; }
+      }
+      if (!response || !response.ok) return false;
       if (user?.id) {
         let ownerId: string | null = null;
         let thumb: string | null = null;
