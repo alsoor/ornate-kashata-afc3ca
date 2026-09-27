@@ -8,6 +8,7 @@ import { useSession } from '@/lib/auth/auth-client';
 import { useHeartbeat, usePresenceQuery, formatLastSeen, useTypingPublisher, usePeerTyping } from '@/hooks/usePresence';
 import InAppNotification, { type AppNotification } from '@/components/InAppNotification';
 import UserAvatar from '@/components/UserAvatar';
+import { VipAvatarFrame } from '@/components/VipBadge';
 import { playNotificationSound } from '@/lib/notificationSound';
 import LiveVoiceBanner from '@/components/LiveVoiceBanner';
 import GroupVoiceBar from '@/components/GroupVoiceBar';
@@ -539,6 +540,8 @@ function isLikelyVideoUrl(url: string): boolean {
 }
 
 const LOCATION_PREFIX = '__LOCATION__';
+
+const QUICK_EMOJIS = ['😀', '😁', '😂', '🤣', '😊', '😍', '😘', '😉', '😎', '🤩', '😢', '😭', '😡', '🥺', '😴', '🤔', '👍', '👎', '👏', '🙏', '💪', '🔥', '💯', '✨', '🎉', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '💔', '😅', '😆', '😇', '🙂', '🙃', '😜', '🤗'];
 
 function parseLocationBody(body: string | null | undefined): { lat: number; lng: number; label?: string; live?: boolean } | null {
   if (!body || typeof body !== 'string' || !body.startsWith(LOCATION_PREFIX)) return null;
@@ -4053,6 +4056,7 @@ export default function ChatPage() {
   const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false);
   const [chatCameraOpen, setChatCameraOpen] = useState(false);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [hideChatChrome, setHideChatChrome] = useState(false);
   const headerMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -5547,7 +5551,9 @@ export default function ChatPage() {
                     {showHeader ? <div style={{
                     cursor: 'pointer'
                   }} onClick={() => senderAvatar && setAvatarLightboxUrl(senderAvatar)}>
-                        <UserAvatar name={senderName} avatarUrl={senderAvatar} size={34} red={!isMe && senderIsRed} blue={senderIsOwner} isSelf={isMe} />
+                        <VipAvatarFrame userId={isMe ? user.id : m.senderId} size={34}>
+                          <UserAvatar name={senderName} avatarUrl={senderAvatar} size={34} red={!isMe && senderIsRed} blue={senderIsOwner} isSelf={isMe} />
+                        </VipAvatarFrame>
                       </div> : (/* spacer so bubble stays aligned when no avatar */
                   <div style={{
                     width: 34
@@ -6126,19 +6132,37 @@ export default function ChatPage() {
               overflowY: 'auto',
               fontFamily: 'var(--font-sans)',
             }} />
-              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#667781' }}>
+              <button type="button" onClick={() => setEmojiPickerOpen(o => !o)} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', padding: 0, color: '#667781', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
                 <Smile size={20} />
-              </span>
+              </button>
               {!text.trim() && (
                 <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 10, color: '#667781' }}>
-                  <button type="button" onClick={() => setLocationPickerOpen(true)} style={{ background: 'none', border: 'none', padding: 0, color: '#667781', cursor: 'pointer' }}><Paperclip size={20} /></button>
                   <button type="button" onClick={() => setChatCameraOpen(true)} style={{ background: 'none', border: 'none', padding: 0, color: '#667781', cursor: 'pointer' }}><Camera size={20} /></button>
                 </span>
               )}
-              {!!text.trim() && (
-                <button type="button" onClick={() => setLocationPickerOpen(true)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', padding: 0, color: '#667781', cursor: 'pointer' }}>
-                  <Paperclip size={20} />
-                </button>
+              {emojiPickerOpen && (
+                <div style={{
+                  position: 'absolute', bottom: 'calc(100% + 8px)', left: 0,
+                  width: 260, maxHeight: 200, overflowY: 'auto',
+                  background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
+                  padding: 8, boxShadow: '0 4px 18px rgba(0,0,0,0.18)', zIndex: 50,
+                  display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4,
+                }}>
+                  {QUICK_EMOJIS.map((em, i) => (
+                    <button key={i} type="button" onClick={() => {
+                      const next = `${text}${em}`;
+                      if (scChatId) {
+                        handleScTyping(next);
+                      } else {
+                        setText(next);
+                        sendTyping();
+                      }
+                      inputRef.current?.focus();
+                    }} style={{ background: 'none', border: 'none', fontSize: '1.1rem', padding: 4, cursor: 'pointer', borderRadius: 6, lineHeight: 1 }}>
+                      {em}
+                    </button>
+                  ))}
+                </div>
               )}
 
             </div>
