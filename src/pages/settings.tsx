@@ -237,6 +237,24 @@ const AUTH_COPY: Record<AuthLang, AuthCopy> = {
   },
 };
 
+function resolveMediaUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  const raw = String(url).trim();
+  if (!raw) return '';
+  if (/^(blob:|data:)/i.test(raw)) return raw;
+  if (typeof window === 'undefined') return raw;
+  try {
+    if (raw.startsWith('//')) return `${window.location.protocol}${raw}`;
+    const u = raw.startsWith('/') ? new URL(raw, window.location.origin) : new URL(raw, window.location.origin);
+    if (u.protocol === 'http:' && window.location.protocol === 'https:' && u.hostname === window.location.hostname) {
+      u.protocol = 'https:';
+    }
+    return u.href;
+  } catch {
+    return raw;
+  }
+}
+
 function getAuthCopy(lang: AuthLang): AuthCopy {
   return AUTH_COPY[lang] || AUTH_COPY.ar;
 }
@@ -6008,8 +6026,8 @@ export default function SettingsPage() {
       const localUn = (pending || byEmail).replace(/^@/, '').trim();
       if (localUn && !sessionUn) setProfileUsername(localUn);
     } catch { /* ignore */ }
-    fetch('/api/users/me').then(r => r.ok ? r.json() : null).then(async d => {
-      if (d?.avatarUrl) setAvatarUrl(d.avatarUrl);
+    fetch('/api/users/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(async d => {
+      if (d?.avatarUrl) setAvatarUrl(resolveMediaUrl(d.avatarUrl));
       if (d?.username) {
         setProfileUsername(d.username);
         try {
@@ -6038,7 +6056,7 @@ export default function SettingsPage() {
         }
       }
       if (d?.phoneNumber) setProfilePhone(d.phoneNumber);
-      if (d?.coverUrl) setCoverUrl(d.coverUrl);
+      if (d?.coverUrl) setCoverUrl(resolveMediaUrl(d.coverUrl));
       if (d?.name) setDisplayNameState(d.name);
     });
   }, [user]);
@@ -6454,8 +6472,11 @@ export default function SettingsPage() {
   async function uploadAvatar(file: File) {
     setAvatarUploading(true);
     try {
+      const localPreview = URL.createObjectURL(file);
+      setAvatarUrl(localPreview);
       const r = await fetch('/api/users/me/avatar', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': file.type || 'image/jpeg'
         },
@@ -6463,7 +6484,8 @@ export default function SettingsPage() {
       });
       const d = await r.json();
       if (r.ok && d.avatarUrl) {
-        const fresh = `${d.avatarUrl}?t=${Date.now()}`;
+        const resolved = resolveMediaUrl(d.avatarUrl);
+        const fresh = resolved + (resolved.includes('?') ? '&' : '?') + 't=' + Date.now();
         setAvatarUrl(fresh);
         window.dispatchEvent(new CustomEvent('stooorna:avatar-updated', {
           detail: {
@@ -6478,6 +6500,8 @@ export default function SettingsPage() {
   async function uploadCover(file: File) {
     setCoverUploading(true);
     try {
+      const localPreview = URL.createObjectURL(file);
+      setCoverUrl(localPreview);
       const r = await fetch('/api/users/me/cover', {
         method: 'POST',
         credentials: 'include',
@@ -6488,7 +6512,8 @@ export default function SettingsPage() {
       });
       const d = await r.json();
       if (r.ok && d.coverUrl) {
-        setCoverUrl(`${d.coverUrl}?t=${Date.now()}`);
+        const resolved = resolveMediaUrl(d.coverUrl);
+        setCoverUrl(resolved + (resolved.includes('?') ? '&' : '?') + 't=' + Date.now());
       }
     } catch {/* silent */} finally {
       setCoverUploading(false);
@@ -6700,7 +6725,7 @@ export default function SettingsPage() {
                   background: coverUrl ? 'transparent' : T.primaryFaint,
                   cursor: 'pointer'
                 }} onClick={() => coverInputRef.current?.click()}>
-                      {coverUrl ? <img src={coverUrl} alt="cover" style={{
+                      {coverUrl ? <img src={resolveMediaUrl(coverUrl) || coverUrl} alt="cover" style={{
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
@@ -6792,11 +6817,11 @@ export default function SettingsPage() {
                       cursor: 'pointer',
                       position: 'relative'
                     }}>
-                          {avatarUrl ? <img src={avatarUrl} alt="avatar" style={{
+                          {avatarUrl ? <img src={resolveMediaUrl(avatarUrl) || avatarUrl} alt="avatar" style={{
                         width: '100%',
                         height: '100%',
                         objectFit: 'cover'
-                      }} onError={() => setAvatarUrl(null)} /> : <User size={30} style={{
+                      }} /> : <User size={30} style={{
                         color: T.primary
                       }} />}
                           <div style={{

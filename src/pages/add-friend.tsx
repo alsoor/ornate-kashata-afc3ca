@@ -5337,21 +5337,20 @@ function PostText({ text, color, textColor, onHashtag, embedMediaLinks = false, 
 /** Normalize media/avatar URLs so relative paths load on every route */
 function resolveMediaUrl(url: string | null | undefined): string {
   if (!url) return '';
-  const s = String(url).trim();
-  if (!s) return '';
-  if (/^(https?:|blob:|data:|\/\/)/i.test(s)) {
-    if (s.startsWith('//') && typeof window !== 'undefined') return `${window.location.protocol}${s}`;
-    return s;
-  }
-  if (typeof window !== 'undefined') {
-    try {
-      if (s.startsWith('/')) return `${window.location.origin}${s}`;
-      return new URL(s, window.location.origin).href;
-    } catch {
-      return s;
+  const raw = String(url).trim();
+  if (!raw) return '';
+  if (/^(blob:|data:)/i.test(raw)) return raw;
+  if (typeof window === 'undefined') return raw;
+  try {
+    if (raw.startsWith('//')) return `${window.location.protocol}${raw}`;
+    const u = raw.startsWith('/') ? new URL(raw, window.location.origin) : new URL(raw, window.location.origin);
+    if (u.protocol === 'http:' && window.location.protocol === 'https:' && u.hostname === window.location.hostname) {
+      u.protocol = 'https:';
     }
+    return u.href;
+  } catch {
+    return raw;
   }
-  return s;
 }
 
 
@@ -7924,9 +7923,9 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                         {thumbUrl ? (
                           <>
                             {isVideo ? (
-                              <video src={thumbUrl} muted autoPlay loop playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              <video src={resolveMediaUrl(thumbUrl) || thumbUrl} muted autoPlay loop playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                             ) : (
-                              <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                              <img src={resolveMediaUrl(thumbUrl) || thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                             )}
                             {isVideo && (
                               <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
@@ -11083,8 +11082,8 @@ function SharedInboxDrawer({
               >
                 <div style={{ width: 40, height: 40, borderRadius: 10, overflow: 'hidden', flexShrink: 0, background: '#000' }}>
                   {thumbType === 'video'
-                    ? <video src={thumbUrl ?? ''} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <img src={thumbUrl ?? ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ? <video src={resolveMediaUrl(thumbUrl) || thumbUrl || ''} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <img src={resolveMediaUrl(thumbUrl) || thumbUrl || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   }
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -16949,9 +16948,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           {thumbUrl ? (
                             <>
                               {isVideo ? (
-                                <video src={thumbUrl} muted autoPlay loop playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                <video src={resolveMediaUrl(thumbUrl) || thumbUrl} muted autoPlay loop playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                               ) : (
-                                <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                <img src={resolveMediaUrl(thumbUrl) || thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                               )}
                               {isVideo && (
                                 <div style={{ position: 'absolute', top: 6, insetInlineEnd: 6 }}>
@@ -21284,9 +21283,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                             >
                               {thumbUrl ? (
                                 isVideo ? (
-                                  <video src={thumbUrl} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  <video src={resolveMediaUrl(thumbUrl) || thumbUrl} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 ) : (
-                                  <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  <img src={resolveMediaUrl(thumbUrl) || thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 )
                               ) : (
                                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 6 }}>
