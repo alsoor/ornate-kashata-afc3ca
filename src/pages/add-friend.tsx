@@ -17277,12 +17277,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     aria-label="Call history"
                     title="Call history"
                     style={{
-                      width: 34, height: 34, borderRadius: '50%', border: '1.5px solid rgba(0,188,212,0.4)',
-                      background: 'rgba(0,188,212,0.12)', color: CLR_PRIMARY, cursor: 'pointer',
+                      width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
+                      background: 'rgba(225,225,225,0.1)', color: 'rgba(230,230,230,0.9)', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
                     }}
                   >
-                    <Clock size={16} strokeWidth={2.3} />
+                    <Clock size={12} strokeWidth={2.3} />
                   </button>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                     <span style={{ fontSize: '0.95rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(myMediaLikesTotal)}</span>
