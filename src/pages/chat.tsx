@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin, Smile, Paperclip } from 'lucide-react';
+import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin, Smile, Paperclip, Video as VideoIcon } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import { useHeartbeat, usePresenceQuery, formatLastSeen, useTypingPublisher, usePeerTyping } from '@/hooks/usePresence';
 import InAppNotification, { type AppNotification } from '@/components/InAppNotification';
@@ -524,6 +524,19 @@ function resolveMediaUrl(raw: string | null | undefined): string {
   s = String(s).trim().replace(/^"+|"+$/g, '');
   if (s.startsWith('//')) return `https:${s}`;
   if (s.startsWith('uploads/') || s.startsWith('media/') || s.startsWith('files/')) return `/${s}`;
+  // Some backend paths come back as a bare relative path with a different
+  // prefix (e.g. "secret-chat/xyz.jpg", "chat-media/abc.mp4") that isn't in
+  // the explicit list above — if it isn't absolute/blob/data already but
+  // still looks like a file path, root it so the browser can resolve it.
+  if (
+    !/^https?:\/\//i.test(s) &&
+    !s.startsWith('/') &&
+    !s.startsWith('blob:') &&
+    !s.startsWith('data:') &&
+    /\.[a-z0-9]{2,5}(\?[^\s]*)?$/i.test(s)
+  ) {
+    return `/${s}`;
+  }
   return s;
 }
 
@@ -875,8 +888,28 @@ function ImageBubble({
 }) {
   const [open, setOpen] = useState(false);
   const [broken, setBroken] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const src = resolveMediaUrl(url);
   const looksLikeUrl = !!src && (src.startsWith('http') || src.startsWith('/') || src.startsWith('blob:') || src.startsWith('data:'));
+  // A freshly-uploaded image can briefly 404 while the storage/CDN finishes
+  // propagating it. Rather than giving up on the very first failed load
+  // (which is what produced the permanent "Shared image" placeholder even
+  // for images that had actually uploaded fine), retry a few times with a
+  // cache-busting query param before falling back to the placeholder.
+  const MAX_IMAGE_RETRIES = 3;
+  const canRetryWithCacheBust = looksLikeUrl && !src.startsWith('blob:') && !src.startsWith('data:');
+  const displaySrc = retryAttempt > 0 && canRetryWithCacheBust
+    ? `${src}${src.includes('?') ? '&' : '?'}_r=${retryAttempt}`
+    : src;
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); }, []);
+  const handleImageError = () => {
+    if (canRetryWithCacheBust && retryAttempt < MAX_IMAGE_RETRIES) {
+      retryTimerRef.current = setTimeout(() => setRetryAttempt(a => a + 1), 650 * (retryAttempt + 1));
+    } else {
+      setBroken(true);
+    }
+  };
   if (!src || !looksLikeUrl || broken) {
     return (
       <div style={{
@@ -889,7 +922,7 @@ function ImageBubble({
     );
   }
   return <>
-      <img src={src} alt="" onClick={() => setOpen(true)} onError={() => setBroken(true)} style={{
+      <img src={displaySrc} alt="" onClick={() => setOpen(true)} onError={handleImageError} style={{
       display: 'block',
       width: '100%',
       maxWidth: 240,
@@ -927,7 +960,7 @@ function ImageBubble({
         }}>
               <X size={28} />
             </button>
-            <img src={src} alt="" style={{
+            <img src={displaySrc} alt="" style={{
           maxWidth: '100%',
           maxHeight: '90vh',
           objectFit: 'contain',
@@ -998,6 +1031,23 @@ function VideoNoteBubble({
   const [progress, setProgress] = useState(0);
   const [total, setTotal] = useState(duration ?? bodyDur ?? 0);
   const [current, setCurrent] = useState(0);
+  // Same retry-before-fallback rationale as ImageBubble / ChatInlineVideoPlayer.
+  const [noteError, setNoteError] = useState(false);
+  const [noteRetryAttempt, setNoteRetryAttempt] = useState(0);
+  const MAX_NOTE_RETRIES = 3;
+  const canRetryNoteWithCacheBust = !!url && (url.startsWith('http') || url.startsWith('/')) && !url.startsWith('blob:') && !url.startsWith('data:');
+  const effectiveUrl = noteRetryAttempt > 0 && canRetryNoteWithCacheBust
+    ? `${url}${url.includes('?') ? '&' : '?'}_r=${noteRetryAttempt}`
+    : url;
+  const noteRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (noteRetryTimerRef.current) clearTimeout(noteRetryTimerRef.current); }, []);
+  function handleNoteError() {
+    if (canRetryNoteWithCacheBust && noteRetryAttempt < MAX_NOTE_RETRIES) {
+      noteRetryTimerRef.current = setTimeout(() => setNoteRetryAttempt(a => a + 1), 650 * (noteRetryAttempt + 1));
+    } else {
+      setNoteError(true);
+    }
+  }
 
   function toggle() {
     buzzChat();
@@ -1015,6 +1065,20 @@ function VideoNoteBubble({
   const displaySecs = playing ? current : (total || duration || bodyDur || 0);
   const label = `${Math.floor(displaySecs / 60)}:${String(Math.floor(displaySecs % 60)).padStart(2, '0')}`;
   const ring = `conic-gradient(#86efac ${progress * 360}deg, rgba(255,255,255,0.22) 0deg)`;
+
+  if (noteError) {
+    return (
+      <div style={{
+        width: 220, height: 220, borderRadius: '50%',
+        background: '#2a2420', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 8,
+        color: T.textDim, fontSize: '0.82rem',
+      }}>
+        <VideoIcon size={22} />
+        <span>Shared video</span>
+      </div>
+    );
+  }
 
   return (
     <button
@@ -1046,7 +1110,7 @@ function VideoNoteBubble({
         }}>
           <video
             ref={videoRef}
-            src={url}
+            src={effectiveUrl}
             playsInline
             preload="metadata"
             onLoadedMetadata={e => {
@@ -1067,6 +1131,7 @@ function VideoNoteBubble({
             }}
             onPause={() => setPlaying(false)}
             onPlay={() => setPlaying(true)}
+            onError={handleNoteError}
             style={{
               width: '100%', height: '100%', objectFit: 'cover',
               display: 'block', pointerEvents: 'none',
@@ -1117,6 +1182,26 @@ function ChatInlineVideoPlayer({
   const [duration, setDuration] = useState(Number(knownDuration) > 0 ? Number(knownDuration) : 0);
   const [controlsVisible, setControlsVisible] = useState(true);
   const seekingRef = useRef(false);
+  // Same rationale as ImageBubble: a freshly-uploaded video can briefly fail
+  // to load while storage/CDN propagation catches up. Retry with a
+  // cache-busting query param before showing a "video unavailable" fallback,
+  // instead of silently rendering a blank/black player forever.
+  const [videoError, setVideoError] = useState(false);
+  const [videoRetryAttempt, setVideoRetryAttempt] = useState(0);
+  const MAX_VIDEO_RETRIES = 3;
+  const canRetryVideoWithCacheBust = !!src && (src.startsWith('http') || src.startsWith('/')) && !src.startsWith('blob:') && !src.startsWith('data:');
+  const effectiveSrc = videoRetryAttempt > 0 && canRetryVideoWithCacheBust
+    ? `${src}${src.includes('?') ? '&' : '?'}_r=${videoRetryAttempt}`
+    : src;
+  const videoRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (videoRetryTimerRef.current) clearTimeout(videoRetryTimerRef.current); }, []);
+  function handleVideoError() {
+    if (canRetryVideoWithCacheBust && videoRetryAttempt < MAX_VIDEO_RETRIES) {
+      videoRetryTimerRef.current = setTimeout(() => setVideoRetryAttempt(a => a + 1), 650 * (videoRetryAttempt + 1));
+    } else {
+      setVideoError(true);
+    }
+  }
 
   useEffect(() => {
     setControlsVisible(true);
@@ -1153,6 +1238,18 @@ function ChatInlineVideoPlayer({
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   };
 
+  if (videoError) {
+    return (
+      <div style={{
+        padding: '12px 14px', maxWidth: 240,
+        display: 'flex', alignItems: 'center', gap: 8, color: T.textDim, fontSize: '0.82rem',
+      }}>
+        <VideoIcon size={18} />
+        <span>Shared video</span>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       position: 'relative', width: '100%', maxWidth: 240, borderRadius: 8, overflow: 'hidden',
@@ -1160,7 +1257,7 @@ function ChatInlineVideoPlayer({
     }}>
       <video
         ref={videoRef}
-        src={src}
+        src={effectiveSrc}
         playsInline
         preload="metadata"
         controls={false}
@@ -1184,6 +1281,7 @@ function ChatInlineVideoPlayer({
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
+        onError={handleVideoError}
         style={{
           display: 'block', width: '100%', maxHeight: 280, objectFit: 'cover',
           background: '#000', cursor: 'pointer',
