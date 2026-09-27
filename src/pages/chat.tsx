@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin, Smile, Paperclip, Video as VideoIcon } from 'lucide-react';
+import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin, Smile, Paperclip, Video as VideoIcon, Plus } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import { useHeartbeat, usePresenceQuery, formatLastSeen, useTypingPublisher, usePeerTyping } from '@/hooks/usePresence';
 import InAppNotification, { type AppNotification } from '@/components/InAppNotification';
@@ -3603,6 +3603,7 @@ export default function ChatPage() {
   const [chatMediaWait, setChatMediaWait] = useState(false);
   const [chatMediaReady, setChatMediaReady] = useState<ChatMediaReady | null>(null);
   const [chatMediaStatus, setChatMediaStatus] = useState('');
+  const [chatAttachOpen, setChatAttachOpen] = useState(false);
   const prevMsgCountRef = useRef(-1); // -1 = first load, skip notification
 
   // ── Show messages only when there's at least one new message ──────────────────
@@ -4714,6 +4715,7 @@ export default function ChatPage() {
 
   // ── AI media prep (chat only) — wait in input, then Send; never show URL ──
   async function prepareChatMedia(file: File) {
+    setChatAttachOpen(false);
     setChatMediaWait(true);
     setChatMediaReady(null);
     setChatMediaStatus('يرجى الانتظار');
@@ -6253,6 +6255,91 @@ export default function ChatPage() {
           gap: 8,
           position: 'relative'
         }}>
+
+            {/* + attach → Photos / Video / File → AI prepare (no URL shown) */}
+            {!isRecording && (
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setChatAttachOpen(o => !o)}
+                  aria-label="إرفاق"
+                  disabled={chatMediaWait || sending}
+                  style={{
+                    width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+                    border: '1px solid #e5e7eb', background: chatAttachOpen ? '#111b21' : '#fff',
+                    color: chatAttachOpen ? '#fff' : '#111b21',
+                    cursor: chatMediaWait ? 'wait' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                  }}
+                >
+                  <Plus size={22} strokeWidth={2.4} />
+                </motion.button>
+                <AnimatePresence>
+                  {chatAttachOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                      transition={{ duration: 0.18 }}
+                      style={{
+                        position: 'absolute', bottom: 'calc(100% + 10px)', left: 0,
+                        minWidth: 168, background: '#fff',
+                        border: '1px solid #e5e7eb', borderRadius: 14,
+                        boxShadow: '0 8px 28px rgba(0,0,0,0.14)',
+                        padding: 6, zIndex: 60,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChatAttachOpen(false);
+                          setTimeout(() => fileInputRef.current?.click(), 80);
+                        }}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', border: 'none', background: 'transparent',
+                          borderRadius: 10, cursor: 'pointer', color: '#111', fontWeight: 600, fontSize: '0.88rem',
+                        }}
+                      >
+                        <Images size={18} strokeWidth={2} color="#00BCD4" />
+                        صور
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChatAttachOpen(false);
+                          setTimeout(() => videoInputRef.current?.click(), 80);
+                        }}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', border: 'none', background: 'transparent',
+                          borderRadius: 10, cursor: 'pointer', color: '#111', fontWeight: 600, fontSize: '0.88rem',
+                        }}
+                      >
+                        <VideoIcon size={18} strokeWidth={2} color="#00BCD4" />
+                        فيديو
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChatAttachOpen(false);
+                          setTimeout(() => docInputRef.current?.click(), 80);
+                        }}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', border: 'none', background: 'transparent',
+                          borderRadius: 10, cursor: 'pointer', color: '#111', fontWeight: 600, fontSize: '0.88rem',
+                        }}
+                      >
+                        <FileText size={18} strokeWidth={2} color="#00BCD4" />
+                        ملف
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
 
             {isRecording ? (
               <div style={{ flex: 1, background: '#fff', borderRadius: 22, padding: '10px 12px 12px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
