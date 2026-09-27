@@ -23,6 +23,7 @@ import { useGuestGuard } from '@/hooks/useGuestGuard';
 import PostTextMore from '@/components/PostTextMore';
 import { publishFeedPost, uploadPostMedia, deleteStoryInstant, POST_TEXT_MAX_CHARS } from '@/lib/postStoryPatch';
 import { mediaAiProcessGalleryFiles, mediaAiForceWorkingMedia, mediaAiNormalizeImage, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
+import { storyAiPublish } from '@/lib/storyAiPatch';
 interface SearchUser {
   id: string;
   name: string | null;
@@ -12744,7 +12745,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     return () => clearInterval(interval);
   }, [fetchStories, storyUploading]);
 
-  // Upload a story
+  // Upload a story — powered by storyAiPatch: instant data/blob URL + a short
+  // server-upload race under a 5s hard budget, so publish always finishes fast
+  // and never gets stuck behind a slow/dead upload host (same approach already
+  // used for the general post composer's mediaAiProcessGalleryFiles).
   async function uploadStory(file: File) {
     const kind: 'image' | 'video' = (file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '')) ? 'video' : 'image';
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/') && kind !== 'video') {
@@ -12755,63 +12759,20 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     setQuickPublishError('');
     setStoryUploading(true);
     try {
-      let mediaFile = file;
-      try { mediaFile = await normalizeGalleryFileForUpload(file, kind); } catch { /* keep original */ }
-      const ext = mediaFile.name.split('.').pop() ?? (kind === 'video' ? 'mp4' : 'jpg');
-      let mediaUrl: string | null = null;
-      try { mediaUrl = await fastUploadMediaFile(mediaFile, kind); } catch { mediaUrl = null; }
-      let response: Response | null = null;
-      if (mediaUrl) {
-        const payload = {
-          mediaUrl,
-          url: mediaUrl,
-          mediaType: kind,
-          type: kind,
-          duration: kind === 'video' ? 15 : 5,
-        };
-        try {
-          response = await fetch('/api/status', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-        } catch { response = null; }
-        if (!response || !response.ok) {
-          const fd = new FormData();
-          fd.append('mediaUrl', mediaUrl);
-          fd.append('url', mediaUrl);
-          fd.append('media', mediaFile, mediaFile.name);
-          fd.append('file', mediaFile, mediaFile.name);
-          fd.append('type', kind);
-          fd.append('mediaType', kind);
-          try { response = await fetch('/api/status', { method: 'POST', credentials: 'include', body: fd }); } catch { response = null; }
-        }
+      const result = await storyAiPublish(
+        file,
+        async (f, k) => {
+          try {
+            const normalized = await normalizeGalleryFileForUpload(f, k);
+            return await fastUploadMediaFile(normalized, k);
+          } catch {
+            return null;
+          }
+        },
+      );
+      if (!result.ok) {
+        throw new Error(result.error || 'Story upload failed');
       }
-      // raw body (legacy)
-      if (!response || !response.ok) {
-        try {
-          response = await fetch('/api/status', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': mediaFile.type || 'application/octet-stream', 'X-File-Ext': `.${ext}` },
-            body: mediaFile,
-          });
-        } catch { response = null; }
-      }
-      if (!response || !response.ok) {
-        const fd = new FormData();
-        fd.append('media', mediaFile, mediaFile.name);
-        fd.append('file', mediaFile, mediaFile.name);
-        fd.append('type', kind);
-        try {
-          response = await fetch('/api/status', { method: 'POST', credentials: 'include', body: fd });
-        } catch { response = null; }
-      }
-      if (!response || !response.ok) {
-        throw new Error('Story upload failed');
-      }
-      try { window.dispatchEvent(new CustomEvent('stooorna:story-published')); } catch { /* */ }
       await fetchStories();
     } catch {
       setQuickPublishError('Unable to publish this story. Please try a different image or video.');
