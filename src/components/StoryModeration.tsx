@@ -135,7 +135,7 @@ export function StoryModerateDialog({
 }
 
 /** Bell (under the Settings icon) — every user sees the notices the owner sent to them */
-export function StoryModerationBell({ userId, style }: { userId?: string | null; style?: React.CSSProperties }) {
+export function StoryModerationBell({ userId, style, size = 38 }: { userId?: string | null; style?: React.CSSProperties; size?: number }) {
   const [open, setOpen] = useState(false);
   const ver = useModerationVersion();
   useTick(open ? 1000 : 30000);
@@ -154,23 +154,27 @@ export function StoryModerationBell({ userId, style }: { userId?: string | null;
 
   return (
     <>
+      <style>{`@keyframes stooornaBellRing{0%,100%{transform:rotate(0)}10%{transform:rotate(14deg)}20%{transform:rotate(-12deg)}30%{transform:rotate(9deg)}40%{transform:rotate(-6deg)}50%{transform:rotate(0)}}@keyframes stooornaBellGlow{0%,100%{box-shadow:0 0 6px rgba(249,115,22,0.5)}50%{box-shadow:0 0 16px rgba(249,115,22,0.95)}}`}</style>
       <button
         type="button"
         aria-label="الإشعارات"
         title="الإشعارات"
         onClick={() => { setOpen(true); void markNoticesSeen(userId); }}
         style={{
-          position: 'relative', width: 38, height: 38, borderRadius: '50%', padding: 0, cursor: 'pointer',
-          border: `1.5px solid ${unseen > 0 ? '#ef4444' : 'rgba(255,255,255,0.6)'}`,
-          background: 'rgba(255,255,255,0.1)', color: '#fff',
+          position: 'relative', width: size, height: size, borderRadius: '50%', padding: 0, cursor: 'pointer',
+          border: `1.5px solid ${unseen > 0 ? '#f97316' : 'rgba(255,255,255,0.6)'}`,
+          background: unseen > 0 ? 'rgba(249,115,22,0.22)' : 'rgba(255,255,255,0.1)', color: unseen > 0 ? '#f97316' : '#fff',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: unseen > 0 ? '0 0 12px rgba(239,68,68,0.55)' : '0 0 12px rgba(255,255,255,0.28), 0 4px 16px rgba(0,0,0,0.45)',
+          boxShadow: unseen > 0 ? '0 0 12px rgba(249,115,22,0.7)' : '0 0 12px rgba(255,255,255,0.28), 0 4px 16px rgba(0,0,0,0.45)',
+          animation: unseen > 0 ? 'stooornaBellGlow 1.4s ease-in-out infinite' : undefined,
           ...style,
         }}
       >
-        <Bell size={18} strokeWidth={2.2} color="#fff" />
+        <span style={{ display: 'flex', animation: unseen > 0 ? 'stooornaBellRing 1.8s ease-in-out infinite' : undefined, transformOrigin: '50% 10%' }}>
+          <Bell size={Math.round(size * 0.47)} strokeWidth={2.2} color={unseen > 0 ? '#f97316' : '#fff'} />
+        </span>
         {unseen > 0 && (
-          <span style={{ position: 'absolute', top: -3, right: -3, minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#ef4444', color: '#fff', fontSize: '0.6rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #0b1416' }}>{unseen}</span>
+          <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 15, height: 15, padding: '0 4px', borderRadius: 8, background: '#f97316', color: '#111', fontSize: '0.58rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #0b1416' }}>{unseen}</span>
         )}
       </button>
 

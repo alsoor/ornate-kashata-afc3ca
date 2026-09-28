@@ -18440,7 +18440,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
                   {/* Settings — نُقلت من قائمة (+) إلى نهاية صف الأيقونات (أقصى اليمين)، بيضاء ومميّزة وتدور ببطء.
                       margin سالب حتى لا يزيد ارتفاع الصف رغم أن حجمها 38px. */}
-                  <div style={{ position: 'relative', marginLeft: 'auto', marginTop: -7, marginBottom: -7, width: 38, height: 38, flexShrink: 0 }}>
+                  <div style={{ position: 'relative', marginLeft: 'auto', marginTop: -3, marginBottom: -3, width: 30, height: 30, flexShrink: 0 }}>
                   <motion.button
                     type="button"
                     whileTap={{ scale: 0.9 }}
@@ -18451,7 +18451,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     aria-label="Settings"
                     title="Settings"
                     style={{
-                      width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+                      width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
                       border: '1.5px solid rgba(255,255,255,0.6)',
                       background: 'rgba(255,255,255,0.1)',
                       color: '#ffffff',
@@ -18466,12 +18466,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       transition={{ duration: 9, repeat: Infinity, ease: 'linear' }}
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     >
-                      <Settings size={18} strokeWidth={2.2} color="#ffffff" />
+                      <Settings size={15} strokeWidth={2.2} color="#ffffff" />
                     </motion.span>
                   </motion.button>
-                  {/* Bell — under Settings: notices the owner sent (deleted story + message) */}
-                  <div style={{ position: 'absolute', top: 46, left: 0, zIndex: 5 }}>
-                    <StoryModerationBell userId={user?.id} />
+                  {/* Bell — above Settings, same size: notices the owner sent (deleted story + message) */}
+                  <div style={{ position: 'absolute', bottom: 36, left: 0, zIndex: 5 }}>
+                    <StoryModerationBell userId={user?.id} size={30} />
                   </div>
                   </div>
 
