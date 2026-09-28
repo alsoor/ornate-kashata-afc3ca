@@ -28,7 +28,6 @@ import { publishFeedPost, uploadPostMedia, deleteStoryInstant, POST_TEXT_MAX_CHA
 import { mediaAiProcessGalleryFiles, mediaAiForceWorkingMedia, mediaAiNormalizeImage, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
 import { StoryModerationBell, StoryModerateDialog, StoryBanModal, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
-import { fetchLiveChatFromServer as pullLiveChatApi, postLiveChatToServer as pushLiveChatApi, mergeLiveChatLists as mergeLiveChatApi } from '@/lib/liveChatPatch';
 interface SearchUser {
   id: string;
   name: string | null;
@@ -13217,9 +13216,9 @@ function PublicLiveCommentsPanel({
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       liveBusyRef.current = true;
       try {
-        const remote = await pullLiveChatApi();
+        const remote = await fetchLiveChatFromServer();
         const local = loadPublicLiveComments();
-        const next = remote ? mergeLiveChatApi(local, remote) : local;
+        const next = remote ? mergeLiveChatLists(local, remote) : local;
         const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}`).join('|');
         if (sig === liveSigRef.current) return;
         liveSigRef.current = sig;
@@ -13265,7 +13264,7 @@ function PublicLiveCommentsPanel({
     setText('');
     setPendingImage(null);
     setEmojiOpen(false);
-    void pushLiveChatApi(row);
+    void postLiveChatToServer(row);
   };
 
   const toggleLike = (id: string) => {
