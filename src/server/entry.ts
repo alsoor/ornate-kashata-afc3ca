@@ -145,6 +145,7 @@ import secret_room_mic_lock_get_128 from "./api/secret-room/mic-lock/GET";
 import secret_room_mic_lock_post_129 from "./api/secret-room/mic-lock/POST";
 import status_delete_130 from "./api/status/DELETE";
 import status_get_131 from "./api/status/GET";
+import deleteStatusById, { statusDeleteEntry } from "./api/status/deleteById";
 import status_post_132, { multerMiddleware as statusMulterMiddleware } from "./api/status/POST";
 import status_comments_received_get_133 from "./api/status/comments/received/GET";
 import status_view_post_134 from "./api/status/view/POST";
@@ -331,6 +332,11 @@ app.use(express.urlencoded({ extended: true }));
 // On Railway, mount a Volume at this path (or set ASSETS_DIR) so files survive redeploys.
 const ASSETS_DIR = process.env.ASSETS_DIR || '/shared-storage/public/assets';
 app.use('/airo-assets', express.static(ASSETS_DIR, { maxAge: '7d', fallthrough: true }));
+
+// ── Story delete: real server-side delete (friends stop seeing it) ───────────
+// Must be registered BEFORE the generic status routes below.
+app.delete('/api/status/:id', deleteStatusById);
+app.delete('/api/status', statusDeleteEntry);
 
 // ── IP tracking: lightweight — stored via /api/me/update-ip ─────────────────
 
