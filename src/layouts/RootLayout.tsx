@@ -1630,6 +1630,7 @@ function GlobalBottomNavigation() {
   const homeCallApplyInviteRef = useRef<(raw: any) => void>(() => {});
   const homeCallEndedAtRef = useRef<Map<string, number>>(new Map());
   const homeCallChannelRef = useRef<string | null>(null);
+  const homeInviteFirstSeenRef = useRef<Map<string, number>>(new Map());
 
   function markHomeCallChannelEnded(channel: string) {
     const ch = String(channel || '').trim();
@@ -1637,11 +1638,14 @@ function GlobalBottomNavigation() {
     homeCallEndedAtRef.current.set(ch, Date.now());
   }
 
-  function isHomeCallChannelJustEnded(channel: string) {
+  function isHomeCallChannelJustEnded(channel: string, inviteAt?: number) {
     const ch = String(channel || '').trim();
     if (!ch) return false;
-    const at = homeCallEndedAtRef.current.get(ch);
-    return !!at && Date.now() - at < 20_000;
+    const endedAt = homeCallEndedAtRef.current.get(ch);
+    if (!endedAt) return false;
+    const invAt = Number(inviteAt || 0);
+    if (invAt && invAt > endedAt + 250) return false;
+    return Date.now() - endedAt < 8000;
   }
 
   function clearServerCallInvite(targetUserId?: string | null, channel?: string | null) {
@@ -1763,14 +1767,25 @@ function GlobalBottomNavigation() {
       const hostId = String(rawIn.hostId || rawIn.fromId || rawIn.callerId || '');
       const channel = String(rawIn.channel || rawIn.roomId || rawIn.room || '');
       if (!channel || !hostId || hostId === String(user.id)) return;
-      if (isHomeCallChannelJustEnded(channel)) return;
+      if (rawIn.ended || rawIn.answered || rawIn.clear) return;
+      const stampedAt = Number(rawIn.at || rawIn.ts || rawIn.createdAt) || 0;
+      if (!stampedAt && isHomeCallChannelJustEnded(channel, 0)) return;
+      let inviteAt = stampedAt;
+      if (!inviteAt) {
+        const seen = homeInviteFirstSeenRef.current.get(channel);
+        inviteAt = seen || Date.now();
+        homeInviteFirstSeenRef.current.set(channel, inviteAt);
+      } else {
+        homeInviteFirstSeenRef.current.set(channel, inviteAt);
+      }
+      if (isHomeCallChannelJustEnded(channel, inviteAt)) return;
       const raw = {
         ...rawIn,
         channel,
         hostId,
         hostName: rawIn.hostName || rawIn.fromName || rawIn.callerName || rawIn.name || null,
         hostAvatar: rawIn.hostAvatar || rawIn.fromAvatar || rawIn.avatarUrl || null,
-        at: Number(rawIn.at || rawIn.ts || rawIn.createdAt) || Date.now(),
+        at: inviteAt,
         video: !!(rawIn.video || rawIn.kind === 'video'),
         members: Array.isArray(rawIn.members) ? rawIn.members : [],
       };
@@ -1818,8 +1833,8 @@ function GlobalBottomNavigation() {
       }
       const lock = homeRingLockRef.current;
       // Only suppress a brand-new ring for a few seconds after answer/decline on THIS channel
-      if (lock.mode === 'answered' && lock.channel === ch && Date.now() - lock.at < 4000) return;
-      if (lock.mode === 'ignored' && lock.channel === ch && Date.now() - lock.at < 8000) return;
+      if (lock.mode === 'answered' && lock.channel === ch && Date.now() - lock.at < 1200) return;
+      if (lock.mode === 'ignored' && lock.channel === ch && Date.now() - lock.at < 1200) return;
       beginHomeIncoming({
         channel: ch,
         hostId: String(raw.hostId || ''),
@@ -1969,7 +1984,7 @@ function GlobalBottomNavigation() {
         if (type !== 'call' && type !== 'incoming-call' && type !== 'home-call') return;
         const to = String(msg.to || msg.toUserId || '');
         if (to && to !== String(user.id)) return;
-        if (isHomeCallChannelJustEnded(String(msg.channel || ''))) return;
+        if (isHomeCallChannelJustEnded(String(msg.channel || ''), Number(msg.at) || 0)) return;
         homeCallApplyInviteRef.current({
           channel: msg.channel,
           hostId: msg.from || msg.hostId || msg.fromId,
@@ -2184,7 +2199,10 @@ function GlobalBottomNavigation() {
       : 0;
     homeCallLiveStartedAt.current = null;
     homeCallSessionRef.current += 1;
-    if (endedChannel) markHomeCallChannelEnded(endedChannel);
+    if (endedChannel) {
+      markHomeCallChannelEnded(endedChannel);
+      homeInviteFirstSeenRef.current.delete(endedChannel);
+    }
     // Notify remote party so their UI closes automatically (local hang-up only)
     if (!remoteEnd && endedChannel && user?.id) {
       try {
@@ -3146,8 +3164,8 @@ function GlobalBottomNavigation() {
   function beginHomeIncoming(invite: { channel: string; hostId: string; hostName: string | null; hostUsername?: string | null; hostAvatar: string | null; members: HomeCallMember[]; video?: boolean; at?: number }) {
     if (homeCallPhase !== 'idle') return;
     const lock = homeRingLockRef.current;
-    if (lock.mode === 'answered' && Date.now() - lock.at < 4000) return;
-    if (lock.mode === 'ignored' && lock.channel === invite.channel && Date.now() - lock.at < 8000) return;
+    if (lock.mode === 'answered' && lock.channel === invite.channel && Date.now() - lock.at < 1200) return;
+    if (lock.mode === 'ignored' && lock.channel === invite.channel && Date.now() - lock.at < 1200) return;
     // Already ringing for this call — do not restart the ring tone
     if (homeIncoming && String(homeIncoming.channel) === String(invite.channel)) {
       setHomeIncoming(invite);
