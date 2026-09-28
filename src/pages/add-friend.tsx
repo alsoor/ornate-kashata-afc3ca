@@ -13188,15 +13188,16 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
           {unread ? <span style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: '50%', background: '#eab308' }} /> : null}
         </span>
       </button>
-      {open && (
+      {open && typeof document !== 'undefined' && createPortal(
         <>
-          <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'transparent', border: 'none', zIndex: 80 }} />
+          <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', border: 'none', zIndex: 14000 }} />
           <div style={{
-            position: 'absolute', top: size + 6, right: 0, zIndex: 81,
-            width: 260, maxHeight: 320, overflowY: 'auto',
-            background: 'rgba(8,18,20,0.97)', border: '1px solid rgba(0,188,212,0.28)',
-            borderRadius: 14, boxShadow: '0 12px 28px rgba(0,0,0,0.45)', padding: 8,
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            zIndex: 14001, width: 'min(86vw, 340px)', maxHeight: '70vh', overflowY: 'auto',
+            background: 'rgba(8,18,20,0.98)', border: '1px solid rgba(0,188,212,0.35)',
+            borderRadius: 18, boxShadow: '0 18px 40px rgba(0,0,0,0.55)', padding: 12,
           }}>
+            <p style={{ margin: '0 0 10px', color: '#fff', fontWeight: 800, fontSize: '0.9rem', textAlign: 'center' }}>Admin notices</p>
             {items.length === 0 ? (
               <p style={{ margin: 0, padding: '16px 8px', color: 'rgba(200,220,220,0.55)', fontSize: '0.78rem', textAlign: 'center' }}>لا توجد رسائل</p>
             ) : items.map(n => (
@@ -13227,7 +13228,8 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
               </div>
             ))}
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );
@@ -13292,6 +13294,63 @@ function savePublicLiveComments(list: PublicLiveComment[]) {
 }
 
 const LIVE_CHAT_ROOM = 'stooorna-live-chat';
+
+const LIVE_CHAT_BOT_NAME = 'Bot | Stooorna';
+const LIVE_CHAT_BOT_ID = 'stooorna-bot';
+const LIVE_CHAT_BOT_COLOR = '#0b3a82';
+
+function liveChatNormalizeBad(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ؤ/g, 'و')
+    .replace(/ئ/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/ـ/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const LIVE_CHAT_BAD_EN = ['fuck','fucking','fucker','shit','bitch','asshole','bastard','dick','pussy','cock','slut','whore','cunt','nigger','nigga','faggot','retard','porn','porno','xxx','onlyfans','nude','nudes','blowjob','handjob','cumshot','hentai','nsfw'];
+const LIVE_CHAT_BAD_AR = ['كس','كسمك','كس امك','كسم','شرموط','شرموطة','قحبة','قحبه','عرص','منيوك','زب','زبي','طيز','نيك','ينيك','انيك','خنيث','خول','قواد','لبوه','كسمك','احا'];
+
+function liveChatTextIsBlocked(text: string): boolean {
+  const n = liveChatNormalizeBad(text);
+  if (!n) return false;
+  const padded = ` ${n} `;
+  for (const w of [...LIVE_CHAT_BAD_EN, ...LIVE_CHAT_BAD_AR]) {
+    const nw = liveChatNormalizeBad(w);
+    if (!nw) continue;
+    if (nw.length <= 3) { if (padded.includes(` ${nw} `)) return true; }
+    else if (n.includes(nw)) return true;
+  }
+  return false;
+}
+
+function liveChatImageLooksBlocked(imageUrl?: string | null, text?: string): boolean {
+  if (liveChatTextIsBlocked(text || '')) return true;
+  const u = String(imageUrl || '').toLowerCase();
+  if (!u) return false;
+  return /(porn|xxx|nsfw|nude|naked|sex|hentai|onlyfans)/i.test(u);
+}
+
+function makeLiveChatBotNotice(reason: 'text' | 'image' = 'text'): PublicLiveComment {
+  return {
+    id: `bot_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    userId: LIVE_CHAT_BOT_ID,
+    name: LIVE_CHAT_BOT_NAME,
+    username: 'Bot',
+    avatarUrl: null,
+    text: reason === 'image' ? 'تم حذف صورة غير لائقة' : 'تم حذف رسالة غير لائقة',
+    imageUrl: null,
+    voiceUrl: null,
+    likes: [],
+    createdAt: Date.now(),
+  };
+}
+
 
 function normalizeLiveChatRows(raw: unknown): PublicLiveComment[] {
   const arr = Array.isArray(raw) ? raw
@@ -13436,7 +13495,19 @@ function PublicLiveCommentsPanel({
       try {
         const remote = await fetchLiveChatFromServer();
         const local = loadPublicLiveComments();
-        const next = remote ? mergeLiveChatLists(local, remote) : local;
+        let next = remote ? mergeLiveChatLists(local, remote) : local;
+        const cleaned: PublicLiveComment[] = [];
+        let blocked = false;
+        for (const row of next) {
+          if (row.userId === LIVE_CHAT_BOT_ID) { cleaned.push(row); continue; }
+          if (liveChatTextIsBlocked(row.text) || liveChatImageLooksBlocked(row.imageUrl, row.text)) {
+            blocked = true;
+            continue;
+          }
+          cleaned.push(row);
+        }
+        if (blocked) cleaned.push(makeLiveChatBotNotice('text'));
+        next = cleaned;
         const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}`).join('|');
         if (sig === liveSigRef.current) return;
         liveSigRef.current = sig;
@@ -13465,6 +13536,18 @@ function PublicLiveCommentsPanel({
     const trimmed = body.trim().slice(0, 500);
     if (!trimmed && !imageUrl && !voice?.url) return;
     if (!myId) return;
+    if (liveChatTextIsBlocked(trimmed) || liveChatImageLooksBlocked(imageUrl, trimmed)) {
+      const notice = makeLiveChatBotNotice(imageUrl ? 'image' : 'text');
+      const next = [...loadPublicLiveComments(), notice];
+      savePublicLiveComments(next);
+      setComments(next);
+      setText('');
+      setPendingImage(null);
+      setPendingVoice(null);
+      setEmojiOpen(false);
+      void postLiveChatToServer(notice);
+      return;
+    }
     const row: PublicLiveComment = {
       id: `plc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       userId: myId,
@@ -13517,7 +13600,9 @@ function PublicLiveCommentsPanel({
   };
 
   const displayName = (c: PublicLiveComment) =>
-    c.username ? `@${String(c.username).replace(/^@/, '')}` : (c.name || 'مستخدم');
+    c.userId === LIVE_CHAT_BOT_ID || c.name === LIVE_CHAT_BOT_NAME
+      ? LIVE_CHAT_BOT_NAME
+      : (c.username ? `@${String(c.username).replace(/^@/, '')}` : (c.name || 'مستخدم'));
 
   if (!headerOpen) return null;
   if (typeof document === 'undefined') return null;
@@ -13600,7 +13685,7 @@ function PublicLiveCommentsPanel({
               </button>
               <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
                 <p style={{ margin: 0, fontSize: '0.84rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
-                  <span style={{ fontWeight: 800, color: '#111', marginRight: 6 }}>{displayName(c)}</span>
+                  <span style={{ fontWeight: 800, color: (c.userId === LIVE_CHAT_BOT_ID || c.name === LIVE_CHAT_BOT_NAME) ? LIVE_CHAT_BOT_COLOR : '#111', marginRight: 6 }}>{displayName(c)}</span>
                   {c.voiceUrl ? null : <span style={{ fontWeight: 500, color: '#222' }}>{c.text}</span>}
                 </p>
                 {c.voiceUrl ? (
