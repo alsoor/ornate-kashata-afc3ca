@@ -38,6 +38,15 @@
  * Content-Type + X-File-Ext, or multipart media/file/type. v4 tries those FIRST,
  * then falls through to every v3 strategy (nothing was removed).
  *
+ * v5 — fixes the BLACK SCREEN after a successful publish (broken <img alt="story">).
+ *
+ * Root cause: the server accepted the raw/multipart upload (story created) but
+ * the media URL it returned doesn't actually serve the file, so the viewer got
+ * a broken image. v5 VERIFIES the published media really loads; if not, it
+ * repairs the story (real upload link → PATCH/re-publish, else a compact data:
+ * URL — the durable mechanism already working for posts) and deletes the broken
+ * story so no black story is left behind. Everything from v3/v4 is kept.
+ *
  * Install: src/lib/storyAiPatch.ts
  */
 
@@ -268,6 +277,174 @@ async function readErr(r: Response | null): Promise<string> {
   try { return `${r.status} ${(await r.clone().text()).slice(0, 200)}`; } catch { return String(r.status); }
 }
 
+
+// ───────────────────────── v5: verify + repair ─────────────────────────
+
+function storyAiAbs(u: string): string {
+  try { return new URL(String(u).trim(), window.location.origin).href; } catch { return String(u); }
+}
+
+async function fetchMyLatestStory(): Promise<{ id: string | number; mediaUrl: string } | null> {
+  try {
+    const r = await fetch('/api/status', { credentials: 'include' });
+    if (!r.ok) return null;
+    const d: any = await r.json();
+    const myId = d?.myId;
+    let best: any = null;
+    for (const g of Array.isArray(d?.statuses) ? d.statuses : []) {
+      if (myId && g?.userId !== myId) continue;
+      for (const it of Array.isArray(g?.items) ? g.items : []) {
+        if (!best || Number(it?.id) > Number(best.id)) best = it;
+      }
+    }
+    return best ? { id: best.id, mediaUrl: String(best.mediaUrl || '') } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function storyHasUrlPrefix(id: string | number, prefix: string): Promise<boolean> {
+  try {
+    const r = await fetch('/api/status', { credentials: 'include' });
+    if (!r.ok) return false;
+    const d: any = await r.json();
+    for (const g of Array.isArray(d?.statuses) ? d.statuses : []) {
+      for (const it of Array.isArray(g?.items) ? g.items : []) {
+        if (String(it?.id) === String(id)) return String(it?.mediaUrl || '').startsWith(prefix);
+      }
+    }
+  } catch { /* ignore */ }
+  return false;
+}
+
+async function patchStoryMedia(id: string | number, url: string, kind: MediaAiKind): Promise<boolean> {
+  const body = JSON.stringify({ id, statusId: id, mediaUrl: url, url, mediaType: kind, type: kind });
+  const h = { 'Content-Type': 'application/json' };
+  const attempts = [
+    () => fetch('/api/status', { method: 'PATCH', credentials: 'include', headers: h, body }),
+    () => fetch(`/api/status/${id}`, { method: 'PATCH', credentials: 'include', headers: h, body }),
+    () => fetch('/api/status/update', { method: 'POST', credentials: 'include', headers: h, body }),
+  ];
+  for (const run of attempts) {
+    try { const r = await run(); if (r.ok) return true; } catch { /* next */ }
+  }
+  return false;
+}
+
+async function deleteStoryQuiet(id: string | number): Promise<void> {
+  const h = { 'Content-Type': 'application/json' };
+  const attempts = [
+    () => fetch(`/api/status/${encodeURIComponent(String(id))}`, { method: 'DELETE', credentials: 'include' }),
+    () => fetch(`/api/status?id=${encodeURIComponent(String(id))}`, { method: 'DELETE', credentials: 'include' }),
+    () => fetch('/api/status/delete', { method: 'POST', credentials: 'include', headers: h, body: JSON.stringify({ id, statusId: id }) }),
+  ];
+  for (const run of attempts) {
+    try { const r = await run(); if (r.ok) return; } catch { /* next */ }
+  }
+}
+
+function blobToDataUrl(b: Blob): Promise<string | null> {
+  return new Promise(resolve => {
+    try {
+      const fr = new FileReader();
+      fr.onload = () => resolve(typeof fr.result === 'string' ? fr.result : null);
+      fr.onerror = () => resolve(null);
+      fr.readAsDataURL(b);
+    } catch { resolve(null); }
+  });
+}
+
+/** Compact data: URL. Images are re-encoded (≤1080px JPEG) so the server body limit is never hit. */
+async function storyAiToDataUrl(file: File, kind: MediaAiKind): Promise<string | null> {
+  if (kind === 'video') {
+    return file.size > 0 && file.size <= 6_000_000 ? blobToDataUrl(file) : null;
+  }
+  try {
+    if (typeof createImageBitmap === 'function') {
+      const bmp = await createImageBitmap(file);
+      try {
+        const scale = Math.min(1, 1080 / Math.max(bmp.width, bmp.height));
+        const w = Math.max(1, Math.round(bmp.width * scale));
+        const h = Math.max(1, Math.round(bmp.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(bmp, 0, 0, w, h);
+          const blob: Blob | null = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.72));
+          if (blob && blob.size > 0) return blobToDataUrl(blob);
+        }
+      } finally {
+        try { bmp.close?.(); } catch { /* ignore */ }
+      }
+    }
+  } catch { /* fall through */ }
+  return file.size > 0 && file.size <= 1_500_000 ? blobToDataUrl(file) : null;
+}
+
+/**
+ * Make sure the story that was just created really shows something.
+ * Returns ok:true only when the media loads (or was repaired so it does).
+ * A broken story is deleted so the user never gets a black screen.
+ */
+async function storyAiEnsureWorks(
+  file: File,
+  kind: MediaAiKind,
+  createdId: string | number | null,
+  createdUrl: string | null,
+  upload: UploadFn | undefined,
+  onStatus?: (msg: string) => void,
+): Promise<{ ok: boolean; mediaUrl: string }> {
+  let sid = createdId;
+  let cur = createdUrl || '';
+  if (sid == null || !cur) {
+    const m = await fetchMyLatestStory();
+    if (m) { if (sid == null) sid = m.id; if (!cur) cur = m.mediaUrl; }
+  }
+
+  // 1) does what the server saved actually load?
+  if (cur && (await probeUrlLoads(storyAiAbs(cur), kind, kind === 'video' ? 8000 : 5000))) {
+    return { ok: true, mediaUrl: cur };
+  }
+
+  onStatus?.('جاري إصلاح الوسائط…');
+
+  // 2) a real permanent link from the app's uploader
+  if (upload) {
+    try {
+      const link = await upload(file, kind);
+      if (link && isPermanentUrl(link) && (await probeUrlLoads(storyAiAbs(link), kind, 8000))) {
+        if (sid != null && (await patchStoryMedia(sid, link, kind)) && (await storyHasUrlPrefix(sid, link.slice(0, 20)))) {
+          return { ok: true, mediaUrl: link };
+        }
+        const r = await postStatusJson({ mediaUrl: link, url: link, mediaType: kind, type: kind, duration: kind === 'video' ? 15 : 5 });
+        if (r && r.ok) {
+          if (sid != null) await deleteStoryQuiet(sid);
+          return { ok: true, mediaUrl: link };
+        }
+      }
+    } catch { /* fall through */ }
+  }
+
+  // 3) compact data: URL — stored in the DB itself, always renders
+  const dataUrl = await storyAiToDataUrl(file, kind);
+  if (dataUrl) {
+    if (sid != null && (await patchStoryMedia(sid, dataUrl, kind)) && (await storyHasUrlPrefix(sid, 'data:'))) {
+      return { ok: true, mediaUrl: dataUrl };
+    }
+    const r = await postStatusJson({ mediaUrl: dataUrl, url: dataUrl, mediaType: kind, type: kind, duration: kind === 'video' ? 15 : 5 });
+    if (r && r.ok) {
+      if (sid != null) await deleteStoryQuiet(sid);
+      return { ok: true, mediaUrl: dataUrl };
+    }
+  }
+
+  // 4) nothing worked — don't leave a black story behind
+  if (sid != null) await deleteStoryQuiet(sid);
+  return { ok: false, mediaUrl: '' };
+}
+
 function extractFromJson(d: any): { mediaUrl: string | null; id: string | number | null } {
   const mediaUrl =
     d?.status?.mediaUrl || d?.item?.mediaUrl || d?.data?.mediaUrl ||
@@ -410,9 +587,15 @@ export async function storyAiPublish(
     let created: any = null;
     try { created = await r.clone().json(); } catch { /* server may not echo JSON */ }
     const extracted = extractFromJson(created);
+    // v5: verify the media really loads (repair or remove the story if not)
+    const check = await storyAiEnsureWorks(usedFile, kind, extracted.id, extracted.mediaUrl, upload, onStatus);
     try { window.dispatchEvent(new CustomEvent('stooorna:story-published')); } catch { /* ignore */ }
+    if (!check.ok) {
+      lastError = 'media did not load after publish';
+      return { ok: false, mediaUrl: '', type: kind, error: 'تعذر عرض الوسائط بعد النشر' };
+    }
     onStatus?.('تم النشر');
-    return { ok: true, mediaUrl: extracted.mediaUrl || '', type: kind };
+    return { ok: true, mediaUrl: check.mediaUrl, type: kind };
   };
 
   try {
