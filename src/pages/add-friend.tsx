@@ -4853,7 +4853,15 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
   }, [group, iIdx, onClose]);
 
   const goPrev = () => {
-    if (iIdx > 0) { setIIdx(i => i - 1); setProgress(0); }
+    if (iIdx > 0) { setIIdx(i => i - 1); setProgress(0); return; }
+    // ستوري واحدة فقط بالقصة: النقر يسار الشاشة يعيدها من البداية (الفيديو + الصوت + الشريط)
+    if (group && group.items.length === 1) {
+      setProgress(0);
+      const v = storyVideoRef.current;
+      if (v) { try { v.currentTime = 0; void v.play().catch(() => {}); } catch { /* */ } }
+      const a = storyAudioRef.current;
+      if (a) { try { a.currentTime = 0; void a.play().catch(() => {}); } catch { /* */ } }
+    }
   };
 
   useEffect(() => {
@@ -5334,7 +5342,7 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
                 cursor: 'pointer', textAlign: 'start', fontFamily: 'inherit',
               }}
             >
-              <span>ما رأيك بهذا؟</span>
+              <span>Comments</span>
               <span style={{
                 width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
                 background: 'rgba(255,255,255,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -5686,7 +5694,7 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
                 value={commentText}
                 onChange={e => setCommentText(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !commentSending) handleSubmitComment(); }}
-                placeholder="ما رأيك بهذا؟"
+                placeholder="Comments"
                 style={{
                   flex: 1, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)',
                   borderRadius: 22, padding: '10px 16px', color: '#fff', fontSize: '0.85rem', outline: 'none',
@@ -18314,6 +18322,32 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 6, flex: 1 }}>
                 {/* Pinned track — shown right above my name/username, playable from here too. */}
                 {pinnedTrack && <PinnedTrackBar track={pinnedTrack} />}
+                {myBio && !pinnedTrack ? (
+                  // اليوزر + الفاصل مرفوعان للأعلى، والبايو تحتهما (سطرين كحد أقصى) —
+                  // الارتفاع الكلي للصف ثابت (نفس ارتفاع سطر اليوزر الأصلي) فلا تتحرك أي أيقونة.
+                  <div style={{ position: 'relative', height: '1.032rem' }}>
+                    <div style={{ position: 'absolute', top: -22, left: 0, right: 0, paddingRight: 52 }}>
+                      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {myUsername && (
+                          <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                            @{myUsername}
+                          </span>
+                        )}
+                        {myUsername && (
+                          <span aria-hidden="true" style={{ fontSize: '0.72rem', fontWeight: 500, color: 'rgba(255,255,255,0.4)', lineHeight: 1.2, flexShrink: 0 }}>
+                            |
+                          </span>
+                        )}
+                      </div>
+                      <span style={{
+                        display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden',
+                        marginTop: 1, fontSize: '0.7rem', fontWeight: 500, color: 'rgba(255,255,255,0.82)', lineHeight: 1.25, wordBreak: 'break-word',
+                      }}>
+                        {myBio}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
                 <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingRight: 52, rowGap: 3 }}>
                     {myUsername && (
                       <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -18331,6 +18365,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       </span>
                     )}
                 </div>
+                )}
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <motion.button
