@@ -392,23 +392,64 @@ const liveChatMem = () => {
   return g.__stooornaLiveChat;
 };
 app.get("/api/live-chat", (req, res) => {
-  const channel = String(req.query.channel || "");
+  const channel = String(req.query.channel || req.query.room || "stooorna-live-chat");
   const since = Number(req.query.since || 0);
-  if (!channel) return res.json({ messages: [] });
-  const list = (liveChatMem().get(channel) || []).filter((m) => m.at > since).slice(-80);
-  res.json({ messages: list });
+  const raw = (liveChatMem().get(channel) || []).filter((m) => m.at > since).slice(-400);
+  const comments = raw.map((m) => {
+    const p = (m.payload || m) as any;
+    return {
+      id: String(p.id || `lc_${m.at}`),
+      userId: String(p.userId || p.senderId || ""),
+      name: p.name ?? null,
+      username: p.username ?? null,
+      avatarUrl: p.avatarUrl ?? null,
+      text: String(p.text || p.body || ""),
+      imageUrl: p.imageUrl ?? null,
+      likes: Array.isArray(p.likes) ? p.likes.map(String) : [],
+      createdAt: Number(p.createdAt || m.at || Date.now()),
+    };
+  }).filter((x) => x.text);
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ ok: true, comments, messages: comments, list: comments });
 });
 app.post("/api/live-chat", (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
-  const channel = String(body.channel || "");
-  if (!channel) return res.status(400).json({ error: "channel required" });
-  const payload = (body.payload || body) as Record<string, unknown>;
+  const channel = String(body.channel || body.room || body.roomId || "stooorna-live-chat");
+  const text = String(body.text || body.body || "").trim().slice(0, 500);
+  if (!text) return res.status(400).json({ error: "empty" });
   const at = Date.now();
+  const payload = {
+    id: String(body.id || `lc_${at}_${Math.random().toString(36).slice(2, 8)}`),
+    userId: String(body.userId || body.senderId || ""),
+    name: body.name ?? null,
+    username: body.username ?? null,
+    avatarUrl: body.avatarUrl ?? null,
+    text,
+    body: text,
+    imageUrl: body.imageUrl ?? null,
+    likes: Array.isArray(body.likes) ? body.likes : [],
+    createdAt: Number(body.createdAt) || at,
+    at,
+  };
   const mem = liveChatMem();
   const list = mem.get(channel) || [];
-  list.push({ at, payload: { ...payload, at } });
-  mem.set(channel, list.slice(-120));
-  res.json({ ok: true, at });
+  list.push({ at, payload });
+  mem.set(channel, list.slice(-400));
+  const comments = (mem.get(channel) || []).map((m) => {
+    const p = (m.payload || m) as any;
+    return {
+      id: String(p.id || `lc_${m.at}`),
+      userId: String(p.userId || ""),
+      name: p.name ?? null,
+      username: p.username ?? null,
+      avatarUrl: p.avatarUrl ?? null,
+      text: String(p.text || p.body || ""),
+      imageUrl: p.imageUrl ?? null,
+      likes: Array.isArray(p.likes) ? p.likes.map(String) : [],
+      createdAt: Number(p.createdAt || m.at || Date.now()),
+    };
+  }).filter((x) => x.text);
+  res.json({ ok: true, at, comments, messages: comments });
 });
 
 const liveSignalMem = () => {
