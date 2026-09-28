@@ -13480,6 +13480,8 @@ function PublicLiveCommentsPanel({
   const [pendingVoice, setPendingVoice] = useState<{ url: string; duration: number } | null>(null);
   const [recording, setRecording] = useState(false);
   const [chatLift, setChatLift] = useState(0);
+  const [kbInset, setKbInset] = useState(0);
+  const chatInputFocused = useRef(false);
   const recRef = useRef<MediaRecorder | null>(null);
   const recChunksRef = useRef<Blob[]>([]);
   const recStartedAt = useRef(0);
@@ -13493,6 +13495,46 @@ function PublicLiveCommentsPanel({
   const myName = user?.name ?? null;
   const myUsername = (user as any)?.username ?? null;
   const myAvatar = (user as any)?.avatarUrl || (user as any)?.image || null;
+
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    const apply = () => {
+      if (!vv) { setKbInset(0); return; }
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKbInset(chatInputFocused.current ? Math.round(inset) : 0);
+    };
+    vv?.addEventListener('resize', apply);
+    vv?.addEventListener('scroll', apply);
+    return () => {
+      vv?.removeEventListener('resize', apply);
+      vv?.removeEventListener('scroll', apply);
+    };
+  }, []);
+
+  const lockPageForKeyboard = (lock: boolean) => {
+    try {
+      if (lock) {
+        const y = window.scrollY || 0;
+        document.body.dataset.stooornaChatLock = String(y);
+        document.body.style.position = 'fixed';
+        document.body.style.left = '0';
+        document.body.style.right = '0';
+        document.body.style.width = '100%';
+        document.body.style.top = `-${y}px`;
+        document.documentElement.style.overflow = 'hidden';
+      } else {
+        const y = Number(document.body.dataset.stooornaChatLock || 0);
+        document.body.style.position = '';
+        document.body.style.left = '';
+        document.body.style.right = '';
+        document.body.style.width = '';
+        document.body.style.top = '';
+        document.documentElement.style.overflow = '';
+        delete document.body.dataset.stooornaChatLock;
+        window.scrollTo(0, y);
+      }
+    } catch { /* */ }
+  };
 
   useEffect(() => {
     if (!myId) return;
@@ -13818,7 +13860,7 @@ function PublicLiveCommentsPanel({
         pointerEvents: 'auto',
         borderTop: '1px solid #ececec',
         background: '#fff',
-        paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+        paddingBottom: kbInset > 0 ? kbInset + 6 : 'max(8px, env(safe-area-inset-bottom))',
         flexShrink: 0,
       }}>
         <div style={{
@@ -13956,6 +13998,15 @@ function PublicLiveCommentsPanel({
                 }
               }}
               placeholder={myUsername ? `Comment as ${String(myUsername).replace(/^@/, '')}…` : 'Comment…'}
+              onFocus={() => {
+                chatInputFocused.current = true;
+                lockPageForKeyboard(true);
+              }}
+              onBlur={() => {
+                chatInputFocused.current = false;
+                setKbInset(0);
+                lockPageForKeyboard(false);
+              }}
               style={{
                 flex: 1,
                 border: 'none',
@@ -17048,6 +17099,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const feedScrollRafRef = useRef(0);
 
   const snapHomeLayout = useCallback(() => {
+    if (document.body.dataset.stooornaChatLock != null) return;
     setHeaderOpen(true);
     setStoryPullProgress(0);
     storyPullProgressRef.current = 0;
