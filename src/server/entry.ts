@@ -145,6 +145,7 @@ import secret_room_mic_lock_get_128 from "./api/secret-room/mic-lock/GET";
 import secret_room_mic_lock_post_129 from "./api/secret-room/mic-lock/POST";
 import status_delete_130 from "./api/status/DELETE";
 import status_get_131 from "./api/status/GET";
+import { toggleStatusCommentLike, getStatusCommentLikes } from "./api/status/commentLikes";
 import deleteStatusById, { statusDeleteEntry } from "./api/status/deleteById";
 import status_post_132, { multerMiddleware as statusMulterMiddleware } from "./api/status/POST";
 import status_comments_received_get_133 from "./api/status/comments/received/GET";
@@ -337,6 +338,10 @@ app.use('/airo-assets', express.static(ASSETS_DIR, { maxAge: '7d', fallthrough: 
 // Must be registered BEFORE the generic status routes below.
 app.delete('/api/status/:id', deleteStatusById);
 app.delete('/api/status', statusDeleteEntry);
+
+// ── Story comment likes (route was missing → likes were rolled back) ─────────
+app.post('/api/status/comments/:id/like', toggleStatusCommentLike);
+app.get('/api/status/comment-likes', getStatusCommentLikes);
 
 // ── IP tracking: lightweight — stored via /api/me/update-ip ─────────────────
 

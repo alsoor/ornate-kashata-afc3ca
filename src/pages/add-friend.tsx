@@ -4322,6 +4322,10 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
   const [storyMenuOpen, setStoryMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // صوت فيديو القصة: يبدأ بصوت (لأن المشاهد فتح القصة بنقرة)، وإن منع المتصفح التشغيل بالصوت
+  // نرجع للكتم تلقائياً ونُظهر زر سماعة ليفعّله المستخدم بنقرة.
+  const [videoMuted, setVideoMuted] = useState(false);
+  const storyVideoRef = useRef<HTMLVideoElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // موسيقى القصة
   const storyAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -4473,6 +4477,18 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
           break;
         } catch { /* try next */ }
       }
+      // اللايكات: العدد + هل أعجبني — من نقطة الإعجاب (تبقى بعد إغلاق/فتح الشيت)
+      try {
+        if (list.length) {
+          const ids = list.map(c => c.id).join(',');
+          const lr = await fetch(`/api/status/comment-likes?ids=${encodeURIComponent(ids)}`, { credentials: 'include' });
+          if (lr.ok && (lr.headers.get('content-type') || '').includes('json')) {
+            const ld = await lr.json() as { counts?: Record<string, number>; mine?: Array<number | string> };
+            const mine = new Set((ld.mine ?? []).map(String));
+            list = list.map(c => ({ ...c, likesCount: ld.counts?.[String(c.id)] ?? 0, likedByMe: mine.has(String(c.id)) }));
+          }
+        }
+      } catch { /* keep list as returned */ }
       setPublicComments(list);
       setPublicCommentsCount(list.length);
     } catch { /* silent — العداد يبقى على آخر قيمة معروفة */ }
@@ -4688,10 +4704,36 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
           <X size={22} strokeWidth={2.2} />
         </button>
       </div>
+      {/* زر الصوت لفيديو القصة */}
+      {storyItemIsVideo(item) && (
+        <button
+          type="button"
+          aria-label={videoMuted ? 'تشغيل الصوت' : 'كتم الصوت'}
+          onClick={e => {
+            e.stopPropagation();
+            const next = !videoMuted;
+            setVideoMuted(next);
+            const v = storyVideoRef.current;
+            if (v) { v.muted = next; if (!next) void v.play().catch(() => {}); }
+          }}
+          style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 68px)', right: 12, zIndex: 5, width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+        >
+          {videoMuted ? <VolumeX size={18} strokeWidth={2.2} /> : <Volume2 size={18} strokeWidth={2.2} />}
+        </button>
+      )}
       {/* Media */}
       {storyItemIsVideo(item)
-        ? <video key={item.id} src={resolveMediaUrl(item.mediaUrl)} autoPlay muted playsInline controls={false} loop
-            onCanPlay={e => { const v = e.currentTarget; v.muted = true; void v.play().catch(() => {}); }}
+        ? <video key={item.id} ref={storyVideoRef} src={resolveMediaUrl(item.mediaUrl)} autoPlay muted={videoMuted} playsInline controls={false} loop
+            onCanPlay={e => {
+              const v = e.currentTarget;
+              v.muted = videoMuted;
+              // جرّب التشغيل بالصوت؛ إن رفض المتصفح (autoplay policy) شغّله مكتوماً وأظهر زر السماعة
+              void v.play().catch(() => {
+                v.muted = true;
+                setVideoMuted(true);
+                void v.play().catch(() => {});
+              });
+            }}
             onError={() => { /* keep poster black rather than crash viewer */ }}
             style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
         : <img key={item.id} src={resolveMediaUrl(item.mediaUrl)} alt="story" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
