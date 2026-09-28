@@ -11,7 +11,7 @@ import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin, Hand } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin, Headphones } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -14380,7 +14380,7 @@ function PublicLiveCommentsPanel({
 // • زر الخروج الأحمر بالبطاقة يخفيها ويوقف صوتها لين ينتهي هذاك البث.
 type HomeLiveHost = { id: string; name: string | null; username: string | null; avatarUrl: string | null };
 type HomeLiveEntry = HomeLiveHost & { kind: 'voice' | 'camera'; members: GlobeVoiceMember[]; since: number };
-type HomeLiveConn = { kind: 'voice' | 'camera'; stop: () => Promise<void>; resume: () => void };
+type HomeLiveConn = { kind: 'voice' | 'camera'; stop: () => Promise<void>; resume: () => void; setMuted: (m: boolean) => void };
 
 const HOME_LIVE_SILVER = 'linear-gradient(135deg,#f4f6f9 0%,#9ba3ae 28%,#e6e9ee 52%,#8a929d 78%,#f1f3f6 100%)';
 const HOME_LIVE_CHAT_LIFT_EVT = 'stooorna:chat-lift';
@@ -14405,6 +14405,9 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
   const navigate = useNavigate();
   const [entries, setEntries] = useState<HomeLiveEntry[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+  const [mutedIds, setMutedIds] = useState<Set<string>>(() => new Set());
+  const mutedRef = useRef<Set<string>>(mutedIds);
+  mutedRef.current = mutedIds;
   const [lifted, setLifted] = useState(false);
   const [anchorTop, setAnchorTop] = useState(0);
   const [opening, setOpening] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
@@ -14507,6 +14510,10 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
           const next = new Set(Array.from(prev).filter(id => seen.has(id)));
           return next.size === prev.size ? prev : next;
         });
+        setMutedIds(prev => {
+          const next = new Set(Array.from(prev).filter(id => seen.has(id)));
+          return next.size === prev.size ? prev : next;
+        });
       } finally { busy = false; }
     };
     void tick();
@@ -14533,6 +14540,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
     let client: IAgoraRTCClient | null = null;
     const channel = kind === 'camera' ? camChannelForHost(hostId) : liveChannelForHost(hostId);
     const audioTracks = new Set<any>();
+    let muted = mutedRef.current.has(hostId);
     (async () => {
       try {
         const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
@@ -14553,7 +14561,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
             if (stopped) return;
             if (mt === 'audio') {
               audioTracks.add(ru.audioTrack);
-              ru.audioTrack?.play();
+              if (!muted) ru.audioTrack?.play();
             } else if (kind === 'camera') {
               if (hostUid == null || ru.uid === hostUid || !videoTracksRef.current.has(hostId)) {
                 videoTracksRef.current.set(hostId, ru.videoTrack);
@@ -14587,7 +14595,14 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
     return {
       kind,
       resume: () => {
+        if (muted) return;
         audioTracks.forEach(t => { try { if (t && !t.isPlaying) t.play(); } catch { /* */ } });
+      },
+      setMuted: (m: boolean) => {
+        muted = m;
+        audioTracks.forEach(t => {
+          try { if (m) t?.stop(); else t?.play(); } catch { /* */ }
+        });
       },
       stop: async () => {
         stopped = true;
@@ -14618,6 +14633,11 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioKey, myId]);
+
+  // كتم/فك كتم صوت البث بالرئيسية (سماعة البطاقة)
+  useEffect(() => {
+    connsRef.current.forEach((c, id) => c.setMuted(mutedIds.has(id)));
+  }, [mutedIds]);
 
   useEffect(() => {
     const conns = connsRef.current;
@@ -14723,19 +14743,17 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
                   </span>
                   <button
                     type="button"
-                    aria-label="Join live"
-                    onClick={ev => { ev.stopPropagation(); enterLive(e); }}
-                    style={{ width: 42, height: 42, borderRadius: '50%', border: '1px solid rgba(250,204,21,0.6)', background: 'radial-gradient(circle at 35% 30%, #ffe27a, #f5c518)', boxShadow: '0 0 14px rgba(250,204,21,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                    aria-label={mutedIds.has(e.id) ? 'Unmute live audio' : 'Mute live audio'}
+                    onClick={ev => {
+                      ev.stopPropagation();
+                      setMutedIds(prev => { const n = new Set(prev); if (n.has(e.id)) n.delete(e.id); else n.add(e.id); return n; });
+                    }}
+                    style={{ position: 'relative', width: 42, height: 42, borderRadius: '50%', border: '1px solid rgba(239,68,68,0.55)', background: mutedIds.has(e.id) ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.16)', boxShadow: mutedIds.has(e.id) ? 'none' : '0 0 12px rgba(239,68,68,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
                   >
-                    <Hand size={20} strokeWidth={2.2} color="#1a1200" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Hide live"
-                    onClick={ev => { ev.stopPropagation(); setDismissed(prev => { const n = new Set(prev); n.add(e.id); return n; }); }}
-                    style={{ width: 38, height: 38, borderRadius: '50%', border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
-                  >
-                    <LogOut size={17} strokeWidth={2.2} color="#ef4444" />
+                    <Headphones size={19} strokeWidth={2.2} color="#ef4444" style={{ opacity: mutedIds.has(e.id) ? 0.55 : 1 }} />
+                    {mutedIds.has(e.id) && (
+                      <span style={{ position: 'absolute', width: 26, height: 2.5, borderRadius: 2, background: '#ef4444', transform: 'rotate(-45deg)' }} />
+                    )}
                   </button>
                 </div>
                 <div style={{ margin: '8px 2px 6px', color: '#e8b923', fontWeight: 700, fontSize: '0.78rem', position: 'relative', zIndex: 2 }}>
