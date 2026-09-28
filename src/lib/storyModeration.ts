@@ -36,6 +36,10 @@ export interface ModerationNotice {
   /** owner lifted the ban early */
   banLifted?: boolean;
   seen: boolean;
+  /** true = the owner cleared ALL of this user's stories (storyId is 0) */
+  clearAll?: boolean;
+  /** the target's device already removed the story from the server */
+  applied?: boolean;
 }
 
 export const LEVEL_META: Record<StrikeLevel, { label: string; short: string; color: string; days: number }> = {
@@ -183,17 +187,16 @@ export async function liftBan(noticeId: string) {
 function blobToDataUrl(b: Blob): Promise<string> {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
 }
-function drawToJpeg(src: CanvasImageSource, w: number, h: number): string | null {
+function drawToJpeg(src: CanvasImageSource, w: number, h: number, max = 560, q = 0.7): string | null {
   try {
-    const max = 560;
     const k = Math.min(1, max / Math.max(w, h));
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
     c.getContext('2d')!.drawImage(src, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', 0.7);
+    return c.toDataURL('image/jpeg', q);
   } catch { return null; }
 }
-export async function snapshotStoryMedia(url: string, mediaType: string): Promise<string | null> {
+export async function snapshotStoryMedia(url: string, mediaType: string, max = 560, q = 0.7): Promise<string | null> {
   if (!url) return null;
   const isVideo = /video/i.test(mediaType) || /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
   try {
@@ -201,7 +204,7 @@ export async function snapshotStoryMedia(url: string, mediaType: string): Promis
       const blob = await (await fetch(url, { credentials: 'omit' })).blob();
       const dataUrl = await blobToDataUrl(blob);
       const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = dataUrl; });
-      return drawToJpeg(img, img.naturalWidth, img.naturalHeight) || dataUrl;
+      return drawToJpeg(img, img.naturalWidth, img.naturalHeight, max, q) || dataUrl;
     }
     return await new Promise<string | null>(resolve => {
       const v = document.createElement('video');
@@ -209,7 +212,7 @@ export async function snapshotStoryMedia(url: string, mediaType: string): Promis
       const done = (val: string | null) => { try { v.src = ''; } catch { /* */ } resolve(val); };
       const t = setTimeout(() => done(null), 6000);
       v.onloadeddata = () => { try { v.currentTime = Math.min(0.2, (v.duration || 1) / 2); } catch { clearTimeout(t); done(null); } };
-      v.onseeked = () => { clearTimeout(t); done(drawToJpeg(v, v.videoWidth || 360, v.videoHeight || 640)); };
+      v.onseeked = () => { clearTimeout(t); done(drawToJpeg(v, v.videoWidth || 360, v.videoHeight || 640, max, q)); };
       v.onerror = () => { clearTimeout(t); done(null); };
     });
   } catch { return null; }
@@ -222,6 +225,7 @@ export async function createModerationNotice(input: {
   level: StrikeLevel;
   message: string;
   thumbDataUrl?: string | null;
+  clearAll?: boolean;
 }): Promise<ModerationNotice> {
   const days = LEVEL_META[input.level].days;
   const notice: ModerationNotice = {
@@ -240,24 +244,187 @@ export async function createModerationNotice(input: {
     banUntil: days > 0 ? new Date(Date.now() + days * 86400000).toISOString() : null,
     strikeNumber: strikeCountForUser(input.target.userId) + 1,
     seen: false,
+    clearAll: !!input.clearAll,
   };
   saveNotices([notice, ...loadNotices()]);
+  // 1) real delivery: the existing /api/messages backend (works today, no new server routes)
+  await sendNoticeDM(notice);
+  // 2) optional dedicated route (only if you add it on the server)
   try {
     await fetch('/api/story-moderation/notices', {
       method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(notice),
     });
-  } catch { /* delivered locally; server sync will retry via fetchNotices on owner side */ }
+  } catch { /* */ }
   return notice;
 }
 
-/** Owner/moderator hard delete of someone else's story (best effort; backend must allow it) */
-export async function moderatorDeleteStory(storyId: number, mediaUrl?: string) {
+/** Try every known delete route for a story (owner routes first, then the regular ones) */
+export async function deleteStoryOnServer(storyId: number, mediaUrl?: string): Promise<boolean> {
+  const id = storyId;
+  const json = { 'Content-Type': 'application/json' };
+  const attempts: Array<() => Promise<Response>> = [
+    () => fetch('/api/story-moderation/delete-story', { method: 'POST', credentials: 'include', headers: json, body: JSON.stringify({ storyId: id, statusId: id, mediaUrl }) }),
+    () => fetch(`/api/status/${id}`, { method: 'DELETE', credentials: 'include' }),
+    () => fetch(`/api/owner/status/${id}`, { method: 'DELETE', credentials: 'include' }),
+    () => fetch(`/api/owner/stories/${id}`, { method: 'DELETE', credentials: 'include' }),
+    () => fetch(`/api/status?id=${encodeURIComponent(String(id))}`, { method: 'DELETE', credentials: 'include' }),
+    () => fetch('/api/status/delete', { method: 'POST', credentials: 'include', headers: json, body: JSON.stringify({ id, statusId: id, storyId: id }) }),
+    () => fetch(`/api/stories/${id}`, { method: 'DELETE', credentials: 'include' }),
+    () => fetch('/api/status', { method: 'DELETE', credentials: 'include', headers: json, body: JSON.stringify({ id, statusId: id }) }),
+    () => fetch('/api/status/remove', { method: 'POST', credentials: 'include', headers: json, body: JSON.stringify({ id, statusId: id, storyId: id, mediaUrl }) }),
+    () => fetch(`/api/status/${id}?force=1`, { method: 'DELETE', credentials: 'include' }),
+  ];
+  for (const run of attempts) {
+    try { const r = await run(); if (r.ok || r.status === 204) return true; } catch { /* next */ }
+  }
+  return false;
+}
+/** kept for older callers */
+export async function moderatorDeleteStory(storyId: number, mediaUrl?: string) { await deleteStoryOnServer(storyId, mediaUrl); }
+
+const DELETED_IDS_KEY = 'stooorna_deleted_story_ids'; // same key add-friend.tsx uses
+function rememberDeletedIds(ids: number[]) {
   try {
-    await fetch('/api/story-moderation/delete-story', {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ storyId, statusId: storyId, mediaUrl }),
-    });
+    const cur: number[] = JSON.parse(localStorage.getItem(DELETED_IDS_KEY) || '[]');
+    localStorage.setItem(DELETED_IDS_KEY, JSON.stringify([...cur, ...ids].slice(-300)));
   } catch { /* */ }
+  try { window.dispatchEvent(new CustomEvent('stooorna:story-moderation-applied', { detail: { ids } })); } catch { /* */ }
+}
+
+/** Every story currently visible for a user (GET /api/status groups) */
+async function listUserStories(userId: string): Promise<{ id: number; mediaUrl: string; mediaType: string; overlayText?: string | null }[]> {
+  try {
+    const r = await fetch('/api/status', { credentials: 'include' });
+    if (!r.ok) return [];
+    const d = await r.json() as { statuses?: { userId: string; items: { id: number; mediaUrl: string; mediaType: string; overlayText?: string | null }[] }[] };
+    const g = (d.statuses || []).find(x => String(x.userId) === String(userId));
+    return g ? g.items.map(it => ({ id: it.id, mediaUrl: it.mediaUrl, mediaType: it.mediaType, overlayText: it.overlayText })) : [];
+  } catch { return []; }
+}
+
+/** Owner: wipe ALL stories of a user + send him a notice (gray/orange/red) */
+export async function clearAllStoriesForUser(
+  target: { userId: string; username?: string | null; name?: string | null },
+  message: string,
+  level: StrikeLevel,
+): Promise<number> {
+  const items = await listUserStories(target.userId);
+  const first = items[0];
+  const thumb = first ? await snapshotStoryMedia(first.mediaUrl, first.mediaType, 260, 0.5) : null;
+  await createModerationNotice({
+    target,
+    story: { id: 0, mediaUrl: first?.mediaUrl || '', mediaType: first?.mediaType || 'image', overlayText: null },
+    level, message, thumbDataUrl: thumb, clearAll: true,
+  });
+  rememberDeletedIds(items.map(i => i.id));
+  await Promise.all(items.map(i => deleteStoryOnServer(i.id, i.mediaUrl)));
+  return items.length;
+}
+
+// ── Delivery through the existing /api/messages backend ─────────────────────
+// The notice travels as a direct message from the owner: "[[STORYMOD]]{json}".
+// The target's device picks it up (StoryModerationWatcher), shows it in the bell,
+// and deletes the story from the server with his OWN account — so it disappears for everyone.
+export const MOD_PREFIX = '[[STORYMOD]]';
+export const isModBody = (b?: string | null) => typeof b === 'string' && b.startsWith(MOD_PREFIX);
+
+function packNotice(n: ModerationNotice, withThumb: boolean): string {
+  return MOD_PREFIX + JSON.stringify({
+    id: n.id, tu: n.targetUserId, tn: n.targetUsername, tm: n.targetName, s: n.storyId, u: n.mediaUrl, t: n.mediaType,
+    th: withThumb ? n.thumbDataUrl : null, o: n.overlayText, lv: n.level, m: n.message, at: n.createdAt, b: n.banUntil, n: n.strikeNumber, all: !!n.clearAll,
+  });
+}
+function unpackNotice(body: string): ModerationNotice | null {
+  try {
+    const d = JSON.parse(body.slice(MOD_PREFIX.length));
+    if (!d?.id || !d?.tu) return null;
+    return {
+      id: d.id, targetUserId: String(d.tu), targetUsername: d.tn ?? null, targetName: d.tm ?? null, storyId: Number(d.s) || 0,
+      mediaUrl: d.u || '', mediaType: d.t || 'image', thumbDataUrl: d.th ?? null, overlayText: d.o ?? null,
+      level: (['gray', 'orange', 'red'].includes(d.lv) ? d.lv : 'gray') as StrikeLevel, message: String(d.m || ''),
+      createdAt: d.at || new Date().toISOString(), banUntil: d.b ?? null, strikeNumber: Number(d.n) || 1, seen: false, clearAll: !!d.all,
+    };
+  } catch { return null; }
+}
+
+async function postDM(receiverId: string, body: string): Promise<boolean> {
+  try {
+    const r = await fetch('/api/messages', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ receiverId, body }) });
+    return r.ok;
+  } catch { return false; }
+}
+export async function sendNoticeDM(n: ModerationNotice): Promise<boolean> {
+  let small = n.thumbDataUrl || null;
+  if (!small && n.mediaUrl) small = await snapshotStoryMedia(n.mediaUrl, n.mediaType, 240, 0.5);
+  const withThumb: ModerationNotice = { ...n, thumbDataUrl: small };
+  if (await postDM(n.targetUserId, packNotice(withThumb, true))) return true;
+  return postDM(n.targetUserId, packNotice(n, false)); // body too big? retry without the picture
+}
+
+/** Feed chat rows through this: stores any notices found and returns the rows WITHOUT them */
+export function ingestModMessageRows<T extends { body?: string | null }>(rows: T[]): T[] {
+  const found: ModerationNotice[] = [];
+  const rest = rows.filter(r => {
+    if (!isModBody(r.body)) return true;
+    const n = unpackNotice(String(r.body));
+    if (n) found.push(n);
+    return false;
+  });
+  if (found.length) mergeNotices(found);
+  return rest;
+}
+
+let ownerIdCache: string | null = null;
+async function resolveOwnerId(): Promise<string | null> {
+  if (ownerIdCache) return ownerIdCache;
+  try {
+    const r = await fetch('/api/users/by-username/stooorna', { credentials: 'include' });
+    if (!r.ok) return null;
+    const d = await r.json();
+    ownerIdCache = (d.id || d.userId || d.user?.id || null) as string | null;
+  } catch { /* */ }
+  return ownerIdCache;
+}
+
+/** Target device: pull notices sent by the owner (only when the owner has unread messages for me) */
+export async function pullNoticesFromOwner(myId: string): Promise<void> {
+  try {
+    const ownerId = await resolveOwnerId();
+    if (!ownerId || String(ownerId) === String(myId)) return;
+    const u = await fetch('/api/messages/unread', { credentials: 'include' });
+    if (!u.ok) return;
+    const d = await u.json() as { bySender?: Record<string, number> };
+    if (!((d.bySender || {})[ownerId] > 0)) return;
+    const r = await fetch(`/api/messages?with=${encodeURIComponent(ownerId)}`, { credentials: 'include' });
+    if (!r.ok) return;
+    const rows = await r.json();
+    if (Array.isArray(rows)) ingestModMessageRows(rows as { body?: string }[]);
+  } catch { /* */ }
+}
+
+/** Target device: remove the story(ies) from the server with the user's own account */
+export async function applyPendingNotices(myId: string): Promise<void> {
+  const pending = noticesForUser(myId).filter(n => !n.applied);
+  if (!pending.length) return;
+  for (const n of pending) {
+    // keep a picture for the bell before the media disappears
+    if (!n.thumbDataUrl && n.mediaUrl) {
+      const th = await snapshotStoryMedia(n.mediaUrl, n.mediaType, 260, 0.5);
+      if (th) saveNotices(loadNotices().map(x => (x.id === n.id ? { ...x, thumbDataUrl: th } : x)));
+    }
+    let ids: number[] = [];
+    if (n.clearAll) {
+      const mine = await listUserStories(myId);
+      ids = mine.map(i => i.id);
+      rememberDeletedIds(ids);
+      await Promise.all(mine.map(i => deleteStoryOnServer(i.id, i.mediaUrl)));
+    } else if (n.storyId) {
+      ids = [n.storyId];
+      rememberDeletedIds(ids);
+      await deleteStoryOnServer(n.storyId, n.mediaUrl);
+    }
+    saveNotices(loadNotices().map(x => (x.id === n.id ? { ...x, applied: true } : x)));
+  }
 }
 
 // ── Moderators (owner grants the tool to chosen users) ──────────────────────

@@ -26,8 +26,8 @@ import { useGuestGuard } from '@/hooks/useGuestGuard';
 import PostTextMore from '@/components/PostTextMore';
 import { publishFeedPost, uploadPostMedia, deleteStoryInstant, POST_TEXT_MAX_CHARS } from '@/lib/postStoryPatch';
 import { mediaAiProcessGalleryFiles, mediaAiForceWorkingMedia, mediaAiNormalizeImage, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
-import { StoryModerationBell, StoryModerateDialog, StoryBanModal } from '@/components/StoryModeration';
-import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, moderatorDeleteStory } from '@/lib/storyModeration';
+import { StoryModerationBell, StoryModerateDialog, StoryBanModal, StoryModerationWatcher } from '@/components/StoryModeration';
+import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
 interface SearchUser {
   id: string;
   name: string | null;
@@ -1534,7 +1534,8 @@ async function loadDirectThreadFromServer(peerId: string): Promise<ShareThreadMs
     if (!r.ok) return null;
     const rows = await r.json();
     if (!Array.isArray(rows)) return null;
-    return rows.map(mapApiDirectMessage);
+    // story-moderation notices ride on this channel — keep them out of the chat, show them in the bell
+    return ingestModMessageRows(rows as ApiDirectMessageRow[]).map(mapApiDirectMessage);
   } catch {
     return null;
   }
@@ -13169,6 +13170,18 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     window.addEventListener('stooorna:story-ban-blocked', onBlocked);
     return () => { off(); window.removeEventListener('stooorna:story-ban-blocked', onBlocked); };
   }, []);
+  useEffect(() => {
+    const onApplied = (e: Event) => {
+      const ids: number[] = ((e as CustomEvent).detail?.ids || []).map((x: unknown) => Number(x)).filter((n: number) => !Number.isNaN(n));
+      if (!ids.length) return;
+      ids.forEach(id => deletedStoryIdsRef.current.add(id));
+      saveDeletedStoryIds(deletedStoryIdsRef.current);
+      setStoryGroups(prev => prev.map(g => ({ ...g, items: g.items.filter(it => !ids.includes(it.id)) })).filter(g => g.items.length > 0));
+      void fetchStories();
+    };
+    window.addEventListener('stooorna:story-moderation-applied', onApplied);
+    return () => window.removeEventListener('stooorna:story-moderation-applied', onApplied);
+  }, [fetchStories]);
   const [modReq, setModReq] = useState<{ story: { id: number; mediaUrl: string; mediaType: string; overlayText?: string | null }; target: { userId: string; username?: string | null; name?: string | null } } | null>(null);
   const storyCanModerate = (void modTick, !!user && (isStoryOwner(user as { email?: string | null; username?: string | null; name?: string | null }) || isModerator(user.id)));
   // اختيار صورة/فيديو للستوري: مربّعان فقط بدون خيار "ملفات" ثالث —
@@ -18123,6 +18136,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       <FriendVideoCallController userId={user?.id ?? null} userName={user?.name ?? user?.email ?? null} />
       <GlobalMessageAlertWatcher myUserId={user?.id ?? null} />
       <DirectMessageSyncWatcher myUserId={user?.id ?? null} />
+      <StoryModerationWatcher myUserId={user?.id ?? null} />
       <Helmet>
         <title>Chat | Stooorna</title>
         <meta name="description" content="Find friends, send requests, and manage your contacts on Stooorna — the real-time voice and whisper app." />
@@ -23813,9 +23827,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             saveDeletedStoryIds(deletedStoryIdsRef.current);
             setStoryGroups(prev => prev.map(g => ({ ...g, items: g.items.filter(it => it.id !== id) })).filter(g => g.items.length > 0));
             void deleteStoryInstant(id);
-            void moderatorDeleteStory(id, mediaUrl);
-            void fetch(`/api/status/${id}`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
-            void fetch(`/api/status/${id}?force=1`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
+            void deleteStoryOnServer(id, mediaUrl);
           }}
         />
       )}

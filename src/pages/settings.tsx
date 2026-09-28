@@ -14,6 +14,7 @@ import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUs
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import StoryModerationManager from '@/components/StoryModerationManager';
+import { ClearUserStoriesDialog } from '@/components/StoryModeration';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -5535,6 +5536,7 @@ export default function SettingsPage() {
   // ── Owner-only: Business manager ──
   const [showOwnerBiz, setShowOwnerBiz] = useState(false);
   const [showOwnerStoryMod, setShowOwnerStoryMod] = useState(false);
+  const [clearStoriesFor, setClearStoriesFor] = useState<{ userId: string; username?: string | null; name?: string | null } | null>(null);
   const [ownerBizQuery, setOwnerBizQuery] = useState('');
   const [ownerBizSel, setOwnerBizSel] = useState<{ id: string; username: string | null; email: string } | null>(null);
   const [ownerBizProject, setOwnerBizProject] = useState('');
@@ -10233,6 +10235,25 @@ export default function SettingsPage() {
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   type="button"
+                  onClick={() => {
+                    if (isSupportOwnerAccount(supportCtrlUser, supportCtrlUser.username)) { setScMsg('لا يمكن تفريغ قصة حساب الدعم'); return; }
+                    setClearStoriesFor({ userId: supportCtrlUser.id, username: supportCtrlUser.username, name: supportCtrlUser.name });
+                  }}
+                  style={{
+                    padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                    background: 'rgba(249,115,22,0.16)',
+                    border: '1px solid rgba(249,115,22,0.5)',
+                    color: '#f97316',
+                    fontWeight: 800, fontSize: '0.85rem',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                  }}>
+                  <Trash2 size={15} strokeWidth={2} />
+                  تفريغ قصة المستخدم (حذف كل ستوريه)
+                </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
                   disabled={scSaving || scDeleting || isSupportOwnerAccount(supportCtrlUser, supportCtrlUser.username)}
                   onClick={() => {
                     if (isSupportOwnerAccount(supportCtrlUser, supportCtrlUser.username)) {
@@ -11583,6 +11604,10 @@ export default function SettingsPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {clearStoriesFor && (
+        <ClearUserStoriesDialog target={clearStoriesFor} onClose={() => setClearStoriesFor(null)} />
+      )}
 
       {/* ── Owner: Story moderation (moderators + notices log) ── */}
       {showOwnerStoryMod && isSupportOwnerAccount(

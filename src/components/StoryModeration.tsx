@@ -5,6 +5,7 @@ import {
   LEVEL_META, type StrikeLevel, type ModerationNotice,
   noticesForUser, unseenCountForUser, markNoticesSeen, fetchNotices, onModerationChanged,
   getActiveBan, formatBanCountdown, createModerationNotice, snapshotStoryMedia, strikeCountForUser,
+  pullNoticesFromOwner, applyPendingNotices, clearAllStoriesForUser,
 } from '@/lib/storyModeration';
 
 const LEVELS: StrikeLevel[] = ['gray', 'orange', 'red'];
@@ -52,6 +53,7 @@ export function StoryModerateDialog({
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [confirming, setConfirming] = useState(false);
   const strikes = strikeCountForUser(target.userId);
   const isVideo = /video/i.test(story.mediaType);
   const label = target.username ? `@${String(target.username).replace(/^@/, '')}` : (target.name || 'المستخدم');
@@ -62,7 +64,7 @@ export function StoryModerateDialog({
     setBusy(true); setErr('');
     try {
       // snapshot BEFORE deleting so the user can still see what was removed
-      const thumb = await snapshotStoryMedia(story.mediaUrl, story.mediaType);
+      const thumb = await snapshotStoryMedia(story.mediaUrl, story.mediaType, 260, 0.5);
       await createModerationNotice({ target, story, level, message, thumbDataUrl: thumb });
       onConfirmDelete();
       onClose();
@@ -122,10 +124,24 @@ export function StoryModerateDialog({
 
         {err && <p style={{ margin: '10px 0 0', color: '#fca5a5', fontSize: '0.75rem' }}>{err}</p>}
 
+        {confirming && (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.5)' }}>
+            <p style={{ margin: 0, fontWeight: 800, fontSize: '0.85rem', color: '#fca5a5' }}>تأكيد الحذف النهائي</p>
+            <p style={{ margin: '6px 0 0', fontSize: '0.76rem', lineHeight: 1.7, color: 'rgba(255,255,255,0.85)' }}>
+              سيُحذف ستوري {label} نهائياً من التطبيق عند الجميع، وتصله رسالتك في الجرس ({LEVEL_META[level].short}). لا يمكن التراجع.
+            </p>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-          <button type="button" onClick={onClose} disabled={busy} style={{ flex: 1, padding: '10px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>إلغاء</button>
-          <button type="button" onClick={() => void submit()} disabled={busy} style={{ flex: 1.6, padding: '10px', borderRadius: 12, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'inherit' }}>
-            <Trash2 size={15} /> {busy ? '…' : 'حذف نهائي وإرسال'}
+          <button type="button" onClick={() => (confirming ? setConfirming(false) : onClose())} disabled={busy} style={{ flex: 1, padding: '10px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>{confirming ? 'رجوع' : 'إلغاء'}</button>
+          <button type="button" disabled={busy} onClick={() => {
+            if (!confirming) {
+              if (message.trim().length < 3) { setErr('اكتب رسالة للمستخدم توضّح سبب الحذف'); return; }
+              setErr(''); setConfirming(true); return;
+            }
+            void submit();
+          }} style={{ flex: 1.6, padding: '10px', borderRadius: 12, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'inherit' }}>
+            <Trash2 size={15} /> {busy ? '…' : confirming ? 'نعم، احذف نهائياً' : 'حذف وإرسال'}
           </button>
         </div>
       </div>
@@ -215,7 +231,7 @@ function NoticeCard({ n }: { n: ModerationNotice }) {
     <div style={{ borderRadius: 16, border: `1px solid ${meta.color}66`, background: 'rgba(255,255,255,0.04)', padding: 12, color: '#fff' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span style={{ width: 12, height: 12, borderRadius: '50%', background: meta.color }} />
-        <span style={{ fontWeight: 800, fontSize: '0.82rem' }}>تم حذف ستوري لك — {meta.short}</span>
+        <span style={{ fontWeight: 800, fontSize: '0.82rem' }}>{n.clearAll ? 'تم حذف جميع قصصك' : 'تم حذف ستوري لك'} — {meta.short}</span>
         <span style={{ marginRight: 'auto', color: 'rgba(255,255,255,0.45)', fontSize: '0.66rem' }}>{fmtDate(n.createdAt)}</span>
       </div>
       {thumb ? (
@@ -265,6 +281,121 @@ export function StoryBanModal({ userId, onClose }: { userId?: string | null; onC
           ))}
         </div>
         <button type="button" onClick={onClose} style={{ padding: '9px 26px', borderRadius: 20, border: 'none', background: color, color: '#111', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>حسناً</button>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+
+/** Owner: watcher mounted once at the page root — receives notices, applies deletions, keeps the bell in sync */
+export function StoryModerationWatcher({ myUserId }: { myUserId: string | null }) {
+  useEffect(() => {
+    if (!myUserId) return;
+    let stop = false;
+    let running = false;
+    const tick = async () => {
+      if (stop || running || document.hidden) return;
+      running = true;
+      try {
+        await pullNoticesFromOwner(myUserId);
+        await applyPendingNotices(myUserId);
+      } finally { running = false; }
+    };
+    void tick();
+    const t = setInterval(() => { void tick(); }, 6000);
+    return () => { stop = true; clearInterval(t); };
+  }, [myUserId]);
+  return null;
+}
+
+/** Owner (Settings → user panel): wipe every story of a user, with message + level + double confirmation */
+export function ClearUserStoriesDialog({
+  target, onClose, onDone,
+}: {
+  target: { userId: string; username?: string | null; name?: string | null };
+  onClose: () => void;
+  onDone?: (count: number) => void;
+}) {
+  const [level, setLevel] = useState<StrikeLevel>('gray');
+  const [message, setMessage] = useState('تم حذف جميع القصص الخاصة بك لمخالفتها حقوق النشر وقوانين التطبيق.');
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [result, setResult] = useState<number | null>(null);
+  const label = target.username ? `@${String(target.username).replace(/^@/, '')}` : (target.name || 'المستخدم');
+
+  async function run() {
+    setBusy(true); setErr('');
+    try {
+      const n = await clearAllStoriesForUser(target, message, level);
+      setResult(n);
+      onDone?.(n);
+    } catch { setErr('تعذّر إكمال العملية، حاول مرة ثانية'); }
+    setBusy(false);
+  }
+
+  return createPortal(
+    <div dir="rtl" onClick={e => e.stopPropagation()} style={{ position: 'fixed', inset: 0, zIndex: 2147483600, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 380, maxHeight: '92vh', overflowY: 'auto', background: '#0b1416', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 18, padding: 16, color: '#fff', fontFamily: 'inherit' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <ShieldAlert size={20} color="#ef4444" />
+          <p style={{ margin: 0, flex: 1, fontWeight: 800, fontSize: '0.95rem' }}>تفريغ قصة {label}</p>
+          <button type="button" onClick={onClose} disabled={busy} aria-label="إغلاق" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}><X size={20} /></button>
+        </div>
+
+        {result !== null ? (
+          <>
+            <p style={{ margin: '8px 0', fontSize: '0.85rem', lineHeight: 1.8 }}>
+              {result > 0 ? `تم حذف ${result} ستوري من قصة ${label} وأُرسلت له الرسالة.` : `لا توجد ستوريات ظاهرة لـ ${label} الآن، وأُرسلت له الرسالة.`}
+              <br /><span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.72rem' }}>الحذف عند بقية المستخدمين يكتمل خلال ثوانٍ عندما يفتح جهازه التطبيق.</span>
+            </p>
+            <button type="button" onClick={onClose} style={{ width: '100%', padding: 10, borderRadius: 12, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>تم</button>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.75)', marginBottom: 8 }}>المخالفات المسجّلة: <StrikeDots userId={target.userId} extra={level} /></div>
+            <p style={{ margin: '0 0 6px', fontSize: '0.75rem', fontWeight: 700 }}>رسالة للمستخدم (تصله في الجرس)</p>
+            <textarea value={message} onChange={e => setMessage(e.target.value)} rows={3} maxLength={600}
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'none', padding: 10, borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: '0.82rem', outline: 'none', fontFamily: 'inherit' }} />
+            <p style={{ margin: '12px 0 6px', fontSize: '0.75rem', fontWeight: 700 }}>اختر الإجراء</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {LEVELS.map(lv => {
+                const on = level === lv;
+                return (
+                  <button key={lv} type="button" onClick={() => setLevel(lv)} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12, cursor: 'pointer', textAlign: 'right', fontFamily: 'inherit',
+                    background: on ? `${LEVEL_META[lv].color}22` : 'rgba(255,255,255,0.04)', border: `1.5px solid ${on ? LEVEL_META[lv].color : 'rgba(255,255,255,0.12)'}`, color: '#fff',
+                  }}>
+                    <span style={{ width: 16, height: 16, borderRadius: '50%', background: LEVEL_META[lv].color, flexShrink: 0 }} />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>{LEVEL_META[lv].label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {confirming && (
+              <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.5)' }}>
+                <p style={{ margin: 0, fontWeight: 800, fontSize: '0.85rem', color: '#fca5a5' }}>تأكيد تفريغ القصة</p>
+                <p style={{ margin: '6px 0 0', fontSize: '0.76rem', lineHeight: 1.7, color: 'rgba(255,255,255,0.85)' }}>
+                  ستُحذف كل ستوريات {label} نهائياً من القصص عند الجميع، وتصله رسالتك في الجرس. لا يمكن التراجع.
+                </p>
+              </div>
+            )}
+            {err && <p style={{ margin: '10px 0 0', color: '#fca5a5', fontSize: '0.75rem' }}>{err}</p>}
+            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <button type="button" onClick={() => (confirming ? setConfirming(false) : onClose())} disabled={busy} style={{ flex: 1, padding: 10, borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>{confirming ? 'رجوع' : 'إلغاء'}</button>
+              <button type="button" disabled={busy} onClick={() => {
+                if (!confirming) {
+                  if (message.trim().length < 3) { setErr('اكتب رسالة للمستخدم'); return; }
+                  setErr(''); setConfirming(true); return;
+                }
+                void run();
+              }} style={{ flex: 1.6, padding: 10, borderRadius: 12, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'inherit' }}>
+                <Trash2 size={15} /> {busy ? '…' : confirming ? 'نعم، فرّغ القصة' : 'تفريغ القصة'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>,
     document.body,
