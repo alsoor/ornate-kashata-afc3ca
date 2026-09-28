@@ -13479,7 +13479,7 @@ function PublicLiveCommentsPanel({
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingVoice, setPendingVoice] = useState<{ url: string; duration: number } | null>(null);
   const [recording, setRecording] = useState(false);
-  const [chatCoverHeader, setChatCoverHeader] = useState(false);
+  const [chatLift, setChatLift] = useState(0);
   const recRef = useRef<MediaRecorder | null>(null);
   const recChunksRef = useRef<Blob[]>([]);
   const recStartedAt = useRef(0);
@@ -13678,7 +13678,7 @@ function PublicLiveCommentsPanel({
         right: 0,
         bottom: 0,
         top: 0,
-        zIndex: chatCoverHeader ? 40 : 15,
+        zIndex: chatLift === 2 ? 40 : 15,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'flex-end',
@@ -13691,7 +13691,11 @@ function PublicLiveCommentsPanel({
     >
       <div style={{
         flexShrink: 0,
-        height: chatCoverHeader ? 'max(8px, env(safe-area-inset-top))' : 'max(188px, calc(env(safe-area-inset-top) + 168px))',
+        height: chatLift === 2
+          ? 'max(8px, env(safe-area-inset-top))'
+          : chatLift === 0
+            ? 'max(52vh, calc(env(safe-area-inset-top) + 280px))'
+            : 'max(188px, calc(env(safe-area-inset-top) + 168px))',
         pointerEvents: 'none',
         background: 'transparent',
       }} />
@@ -14049,8 +14053,8 @@ function PublicLiveCommentsPanel({
           )}
           <button
             type="button"
-            onClick={() => setChatCoverHeader(v => !v)}
-            aria-label={chatCoverHeader ? 'إظهار الهيدر' : 'تغطية الهيدر'}
+            onClick={() => setChatLift(v => (v + 1) % 4)}
+            aria-label="ارتفاع الشات"
             style={{
               width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
               border: 'none', background: '#ef4444', color: '#fff',
@@ -14058,7 +14062,7 @@ function PublicLiveCommentsPanel({
               cursor: 'pointer', marginLeft: 2,
             }}
           >
-            {chatCoverHeader ? <Minimize2 size={16} strokeWidth={2.4} color="#fff" /> : <Maximize2 size={16} strokeWidth={2.4} color="#fff" />}
+            {chatLift === 2 ? <Minimize2 size={16} strokeWidth={2.4} color="#fff" /> : <Maximize2 size={16} strokeWidth={2.4} color="#fff" />}
           </button>
         </div>
       </div>
