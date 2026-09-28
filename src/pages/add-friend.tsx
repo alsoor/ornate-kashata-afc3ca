@@ -16474,6 +16474,35 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [storyReqResults, setStoryReqResults] = useState<SearchUser[]>([]);
   const [storyReqSearching, setStoryReqSearching] = useState(false);
   const [storyReqSendingId, setStoryReqSendingId] = useState<string | null>(null);
+  // ── طلبات الإضافة الجديدة (غير المشاهدة): الأيقونة العلوية تصير برتقالية مع نقطتها،
+  //    وترجع لونها الأصلي والنقطة رمادية بمجرد فتح صندوق الطلبات. نحفظ المعرّفات المشاهدة
+  //    محلياً حتى لا ترجع البرتقالية بعد تحديث الصفحة، وأي طلب جديد يعيدها برتقالية. ──
+  const friendReqSeenKey = `stooorna_friend_req_seen_${user?.id ?? 'anon'}`;
+  const [friendReqSeenIds, setFriendReqSeenIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(friendReqSeenKey);
+      const arr = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(arr) ? arr.map(String) : []);
+    } catch { return new Set(); }
+  });
+  const markFriendReqsSeen = useCallback(() => {
+    setFriendReqSeenIds(prev => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const r of incoming) {
+        const k = String(r.id);
+        if (!next.has(k)) { next.add(k); changed = true; }
+      }
+      if (!changed) return prev;
+      try { localStorage.setItem(friendReqSeenKey, JSON.stringify(Array.from(next).slice(-500))); } catch { /* storage optional */ }
+      return next;
+    });
+  }, [incoming, friendReqSeenKey]);
+  const hasUnseenFriendReq = incoming.some(r => !friendReqSeenIds.has(String(r.id)));
+  // لو الصندوق مفتوح على تبويب الطلبات ووصل طلب جديد، نعتبره مشاهداً مباشرة
+  useEffect(() => {
+    if (storyRequestsBoxOpen && storyReqTab === 'requests') markFriendReqsSeen();
+  }, [storyRequestsBoxOpen, storyReqTab, incoming, markFriendReqsSeen]);
   useEffect(() => {
     if (!storyRequestsBoxOpen) return;
     const q = storyReqQuery.trim();
@@ -18358,6 +18387,38 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       border: '1.5px solid hsl(var(--background))',
                     }} />
                   </div>
+                  {/* Friend requests — نُقلت من الصف السفلي (+) إلى هنا بجانب الخريطة، بنفس حجم وألوان الأيقونات أعلاه.
+                      وصل طلب جديد → الأيقونة والنقطة برتقاليان؛ بعد فتح الصندوق ترجع الأيقونة كما كانت والنقطة رمادية. */}
+                  {user?.id && (
+                    <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          markFriendReqsSeen();
+                          setStoryRequestsBoxOpen(true);
+                          setStoryReqTab('requests');
+                          setStoryReqQuery('');
+                        }}
+                        aria-label={hasUnseenFriendReq ? 'يوجد طلبات إضافة جديدة' : 'طلبات الإضافة'}
+                        title={hasUnseenFriendReq ? 'يوجد طلبات إضافة جديدة' : 'طلبات الإضافة'}
+                        style={{
+                          width: 24, height: 24, borderRadius: '50%',
+                          border: `1.5px solid ${hasUnseenFriendReq ? 'rgba(249,115,22,0.75)' : 'rgba(225,225,225,0.35)'}`,
+                          background: hasUnseenFriendReq ? 'rgba(249,115,22,0.16)' : 'rgba(225,225,225,0.1)',
+                          color: hasUnseenFriendReq ? '#f97316' : 'rgba(230,230,230,0.9)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0, cursor: 'pointer',
+                        }}
+                      >
+                        <UserPlus size={12} strokeWidth={2.3} />
+                      </button>
+                      <span aria-hidden="true" style={{
+                        position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
+                        width: 7, height: 7, borderRadius: '50%',
+                        background: hasUnseenFriendReq ? '#f97316' : '#9ca3af',
+                        border: '1.5px solid hsl(var(--background))',
+                      }} />
+                    </div>
+                  )}
 
                 </div>
               </div>
@@ -18518,37 +18579,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   >
                     <Settings size={18} strokeWidth={2.2} />
                   </button>
-                  {user?.id && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setProfilePlusOpen(false);
-                        setStoryRequestsBoxOpen(true);
-                        setStoryReqTab('requests');
-                        setStoryReqQuery('');
-                      }}
-                      aria-label="Friend requests"
-                      style={{
-                        width: 38, height: 38, borderRadius: '50%', position: 'relative',
-                        border: `1px solid ${incoming.length > 0 ? 'rgba(239,68,68,0.5)' : 'rgba(0,188,212,0.4)'}`,
-                        background: incoming.length > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(6,20,22,0.96)',
-                        color: incoming.length > 0 ? '#ef4444' : '#00BCD4',
-                        cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                      }}
-                    >
-                      <UserPlus size={18} strokeWidth={2.2} />
-                      {incoming.length > 0 && (
-                        <span style={{
-                          position: 'absolute', top: -4, right: -4, minWidth: 15, height: 15, borderRadius: 8,
-                          background: '#ef4444', color: '#fff', fontSize: '0.52rem', fontWeight: 800,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
-                          border: '1.5px solid rgba(6,20,22,0.96)',
-                        }}>{incoming.length > 9 ? '9+' : incoming.length}</span>
-                      )}
-                    </button>
-                  )}
                   {user?.id && (
                     <button
                       type="button"
