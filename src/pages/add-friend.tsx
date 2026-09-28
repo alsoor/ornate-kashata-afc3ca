@@ -13094,9 +13094,11 @@ const LIVE_EMOJI_PICKER = ['😀', '😁', '😂', '🤣', '😊', '😍', '🥰
 function PublicLiveCommentsPanel({
   user,
   headerOpen,
+  onToggleHeader,
 }: {
   user: { id?: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null } | null | undefined;
   headerOpen: boolean;
+  onToggleHeader?: () => void;
 }) {
   const [comments, setComments] = useState<PublicLiveComment[]>(() => loadPublicLiveComments());
   const [text, setText] = useState('');
@@ -13207,26 +13209,36 @@ function PublicLiveCommentsPanel({
         touchAction: 'pan-y',
       }}
     >
-      <div
-        aria-hidden
+      <button
+        type="button"
+        aria-label="رفع الشيت"
+        onClick={e => {
+          e.preventDefault();
+          e.stopPropagation();
+          onToggleHeader?.();
+        }}
         style={{
           flexShrink: 0,
-          height: 22,
-          background: '#ffffff',
+          height: 44,
+          width: '100%',
+          border: 'none',
           borderBottom: '1px solid #e5e7eb',
+          background: '#ffffff',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          cursor: 'pointer',
+          padding: 0,
         }}
       >
         <span style={{
-          width: 40,
-          height: 3,
-          borderRadius: 2,
+          width: 44,
+          height: 5,
+          borderRadius: 3,
           background: '#22c55e',
           display: 'block',
         }} />
-      </div>
+      </button>
       <div
         ref={listRef}
         onTouchStart={e => e.stopPropagation()}
@@ -19204,7 +19216,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {/* Public LIVE comments docked to the BOTTOM of the page (composer first),
             independently of the collapsing/moving header above. */}
         {pageTab === 'profile' && !isFriendManagement && (
-          <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen} />
+          <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen} onToggleHeader={toggleHeaderOpen} />
         )}
 
         {/* ── Content ── */}
