@@ -23,7 +23,6 @@ import { useGuestGuard } from '@/hooks/useGuestGuard';
 import PostTextMore from '@/components/PostTextMore';
 import { publishFeedPost, uploadPostMedia, deleteStoryInstant, POST_TEXT_MAX_CHARS } from '@/lib/postStoryPatch';
 import { mediaAiProcessGalleryFiles, mediaAiForceWorkingMedia, mediaAiNormalizeImage, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
-import { storyAiPublish } from '@/lib/storyAiPatch';
 interface SearchUser {
   id: string;
   name: string | null;
@@ -12761,10 +12760,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     return () => clearInterval(interval);
   }, [fetchStories, storyUploading]);
 
-  // Upload a story — powered by storyAiPatch: instant data/blob URL + a short
-  // server-upload race under a 5s hard budget, so publish always finishes fast
-  // and never gets stuck behind a slow/dead upload host (same approach already
-  // used for the general post composer's mediaAiProcessGalleryFiles).
+  // Upload a story — plain, normal upload (no AI/patch layer): the file itself
+  // is sent to /api/status, exactly like the camera story publisher does.
+  //   1) multipart  (media + file + type)
+  //   2) raw body   (Content-Type = file type, X-File-Ext header)
   async function uploadStory(file: File) {
     const kind: 'image' | 'video' = (file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '')) ? 'video' : 'image';
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/') && kind !== 'video') {
@@ -12775,20 +12774,50 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     setQuickPublishError('');
     setStoryUploading(true);
     try {
-      const result = await storyAiPublish(
-        file,
-        async (f, k) => {
-          try {
-            const normalized = await normalizeGalleryFileForUpload(f, k);
-            return await fastUploadMediaFile(normalized, k);
-          } catch {
-            return null;
-          }
-        },
-      );
-      if (!result.ok) {
-        throw new Error(result.error || 'Story upload failed');
+      // Images only: HEIC → JPEG + downscale big photos (existing helper). Videos are sent untouched.
+      let upFile: File = file;
+      if (kind === 'image') {
+        try { upFile = await normalizeGalleryFileForUpload(file, kind); } catch { upFile = file; }
       }
+      const ext = ((upFile.name || '').split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg')).toLowerCase().replace(/[^a-z0-9]/g, '') || (kind === 'video' ? 'mp4' : 'jpg');
+      let mime = (upFile.type || '').split(';')[0].toLowerCase();
+      if (!mime.startsWith('image/') && !mime.startsWith('video/')) mime = kind === 'video' ? 'video/mp4' : 'image/jpeg';
+      const sendName = upFile.name || `story-${Date.now()}.${ext}`;
+
+      let res: Response | null = null;
+      let errText = '';
+      // 1) multipart
+      try {
+        const fd = new FormData();
+        fd.append('media', upFile, sendName);
+        fd.append('file', upFile, sendName);
+        fd.append('type', kind);
+        res = await fetch('/api/status', { method: 'POST', credentials: 'include', body: fd });
+        if (!res.ok) { errText = await res.text().catch(() => ''); }
+      } catch (e) {
+        errText = e instanceof Error ? e.message : 'network';
+        res = null;
+      }
+      // 2) raw body
+      if (!res || !res.ok) {
+        try {
+          res = await fetch('/api/status', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': mime, 'X-File-Ext': `.${ext}` },
+            body: upFile,
+          });
+          if (!res.ok) { errText = await res.text().catch(() => errText); }
+        } catch (e) {
+          errText = e instanceof Error ? e.message : errText;
+          res = null;
+        }
+      }
+      if (!res || !res.ok) {
+        console.error('[story] upload failed', res?.status, errText);
+        throw new Error(errText || 'Story upload failed');
+      }
+      try { window.dispatchEvent(new CustomEvent('stooorna:story-published')); } catch { /* ignore */ }
       await fetchStories();
     } catch {
       setQuickPublishError('Unable to publish this story. Please try a different image or video.');
