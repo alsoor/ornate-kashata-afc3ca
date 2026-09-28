@@ -20651,13 +20651,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   position: 'relative',
                   display: 'flex',
                   flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 10,
+                  alignItems: 'flex-start',
+                  gap: 14,
                   zIndex: 10620,
                   animation: 'stooornaPlusFanIn 0.28s ease-out',
                 }}>
                   {user?.id && (
-                    <button
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
+<button
                       type="button"
                       onClick={() => {
                         setProfilePlusOpen(false);
@@ -20683,9 +20684,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Users size={18} strokeWidth={2.2} />
                     </button>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Friend</span>
+</div>
                   )}
                   {user?.id && (
-                    <button
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
+<button
                       type="button"
                       onPointerDown={() => {
                         if (!profilePlusIncomingCallUi.ringing) return;
@@ -20748,9 +20752,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Phone size={18} strokeWidth={2.2} />
                     </button>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Call</span>
+</div>
                   )}
                   {user?.id && (
-                    <button
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
+<button
                       type="button"
                       onClick={() => {
                         setProfilePlusOpen(false);
@@ -20774,9 +20781,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Radio size={18} strokeWidth={2.2} />
                     </button>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>LIVE</span>
+</div>
                   )}
                   {/* Settings — نُقلت من الهيدر إلى هنا بجانب الأصدقاء والاتصال والبث */}
-                  <motion.button
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
+<motion.button
                     type="button"
                     whileTap={{ scale: 0.9 }}
                     onClick={() => {
@@ -20804,6 +20814,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <Settings size={18} strokeWidth={2.2} />
                     </motion.span>
                   </motion.button>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Settings</span>
+</div>
                 </div>
           </div>
         )}
