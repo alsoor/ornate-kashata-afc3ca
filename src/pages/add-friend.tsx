@@ -11,7 +11,7 @@ import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -9330,21 +9330,61 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           {String(user?.id) !== String(authorId) && visitorCountry ? (
             <p style={{ color: '#2563eb', fontSize: '0.74rem', fontWeight: 600, margin: '4px 0 0', letterSpacing: 0.2 }}>{visitorCountry}</p>
           ) : null}
+
+          {friendState === 'accepted' && (
+            <div style={{ position: 'relative', marginTop: 8, display: 'flex', justifyContent: 'center' }}>
+              {friendMenuOpen && (
+                <div
+                  aria-hidden
+                  onClick={() => setFriendMenuOpen(false)}
+                  style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'transparent' }}
+                />
+              )}
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setFriendMenuOpen(open => !open); }}
+                aria-label="Friend options"
+                aria-expanded={friendMenuOpen}
+                style={{
+                  width: 44, height: 22, borderRadius: 999, border: 'none', background: 'transparent',
+                  color: CLR_PRIMARY, display: 'flex', flexDirection: 'row', alignItems: 'center',
+                  justifyContent: 'center', gap: 4, cursor: 'pointer', position: 'relative', zIndex: 41,
+                }}
+              >
+                <MoreHorizontal size={22} strokeWidth={2.4} />
+              </button>
+              {friendMenuOpen && (
+                <div
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    position: 'absolute', top: 26, left: '50%', transform: 'translateX(-50%)',
+                    zIndex: 42, minWidth: 168, padding: 6, borderRadius: 12,
+                    background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))',
+                    boxShadow: 'var(--shadow-lg)', direction: 'ltr',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => { setFriendMenuOpen(false); void removeFriendship(); }}
+                    disabled={friendLoading}
+                    style={{ width: '100%', padding: '10px 12px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'left', fontSize: '0.82rem', fontWeight: 700 }}
+                  >
+                    Delete Friend
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setFriendMenuOpen(false); void blockUser(); }}
+                    disabled={friendLoading}
+                    style={{ width: '100%', padding: '10px 12px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--destructive))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'left', fontSize: '0.82rem', fontWeight: 700 }}
+                  >
+                    Block
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {friendState === 'accepted' && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', direction: 'ltr', padding: '4px 12px 0' }}>
-            <div style={{ position: 'relative' }}>
-              <button onClick={() => setFriendMenuOpen(open => !open)} aria-label="خيارات الصديق" aria-expanded={friendMenuOpen} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'transparent', color: CLR_PRIMARY, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <MoreVertical size={18} strokeWidth={2} style={{ display: 'block' }} />
-              </button>
-              {friendMenuOpen && <div style={{ position: 'absolute', top: 34, left: 0, zIndex: 30, minWidth: 142, padding: 6, borderRadius: 12, background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', boxShadow: 'var(--shadow-lg)', direction: 'rtl' }}>
-                <button onClick={removeFriendship} disabled={friendLoading} style={{ width: '100%', padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'right', fontSize: '0.78rem' }}>حذف صديق</button>
-                <button onClick={blockUser} disabled={friendLoading} style={{ width: '100%', padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--destructive))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'right', fontSize: '0.78rem' }}>حظر</button>
-              </div>}
-            </div>
-          </div>
-        )}
                 {isHiddenPrivate ? (
           <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 40, paddingBottom: 48, borderTop: `1px solid ${CLR_NAV_BORDER}`, marginTop: 8 }}>
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_PRIMARY_DIM }}>
