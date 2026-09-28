@@ -13170,18 +13170,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     window.addEventListener('stooorna:story-ban-blocked', onBlocked);
     return () => { off(); window.removeEventListener('stooorna:story-ban-blocked', onBlocked); };
   }, []);
-  useEffect(() => {
-    const onApplied = (e: Event) => {
-      const ids: number[] = ((e as CustomEvent).detail?.ids || []).map((x: unknown) => Number(x)).filter((n: number) => !Number.isNaN(n));
-      if (!ids.length) return;
-      ids.forEach(id => deletedStoryIdsRef.current.add(id));
-      saveDeletedStoryIds(deletedStoryIdsRef.current);
-      setStoryGroups(prev => prev.map(g => ({ ...g, items: g.items.filter(it => !ids.includes(it.id)) })).filter(g => g.items.length > 0));
-      void fetchStories();
-    };
-    window.addEventListener('stooorna:story-moderation-applied', onApplied);
-    return () => window.removeEventListener('stooorna:story-moderation-applied', onApplied);
-  }, [fetchStories]);
   const [modReq, setModReq] = useState<{ story: { id: number; mediaUrl: string; mediaType: string; overlayText?: string | null }; target: { userId: string; username?: string | null; name?: string | null } } | null>(null);
   const storyCanModerate = (void modTick, !!user && (isStoryOwner(user as { email?: string | null; username?: string | null; name?: string | null }) || isModerator(user.id)));
   // اختيار صورة/فيديو للستوري: مربّعان فقط بدون خيار "ملفات" ثالث —
@@ -13287,6 +13275,18 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const onPub = () => { void fetchStories(); };
     window.addEventListener('stooorna:story-published', onPub);
     return () => window.removeEventListener('stooorna:story-published', onPub);
+  }, [fetchStories]);
+  useEffect(() => {
+    const onApplied = (e: Event) => {
+      const ids: number[] = ((e as CustomEvent).detail?.ids || []).map((x: unknown) => Number(x)).filter((n: number) => !Number.isNaN(n));
+      if (!ids.length) return;
+      ids.forEach(id => deletedStoryIdsRef.current.add(id));
+      saveDeletedStoryIds(deletedStoryIdsRef.current);
+      setStoryGroups(prev => prev.map(g => ({ ...g, items: g.items.filter(it => !ids.includes(it.id)) })).filter(g => g.items.length > 0));
+      void fetchStories();
+    };
+    window.addEventListener('stooorna:story-moderation-applied', onApplied);
+    return () => window.removeEventListener('stooorna:story-moderation-applied', onApplied);
   }, [fetchStories]);
 
   // ── ريفرش تلقائي للقصص/الستوريات كل ثانيتين ─────────────────────────────────
