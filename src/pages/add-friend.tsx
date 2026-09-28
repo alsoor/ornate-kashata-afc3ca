@@ -14514,6 +14514,27 @@ const homeLiveCache: { uid: string; entries: HomeLiveEntry[]; since: Map<string,
 const HOME_LIVE_SILVER = 'linear-gradient(135deg,#f4f6f9 0%,#9ba3ae 28%,#e6e9ee 52%,#8a929d 78%,#f1f3f6 100%)';
 const HOME_LIVE_CHAT_LIFT_EVT = 'stooorna:chat-lift';
 
+// أيقونات صف الهيدر: خافتة قليلاً عند الخمول، وعند النشاط تتحول للأخضر (أو البرتقالي لطلبات الإضافة) مع إضاءة واضحة. (بدل النقاط)
+function hdrIconTone(active: boolean, tone: 'green' | 'orange' = 'green'): React.CSSProperties {
+  if (!active) {
+    return {
+      border: '1.5px solid rgba(225,225,225,0.18)',
+      background: 'rgba(225,225,225,0.04)',
+      color: 'rgba(200,210,210,0.42)',
+      boxShadow: 'none',
+      transition: 'color 200ms ease, border-color 200ms ease, background 200ms ease, box-shadow 200ms ease',
+    };
+  }
+  const rgb = tone === 'orange' ? '249,115,22' : '34,197,94';
+  return {
+    border: `1.5px solid rgba(${rgb},0.95)`,
+    background: `rgba(${rgb},0.2)`,
+    color: tone === 'orange' ? '#fb923c' : '#4ade80',
+    boxShadow: `0 0 12px rgba(${rgb},0.85), 0 0 4px rgba(${rgb},0.9), inset 0 0 6px rgba(${rgb},0.35)`,
+    transition: 'color 200ms ease, border-color 200ms ease, background 200ms ease, box-shadow 200ms ease',
+  };
+}
+
 function homeLiveSameEntries(a: HomeLiveEntry[], b: HomeLiveEntry[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -20415,18 +20436,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     style={{ position: 'relative', display: 'flex', flexShrink: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                   >
                     <span style={{
-                      width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
-                      background: 'rgba(225,225,225,0.1)', color: 'rgba(230,230,230,0.9)',
+                      width: 24, height: 24, borderRadius: '50%',
+                      ...hdrIconTone(!!(anyFriendOnlineFast || friends.some(f => !!(presence[f.friendId] as any)?.online))),
                       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                     }}>
                       {!followersVisible ? <Lock size={12} strokeWidth={2.2} /> : <Users size={12} strokeWidth={2.3} />}
                     </span>
-                    <span aria-hidden="true" style={{
-                      position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
-                      width: 7, height: 7, borderRadius: '50%',
-                      background: (anyFriendOnlineFast || friends.some(f => !!(presence[f.friendId] as any)?.online)) ? '#22c55e' : '#9ca3af',
-                      border: '1.5px solid hsl(var(--background))',
-                    }} />
                   </motion.button>
                   {/* Call history — moved here from the "Call a friend" picker header in RootLayout.tsx, taking the Views slot */}
                   <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
@@ -20436,39 +20451,27 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label="Call history"
                       title="Call history"
                       style={{
-                        width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
-                        background: 'rgba(225,225,225,0.1)', color: 'rgba(230,230,230,0.9)', cursor: 'pointer',
+                        width: 24, height: 24, borderRadius: '50%',
+                        ...hdrIconTone(!!(callHistoryDotState.joined || anyInCall)),
+                        cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
                       }}
                     >
                       <Clock size={12} strokeWidth={2.3} />
                     </button>
-                    <span aria-hidden="true" style={{
-                      position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
-                      width: 7, height: 7, borderRadius: '50%',
-                      background: (callHistoryDotState.joined || anyInCall) ? '#22c55e' : '#9ca3af',
-                      border: '1.5px solid hsl(var(--background))',
-                    }} />
                   </div>
                   <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
                     <span
                       aria-label={(myLiveBroadcastKind || anyLiveBroadcast) ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
                       title={(myLiveBroadcastKind || anyLiveBroadcast) ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
                       style={{
-                        width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
-                        background: 'rgba(225,225,225,0.1)',
-                        color: (myLiveBroadcastKind || anyLiveBroadcast) ? '#22c55e' : '#9ca3af',
+                        width: 24, height: 24, borderRadius: '50%',
+                        ...hdrIconTone(!!(myLiveBroadcastKind || anyLiveBroadcast)),
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       }}
                     >
                       <Radio size={12} strokeWidth={2.3} />
                     </span>
-                    <span aria-hidden="true" style={{
-                      position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
-                      width: 7, height: 7, borderRadius: '50%',
-                      background: (myLiveBroadcastKind || anyLiveBroadcast) ? '#22c55e' : '#9ca3af',
-                      border: '1.5px solid hsl(var(--background))',
-                    }} />
                   </div>
                   {/* Live map — نُقلت من الإعدادات؛ تفتح نفس الخريطة الحية السابقة */}
                   <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
@@ -20478,20 +20481,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label={anyFriendOnMap ? 'يوجد أشخاص على الخريطة' : 'الخريطة'}
                       title={anyFriendOnMap ? 'يوجد أشخاص على الخريطة' : 'الخريطة'}
                       style={{
-                        width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
-                        background: 'rgba(225,225,225,0.1)',
-                        color: anyFriendOnMap ? '#22c55e' : '#9ca3af',
+                        width: 24, height: 24, borderRadius: '50%',
+                        ...hdrIconTone(!!anyFriendOnMap),
                         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0, cursor: 'pointer',
                       }}
                     >
                       <MapPin size={12} strokeWidth={2.3} />
                     </button>
-                    <span aria-hidden="true" style={{
-                      position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
-                      width: 7, height: 7, borderRadius: '50%',
-                      background: anyFriendOnMap ? '#22c55e' : '#9ca3af',
-                      border: '1.5px solid hsl(var(--background))',
-                    }} />
                   </div>
                   {/* Friend requests — نُقلت من الصف السفلي (+) إلى هنا بجانب الخريطة، بنفس حجم وألوان الأيقونات أعلاه.
                       وصل طلب جديد → الأيقونة والنقطة برتقاليان؛ بعد فتح الصندوق ترجع الأيقونة كما كانت والنقطة رمادية. */}
@@ -20509,20 +20505,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         title={hasUnseenFriendReq ? 'يوجد طلبات إضافة جديدة' : 'طلبات الإضافة'}
                         style={{
                           width: 24, height: 24, borderRadius: '50%',
-                          border: `1.5px solid ${hasUnseenFriendReq ? 'rgba(249,115,22,0.75)' : 'rgba(225,225,225,0.35)'}`,
-                          background: hasUnseenFriendReq ? 'rgba(249,115,22,0.16)' : 'rgba(225,225,225,0.1)',
-                          color: hasUnseenFriendReq ? '#f97316' : 'rgba(230,230,230,0.9)',
+                          ...hdrIconTone(!!hasUnseenFriendReq, 'orange'),
                           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0, cursor: 'pointer',
                         }}
                       >
                         <UserPlus size={12} strokeWidth={2.3} />
                       </button>
-                      <span aria-hidden="true" style={{
-                        position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
-                        width: 7, height: 7, borderRadius: '50%',
-                        background: hasUnseenFriendReq ? '#f97316' : '#9ca3af',
-                        border: '1.5px solid hsl(var(--background))',
-                      }} />
                     </div>
                   )}
 
@@ -20530,8 +20518,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       margin سالب حتى لا يزيد ارتفاع الصف رغم أن حجمها 38px. */}
                   <div style={{ position: 'relative', marginLeft: 'auto', marginTop: -3, marginBottom: -3, width: 30, height: 30, flexShrink: 0 }}>
                   {/* زر الإعدادات نُقل إلى صف الأيقونات (Friends / Call / Live) تحت الخط */}
-                  {/* Bell — above Settings, same size: notices the owner sent (deleted story + message) */}
-                  <div style={{ position: 'absolute', bottom: 36, left: 0, zIndex: 5 }}>
+                  {/* Bell — نزل لنفس مستوى الأيقونات (أقصى اليمين)، same size: notices the owner sent (deleted story + message) */}
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, zIndex: 5 }}>
                     <HeaderAdminBell userId={user?.id} size={30} />
                     <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
                       <StoryModerationBell userId={user?.id} size={30} />
