@@ -13531,6 +13531,7 @@ function PublicLiveCommentsPanel({
   const [profilePeer, setProfilePeer] = useState<PublicLiveComment | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const chatInputRef = useRef<HTMLInputElement | null>(null);
   const liveSigRef = useRef('');
   const liveBusyRef = useRef(false);
   const welcomedIdsRef = useRef<Set<string>>(new Set());
@@ -13994,27 +13995,6 @@ function PublicLiveCommentsPanel({
           ))}
         </div>
 
-        {composerDock === 'emoji' && (
-          <div style={{ height: 'min(42vh, 340px)', display: 'flex', flexDirection: 'column', borderTop: '1px solid #ececec', background: '#f7f7f8' }}>
-            <div style={{ display: 'flex', gap: 4, padding: '6px 8px', overflowX: 'auto', borderBottom: '1px solid #eee' }}>
-              {LIVE_CHAT_EMOJI_CATS.map((cat, i) => (
-                <button key={cat.icon} type="button" onClick={() => setEmojiCat(i)} style={{ background: emojiCat === i ? '#fff' : 'transparent', border: '1px solid #e5e7eb', borderRadius: 10, padding: '4px 8px', fontSize: '1.05rem', cursor: 'pointer' }}>{cat.icon}</button>
-              ))}
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
-              {(LIVE_CHAT_EMOJI_CATS[emojiCat]?.items || LIVE_EMOJI_PICKER).map(em => (
-                <button key={em} type="button" onClick={() => setText(t => (t + em).slice(0, 500))} style={{ background: 'none', border: 'none', fontSize: '1.28rem', cursor: 'pointer', padding: 4 }}>{em}</button>
-              ))}
-            </div>
-          </div>
-        )}
-        {composerDock === 'gallery' && (
-          <div style={{ height: 'min(38vh, 300px)', borderTop: '1px solid #ececec', background: '#f7f7f8', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-            <button type="button" onClick={() => fileRef.current?.click()} style={{ padding: '10px 16px', borderRadius: 12, border: '1px solid #ddd', background: '#fff', fontWeight: 800, cursor: 'pointer' }}>اختيار صورة</button>
-            {pendingImage ? <img src={pendingImage} alt="" style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 12 }} /> : <p style={{ margin: 0, color: '#888', fontSize: '0.8rem' }}>افتح المعرض من الأسفل</p>}
-          </div>
-        )}
-
         {pendingImage && (
           <div style={{ padding: '0 14px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
             <img src={pendingImage} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8 }} />
@@ -14106,7 +14086,10 @@ function PublicLiveCommentsPanel({
               </div>
             ) : null}
             <input
+              ref={chatInputRef}
               value={text}
+              readOnly={composerDock !== 'none'}
+              inputMode={composerDock === 'none' ? 'text' : 'none'}
               onChange={e => {
                 const v = e.target.value.slice(0, 500);
                 setText(v);
@@ -14158,13 +14141,15 @@ function PublicLiveCommentsPanel({
             <button
               type="button"
               aria-label="صورة"
-              onClick={() => {
-                try { (document.activeElement as HTMLElement | null)?.blur(); } catch { /* */ }
-                lockPageForKeyboard(false);
+              onPointerDown={e => {
+                e.preventDefault();
+                e.stopPropagation();
                 chatInputFocused.current = false;
                 setKbInset(0);
+                lockPageForKeyboard(false);
                 setComposerDock(d => d === 'gallery' ? 'none' : 'gallery');
                 setEmojiOpen(false);
+                try { chatInputRef.current?.blur(); } catch { /* */ }
               }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
             >
@@ -14173,6 +14158,15 @@ function PublicLiveCommentsPanel({
             <button
               type="button"
               aria-label="تسجيل صوتي"
+              onPointerDown={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                chatInputFocused.current = false;
+                setKbInset(0);
+                lockPageForKeyboard(false);
+                setComposerDock(d => d === 'voice' ? 'none' : 'voice');
+                try { chatInputRef.current?.blur(); } catch { /* */ }
+              }}
               onClick={async () => {
                 if (recording) {
                   recRef.current?.stop();
@@ -14211,13 +14205,18 @@ function PublicLiveCommentsPanel({
             <button
               type="button"
               aria-label="إيموجي"
-              onClick={() => {
-                try { (document.activeElement as HTMLElement | null)?.blur(); } catch { /* */ }
-                lockPageForKeyboard(false);
+              onPointerDown={e => {
+                e.preventDefault();
+                e.stopPropagation();
                 chatInputFocused.current = false;
                 setKbInset(0);
-                setComposerDock(d => d === 'emoji' ? 'none' : 'emoji');
-                setEmojiOpen(v => !v);
+                lockPageForKeyboard(false);
+                setComposerDock(d => {
+                  const next = d === 'emoji' ? 'none' : 'emoji';
+                  setEmojiOpen(next === 'emoji');
+                  return next;
+                });
+                try { chatInputRef.current?.blur(); } catch { /* */ }
               }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
             >
@@ -14246,6 +14245,43 @@ function PublicLiveCommentsPanel({
               : (chatLift === 1 ? <Minimize2 size={16} strokeWidth={2.4} color="#fff" /> : <Maximize2 size={16} strokeWidth={2.4} color="#fff" />)}
           </button>
         </div>
+        {composerDock === 'emoji' && (
+          <div style={{ height: 'min(42vh, 340px)', display: 'flex', flexDirection: 'column', borderTop: '1px solid #ececec', background: '#f7f7f8' }}>
+            <div style={{ display: 'flex', gap: 4, padding: '6px 8px', overflowX: 'auto', borderBottom: '1px solid #eee' }}>
+              {LIVE_CHAT_EMOJI_CATS.map((cat, i) => (
+                <button key={cat.icon} type="button" onClick={() => setEmojiCat(i)} style={{ background: emojiCat === i ? '#fff' : 'transparent', border: '1px solid #e5e7eb', borderRadius: 10, padding: '4px 8px', fontSize: '1.05rem', cursor: 'pointer' }}>{cat.icon}</button>
+              ))}
+              <button
+                type="button"
+                aria-label="كيبورد"
+                onPointerDown={e => {
+                  e.preventDefault();
+                  setComposerDock('none');
+                  setEmojiOpen(false);
+                  setTimeout(() => chatInputRef.current?.focus(), 20);
+                }}
+                style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '4px 8px', fontSize: '1.05rem', cursor: 'pointer', marginLeft: 4 }}
+              >⌨️</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
+              {(LIVE_CHAT_EMOJI_CATS[emojiCat]?.items || LIVE_EMOJI_PICKER).map(em => (
+                <button key={em} type="button" onClick={() => setText(t => (t + em).slice(0, 500))} style={{ background: 'none', border: 'none', fontSize: '1.28rem', cursor: 'pointer', padding: 4 }}>{em}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        {composerDock === 'gallery' && (
+          <div style={{ height: 'min(38vh, 300px)', borderTop: '1px solid #ececec', background: '#f7f7f8', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            <button type="button" onClick={() => fileRef.current?.click()} style={{ padding: '10px 16px', borderRadius: 12, border: '1px solid #ddd', background: '#fff', fontWeight: 800, cursor: 'pointer' }}>اختيار صورة</button>
+            {pendingImage ? <img src={pendingImage} alt="" style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 12 }} /> : <p style={{ margin: 0, color: '#888', fontSize: '0.8rem' }}>افتح المعرض من الأسفل</p>}
+          </div>
+        )}
+        {composerDock === 'voice' && (
+          <div style={{ height: 'min(28vh, 220px)', borderTop: '1px solid #ececec', background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <p style={{ margin: 0, color: recording ? '#ef4444' : '#111', fontWeight: 800 }}>{recording ? '● Recording…' : 'اضغط المايك للتسجيل'}</p>
+          </div>
+        )}
+
       </div>
     </div>
     {profilePeer && profilePeer.userId ? (
