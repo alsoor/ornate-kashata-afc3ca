@@ -20521,34 +20521,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   {/* Settings — نُقلت من قائمة (+) إلى نهاية صف الأيقونات (أقصى اليمين)، بيضاء ومميّزة وتدور ببطء.
                       margin سالب حتى لا يزيد ارتفاع الصف رغم أن حجمها 38px. */}
                   <div style={{ position: 'relative', marginLeft: 'auto', marginTop: -3, marginBottom: -3, width: 30, height: 30, flexShrink: 0 }}>
-                  <motion.button
-                    type="button"
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => {
-                      try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
-                      navigate('/settings');
-                    }}
-                    aria-label="Settings"
-                    title="Settings"
-                    style={{
-                      width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-                      border: '1.5px solid rgba(255,255,255,0.6)',
-                      background: 'rgba(255,255,255,0.1)',
-                      color: '#ffffff',
-                      cursor: 'pointer', padding: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 0 12px rgba(255,255,255,0.28), 0 4px 16px rgba(0,0,0,0.45)',
-                    }}
-                  >
-                    <motion.span
-                      aria-hidden="true"
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 9, repeat: Infinity, ease: 'linear' }}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Settings size={15} strokeWidth={2.2} color="#ffffff" />
-                    </motion.span>
-                  </motion.button>
+                  {/* زر الإعدادات نُقل إلى صف الأيقونات (Friends / Call / Live) تحت الخط */}
                   {/* Bell — above Settings, same size: notices the owner sent (deleted story + message) */}
                   <div style={{ position: 'absolute', bottom: 36, left: 0, zIndex: 5 }}>
                     <HeaderAdminBell userId={user?.id} size={30} />
@@ -20675,9 +20648,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             Settings/Friends/Call/Chat/Live row directly below in its place;
             picking an item (or tapping the backdrop) closes the row and the
             "+" reappears. ── */}
-        {/* الأيقونات الثلاث (Friends / Call / Live) تظهر فقط عندما يكون الهيدر مرفوعاً (مطويّ)،
-            وعندما يكون الهيدر نازلاً لا يوجد زر "+" ولا أيقونات. */}
-        {!isFriendManagement && !headerOpen && !visitorProfileOpen && (
+        {/* الأيقونات (Friends / Call / Live / Settings) تظهر دائماً تحت الخط: عند الدخول مباشرة، وعند رفع الهيدر أو إنزاله. */}
+        {!isFriendManagement && !visitorProfileOpen && (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '2px 0 8px', position: 'relative' }}>
                 <div style={{
                   position: 'relative',
@@ -20807,6 +20779,35 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <Radio size={18} strokeWidth={2.2} />
                     </button>
                   )}
+                  {/* Settings — نُقلت من الهيدر إلى هنا بجانب الأصدقاء والاتصال والبث */}
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                      try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
+                      navigate('/settings');
+                    }}
+                    aria-label="Settings"
+                    title="Settings"
+                    style={{
+                      width: 38, height: 38, borderRadius: '50%',
+                      border: '1px solid rgba(0,188,212,0.4)',
+                      background: 'rgba(6,20,22,0.96)',
+                      color: '#00BCD4',
+                      cursor: 'pointer', padding: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                    }}
+                  >
+                    <motion.span
+                      aria-hidden="true"
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 9, repeat: Infinity, ease: 'linear' }}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Settings size={18} strokeWidth={2.2} />
+                    </motion.span>
+                  </motion.button>
                 </div>
           </div>
         )}
