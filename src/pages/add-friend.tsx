@@ -13194,18 +13194,28 @@ function PublicLiveCommentsPanel({
       onTouchEnd={e => e.stopPropagation()}
       onWheel={e => e.stopPropagation()}
       style={{
-        position: 'relative',
-        flex: 1,
-        minHeight: 0,
-        width: '100%',
+        position: 'fixed',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        top: 0,
+        zIndex: 15,
         display: 'flex',
         flexDirection: 'column',
+        justifyContent: 'flex-end',
         background: '#ffffff',
         overflow: 'hidden',
         color: '#111',
         touchAction: 'pan-y',
+        pointerEvents: 'none',
       }}
     >
+      <div style={{
+        flexShrink: 0,
+        height: 'max(162px, calc(env(safe-area-inset-top) + 146px))',
+        pointerEvents: 'none',
+        background: 'transparent',
+      }} />
       <div
         ref={listRef}
         onTouchStart={e => e.stopPropagation()}
@@ -13220,6 +13230,9 @@ function PublicLiveCommentsPanel({
           padding: '4px 12px 6px',
           background: '#ffffff',
           touchAction: 'pan-y',
+          pointerEvents: 'auto',
+          flex: '1 1 auto',
+          minHeight: 0,
         }}
       >
         <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
