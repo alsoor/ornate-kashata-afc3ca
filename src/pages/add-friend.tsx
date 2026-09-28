@@ -13188,6 +13188,7 @@ function PublicLiveCommentsPanel({
   const [text, setText] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [profilePeer, setProfilePeer] = useState<PublicLiveComment | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const liveSigRef = useRef('');
@@ -13307,6 +13308,7 @@ function PublicLiveCommentsPanel({
   if (typeof document === 'undefined') return null;
 
   return createPortal(
+    <>
     <div
       onTouchStart={e => e.stopPropagation()}
       onTouchMove={e => e.stopPropagation()}
@@ -13368,12 +13370,19 @@ function PublicLiveCommentsPanel({
               padding: '10px 2px',
               direction: 'ltr',
             }}>
-              <UserAvatar
-                name={c.name || c.username || '?'}
-                avatarUrl={c.avatarUrl}
-                size={36}
-                style={{ flexShrink: 0, border: 'none' }}
-              />
+              <button
+                type="button"
+                onClick={() => { if (c.userId) setProfilePeer(c); }}
+                style={{ background: 'none', border: 'none', padding: 0, cursor: c.userId ? 'pointer' : 'default', flexShrink: 0 }}
+                aria-label="فتح البروفايل"
+              >
+                <UserAvatar
+                  name={c.name || c.username || '?'}
+                  avatarUrl={c.avatarUrl}
+                  size={36}
+                  style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }}
+                />
+              </button>
               <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
                 <p style={{ margin: 0, fontSize: '0.84rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
                   <span style={{ fontWeight: 800, color: '#111', marginRight: 6 }}>{displayName(c)}</span>
@@ -13395,13 +13404,23 @@ function PublicLiveCommentsPanel({
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  padding: '4px 2px 0',
+                  padding: '0 2px',
                   flexShrink: 0,
                   color: liked ? '#ef4444' : '#9ca3af',
                   display: 'flex',
-                  alignItems: 'flex-start',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 1,
+                  minWidth: 22,
                 }}
               >
+                {c.likes.length > 0 ? (
+                  <span style={{ fontSize: '0.62rem', fontWeight: 800, color: liked ? '#ef4444' : '#6b7280', lineHeight: 1 }}>
+                    {c.likes.length}
+                  </span>
+                ) : (
+                  <span style={{ height: 8 }} />
+                )}
                 <Heart size={16} strokeWidth={2.2} fill={liked ? '#ef4444' : 'none'} />
               </button>
             </div>
@@ -13562,7 +13581,19 @@ function PublicLiveCommentsPanel({
           )}
         </div>
       </div>
-    </div>,
+    </div>
+    {profilePeer && profilePeer.userId ? (
+      <FriendStoryProfile
+        authorId={profilePeer.userId}
+        authorName={profilePeer.name}
+        authorUsername={profilePeer.username}
+        authorAvatarUrl={profilePeer.avatarUrl}
+        onClose={() => setProfilePeer(null)}
+        onOpenPost={() => {}}
+        sheetMode
+      />
+    ) : null}
+    </>,
     document.body
   );
 }
