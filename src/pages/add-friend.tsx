@@ -6506,18 +6506,19 @@ async function fetchInAppHtml(pageUrl: string): Promise<string | null> {
   const proxies = [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(pageUrl)}`,
     `https://corsproxy.io/?${encodeURIComponent(pageUrl)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(pageUrl)}`,
   ];
-  for (const src of proxies) {
-    const r = await fetchWithTimeout(src, 4000);
-    if (!r || !r.ok) continue;
-    try {
-      const text = await r.text();
-      if (!text.trim()) continue;
-      if (/Title:\s|Markdown Content:/i.test(text) && !/<html/i.test(text)) continue;
-      if (/<html|<body|<img|<article|<div/i.test(text)) return rewriteHtmlForInApp(text, pageUrl);
-    } catch { /* next */ }
-  }
-  return null;
+  const jobs = proxies.map(async src => {
+    const r = await fetchWithTimeout(src, 2800);
+    if (!r || !r.ok) return null;
+    const text = await r.text();
+    if (!text.trim()) return null;
+    if (/Title:\s|Markdown Content:/i.test(text) && !/<html/i.test(text)) return null;
+    if (/<html|<body|<img|<article|<div/i.test(text)) return rewriteHtmlForInApp(text, pageUrl);
+    return null;
+  });
+  const settled = await Promise.all(jobs);
+  return settled.find(Boolean) || null;
 }
 
 function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void }) {
@@ -6582,34 +6583,34 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
   if (!href) return null;
   const node = (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+      initial={{ y: '100%' }}
+      animate={{ y: 0 }}
+      exit={{ y: '100%' }}
+      transition={{ type: 'spring', stiffness: 420, damping: 38 }}
       onClick={e => e.stopPropagation()}
       style={{
-        position: 'fixed', inset: 0, zIndex: 2147483000, background: '#0b0b0b',
+        position: 'fixed', inset: 0, zIndex: 2147483000, background: '#fff',
         display: 'flex', flexDirection: 'column', pointerEvents: 'auto',
       }}
     >
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0,
-        padding: 'max(8px, env(safe-area-inset-top)) 10px 8px',
-        background: '#0b0b0b',
-      }}>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close site"
-          style={{
-            width: 40, height: 40, borderRadius: '50%', border: '1.5px solid rgba(0,188,212,0.55)',
-            background: '#0b0b0b', color: '#00BCD4', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <X size={18} strokeWidth={2.6} />
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="إغلاق الموقع"
+        style={{
+          flexShrink: 0,
+          height: 'max(26px, calc(env(safe-area-inset-top) + 10px))',
+          background: '#fff',
+          border: 'none',
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'center',
+          paddingBottom: 8,
+          cursor: 'pointer',
+        }}
+      >
+        <span style={{ width: 44, height: 5, borderRadius: 99, background: '#111' }} />
+      </button>
       <div style={{ flex: 1, minHeight: 0, background: '#fff', position: 'relative' }}>
         {loading ? (
           <p style={{ color: '#888', textAlign: 'center', marginTop: 40 }}>Loading…</p>
@@ -17179,6 +17180,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // also collapses it; scrolling back to the top expands it again.
   const [headerOpen, setHeaderOpen] = useState(true);
   const [visitorProfileOpen, setVisitorProfileOpen] = useState(false);
+
   // Once true, the grabber's attention-drawing bounce animation stops for good.
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
   // Quick "+" menu below the header: no longer touches headerOpen at all. Clicking it
