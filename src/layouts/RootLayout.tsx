@@ -1631,6 +1631,7 @@ function GlobalBottomNavigation() {
   const homeCallEndedAtRef = useRef<Map<string, number>>(new Map());
   const homeCallChannelRef = useRef<string | null>(null);
   const homeInviteFirstSeenRef = useRef<Map<string, number>>(new Map());
+  const homeCallJustLeftRef = useRef(0);
 
   function markHomeCallChannelEnded(channel: string) {
     const ch = String(channel || '').trim();
@@ -1768,6 +1769,9 @@ function GlobalBottomNavigation() {
       const channel = String(rawIn.channel || rawIn.roomId || rawIn.room || '');
       if (!channel || !hostId || hostId === String(user.id)) return;
       if (rawIn.ended || rawIn.answered || rawIn.clear) return;
+      const leftAt = homeCallJustLeftRef.current;
+      const incomingAt = Number(rawIn.at || rawIn.ts || rawIn.createdAt) || 0;
+      if (leftAt && Date.now() - leftAt < 12000 && incomingAt <= leftAt) return;
       const stampedAt = Number(rawIn.at || rawIn.ts || rawIn.createdAt) || 0;
       if (!stampedAt && isHomeCallChannelJustEnded(channel, 0)) return;
       let inviteAt = stampedAt;
@@ -2173,6 +2177,8 @@ function GlobalBottomNavigation() {
     const endedChannel = homeCallChannel;
     const endedAt = Date.now();
     // Instant UI close for both local and remote — do not wait for Agora teardown
+    homeCallJustLeftRef.current = Date.now();
+    homeCallSessionRef.current += 1;
     homeCallPhaseRef.current = 'idle';
     setHomeCallPhase('idle');
     setHomeCallMinimized(false);
@@ -2198,7 +2204,6 @@ function GlobalBottomNavigation() {
       ? Math.max(1, Math.round((endedAt - homeCallLiveStartedAt.current) / 1000))
       : 0;
     homeCallLiveStartedAt.current = null;
-    homeCallSessionRef.current += 1;
     if (endedChannel) {
       markHomeCallChannelEnded(endedChannel);
       homeInviteFirstSeenRef.current.delete(endedChannel);
@@ -3270,6 +3275,8 @@ function GlobalBottomNavigation() {
       homeCallNoAnswerTimer.current = null;
     }
     stopHomeIncomingRing();
+    homeCallJustLeftRef.current = endedAt;
+    homeCallSessionRef.current += 1;
     homeRingLockRef.current = { mode: 'ignored', channel: channel || homeIncoming?.channel || '', at: endedAt };
     // Persist the decline for this exact call instance so it can never ring
     // again on this device, even across an immediate page refresh (the ref
