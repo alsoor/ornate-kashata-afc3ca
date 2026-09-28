@@ -13592,25 +13592,17 @@ function LiveChatClearCountdown() {
   const mm = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
   const ss = String(total % 60).padStart(2, '0');
   return (
-    <span
+    <div
       title="Chat clears in"
       style={{
-        flexShrink: 0,
-        margin: '0 4px 0 6px',
-        padding: '2px 8px',
-        borderRadius: 999,
-        background: 'rgba(25,25,112,0.08)',
-        color: '#191970',
-        fontWeight: 800,
-        fontSize: '0.72rem',
-        letterSpacing: '0.02em',
-        fontVariantNumeric: 'tabular-nums',
-        direction: 'ltr',
-        pointerEvents: 'none',
+        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+        pointerEvents: 'none', color: '#191970', fontWeight: 800, fontSize: '0.86rem',
+        fontVariantNumeric: 'tabular-nums', direction: 'ltr',
+        overflow: 'hidden', whiteSpace: 'nowrap',
       }}
     >
       {hh}:{mm}:{ss}
-    </span>
+    </div>
   );
 }
 
@@ -13651,6 +13643,7 @@ function PublicLiveCommentsPanel({
   const myUsername = (user as any)?.username ?? null;
   const myAvatar = (user as any)?.avatarUrl || (user as any)?.image || null;
   const typingTimer = useRef<number | null>(null);
+  const [composerFocused, setComposerFocused] = useState(false);
 
   // كل 24 ساعة: تنظيف الشات ومسح محتواه بالكامل
   const lastClearCycleRef = useRef<number>(liveChatCycleStart());
@@ -13919,6 +13912,9 @@ function PublicLiveCommentsPanel({
     c.userId === LIVE_CHAT_BOT_ID || c.name === LIVE_CHAT_BOT_NAME
       ? LIVE_CHAT_BOT_NAME
       : (c.username ? `@${String(c.username).replace(/^@/, '')}` : (c.name || 'مستخدم'));
+
+  // العدّاد يظهر فقط عندما لا يكتب أحد (لا أنا ولا غيري)
+  const showClearTimer = liveTypers.length === 0 && !text.trim() && !composerFocused;
 
   if (!headerOpen) return null;
   if (typeof document === 'undefined') return null;
@@ -14224,6 +14220,7 @@ function PublicLiveCommentsPanel({
                 </span>
               </div>
             ) : null}
+            {showClearTimer ? <LiveChatClearCountdown /> : null}
             <input
               ref={chatInputRef}
               value={text}
@@ -14242,13 +14239,15 @@ function PublicLiveCommentsPanel({
                   pushComment(text, pendingImage);
                 }
               }}
-              placeholder={chatLift === 0 && liveTypers.length > 0 && !text.trim() ? '' : (myUsername ? `Comment as ${String(myUsername).replace(/^@/, '')}…` : 'Comment…')}
+              placeholder={showClearTimer || (chatLift === 0 && liveTypers.length > 0 && !text.trim()) ? '' : (myUsername ? `Comment as ${String(myUsername).replace(/^@/, '')}…` : 'Comment…')}
               onFocus={() => {
                 chatInputFocused.current = true;
+                setComposerFocused(true);
                 lockPageForKeyboard(true);
               }}
               onBlur={() => {
                 chatInputFocused.current = false;
+                setComposerFocused(false);
                 setKbInset(0);
                 lockPageForKeyboard(false);
                 pingTyping(false);
@@ -14264,7 +14263,6 @@ function PublicLiveCommentsPanel({
               }}
             />
             </div>
-            {liveTypers.length === 0 && !text.trim() ? <LiveChatClearCountdown /> : null}
             <input
               ref={fileRef}
               type="file"
