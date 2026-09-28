@@ -13295,7 +13295,7 @@ function savePublicLiveComments(list: PublicLiveComment[]) {
 
 const LIVE_CHAT_ROOM = 'stooorna-live-chat';
 
-const LIVE_CHAT_BOT_NAME = 'Bot | Stooorna';
+const LIVE_CHAT_BOT_NAME = 'Bot';
 const LIVE_CHAT_BOT_ID = 'stooorna-bot';
 const LIVE_CHAT_BOT_COLOR = '#0b3a82';
 
@@ -13401,7 +13401,14 @@ function mergeLiveChatLists(a: PublicLiveComment[], b: PublicLiveComment[]): Pub
       continue;
     }
     const likes = Array.from(new Set([...(prev.likes || []), ...(row.likes || [])]));
-    map.set(row.id, { ...row, likes });
+    map.set(row.id, {
+      ...prev,
+      ...row,
+      likes,
+      voiceUrl: row.voiceUrl || prev.voiceUrl || null,
+      voiceDuration: row.voiceDuration ?? prev.voiceDuration ?? null,
+      imageUrl: row.imageUrl || prev.imageUrl || null,
+    });
   }
   return [...map.values()].sort((x, y) => x.createdAt - y.createdAt).slice(-400);
 }
@@ -13714,10 +13721,11 @@ function PublicLiveCommentsPanel({
               <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
                 <p style={{ margin: 0, fontSize: '0.84rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
                   <span style={{ fontWeight: 800, color: (c.userId === LIVE_CHAT_BOT_ID || c.name === LIVE_CHAT_BOT_NAME) ? LIVE_CHAT_BOT_COLOR : '#111', marginRight: 6 }}>{displayName(c)}</span>
-                  {c.voiceUrl ? null : <span style={{ fontWeight: 500, color: '#222' }}>{c.text}</span>}
+                  {c.voiceUrl || c.text === '🎤' ? null : <span style={{ fontWeight: 500, color: '#222' }}>{c.text}</span>}
                 </p>
-                {c.voiceUrl ? (
-                  <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 14, background: '#f3f4f6', border: '1px solid #e5e7eb', display: 'inline-block' }}>
+                {(c.voiceUrl || c.text === '🎤') ? (
+                  <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 14, background: '#f3f4f6', border: '1px solid #e5e7eb', display: 'inline-block', minWidth: 180 }}>
+                    {c.voiceUrl ? (
                     <ScVoiceBubble
                       url={c.voiceUrl}
                       duration={c.voiceDuration ?? null}
@@ -13729,6 +13737,9 @@ function PublicLiveCommentsPanel({
                       playColor="#111"
                       pauseColor="#ef4444"
                     />
+                    ) : (
+                      <span style={{ color: '#6b7280', fontSize: '0.78rem', fontWeight: 700 }}>Voice note</span>
+                    )}
                   </div>
                 ) : null}
                 {c.imageUrl ? (
