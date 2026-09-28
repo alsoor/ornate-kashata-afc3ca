@@ -131,10 +131,11 @@ function camChannelForHost(hostId: string): string {
 
 // ── مخزن مشترك لحالة البث: دائرة الهيدر + مستطيل الرئيسية يقرؤون منه نفس القرار،
 // فيختفون مع بعض بنفس اللحظة بالضبط عند انتهاء البث (بعد مهلة تأكيد متواصلة). ──
-const LIVE_SHARED_GRACE_MS = 3_000;
+const LIVE_SHARED_GRACE_MS = 45_000; // شبكة أمان فقط؛ الإنهاء الفعلي السريع (٣ ثواني) يتم بدليل مؤكد من داخل القناة
 const liveShared = {
   seen: new Map<string, { kind: 'voice' | 'camera'; at: number }>(),
   held: new Map<string, 'voice' | 'camera'>(),
+  roomEmpty: new Map<string, boolean>(), // آخر فحص من السيرفر: true = فاضي ومؤكد
   listeners: new Set<() => void>(),
   version: 0,
   paused: false,
@@ -145,6 +146,11 @@ function liveSharedMark(id: string, kind: 'voice' | 'camera') {
   const prev = liveShared.held.get(id);
   liveShared.seen.set(id, { kind, at: Date.now() });
   if (prev !== kind) { liveShared.held.set(id, kind); liveSharedEmit(); }
+}
+// إنهاء صريح: نستخدمه فقط لما يتأكد فعلاً أن صاحب البث طلع من القناة (دليلين متطابقين)
+function liveSharedEnd(id: string) {
+  liveShared.seen.delete(id);
+  if (liveShared.held.delete(id)) liveSharedEmit();
 }
 function liveSharedIsHeld(id: string): boolean { return liveShared.held.has(id); }
 function liveSharedKind(id: string): 'voice' | 'camera' | null { return liveShared.held.get(id) ?? null; }
@@ -14527,7 +14533,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
     homeLiveCache.uid = myId;
     homeLiveCache.since = sinceRef.current;
     // بعد الرجوع من البث نبدأ عدّاد الغياب من الصفر
-    if (!wasEnabledRef.current) liveSharedTouchAll(10_000);
+    if (!wasEnabledRef.current) liveSharedTouchAll(20_000);
     liveShared.paused = false;
     wasEnabledRef.current = true;
     let cancelled = false;
@@ -14569,6 +14575,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
         for (const { h, r } of res) {
           const prevE = prevById.get(h.id);
           let hold: HomeLiveEntry | null = null;
+          liveShared.roomEmpty.set(h.id, r === null);
           if (r && r !== 'unknown') {
             liveSharedMark(h.id, r.kind);
             if (!sinceRef.current.has(h.id)) sinceRef.current.set(h.id, now);
@@ -14657,19 +14664,46 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
         });
         c.on('user-left', (ru: IAgoraRTCRemoteUser) => { try { ru.audioTrack?.stop(); } catch { /* */ } });
 
-        const tr = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(`preview-${myId}`)}`, { credentials: 'include' });
-        if (!tr.ok) return;
-        const td = await tr.json() as { token: string; uid: number };
-        await c.join(AGORA_APP_ID, channel, td.token, td.uid);
+        // توكن بـ uid=0 يصلح لأي uid: Agora تعطي المعاينة رقم عشوائي، فما نتعارض أبداً مع رقم صاحب البث
+        // (أرقام السيرفر من 1 إلى 100000 فقط، وأي تصادم كان يطرد المستخدم الأول من القناة).
+        const fetchPreviewToken = async (): Promise<string | null> => {
+          try {
+            const tr = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=0`, { credentials: 'include' });
+            if (!tr.ok) return null;
+            const td = await tr.json() as { token: string };
+            return td.token;
+          } catch { return null; }
+        };
+        const firstToken = await fetchPreviewToken();
+        if (!firstToken) return;
+        // التوكن صلاحيته ساعة: نجدده تلقائياً عشان المعاينة ما تنقطع بعد ساعة
+        c.on('token-privilege-will-expire', async () => {
+          const t = await fetchPreviewToken();
+          if (t && !stopped) { try { await c.renewToken(t); } catch { /* */ } }
+        });
+        await c.join(AGORA_APP_ID, channel, firstToken, null);
         if (stopped) { try { await c.leave(); } catch { /* */ } return; }
         // ── مؤشّر الحضور الحقيقي: صاحب البث موجود داخل قناة Agora = البث مفتوح فعلاً.
         // هذا مستقل عن فحص /api/room، فما يختفي البث من الرئيسية طول ما صاحبه داخل القناة
         // (حتى لو رجع الفحص فاضي بعد دخولك للبث وخروجك منه). ──
+        let seenHostOnce = false;
+        let absentSince = 0;
         const markIfHostPresent = () => {
           if (stopped) return;
           const users = c.remoteUsers || [];
           const present = hostUid != null ? users.some(u => u.uid === hostUid) : users.length > 0;
-          if (present) liveSharedMark(hostId, kind);
+          if (present) {
+            if (hostUid != null) seenHostOnce = true;
+            absentSince = 0;
+            liveSharedMark(hostId, kind);
+            return;
+          }
+          // الإنهاء السريع (٣ ثواني): فقط إذا شفنا الهوست داخل القناة قبل، واتصالنا سليم، وهو غاب ٣ ثواني متواصلة،
+          // والسيرفر أيضاً يؤكد إن الغرفة فاضية. غير كذا البث يبقى مثبّت ولا يختفي.
+          if (seenHostOnce && (c as any).connectionState === 'CONNECTED') {
+            if (!absentSince) absentSince = Date.now();
+            if (Date.now() - absentSince >= 3000 && liveShared.roomEmpty.get(hostId) === true) liveSharedEnd(hostId);
+          }
         };
         markIfHostPresent();
         presenceTimer = window.setInterval(markIfHostPresent, 1000);
