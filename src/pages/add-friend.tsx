@@ -217,6 +217,68 @@ function useLiveBroadcastActive(hostId: string | null | undefined): boolean {
   return useLiveBroadcastKind(hostId) != null;
 }
 
+/** أي مستخدم من القائمة في بث (صوتي/مرئي) الآن؟ — يتحدّث فوراً بحدث البث، ويتحقق دورياً من الغرف. */
+function useAnyLiveBroadcast(hostIds: string[]): boolean {
+  const [any, setAny] = useState(false);
+  const key = Array.from(new Set(hostIds.filter(Boolean).map(String))).sort().join('|');
+
+  useEffect(() => {
+    const ids = key ? key.split('|') : [];
+    let cancelled = false;
+    const apply = (v: boolean) => { if (!cancelled) setAny(prev => (prev === v ? prev : v)); };
+    const localAny = () => ids.some(id => readLocalCamLiveActive(id) || readLocalLiveActive(id));
+    if (localAny()) apply(true);
+
+    let busy = false;
+    const check = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        if (localAny()) { apply(true); return; }
+        const hasMembers = async (channel: string) => {
+          try {
+            const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
+            if (!r.ok) return false;
+            const d = await r.json() as { members?: unknown[] };
+            return Array.isArray(d.members) && d.members.length > 0;
+          } catch { return false; }
+        };
+        const results = await Promise.all(ids.map(async id => (
+          (await hasMembers(camChannelForHost(id))) || (await hasMembers(liveChannelForHost(id)))
+        )));
+        apply(results.some(Boolean));
+      } finally { busy = false; }
+    };
+    void check();
+    const interval = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void check();
+    }, 2000);
+
+    // بمجرد فتح لايف: النقطة تصير خضراء مباشرة بدون انتظار الفحص الدوري
+    const onEvt = (e: Event) => {
+      const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean } | undefined;
+      if (d?.active) apply(true);
+      else void check();
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key && (e.key.startsWith('stooorna_live_active_') || e.key.startsWith('stooorna_livecam_active_'))) void check();
+    };
+    window.addEventListener('stooorna:live-active', onEvt);
+    window.addEventListener('stooorna:livecam-active', onEvt);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('stooorna:live-active', onEvt);
+      window.removeEventListener('stooorna:livecam-active', onEvt);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [key]);
+
+  return any;
+}
+
 
 // ── Notification sound design — small synthesized tones (water-drop / bubble mixes) ──
 // No audio files needed: each event gets its own tiny Web Audio mix so the tones stay distinct.
@@ -16046,6 +16108,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [friendChatCallLogMenuOpen, setFriendChatCallLogMenuOpen] = useState(false);
   const callHistoryDotState = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
   const myLiveBroadcastKind = useLiveBroadcastKind(user?.id);
+  // نقطة أيقونة البث بالأعلى: خضراء إذا أنا أو أي صديق/صاحب قصة في بث الآن
+  const anyLiveHostIds = useMemo(() => [
+    ...(user?.id ? [String(user.id)] : []),
+    ...friends.map(f => String(f.friendId)),
+    ...storyGroups.map(g => String(g.userId)),
+  ], [user?.id, friends, storyGroups]);
+  const anyLiveBroadcast = useAnyLiveBroadcast(anyLiveHostIds);
   const [storyRequestsBoxOpen, setStoryRequestsBoxOpen] = useState(false);
   const [storyReqRespondingId, setStoryReqRespondingId] = useState<number | null>(null);
   const [storyReqTab, setStoryReqTab] = useState<'search' | 'requests'>('requests');
@@ -17885,12 +17954,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </div>
                   <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
                     <span
-                      aria-label={myLiveBroadcastKind ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
-                      title={myLiveBroadcastKind ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
+                      aria-label={(myLiveBroadcastKind || anyLiveBroadcast) ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
+                      title={(myLiveBroadcastKind || anyLiveBroadcast) ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
                       style={{
                         width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
                         background: 'rgba(225,225,225,0.1)',
-                        color: myLiveBroadcastKind ? '#22c55e' : '#9ca3af',
+                        color: (myLiveBroadcastKind || anyLiveBroadcast) ? '#22c55e' : '#9ca3af',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       }}
                     >
@@ -17899,7 +17968,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <span aria-hidden="true" style={{
                       position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
                       width: 7, height: 7, borderRadius: '50%',
-                      background: myLiveBroadcastKind ? '#22c55e' : '#9ca3af',
+                      background: (myLiveBroadcastKind || anyLiveBroadcast) ? '#22c55e' : '#9ca3af',
                       border: '1.5px solid hsl(var(--background))',
                     }} />
                   </div>
