@@ -148,7 +148,8 @@ function liveSharedMark(id: string, kind: 'voice' | 'camera') {
 }
 function liveSharedIsHeld(id: string): boolean { return liveShared.held.has(id); }
 function liveSharedKind(id: string): 'voice' | 'camera' | null { return liveShared.held.get(id) ?? null; }
-function liveSharedTouchAll() { const now = Date.now(); liveShared.seen.forEach(v => { v.at = now; }); }
+// bonusMs: مهلة إضافية بعد الرجوع من صفحة البث، عشان اتصال المعاينة يلحق يثبّت أن البث لسا شغّال
+function liveSharedTouchAll(bonusMs = 0) { const now = Date.now() + bonusMs; liveShared.seen.forEach(v => { v.at = now; }); }
 function liveSharedSweep() {
   if (liveShared.paused) return;
   const now = Date.now();
@@ -14526,7 +14527,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
     homeLiveCache.uid = myId;
     homeLiveCache.since = sinceRef.current;
     // بعد الرجوع من البث نبدأ عدّاد الغياب من الصفر
-    if (!wasEnabledRef.current) liveSharedTouchAll();
+    if (!wasEnabledRef.current) liveSharedTouchAll(10_000);
     liveShared.paused = false;
     wasEnabledRef.current = true;
     let cancelled = false;
@@ -14616,6 +14617,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
   const startPreview = (hostId: string, kind: 'voice' | 'camera'): HomeLiveConn => {
     let stopped = false;
     let client: IAgoraRTCClient | null = null;
+    let presenceTimer = 0;
     const channel = kind === 'camera' ? camChannelForHost(hostId) : liveChannelForHost(hostId);
     const audioTracks = new Set<any>();
     let muted = mutedRef.current.has(hostId);
@@ -14627,12 +14629,10 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
         const c = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
         client = c;
         let hostUid: number | null = null;
-        if (kind === 'camera') {
-          try {
-            const hr = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(hostId)}`, { credentials: 'include' });
-            if (hr.ok) { const hd = await hr.json() as { uid: number }; hostUid = hd.uid; }
-          } catch { /* */ }
-        }
+        try {
+          const hr = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(hostId)}`, { credentials: 'include' });
+          if (hr.ok) { const hd = await hr.json() as { uid: number }; hostUid = hd.uid; }
+        } catch { /* */ }
         const handle = async (ru: IAgoraRTCRemoteUser, mt: 'audio' | 'video') => {
           try {
             await c.subscribe(ru, mt);
@@ -14662,6 +14662,17 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
         const td = await tr.json() as { token: string; uid: number };
         await c.join(AGORA_APP_ID, channel, td.token, td.uid);
         if (stopped) { try { await c.leave(); } catch { /* */ } return; }
+        // ── مؤشّر الحضور الحقيقي: صاحب البث موجود داخل قناة Agora = البث مفتوح فعلاً.
+        // هذا مستقل عن فحص /api/room، فما يختفي البث من الرئيسية طول ما صاحبه داخل القناة
+        // (حتى لو رجع الفحص فاضي بعد دخولك للبث وخروجك منه). ──
+        const markIfHostPresent = () => {
+          if (stopped) return;
+          const users = c.remoteUsers || [];
+          const present = hostUid != null ? users.some(u => u.uid === hostUid) : users.length > 0;
+          if (present) liveSharedMark(hostId, kind);
+        };
+        markIfHostPresent();
+        presenceTimer = window.setInterval(markIfHostPresent, 1000);
         for (const ru of c.remoteUsers) {
           if (ru.hasAudio) await handle(ru, 'audio');
           if (kind === 'camera' && ru.hasVideo) await handle(ru, 'video');
@@ -14684,6 +14695,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
       },
       stop: async () => {
         stopped = true;
+        if (presenceTimer) { window.clearInterval(presenceTimer); presenceTimer = 0; }
         audioTracks.forEach(t => { try { t?.stop(); } catch { /* */ } });
         audioTracks.clear();
         videoTracksRef.current.delete(hostId);
