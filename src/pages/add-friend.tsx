@@ -13808,22 +13808,12 @@ function PublicLiveCommentsPanel({
         pointerEvents: 'none',
       }}
     >
-      <div
-        onPointerDown={() => {
-          setComposerDock('none');
-          setEmojiOpen(false);
-          chatInputFocused.current = false;
-          setKbInset(0);
-          lockPageForKeyboard(false);
-          try { chatInputRef.current?.blur(); } catch { /* */ }
-          setChatLift(0);
-        }}
-        style={{
-        flex: 1,
+      <div style={{
+        flex: chatLift === 0 ? 1 : undefined,
         flexShrink: 0,
-        height: chatLift === 1 && composerDock === 'none' ? 'max(8px, env(safe-area-inset-top))' : undefined,
-        minHeight: chatLift === 0 || composerDock !== 'none' ? 0 : undefined,
-        pointerEvents: (composerDock !== 'none' || chatLift === 1) ? 'auto' : 'none',
+        height: chatLift === 1 ? 'max(8px, env(safe-area-inset-top))' : undefined,
+        minHeight: chatLift === 0 ? 0 : undefined,
+        pointerEvents: 'none',
         background: 'transparent',
       }} />
       <div
