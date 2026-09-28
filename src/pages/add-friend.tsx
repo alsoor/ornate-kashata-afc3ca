@@ -13080,6 +13080,159 @@ function StoryCommentThreadPage({
   );
 }
 
+type AdminBellNotice = {
+  id: string;
+  body: string;
+  at: number;
+  read: boolean;
+};
+
+function adminBellKey(uid: string) {
+  return `stooorna_admin_bell_${uid}`;
+}
+
+function loadAdminBellNotices(uid: string): AdminBellNotice[] {
+  if (!uid) return [];
+  const out: AdminBellNotice[] = [];
+  const seen = new Set<string>();
+  const push = (row: AdminBellNotice) => {
+    if (!row.id || seen.has(row.id)) return;
+    seen.add(row.id);
+    out.push(row);
+  };
+  for (const key of [
+    adminBellKey(uid),
+    `stooorna_mod_notices_${uid}`,
+    `stooorna_story_mod_notices_${uid}`,
+    `stooorna_admin_notices_${uid}`,
+  ]) {
+    try {
+      const raw = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(raw)) continue;
+      for (const x of raw) {
+        push({
+          id: String(x.id || `n_${x.at || Date.now()}`),
+          body: String(x.body || x.text || x.message || x.title || ''),
+          at: Number(x.at || x.createdAt || Date.now()),
+          read: !!x.read,
+        });
+      }
+    } catch { /* */ }
+  }
+  return out.filter(x => x.body).sort((a, b) => b.at - a.at).slice(0, 80);
+}
+
+function saveAdminBellNotices(uid: string, list: AdminBellNotice[]) {
+  try {
+    localStorage.setItem(adminBellKey(uid), JSON.stringify(list.slice(0, 80)));
+    window.dispatchEvent(new CustomEvent('stooorna:admin-bell', { detail: { userId: uid, list } }));
+  } catch { /* */ }
+}
+
+function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?: number }) {
+  const uid = String(userId || '');
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<AdminBellNotice[]>(() => loadAdminBellNotices(uid));
+  const unread = items.some(x => !x.read);
+
+  useEffect(() => {
+    setItems(loadAdminBellNotices(uid));
+    const refresh = () => setItems(loadAdminBellNotices(uid));
+    window.addEventListener('stooorna:admin-bell', refresh);
+    window.addEventListener('storage', refresh);
+    const t = window.setInterval(refresh, 4000);
+    return () => {
+      window.removeEventListener('stooorna:admin-bell', refresh);
+      window.removeEventListener('storage', refresh);
+      window.clearInterval(t);
+    };
+  }, [uid]);
+
+  const openPanel = () => {
+    setOpen(v => !v);
+    if (!uid) return;
+    const next = loadAdminBellNotices(uid).map(x => ({ ...x, read: true }));
+    saveAdminBellNotices(uid, next);
+    setItems(next);
+    try { window.dispatchEvent(new CustomEvent('stooorna:admin-bell-read', { detail: { userId: uid } })); } catch { /* */ }
+  };
+
+  const removeNotice = (id: string) => {
+    if (!uid) return;
+    const next = loadAdminBellNotices(uid).filter(x => x.id !== id);
+    saveAdminBellNotices(uid, next);
+    setItems(next);
+    try {
+      void fetch(`/api/notifications?id=${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
+      void fetch(`/api/messages/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
+    } catch { /* */ }
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={openPanel}
+        aria-label="Admin notices"
+        style={{
+          width: size, height: size, borderRadius: '50%',
+          border: `1.5px solid ${unread ? 'rgba(234,179,8,0.75)' : 'rgba(255,255,255,0.35)'}`,
+          background: unread ? 'rgba(234,179,8,0.16)' : 'rgba(255,255,255,0.08)',
+          color: unread ? '#eab308' : 'rgba(230,230,230,0.95)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', padding: 0,
+        }}
+      >
+        <span style={{ position: 'relative', display: 'flex' }}>
+          <Bell size={15} strokeWidth={2.2} />
+          {unread ? <span style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: '50%', background: '#eab308' }} /> : null}
+        </span>
+      </button>
+      {open && (
+        <>
+          <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'transparent', border: 'none', zIndex: 80 }} />
+          <div style={{
+            position: 'absolute', top: size + 6, right: 0, zIndex: 81,
+            width: 260, maxHeight: 320, overflowY: 'auto',
+            background: 'rgba(8,18,20,0.97)', border: '1px solid rgba(0,188,212,0.28)',
+            borderRadius: 14, boxShadow: '0 12px 28px rgba(0,0,0,0.45)', padding: 8,
+          }}>
+            {items.length === 0 ? (
+              <p style={{ margin: 0, padding: '16px 8px', color: 'rgba(200,220,220,0.55)', fontSize: '0.78rem', textAlign: 'center' }}>لا توجد رسائل</p>
+            ) : items.map(n => (
+              <div key={n.id} style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                padding: '8px 6px', borderBottom: '1px solid rgba(255,255,255,0.06)',
+              }}>
+                <p style={{ margin: 0, flex: 1, color: '#e8f4f4', fontSize: '0.76rem', lineHeight: 1.45, fontWeight: n.read ? 500 : 800 }}>
+                  {n.body}
+                  <span style={{ display: 'block', marginTop: 3, color: 'rgba(180,200,200,0.5)', fontSize: '0.64rem', fontWeight: 600 }}>
+                    {new Date(n.at).toLocaleString()}
+                  </span>
+                </p>
+                {n.read ? (
+                  <button
+                    type="button"
+                    onClick={() => removeNotice(n.id)}
+                    aria-label="حذف"
+                    style={{
+                      width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                      border: 'none', background: '#ef4444', color: '#fff',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <Trash2 size={13} color="#fff" />
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Public LIVE comments on the story/home page (under header grabber) ────────
 // Instagram-style list: avatar + @user + text, like on the far right.
 // Bottom: quick reactions + composer with profile photo, image attach, emoji (replaces GIF).
@@ -19242,7 +19395,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </motion.button>
                   {/* Bell — above Settings, same size: notices the owner sent (deleted story + message) */}
                   <div style={{ position: 'absolute', bottom: 36, left: 0, zIndex: 5 }}>
-                    <StoryModerationBell userId={user?.id} size={30} />
+                    <HeaderAdminBell userId={user?.id} size={30} />
+                    <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
+                      <StoryModerationBell userId={user?.id} size={30} />
+                    </div>
                   </div>
                   </div>
 
