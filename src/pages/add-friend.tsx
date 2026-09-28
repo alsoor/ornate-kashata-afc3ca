@@ -13034,6 +13034,382 @@ function StoryCommentThreadPage({
   );
 }
 
+// ── Public LIVE comments on the story/home page (under header grabber) ────────
+// Instagram-style list: avatar + @user + text, like on the far right.
+// Bottom: quick reactions + composer with profile photo, image attach, emoji (replaces GIF).
+// Visible to everyone (friends and non-friends). Persistence: localStorage + BroadcastChannel
+// so every tab/session on this device shares the same live thread. Existing page features stay.
+const PUBLIC_LIVE_COMMENTS_KEY = 'stooorna_public_live_comments_v1';
+const PUBLIC_LIVE_COMMENTS_EVT = 'stooorna:public-live-comments';
+
+type PublicLiveComment = {
+  id: string;
+  userId: string;
+  name: string | null;
+  username: string | null;
+  avatarUrl: string | null;
+  text: string;
+  imageUrl?: string | null;
+  likes: string[];
+  createdAt: number;
+};
+
+function loadPublicLiveComments(): PublicLiveComment[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PUBLIC_LIVE_COMMENTS_KEY) || '[]');
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((x: any) => x && x.id && x.text)
+      .map((x: any) => ({
+        id: String(x.id),
+        userId: String(x.userId || ''),
+        name: x.name ?? null,
+        username: x.username ?? null,
+        avatarUrl: x.avatarUrl ?? null,
+        text: String(x.text || '').slice(0, 500),
+        imageUrl: x.imageUrl ?? null,
+        likes: Array.isArray(x.likes) ? x.likes.map(String) : [],
+        createdAt: Number(x.createdAt) || Date.now(),
+      }))
+      .slice(-400);
+  } catch {
+    return [];
+  }
+}
+
+function savePublicLiveComments(list: PublicLiveComment[]) {
+  try {
+    localStorage.setItem(PUBLIC_LIVE_COMMENTS_KEY, JSON.stringify(list.slice(-400)));
+    window.dispatchEvent(new CustomEvent(PUBLIC_LIVE_COMMENTS_EVT, { detail: { list } }));
+    try {
+      const bc = (window as any).__stooornaPublicLiveBc as BroadcastChannel | undefined;
+      bc?.postMessage({ list });
+    } catch { /* */ }
+  } catch { /* */ }
+}
+
+const LIVE_EMOJI_BAR = ['❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂'] as const;
+const LIVE_EMOJI_PICKER = ['😀', '😁', '😂', '🤣', '😊', '😍', '🥰', '😘', '😎', '🤩', '😢', '😭', '😡', '🔥', '❤️', '💯', '👍', '👎', '👏', '🙌', '🎉', '✨', '🙏', '👀'];
+
+function PublicLiveCommentsPanel({
+  user,
+}: {
+  user: { id?: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null } | null | undefined;
+}) {
+  const [comments, setComments] = useState<PublicLiveComment[]>(() => loadPublicLiveComments());
+  const [text, setText] = useState('');
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const myId = String(user?.id || '');
+  const myName = user?.name ?? null;
+  const myUsername = (user as any)?.username ?? null;
+  const myAvatar = (user as any)?.avatarUrl || (user as any)?.image || null;
+
+  useEffect(() => {
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('stooorna-public-live-comments');
+      (window as any).__stooornaPublicLiveBc = bc;
+      bc.onmessage = (ev) => {
+        if (Array.isArray(ev?.data?.list)) setComments(ev.data.list);
+      };
+    } catch { /* */ }
+    const onEvt = (e: Event) => {
+      const list = (e as CustomEvent).detail?.list;
+      if (Array.isArray(list)) setComments(list);
+      else setComments(loadPublicLiveComments());
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === PUBLIC_LIVE_COMMENTS_KEY) setComments(loadPublicLiveComments());
+    };
+    window.addEventListener(PUBLIC_LIVE_COMMENTS_EVT, onEvt);
+    window.addEventListener('storage', onStorage);
+    const iv = window.setInterval(() => {
+      const next = loadPublicLiveComments();
+      setComments(prev => (prev.length === next.length && prev[prev.length - 1]?.id === next[next.length - 1]?.id ? prev : next));
+    }, 2000);
+    return () => {
+      window.clearInterval(iv);
+      window.removeEventListener(PUBLIC_LIVE_COMMENTS_EVT, onEvt);
+      window.removeEventListener('storage', onStorage);
+      try { bc?.close(); } catch { /* */ }
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [comments.length]);
+
+  const pushComment = (body: string, imageUrl?: string | null) => {
+    const trimmed = body.trim().slice(0, 500);
+    if (!trimmed && !imageUrl) return;
+    if (!myId) return;
+    const row: PublicLiveComment = {
+      id: `plc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      userId: myId,
+      name: myName,
+      username: myUsername,
+      avatarUrl: myAvatar,
+      text: trimmed || (imageUrl ? '📷' : ''),
+      imageUrl: imageUrl || null,
+      likes: [],
+      createdAt: Date.now(),
+    };
+    const next = [...loadPublicLiveComments(), row];
+    savePublicLiveComments(next);
+    setComments(next);
+    setText('');
+    setPendingImage(null);
+    setEmojiOpen(false);
+  };
+
+  const toggleLike = (id: string) => {
+    if (!myId) return;
+    const next = loadPublicLiveComments().map(c => {
+      if (c.id !== id) return c;
+      const has = c.likes.includes(myId);
+      return { ...c, likes: has ? c.likes.filter(x => x !== myId) : [...c.likes, myId] };
+    });
+    savePublicLiveComments(next);
+    setComments(next);
+  };
+
+  const displayName = (c: PublicLiveComment) =>
+    c.username ? `@${String(c.username).replace(/^@/, '')}` : (c.name || 'مستخدم');
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      minHeight: '58vh',
+      height: 'calc(100dvh - 210px)',
+      background: '#ffffff',
+      color: '#111',
+      borderRadius: 0,
+    }}>
+      <div
+        ref={listRef}
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          padding: '10px 12px 8px',
+        }}
+      >
+        {comments.length === 0 && (
+          <p style={{ margin: '28px 0 0', textAlign: 'center', color: '#9ca3af', fontSize: '0.86rem', fontWeight: 600 }}>
+            كن أول من يكتب تعليقاً مباشراً
+          </p>
+        )}
+        {comments.map(c => {
+          const liked = myId ? c.likes.includes(myId) : false;
+          return (
+            <div key={c.id} style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
+              padding: '10px 2px',
+              direction: 'ltr',
+            }}>
+              <UserAvatar
+                name={c.name || c.username || '?'}
+                avatarUrl={c.avatarUrl}
+                size={36}
+                style={{ flexShrink: 0, border: 'none' }}
+              />
+              <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
+                <p style={{ margin: 0, fontSize: '0.84rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
+                  <span style={{ fontWeight: 800, color: '#111', marginRight: 6 }}>{displayName(c)}</span>
+                  <span style={{ fontWeight: 500, color: '#222' }}>{c.text}</span>
+                </p>
+                {c.imageUrl ? (
+                  <img src={c.imageUrl} alt="" style={{ marginTop: 6, maxWidth: 180, maxHeight: 160, borderRadius: 10, display: 'block', objectFit: 'cover' }} />
+                ) : null}
+                <p style={{ margin: '4px 0 0', fontSize: '0.68rem', color: '#9ca3af', fontWeight: 600 }}>
+                  {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {c.likes.length > 0 ? `  ·  ${c.likes.length}` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Like"
+                onClick={() => toggleLike(c.id)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px 2px 0',
+                  flexShrink: 0,
+                  color: liked ? '#ef4444' : '#9ca3af',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                }}
+              >
+                <Heart size={16} strokeWidth={2.2} fill={liked ? '#ef4444' : 'none'} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{
+        borderTop: '1px solid #ececec',
+        background: '#fff',
+        paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '8px 10px 6px',
+          overflowX: 'auto',
+          gap: 4,
+        }}>
+          {LIVE_EMOJI_BAR.map(em => (
+            <button
+              key={em}
+              type="button"
+              onClick={() => pushComment(em)}
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '1.45rem',
+                lineHeight: 1,
+                cursor: 'pointer',
+                padding: '2px 4px',
+              }}
+            >
+              {em}
+            </button>
+          ))}
+        </div>
+
+        {emojiOpen && (
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 6,
+            padding: '4px 12px 8px',
+          }}>
+            {LIVE_EMOJI_PICKER.map(em => (
+              <button
+                key={em}
+                type="button"
+                onClick={() => { setText(t => (t + em).slice(0, 500)); }}
+                style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', padding: 2 }}
+              >
+                {em}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {pendingImage && (
+          <div style={{ padding: '0 14px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <img src={pendingImage} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8 }} />
+            <button type="button" onClick={() => setPendingImage(null)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem' }}>إزالة</button>
+          </div>
+        )}
+
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '4px 12px 10px',
+        }}>
+          <UserAvatar
+            name={myName || myUsername || '?'}
+            avatarUrl={myAvatar}
+            size={34}
+            style={{ flexShrink: 0, border: 'none' }}
+          />
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            border: '1px solid #d4d4d4',
+            borderRadius: 999,
+            padding: '4px 8px 4px 12px',
+            minHeight: 38,
+            background: '#fff',
+          }}>
+            <input
+              value={text}
+              onChange={e => setText(e.target.value.slice(0, 500))}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  pushComment(text, pendingImage);
+                }
+              }}
+              placeholder={myUsername ? `Comment as ${String(myUsername).replace(/^@/, '')}…` : 'Comment…'}
+              style={{
+                flex: 1,
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                fontSize: '0.86rem',
+                color: '#111',
+                minWidth: 0,
+              }}
+            />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={e => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file) return;
+                const url = URL.createObjectURL(file);
+                setPendingImage(url);
+              }}
+            />
+            <button
+              type="button"
+              aria-label="صورة"
+              onClick={() => fileRef.current?.click()}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
+            >
+              <ImageIcon size={18} strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              aria-label="إيموجي"
+              onClick={() => setEmojiOpen(v => !v)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
+            >
+              <Smile size={18} strokeWidth={2} />
+            </button>
+          </div>
+          {(text.trim() || pendingImage) && (
+            <button
+              type="button"
+              onClick={() => pushComment(text, pendingImage)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#0095f6',
+                fontWeight: 800,
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                padding: '4px 2px',
+              }}
+            >
+              Post
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AddFriendPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -18842,6 +19218,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     />
                   </div>
                 )}
+
+                {/* Public LIVE comments — fills the area under the header grabber (green box).
+                    No chat header. Same Instagram-style composer as the reference screenshot. */}
+                <PublicLiveCommentsPanel user={user as any} />
 
 
               </motion.div>}
