@@ -13329,8 +13329,6 @@ function PublicLiveCommentsPanel({
           background: '#ffffff',
           touchAction: 'pan-y',
           pointerEvents: 'auto',
-          flex: '1 1 auto',
-          minHeight: 0,
         }}
       >
         <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
