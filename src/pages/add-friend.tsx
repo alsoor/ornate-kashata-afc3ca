@@ -13116,7 +13116,12 @@ function mergeLiveChatLists(a: PublicLiveComment[], b: PublicLiveComment[]): Pub
   const map = new Map<string, PublicLiveComment>();
   for (const row of [...a, ...b]) {
     const prev = map.get(row.id);
-    if (!prev || (row.likes?.length || 0) >= (prev.likes?.length || 0)) map.set(row.id, row);
+    if (!prev) {
+      map.set(row.id, row);
+      continue;
+    }
+    const likes = Array.from(new Set([...(prev.likes || []), ...(row.likes || [])]));
+    map.set(row.id, { ...row, likes });
   }
   return [...map.values()].sort((x, y) => x.createdAt - y.createdAt).slice(-400);
 }
@@ -13269,13 +13274,30 @@ function PublicLiveCommentsPanel({
 
   const toggleLike = (id: string) => {
     if (!myId) return;
-    const next = loadPublicLiveComments().map(c => {
+    const next = comments.map(c => {
       if (c.id !== id) return c;
       const has = c.likes.includes(myId);
       return { ...c, likes: has ? c.likes.filter(x => x !== myId) : [...c.likes, myId] };
     });
     savePublicLiveComments(next);
     setComments(next);
+    const row = next.find(c => c.id === id);
+    void fetch('/api/live-chat', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'like',
+        likeId: id,
+        commentId: id,
+        id,
+        userId: myId,
+        room: LIVE_CHAT_ROOM,
+        roomId: LIVE_CHAT_ROOM,
+        likes: row?.likes || [],
+        text: row?.text || '',
+      }),
+    }).catch(() => {});
   };
 
   const displayName = (c: PublicLiveComment) =>

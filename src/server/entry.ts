@@ -415,6 +415,38 @@ app.get("/api/live-chat", (req, res) => {
 app.post("/api/live-chat", (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
   const channel = String(body.channel || body.room || body.roomId || "stooorna-live-chat");
+  const action = String(body.action || "");
+  const likeId = String(body.likeId || body.commentId || "");
+  if (action === "like" || likeId) {
+    const targetId = likeId || String(body.id || "");
+    const liker = String(body.userId || body.likerId || "");
+    const mem = liveChatMem();
+    const list = mem.get(channel) || [];
+    for (const m of list) {
+      const p = (m.payload || m) as any;
+      if (String(p.id || "") !== targetId) continue;
+      const likes = Array.isArray(p.likes) ? p.likes.map(String) : [];
+      const has = liker && likes.includes(liker);
+      p.likes = has ? likes.filter((x: string) => x !== liker) : (liker ? [...likes, liker] : likes);
+      m.payload = p;
+    }
+    mem.set(channel, list);
+    const comments = list.map((m) => {
+      const p = (m.payload || m) as any;
+      return {
+        id: String(p.id || `lc_${m.at}`),
+        userId: String(p.userId || ""),
+        name: p.name ?? null,
+        username: p.username ?? null,
+        avatarUrl: p.avatarUrl ?? null,
+        text: String(p.text || p.body || ""),
+        imageUrl: p.imageUrl ?? null,
+        likes: Array.isArray(p.likes) ? p.likes.map(String) : [],
+        createdAt: Number(p.createdAt || m.at || Date.now()),
+      };
+    }).filter((x) => x.text);
+    return res.json({ ok: true, comments, messages: comments });
+  }
   const text = String(body.text || body.body || "").trim().slice(0, 500);
   if (!text) return res.status(400).json({ error: "empty" });
   const at = Date.now();
