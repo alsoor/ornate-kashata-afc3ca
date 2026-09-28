@@ -5430,6 +5430,28 @@ export default function RootLayout({
   }, [location.pathname, navigate]);
 
   useEffect(() => {
+    const home = location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend') || location.pathname === '/';
+    if (!home) return;
+    const snap = () => {
+      try {
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      } catch { /* */ }
+    };
+    snap();
+    const t = window.setTimeout(snap, 50);
+    const onVis = () => { if (document.visibilityState === 'visible') snap(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pageshow', snap);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pageshow', snap);
+    };
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
     const path = location.pathname || '';
     const isLive = path === '/live' || path.startsWith('/live/') || path === '/live-camera' || path.startsWith('/live-camera');
     if (isLive) return;

@@ -16868,6 +16868,47 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const profilePlusIncomingCallUi = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
   const lastFeedScrollTopRef = useRef(0);
   const feedScrollRafRef = useRef(0);
+
+  const snapHomeLayout = useCallback(() => {
+    setHeaderOpen(true);
+    setStoryPullProgress(0);
+    storyPullProgressRef.current = 0;
+    storyPullActiveRef.current = false;
+    lastFeedScrollTopRef.current = 0;
+    try {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch { /* */ }
+    const el = profileFeedScrollRef.current;
+    if (el) el.scrollTop = 0;
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:story-page-active', {
+        detail: { active: pageTab === 'profile' },
+      }));
+    } catch { /* */ }
+  }, [pageTab]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') snapHomeLayout();
+    };
+    const onShow = () => snapHomeLayout();
+    window.addEventListener('focus', onShow);
+    window.addEventListener('pageshow', onShow);
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('popstate', onShow);
+    return () => {
+      window.removeEventListener('focus', onShow);
+      window.removeEventListener('pageshow', onShow);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('popstate', onShow);
+    };
+  }, [snapHomeLayout]);
+
+  useEffect(() => {
+    if (pageTab === 'profile' && !isFriendManagement) snapHomeLayout();
+  }, [pageTab, isFriendManagement, snapHomeLayout]);
   // Telegram-style pull-down: scale story rings and open first available story
   const [storyPullProgress, setStoryPullProgress] = useState(0);
   const storyPullProgressRef = useRef(0);
