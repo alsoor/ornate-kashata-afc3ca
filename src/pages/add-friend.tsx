@@ -13482,6 +13482,7 @@ function PublicLiveCommentsPanel({
   const [chatLift, setChatLift] = useState(0);
   const [kbInset, setKbInset] = useState(0);
   const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string }>>([]);
+  const [inAppUrl, setInAppUrl] = useState<string | null>(null);
   const chatInputFocused = useRef(false);
   const recRef = useRef<MediaRecorder | null>(null);
   const recChunksRef = useRef<Blob[]>([]);
@@ -13829,7 +13830,30 @@ function PublicLiveCommentsPanel({
               <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
                 <p style={{ margin: 0, fontSize: '0.84rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
                   <span style={{ fontWeight: 800, color: (c.userId === LIVE_CHAT_BOT_ID || c.name === LIVE_CHAT_BOT_NAME) ? LIVE_CHAT_BOT_COLOR : '#111', marginRight: 6 }}>{displayName(c)}</span>
-                  {c.voiceUrl || c.text === '🎤' ? null : <span style={{ fontWeight: 500, color: '#222' }}>{c.text}</span>}
+                  {c.voiceUrl || c.text === '🎤' ? null : (
+                    <span style={{ fontWeight: 500, color: '#222' }}>
+                      {String(c.text || '').split(/(https?:\/\/[^\s<>"')\]]+|www\.[^\s<>"')\]]+)/gi).map((part, i) => {
+                        if (/^(https?:\/\/|www\.)/i.test(part)) {
+                          return (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={e => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const href = /^https?:\/\//i.test(part) ? part : `https://${part}`;
+                                setInAppUrl(href);
+                              }}
+                              style={{ color: '#1d4ed8', fontWeight: 700, background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', wordBreak: 'break-all' }}
+                            >
+                              {part}
+                            </button>
+                          );
+                        }
+                        return <React.Fragment key={i}>{part}</React.Fragment>;
+                      })}
+                    </span>
+                  )}
                 </p>
                 {(c.voiceUrl || c.text === '🎤') ? (
                   <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 14, background: '#f3f4f6', border: '1px solid #e5e7eb', display: 'inline-block', minWidth: 180 }}>
@@ -14170,6 +14194,16 @@ function PublicLiveCommentsPanel({
         </div>
       </div>
     </div>
+    {inAppUrl ? (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 16000, background: '#061014', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '10px 12px max(10px, env(safe-area-inset-top))' }}>
+          <button type="button" onClick={() => setInAppUrl(null)} aria-label="إغلاق" style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid rgba(0,188,212,0.45)', background: 'rgba(0,20,24,0.9)', color: '#00BCD4', cursor: 'pointer' }}>
+            <X size={18} />
+          </button>
+        </div>
+        <iframe title="site" src={inAppUrl} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
+      </div>
+    ) : null}
     {profilePeer && profilePeer.userId ? (
       <FriendStoryProfile
         authorId={profilePeer.userId}
