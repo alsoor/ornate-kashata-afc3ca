@@ -13200,11 +13200,11 @@ function PublicLiveCommentsPanel({
         right: 0,
         bottom: 0,
         top: 0,
-        zIndex: 35,
+        zIndex: 15,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'flex-end',
-        background: '#ffffff',
+        background: 'transparent',
         overflow: 'hidden',
         color: '#111',
         touchAction: 'pan-y',
@@ -13213,7 +13213,7 @@ function PublicLiveCommentsPanel({
     >
       <div style={{
         flexShrink: 0,
-        height: 'max(162px, calc(env(safe-area-inset-top) + 146px))',
+        height: 'max(188px, calc(env(safe-area-inset-top) + 168px))',
         pointerEvents: 'none',
         background: 'transparent',
       }} />
