@@ -280,6 +280,205 @@ function useAnyLiveBroadcast(hostIds: string[]): boolean {
 }
 
 
+// ── مؤشّر "في مكالمة الآن" العام ─────────────────────────────────────────────
+// كل مستخدم داخل مكالمة يعلن حضوره في غرفة خفيفة `stooorna-incall-<userId>` (join + heartbeat)،
+// وأي شخص يقدر يعرف أن في مكالمات شغّالة في التطبيق بدون ما تكون المكالمة معه.
+function inCallRoomId(userId: string): string {
+  const clean = String(userId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+  return `stooorna-incall-${clean || 'x'}`;
+}
+function readLocalInCallActive(userId: string): boolean {
+  try {
+    const raw = localStorage.getItem(`stooorna_incall_active_${userId}`);
+    if (!raw) return false;
+    const data = JSON.parse(raw) as { active?: boolean; at?: number };
+    if (!data?.active) return false;
+    if (data.at && Date.now() - data.at > 15_000) return false;
+    return true;
+  } catch { return false; }
+}
+function usePublishInCall(userId: string | null | undefined, active: boolean) {
+  useEffect(() => {
+    if (!userId || !active) return;
+    const uid = String(userId);
+    const roomId = inCallRoomId(uid);
+    const post = (path: string) => {
+      try {
+        void fetch(path, {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId, userId: uid, name: 'incall' }),
+          keepalive: true,
+        }).catch(() => {});
+      } catch { /* */ }
+    };
+    const mark = (on: boolean) => {
+      try {
+        localStorage.setItem(`stooorna_incall_active_${uid}`, JSON.stringify({ active: on, at: Date.now() }));
+        window.dispatchEvent(new CustomEvent('stooorna:incall-active', { detail: { userId: uid, active: on } }));
+      } catch { /* */ }
+    };
+    post('/api/room/join');
+    mark(true);
+    const beat = window.setInterval(() => { post('/api/room/heartbeat'); mark(true); }, 4000);
+    return () => {
+      window.clearInterval(beat);
+      post('/api/room/leave');
+      mark(false);
+    };
+  }, [userId, active]);
+}
+/** أي مستخدم من القائمة (أو أنا) في مكالمة الآن؟ */
+function useAnyInCall(hostIds: string[]): boolean {
+  const [any, setAny] = useState(false);
+  const key = Array.from(new Set(hostIds.filter(Boolean).map(String))).sort().join('|');
+  useEffect(() => {
+    const ids = key ? key.split('|') : [];
+    let cancelled = false;
+    const apply = (v: boolean) => { if (!cancelled) setAny(prev => (prev === v ? prev : v)); };
+    const localAny = () => ids.some(readLocalInCallActive);
+    if (localAny()) apply(true);
+    let busy = false;
+    const check = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        if (localAny()) { apply(true); return; }
+        const res = await Promise.all(ids.map(async id => {
+          try {
+            const r = await fetch(`/api/room?id=${encodeURIComponent(inCallRoomId(id))}`, { credentials: 'include' });
+            if (!r.ok) return false;
+            const d = await r.json() as { members?: unknown[] };
+            return Array.isArray(d.members) && d.members.length > 0;
+          } catch { return false; }
+        }));
+        apply(res.some(Boolean));
+      } finally { busy = false; }
+    };
+    void check();
+    const interval = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void check();
+    }, 2000);
+    const onEvt = (e: Event) => {
+      const d = (e as CustomEvent).detail as { active?: boolean } | undefined;
+      if (d?.active) apply(true); else void check();
+    };
+    const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('stooorna_incall_active_')) void check(); };
+    window.addEventListener('stooorna:incall-active', onEvt);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('stooorna:incall-active', onEvt);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [key]);
+  return any;
+}
+
+// ── حضور أونلاين سريع (مسار موازٍ لـ usePresenceQuery — لا يستبدله) ──────────────
+// كل مستخدم متصل يعلن حضوره في غرفة خفيفة `stooorna-online-<userId>` (join + heartbeat كل 4ث)،
+// وأي شخص يفحص غرف المضافين كل ثانيتين، فتتحول النقطة للأخضر مباشرة بدل انتظار دورة الحضور.
+function onlineRoomId(userId: string): string {
+  const clean = String(userId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
+  return `stooorna-online-${clean || 'x'}`;
+}
+function usePublishOnline(userId: string | null | undefined) {
+  useEffect(() => {
+    if (!userId) return;
+    const uid = String(userId);
+    const roomId = onlineRoomId(uid);
+    const post = (path: string, keepalive = true) => {
+      try {
+        void fetch(path, {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId, userId: uid, name: 'online' }),
+          keepalive,
+        }).catch(() => {});
+      } catch { /* */ }
+    };
+    const mark = (on: boolean) => {
+      try {
+        localStorage.setItem(`stooorna_online_${uid}`, JSON.stringify({ active: on, at: Date.now() }));
+        window.dispatchEvent(new CustomEvent('stooorna:online-active', { detail: { userId: uid, active: on } }));
+      } catch { /* */ }
+    };
+    post('/api/room/join');
+    mark(true);
+    const beat = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      post('/api/room/heartbeat'); mark(true);
+    }, 4000);
+    const onVis = () => { if (document.visibilityState === 'visible') { post('/api/room/join'); mark(true); } };
+    document.addEventListener('visibilitychange', onVis);
+    const onLeave = () => post('/api/room/leave');
+    window.addEventListener('pagehide', onLeave);
+    return () => {
+      window.clearInterval(beat);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', onLeave);
+      post('/api/room/leave');
+      mark(false);
+    };
+  }, [userId]);
+}
+/** أي واحد من المعرّفات (غير أنا) أونلاين الآن؟ */
+function useAnyOnline(hostIds: string[], selfId?: string | null): boolean {
+  const [any, setAny] = useState(false);
+  const key = Array.from(new Set(hostIds.filter(Boolean).map(String))).filter(id => id !== String(selfId || '')).sort().join('|');
+  useEffect(() => {
+    const ids = key ? key.split('|') : [];
+    let cancelled = false;
+    const apply = (v: boolean) => { if (!cancelled) setAny(prev => (prev === v ? prev : v)); };
+    const localAny = () => ids.some(id => {
+      try {
+        const raw = localStorage.getItem(`stooorna_online_${id}`);
+        if (!raw) return false;
+        const d = JSON.parse(raw) as { active?: boolean; at?: number };
+        return !!d?.active && !!d.at && Date.now() - d.at < 12_000;
+      } catch { return false; }
+    });
+    if (ids.length === 0) { apply(false); return; }
+    if (localAny()) apply(true);
+    let busy = false;
+    const check = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        if (localAny()) { apply(true); return; }
+        const res = await Promise.all(ids.map(async id => {
+          try {
+            const r = await fetch(`/api/room?id=${encodeURIComponent(onlineRoomId(id))}`, { credentials: 'include' });
+            if (!r.ok) return false;
+            const d = await r.json() as { members?: unknown[] };
+            return Array.isArray(d.members) && d.members.length > 0;
+          } catch { return false; }
+        }));
+        apply(res.some(Boolean));
+      } finally { busy = false; }
+    };
+    void check();
+    const interval = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void check();
+    }, 2000);
+    const onEvt = (e: Event) => {
+      const d = (e as CustomEvent).detail as { userId?: string; active?: boolean } | undefined;
+      if (d?.active && d.userId && ids.includes(String(d.userId))) apply(true); else void check();
+    };
+    const onStorage = (e: StorageEvent) => { if (e.key && e.key.startsWith('stooorna_online_')) void check(); };
+    window.addEventListener('stooorna:online-active', onEvt);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('stooorna:online-active', onEvt);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [key]);
+  return any;
+}
+
 // ── Notification sound design — small synthesized tones (water-drop / bubble mixes) ──
 // No audio files needed: each event gets its own tiny Web Audio mix so the tones stay distinct.
 let sfxCtx: AudioContext | null = null;
@@ -10478,6 +10677,7 @@ function FriendVideoCallStage({
   const localTracksRef = useRef<{ mic?: IMicrophoneAudioTrack; cam?: any }>({});
   const [seconds, setSeconds] = useState(0);
   const [connected, setConnected] = useState(false);
+  usePublishInCall(userId, connected);
   const [camOn, setCamOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
   const [speakerOn, setSpeakerOn] = useState(true);
@@ -16115,6 +16315,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     ...storyGroups.map(g => String(g.userId)),
   ], [user?.id, friends, storyGroups]);
   const anyLiveBroadcast = useAnyLiveBroadcast(anyLiveHostIds);
+  // نقطة أيقونة السجل: خضراء إذا أنا أو أي مستخدم ظاهر عندي داخل مكالمة (حتى لو مو معي)
+  usePublishInCall(user?.id ? String(user.id) : null, !!callHistoryDotState.joined);
+  const anyInCall = useAnyInCall(anyLiveHostIds);
   const [storyRequestsBoxOpen, setStoryRequestsBoxOpen] = useState(false);
   const [storyReqRespondingId, setStoryReqRespondingId] = useState<number | null>(null);
   const [storyReqTab, setStoryReqTab] = useState<'search' | 'requests'>('requests');
@@ -16654,6 +16857,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const chatPeerId = friendChatPeer?.friendId ? [friendChatPeer.friendId] : [];
   const allVisibleIds = Array.from(new Set([...friendIds, ...resultIds, ...incomingIds, ...chatPeerId]));
   const presence = usePresenceQuery(allVisibleIds);
+  // نقطة أيقونة المتابعين: خضراء مباشرة إذا أي مضاف عندي أونلاين (مسار سريع بجانب presence)
+  usePublishOnline(user?.id ? String(user.id) : null);
+  const anyFriendOnlineFast = useAnyOnline(friendIds, user?.id ? String(user.id) : null);
   // Heartbeat so friends see this user as online (shared presence store on server)
   useEffect(() => {
     if (!user?.id) return;
@@ -17926,7 +18132,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <span aria-hidden="true" style={{
                       position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
                       width: 7, height: 7, borderRadius: '50%',
-                      background: friends.some(f => !!(presence[f.friendId] as any)?.online) ? '#22c55e' : '#9ca3af',
+                      background: (anyFriendOnlineFast || friends.some(f => !!(presence[f.friendId] as any)?.online)) ? '#22c55e' : '#9ca3af',
                       border: '1.5px solid hsl(var(--background))',
                     }} />
                   </motion.button>
@@ -17948,7 +18154,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <span aria-hidden="true" style={{
                       position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
                       width: 7, height: 7, borderRadius: '50%',
-                      background: callHistoryDotState.joined ? '#22c55e' : '#9ca3af',
+                      background: (callHistoryDotState.joined || anyInCall) ? '#22c55e' : '#9ca3af',
                       border: '1.5px solid hsl(var(--background))',
                     }} />
                   </div>

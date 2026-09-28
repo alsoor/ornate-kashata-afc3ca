@@ -2951,6 +2951,36 @@ function GlobalBottomNavigation() {
     return () => window.clearInterval(interval);
   }, [user?.id, homeCallChannel, homeCallPhase, homeCallMembers]);
 
+  // ── يعلن للتطبيق كله أني داخل مكالمة (تُقرأ نقطة السجل في صفحة الأصدقاء) ──
+  useEffect(() => {
+    if (!user?.id || homeCallPhase !== 'live') return;
+    const uid = String(user.id);
+    const roomId = `stooorna-incall-${uid.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48) || 'x'}`;
+    const post = (path: string) => {
+      try {
+        void fetch(path, {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId, userId: uid, name: 'incall' }),
+          keepalive: true,
+        }).catch(() => {});
+      } catch { /* */ }
+    };
+    const mark = (on: boolean) => {
+      try {
+        localStorage.setItem(`stooorna_incall_active_${uid}`, JSON.stringify({ active: on, at: Date.now() }));
+        window.dispatchEvent(new CustomEvent('stooorna:incall-active', { detail: { userId: uid, active: on } }));
+      } catch { /* */ }
+    };
+    post('/api/room/join');
+    mark(true);
+    const beat = window.setInterval(() => { post('/api/room/heartbeat'); mark(true); }, 4000);
+    return () => {
+      window.clearInterval(beat);
+      post('/api/room/leave');
+      mark(false);
+    };
+  }, [user?.id, homeCallPhase === 'live']);
+
   async function notifyHomeCallAgain(opts?: { onlyUnanswered?: boolean }) {
     if (!user?.id || !homeCallChannel) return;
     const meName = (user as any).name ?? null;
