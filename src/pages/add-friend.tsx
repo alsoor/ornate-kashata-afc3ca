@@ -13336,6 +13336,22 @@ function liveChatImageLooksBlocked(imageUrl?: string | null, text?: string): boo
   return /(porn|xxx|nsfw|nude|naked|sex|hentai|onlyfans)/i.test(u);
 }
 
+function makeLiveChatJoinNotice(username: string | null, name: string | null): PublicLiveComment {
+  const handle = username ? `@${String(username).replace(/^@/, '')}` : (name || 'User');
+  return {
+    id: `bot_join_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    userId: LIVE_CHAT_BOT_ID,
+    name: LIVE_CHAT_BOT_NAME,
+    username: 'Bot',
+    avatarUrl: null,
+    text: `${handle}  Join Live Chat`,
+    imageUrl: null,
+    voiceUrl: null,
+    likes: [],
+    createdAt: Date.now(),
+  };
+}
+
 function makeLiveChatBotNotice(reason: 'text' | 'image' = 'text'): PublicLiveComment {
   return {
     id: `bot_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -13464,10 +13480,22 @@ function PublicLiveCommentsPanel({
   const fileRef = useRef<HTMLInputElement | null>(null);
   const liveSigRef = useRef('');
   const liveBusyRef = useRef(false);
+  const welcomedIdsRef = useRef<Set<string>>(new Set());
   const myId = String(user?.id || '');
   const myName = user?.name ?? null;
   const myUsername = (user as any)?.username ?? null;
   const myAvatar = (user as any)?.avatarUrl || (user as any)?.image || null;
+
+  useEffect(() => {
+    if (!myId) return;
+    if (welcomedIdsRef.current.has(myId)) return;
+    welcomedIdsRef.current.add(myId);
+    const notice = makeLiveChatJoinNotice(myUsername, myName);
+    const next = [...loadPublicLiveComments(), notice];
+    savePublicLiveComments(next);
+    setComments(next);
+    void postLiveChatToServer(notice);
+  }, [myId]);
 
   useEffect(() => {
     let bc: BroadcastChannel | null = null;
