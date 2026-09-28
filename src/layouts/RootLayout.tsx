@@ -10,6 +10,8 @@ import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useSession } from '@/lib/auth/auth-client';
 import { useNotificationCounts } from '@/hooks/useNotificationCounts';
 import { playNotificationSound } from '@/lib/notificationSound';
+import SplashScreen from '@/components/SplashScreen';
+import WelcomeGuide from '@/components/WelcomeGuide';
 import { startPublicBadgeSync } from '@/lib/publicVisibility';
 interface RootLayoutProps {
   children: ReactElement;
@@ -5415,6 +5417,27 @@ export default function RootLayout({
     document.addEventListener('pointerdown', buzz, true);
     return () => document.removeEventListener('pointerdown', buzz, true);
   }, []);
+  const [showWelcome, setShowWelcome] = useState(() => {
+    try {
+      return localStorage.getItem('stooorna_welcome_ok') !== '1';
+    } catch {
+      return true;
+    }
+  });
+  const [showSplash, setShowSplash] = useState(false);
+  const finishSplash = () => {
+    try {
+      sessionStorage.setItem('stooorna_splash_seen', '1');
+    } catch { /* ignore */ }
+    setShowSplash(false);
+  };
+  const finishWelcome = () => {
+    try {
+      localStorage.setItem('stooorna_welcome_ok', '1');
+    } catch { /* ignore */ }
+    setShowWelcome(false);
+    setShowSplash(true);
+  };
 
   // عند فتح التطبيق على / نوجّه مباشرة لصفحة الهوم مع فتح البوستات النصية
   useEffect(() => {
@@ -5540,6 +5563,8 @@ export default function RootLayout({
   }, [isSettingsPage, settingsClosing, navigate]);
 
   return <Website>
+      {showWelcome ? <WelcomeGuide onEnter={finishWelcome} /> : null}
+      {!showWelcome && showSplash ? <SplashScreen onDone={finishSplash} /> : null}
       <Helmet>
         <title>Stooorna — Voice, Whisper &amp; Connect</title>
         <meta name="description" content="Stooorna is a real-time voice app for push-to-talk broadcasts, private whispers, group voice rooms, and instant messaging." />
