@@ -6570,7 +6570,7 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
       try { (window as any).__stooornaFrameStage = 0; } catch { /* */ }
       setKind('site');
       setLoading(false);
-      setFrameSrc(target);
+      setFrameSrc(inAppVisualFrame(target, 0));
       const html = await fetchInAppHtml(target);
       if (cancelled) return;
       if (html) setSrcDoc(html);
@@ -6593,24 +6593,22 @@ function ComposerSiteViewer({ url, onClose }: { url: string; onClose: () => void
       }}
     >
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-        padding: 'max(10px, env(safe-area-inset-top)) 12px 10px',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
-        background: '#111',
+        display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0,
+        padding: 'max(8px, env(safe-area-inset-top)) 10px 8px',
+        background: '#0b0b0b',
       }}>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close site"
           style={{
-            width: 36, height: 36, borderRadius: '50%', border: 'none',
-            background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer',
+            width: 40, height: 40, borderRadius: '50%', border: '1.5px solid rgba(0,188,212,0.55)',
+            background: '#0b0b0b', color: '#00BCD4', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          <X size={18} strokeWidth={2.4} />
+          <X size={18} strokeWidth={2.6} />
         </button>
-        <p style={{ margin: 0, flex: 1, fontSize: '0.78rem', color: 'transparent', userSelect: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{href || hrefIn}</p>
       </div>
       <div style={{ flex: 1, minHeight: 0, background: '#fff', position: 'relative' }}>
         {loading ? (
@@ -13851,7 +13849,7 @@ function PublicLiveCommentsPanel({
                               onClick={e => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                setInAppUrl(part.href);
+                                openInAppSite(part.href, e);
                               }}
                               style={{ color: '#1d4ed8', fontWeight: 800, background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', wordBreak: 'break-all', textDecoration: 'underline' }}
                             >
@@ -14203,16 +14201,6 @@ function PublicLiveCommentsPanel({
         </div>
       </div>
     </div>
-    {inAppUrl ? (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 16000, background: '#061014', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '10px 12px max(10px, env(safe-area-inset-top))' }}>
-          <button type="button" onClick={() => setInAppUrl(null)} aria-label="إغلاق" style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid rgba(0,188,212,0.45)', background: 'rgba(0,20,24,0.9)', color: '#00BCD4', cursor: 'pointer' }}>
-            <X size={18} />
-          </button>
-        </div>
-        <iframe title="site" src={inAppUrl} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
-      </div>
-    ) : null}
     {profilePeer && profilePeer.userId ? (
       <FriendStoryProfile
         authorId={profilePeer.userId}
