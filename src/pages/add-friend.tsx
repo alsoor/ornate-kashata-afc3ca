@@ -14583,7 +14583,8 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
   useEffect(() => {
     if (!showCards) return;
     const measure = () => {
-      const el = document.querySelector('[data-stooorna-header-grabber]') as HTMLElement | null;
+      // تحت صف الأيقونات (Friends/Call/Live/Settings) إن وُجد، وإلا تحت الخط. حافة الحاوية هي اللي تقصّ البطاقات عند التمرير.
+      const el = (document.querySelector('[data-stooorna-header-icons]') || document.querySelector('[data-stooorna-header-grabber]')) as HTMLElement | null;
       if (!el) return;
       const b = Math.round(el.getBoundingClientRect().bottom);
       setAnchorTop(prev => (Math.abs(prev - b) < 1 ? prev : b));
@@ -20657,7 +20658,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             "+" reappears. ── */}
         {/* الأيقونات (Friends / Call / Live / Settings) تظهر دائماً تحت الخط: عند الدخول مباشرة، وعند رفع الهيدر أو إنزاله. */}
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '2px 0 8px', position: 'relative' }}>
+          <div data-stooorna-header-icons="1" style={{ display: 'flex', justifyContent: 'center', padding: '2px 0 8px', position: 'relative' }}>
                 <div style={{
                   position: 'relative',
                   display: 'flex',
