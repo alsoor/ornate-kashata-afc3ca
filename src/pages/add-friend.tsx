@@ -13,6 +13,7 @@ import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
 import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
+import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
@@ -16484,7 +16485,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   useEffect(() => {
     if (!storyRequestsBoxOpen) return;
     const q = storyReqQuery.trim();
-    if (q.length < 2) {
+    // حرف واحد يكفي (A–Z): تظهر كل اليوزرات اللي تبدأ بهذا الحرف
+    if (normalizeUserQuery(q).length < 1) {
       setStoryReqResults([]);
       setStoryReqSearching(false);
       return;
@@ -16494,7 +16496,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       try {
         const r = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`, { credentials: 'include' });
         const data = await r.json();
-        setStoryReqResults(Array.isArray(data) ? data : []);
+        setStoryReqResults(filterUsersForQuery(q, Array.isArray(data) ? data : []));
       } catch {
         setStoryReqResults([]);
       } finally {
@@ -23089,10 +23091,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, overflowY: 'auto' }}>
                     {storyReqSearching && <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Searching…</p>}
-                    {!storyReqSearching && storyReqQuery.trim().length < 2 && (
+                    {!storyReqSearching && normalizeUserQuery(storyReqQuery).length < 1 && (
                       <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Type a username</p>
                     )}
-                    {!storyReqSearching && storyReqQuery.trim().length >= 2 && storyReqResults.length === 0 && (
+                    {!storyReqSearching && normalizeUserQuery(storyReqQuery).length >= 1 && storyReqResults.length === 0 && (
                       <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>No users found</p>
                     )}
                     {storyReqResults.map(u => (
@@ -23411,74 +23413,132 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       {/* Full-size profile photo viewer — opened from the friend-chat header avatar */}
       <AnimatePresence>
         {friendChatCallLogOpen && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 10985, background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', paddingTop: 'max(12px, env(safe-area-inset-top))', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
-              <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: 800, fontSize: 22 }}>Calls</p>
-              <div style={{ position: 'relative' }}>
-                <button type="button" onClick={() => setFriendChatCallLogMenuOpen(o => !o)} aria-label="Call menu" style={{ width: 36, height: 36, border: 'none', background: 'none', color: '#111', cursor: 'pointer' }}>
-                  <MoreVertical size={18} />
-                </button>
-                {friendChatCallLogMenuOpen && (
-                  <div style={{ position: 'absolute', right: 0, top: 40, background: '#fff', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: 180, zIndex: 2 }}>
-                    <button type="button" onClick={() => {
-                      if (user?.id) saveCallLog(user.id, []);
-                      setFriendChatCallLogMenuOpen(false);
-                    }} style={{ width: '100%', textAlign: 'left', padding: '12px 14px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 700, color: '#111' }}>
-                      Clear History
-                    </button>
+          <motion.div
+            key="call-log-bubble"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+            onClick={() => { setFriendChatCallLogOpen(false); setFriendChatCallLogMenuOpen(false); }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10985,
+              background: 'rgba(0,0,0,0.45)',
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
+              boxSizing: 'border-box',
+            }}
+          >
+            <motion.div
+              onClick={e => { e.stopPropagation(); setFriendChatCallLogMenuOpen(false); }}
+              initial={{ opacity: 0, scale: 0.88 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
+              style={{
+                position: 'relative',
+                width: 'min(92vw, 360px)',
+                height: 'min(56vh, 420px)',
+                maxHeight: 'min(56vh, 420px)',
+                display: 'flex',
+                flexDirection: 'column',
+                background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
+                border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                borderRadius: 18,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+                overflow: 'visible',
+                boxSizing: 'border-box',
+              }}
+            >
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                padding: '12px 12px 10px', flexShrink: 0,
+                borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
+                boxSizing: 'border-box', width: '100%', minWidth: 0,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    padding: '6px 10px', borderRadius: 999,
+                    background: 'rgba(0,188,212,0.18)',
+                    border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                    color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800, flexShrink: 0,
+                  }}>
+                    <Clock size={13} strokeWidth={2.2} />
+                    Calls
                   </div>
-                )}
-              </div>
-              <button type="button" onClick={() => { setFriendChatCallLogOpen(false); setFriendChatCallLogMenuOpen(false); }} style={{ width: 36, height: 36, border: 'none', background: 'none', color: '#111', cursor: 'pointer' }}>
-                <X size={18} />
-              </button>
-            </div>
-            <div style={{ padding: '16px 18px 8px' }}>
-              <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#f2f2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
-                <Phone size={26} color="#666" />
-              </div>
-              <p style={{ margin: 0, color: '#111', fontWeight: 800, fontSize: 18 }}>Recent</p>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 20px' }}>
-              {(() => {
-                const uid = user?.id ? String(user.id) : '';
-                const voice = uid ? loadCallLog(uid) : [];
-                let video: ChatCallLogEntry[] = [];
-                try {
-                  const raw = localStorage.getItem('stooorna_video_call_log_' + uid);
-                  const list = raw ? JSON.parse(raw) : [];
-                  video = Array.isArray(list) ? list : [];
-                } catch { video = []; }
-                const rows = [...voice, ...video]
-                  .filter(r => !friendChatPeer || r.peerId === friendChatPeer.friendId)
-                  .sort((a, b) => b.at - a.at);
-                if (!rows.length) {
-                  return <p style={{ color: '#888', textAlign: 'center', padding: 28 }}>No recent calls</p>;
-                }
-                return rows.map(row => (
-                  <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px' }}>
-                    <div style={{
-                      width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
-                      background: row.status === 'answered' ? '#22c55e' : (row.status === 'missed' && row.direction === 'in' ? '#ef4444' : '#9ca3af'),
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                </div>
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <button type="button" onClick={e => { e.stopPropagation(); setFriendChatCallLogMenuOpen(o => !o); }} aria-label="Call menu" style={{
+                    width: 28, height: 28, borderRadius: '50%', border: 'none',
+                    background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <MoreVertical size={14} />
+                  </button>
+                  {friendChatCallLogMenuOpen && (
+                    <div onClick={e => e.stopPropagation()} style={{
+                      position: 'absolute', right: 0, top: 34, minWidth: 160, zIndex: 3,
+                      background: '#0a1f22', border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden',
                     }}>
-                      <Phone size={18} color="#fff" strokeWidth={2.3} />
+                      <button type="button" onClick={() => {
+                        if (user?.id) saveCallLog(user.id, []);
+                        setFriendChatCallLogMenuOpen(false);
+                      }} style={{ width: '100%', textAlign: 'left', padding: '11px 14px', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.78rem', color: '#ef4444' }}>
+                        Clear History
+                      </button>
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ margin: 0, fontWeight: 800, color: row.status === 'missed' ? '#e11d48' : '#111', fontSize: 15 }}>{row.peerName || 'User'}</p>
-                      <p style={{ margin: 0, color: row.status === 'missed' ? '#e11d48' : '#16a34a', fontSize: 12, fontWeight: 600 }}>
-                        {row.status === 'missed' && row.direction === 'in' ? 'Missed call' : row.status === 'missed' && row.direction === 'out' ? 'Call ended' : (row.direction === 'out' ? 'Outgoing' : 'Incoming')}
-                        {row.durationSec ? ` · ${Math.floor(row.durationSec / 60)}:${String(row.durationSec % 60).padStart(2, '0')}` : ''}
-                        {' · '}
-                        {new Date(row.at).toLocaleString()}
-                      </p>
+                  )}
+                </div>
+                <button type="button" onClick={() => { setFriendChatCallLogOpen(false); setFriendChatCallLogMenuOpen(false); }} aria-label="Close" style={{
+                  width: 28, height: 28, borderRadius: '50%', border: 'none',
+                  background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <X size={14} />
+                </button>
+              </div>
+              <div style={{ padding: '10px 16px 2px', flexShrink: 0 }}>
+                <p style={{ margin: 0, color: CLR_TEXT_DIM, fontWeight: 800, fontSize: '0.68rem', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Recent</p>
+              </div>
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 10px 14px', borderRadius: '0 0 18px 18px' }}>
+                {(() => {
+                  const uid = user?.id ? String(user.id) : '';
+                  const voice = uid ? loadCallLog(uid) : [];
+                  let video: ChatCallLogEntry[] = [];
+                  try {
+                    const raw = localStorage.getItem('stooorna_video_call_log_' + uid);
+                    const list = raw ? JSON.parse(raw) : [];
+                    video = Array.isArray(list) ? list : [];
+                  } catch { video = []; }
+                  const rows = [...voice, ...video]
+                    .filter(r => !friendChatPeer || r.peerId === friendChatPeer.friendId)
+                    .sort((a, b) => b.at - a.at);
+                  if (!rows.length) {
+                    return <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '28px 0', margin: 0 }}>No recent calls</p>;
+                  }
+                  return rows.map(row => (
+                    <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', marginBottom: 8, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div style={{
+                        width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+                        background: row.status === 'answered' ? '#22c55e' : (row.status === 'missed' && row.direction === 'in' ? '#ef4444' : '#9ca3af'),
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <Phone size={16} color="#fff" strokeWidth={2.3} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontWeight: 700, color: row.status === 'missed' ? '#f87171' : '#fff', fontSize: '0.82rem' }}>{row.peerName || 'User'}</p>
+                        <p style={{ margin: 0, color: row.status === 'missed' ? '#f87171' : '#22c55e', fontSize: '0.68rem', fontWeight: 600 }}>
+                          {row.status === 'missed' && row.direction === 'in' ? 'Missed call' : row.status === 'missed' && row.direction === 'out' ? 'Call ended' : (row.direction === 'out' ? 'Outgoing' : 'Incoming')}
+                          {row.durationSec ? `  ${Math.floor(row.durationSec / 60)}:${String(row.durationSec % 60).padStart(2, '0')}` : ''}
+                          {'  '}
+                          {new Date(row.at).toLocaleString()}
+                        </p>
+                      </div>
+                      <Phone size={16} color={CLR_PRIMARY} />
                     </div>
-                    <Phone size={18} color="#111" />
-                  </div>
-                ));
-              })()}
-            </div>
-          </div>
+                  ));
+                })()}
+              </div>
+            </motion.div>
+          </motion.div>
         )}
         {friendChatAvatarViewerOpen && friendChatPeer && (
           <motion.div
