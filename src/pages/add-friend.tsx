@@ -20646,13 +20646,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             "+" reappears. ── */}
         {/* الأيقونات (Friends / Call / Live / Settings) تظهر دائماً تحت الخط: عند الدخول مباشرة، وعند رفع الهيدر أو إنزاله. */}
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
-          <div data-stooorna-header-icons="1" style={{ display: 'flex', justifyContent: 'center', padding: '2px 0 8px', position: 'relative' }}>
+          <div data-stooorna-header-icons="1" style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 10px', position: 'relative' }}>
                 <div style={{
                   position: 'relative',
                   display: 'flex',
                   flexDirection: 'row',
                   alignItems: 'flex-start',
                   gap: 14,
+                  padding: '10px 16px 8px',
+                  border: '1px solid rgba(192,192,192,0.85)',
+                  borderRadius: 20,
                   zIndex: 10620,
                   animation: 'stooornaPlusFanIn 0.28s ease-out',
                 }}>
@@ -20684,7 +20687,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Users size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Friend</span>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Friends</span>
 </div>
                   )}
                   {user?.id && (
@@ -26371,8 +26374,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               style={{
                 position: 'relative',
                 width: 'min(92vw, 360px)',
-                height: 'min(56vh, 420px)',
-                maxHeight: 'min(56vh, 420px)',
+                height: 170,
+                maxHeight: 170,
+                marginBottom: 'calc(min(56vh, 420px) - 170px)',
                 display: 'flex',
                 flexDirection: 'column',
                 background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
