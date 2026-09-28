@@ -391,26 +391,56 @@ const liveChatMem = () => {
   if (!g.__stooornaLiveChat) g.__stooornaLiveChat = new Map();
   return g.__stooornaLiveChat;
 };
+const liveChatVoiceMem = () => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveChatVoice?: Map<string, { mime: string; buf: Buffer; duration: number }> };
+  if (!g.__stooornaLiveChatVoice) g.__stooornaLiveChatVoice = new Map();
+  return g.__stooornaLiveChatVoice;
+};
+const liveChatRow = (m: { at: number; payload: any }) => {
+  const p = (m.payload || m) as any;
+  const id = String(p.id || `lc_${m.at}`);
+  const voice = liveChatVoiceMem().get(id);
+  return {
+    id,
+    userId: String(p.userId || p.senderId || ""),
+    name: p.name ?? null,
+    username: p.username ?? null,
+    avatarUrl: p.avatarUrl ?? null,
+    text: String(p.text || p.body || ""),
+    imageUrl: p.imageUrl ?? null,
+    voiceUrl: p.voiceUrl || (voice ? `/api/live-chat/voice?id=${encodeURIComponent(id)}` : null),
+    voiceDuration: p.voiceDuration ?? voice?.duration ?? null,
+    likes: Array.isArray(p.likes) ? p.likes.map(String) : [],
+    createdAt: Number(p.createdAt || m.at || Date.now()),
+  };
+};
 app.get("/api/live-chat", (req, res) => {
   const channel = String(req.query.channel || req.query.room || "stooorna-live-chat");
   const since = Number(req.query.since || 0);
   const raw = (liveChatMem().get(channel) || []).filter((m) => m.at > since).slice(-400);
-  const comments = raw.map((m) => {
-    const p = (m.payload || m) as any;
-    return {
-      id: String(p.id || `lc_${m.at}`),
-      userId: String(p.userId || p.senderId || ""),
-      name: p.name ?? null,
-      username: p.username ?? null,
-      avatarUrl: p.avatarUrl ?? null,
-      text: String(p.text || p.body || ""),
-      imageUrl: p.imageUrl ?? null,
-      likes: Array.isArray(p.likes) ? p.likes.map(String) : [],
-      createdAt: Number(p.createdAt || m.at || Date.now()),
-    };
-  }).filter((x) => x.text);
+  const comments = raw.map((m) => liveChatRow(m)).filter((x) => x.text || x.voiceUrl);
   res.setHeader("Cache-Control", "no-store");
   res.json({ ok: true, comments, messages: comments, list: comments });
+});
+app.post("/api/live-chat/voice", (req, res) => {
+  const body = (req.body || {}) as any;
+  const id = String(body.id || `vc_${Date.now()}`);
+  const audio = String(body.audio || body.voiceUrl || "");
+  if (!audio.startsWith("data:")) return res.status(400).json({ error: "audio" });
+  const comma = audio.indexOf(",");
+  const meta = audio.slice(5, comma);
+  const mime = (meta.split(";")[0] || "audio/webm");
+  const buf = Buffer.from(audio.slice(comma + 1), "base64");
+  liveChatVoiceMem().set(id, { mime, buf, duration: Number(body.duration || body.voiceDuration) || 1 });
+  res.json({ ok: true, id, url: `/api/live-chat/voice?id=${encodeURIComponent(id)}`, voiceUrl: `/api/live-chat/voice?id=${encodeURIComponent(id)}` });
+});
+app.get("/api/live-chat/voice", (req, res) => {
+  const id = String(req.query.id || "");
+  const row = liveChatVoiceMem().get(id);
+  if (!row) return res.status(404).end();
+  res.setHeader("Content-Type", row.mime || "audio/webm");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(row.buf);
 });
 app.post("/api/live-chat", (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
@@ -447,8 +477,9 @@ app.post("/api/live-chat", (req, res) => {
     }).filter((x) => x.text);
     return res.json({ ok: true, comments, messages: comments });
   }
-  const text = String(body.text || body.body || "").trim().slice(0, 500);
-  if (!text) return res.status(400).json({ error: "empty" });
+  const voiceUrlIn = String(body.voiceUrl || body.audio || "");
+  const text = String(body.text || body.body || "").trim().slice(0, 500) || (voiceUrlIn ? "🎤" : "");
+  if (!text && !voiceUrlIn) return res.status(400).json({ error: "empty" });
   const at = Date.now();
   const payload = {
     id: String(body.id || `lc_${at}_${Math.random().toString(36).slice(2, 8)}`),
@@ -459,10 +490,20 @@ app.post("/api/live-chat", (req, res) => {
     text,
     body: text,
     imageUrl: body.imageUrl ?? null,
+    voiceUrl: voiceUrlIn && voiceUrlIn.startsWith("/api/") ? voiceUrlIn : (voiceUrlIn ? voiceUrlIn : null),
+    voiceDuration: body.voiceDuration ?? body.duration ?? null,
     likes: Array.isArray(body.likes) ? body.likes : [],
     createdAt: Number(body.createdAt) || at,
     at,
   };
+  if (typeof voiceUrlIn === "string" && voiceUrlIn.startsWith("data:audio")) {
+    const comma = voiceUrlIn.indexOf(",");
+    const meta = voiceUrlIn.slice(5, comma);
+    const mime = (meta.split(";")[0] || "audio/webm");
+    const buf = Buffer.from(voiceUrlIn.slice(comma + 1), "base64");
+    liveChatVoiceMem().set(String(payload.id), { mime, buf, duration: Number(payload.voiceDuration) || 1 });
+    payload.voiceUrl = `/api/live-chat/voice?id=${encodeURIComponent(String(payload.id))}`;
+  }
   const mem = liveChatMem();
   const list = mem.get(channel) || [];
   list.push({ at, payload });

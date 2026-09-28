@@ -13604,7 +13604,29 @@ function PublicLiveCommentsPanel({
     setPendingImage(null);
     setPendingVoice(null);
     setEmojiOpen(false);
-    void postLiveChatToServer(row);
+    void (async () => {
+      let send = row;
+      if (row.voiceUrl && row.voiceUrl.startsWith('data:')) {
+        try {
+          const r = await fetch('/api/live-chat/voice', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: row.id, audio: row.voiceUrl, duration: row.voiceDuration }),
+          });
+          if (r.ok) {
+            const d = await r.json() as any;
+            const url = String(d.url || d.voiceUrl || '');
+            if (url) {
+              send = { ...row, voiceUrl: url };
+              const list = loadPublicLiveComments().map(x => x.id === row.id ? send : x);
+              savePublicLiveComments(list);
+              setComments(list);
+            }
+          }
+        } catch { /* keep data url */ }
+      }
+      await postLiveChatToServer(send);
+    })();
   };
 
   const toggleLike = (id: string) => {
