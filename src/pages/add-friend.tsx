@@ -14034,27 +14034,16 @@ function PublicLiveCommentsPanel({
               <Smile size={18} strokeWidth={2} />
             </button>
           </div>
-          {(text.trim() || pendingImage) && (
-            <button
-              type="button"
-              onClick={() => pushComment(text, pendingImage)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#0095f6',
-                fontWeight: 800,
-                fontSize: '0.82rem',
-                cursor: 'pointer',
-                padding: '4px 2px',
-              }}
-            >
-              Post
-            </button>
-          )}
           <button
             type="button"
-            onClick={() => setChatLift(v => v === 0 ? 1 : 0)}
-            aria-label="ارتفاع الشات"
+            onClick={() => {
+              if (text.trim() || pendingImage || pendingVoice) {
+                pushComment(text, pendingImage, pendingVoice);
+                return;
+              }
+              setChatLift(v => v === 0 ? 1 : 0);
+            }}
+            aria-label={(text.trim() || pendingImage || pendingVoice) ? 'إرسال' : 'ارتفاع الشات'}
             style={{
               width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
               border: 'none', background: '#ef4444', color: '#fff',
@@ -14062,7 +14051,9 @@ function PublicLiveCommentsPanel({
               cursor: 'pointer', marginLeft: 2,
             }}
           >
-            {chatLift === 1 ? <Minimize2 size={16} strokeWidth={2.4} color="#fff" /> : <Maximize2 size={16} strokeWidth={2.4} color="#fff" />}
+            {(text.trim() || pendingImage || pendingVoice)
+              ? <Send size={16} strokeWidth={2.4} color="#fff" />
+              : (chatLift === 1 ? <Minimize2 size={16} strokeWidth={2.4} color="#fff" /> : <Maximize2 size={16} strokeWidth={2.4} color="#fff" />)}
           </button>
         </div>
       </div>
