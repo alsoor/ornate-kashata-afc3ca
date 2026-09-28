@@ -2,7 +2,7 @@ import { add_friend } from 'virtual:content';
 import { useState, useEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import React from 'react';
-import { useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams, useLocation } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import UserAvatar from '@/components/UserAvatar';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
@@ -11,7 +11,7 @@ import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin, Hand } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -13541,6 +13541,18 @@ function PublicLiveCommentsPanel({
   const myAvatar = (user as any)?.avatarUrl || (user as any)?.image || null;
   const typingTimer = useRef<number | null>(null);
 
+  // يبلّغ بطاقات البث (HomeLiveStack) برفع/إنزال الشات لتصعد معه وتنزل
+  useEffect(() => {
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:chat-lift', { detail: { lifted: chatLift === 1 } }));
+    } catch { /* */ }
+  }, [chatLift]);
+  useEffect(() => () => {
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:chat-lift', { detail: { lifted: false } }));
+    } catch { /* */ }
+  }, []);
+
   useEffect(() => {
     if (!myId) return;
     const tick = async () => {
@@ -14358,8 +14370,421 @@ function PublicLiveCommentsPanel({
   );
 }
 
+// ── HomeLiveStack — بطاقات البث (Voice Live / Video Live) في الرئيسية فوق الشات ─────────
+// • أي مستخدم (صديق / صاحب قصة) يفتح بث صوتي أو مرئي تنزل له بطاقة من الأعلى (تحت الهيدر)،
+//   وكل بث جديد ينزل تحت اللي قبله بنفس الحجم وبإطار فضي.
+// • الصوت: بمجرد ظهور البطاقة نسمع صوت البث من الخارج (اشتراك استماع فقط بدون نشر ولا دخول
+//   قائمة المستمعين)، ويستمر حتى لو الشات انفتح كامل أو انقفل الهيدر.
+// • مثل الشات: لما الشات يطلع لفوق (chatLift) البطاقات تصعد معه وتختفي، ولما ينزل ترجع تنزل.
+// • النقر على البطاقة يفتح البث بأنيميشن توسّع من مكان البطاقة إلى الشاشة كاملة.
+// • زر الخروج الأحمر بالبطاقة يخفيها ويوقف صوتها لين ينتهي هذاك البث.
+type HomeLiveHost = { id: string; name: string | null; username: string | null; avatarUrl: string | null };
+type HomeLiveEntry = HomeLiveHost & { kind: 'voice' | 'camera'; members: GlobeVoiceMember[]; since: number };
+type HomeLiveConn = { kind: 'voice' | 'camera'; stop: () => Promise<void>; resume: () => void };
+
+const HOME_LIVE_SILVER = 'linear-gradient(135deg,#f4f6f9 0%,#9ba3ae 28%,#e6e9ee 52%,#8a929d 78%,#f1f3f6 100%)';
+const HOME_LIVE_CHAT_LIFT_EVT = 'stooorna:chat-lift';
+
+function homeLiveSameEntries(a: HomeLiveEntry[], b: HomeLiveEntry[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]; const y = b[i];
+    if (x.id !== y.id || x.kind !== y.kind || x.name !== y.name || x.username !== y.username || x.avatarUrl !== y.avatarUrl) return false;
+    if (x.members.length !== y.members.length) return false;
+    for (let j = 0; j < x.members.length; j++) if (x.members[j].userId !== y.members[j].userId) return false;
+  }
+  return true;
+}
+
+function HomeLiveStack({ myId, hosts, enabled, showCards }: {
+  myId: string;
+  hosts: HomeLiveHost[];
+  enabled: boolean;
+  showCards: boolean;
+}) {
+  const navigate = useNavigate();
+  const [entries, setEntries] = useState<HomeLiveEntry[]>([]);
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+  const [lifted, setLifted] = useState(false);
+  const [anchorTop, setAnchorTop] = useState(0);
+  const [opening, setOpening] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+  const hostsRef = useRef<HomeLiveHost[]>(hosts);
+  hostsRef.current = hosts;
+  const hostsKey = hosts.map(h => h.id).sort().join('|');
+  const sinceRef = useRef<Map<string, number>>(new Map());
+  const connsRef = useRef<Map<string, HomeLiveConn>>(new Map());
+  const videoElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const videoTracksRef = useRef<Map<string, any>>(new Map());
+  const videoRefCbs = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
+  const cardElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const attachVideo = useCallback((hostId: string) => {
+    const el = videoElsRef.current.get(hostId);
+    const tr = videoTracksRef.current.get(hostId);
+    if (el && tr) { try { tr.play(el, { fit: 'cover' } as any); } catch { /* */ } }
+  }, []);
+
+  const getVideoRef = (id: string) => {
+    let f = videoRefCbs.current.get(id);
+    if (!f) {
+      f = (el: HTMLDivElement | null) => {
+        if (el) { videoElsRef.current.set(id, el); attachVideo(id); }
+        else videoElsRef.current.delete(id);
+      };
+      videoRefCbs.current.set(id, f);
+    }
+    return f;
+  };
+
+  // ── حدث رفع/إنزال الشات ──
+  useEffect(() => {
+    const on = (e: Event) => setLifted(!!(e as CustomEvent).detail?.lifted);
+    window.addEventListener(HOME_LIVE_CHAT_LIFT_EVT, on);
+    return () => window.removeEventListener(HOME_LIVE_CHAT_LIFT_EVT, on);
+  }, []);
+
+  // ── موضع البداية: مباشرة تحت الهيدر (تحت زر إظهار/إخفاء الهيدر) ──
+  useEffect(() => {
+    if (!showCards) return;
+    const measure = () => {
+      const el = document.querySelector('[data-stooorna-header-grabber]') as HTMLElement | null;
+      if (!el) return;
+      const b = Math.round(el.getBoundingClientRect().bottom);
+      setAnchorTop(prev => (Math.abs(prev - b) < 1 ? prev : b));
+    };
+    measure();
+    const id = window.setInterval(measure, 150);
+    window.addEventListener('resize', measure);
+    return () => { window.clearInterval(id); window.removeEventListener('resize', measure); };
+  }, [showCards]);
+
+  // ── اكتشاف البثوث الشغّالة الآن (صوتي/مرئي) ──
+  useEffect(() => {
+    if (!enabled) {
+      sinceRef.current.clear();
+      setEntries(prev => (prev.length ? [] : prev));
+      return;
+    }
+    let cancelled = false;
+    let busy = false;
+    const getMembers = async (channel: string): Promise<GlobeVoiceMember[] | null> => {
+      try {
+        const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
+        if (!r.ok) return null;
+        const d = await r.json() as { members?: GlobeVoiceMember[] };
+        return Array.isArray(d.members) ? d.members : [];
+      } catch { return null; }
+    };
+    const probe = async (h: HomeLiveHost): Promise<{ kind: 'voice' | 'camera'; members: GlobeVoiceMember[] } | null> => {
+      const cam = await getMembers(camChannelForHost(h.id));
+      if (cam && cam.length > 0) return { kind: 'camera', members: cam };
+      const voice = await getMembers(liveChannelForHost(h.id));
+      if (voice && voice.length > 0) return { kind: 'voice', members: voice };
+      if (readLocalCamLiveActive(h.id)) return { kind: 'camera', members: [] };
+      if (readLocalLiveActive(h.id)) return { kind: 'voice', members: [] };
+      return null;
+    };
+    const tick = async () => {
+      if (busy || cancelled) return;
+      busy = true;
+      try {
+        const list = hostsRef.current.filter(h => h.id && h.id !== myId);
+        const res = await Promise.all(list.map(async h => ({ h, r: await probe(h) })));
+        if (cancelled) return;
+        const now = Date.now();
+        const live: HomeLiveEntry[] = [];
+        const seen = new Set<string>();
+        for (const { h, r } of res) {
+          if (!r) continue;
+          seen.add(h.id);
+          if (!sinceRef.current.has(h.id)) sinceRef.current.set(h.id, now);
+          live.push({ ...h, kind: r.kind, members: r.members, since: sinceRef.current.get(h.id)! });
+        }
+        Array.from(sinceRef.current.keys()).forEach(k => { if (!seen.has(k)) sinceRef.current.delete(k); });
+        live.sort((a, b) => a.since - b.since); // الأقدم فوق — الجديد ينزل تحته
+        setEntries(prev => (homeLiveSameEntries(prev, live) ? prev : live));
+        setDismissed(prev => {
+          const next = new Set(Array.from(prev).filter(id => seen.has(id)));
+          return next.size === prev.size ? prev : next;
+        });
+      } finally { busy = false; }
+    };
+    void tick();
+    const iv = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void tick();
+    }, 2500);
+    const onEvt = () => { void tick(); };
+    window.addEventListener('stooorna:live-active', onEvt);
+    window.addEventListener('stooorna:livecam-active', onEvt);
+    window.addEventListener('storage', onEvt);
+    return () => {
+      cancelled = true;
+      window.clearInterval(iv);
+      window.removeEventListener('stooorna:live-active', onEvt);
+      window.removeEventListener('stooorna:livecam-active', onEvt);
+      window.removeEventListener('storage', onEvt);
+    };
+  }, [enabled, hostsKey, myId]);
+
+  // ── الصوت (والفيديو للبث المرئي): اشتراك استماع فقط ──
+  const startPreview = (hostId: string, kind: 'voice' | 'camera'): HomeLiveConn => {
+    let stopped = false;
+    let client: IAgoraRTCClient | null = null;
+    const channel = kind === 'camera' ? camChannelForHost(hostId) : liveChannelForHost(hostId);
+    const audioTracks = new Set<any>();
+    (async () => {
+      try {
+        const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
+        if (stopped) return;
+        try { (AgoraRTC as any).setLogLevel?.(3); } catch { /* */ }
+        const c = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
+        client = c;
+        let hostUid: number | null = null;
+        if (kind === 'camera') {
+          try {
+            const hr = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(hostId)}`, { credentials: 'include' });
+            if (hr.ok) { const hd = await hr.json() as { uid: number }; hostUid = hd.uid; }
+          } catch { /* */ }
+        }
+        const handle = async (ru: IAgoraRTCRemoteUser, mt: 'audio' | 'video') => {
+          try {
+            await c.subscribe(ru, mt);
+            if (stopped) return;
+            if (mt === 'audio') {
+              audioTracks.add(ru.audioTrack);
+              ru.audioTrack?.play();
+            } else if (kind === 'camera') {
+              if (hostUid == null || ru.uid === hostUid || !videoTracksRef.current.has(hostId)) {
+                videoTracksRef.current.set(hostId, ru.videoTrack);
+                attachVideo(hostId);
+              }
+            }
+          } catch { /* المستخدم ممكن ينسحب بين الحدث والاشتراك */ }
+        };
+        c.on('user-published', (ru: IAgoraRTCRemoteUser, mt: string) => {
+          if (mt === 'audio' || mt === 'video') void handle(ru, mt);
+        });
+        c.on('user-unpublished', (ru: IAgoraRTCRemoteUser, mt: string) => {
+          if (mt === 'audio') { try { ru.audioTrack?.stop(); } catch { /* */ } }
+          else if (videoTracksRef.current.get(hostId) === ru.videoTrack) videoTracksRef.current.delete(hostId);
+        });
+        c.on('user-left', (ru: IAgoraRTCRemoteUser) => { try { ru.audioTrack?.stop(); } catch { /* */ } });
+
+        const tr = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(`preview-${myId}`)}`, { credentials: 'include' });
+        if (!tr.ok) return;
+        const td = await tr.json() as { token: string; uid: number };
+        await c.join(AGORA_APP_ID, channel, td.token, td.uid);
+        if (stopped) { try { await c.leave(); } catch { /* */ } return; }
+        for (const ru of c.remoteUsers) {
+          if (ru.hasAudio) await handle(ru, 'audio');
+          if (kind === 'camera' && ru.hasVideo) await handle(ru, 'video');
+        }
+      } catch (err) {
+        console.warn('[HomeLiveStack] preview join skipped', err);
+      }
+    })();
+    return {
+      kind,
+      resume: () => {
+        audioTracks.forEach(t => { try { if (t && !t.isPlaying) t.play(); } catch { /* */ } });
+      },
+      stop: async () => {
+        stopped = true;
+        audioTracks.forEach(t => { try { t?.stop(); } catch { /* */ } });
+        audioTracks.clear();
+        videoTracksRef.current.delete(hostId);
+        try { await client?.leave(); } catch { /* */ }
+      },
+    };
+  };
+
+  const audioKey = entries.filter(e => !dismissed.has(e.id)).map(e => `${e.id}:${e.kind}`).join('|');
+  useEffect(() => {
+    const want = new Map<string, 'voice' | 'camera'>();
+    if (audioKey) {
+      audioKey.split('|').forEach(p => {
+        const i = p.lastIndexOf(':');
+        want.set(p.slice(0, i), p.slice(i + 1) as 'voice' | 'camera');
+      });
+    }
+    const conns = connsRef.current;
+    Array.from(conns.entries()).forEach(([id, c]) => {
+      if (want.get(id) !== c.kind) { conns.delete(id); void c.stop(); }
+    });
+    if (!myId) return;
+    want.forEach((kind, id) => {
+      if (!conns.has(id)) conns.set(id, startPreview(id, kind));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioKey, myId]);
+
+  useEffect(() => {
+    const conns = connsRef.current;
+    return () => { conns.forEach(c => { void c.stop(); }); conns.clear(); };
+  }, []);
+
+  // المتصفح يمنع تشغيل الصوت قبل أول لمسة — نعيد التشغيل مع أول تفاعل
+  useEffect(() => {
+    const resume = () => { connsRef.current.forEach(c => c.resume()); };
+    window.addEventListener('pointerdown', resume, { passive: true });
+    window.addEventListener('touchend', resume, { passive: true });
+    window.addEventListener('keydown', resume);
+    return () => {
+      window.removeEventListener('pointerdown', resume);
+      window.removeEventListener('touchend', resume);
+      window.removeEventListener('keydown', resume);
+    };
+  }, []);
+
+  const enterLive = (e: HomeLiveEntry) => {
+    const qs = new URLSearchParams({ hostId: e.id, hostName: e.name || e.username || 'Host' });
+    if (e.username) qs.set('hostUsername', e.username);
+    if (e.avatarUrl) qs.set('hostAvatar', e.avatarUrl);
+    const path = e.kind === 'camera' ? '/live-camera' : '/live';
+    const el = cardElsRef.current.get(e.id);
+    const rect = el?.getBoundingClientRect();
+    if (!rect) { navigate(`${path}?${qs.toString()}`); return; }
+    setOpening({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
+    window.setTimeout(() => {
+      navigate(`${path}?${qs.toString()}`);
+      window.setTimeout(() => setOpening(null), 450);
+    }, 260);
+  };
+
+  if (typeof document === 'undefined') return null;
+
+  const visible = showCards ? entries.filter(e => !dismissed.has(e.id)) : [];
+  const topPx = anchorTop || 120;
+
+  return createPortal(
+    <>
+      <motion.div
+        animate={{ y: lifted ? -(typeof window !== 'undefined' ? window.innerHeight : 800) : 0, opacity: lifted ? 0 : 1 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 32, mass: 0.9 }}
+        style={{
+          position: 'fixed', left: 0, right: 0, top: topPx, zIndex: 16,
+          display: 'flex', flexDirection: 'column', gap: 10,
+          padding: visible.length ? '8px 12px' : 0,
+          maxHeight: `calc(100dvh - ${topPx}px - 104px)`,
+          overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none',
+          pointerEvents: 'none',
+        }}
+      >
+        <AnimatePresence initial={false}>
+          {visible.map(e => {
+            const listeners = e.members;
+            const name = e.name || e.username || 'Host';
+            return (
+              <motion.div
+                key={e.id}
+                ref={(el: HTMLDivElement | null) => { if (el) cardElsRef.current.set(e.id, el); else cardElsRef.current.delete(e.id); }}
+                layout
+                initial={{ opacity: 0, y: -46, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -30, scale: 0.96 }}
+                transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                onClick={() => enterLive(e)}
+                role="button"
+                aria-label={e.kind === 'camera' ? `Video Live — ${name}` : `Voice Live — ${name}`}
+                style={{
+                  position: 'relative', width: '100%', flexShrink: 0,
+                  aspectRatio: '1080 / 514', minHeight: 150, boxSizing: 'border-box',
+                  borderRadius: 20, border: '2px solid transparent',
+                  background: `radial-gradient(ellipse 80% 90% at 50% 100%, #0e2b30 0%, #0a1a1c 55%, #071011 100%) padding-box, ${HOME_LIVE_SILVER} border-box`,
+                  boxShadow: '0 8px 22px rgba(0,0,0,0.45), 0 0 10px rgba(200,205,215,0.22)',
+                  overflow: 'hidden', cursor: 'pointer', color: '#cfe8e8',
+                  display: 'flex', flexDirection: 'column', padding: '10px 12px 0',
+                  pointerEvents: lifted ? 'none' : 'auto',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative', zIndex: 2 }}>
+                  <div style={{ position: 'relative', width: 46, height: 46, flexShrink: 0 }}>
+                    <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid #facc15', boxShadow: '0 0 10px rgba(250,204,21,0.55)', boxSizing: 'border-box', overflow: 'hidden' }}>
+                      <UserAvatar name={e.name ?? ''} avatarUrl={e.avatarUrl} size={40} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                    </div>
+                    <span style={{ position: 'absolute', right: -1, bottom: -1, width: 14, height: 14, borderRadius: '50%', background: '#ef4444', border: '2px solid #0a1a1c' }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 10, background: 'rgba(239,68,68,0.16)', border: '1px solid rgba(239,68,68,0.5)', color: '#ef4444', fontWeight: 800, fontSize: '0.7rem', flexShrink: 0 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444' }} />LIVE
+                      </span>
+                      <span style={{ fontWeight: 800, fontSize: '1rem', color: '#d3ecec', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, fontSize: '0.72rem', minWidth: 0 }}>
+                      {e.username && <span style={{ color: 'rgba(150,200,200,0.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{String(e.username).replace(/^@/, '')}</span>}
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                      <span style={{ color: '#ef4444', fontWeight: 700, flexShrink: 0 }}>Busy</span>
+                    </div>
+                  </div>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 11px', borderRadius: 999, background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.35)', color: '#cfe8e8', fontWeight: 700, fontSize: '0.9rem', flexShrink: 0 }}>
+                    <Users size={15} strokeWidth={2} />{listeners.length}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Join live"
+                    onClick={ev => { ev.stopPropagation(); enterLive(e); }}
+                    style={{ width: 42, height: 42, borderRadius: '50%', border: '1px solid rgba(250,204,21,0.6)', background: 'radial-gradient(circle at 35% 30%, #ffe27a, #f5c518)', boxShadow: '0 0 14px rgba(250,204,21,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                  >
+                    <Hand size={20} strokeWidth={2.2} color="#1a1200" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Hide live"
+                    onClick={ev => { ev.stopPropagation(); setDismissed(prev => { const n = new Set(prev); n.add(e.id); return n; }); }}
+                    style={{ width: 38, height: 38, borderRadius: '50%', border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                  >
+                    <LogOut size={17} strokeWidth={2.2} color="#ef4444" />
+                  </button>
+                </div>
+                <div style={{ margin: '8px 2px 6px', color: '#e8b923', fontWeight: 700, fontSize: '0.78rem', position: 'relative', zIndex: 2 }}>
+                  Tap a listener to freeze their mic
+                </div>
+                <div style={{ position: 'relative', flex: 1, minHeight: 0, marginLeft: 2, borderLeft: '1px solid rgba(0,188,212,0.18)' }}>
+                  {e.kind === 'camera' && (
+                    <div ref={getVideoRef(e.id)} style={{ position: 'absolute', inset: 0, left: 8, background: '#000', borderRadius: '8px 8px 0 0', overflow: 'hidden' }} />
+                  )}
+                  {e.kind !== 'camera' && (
+                    <div style={{ position: 'absolute', inset: 0, paddingLeft: 10, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, scrollbarWidth: 'none' }}>
+                      {listeners.map(m => (
+                        <div key={m.userId} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <UserAvatar name={m.name ?? ''} avatarUrl={m.avatarUrl} size={20} style={{ width: 20, height: 20, border: 'none', boxShadow: 'none', borderRadius: '50%', flexShrink: 0 }} />
+                          <span style={{ fontSize: '0.72rem', color: 'rgba(200,230,230,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {m.username ? `@${String(m.username).replace(/^@/, '')}` : (m.name || '')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* أنيميشن الدخول: البطاقة تتوسّع من مكانها لتغطي الشاشة ثم تفتح صفحة البث */}
+      <AnimatePresence>
+        {opening && (
+          <motion.div
+            key="home-live-opening"
+            initial={{ top: opening.top, left: opening.left, width: opening.width, height: opening.height, borderRadius: 20, opacity: 1 }}
+            animate={{ top: 0, left: 0, width: typeof window !== 'undefined' ? window.innerWidth : 400, height: typeof window !== 'undefined' ? window.innerHeight : 800, borderRadius: 0, opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+            style={{ position: 'fixed', zIndex: 10300, pointerEvents: 'none', background: PAGE_BG, border: '2px solid #c7ccd4', boxSizing: 'border-box' }}
+          />
+        )}
+      </AnimatePresence>
+    </>,
+    document.body
+  );
+}
+
 export default function AddFriendPage() {
   const navigate = useNavigate();
+  const routeLocation = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isPending } = useSession();
   const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
@@ -17902,6 +18327,21 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     ...storyGroups.map(g => String(g.userId)),
   ], [user?.id, friends, storyGroups]);
   const anyLiveBroadcast = useAnyLiveBroadcast(anyLiveHostIds);
+  // مرشّحو بطاقات البث في الرئيسية: أصحاب القصص + الأصدقاء (بدون أنا)
+  const homeLiveHosts = useMemo<HomeLiveHost[]>(() => {
+    const me = String(user?.id || '');
+    const map = new Map<string, HomeLiveHost>();
+    storyGroups.forEach(g => {
+      const id = String(g.userId || '');
+      if (id && id !== me) map.set(id, { id, name: g.name, username: g.username, avatarUrl: g.avatarUrl });
+    });
+    friends.forEach(f => {
+      const id = String(f.friendId || '');
+      if (id && id !== me && !map.has(id)) map.set(id, { id, name: f.name, username: f.username, avatarUrl: f.avatarUrl ?? null });
+    });
+    return Array.from(map.values());
+  }, [user?.id, friends, storyGroups]);
+  const isLiveRoute = routeLocation.pathname.includes('/live');
   // نقطة أيقونة السجل: خضراء إذا أنا أو أي مستخدم ظاهر عندي داخل مكالمة (حتى لو مو معي)
   usePublishInCall(user?.id ? String(user.id) : null, !!callHistoryDotState.joined);
   const anyInCall = useAnyInCall(anyLiveHostIds);
@@ -19986,7 +20426,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
           {/* ── Header show/hide grabber — sits above the content switcher.
               Tap toggles header open/closed. Swipe-up on posts also collapses it. ── */}
-          <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
+          <div data-stooorna-header-grabber="1" style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={toggleHeaderOpen}
@@ -26708,6 +27148,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       {/* ── Guest guard modal — يظهر عند محاولة الزائر التفاعل ── */}
       {typeof window !== 'undefined' && window.location.pathname.includes('/live') && (
         <LiveVipDock hostId={new URLSearchParams(window.location.search).get('hostId')} currentUserId={user?.id} />
+      )}
+      {!isFriendManagement && (
+        <HomeLiveStack
+          myId={user?.id ? String(user.id) : ''}
+          hosts={homeLiveHosts}
+          enabled={!isLiveRoute && !!user?.id}
+          showCards={pageTab === 'profile' && headerOpen && !isLiveRoute}
+        />
       )}
       {pageTab === 'profile' && !isFriendManagement && (
         <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen} onToggleHeader={toggleHeaderOpen} />
