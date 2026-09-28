@@ -73,7 +73,7 @@ export function StoryModerateDialog({
   }
 
   return createPortal(
-    <div dir="rtl" onClick={e => { e.stopPropagation(); }} style={{ position: 'fixed', inset: 0, zIndex: 10900, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+    <div dir="rtl" onClick={e => { e.stopPropagation(); }} style={{ position: 'fixed', inset: 0, zIndex: 2147483600, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 380, maxHeight: '92vh', overflowY: 'auto', background: '#0b1416', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 18, padding: 16, color: '#fff', fontFamily: 'inherit' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <ShieldAlert size={20} color="#ef4444" />
@@ -175,7 +175,7 @@ export function StoryModerationBell({ userId, style }: { userId?: string | null;
       </button>
 
       {open && createPortal(
-        <div dir="rtl" onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10800, background: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column' }}>
+        <div dir="rtl" onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 2147483000, background: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column' }}>
           <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))', borderBottom: '1px solid rgba(255,255,255,0.12)', color: '#fff' }}>
             <Bell size={18} />
             <p style={{ margin: 0, flex: 1, fontWeight: 800 }}>الإشعارات</p>
@@ -245,7 +245,7 @@ export function StoryBanModal({ userId, onClose }: { userId?: string | null; onC
   const cd = formatBanCountdown(ban.until - Date.now());
   const color = LEVEL_META[ban.level].color;
   return createPortal(
-    <div dir="rtl" onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 11000, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+    <div dir="rtl" onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 2147483600, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 340, textAlign: 'center', background: '#0b1416', border: `1.5px solid ${color}`, borderRadius: 20, padding: 20, color: '#fff', fontFamily: 'inherit' }}>
         <ShieldAlert size={38} color={color} />
         <p style={{ margin: '10px 0 4px', fontWeight: 800, fontSize: '1rem' }}>غير مسموح لك بالنشر</p>

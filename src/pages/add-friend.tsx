@@ -4712,7 +4712,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 }
 
 // ── StoryViewer — fullscreen viewer ───────────────────────────────────────────
-function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = null, onClose, onSeen, onAddMedia, onPublishPhoto, onPublishVideo, onOpenCamera, onDeleteItem, onSendComment, isCompanyPublisher = false, onOpenSettings, onOpenFriends, onOpenChat, canModerate = false }: {
+function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = null, onClose, onSeen, onAddMedia, onPublishPhoto, onPublishVideo, onOpenCamera, onDeleteItem, onSendComment, isCompanyPublisher = false, onOpenSettings, onOpenFriends, onOpenChat, canModerate = false, onRequestModerate, moderationOpen = false }: {
   groups: StoryGroup[];
   startGroupIdx: number;
   myId: string;
@@ -4735,14 +4735,16 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
   onOpenChat?: () => void;
   /** Owner (@Stooorna) or a moderator the owner granted: can delete any user's story with a notice */
   canModerate?: boolean;
+  /** parent renders the moderation dialog (top layer, survives viewer close) */
+  onRequestModerate?: (req: { story: { id: number; mediaUrl: string; mediaType: string; overlayText?: string | null }; target: { userId: string; username?: string | null; name?: string | null } }) => void;
+  moderationOpen?: boolean;
 }) {
   const [gIdx, setGIdx] = useState(startGroupIdx);
   const [iIdx, setIIdx] = useState(0);
   const [progress, setProgress] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [modDialogOpen, setModDialogOpen] = useState(false);
   const modDialogOpenRef = useRef(false);
-  useEffect(() => { modDialogOpenRef.current = modDialogOpen; }, [modDialogOpen]);
+  useEffect(() => { modDialogOpenRef.current = moderationOpen; }, [moderationOpen]);
   const [storyMenuOpen, setStoryMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -5166,7 +5168,7 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
         {!isMyStory && canModerate && (
           <motion.button
             whileTap={{ scale: 0.88 }}
-            onClick={e => { e.stopPropagation(); setModDialogOpen(true); }}
+            onClick={e => { e.stopPropagation(); if (item) onRequestModerate?.({ story: { id: item.id, mediaUrl: item.mediaUrl, mediaType: item.mediaType, overlayText: item.overlayText }, target: { userId: group.userId, username: group.username, name: group.name } }); }}
             style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(239,68,68,0.16)', border: '1px solid rgba(239,68,68,0.55)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
             aria-label="حذف الستوري (إشراف)"
             title="حذف الستوري (إشراف)"
@@ -5294,19 +5296,6 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
             >{deleting ? '…' : 'حذف'}</motion.button>
           </div>
         </motion.div>
-      )}
-
-      {/* ── Owner/moderator: delete any user's story + message + level (gray / orange / red) ── */}
-      {modDialogOpen && !isMyStory && canModerate && (
-        <StoryModerateDialog
-          story={{ id: item.id, mediaUrl: item.mediaUrl, mediaType: item.mediaType, overlayText: item.overlayText }}
-          target={{ userId: group.userId, username: group.username, name: group.name }}
-          onClose={() => setModDialogOpen(false)}
-          onConfirmDelete={() => {
-            void moderatorDeleteStory(item.id, item.mediaUrl);
-            void handleDelete();
-          }}
-        />
       )}
 
       {/* ── الشريط السفلي لصفحة القصة — يظهر دائمًا (فيه زر الزائد)، وصندوق التعليق يظهر فقط لغير صاحب القصة ── */}
@@ -13180,6 +13169,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     window.addEventListener('stooorna:story-ban-blocked', onBlocked);
     return () => { off(); window.removeEventListener('stooorna:story-ban-blocked', onBlocked); };
   }, []);
+  const [modReq, setModReq] = useState<{ story: { id: number; mediaUrl: string; mediaType: string; overlayText?: string | null }; target: { userId: string; username?: string | null; name?: string | null } } | null>(null);
   const storyCanModerate = (void modTick, !!user && (isStoryOwner(user as { email?: string | null; username?: string | null; name?: string | null }) || isModerator(user.id)));
   // اختيار صورة/فيديو للستوري: مربّعان فقط بدون خيار "ملفات" ثالث —
   // نحدّد نوع الملف المسموح على الـ input قبل فتحه بدل قبول النوعين معاً.
@@ -23810,6 +23800,25 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
       {/* قائمة Photo/Video للقصة أُلغيت — الفتح مباشرة من المعرض أو الكاميرا */}
 
+      {modReq && storyCanModerate && (
+        <StoryModerateDialog
+          story={modReq.story}
+          target={modReq.target}
+          onClose={() => setModReq(null)}
+          onConfirmDelete={() => {
+            const id = modReq.story.id;
+            const mediaUrl = modReq.story.mediaUrl;
+            // remove locally first (same as the normal delete flow) so it never reappears on auto-refresh
+            deletedStoryIdsRef.current.add(id);
+            saveDeletedStoryIds(deletedStoryIdsRef.current);
+            setStoryGroups(prev => prev.map(g => ({ ...g, items: g.items.filter(it => it.id !== id) })).filter(g => g.items.length > 0));
+            void deleteStoryInstant(id);
+            void moderatorDeleteStory(id, mediaUrl);
+            void fetch(`/api/status/${id}`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
+            void fetch(`/api/status/${id}?force=1`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
+          }}
+        />
+      )}
       {storyBanOpen && <StoryBanModal userId={user?.id} onClose={() => setStoryBanOpen(false)} />}
 
       {/* ── Story Viewer ── */}
@@ -23850,6 +23859,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               void loadFriends();
             }}
             canModerate={storyCanModerate}
+            onRequestModerate={setModReq}
+            moderationOpen={!!modReq}
             onDeleteItem={(storyId) => {
               // نسجّل المعرّف كمحذوف محلياً أولاً حتى لو رجع الريفرش التلقائي
               // (كل ثانيتين) بنسخة كان قد طلبها قبل اكتمال الحذف على السيرفر،
