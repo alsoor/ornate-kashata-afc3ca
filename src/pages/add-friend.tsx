@@ -13974,9 +13974,16 @@ function PublicLiveCommentsPanel({
                   rec.onstop = () => {
                     stream.getTracks().forEach(tr => tr.stop());
                     const blob = new Blob(recChunksRef.current, { type: 'audio/webm' });
-                    const url = URL.createObjectURL(blob);
                     const duration = Math.max(1, Math.round((Date.now() - recStartedAt.current) / 1000));
-                    setPendingVoice({ url, duration });
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      const dataUrl = typeof reader.result === 'string' && reader.result.startsWith('data:')
+                        ? reader.result
+                        : URL.createObjectURL(blob);
+                      setPendingVoice({ url: dataUrl, duration });
+                    };
+                    reader.onerror = () => setPendingVoice({ url: URL.createObjectURL(blob), duration });
+                    reader.readAsDataURL(blob);
                   };
                   recRef.current = rec;
                   rec.start();
