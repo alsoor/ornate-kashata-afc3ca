@@ -14382,6 +14382,10 @@ type HomeLiveHost = { id: string; name: string | null; username: string | null; 
 type HomeLiveEntry = HomeLiveHost & { kind: 'voice' | 'camera'; members: GlobeVoiceMember[]; since: number };
 type HomeLiveConn = { kind: 'voice' | 'camera'; stop: () => Promise<void>; resume: () => void; setMuted: (m: boolean) => void };
 
+// كاش على مستوى الموديول: يبقى حتى لو الصفحة انفكّت/انركّبت عند الدخول للبث والرجوع منه
+const homeLiveCache: { uid: string; entries: HomeLiveEntry[]; since: Map<string, number> } = { uid: '', entries: [], since: new Map() };
+// البث ما يختفي من الرئيسية إلا إذا تأكدنا أنه منتهي فعلاً لمدة متواصلة (تجاوز أي انقطاع لحظي بالفحص/الشبكة)
+const HOME_LIVE_GRACE_MS = 25_000;
 const HOME_LIVE_SILVER = 'linear-gradient(135deg,#f4f6f9 0%,#9ba3ae 28%,#e6e9ee 52%,#8a929d 78%,#f1f3f6 100%)';
 const HOME_LIVE_CHAT_LIFT_EVT = 'stooorna:chat-lift';
 
@@ -14403,7 +14407,11 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
   showCards: boolean;
 }) {
   const navigate = useNavigate();
-  const [entries, setEntries] = useState<HomeLiveEntry[]>([]);
+  const [entries, setEntries] = useState<HomeLiveEntry[]>(() => (homeLiveCache.uid === myId ? homeLiveCache.entries : []));
+  const entriesRef = useRef<HomeLiveEntry[]>(entries);
+  entriesRef.current = entries;
+  const missSinceRef = useRef<Map<string, number>>(new Map());
+  const wasEnabledRef = useRef(false);
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
   const [mutedIds, setMutedIds] = useState<Set<string>>(() => new Set());
   const mutedRef = useRef<Set<string>>(mutedIds);
@@ -14414,7 +14422,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
   const hostsRef = useRef<HomeLiveHost[]>(hosts);
   hostsRef.current = hosts;
   const hostsKey = hosts.map(h => h.id).sort().join('|');
-  const sinceRef = useRef<Map<string, number>>(new Map());
+  const sinceRef = useRef<Map<string, number>>(homeLiveCache.uid === myId ? homeLiveCache.since : new Map());
   const connsRef = useRef<Map<string, HomeLiveConn>>(new Map());
   const videoElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const videoTracksRef = useRef<Map<string, any>>(new Map());
@@ -14463,11 +14471,13 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
 
   // ── اكتشاف البثوث الشغّالة الآن (صوتي/مرئي) ──
   useEffect(() => {
-    if (!enabled) {
-      sinceRef.current.clear();
-      setEntries(prev => (prev.length ? [] : prev));
-      return;
-    }
+    // أثناء وجودي داخل صفحة البث: نوقف الفحص فقط، ولا نمسح البطاقات (كانت تختفي عند الرجوع)
+    if (!enabled || !myId) { wasEnabledRef.current = false; return; }
+    homeLiveCache.uid = myId;
+    homeLiveCache.since = sinceRef.current;
+    // بعد الرجوع من البث نبدأ عدّاد الغياب من الصفر
+    if (!wasEnabledRef.current) missSinceRef.current.clear();
+    wasEnabledRef.current = true;
     let cancelled = false;
     let busy = false;
     const getMembers = async (channel: string): Promise<GlobeVoiceMember[] | null> => {
@@ -14478,33 +14488,56 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
         return Array.isArray(d.members) ? d.members : [];
       } catch { return null; }
     };
-    const probe = async (h: HomeLiveHost): Promise<{ kind: 'voice' | 'camera'; members: GlobeVoiceMember[] } | null> => {
+    // null = البث منتهي (تأكدنا)، 'unknown' = فشل الفحص (نحتفظ بالحالة السابقة)، وإلا بث شغّال
+    const probe = async (h: HomeLiveHost): Promise<{ kind: 'voice' | 'camera'; members: GlobeVoiceMember[] } | null | 'unknown'> => {
       const cam = await getMembers(camChannelForHost(h.id));
       if (cam && cam.length > 0) return { kind: 'camera', members: cam };
       const voice = await getMembers(liveChannelForHost(h.id));
       if (voice && voice.length > 0) return { kind: 'voice', members: voice };
       if (readLocalCamLiveActive(h.id)) return { kind: 'camera', members: [] };
       if (readLocalLiveActive(h.id)) return { kind: 'voice', members: [] };
+      if (cam === null || voice === null) return 'unknown';
       return null;
     };
     const tick = async () => {
       if (busy || cancelled) return;
       busy = true;
       try {
-        const list = hostsRef.current.filter(h => h.id && h.id !== myId);
+        // نفحص المرشحين الحاليين + أي بث معروض الآن (حتى لو القائمة تفرّغت لحظياً وقت الرجوع)
+        const candMap = new Map<string, HomeLiveHost>();
+        hostsRef.current.forEach(h => { if (h.id && h.id !== myId) candMap.set(h.id, h); });
+        entriesRef.current.forEach(e => { if (!candMap.has(e.id)) candMap.set(e.id, { id: e.id, name: e.name, username: e.username, avatarUrl: e.avatarUrl }); });
+        const list = Array.from(candMap.values());
         const res = await Promise.all(list.map(async h => ({ h, r: await probe(h) })));
         if (cancelled) return;
         const now = Date.now();
         const live: HomeLiveEntry[] = [];
         const seen = new Set<string>();
+        const prevById = new Map(entriesRef.current.map(e => [e.id, e] as const));
         for (const { h, r } of res) {
-          if (!r) continue;
+          const prevE = prevById.get(h.id);
+          let hold: HomeLiveEntry | null = null;
+          if (r && r !== 'unknown') {
+            missSinceRef.current.delete(h.id);
+            if (!sinceRef.current.has(h.id)) sinceRef.current.set(h.id, now);
+            hold = { ...h, kind: r.kind, members: r.members, since: sinceRef.current.get(h.id)! };
+          } else if (prevE) {
+            // غياب/فشل فحص: نُبقي البطاقة ونعدّ مدة الغياب المتواصل، وما تنشال إلا بعد المهلة
+            if (r === 'unknown') {
+              hold = prevE;
+            } else {
+              const missAt = missSinceRef.current.get(h.id) ?? now;
+              missSinceRef.current.set(h.id, missAt);
+              if (now - missAt < HOME_LIVE_GRACE_MS) hold = prevE;
+            }
+          }
+          if (!hold) { missSinceRef.current.delete(h.id); continue; }
           seen.add(h.id);
-          if (!sinceRef.current.has(h.id)) sinceRef.current.set(h.id, now);
-          live.push({ ...h, kind: r.kind, members: r.members, since: sinceRef.current.get(h.id)! });
+          live.push(hold);
         }
         Array.from(sinceRef.current.keys()).forEach(k => { if (!seen.has(k)) sinceRef.current.delete(k); });
         live.sort((a, b) => a.since - b.since); // الأقدم فوق — الجديد ينزل تحته
+        homeLiveCache.entries = live;
         setEntries(prev => (homeLiveSameEntries(prev, live) ? prev : live));
         setDismissed(prev => {
           const next = new Set(Array.from(prev).filter(id => seen.has(id)));
@@ -14614,7 +14647,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
     };
   };
 
-  const audioKey = entries.filter(e => !dismissed.has(e.id)).map(e => `${e.id}:${e.kind}`).join('|');
+  const audioKey = !enabled ? '' : entries.filter(e => !dismissed.has(e.id)).map(e => `${e.id}:${e.kind}`).join('|');
   useEffect(() => {
     const want = new Map<string, 'voice' | 'camera'>();
     if (audioKey) {
