@@ -131,7 +131,7 @@ function camChannelForHost(hostId: string): string {
 
 // ── مخزن مشترك لحالة البث: دائرة الهيدر + مستطيل الرئيسية يقرؤون منه نفس القرار،
 // فيختفون مع بعض بنفس اللحظة بالضبط عند انتهاء البث (بعد مهلة تأكيد متواصلة). ──
-const LIVE_SHARED_GRACE_MS = 25_000;
+const LIVE_SHARED_GRACE_MS = 3_000;
 const liveShared = {
   seen: new Map<string, { kind: 'voice' | 'camera'; at: number }>(),
   held: new Map<string, 'voice' | 'camera'>(),
@@ -231,7 +231,7 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
     };
 
     checkRoom();
-    const interval = window.setInterval(checkRoom, 2500);
+    const interval = window.setInterval(checkRoom, sticky ? 1000 : 2500);
 
     const onEvt = (e: Event) => {
       const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean; kind?: string } | undefined;
@@ -14598,7 +14598,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
     const iv = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       void tick();
-    }, 2500);
+    }, 1000);
     const onEvt = () => { void tick(); };
     window.addEventListener('stooorna:live-active', onEvt);
     window.addEventListener('stooorna:livecam-active', onEvt);
