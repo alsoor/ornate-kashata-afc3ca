@@ -1591,6 +1591,11 @@ function GlobalBottomNavigation() {
   const [homeCallEmojiBurst, setHomeCallEmojiBurst] = useState<string | null>(null);
   const [homeCallEmojiFrom, setHomeCallEmojiFrom] = useState<string | null>(null);
   const [homeCallMembersOpen, setHomeCallMembersOpen] = useState(false);
+  // ── موضع هيد الاتصال: يبدأ بالأعلى، ويُسحب بالإصبع للأعلى/الأسفل فقط (بدون يمين/يسار) ──
+  const [homeCallDock, setHomeCallDock] = useState<'top' | 'bottom'>('top');
+  const homeCallBarRef = useRef<HTMLDivElement | null>(null);
+  const homeCallDragRef = useRef<{ id: number; startY: number; base: DOMRect; moved: boolean } | null>(null);
+  const homeCallFlipFromRef = useRef<number | null>(null);
   const [homeCallAddOpen, setHomeCallAddOpen] = useState(false);
   const [homeCallAddSelected, setHomeCallAddSelected] = useState<Record<string, boolean>>({});
   const [homeCallMinimized, setHomeCallMinimized] = useState(false);
@@ -4196,6 +4201,26 @@ function GlobalBottomNavigation() {
       </>
   ) : null;
 
+  // كل مكالمة جديدة تبدأ رسمياً بالأعلى
+  useEffect(() => {
+    if (!(homeCallPhase === 'animating' || homeCallPhase === 'connecting' || homeCallPhase === 'live' || (homeIncoming && homeCallPhase === 'idle'))) setHomeCallDock('top');
+  }, [homeCallPhase, homeIncoming]);
+
+  // بعد تبديل أعلى/أسفل: حركة انسيابية من المكان الذي تُرك فيه الإصبع إلى المكان النهائي
+  useEffect(() => {
+    const el = homeCallBarRef.current;
+    const from = homeCallFlipFromRef.current;
+    homeCallFlipFromRef.current = null;
+    if (!el || from === null) return;
+    const to = el.getBoundingClientRect().top;
+    const delta = from - to;
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${delta}px)`;
+    void el.offsetHeight;
+    el.style.transition = 'transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)';
+    el.style.transform = 'translateY(0px)';
+  }, [homeCallDock]);
+
   if (isPrivacyPage || isVoiceRoom || postComposerOpen || shareSheetOpen || storyCameraOpen || supportChatOpen || companyAuthOpen) return null;
 
   const itemStyle = (active: boolean): React.CSSProperties => ({
@@ -4277,6 +4302,54 @@ function GlobalBottomNavigation() {
   const homeCallSheetShown = homeCallPhase === 'animating' || homeCallPhase === 'connecting' || homeCallPhase === 'live';
   // Top sticky call bar: incoming (idle+invite) OR active outgoing/live
   const showTopCallBar = homeCallSheetShown || !!(homeIncoming && homeCallPhase === 'idle');
+
+  function homeCallDragStart(e: React.PointerEvent<HTMLElement>) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const el = homeCallBarRef.current;
+    if (!el) return;
+    homeCallDragRef.current = { id: e.pointerId, startY: e.clientY, base: el.getBoundingClientRect(), moved: false };
+  }
+  function homeCallDragMove(e: React.PointerEvent<HTMLElement>) {
+    const d = homeCallDragRef.current;
+    const el = homeCallBarRef.current;
+    if (!d || !el || d.id !== e.pointerId) return;
+    const dy = e.clientY - d.startY;
+    if (!d.moved) {
+      if (Math.abs(dy) < 8) return; // نقرة عادية على الأزرار لا تتأثر
+      d.moved = true;
+      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* */ }
+      el.style.transition = 'none';
+    }
+    // عمودي فقط، ويبقى الهيد داخل الشاشة
+    const minDy = -d.base.top;
+    const maxDy = window.innerHeight - d.base.bottom;
+    el.style.transform = `translateY(${Math.min(maxDy, Math.max(minDy, dy))}px)`;
+  }
+  function homeCallDragEnd(e: React.PointerEvent<HTMLElement>) {
+    const d = homeCallDragRef.current;
+    const el = homeCallBarRef.current;
+    if (!d || d.id !== e.pointerId) return;
+    homeCallDragRef.current = null;
+    if (!d.moved || !el) return;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* */ }
+    const r = el.getBoundingClientRect();
+    const next: 'top' | 'bottom' = (r.top + r.height / 2) > window.innerHeight / 2 ? 'bottom' : 'top';
+    if (next === homeCallDock) {
+      el.style.transition = 'transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)';
+      el.style.transform = 'translateY(0px)';
+    } else {
+      homeCallFlipFromRef.current = r.top;
+      el.style.transition = 'none';
+      el.style.transform = 'translateY(0px)';
+      setHomeCallDock(next);
+    }
+  }
+  const homeCallDragProps = {
+    onPointerDown: homeCallDragStart,
+    onPointerMove: homeCallDragMove,
+    onPointerUp: homeCallDragEnd,
+    onPointerCancel: homeCallDragEnd,
+  };
   const isIncomingRinging = !!(homeIncoming && homeCallPhase === 'idle');
 
 
@@ -4352,12 +4425,14 @@ function GlobalBottomNavigation() {
       {/* WhatsApp-style bottom call pill — active call only (dark app chrome + moving border shine) */}
       {showTopCallBar && (
         <div
+          ref={homeCallBarRef}
           style={{
             pointerEvents: 'auto',
             position: 'fixed',
             left: 12,
             right: 12,
-            top: 'max(10px, env(safe-area-inset-top, 0px))',
+            top: homeCallDock === 'top' ? 'max(10px, env(safe-area-inset-top, 0px))' : 'auto',
+            bottom: homeCallDock === 'bottom' ? 'max(10px, env(safe-area-inset-bottom, 0px))' : 'auto',
             zIndex: 10960,
             display: 'flex',
             flexDirection: 'column',
@@ -4371,9 +4446,11 @@ function GlobalBottomNavigation() {
               100% { transform: rotate(360deg); }
             }
           `}</style>
-          {/* Outer ring: rotating cyan shine around the pill */}
+          {/* Outer ring: rotating cyan shine around the pill — اسحبه بالإصبع للأعلى/الأسفل */}
           <div
+            {...homeCallDragProps}
             style={{
+              touchAction: 'none',
               width: '100%',
               maxWidth: 420,
               borderRadius: 999,
@@ -4605,7 +4682,8 @@ function GlobalBottomNavigation() {
             )}
             </div>
           </div>
-          <p style={{
+          <p {...homeCallDragProps} style={{
+            touchAction: 'none',
             margin: 0, color: 'rgba(180,220,220,0.85)', fontSize: 12, fontWeight: 600,
             background: 'rgba(6,16,20,0.92)', border: '1px solid rgba(0,188,212,0.2)', borderRadius: 12, padding: '4px 12px',
           }}>

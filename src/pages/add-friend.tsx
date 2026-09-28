@@ -4459,8 +4459,18 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
 
   // ── يجلب التعليقات العامة على هذه القصة — نفس نقطة /api/status/:id/comments المستخدمة
   // أصلاً في صندوق تعليقات صاحب القصة، لكن هنا يقرأها أي شخص يشاهد القصة (مو بس صاحبها) ──
-  const fetchPublicStoryComments = useCallback(async (storyId: number) => {
-    setPublicCommentsLoading(true);
+  // silent=true → تحديث مباشر بالخلفية (بدون مؤشر تحميل ولا إعادة رسم لو ما تغيّر شي)
+  const publicCommentsSigRef = useRef('');
+  const publicCommentsBusyRef = useRef(false);
+  const publicLikeBusyRef = useRef(0);
+  const currentStoryIdRef = useRef<number | null>(null);
+  const fetchPublicStoryComments = useCallback(async (storyId: number, silent = false) => {
+    if (silent) {
+      if (publicCommentsBusyRef.current || publicLikeBusyRef.current > 0) return;
+    } else {
+      setPublicCommentsLoading(true);
+    }
+    publicCommentsBusyRef.current = true;
     try {
       const urls = [
         `/api/status/${storyId}/comments`,
@@ -4489,17 +4499,42 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
           }
         }
       } catch { /* keep list as returned */ }
+      // القصة تغيّرت أثناء الجلب → تجاهل النتيجة القديمة
+      if (currentStoryIdRef.current !== null && currentStoryIdRef.current !== storyId) return;
+      // لو ما تغيّر شي لا نلمس الحالة نهائياً → النافذة والقصة ما تتأثر بالتحديث
+      const sig = JSON.stringify(list);
+      if (silent && sig === publicCommentsSigRef.current) return;
+      publicCommentsSigRef.current = sig;
       setPublicComments(list);
       setPublicCommentsCount(list.length);
     } catch { /* silent — العداد يبقى على آخر قيمة معروفة */ }
-    finally { setPublicCommentsLoading(false); }
+    finally {
+      publicCommentsBusyRef.current = false;
+      if (!silent) setPublicCommentsLoading(false);
+    }
   }, []);
 
   // يجلب العدّاد بصمت بمجرد ظهور القصة، حتى يظهر رقم التعليقات خارج المستطيل قبل الدخول
   useEffect(() => {
     if (!item) return;
+    currentStoryIdRef.current = item.id;
+    publicCommentsSigRef.current = '';
     void fetchPublicStoryComments(item.id);
   }, [item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── تحديث مباشر: كل ثانية والنافذة مفتوحة (كل 5 ثواني والنافذة مغلقة لتحديث العداد) ──
+  // صامت تماماً: بدون loading، ولا يعيد رسم شي إذا ما وصل تعليق/تغيير جديد،
+  // فلا يتأثر شيت التعليقات ولا القصة المعروضة ولا حقل الكتابة.
+  useEffect(() => {
+    if (!item?.id) return;
+    const storyId = item.id;
+    const every = commentsSheetOpen ? 1000 : 5000;
+    const tickId = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void fetchPublicStoryComments(storyId, true);
+    }, every);
+    return () => window.clearInterval(tickId);
+  }, [item?.id, commentsSheetOpen, fetchPublicStoryComments]);
 
   // يوقف عدّاد تقدّم القصة التلقائي أثناء فتح شيت التعليقات، حتى لا تنتقل القصة والمستخدم يقرأ/يعلّق
   const commentsSheetOpenRef = useRef(false);
@@ -4507,6 +4542,7 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
 
   // إعجاب/إلغاء إعجاب بتعليق داخل شيت التعليقات العامة — نفس نقطة الإعجاب المستخدمة في صندوق صاحب القصة
   async function togglePublicCommentLike(comment: StoryComment) {
+    publicLikeBusyRef.current += 1;
     const previous = publicComments;
     setPublicComments(list => list.map(c => c.id === comment.id
       ? { ...c, likedByMe: !c.likedByMe, likesCount: Math.max(0, c.likesCount + (c.likedByMe ? -1 : 1)) }
@@ -4530,6 +4566,9 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
       setPublicComments(list => list.map(c => c.id === comment.id ? { ...c, likedByMe: data!.liked ?? !c.likedByMe, likesCount: data!.likeCount ?? c.likesCount } : c));
     } catch {
       setPublicComments(previous);
+    } finally {
+      publicLikeBusyRef.current = Math.max(0, publicLikeBusyRef.current - 1);
+      publicCommentsSigRef.current = '';
     }
   }
 
