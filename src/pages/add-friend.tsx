@@ -13194,51 +13194,18 @@ function PublicLiveCommentsPanel({
       onTouchEnd={e => e.stopPropagation()}
       onWheel={e => e.stopPropagation()}
       style={{
-        position: 'fixed',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        top: 'max(268px, calc(env(safe-area-inset-top) + 248px))',
-        zIndex: 30,
+        position: 'relative',
+        flex: 1,
+        minHeight: 0,
+        width: '100%',
         display: 'flex',
         flexDirection: 'column',
-        height: 'auto',
         background: '#ffffff',
         overflow: 'hidden',
         color: '#111',
         touchAction: 'pan-y',
       }}
     >
-      <button
-        type="button"
-        aria-label="رفع الشيت"
-        onClick={e => {
-          e.preventDefault();
-          e.stopPropagation();
-          onToggleHeader?.();
-        }}
-        style={{
-          flexShrink: 0,
-          height: 44,
-          width: '100%',
-          border: 'none',
-          borderBottom: '1px solid #e5e7eb',
-          background: '#ffffff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          padding: 0,
-        }}
-      >
-        <span style={{
-          width: 44,
-          height: 5,
-          borderRadius: 3,
-          background: '#22c55e',
-          display: 'block',
-        }} />
-      </button>
       <div
         ref={listRef}
         onTouchStart={e => e.stopPropagation()}
@@ -19213,17 +19180,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           </div>
         )}
 
-        {/* Public LIVE comments docked to the BOTTOM of the page (composer first),
-            independently of the collapsing/moving header above. */}
-        {pageTab === 'profile' && !isFriendManagement && (
-          <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen} onToggleHeader={toggleHeaderOpen} />
-        )}
-
         {/* ── Content ── */}
         <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
         <div
           ref={profileFeedScrollRef}
-          className="profile-content-scroll flex flex-col px-0 pt-2 pb-28 flex-1 min-h-0 overflow-y-auto overscroll-contain"
+          className="profile-content-scroll flex flex-col px-0 pt-0 pb-0 flex-1 min-h-0 overflow-hidden overscroll-contain"
           onScroll={handleProfileFeedScroll}
           onTouchStart={onProfileFeedTouchStart}
           onTouchMove={onProfileFeedTouchMove}
@@ -19235,13 +19196,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           contain: 'strict',
           scrollbarWidth: 'none',
           touchAction: 'pan-y',
+          overflow: pageTab === 'profile' && headerOpen ? 'hidden' : 'auto',
+          background: pageTab === 'profile' && headerOpen ? '#ffffff' : 'transparent',
         }}>
           <AnimatePresence mode="wait">
 
             {/* ══ Post page — stories live in the header above; text posts sit directly under the
                 stories strip behind the STOOORNA divider, and the personal media grid follows further
                 down. The separate FEED tab has been merged into this single page. ══ */}
-            {pageTab === 'profile' && <motion.div key="profile-tab" initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} className="flex flex-col">
+            {pageTab === 'profile' && <motion.div key="profile-tab" initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} className="flex flex-col flex-1 min-h-0" style={{ background: headerOpen ? '#ffffff' : 'transparent' }}>
 
                 {/* Hidden file input for story upload */}
                 <input
@@ -19284,6 +19247,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </div>
                 )}
 
+                <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen} onToggleHeader={toggleHeaderOpen} />
 
               </motion.div>}
 
