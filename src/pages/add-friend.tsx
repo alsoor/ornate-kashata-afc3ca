@@ -17957,6 +17957,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
   // Once true, the grabber's attention-drawing bounce animation stops for good.
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
+  // الشات العام مرفوع/مفتوح → نخفي صف الأيقونات (Friends / Call / Live / Settings)، وترجع عند الخروج منه.
+  const [chatLifted, setChatLifted] = useState(false);
+  useEffect(() => {
+    const onLift = (e: Event) => setChatLifted(!!(e as CustomEvent).detail?.lifted);
+    window.addEventListener('stooorna:chat-lift', onLift as EventListener);
+    return () => window.removeEventListener('stooorna:chat-lift', onLift as EventListener);
+  }, []);
   // Quick "+" menu below the header: no longer touches headerOpen at all. Clicking it
   // hides the "+" itself and reveals the Settings/Friends/Call/Chat/Live row; closing
   // the menu (backdrop tap or picking an item) brings the "+" back.
@@ -20649,7 +20656,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             picking an item (or tapping the backdrop) closes the row and the
             "+" reappears. ── */}
         {/* الأيقونات (Friends / Call / Live / Settings) تظهر دائماً تحت الخط: عند الدخول مباشرة، وعند رفع الهيدر أو إنزاله. */}
-        {!isFriendManagement && !visitorProfileOpen && (
+        {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '2px 0 8px', position: 'relative' }}>
                 <div style={{
                   position: 'relative',
