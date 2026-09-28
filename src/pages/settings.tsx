@@ -430,6 +430,8 @@ export type BusinessRegistration = {
   ownerNote?: string | null;
   /** True after user dismissed the owner note */
   ownerNoteSeen?: boolean;
+  /** True when @Stooorna granted Business directly from Owner settings (no application) */
+  grantedByOwner?: boolean;
 };
 
 const BUSINESS_REGISTRY_KEY = 'stooorna_business_registry';
@@ -5529,6 +5531,14 @@ export default function SettingsPage() {
   const [showOwnerBusiness, setShowOwnerBusiness] = useState(false);
   const [recoveredUsers, setRecoveredUsers] = useState<DeletedUserRecord[]>([]);
   const [recoveredBusyId, setRecoveredBusyId] = useState<string>('');
+  // ── Owner-only: Business manager ──
+  const [showOwnerBiz, setShowOwnerBiz] = useState(false);
+  const [ownerBizQuery, setOwnerBizQuery] = useState('');
+  const [ownerBizSel, setOwnerBizSel] = useState<{ id: string; username: string | null; email: string } | null>(null);
+  const [ownerBizProject, setOwnerBizProject] = useState('');
+  const [ownerBizBusy, setOwnerBizBusy] = useState(false);
+  const [ownerBizMsg, setOwnerBizMsg] = useState('');
+  const [ownerBizTick, setOwnerBizTick] = useState(0);
   // ── Owner-only: VIP manager ──
   const [showOwnerVip, setShowOwnerVip] = useState(false);
   const [ownerVipQuery, setOwnerVipQuery] = useState('');
@@ -5766,7 +5776,7 @@ export default function SettingsPage() {
 
   // Hide global app bottom tabs while any support chat / inbox overlay is open
   useEffect(() => {
-    const hidden = !!(showSupportChat || ownerChatUser || showOwnerInbox || showSupportUsers || supportCtrlUser || showOwnerCompanies || ownerCompanyDetail || showRecoveredUsers || showOwnerVip || showOwnerBusiness);
+    const hidden = !!(showSupportChat || ownerChatUser || showOwnerInbox || showSupportUsers || supportCtrlUser || showOwnerCompanies || ownerCompanyDetail || showRecoveredUsers || showOwnerVip || showOwnerBiz || showOwnerBusiness);
     try {
       document.body.classList.toggle('stooorna-support-chat-open', hidden);
       window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden } }));
@@ -5777,7 +5787,7 @@ export default function SettingsPage() {
         window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } }));
       } catch { /* ignore */ }
     };
-  }, [showSupportChat, ownerChatUser, showOwnerInbox, showSupportUsers, supportCtrlUser, showOwnerCompanies, ownerCompanyDetail, showRecoveredUsers, showOwnerVip, showOwnerBusiness]);
+  }, [showSupportChat, ownerChatUser, showOwnerInbox, showSupportUsers, supportCtrlUser, showOwnerCompanies, ownerCompanyDetail, showRecoveredUsers, showOwnerVip, showOwnerBiz, showOwnerBusiness]);
 
   async function patchSupportUser(userId: string, body: Record<string, unknown>) {
     // Prefer owner admin route; fallback to support-specific if added later
@@ -5825,6 +5835,80 @@ export default function SettingsPage() {
       } catch { /* next */ }
     }
     return false;
+  }
+  // ── Owner Business grant: approved Business account + Business header, no application needed ──
+  function ownerBizActive(id: string): boolean {
+    return isBusinessApproved(id);
+  }
+  async function ownerBizServerSync(id: string, body: Record<string, unknown>): Promise<boolean> {
+    const eps: Array<{ url: string; method: string }> = [
+      { url: `/api/owner/users/${encodeURIComponent(id)}/business`, method: 'POST' },
+      { url: `/api/owner/users/${encodeURIComponent(id)}`, method: 'PATCH' },
+    ];
+    for (const ep of eps) {
+      try {
+        const r = await fetch(ep.url, {
+          method: ep.method, credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (r.ok) return true;
+      } catch { /* next */ }
+    }
+    return false;
+  }
+  async function ownerGrantBusiness(u: { id: string; username: string | null; email: string }, projectName: string) {
+    const now = new Date().toISOString();
+    const un = String(u.username || '').replace(/^@/, '').trim();
+    const project = projectName.trim() || un || u.email;
+    const list = loadBusinessRegistry();
+    const mine = list.filter(x => String(x.userId) === String(u.id));
+    // reuse the user's existing row (keeps any real application data), otherwise create one
+    const base = mine.find(x => x.status === 'approved')
+      || mine.slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0]
+      || null;
+    const row: BusinessRegistration = {
+      id: base?.id || `biz-owner-${u.id}`,
+      userId: String(u.id),
+      username: un || base?.username || null,
+      email: u.email || base?.email || null,
+      projectName: project,
+      licenseNumber: base?.licenseNumber || 'OWNER-GRANTED',
+      tradeLicenseNumber: base?.tradeLicenseNumber || 'OWNER-GRANTED',
+      commercialRegCert: base?.commercialRegCert,
+      commercialRegCertName: base?.commercialRegCertName,
+      tradeLicenseCert: base?.tradeLicenseCert,
+      tradeLicenseCertName: base?.tradeLicenseCertName,
+      status: 'approved',
+      createdAt: base?.createdAt || now,
+      updatedAt: now,
+      approvedAt: now,
+      ownerNote: null,
+      ownerNoteSeen: true,
+      grantedByOwner: base ? (base.grantedByOwner ?? false) : true,
+    };
+    const next = [row, ...list.filter(x => String(x.userId) !== String(u.id))];
+    saveBusinessRegistry(next);
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:business-posts-visibility', { detail: { userId: String(u.id), hidden: false } }));
+    } catch { /* */ }
+    return ownerBizServerSync(u.id, {
+      business: true, isBusiness: true, businessApproved: true, businessHeader: 'Business',
+      accountType: 'business', businessProjectName: project, businessGrantedByOwner: true,
+    });
+  }
+  async function ownerRemoveBusiness(u: { id: string }) {
+    const list = loadBusinessRegistry();
+    const next = list
+      .filter(x => !(String(x.userId) === String(u.id) && x.grantedByOwner))
+      .map(x => (String(x.userId) === String(u.id) && x.status === 'approved'
+        ? { ...x, status: 'rejected' as const, updatedAt: new Date().toISOString(), ownerNote: null, ownerNoteSeen: true }
+        : x));
+    saveBusinessRegistry(next);
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:business-posts-visibility', { detail: { userId: String(u.id), hidden: false } }));
+    } catch { /* */ }
+    return ownerBizServerSync(u.id, { business: false, isBusiness: false, businessApproved: false, businessGrantedByOwner: false });
   }
   async function ownerGrantVip(u: { id: string }, color: string) {
     const FAR = new Date('2099-12-31T00:00:00Z').getTime();
@@ -9142,6 +9226,45 @@ export default function SettingsPage() {
                   whileTap={{ scale: 0.98 }}
                   type="button"
                   onClick={() => {
+                    setOwnerBizMsg('');
+                    setOwnerBizSel(null);
+                    setOwnerBizProject('');
+                    if (allUsers.length === 0) { void loadOwnerData(); }
+                    startTransition(() => setShowOwnerBiz(true));
+                  }}
+                  className="flex items-center justify-between"
+                  style={{
+                    width: '100%',
+                    background: T.surface,
+                    border: `1px solid ${T.surfaceBorder}`,
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    color: T.text,
+                    cursor: 'pointer',
+                  }}
+                  aria-label="Give Business"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center" style={{
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
+                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308',
+                    }}>
+                      <Briefcase size={19} strokeWidth={2.1} />
+                    </span>
+                    <span style={{ textAlign: 'left' }}>
+                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Business Manager</span>
+                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
+                        Give any user Business · Business header
+                      </span>
+                    </span>
+                  </div>
+                  <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
+                </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => {
                     setOwnerBusinessList(loadBusinessRegistry());
                     startTransition(() => setShowOwnerBusiness(true));
                   }}
@@ -9192,7 +9315,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Bottom nav bar — hidden while support overlays are open */}
-        {!showSupportChat && !ownerChatUser && !showOwnerInbox && !showSupportUsers && !supportCtrlUser && !showOwnerCompanies && !ownerCompanyDetail && !showRecoveredUsers && !showOwnerBusiness && (
+        {!showSupportChat && !ownerChatUser && !showOwnerInbox && !showSupportUsers && !supportCtrlUser && !showOwnerCompanies && !ownerCompanyDetail && !showRecoveredUsers && !showOwnerVip && !showOwnerBiz && !showOwnerBusiness && (
           <div className="w-full flex items-center justify-center px-10 py-4 z-10" style={{
             background: T.navBg,
             borderTop: `1px solid ${T.navBorder}`
@@ -11258,6 +11381,158 @@ export default function SettingsPage() {
                       {on && (
                         <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.62rem', fontWeight: 900, background: (VIP_COLORS as Record<string, string>)[col || 'gold'] || '#eab308', color: '#111', flexShrink: 0 }}>VIP</span>
                       )}
+                    </button>
+                  );
+                })}
+              {allUsers.length === 0 && (
+                <div style={{ padding: 24, textAlign: 'center', color: 'rgba(180,180,160,0.7)', border: '1px dashed rgba(234,179,8,0.25)', borderRadius: 14 }}>
+                  No users loaded yet — tap Refresh
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Owner: Business manager — give any user Business (approved account + Business header) ── */}
+      <AnimatePresence>
+        {showOwnerBiz && isSupportOwnerAccount(
+          user as { email?: string | null; username?: string | null; name?: string | null },
+          profileUsername,
+        ) && (
+          <motion.div
+            key="owner-biz"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10350,
+              background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(10px)',
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+              borderBottom: '1px solid rgba(234,179,8,0.25)',
+              background: 'linear-gradient(180deg, #1a1608 0%, #0a0e0e 100%)',
+              minHeight: 52, flexShrink: 0,
+            }}>
+              <button type="button" onClick={() => setShowOwnerBiz(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#eab308', padding: 2 }} aria-label="Close">
+                <X size={20} />
+              </button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.95rem' }}>Business Manager</p>
+                <p style={{ margin: '1px 0 0', color: 'rgba(200,190,150,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
+                  Owner only · give Business with the Business header
+                </p>
+              </div>
+              <button type="button" onClick={() => { void loadOwnerData(); setOwnerBizTick(t => t + 1); }}
+                style={{ border: '1px solid rgba(234,179,8,0.35)', background: 'rgba(234,179,8,0.1)', color: '#eab308', borderRadius: 8, padding: '6px 10px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}>
+                Refresh
+              </button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }} data-tick={ownerBizTick}>
+              {ownerBizSel && (
+                <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 14, background: 'rgba(234,179,8,0.06)', border: '1px solid rgba(234,179,8,0.35)' }}>
+                  <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: '0.9rem', color: '#f5e6a8' }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ownerBizSel.username ? `@${String(ownerBizSel.username).replace(/^@/, '')}` : ownerBizSel.email}
+                    </span>
+                    <BusinessHeadBadge compact />
+                  </p>
+                  <p style={{ margin: '3px 0 0', color: 'rgba(180,180,160,0.75)', fontSize: '0.68rem' }}>{ownerBizSel.email}</p>
+                  <p style={{ margin: '12px 0 6px', color: 'rgba(200,190,150,0.8)', fontSize: '0.68rem', fontWeight: 700 }}>Business / project name (optional)</p>
+                  <input
+                    value={ownerBizProject}
+                    onChange={e => setOwnerBizProject(e.target.value)}
+                    placeholder={String(ownerBizSel.username || '').replace(/^@/, '') || 'Project name'}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10,
+                      border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(255,255,255,0.04)', color: '#f5e6a8', fontSize: '0.8rem', outline: 'none',
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                    <button type="button" disabled={ownerBizBusy}
+                      onClick={async () => {
+                        if (!ownerBizSel) return;
+                        setOwnerBizBusy(true); setOwnerBizMsg('');
+                        try {
+                          const synced = await ownerGrantBusiness(ownerBizSel, ownerBizProject);
+                          setOwnerBizMsg(synced ? 'Business saved for this user.' : 'Business saved on this device. The server did not accept the Business update yet, so other devices will not see it until the server route exists.');
+                          setOwnerBizTick(t => t + 1);
+                        } finally { setOwnerBizBusy(false); }
+                      }}
+                      style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#eab308', color: '#111', fontWeight: 900, fontSize: '0.78rem', cursor: 'pointer', opacity: ownerBizBusy ? 0.6 : 1 }}>
+                      {ownerBizActive(ownerBizSel.id) ? 'Update Business' : 'Give Business'}
+                    </button>
+                    {ownerBizActive(ownerBizSel.id) && (
+                      <button type="button" disabled={ownerBizBusy}
+                        onClick={async () => {
+                          if (!ownerBizSel) return;
+                          if (!window.confirm('Remove Business from this user?')) return;
+                          setOwnerBizBusy(true); setOwnerBizMsg('');
+                          try {
+                            await ownerRemoveBusiness(ownerBizSel);
+                            setOwnerBizMsg('Business removed.');
+                            setOwnerBizTick(t => t + 1);
+                          } finally { setOwnerBizBusy(false); }
+                        }}
+                        style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer', opacity: ownerBizBusy ? 0.6 : 1 }}>
+                        Remove Business
+                      </button>
+                    )}
+                  </div>
+                  {ownerBizMsg && <p style={{ margin: '10px 0 0', color: '#f5e6a8', fontSize: '0.72rem' }}>{ownerBizMsg}</p>}
+                </div>
+              )}
+
+              <input
+                value={ownerBizQuery}
+                onChange={e => setOwnerBizQuery(e.target.value)}
+                placeholder="Search username or email…"
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: '10px 12px', marginBottom: 10, borderRadius: 10,
+                  border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(255,255,255,0.04)', color: '#f5e6a8', fontSize: '0.8rem', outline: 'none',
+                }}
+              />
+              {allUsers
+                .filter(u => {
+                  if (isUserDeleted(u)) return false;
+                  const q = ownerBizQuery.trim().toLowerCase().replace(/^@/, '');
+                  if (!q) return true;
+                  return `${u.username || ''} ${u.email || ''} ${u.name || ''}`.toLowerCase().includes(q);
+                })
+                .slice(0, 60)
+                .map(u => {
+                  const on = ownerBizActive(u.id);
+                  const selected = ownerBizSel?.id === u.id;
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        setOwnerBizSel({ id: u.id, username: u.username, email: u.email });
+                        const row = getBusinessForUser(u.id);
+                        setOwnerBizProject(row?.status === 'approved' ? (row.projectName || '') : '');
+                        setOwnerBizMsg('');
+                      }}
+                      style={{
+                        width: '100%', textAlign: 'left', marginBottom: 8, padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
+                        background: selected ? 'rgba(234,179,8,0.1)' : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${selected ? 'rgba(234,179,8,0.5)' : 'rgba(234,179,8,0.15)'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                      }}
+                    >
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: 'block', color: '#f5e6a8', fontWeight: 800, fontSize: '0.84rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {u.username ? `@${String(u.username).replace(/^@/, '')}` : (u.name || u.email)}
+                        </span>
+                        <span style={{ display: 'block', color: 'rgba(180,180,160,0.7)', fontSize: '0.66rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</span>
+                      </span>
+                      {on && <BusinessHeadBadge compact />}
                     </button>
                   );
                 })}
