@@ -14246,26 +14246,36 @@ function PublicLiveCommentsPanel({
           </button>
         </div>
         {composerDock === 'emoji' && (
-          <div style={{ height: 'min(42vh, 340px)', display: 'flex', flexDirection: 'column', borderTop: '1px solid #ececec', background: '#f7f7f8' }}>
-            <div style={{ display: 'flex', gap: 4, padding: '6px 8px', overflowX: 'auto', borderBottom: '1px solid #eee' }}>
-              {LIVE_CHAT_EMOJI_CATS.map((cat, i) => (
-                <button key={cat.icon} type="button" onClick={() => setEmojiCat(i)} style={{ background: emojiCat === i ? '#fff' : 'transparent', border: '1px solid #e5e7eb', borderRadius: 10, padding: '4px 8px', fontSize: '1.05rem', cursor: 'pointer' }}>{cat.icon}</button>
-              ))}
+          <div style={{ height: 'min(42vh, 340px)', display: 'flex', flexDirection: 'column', borderTop: '1px solid #ececec', background: '#f4f4f5' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 8px 6px', borderBottom: '1px solid #ececec' }}>
+              <div style={{ flex: 1, display: 'flex', gap: 4, overflow: 'hidden' }}>
+                {LIVE_CHAT_EMOJI_CATS.map((cat, i) => (
+                  <button key={cat.icon} type="button" onPointerDown={e => { e.preventDefault(); setEmojiCat(i); }} style={{ flex: 1, minWidth: 0, background: emojiCat === i ? '#fff' : 'transparent', border: '1px solid #e5e7eb', borderRadius: 10, padding: '6px 0', fontSize: '1.05rem', cursor: 'pointer' }}>{cat.icon}</button>
+                ))}
+              </div>
               <button
                 type="button"
                 aria-label="كيبورد"
                 onPointerDown={e => {
                   e.preventDefault();
+                  e.stopPropagation();
                   setComposerDock('none');
                   setEmojiOpen(false);
-                  setTimeout(() => chatInputRef.current?.focus(), 20);
+                  setTimeout(() => {
+                    try { chatInputRef.current?.focus(); } catch { /* */ }
+                  }, 30);
                 }}
-                style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '4px 8px', fontSize: '1.05rem', cursor: 'pointer', marginLeft: 4 }}
-              >⌨️</button>
+                style={{ width: 38, height: 34, flexShrink: 0, borderRadius: 10, border: '1.5px solid #cfd3d8', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              >
+                <svg width="22" height="16" viewBox="0 0 24 18" fill="none" aria-hidden>
+                  <rect x="1.2" y="1.2" width="21.6" height="15.6" rx="3.2" stroke="#4b5563" strokeWidth="1.7" />
+                  <path d="M5 6h2M9 6h2M13 6h2M17 6h2M5 9.2h2M9 9.2h2M13 9.2h2M17 9.2h2M7 12.4h10" stroke="#4b5563" strokeWidth="1.7" strokeLinecap="round" />
+                </svg>
+              </button>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 6, display: 'grid', gridTemplateColumns: 'repeat(8, minmax(0, 1fr))', gridAutoRows: '40px', gap: 2 }}>
               {(LIVE_CHAT_EMOJI_CATS[emojiCat]?.items || LIVE_EMOJI_PICKER).map(em => (
-                <button key={em} type="button" onClick={() => setText(t => (t + em).slice(0, 500))} style={{ background: 'none', border: 'none', fontSize: '1.28rem', cursor: 'pointer', padding: 4 }}>{em}</button>
+                <button key={em} type="button" onPointerDown={e => { e.preventDefault(); setText(t => (t + em).slice(0, 500)); }} style={{ background: 'none', border: 'none', fontSize: '1.35rem', cursor: 'pointer', width: '100%', height: 40 }}>{em}</button>
               ))}
             </div>
           </div>
@@ -14278,7 +14288,52 @@ function PublicLiveCommentsPanel({
         )}
         {composerDock === 'voice' && (
           <div style={{ height: 'min(28vh, 220px)', borderTop: '1px solid #ececec', background: '#f7f7f8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <p style={{ margin: 0, color: recording ? '#ef4444' : '#111', fontWeight: 800 }}>{recording ? '● Recording…' : 'اضغط المايك للتسجيل'}</p>
+            <button
+              type="button"
+              aria-label="تسجيل"
+              onPointerDown={e => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onClick={async () => {
+                if (recording) {
+                  recRef.current?.stop();
+                  setRecording(false);
+                  return;
+                }
+                try {
+                  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                  const rec = new MediaRecorder(stream);
+                  recChunksRef.current = [];
+                  recStartedAt.current = Date.now();
+                  rec.ondataavailable = ev => { if (ev.data.size) recChunksRef.current.push(ev.data); };
+                  rec.onstop = () => {
+                    stream.getTracks().forEach(tr => tr.stop());
+                    const blob = new Blob(recChunksRef.current, { type: 'audio/webm' });
+                    const duration = Math.max(1, Math.round((Date.now() - recStartedAt.current) / 1000));
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      const dataUrl = typeof reader.result === 'string' && reader.result.startsWith('data:')
+                        ? reader.result
+                        : URL.createObjectURL(blob);
+                      setPendingVoice({ url: dataUrl, duration });
+                    };
+                    reader.onerror = () => setPendingVoice({ url: URL.createObjectURL(blob), duration });
+                    reader.readAsDataURL(blob);
+                  };
+                  recRef.current = rec;
+                  rec.start();
+                  setRecording(true);
+                } catch { /* mic denied */ }
+              }}
+              style={{
+                width: 72, height: 72, borderRadius: '50%', border: 'none',
+                background: recording ? '#ef4444' : '#111', color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              }}
+            >
+              {recording ? <MicOff size={28} /> : <Mic size={28} />}
+            </button>
           </div>
         )}
 
