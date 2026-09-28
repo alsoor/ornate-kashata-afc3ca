@@ -13186,8 +13186,9 @@ function PublicLiveCommentsPanel({
     c.username ? `@${String(c.username).replace(/^@/, '')}` : (c.name || 'مستخدم');
 
   if (!headerOpen) return null;
+  if (typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <div
       onTouchStart={e => e.stopPropagation()}
       onTouchMove={e => e.stopPropagation()}
@@ -13199,7 +13200,7 @@ function PublicLiveCommentsPanel({
         right: 0,
         bottom: 0,
         top: 0,
-        zIndex: 15,
+        zIndex: 35,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'flex-end',
@@ -13445,7 +13446,8 @@ function PublicLiveCommentsPanel({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -19259,8 +19261,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     />
                   </div>
                 )}
-
-                <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen} onToggleHeader={toggleHeaderOpen} />
 
               </motion.div>}
 
@@ -25746,6 +25746,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       {/* ── Guest guard modal — يظهر عند محاولة الزائر التفاعل ── */}
       {typeof window !== 'undefined' && window.location.pathname.includes('/live') && (
         <LiveVipDock hostId={new URLSearchParams(window.location.search).get('hostId')} currentUserId={user?.id} />
+      )}
+      {pageTab === 'profile' && !isFriendManagement && (
+        <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen} onToggleHeader={toggleHeaderOpen} />
       )}
       {GuestModal}
     </>;
