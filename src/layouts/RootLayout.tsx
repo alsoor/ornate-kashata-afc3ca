@@ -941,7 +941,7 @@ function GlobalBottomNavigation() {
     const initial = loadCompanyInbox(uid);
     const initialTotal = initial.reduce((s, p) => s + (p.unread || 0), 0);
     if (initialTotal > 0) {
-      prevUnreadRef.current = 0; // حتى يلتقط useEffect الزيادة
+      prevUnreadRef.current = initialTotal;
       setCompanyUnreadTotal(initialTotal);
     }
 
@@ -1192,7 +1192,7 @@ function GlobalBottomNavigation() {
     const initial = loadUserProductChats(uid);
     const initialTotal = initial.reduce((s, p) => s + (p.unread || 0), 0);
     if (initialTotal > 0) {
-      prevUserUnreadRef.current = 0;
+      prevUserUnreadRef.current = initialTotal;
       setUserChatUnreadTotal(initialTotal);
     }
 
@@ -1522,8 +1522,12 @@ function GlobalBottomNavigation() {
   // الشريط السفلي: يسار Home — منتصف مايك — يمين إعدادات
   // صفحة الشات الفردي (المحادثة المفتوحة)
   const isConversation = location.pathname === '/chat';
-  const previousFriendRequestsRef = useRef(notifCounts.friendReqs);
+  const previousFriendRequestsRef = useRef<number | null>(null);
   useEffect(() => {
+    if (previousFriendRequestsRef.current == null) {
+      previousFriendRequestsRef.current = notifCounts.friendReqs;
+      return;
+    }
     if (notifCounts.friendReqs > previousFriendRequestsRef.current) {
       playNotificationSound('request');
     }
@@ -5400,6 +5404,18 @@ export default function RootLayout({
   const session = (sessionResult as any).session ?? (sessionResult as any).data;
   const location = useLocation();
   const navigate = useNavigate();
+  useEffect(() => {
+    try { navigator.vibrate?.(16); } catch { /* */ }
+  }, []);
+  useEffect(() => {
+    const buzz = (e: Event) => {
+      const el = e.target as HTMLElement | null;
+      if (!el || !el.closest('button, [role="button"], a')) return;
+      try { navigator.vibrate?.(14); } catch { /* */ }
+    };
+    document.addEventListener('pointerdown', buzz, true);
+    return () => document.removeEventListener('pointerdown', buzz, true);
+  }, []);
   const [showWelcome, setShowWelcome] = useState(() => {
     try {
       return localStorage.getItem('stooorna_welcome_ok') !== '1';
