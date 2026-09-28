@@ -13328,7 +13328,7 @@ function loadPublicLiveComments(): PublicLiveComment[] {
     const raw = JSON.parse(localStorage.getItem(PUBLIC_LIVE_COMMENTS_KEY) || '[]');
     if (!Array.isArray(raw)) return [];
     return raw
-      .filter((x: any) => x && x.id && (x.text || x.voiceUrl))
+      .filter((x: any) => x && x.id && (x.text || x.voiceUrl) && (Number(x.createdAt) || Date.now()) >= liveChatCycleStart())
       .map((x: any) => ({
         id: String(x.id),
         userId: String(x.userId || ''),
@@ -13364,6 +13364,24 @@ const LIVE_CHAT_ROOM = 'stooorna-live-chat';
 const LIVE_CHAT_BOT_NAME = 'Bot';
 const LIVE_CHAT_BOT_ID = 'stooorna-bot';
 const LIVE_CHAT_BOT_COLOR = '#0b3a82';
+
+// ── تنظيف الشات كل 24 ساعة ─────────────────────────────────────────────
+// نقطة التنظيف ثابتة لكل المستخدمين: 00:00 بتوقيت الكويت (UTC+3).
+// لتغيير الوقت عدّل LIVE_CHAT_CLEAR_OFFSET_MS (بالساعات × 3600000).
+const LIVE_CHAT_CLEAR_MS = 24 * 60 * 60 * 1000;
+const LIVE_CHAT_CLEAR_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+/** بداية الدورة الحالية (آخر نقطة تنظيف). أي رسالة أقدم منها تُعتبر ممسوحة. */
+function liveChatCycleStart(now: number = Date.now()): number {
+  return Math.floor((now + LIVE_CHAT_CLEAR_OFFSET_MS) / LIVE_CHAT_CLEAR_MS) * LIVE_CHAT_CLEAR_MS - LIVE_CHAT_CLEAR_OFFSET_MS;
+}
+
+/** محاولة مسح شات البث من السيرفر (اختيارية — الإخفاء يتم عند كل عميل على أي حال). */
+async function clearLiveChatOnServer(): Promise<void> {
+  try {
+    await fetch(`/api/live-chat?room=${encodeURIComponent(LIVE_CHAT_ROOM)}`, { method: 'DELETE', credentials: 'include' });
+  } catch { /* ignore */ }
+}
 
 function liveChatNormalizeBad(s: string): string {
   return String(s || '')
@@ -13561,6 +13579,41 @@ const LIVE_CHAT_EMOJI_CATS: { icon: string; items: string[] }[] = [
   { icon: '🔔', items: ['❤️','💯','🔔','🔕','🎵','🎶','✔️','❌','❗','❓','💬','🔴','🟢','🔵'] },
 ];
 
+/** عدّاد مباشر لوقت تنظيف الشات القادم — يظهر داخل مربع الكومنت فقط عندما لا يكتب أحد */
+function LiveChatClearCountdown() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const left = Math.max(0, liveChatCycleStart(now) + LIVE_CHAT_CLEAR_MS - now);
+  const total = Math.floor(left / 1000);
+  const hh = String(Math.floor(total / 3600)).padStart(2, '0');
+  const mm = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+  const ss = String(total % 60).padStart(2, '0');
+  return (
+    <span
+      title="Chat clears in"
+      style={{
+        flexShrink: 0,
+        margin: '0 4px 0 6px',
+        padding: '2px 8px',
+        borderRadius: 999,
+        background: 'rgba(25,25,112,0.08)',
+        color: '#191970',
+        fontWeight: 800,
+        fontSize: '0.72rem',
+        letterSpacing: '0.02em',
+        fontVariantNumeric: 'tabular-nums',
+        direction: 'ltr',
+        pointerEvents: 'none',
+      }}
+    >
+      {hh}:{mm}:{ss}
+    </span>
+  );
+}
+
 function PublicLiveCommentsPanel({
   user,
   headerOpen,
@@ -13598,6 +13651,21 @@ function PublicLiveCommentsPanel({
   const myUsername = (user as any)?.username ?? null;
   const myAvatar = (user as any)?.avatarUrl || (user as any)?.image || null;
   const typingTimer = useRef<number | null>(null);
+
+  // كل 24 ساعة: تنظيف الشات ومسح محتواه بالكامل
+  const lastClearCycleRef = useRef<number>(liveChatCycleStart());
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const cs = liveChatCycleStart();
+      if (cs === lastClearCycleRef.current) return;
+      lastClearCycleRef.current = cs;
+      liveSigRef.current = '';
+      savePublicLiveComments([]);
+      setComments([]);
+      void clearLiveChatOnServer();
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   // يبلّغ بطاقات البث (HomeLiveStack) برفع/إنزال الشات لتصعد معه وتنزل
   useEffect(() => {
@@ -13711,6 +13779,7 @@ function PublicLiveCommentsPanel({
         const remote = await fetchLiveChatFromServer();
         const local = loadPublicLiveComments();
         let next = remote ? mergeLiveChatLists(local, remote) : local;
+        next = next.filter(x => x.createdAt >= liveChatCycleStart());
         const cleaned: PublicLiveComment[] = [];
         let blocked = false;
         for (const row of next) {
@@ -14195,6 +14264,7 @@ function PublicLiveCommentsPanel({
               }}
             />
             </div>
+            {liveTypers.length === 0 && !text.trim() ? <LiveChatClearCountdown /> : null}
             <input
               ref={fileRef}
               type="file"
