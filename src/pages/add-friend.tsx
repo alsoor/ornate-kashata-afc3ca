@@ -13678,7 +13678,7 @@ function PublicLiveCommentsPanel({
         right: 0,
         bottom: 0,
         top: 0,
-        zIndex: chatLift === 2 ? 40 : 15,
+        zIndex: chatLift === 1 ? 40 : 15,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'flex-end',
@@ -13692,11 +13692,7 @@ function PublicLiveCommentsPanel({
       <div style={{
         flex: chatLift === 0 ? 1 : undefined,
         flexShrink: 0,
-        height: chatLift === 2
-          ? 'max(8px, env(safe-area-inset-top))'
-          : chatLift === 0
-            ? undefined
-            : 'max(188px, calc(env(safe-area-inset-top) + 168px))',
+        height: chatLift === 1 ? 'max(8px, env(safe-area-inset-top))' : undefined,
         minHeight: chatLift === 0 ? 0 : undefined,
         pointerEvents: 'none',
         background: 'transparent',
@@ -14057,7 +14053,7 @@ function PublicLiveCommentsPanel({
           )}
           <button
             type="button"
-            onClick={() => setChatLift(v => (v + 1) % 4)}
+            onClick={() => setChatLift(v => v === 0 ? 1 : 0)}
             aria-label="ارتفاع الشات"
             style={{
               width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
@@ -14066,7 +14062,7 @@ function PublicLiveCommentsPanel({
               cursor: 'pointer', marginLeft: 2,
             }}
           >
-            {chatLift === 2 ? <Minimize2 size={16} strokeWidth={2.4} color="#fff" /> : <Maximize2 size={16} strokeWidth={2.4} color="#fff" />}
+            {chatLift === 1 ? <Minimize2 size={16} strokeWidth={2.4} color="#fff" /> : <Maximize2 size={16} strokeWidth={2.4} color="#fff" />}
           </button>
         </div>
       </div>
