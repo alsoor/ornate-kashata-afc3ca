@@ -664,11 +664,81 @@ export type DeletedUserRecord = {
   deletedAt: string;
 };
 
+// ── Permanent-wipe / restore tombstones ─────────────────────────────────────
+// wiped: حسابات حُذفت نهائياً — لا تُعاد أبداً لقائمة Banned/Deleted حتى لو بقي صفّها على السيرفر.
+//        المطابقة بالـ id (أو باسم deleted_* الفريد) فقط، حتى لا يُحجب مستخدم جديد يسجّل بنفس الإيميل/اليوزر.
+// restored: حسابات استُعيدت — لا تُعامل كمحذوفة حتى لو ظل اسمها deleted_* على السيرفر لحظياً.
+const WIPED_USERS_KEY = 'stooorna_wiped_users_v1';
+const RESTORED_USERS_KEY = 'stooorna_restored_users_v1';
+type WipeTombstone = { id?: string | null; username?: string | null; at: string };
+
+function readJsonList<T>(key: string): T[] {
+  try {
+    const raw = localStorage.getItem(key);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
+export function loadWipedUsers(): WipeTombstone[] {
+  return readJsonList<WipeTombstone>(WIPED_USERS_KEY);
+}
+
+export function isUserWiped(u: { id?: string | null; username?: string | null } | null | undefined): boolean {
+  if (!u) return false;
+  const id = String(u.id || '').trim();
+  const un = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
+  const list = loadWipedUsers();
+  return list.some(x =>
+    (id && x.id && String(x.id) === id) ||
+    (un.startsWith('deleted_') && x.username && String(x.username).toLowerCase() === un),
+  );
+}
+
+export function markUserWiped(u: { id?: string | null; username?: string | null }) {
+  const id = String(u.id || '').trim();
+  const un = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
+  if (!id && !un.startsWith('deleted_')) return;
+  const list = loadWipedUsers();
+  if (!list.some(x => (id && x.id === id) || (un && x.username === un))) {
+    list.unshift({ id: id || null, username: un.startsWith('deleted_') ? un : null, at: new Date().toISOString() });
+    try { localStorage.setItem(WIPED_USERS_KEY, JSON.stringify(list.slice(0, 5000))); } catch { /* */ }
+  }
+}
+
+export function isUserRestored(u: { id?: string | null; email?: string | null } | null | undefined): boolean {
+  if (!u) return false;
+  const id = String(u.id || '').trim();
+  if (!id) return false;
+  return readJsonList<string>(RESTORED_USERS_KEY).includes(id);
+}
+
+export function markUserRestored(u: { id?: string | null }) {
+  const id = String(u.id || '').trim();
+  if (!id) return;
+  const list = readJsonList<string>(RESTORED_USERS_KEY);
+  if (!list.includes(id)) {
+    list.push(id);
+    try { localStorage.setItem(RESTORED_USERS_KEY, JSON.stringify(list.slice(-2000))); } catch { /* */ }
+  }
+}
+
+function unmarkUserRestored(u: { id?: string | null }) {
+  const id = String(u.id || '').trim();
+  if (!id) return;
+  const list = readJsonList<string>(RESTORED_USERS_KEY);
+  if (list.includes(id)) {
+    try { localStorage.setItem(RESTORED_USERS_KEY, JSON.stringify(list.filter(x => x !== id))); } catch { /* */ }
+  }
+}
+
 export function loadDeletedUsers(): DeletedUserRecord[] {
   try {
     const raw = localStorage.getItem(DELETED_USERS_KEY);
     const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? list : [];
+    if (!Array.isArray(list)) return [];
+    // الحسابات المحذوفة نهائياً لا تظهر أبداً في قسم Banned/Deleted
+    return list.filter((x: DeletedUserRecord) => !isUserWiped(x));
   } catch {
     return [];
   }
@@ -703,6 +773,8 @@ export function markUserDeleted(u: { id?: string | null; email?: string | null; 
   const email = String(u.email || '').trim().toLowerCase();
   const username = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
   if (!id && !email && !username) return loadDeletedUsers();
+  if (isUserWiped({ id, username })) return loadDeletedUsers();
+  unmarkUserRestored({ id });
   const list = loadDeletedUsers();
   const exists = list.some(x =>
     (id && x.id === id) ||
@@ -723,7 +795,9 @@ export function markUserDeleted(u: { id?: string | null; email?: string | null; 
 
 export function isUserDeleted(u: { id?: string | null; email?: string | null; username?: string | null } | null | undefined): boolean {
   if (!u) return false;
+  if (isUserRestored(u)) return false;
   const username = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
+  if (isUserWiped({ id: u.id, username })) return true;
   if (username.startsWith('deleted_')) return true;
   const id = String(u.id || '').trim();
   const email = String(u.email || '').trim().toLowerCase();
@@ -769,7 +843,59 @@ export function restoreDeletedUser(u: {
   return next;
 }
 
-/** Permanent wipe: remove from recovery list, free username, try server hard-delete. */
+/** Server hard-delete attempts. Returns true only on a real success (2xx/204).
+ *  404/405 = route does not exist → keep trying the next endpoint (the old code stopped at the first 404). */
+export async function purgeUserOnServer(u: {
+  id?: string | null;
+  email?: string | null;
+  username?: string | null;
+  originalUsername?: string | null;
+}): Promise<boolean> {
+  const id = String(u.id || '').trim();
+  const email = String(u.email || '').trim().toLowerCase();
+  const username = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
+  const originalUsername = String(u.originalUsername || '').replace(/^@/, '').trim().toLowerCase();
+  const body = { hard: true, permanent: true, permanentlyDelete: true, purge: true, email, username, originalUsername, id };
+  const urls: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
+  if (id) {
+    urls.push(
+      { url: `/api/owner/users/${encodeURIComponent(id)}/purge`, method: 'POST', body },
+      { url: `/api/owner/users/${encodeURIComponent(id)}?hard=1`, method: 'DELETE', body },
+      { url: `/api/owner/users/${encodeURIComponent(id)}?permanent=1`, method: 'DELETE', body },
+      { url: `/api/owner/users/${encodeURIComponent(id)}`, method: 'DELETE', body },
+      { url: `/api/support/users/${encodeURIComponent(id)}`, method: 'DELETE', body },
+      { url: `/api/users/${encodeURIComponent(id)}`, method: 'DELETE', body },
+    );
+  }
+  if (email) {
+    urls.push(
+      { url: `/api/owner/users/by-email/${encodeURIComponent(email)}`, method: 'DELETE', body },
+      { url: `/api/users/delete`, method: 'POST', body },
+    );
+  }
+  const un = originalUsername || username.replace(/^deleted_/, '');
+  if (un) {
+    urls.push(
+      { url: `/api/users/release-username`, method: 'POST', body: { ...body, username: un } },
+      { url: `/api/owner/username/${encodeURIComponent(un)}`, method: 'DELETE', body },
+    );
+  }
+  for (const ep of urls) {
+    try {
+      const r = await fetch(ep.url, {
+        method: ep.method,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ep.body || body),
+      });
+      if (r.ok || r.status === 204) return true;
+    } catch { /* next */ }
+  }
+  return false;
+}
+
+/** Permanent wipe: the account disappears for good (with all its local data) and never returns to
+ *  Banned/Deleted. Also frees username, tries real server hard-delete so the email can be reused. */
 export async function permanentlyWipeUser(u: {
   id?: string | null;
   email?: string | null;
@@ -780,17 +906,19 @@ export async function permanentlyWipeUser(u: {
   const email = String(u.email || '').trim().toLowerCase();
   const username = String(u.username || '').replace(/^@/, '').trim().toLowerCase();
   const originalUsername = String(u.originalUsername || '').replace(/^@/, '').trim().toLowerCase();
+  // 1) tombstone FIRST — so no background sync can re-add the account while we work
+  markUserWiped({ id, username });
   // Free usernames for reuse
   for (const uName of [username, originalUsername, username.replace(/^deleted_/, ''), originalUsername.replace(/^deleted_/, '')]) {
-    if (uName) markUsernameFreed(uName);
+    if (uName && !uName.startsWith('deleted_')) markUsernameFreed(uName);
   }
-  // Always remove from local recovery list first (UI updates immediately)
+  // 2) remove from local recovery list (UI updates immediately)
   restoreDeletedUser(u);
   if (email) {
     const still = loadDeletedUsers().filter(x => String(x.email || '').toLowerCase() !== email);
     saveDeletedUsers(still);
   }
-  // Drop from company registry if present
+  // 3) drop every local trace: company registry, business registry, VIP, balance
   try {
     const reg = loadCompaniesRegistry().filter(c => {
       const cem = String(c.email || '').toLowerCase();
@@ -805,46 +933,23 @@ export async function permanentlyWipeUser(u: {
     });
     saveCompaniesRegistry(reg);
   } catch { /* */ }
-  // Server hard delete attempts
-  const urls: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
-  const body = { hard: true, permanent: true, permanentlyDelete: true, email, username, originalUsername, id };
-  if (id) {
-    urls.push(
-      { url: `/api/owner/users/${encodeURIComponent(id)}/purge`, method: 'POST', body },
-      { url: `/api/owner/users/${encodeURIComponent(id)}?hard=1`, method: 'DELETE', body },
-      { url: `/api/owner/users/${encodeURIComponent(id)}`, method: 'DELETE', body },
-      { url: `/api/support/users/${encodeURIComponent(id)}`, method: 'DELETE', body },
-      { url: `/api/users/${encodeURIComponent(id)}`, method: 'DELETE', body },
-    );
-  }
-  if (email) {
-    urls.push(
-      { url: `/api/owner/users/by-email/${encodeURIComponent(email)}`, method: 'DELETE', body },
-      { url: `/api/users/delete`, method: 'POST', body },
-    );
-  }
-  if (originalUsername || username) {
-    const un = originalUsername || username.replace(/^deleted_/, '');
-    if (un) {
-      urls.push(
-        { url: `/api/users/release-username`, method: 'POST', body: { ...body, username: un } },
-        { url: `/api/owner/username/${encodeURIComponent(un)}`, method: 'DELETE', body },
-      );
+  try {
+    if (id) {
+      const biz = loadBusinessRegistry().filter(b => String((b as { userId?: string }).userId || '') !== id && String(b.id || '') !== id);
+      saveBusinessRegistry(biz);
     }
-  }
-  let ok = false;
-  for (const ep of urls) {
-    try {
-      const r = await fetch(ep.url, {
-        method: ep.method,
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ep.body || body),
-      });
-      if (r.ok || r.status === 204 || r.status === 404) { ok = true; break; }
-    } catch { /* next */ }
-  }
-  return ok || true; // local wipe always succeeded
+  } catch { /* */ }
+  try {
+    if (id) {
+      for (const k of ['stooorna_vip_plan', 'stooorna_vip_color', 'stooorna_vip_feats']) {
+        const o = JSON.parse(localStorage.getItem(k) || '{}');
+        if (o && typeof o === 'object' && id in o) { delete o[id]; localStorage.setItem(k, JSON.stringify(o)); }
+      }
+      localStorage.removeItem(`stooorna_biz_balance_${id}`);
+    }
+  } catch { /* */ }
+  // 4) real server hard delete (frees the email for a fresh signup)
+  return purgeUserOnServer(u);
 }
 
 
@@ -5424,6 +5529,14 @@ export default function SettingsPage() {
   const [showOwnerBusiness, setShowOwnerBusiness] = useState(false);
   const [recoveredUsers, setRecoveredUsers] = useState<DeletedUserRecord[]>([]);
   const [recoveredBusyId, setRecoveredBusyId] = useState<string>('');
+  // ── Owner-only: VIP manager ──
+  const [showOwnerVip, setShowOwnerVip] = useState(false);
+  const [ownerVipQuery, setOwnerVipQuery] = useState('');
+  const [ownerVipSel, setOwnerVipSel] = useState<{ id: string; username: string | null; email: string } | null>(null);
+  const [ownerVipColor, setOwnerVipColor] = useState<string>('gold');
+  const [ownerVipBusy, setOwnerVipBusy] = useState(false);
+  const [ownerVipMsg, setOwnerVipMsg] = useState('');
+  const [ownerVipTick, setOwnerVipTick] = useState(0);
   const [ownerCompanies, setOwnerCompanies] = useState<CompanyRegistration[]>([]);
   // New independent company registrations from the companies table
   const [ownerNewCompanies, setOwnerNewCompanies] = useState<{
@@ -5653,7 +5766,7 @@ export default function SettingsPage() {
 
   // Hide global app bottom tabs while any support chat / inbox overlay is open
   useEffect(() => {
-    const hidden = !!(showSupportChat || ownerChatUser || showOwnerInbox || showSupportUsers || supportCtrlUser || showOwnerCompanies || ownerCompanyDetail || showRecoveredUsers || showOwnerBusiness);
+    const hidden = !!(showSupportChat || ownerChatUser || showOwnerInbox || showSupportUsers || supportCtrlUser || showOwnerCompanies || ownerCompanyDetail || showRecoveredUsers || showOwnerVip || showOwnerBusiness);
     try {
       document.body.classList.toggle('stooorna-support-chat-open', hidden);
       window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden } }));
@@ -5664,7 +5777,7 @@ export default function SettingsPage() {
         window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } }));
       } catch { /* ignore */ }
     };
-  }, [showSupportChat, ownerChatUser, showOwnerInbox, showSupportUsers, supportCtrlUser, showOwnerCompanies, ownerCompanyDetail, showRecoveredUsers, showOwnerBusiness]);
+  }, [showSupportChat, ownerChatUser, showOwnerInbox, showSupportUsers, supportCtrlUser, showOwnerCompanies, ownerCompanyDetail, showRecoveredUsers, showOwnerVip, showOwnerBusiness]);
 
   async function patchSupportUser(userId: string, body: Record<string, unknown>) {
     // Prefer owner admin route; fallback to support-specific if added later
@@ -5683,8 +5796,65 @@ export default function SettingsPage() {
     return null;
   }
 
+  // ── Owner VIP grant: free VIP with frame + colored username + VIP header, no expiry ──
+  function ownerVipActive(id: string): boolean {
+    try {
+      const all = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
+      return !!all?.[id]?.active;
+    } catch { return false; }
+  }
+  function ownerVipColorOf(id: string): string | null {
+    try {
+      const c = JSON.parse(localStorage.getItem('stooorna_vip_color') || '{}');
+      return c?.[id] || null;
+    } catch { return null; }
+  }
+  async function ownerVipServerSync(id: string, body: Record<string, unknown>): Promise<boolean> {
+    const eps: Array<{ url: string; method: string }> = [
+      { url: `/api/owner/users/${encodeURIComponent(id)}/vip`, method: 'POST' },
+      { url: `/api/owner/users/${encodeURIComponent(id)}`, method: 'PATCH' },
+    ];
+    for (const ep of eps) {
+      try {
+        const r = await fetch(ep.url, {
+          method: ep.method, credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (r.ok) return true;
+      } catch { /* next */ }
+    }
+    return false;
+  }
+  async function ownerGrantVip(u: { id: string }, color: string) {
+    const FAR = new Date('2099-12-31T00:00:00Z').getTime();
+    try { activateVip(u.id); } catch { /* */ }
+    try { persistVipColor(u.id, color as never); } catch { /* */ }
+    try {
+      const plan = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
+      plan[u.id] = { ...(plan[u.id] || {}), active: true, expiresAt: FAR, grantedByOwner: true };
+      localStorage.setItem('stooorna_vip_plan', JSON.stringify(plan));
+      const colors = JSON.parse(localStorage.getItem('stooorna_vip_color') || '{}');
+      colors[u.id] = color;
+      localStorage.setItem('stooorna_vip_color', JSON.stringify(colors));
+    } catch { /* */ }
+    return ownerVipServerSync(u.id, {
+      vip: true, isVip: true, vipActive: true, vipColor: color, vipHeader: 'VIP',
+      vipExpiresAt: FAR, vipGrantedByOwner: true, color,
+    });
+  }
+  async function ownerRemoveVip(u: { id: string }) {
+    try { deactivateVip(u.id); } catch { /* */ }
+    try {
+      const plan = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
+      if (plan && plan[u.id]) { plan[u.id] = { ...plan[u.id], active: false }; localStorage.setItem('stooorna_vip_plan', JSON.stringify(plan)); }
+    } catch { /* */ }
+    return ownerVipServerSync(u.id, { vip: false, isVip: false, vipActive: false, vipGrantedByOwner: false });
+  }
+
   async function permanentlyDeleteSupportUser(target: { id: string; email?: string | null; username?: string | null }) {
     if (!target?.id && !target?.email && !target?.username) return { ok: false as const, status: 0, body: 'no-id' };
+    if (isUserWiped(target)) return { ok: true as const, status: 200, body: 'already-wiped' };
     markUserDeleted(target);
     markUsernameFreed(target.username);
     try {
@@ -6285,6 +6455,11 @@ export default function SettingsPage() {
         const people: typeof allUsers = [];
         const companies: typeof allCompanyCtrlUsers = [];
         for (const row of rows) {
+          if (isUserWiped(row)) {
+            // محذوف نهائياً: نخفيه تماماً ونعيد محاولة المسح من السيرفر بصمت (بدون وسمه كمحذوف من جديد)
+            void purgeUserOnServer({ id: String(row.id || ''), email: row.email, username: row.username });
+            continue;
+          }
           if (isUserDeleted(row)) {
             void permanentlyDeleteSupportUser({
               id: String(row.id || ''),
@@ -8929,6 +9104,44 @@ export default function SettingsPage() {
                   whileTap={{ scale: 0.98 }}
                   type="button"
                   onClick={() => {
+                    setOwnerVipMsg('');
+                    setOwnerVipSel(null);
+                    if (allUsers.length === 0) { void loadOwnerData(); }
+                    startTransition(() => setShowOwnerVip(true));
+                  }}
+                  className="flex items-center justify-between"
+                  style={{
+                    width: '100%',
+                    background: T.surface,
+                    border: `1px solid ${T.surfaceBorder}`,
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    color: T.text,
+                    cursor: 'pointer',
+                  }}
+                  aria-label="Give VIP"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center" style={{
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
+                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308', fontWeight: 900, fontSize: '0.72rem',
+                    }}>
+                      VIP
+                    </span>
+                    <span style={{ textAlign: 'left' }}>
+                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>VIP Manager</span>
+                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
+                        Give any user VIP · Frame · Color · Header
+                      </span>
+                    </span>
+                  </div>
+                  <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
+                </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => {
                     setOwnerBusinessList(loadBusinessRegistry());
                     startTransition(() => setShowOwnerBusiness(true));
                   }}
@@ -10783,15 +10996,35 @@ export default function SettingsPage() {
                           e.stopPropagation();
                           setRecoveredBusyId(key);
                           try {
-                            const orig = String(row.originalUsername || '').replace(/^@/, '').trim()
+                            let orig = String(row.originalUsername || '').replace(/^@/, '').trim()
                               || (String(row.username || '').startsWith('deleted_') ? '' : String(row.username || '').replace(/^@/, '').trim());
-                            await restoreOwnerAccount({
-                              id: row.id,
-                              email: row.email,
-                              username: row.username,
-                              originalUsername: orig || row.originalUsername,
-                              lastIp: (row as any).lastIp || null,
-                            });
+                            if (!orig) {
+                              // الحساب أُعيدت تسميته deleted_* ولا نعرف يوزره الأصلي — اسأل المالك
+                              const guess = String(row.email || '').split('@')[0] || '';
+                              const entered = window.prompt('Username to restore (without @):', guess);
+                              if (entered === null) return;
+                              orig = entered.replace(/^@/, '').trim();
+                            }
+                            try {
+                              await restoreOwnerAccount({
+                                id: row.id,
+                                email: row.email,
+                                username: row.username,
+                                originalUsername: orig || row.originalUsername,
+                                lastIp: (row as any).lastIp || null,
+                              });
+                            } catch (libErr) { console.warn('[restore] lib', libErr); }
+                            // ضمان الاستعادة: علامة محلية + إلغاء الحظر/الحذف على السيرفر + إرجاع اليوزر الأصلي
+                            markUserRestored({ id: row.id });
+                            if (row.id) {
+                              try {
+                                await patchSupportUser(String(row.id), {
+                                  isBanned: false, banned: false, deleted: false, isDeleted: false, status: 'active',
+                                  ...(orig ? { username: orig } : {}),
+                                });
+                              } catch { /* */ }
+                            }
+                            restoreDeletedUser({ id: row.id, email: row.email, username: row.username, originalUsername: orig || row.originalUsername });
                             setRecoveredUsers(loadDeletedUsers());
                             try { await loadOwnerData(); } catch { /* */ }
                           } catch (err) {
@@ -10815,26 +11048,35 @@ export default function SettingsPage() {
                         onClick={async (e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          const ok = window.confirm('PERMANENT delete: wipe all data and free the username. This cannot be undone.');
+                          const ok = window.confirm('PERMANENT delete: the account disappears completely with all its content, and the email can be used again. This cannot be undone.');
                           if (!ok) return;
                           setRecoveredBusyId(key);
                           try {
+                            // 1) علامة "محذوف نهائياً" أولاً حتى لا يعيده أي تحديث في الخلفية لهذا القسم
+                            markUserWiped({ id: row.id, username: row.username });
                             // Optimistic UI remove
                             setRecoveredUsers(prev => prev.filter(x => {
                               if (row.id && x.id === row.id) return false;
                               if (row.email && String(x.email || '').toLowerCase() === String(row.email || '').toLowerCase()) return false;
                               return true;
                             }));
-                            await wipeOwnerAccount({
-                              id: row.id,
-                              email: row.email,
-                              username: row.username,
-                              originalUsername: (row as any).originalUsername || row.username,
-                              lastIp: (row as any).lastIp || null,
-                            });
-                            await permanentlyWipeUser(row);
+                            setAllUsers(prev => prev.filter(x => x.id !== row.id));
+                            setAllCompanyCtrlUsers(prev => prev.filter(x => x.id !== row.id));
+                            try {
+                              await wipeOwnerAccount({
+                                id: row.id,
+                                email: row.email,
+                                username: row.username,
+                                originalUsername: (row as any).originalUsername || row.username,
+                                lastIp: (row as any).lastIp || null,
+                              });
+                            } catch (libErr) { console.warn('[wipe] lib', libErr); }
+                            const purged = await permanentlyWipeUser(row);
                             setRecoveredUsers(loadDeletedUsers());
                             try { await loadOwnerData(); } catch { /* */ }
+                            if (!purged) {
+                              alert('Removed from the app. The server has no hard-delete route yet, so the email may still be reserved until the server purges this account.');
+                            }
                           } catch (err) {
                             console.error('[wipe]', err);
                             alert('Permanent wipe failed: ' + String(err));
@@ -10861,6 +11103,173 @@ export default function SettingsPage() {
       </AnimatePresence>
 
 
+
+      {/* ── Owner: VIP manager — give any user VIP (frame + color + VIP header) ── */}
+      <AnimatePresence>
+        {showOwnerVip && isSupportOwnerAccount(
+          user as { email?: string | null; username?: string | null; name?: string | null },
+          profileUsername,
+        ) && (
+          <motion.div
+            key="owner-vip"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 10350,
+              background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(10px)',
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+              borderBottom: '1px solid rgba(234,179,8,0.25)',
+              background: 'linear-gradient(180deg, #1a1608 0%, #0a0e0e 100%)',
+              minHeight: 52, flexShrink: 0,
+            }}>
+              <button type="button" onClick={() => setShowOwnerVip(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#eab308', padding: 2 }} aria-label="Close">
+                <X size={20} />
+              </button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.95rem' }}>VIP Manager</p>
+                <p style={{ margin: '1px 0 0', color: 'rgba(200,190,150,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
+                  Owner only · give VIP with frame, color and VIP header
+                </p>
+              </div>
+              <button type="button" onClick={() => { void loadOwnerData(); setOwnerVipTick(t => t + 1); }}
+                style={{ border: '1px solid rgba(234,179,8,0.35)', background: 'rgba(234,179,8,0.1)', color: '#eab308', borderRadius: 8, padding: '6px 10px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}>
+                Refresh
+              </button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }} data-tick={ownerVipTick}>
+              {ownerVipSel && (
+                <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 14, background: 'rgba(234,179,8,0.06)', border: '1px solid rgba(234,179,8,0.35)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{
+                      width: 46, height: 46, borderRadius: '50%', flexShrink: 0,
+                      border: `3px solid ${(VIP_COLORS as Record<string, string>)[ownerVipColor] || '#eab308'}`,
+                      boxShadow: `0 0 12px ${(VIP_COLORS as Record<string, string>)[ownerVipColor] || '#eab308'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f5e6a8', fontWeight: 900,
+                    }}>
+                      {(ownerVipSel.username || ownerVipSel.email || '?').replace(/^@/, '').slice(0, 1).toUpperCase()}
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: '0.9rem', color: (VIP_COLORS as Record<string, string>)[ownerVipColor] || '#f5e6a8' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {ownerVipSel.username ? `@${String(ownerVipSel.username).replace(/^@/, '')}` : ownerVipSel.email}
+                        </span>
+                        <span style={{ padding: '1px 7px', borderRadius: 999, fontSize: '0.6rem', fontWeight: 900, background: (VIP_COLORS as Record<string, string>)[ownerVipColor] || '#eab308', color: '#111' }}>VIP</span>
+                      </p>
+                      <p style={{ margin: '3px 0 0', color: 'rgba(180,180,160,0.75)', fontSize: '0.68rem' }}>{ownerVipSel.email}</p>
+                    </div>
+                  </div>
+                  <p style={{ margin: '12px 0 6px', color: 'rgba(200,190,150,0.8)', fontSize: '0.68rem', fontWeight: 700 }}>Frame &amp; header color</p>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {Object.keys(VIP_COLORS as Record<string, string>).map(c => (
+                      <button key={c} type="button" onClick={() => setOwnerVipColor(c)} aria-label={c}
+                        style={{
+                          width: 30, height: 30, borderRadius: '50%', cursor: 'pointer',
+                          background: (VIP_COLORS as Record<string, string>)[c],
+                          border: ownerVipColor === c ? '3px solid #fff' : '3px solid transparent',
+                        }} />
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                    <button type="button" disabled={ownerVipBusy}
+                      onClick={async () => {
+                        if (!ownerVipSel) return;
+                        setOwnerVipBusy(true); setOwnerVipMsg('');
+                        try {
+                          const synced = await ownerGrantVip(ownerVipSel, ownerVipColor);
+                          setOwnerVipMsg(synced ? 'VIP saved for this user.' : 'VIP saved on this device. The server did not accept the VIP update yet, so other devices will not see it until the server route exists.');
+                          setOwnerVipTick(t => t + 1);
+                        } finally { setOwnerVipBusy(false); }
+                      }}
+                      style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#eab308', color: '#111', fontWeight: 900, fontSize: '0.78rem', cursor: 'pointer', opacity: ownerVipBusy ? 0.6 : 1 }}>
+                      {ownerVipActive(ownerVipSel.id) ? 'Update VIP' : 'Give VIP'}
+                    </button>
+                    {ownerVipActive(ownerVipSel.id) && (
+                      <button type="button" disabled={ownerVipBusy}
+                        onClick={async () => {
+                          if (!ownerVipSel) return;
+                          if (!window.confirm('Remove VIP from this user?')) return;
+                          setOwnerVipBusy(true); setOwnerVipMsg('');
+                          try {
+                            await ownerRemoveVip(ownerVipSel);
+                            setOwnerVipMsg('VIP removed.');
+                            setOwnerVipTick(t => t + 1);
+                          } finally { setOwnerVipBusy(false); }
+                        }}
+                        style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer', opacity: ownerVipBusy ? 0.6 : 1 }}>
+                        Remove VIP
+                      </button>
+                    )}
+                  </div>
+                  {ownerVipMsg && <p style={{ margin: '10px 0 0', color: '#f5e6a8', fontSize: '0.72rem' }}>{ownerVipMsg}</p>}
+                </div>
+              )}
+
+              <input
+                value={ownerVipQuery}
+                onChange={e => setOwnerVipQuery(e.target.value)}
+                placeholder="Search username or email…"
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: '10px 12px', marginBottom: 10, borderRadius: 10,
+                  border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(255,255,255,0.04)', color: '#f5e6a8', fontSize: '0.8rem', outline: 'none',
+                }}
+              />
+              {allUsers
+                .filter(u => {
+                  if (isUserDeleted(u)) return false;
+                  const q = ownerVipQuery.trim().toLowerCase().replace(/^@/, '');
+                  if (!q) return true;
+                  return `${u.username || ''} ${u.email || ''} ${u.name || ''}`.toLowerCase().includes(q);
+                })
+                .slice(0, 60)
+                .map(u => {
+                  const on = ownerVipActive(u.id);
+                  const col = ownerVipColorOf(u.id);
+                  const selected = ownerVipSel?.id === u.id;
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        setOwnerVipSel({ id: u.id, username: u.username, email: u.email });
+                        setOwnerVipColor(col || 'gold');
+                        setOwnerVipMsg('');
+                      }}
+                      style={{
+                        width: '100%', textAlign: 'left', marginBottom: 8, padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
+                        background: selected ? 'rgba(234,179,8,0.1)' : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${selected ? 'rgba(234,179,8,0.5)' : 'rgba(234,179,8,0.15)'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                      }}
+                    >
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: 'block', color: '#f5e6a8', fontWeight: 800, fontSize: '0.84rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {u.username ? `@${String(u.username).replace(/^@/, '')}` : (u.name || u.email)}
+                        </span>
+                        <span style={{ display: 'block', color: 'rgba(180,180,160,0.7)', fontSize: '0.66rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</span>
+                      </span>
+                      {on && (
+                        <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.62rem', fontWeight: 900, background: (VIP_COLORS as Record<string, string>)[col || 'gold'] || '#eab308', color: '#111', flexShrink: 0 }}>VIP</span>
+                      )}
+                    </button>
+                  );
+                })}
+              {allUsers.length === 0 && (
+                <div style={{ padding: 24, textAlign: 'center', color: 'rgba(180,180,160,0.7)', border: '1px dashed rgba(234,179,8,0.25)', borderRadius: 14 }}>
+                  No users loaded yet — tap Refresh
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Owner note for Business applicant (one-time) ── */}
       <AnimatePresence>
