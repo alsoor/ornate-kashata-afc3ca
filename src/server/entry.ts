@@ -145,7 +145,7 @@ import secret_room_mic_lock_get_128 from "./api/secret-room/mic-lock/GET";
 import secret_room_mic_lock_post_129 from "./api/secret-room/mic-lock/POST";
 import status_delete_130 from "./api/status/DELETE";
 import status_get_131 from "./api/status/GET";
-import status_post_132 from "./api/status/POST";
+import status_post_132, { multerMiddleware as statusMulterMiddleware } from "./api/status/POST";
 import status_comments_received_get_133 from "./api/status/comments/received/GET";
 import status_view_post_134 from "./api/status/view/POST";
 import status_id_comments_delete_135 from "./api/status/[id]/comments/DELETE";
@@ -323,6 +323,14 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// ── Serve uploaded story/post media ─────────────────────────────────────────
+// Uploads are written under ASSETS_DIR and returned as /airo-assets/... URLs,
+// but nothing was serving that prefix — so stories saved fine yet rendered as a
+// broken image (black screen). express.static also handles video Range requests.
+// On Railway, mount a Volume at this path (or set ASSETS_DIR) so files survive redeploys.
+const ASSETS_DIR = process.env.ASSETS_DIR || '/shared-storage/public/assets';
+app.use('/airo-assets', express.static(ASSETS_DIR, { maxAge: '7d', fallthrough: true }));
 
 // ── IP tracking: lightweight — stored via /api/me/update-ip ─────────────────
 
@@ -513,7 +521,7 @@ app.get("/api/secret-room/mic-lock", secret_room_mic_lock_get_128);
 app.post("/api/secret-room/mic-lock", secret_room_mic_lock_post_129);
 app.delete("/api/status", status_delete_130);
 app.get("/api/status", status_get_131);
-app.post("/api/status", status_post_132);
+app.post("/api/status", statusMulterMiddleware, status_post_132);
 app.get("/api/status/comments/received", status_comments_received_get_133);
 app.post("/api/status/view", status_view_post_134);
 app.delete("/api/status/:id/comments", status_id_comments_delete_135);

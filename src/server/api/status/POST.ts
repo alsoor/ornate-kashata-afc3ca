@@ -34,8 +34,10 @@ const IMAGE_DISPLAY_DURATION = 30;
 const VIDEO_DISPLAY_DURATION = 60;
 const STATUS_LIFETIME_MS     = 24 * 60 * 60 * 1000;
 
-const MEDIA_DIR  = '/shared-storage/public/assets/uploads/statuses';
-const AUDIO_DIR  = '/shared-storage/public/assets/uploads/status-audio';
+// Must match ASSETS_DIR in entry.ts (the folder served at /airo-assets).
+const ASSETS_DIR = process.env.ASSETS_DIR || '/shared-storage/public/assets';
+const MEDIA_DIR  = `${ASSETS_DIR}/uploads/statuses`;
+const AUDIO_DIR  = `${ASSETS_DIR}/uploads/status-audio`;
 const MEDIA_BASE = '/airo-assets/uploads/statuses';
 const AUDIO_BASE = '/airo-assets/uploads/status-audio';
 
