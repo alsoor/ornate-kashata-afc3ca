@@ -11,7 +11,7 @@ import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
