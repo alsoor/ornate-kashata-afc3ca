@@ -15989,7 +15989,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Quick "+" menu below the header: no longer touches headerOpen at all. Clicking it
   // hides the "+" itself and reveals the Settings/Friends/Call/Chat/Live row; closing
   // the menu (backdrop tap or picking an item) brings the "+" back.
-  const [profilePlusOpen, setProfilePlusOpen] = useState(false);
+  const [, setProfilePlusOpen] = useState(false);
   const profilePlusCallPressRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; long: boolean }>({ timer: null, long: false });
   const profilePlusIncomingCallUi = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
   const lastFeedScrollTopRef = useRef(0);
@@ -18642,19 +18642,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             Settings/Friends/Call/Chat/Live row directly below in its place;
             picking an item (or tapping the backdrop) closes the row and the
             "+" reappears. ── */}
-        {!isFriendManagement && (
+        {/* الأيقونات الثلاث (Friends / Call / Live) تظهر فقط عندما يكون الهيدر مرفوعاً (مطويّ)،
+            وعندما يكون الهيدر نازلاً لا يوجد زر "+" ولا أيقونات. */}
+        {!isFriendManagement && !headerOpen && (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '2px 0 8px', position: 'relative' }}>
-            {profilePlusOpen ? (
-              <>
-                <button
-                  type="button"
-                  aria-label="Close menu"
-                  onClick={() => setProfilePlusOpen(false)}
-                  style={{
-                    position: 'fixed', inset: 0, zIndex: 10210,
-                    background: 'transparent', border: 'none', cursor: 'default',
-                  }}
-                />
                 <div style={{
                   position: 'relative',
                   display: 'flex',
@@ -18784,37 +18775,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     </button>
                   )}
                 </div>
-              </>
-            ) : (
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.9 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setProfilePlusOpen(true);
-                }}
-                aria-label="خيارات إضافية"
-                style={{
-                  width: 32, height: 32, borderRadius: '50%', position: 'relative',
-                  border: `1.5px solid ${incoming.length > 0 ? 'rgba(239,68,68,0.5)' : CLR_PRIMARY_BORDER}`,
-                  background: incoming.length > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(0,188,212,0.12)',
-                  color: incoming.length > 0 ? '#ef4444' : CLR_PRIMARY,
-                  cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: incoming.length > 0 ? '0 0 10px rgba(239,68,68,0.3)' : '0 0 10px rgba(0,188,212,0.25)',
-                }}
-              >
-                <Plus size={16} strokeWidth={2.4} />
-                {incoming.length > 0 && (
-                  <span style={{
-                    position: 'absolute', top: -4, right: -4, minWidth: 14, height: 14, borderRadius: 8,
-                    background: '#ef4444', color: '#fff', fontSize: '0.5rem', fontWeight: 800,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px',
-                    border: '1.5px solid hsl(var(--background))',
-                  }}>{incoming.length > 9 ? '9+' : incoming.length}</span>
-                )}
-              </motion.button>
-            )}
           </div>
         )}
 
