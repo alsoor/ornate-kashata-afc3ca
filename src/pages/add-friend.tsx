@@ -2337,6 +2337,20 @@ function HeaderStoryCircle({
   // تمرير أو قصّ (overflow/clip) من العناصر الأب. ──────────────────────────
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
 
+  // (الـ hook لازم يكون قبل أي return مبكر — وإلا يحصل React error #310)
+  // إغلاق تلقائي عند أي تمرير (نافذة أو شريط القصص الأفقي) أو تغيير حجم
+  // الشاشة، حتى لا تبقى القائمة معلّقة بموضع قديم لم يعد يطابق مكان الزر.
+  useEffect(() => {
+    if (!choiceOpen) return;
+    const close = () => setChoiceOpen(false);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [choiceOpen]);
+
   // لا شيء لعرضه: لا ستوري ولا بث مباشر
   if (!hasStory && !liveActive) return null;
 
@@ -2368,19 +2382,6 @@ function HeaderStoryCircle({
     if (liveActive) { goLive(); return; }
     onOpenStory();
   };
-
-  // إغلاق تلقائي عند أي تمرير (نافذة أو شريط القصص الأفقي) أو تغيير حجم
-  // الشاشة، حتى لا تبقى القائمة معلّقة بموضع قديم لم يعد يطابق مكان الزر.
-  useEffect(() => {
-    if (!choiceOpen) return;
-    const close = () => setChoiceOpen(false);
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
-    return () => {
-      window.removeEventListener('scroll', close, true);
-      window.removeEventListener('resize', close);
-    };
-  }, [choiceOpen]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0, position: 'relative' }}>
