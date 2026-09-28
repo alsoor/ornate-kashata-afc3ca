@@ -13229,19 +13229,21 @@ function PublicLiveCommentsPanel({
       </div>
       <div
         ref={listRef}
+        onTouchStart={e => e.stopPropagation()}
+        onTouchMove={e => e.stopPropagation()}
+        onWheel={e => e.stopPropagation()}
         style={{
           flex: 1,
           minHeight: 0,
-          overflowY: 'auto',
+          overflowY: 'scroll',
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
           padding: '4px 12px 6px',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'flex-end',
           background: '#ffffff',
+          touchAction: 'pan-y',
         }}
       >
+        <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
         {comments.length === 0 && (
           <p style={{ margin: '28px 0 0', textAlign: 'center', color: '#9ca3af', fontSize: '0.86rem', fontWeight: 600 }}>
             كن أول من يكتب تعليقاً مباشراً
@@ -13296,6 +13298,7 @@ function PublicLiveCommentsPanel({
             </div>
           );
         })}
+        </div>
       </div>
 
       <div style={{
