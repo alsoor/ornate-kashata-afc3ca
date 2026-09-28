@@ -689,7 +689,10 @@ function ScVoiceBubble({
   isMe,
   primaryColor,
   primaryBorder,
-  textDim
+  textDim,
+  waveColor,
+  playColor,
+  pauseColor,
 }: {
   url: string;
   duration: number | null;
@@ -697,6 +700,9 @@ function ScVoiceBubble({
   primaryColor: string;
   primaryBorder: string;
   textDim: string;
+  waveColor?: string;
+  playColor?: string;
+  pauseColor?: string;
 }) {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -753,9 +759,9 @@ function ScVoiceBubble({
       height: 34,
       borderRadius: '50%',
       flexShrink: 0,
-      background: isMe ? 'rgba(0,188,212,0.2)' : 'rgba(255,255,255,0.08)',
-      border: `1.5px solid ${primaryBorder}`,
-      color: primaryColor,
+      background: playing ? 'rgba(239,68,68,0.12)' : (playColor ? '#fff' : (isMe ? 'rgba(0,188,212,0.2)' : 'rgba(255,255,255,0.08)')),
+      border: `1.5px solid ${playing && pauseColor ? 'rgba(239,68,68,0.45)' : primaryBorder}`,
+      color: playing ? (pauseColor || '#ef4444') : (playColor || primaryColor),
       cursor: 'pointer',
       display: 'flex',
       alignItems: 'center',
@@ -784,7 +790,7 @@ function ScVoiceBubble({
           flex: 1,
           height: `${h * 100}%`,
           borderRadius: 2,
-          background: filled ? primaryColor : isMe ? 'rgba(0,188,212,0.2)' : 'rgba(255,255,255,0.12)',
+          background: filled ? (waveColor || primaryColor) : (waveColor ? 'rgba(0,0,0,0.18)' : (isMe ? 'rgba(0,188,212,0.2)' : 'rgba(255,255,255,0.12)')),
           transformOrigin: 'center',
           transition: 'background 0.1s'
         }} />;
@@ -13450,9 +13456,12 @@ function PublicLiveCommentsPanel({
                       url={c.voiceUrl}
                       duration={c.voiceDuration ?? null}
                       isMe={c.userId === myId}
-                      primaryColor="#00BCD4"
-                      primaryBorder="rgba(0,188,212,0.35)"
+                      primaryColor="#111"
+                      primaryBorder="rgba(0,0,0,0.2)"
                       textDim="#6b7280"
+                      waveColor="#111"
+                      playColor="#111"
+                      pauseColor="#ef4444"
                     />
                   </div>
                 ) : null}
@@ -13562,17 +13571,45 @@ function PublicLiveCommentsPanel({
             {recording ? (
               <span style={{ color: '#ef4444', fontWeight: 800, fontSize: '0.8rem' }}>● Recording…</span>
             ) : pendingVoice ? (
-              <div style={{ flex: 1, padding: '6px 10px', borderRadius: 14, background: '#f3f4f6', border: '1px solid #e5e7eb' }}>
-                <ScVoiceBubble url={pendingVoice.url} duration={pendingVoice.duration} isMe primaryColor="#00BCD4" primaryBorder="rgba(0,188,212,0.35)" textDim="#6b7280" />
+              <div style={{ flex: 1, minWidth: 0, padding: '6px 10px', borderRadius: 14, background: '#f3f4f6', border: '1px solid #e5e7eb' }}>
+                <ScVoiceBubble
+                  url={pendingVoice.url}
+                  duration={pendingVoice.duration}
+                  isMe
+                  primaryColor="#111"
+                  primaryBorder="rgba(0,0,0,0.2)"
+                  textDim="#6b7280"
+                  waveColor="#111"
+                  playColor="#111"
+                  pauseColor="#ef4444"
+                />
               </div>
             ) : null}
             {pendingVoice && !recording && (
               <>
-                <button type="button" onClick={() => setPendingVoice(null)} style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer' }} aria-label="حذف">
-                  <Trash2 size={15} />
+                <button
+                  type="button"
+                  onClick={() => setPendingVoice(null)}
+                  style={{
+                    width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                    border: 'none', background: '#ef4444', color: '#fff',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                  aria-label="حذف"
+                >
+                  <Trash2 size={16} color="#fff" />
                 </button>
-                <button type="button" onClick={() => pushComment('', null, pendingVoice)} style={{ width: 36, height: 36, borderRadius: 10, border: 'none', background: '#00BCD4', color: '#041018', cursor: 'pointer' }} aria-label="إرسال">
-                  <Send size={15} />
+                <button
+                  type="button"
+                  onClick={() => pushComment('', null, pendingVoice)}
+                  style={{
+                    width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                    border: 'none', background: '#111', color: '#fff',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                  aria-label="إرسال"
+                >
+                  <Send size={16} color="#fff" />
                 </button>
               </>
             )}
