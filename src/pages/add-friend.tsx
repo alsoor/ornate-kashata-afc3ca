@@ -129,21 +129,55 @@ function camChannelForHost(hostId: string): string {
   return `stooorna-livecam-${uid}`;
 }
 
-// كاش على مستوى الموديول لحالة بث كل مستخدم، عشان دائرة البروفايل بالهيدر ما تختفي عند الدخول للبث والرجوع منه
-const liveKindStickyCache = new Map<string, { kind: 'voice' | 'camera'; at: number }>();
-const LIVE_KIND_GRACE_MS = 25_000;
-const LIVE_KIND_CACHE_TTL_MS = 120_000;
+// ── مخزن مشترك لحالة البث: دائرة الهيدر + مستطيل الرئيسية يقرؤون منه نفس القرار،
+// فيختفون مع بعض بنفس اللحظة بالضبط عند انتهاء البث (بعد مهلة تأكيد متواصلة). ──
+const LIVE_SHARED_GRACE_MS = 25_000;
+const liveShared = {
+  seen: new Map<string, { kind: 'voice' | 'camera'; at: number }>(),
+  held: new Map<string, 'voice' | 'camera'>(),
+  listeners: new Set<() => void>(),
+  version: 0,
+  paused: false,
+  timer: 0 as any,
+};
+function liveSharedEmit() { liveShared.version++; liveShared.listeners.forEach(l => l()); }
+function liveSharedMark(id: string, kind: 'voice' | 'camera') {
+  const prev = liveShared.held.get(id);
+  liveShared.seen.set(id, { kind, at: Date.now() });
+  if (prev !== kind) { liveShared.held.set(id, kind); liveSharedEmit(); }
+}
+function liveSharedIsHeld(id: string): boolean { return liveShared.held.has(id); }
+function liveSharedKind(id: string): 'voice' | 'camera' | null { return liveShared.held.get(id) ?? null; }
+function liveSharedTouchAll() { const now = Date.now(); liveShared.seen.forEach(v => { v.at = now; }); }
+function liveSharedSweep() {
+  if (liveShared.paused) return;
+  const now = Date.now();
+  let changed = false;
+  Array.from(liveShared.seen.entries()).forEach(([id, v]) => {
+    if (now - v.at >= LIVE_SHARED_GRACE_MS) {
+      liveShared.seen.delete(id);
+      if (liveShared.held.delete(id)) changed = true;
+    }
+  });
+  if (changed) liveSharedEmit();
+}
+function liveSharedSubscribe(fn: () => void) {
+  liveShared.listeners.add(fn);
+  if (!liveShared.timer) liveShared.timer = window.setInterval(liveSharedSweep, 500);
+  return () => {
+    liveShared.listeners.delete(fn);
+    if (!liveShared.listeners.size && liveShared.timer) { window.clearInterval(liveShared.timer); liveShared.timer = 0; }
+  };
+}
+function liveSharedSnapshot() { return liveShared.version; }
 // كاش قوائم الأصدقاء/القصص: تنعرض فوراً عند الرجوع بدل ما تبدأ فاضية لين يرجع السيرفر
 const headerListsCache: { uid: string; friends: any[]; stories: any[] } = { uid: '', friends: [], stories: [] };
 
 /** Voice or camera live for this host. Returns kind for UI labels.
  *  sticky=true: يبقى البث ظاهراً حتى يتأكد انتهاؤه لمدة متواصلة (تجاوز أي انقطاع لحظي). */
 function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false): 'voice' | 'camera' | null {
-  const [kind, setKind] = useState<'voice' | 'camera' | null>(() => {
-    if (!sticky || !hostId) return null;
-    const c = liveKindStickyCache.get(String(hostId));
-    return c && Date.now() - c.at < LIVE_KIND_CACHE_TTL_MS ? c.kind : null;
-  });
+  const [kind, setKind] = useState<'voice' | 'camera' | null>(null);
+  const sharedVer = useSyncExternalStore(liveSharedSubscribe, liveSharedSnapshot, liveSharedSnapshot);
 
   useEffect(() => {
     if (!hostId) {
@@ -154,21 +188,11 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
     const channel = liveChannelForHost(hostId);
     const camChannel = camChannelForHost(hostId);
 
-    let missSince = 0;
     const apply = (v: 'voice' | 'camera' | null) => {
       if (cancelled) return;
       if (!sticky) { setKind(v); return; }
-      if (v) {
-        missSince = 0;
-        liveKindStickyCache.set(String(hostId), { kind: v, at: Date.now() });
-        setKind(v);
-        return;
-      }
-      if (!missSince) missSince = Date.now();
-      if (Date.now() - missSince >= LIVE_KIND_GRACE_MS) {
-        liveKindStickyCache.delete(String(hostId));
-        setKind(null);
-      }
+      // وضع sticky: نسجّل الحضور فقط، والاختفاء يقرره المخزن المشترك (مع المستطيل بنفس اللحظة)
+      if (v) liveSharedMark(String(hostId), v);
     };
 
     const checkLocal = (): 'voice' | 'camera' | null => {
@@ -239,6 +263,8 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
     };
   }, [hostId]);
 
+  void sharedVer;
+  if (sticky) return hostId ? liveSharedKind(String(hostId)) : null;
   return kind;
 }
 
@@ -14410,7 +14436,6 @@ type HomeLiveConn = { kind: 'voice' | 'camera'; stop: () => Promise<void>; resum
 // كاش على مستوى الموديول: يبقى حتى لو الصفحة انفكّت/انركّبت عند الدخول للبث والرجوع منه
 const homeLiveCache: { uid: string; entries: HomeLiveEntry[]; since: Map<string, number> } = { uid: '', entries: [], since: new Map() };
 // البث ما يختفي من الرئيسية إلا إذا تأكدنا أنه منتهي فعلاً لمدة متواصلة (تجاوز أي انقطاع لحظي بالفحص/الشبكة)
-const HOME_LIVE_GRACE_MS = 25_000;
 const HOME_LIVE_SILVER = 'linear-gradient(135deg,#f4f6f9 0%,#9ba3ae 28%,#e6e9ee 52%,#8a929d 78%,#f1f3f6 100%)';
 const HOME_LIVE_CHAT_LIFT_EVT = 'stooorna:chat-lift';
 
@@ -14435,8 +14460,8 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
   const [entries, setEntries] = useState<HomeLiveEntry[]>(() => (homeLiveCache.uid === myId ? homeLiveCache.entries : []));
   const entriesRef = useRef<HomeLiveEntry[]>(entries);
   entriesRef.current = entries;
-  const missSinceRef = useRef<Map<string, number>>(new Map());
   const wasEnabledRef = useRef(false);
+  useSyncExternalStore(liveSharedSubscribe, liveSharedSnapshot, liveSharedSnapshot);
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
   const [mutedIds, setMutedIds] = useState<Set<string>>(() => new Set());
   const mutedRef = useRef<Set<string>>(mutedIds);
@@ -14497,11 +14522,12 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
   // ── اكتشاف البثوث الشغّالة الآن (صوتي/مرئي) ──
   useEffect(() => {
     // أثناء وجودي داخل صفحة البث: نوقف الفحص فقط، ولا نمسح البطاقات (كانت تختفي عند الرجوع)
-    if (!enabled || !myId) { wasEnabledRef.current = false; return; }
+    if (!enabled || !myId) { wasEnabledRef.current = false; liveShared.paused = true; return; }
     homeLiveCache.uid = myId;
     homeLiveCache.since = sinceRef.current;
     // بعد الرجوع من البث نبدأ عدّاد الغياب من الصفر
-    if (!wasEnabledRef.current) missSinceRef.current.clear();
+    if (!wasEnabledRef.current) liveSharedTouchAll();
+    liveShared.paused = false;
     wasEnabledRef.current = true;
     let cancelled = false;
     let busy = false;
@@ -14543,20 +14569,14 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
           const prevE = prevById.get(h.id);
           let hold: HomeLiveEntry | null = null;
           if (r && r !== 'unknown') {
-            missSinceRef.current.delete(h.id);
+            liveSharedMark(h.id, r.kind);
             if (!sinceRef.current.has(h.id)) sinceRef.current.set(h.id, now);
             hold = { ...h, kind: r.kind, members: r.members, since: sinceRef.current.get(h.id)! };
-          } else if (prevE) {
-            // غياب/فشل فحص: نُبقي البطاقة ونعدّ مدة الغياب المتواصل، وما تنشال إلا بعد المهلة
-            if (r === 'unknown') {
-              hold = prevE;
-            } else {
-              const missAt = missSinceRef.current.get(h.id) ?? now;
-              missSinceRef.current.set(h.id, missAt);
-              if (now - missAt < HOME_LIVE_GRACE_MS) hold = prevE;
-            }
+          } else if (prevE && liveSharedIsHeld(h.id)) {
+            // غياب/فشل فحص: نُبقي البطاقة، والمخزن المشترك هو اللي يقرر متى ينتهي البث
+            hold = prevE;
           }
-          if (!hold) { missSinceRef.current.delete(h.id); continue; }
+          if (!hold) continue;
           seen.add(h.id);
           live.push(hold);
         }
@@ -14672,7 +14692,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
     };
   };
 
-  const audioKey = !enabled ? '' : entries.filter(e => !dismissed.has(e.id)).map(e => `${e.id}:${e.kind}`).join('|');
+  const audioKey = !enabled ? '' : entries.filter(e => !dismissed.has(e.id) && liveSharedIsHeld(e.id)).map(e => `${e.id}:${e.kind}`).join('|');
   useEffect(() => {
     const want = new Map<string, 'voice' | 'camera'>();
     if (audioKey) {
@@ -14732,7 +14752,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
 
   if (typeof document === 'undefined') return null;
 
-  const visible = showCards ? entries.filter(e => !dismissed.has(e.id)) : [];
+  const visible = showCards ? entries.filter(e => !dismissed.has(e.id) && liveSharedIsHeld(e.id)) : [];
   const topPx = anchorTop || 120;
 
   return createPortal(
