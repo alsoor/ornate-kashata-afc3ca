@@ -13650,10 +13650,20 @@ function PublicLiveCommentsPanel({
   }, []);
 
   useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [comments.length]);
+    if (chatLift !== 1) return;
+    const go = () => {
+      const el = listRef.current;
+      if (!el) return;
+      el.scrollTop = el.scrollHeight + 800;
+    };
+    go();
+    const a = requestAnimationFrame(go);
+    const t = window.setTimeout(go, 50);
+    return () => {
+      cancelAnimationFrame(a);
+      window.clearTimeout(t);
+    };
+  }, [comments.length, chatLift]);
 
   const pushComment = (body: string, imageUrl?: string | null, voice?: { url: string; duration: number } | null) => {
     const trimmed = body.trim().slice(0, 500);
