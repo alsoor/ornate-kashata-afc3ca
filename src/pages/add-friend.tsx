@@ -13088,6 +13088,85 @@ function savePublicLiveComments(list: PublicLiveComment[]) {
   } catch { /* */ }
 }
 
+const LIVE_CHAT_ROOM = 'stooorna-live-chat';
+
+function normalizeLiveChatRows(raw: unknown): PublicLiveComment[] {
+  const arr = Array.isArray(raw) ? raw
+    : (raw && typeof raw === 'object' && Array.isArray((raw as any).comments) ? (raw as any).comments
+      : (raw && typeof raw === 'object' && Array.isArray((raw as any).messages) ? (raw as any).messages
+        : (raw && typeof raw === 'object' && Array.isArray((raw as any).list) ? (raw as any).list : [])));
+  return arr
+    .filter((x: any) => x && (x.id || x.text || x.body))
+    .map((x: any) => ({
+      id: String(x.id || `srv_${x.createdAt || x.at || Date.now()}`),
+      userId: String(x.userId || x.senderId || x.fromId || ''),
+      name: x.name ?? x.authorName ?? null,
+      username: x.username ?? x.authorUsername ?? null,
+      avatarUrl: x.avatarUrl ?? x.authorAvatar ?? x.image ?? null,
+      text: String(x.text || x.body || '').slice(0, 500),
+      imageUrl: x.imageUrl ?? null,
+      likes: Array.isArray(x.likes) ? x.likes.map(String) : [],
+      createdAt: Number(x.createdAt || x.at || Date.parse(x.created_at || '') || Date.now()),
+    }))
+    .filter(x => x.text)
+    .slice(-400);
+}
+
+function mergeLiveChatLists(a: PublicLiveComment[], b: PublicLiveComment[]): PublicLiveComment[] {
+  const map = new Map<string, PublicLiveComment>();
+  for (const row of [...a, ...b]) {
+    const prev = map.get(row.id);
+    if (!prev || (row.likes?.length || 0) >= (prev.likes?.length || 0)) map.set(row.id, row);
+  }
+  return [...map.values()].sort((x, y) => x.createdAt - y.createdAt).slice(-400);
+}
+
+async function fetchLiveChatFromServer(): Promise<PublicLiveComment[] | null> {
+  const urls = [
+    '/api/live-chat',
+    `/api/live-chat?room=${encodeURIComponent(LIVE_CHAT_ROOM)}`,
+    `/api/room/messages?id=${encodeURIComponent(LIVE_CHAT_ROOM)}`,
+    `/api/public-chat?room=${encodeURIComponent(LIVE_CHAT_ROOM)}`,
+  ];
+  for (const u of urls) {
+    try {
+      const r = await fetch(u, { credentials: 'include', cache: 'no-store' });
+      if (!r.ok) continue;
+      const d = await r.json();
+      const list = normalizeLiveChatRows(d);
+      if (list.length || r.ok) return list;
+    } catch { /* next */ }
+  }
+  return null;
+}
+
+async function postLiveChatToServer(row: PublicLiveComment): Promise<void> {
+  const payload = {
+    roomId: LIVE_CHAT_ROOM,
+    room: LIVE_CHAT_ROOM,
+    id: row.id,
+    userId: row.userId,
+    name: row.name,
+    username: row.username,
+    avatarUrl: row.avatarUrl,
+    text: row.text,
+    body: row.text,
+    imageUrl: row.imageUrl || null,
+    createdAt: row.createdAt,
+  };
+  const attempts: Array<() => Promise<Response>> = [
+    () => fetch('/api/live-chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+    () => fetch('/api/public-chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+    () => fetch('/api/room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+  ];
+  for (const fn of attempts) {
+    try {
+      const r = await fn();
+      if (r.ok) return;
+    } catch { /* next */ }
+  }
+}
+
 const LIVE_EMOJI_BAR = ['❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂'] as const;
 const LIVE_EMOJI_PICKER = ['😀', '😁', '😂', '🤣', '😊', '😍', '🥰', '😘', '😎', '🤩', '😢', '😭', '😡', '🔥', '❤️', '💯', '👍', '👎', '👏', '🙌', '🎉', '✨', '🙏', '👀'];
 
@@ -13106,6 +13185,8 @@ function PublicLiveCommentsPanel({
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const liveSigRef = useRef('');
+  const liveBusyRef = useRef(false);
   const myId = String(user?.id || '');
   const myName = user?.name ?? null;
   const myUsername = (user as any)?.username ?? null;
@@ -13130,10 +13211,24 @@ function PublicLiveCommentsPanel({
     };
     window.addEventListener(PUBLIC_LIVE_COMMENTS_EVT, onEvt);
     window.addEventListener('storage', onStorage);
-    const iv = window.setInterval(() => {
-      const next = loadPublicLiveComments();
-      setComments(prev => (prev.length === next.length && prev[prev.length - 1]?.id === next[next.length - 1]?.id ? prev : next));
-    }, 2000);
+    const pull = async () => {
+      if (liveBusyRef.current) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      liveBusyRef.current = true;
+      try {
+        const remote = await fetchLiveChatFromServer();
+        const local = loadPublicLiveComments();
+        const next = remote ? mergeLiveChatLists(local, remote) : local;
+        const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}`).join('|');
+        if (sig === liveSigRef.current) return;
+        liveSigRef.current = sig;
+        savePublicLiveComments(next);
+        setComments(next);
+      } catch { /* live chat only — never touch stories/posts */ }
+      finally { liveBusyRef.current = false; }
+    };
+    void pull();
+    const iv = window.setInterval(pull, 2000);
     return () => {
       window.clearInterval(iv);
       window.removeEventListener(PUBLIC_LIVE_COMMENTS_EVT, onEvt);
@@ -13169,6 +13264,7 @@ function PublicLiveCommentsPanel({
     setText('');
     setPendingImage(null);
     setEmojiOpen(false);
+    void postLiveChatToServer(row);
   };
 
   const toggleLike = (id: string) => {
