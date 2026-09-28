@@ -18400,6 +18400,38 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     </div>
                   )}
 
+                  {/* Settings — نُقلت من قائمة (+) إلى نهاية صف الأيقونات (أقصى اليمين)، بيضاء ومميّزة وتدور ببطء.
+                      margin سالب حتى لا يزيد ارتفاع الصف رغم أن حجمها 38px. */}
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                      try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
+                      navigate('/settings');
+                    }}
+                    aria-label="Settings"
+                    title="Settings"
+                    style={{
+                      marginLeft: 'auto', marginTop: -7, marginBottom: -7,
+                      width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+                      border: '1.5px solid rgba(255,255,255,0.6)',
+                      background: 'rgba(255,255,255,0.1)',
+                      color: '#ffffff',
+                      cursor: 'pointer', padding: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: '0 0 12px rgba(255,255,255,0.28), 0 4px 16px rgba(0,0,0,0.45)',
+                    }}
+                  >
+                    <motion.span
+                      aria-hidden="true"
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 9, repeat: Infinity, ease: 'linear' }}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Settings size={18} strokeWidth={2.2} color="#ffffff" />
+                    </motion.span>
+                  </motion.button>
+
                 </div>
               </div>
             </div>
@@ -18539,26 +18571,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   zIndex: 10620,
                   animation: 'stooornaPlusFanIn 0.28s ease-out',
                 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProfilePlusOpen(false);
-                      try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
-                      navigate('/settings');
-                    }}
-                    aria-label="Settings"
-                    style={{
-                      width: 38, height: 38, borderRadius: '50%',
-                      border: '1px solid rgba(0,188,212,0.4)',
-                      background: 'rgba(6,20,22,0.96)',
-                      color: '#00BCD4',
-                      cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                    }}
-                  >
-                    <Settings size={18} strokeWidth={2.2} />
-                  </button>
                   {user?.id && (
                     <button
                       type="button"
