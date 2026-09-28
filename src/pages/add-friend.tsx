@@ -13690,12 +13690,14 @@ function PublicLiveCommentsPanel({
       }}
     >
       <div style={{
+        flex: chatLift === 0 ? 1 : undefined,
         flexShrink: 0,
         height: chatLift === 2
           ? 'max(8px, env(safe-area-inset-top))'
           : chatLift === 0
-            ? 'max(52vh, calc(env(safe-area-inset-top) + 280px))'
+            ? undefined
             : 'max(188px, calc(env(safe-area-inset-top) + 168px))',
+        minHeight: chatLift === 0 ? 0 : undefined,
         pointerEvents: 'none',
         background: 'transparent',
       }} />
@@ -13705,9 +13707,11 @@ function PublicLiveCommentsPanel({
         onTouchMove={e => e.stopPropagation()}
         onWheel={e => e.stopPropagation()}
         style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: 'scroll',
+          flex: chatLift === 0 ? '0 0 0px' : 1,
+          minHeight: chatLift === 0 ? 0 : 0,
+          height: chatLift === 0 ? 0 : undefined,
+          overflowY: chatLift === 0 ? 'hidden' : 'scroll',
+          display: chatLift === 0 ? 'none' : undefined,
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
           padding: '4px 12px 6px',
@@ -13822,7 +13826,7 @@ function PublicLiveCommentsPanel({
         flexShrink: 0,
       }}>
         <div style={{
-          display: 'flex',
+          display: chatLift === 0 ? 'none' : 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '8px 10px 6px',
