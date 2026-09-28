@@ -16,6 +16,7 @@ import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from
 import { useSession } from '@/lib/auth/auth-client';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { usePresenceQuery } from '@/hooks/usePresence';
+import { pullLiveLocations, pullOnlineIds } from '@/lib/liveLocationSync';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useGlobalCall } from '@/components/GlobalCallProvider';
 import { normalizeComment, sortCommentsTree, authorCountryLabel } from '@/lib/postCommentReplyPatch';
@@ -518,6 +519,91 @@ function useAnyOnMap(friendIds: string[], selfId?: string | null): boolean {
     return () => { cancelled = true; window.clearInterval(interval); window.removeEventListener('storage', onStorage); };
   }, [key]);
   return any;
+}
+
+/** مجموعة معرّفات المضافين الأونلاين الآن (لعدّادات أونلاين/أوفلاين داخل الخريطة). */
+function useOnlineIdSet(ids: string[], enabled = true): Set<string> {
+  const [online, setOnline] = useState<Set<string>>(() => new Set());
+  const key = Array.from(new Set(ids.filter(Boolean).map(String))).sort().join('|');
+  useEffect(() => {
+    const list = enabled && key ? key.split('|') : [];
+    let cancelled = false;
+    if (list.length === 0) { setOnline(prev => (prev.size ? new Set() : prev)); return; }
+    const localOn = (id: string) => {
+      try {
+        const raw = localStorage.getItem(`stooorna_online_${id}`);
+        if (!raw) return false;
+        const d = JSON.parse(raw) as { active?: boolean; at?: number };
+        return !!d?.active && !!d.at && Date.now() - d.at < 12_000;
+      } catch { return false; }
+    };
+    let busy = false;
+    const check = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const flags = await Promise.all(list.map(async id => {
+          if (localOn(id)) return true;
+          try {
+            const r = await fetch(`/api/room?id=${encodeURIComponent(onlineRoomId(id))}`, { credentials: 'include' });
+            if (!r.ok) return false;
+            const d = await r.json() as { members?: unknown[] };
+            return Array.isArray(d.members) && d.members.length > 0;
+          } catch { return false; }
+        }));
+        if (cancelled) return;
+        const next = new Set(list.filter((_, i) => flags[i]));
+        setOnline(prev => (prev.size === next.size && [...next].every(x => prev.has(x)) ? prev : next));
+      } finally { busy = false; }
+    };
+    void check();
+    const iv = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void check();
+    }, 3000);
+    const onEvt = () => { void check(); };
+    window.addEventListener('stooorna:online-active', onEvt);
+    return () => { cancelled = true; window.clearInterval(iv); window.removeEventListener('stooorna:online-active', onEvt); };
+  }, [key, enabled]);
+  return online;
+}
+
+/** نفس مسار عدّادات الخريطة الأصلية (LiveLocationMap): pullLiveLocations + pullOnlineIds كل 4 ثوانٍ. */
+function useLiveMapPresence(enabled = true): { liveIds: Set<string>; onlineIds: Set<string> } {
+  const [state, setState] = useState<{ liveIds: Set<string>; onlineIds: Set<string> }>(() => ({ liveIds: new Set(), onlineIds: new Set() }));
+  useEffect(() => {
+    if (!enabled) return;
+    let stop = false;
+    const same = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every(x => b.has(x));
+    const tick = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      try {
+        const [pings, onl] = await Promise.all([pullLiveLocations(), pullOnlineIds()]);
+        if (stop) return;
+        const liveIds = new Set<string>((pings || []).filter((p: any) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng)).map((p: any) => String(p.id)));
+        const onlineIds = new Set<string>(Array.from(onl as Iterable<unknown> || []).map(x => String(x)));
+        setState(prev => (same(prev.liveIds, liveIds) && same(prev.onlineIds, onlineIds) ? prev : { liveIds, onlineIds }));
+      } catch { /* keep last */ }
+    };
+    void tick();
+    const iv = window.setInterval(tick, 4000);
+    return () => { stop = true; window.clearInterval(iv); };
+  }, [enabled]);
+  return state;
+}
+
+function anyFriendOnMapPins_(
+  friendIds: string[], selfId: string,
+  sync: { liveIds: Set<string>; onlineIds: Set<string> },
+  roomOnline: Set<string>, presence: Record<string, any> | undefined, pinsFlag: boolean,
+): boolean {
+  if (pinsFlag) return true;
+  const pool = new Set<string>([...friendIds.map(String), ...sync.liveIds]);
+  pool.delete(selfId);
+  for (const id of pool) {
+    if (sync.liveIds.has(id) || sync.onlineIds.has(id) || roomOnline.has(id) || presence?.[id]?.online) return true;
+  }
+  return false;
 }
 
 // ── Notification sound design — small synthesized tones (water-drop / bubble mixes) ──
@@ -2454,6 +2540,18 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const [liveHighlightId, setLiveHighlightId] = useState<string | null>(null);
   const liveSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const livePinsRef = useRef(livePins);
+  // ── عدّادات أعلى الخريطة — نفس منطق LiveLocationMap الأصلي: رمادي = غير متوفر، أخضر = أونلاين/لايف ──
+  const mapFriendIds = useMemo(() => (liveFriends || []).map(f => String(f.id)), [liveFriends]);
+  const mapSync = useLiveMapPresence(liveMapOpen);
+  const mapRoomOnline = useOnlineIdSet(mapFriendIds, liveMapOpen);
+  const mapPresence = usePresenceQuery(liveMapOpen ? mapFriendIds : []);
+  const mapPoolIds = Array.from(new Set([...mapFriendIds, ...mapSync.liveIds])).filter(id => id !== String(myId || ''));
+  const mapPoolOnline = mapPoolIds.filter(id =>
+    mapSync.liveIds.has(id) || mapSync.onlineIds.has(id) || mapRoomOnline.has(id) || !!(mapPresence as any)?.[id]?.online,
+  ).length;
+  const mapSelfCount = myId ? 1 : 0;
+  const mapOnlineCount = mapPoolOnline + (myId && liveShareOn ? 1 : 0);
+  const mapOfflineCount = Math.max(0, mapPoolIds.length + mapSelfCount - mapOnlineCount);
   const liveSearchFocusedRef = useRef(false);
   useEffect(() => { livePinsRef.current = livePins; }, [livePins]);
   const [livePlace, setLivePlace] = useState('');
@@ -3860,7 +3958,17 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', inset: 0, zIndex: 20, background: '#061018', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '10px 12px 8px', paddingTop: 'max(10px, env(safe-area-inset-top))', background: '#061018', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.9rem', flex: 1 }}>GPS Live</span>
+                <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.9rem' }}>GPS Live</span>
+                <div aria-label={`Online ${mapOnlineCount}, Offline ${mapOfflineCount}`} style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-end', gap: 36 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#9ca3af' }} />
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#9ca3af', lineHeight: 1 }}>{mapOfflineCount}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px rgba(34,197,94,0.7)' }} />
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#22c55e', lineHeight: 1 }}>{mapOnlineCount}</span>
+                  </div>
+                </div>
                 <button type="button" onClick={() => { setLiveMapOpen(false); setLiveMsgPeer(null); if (startWithLiveMap) onClose(); }} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>X</button>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -16902,7 +17010,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   usePublishOnline(user?.id ? String(user.id) : null);
   const anyFriendOnlineFast = useAnyOnline(friendIds, user?.id ? String(user.id) : null);
   // أيقونة الخريطة (بجانب أيقونة البث): خضراء إذا أي صديق ظاهر على الخريطة الحية
-  const anyFriendOnMap = useAnyOnMap(friendIds, user?.id ? String(user.id) : null);
+  const anyFriendOnMapPins = useAnyOnMap(friendIds, user?.id ? String(user.id) : null);
+  // أيقونة الخريطة الخارجية: نفس مسار الأصل (pullLiveLocations + pullOnlineIds) + المسارات السريعة السابقة
+  const outerMapSync = useLiveMapPresence(true);
+  const outerOnlineIds = useOnlineIdSet(friendIds);
+  const anyFriendOnMap = anyFriendOnMapPins_(
+    friendIds, user?.id ? String(user.id) : '', outerMapSync, outerOnlineIds, presence as any, anyFriendOnMapPins,
+  );
   // Heartbeat so friends see this user as online (shared presence store on server)
   useEffect(() => {
     if (!user?.id) return;
