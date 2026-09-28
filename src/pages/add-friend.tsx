@@ -12,6 +12,7 @@ import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
 import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin } from 'lucide-react';
+import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
@@ -16474,35 +16475,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [storyReqResults, setStoryReqResults] = useState<SearchUser[]>([]);
   const [storyReqSearching, setStoryReqSearching] = useState(false);
   const [storyReqSendingId, setStoryReqSendingId] = useState<string | null>(null);
-  // ── طلبات الإضافة الجديدة (غير المشاهدة): الأيقونة العلوية تصير برتقالية مع نقطتها،
-  //    وترجع لونها الأصلي والنقطة رمادية بمجرد فتح صندوق الطلبات. نحفظ المعرّفات المشاهدة
-  //    محلياً حتى لا ترجع البرتقالية بعد تحديث الصفحة، وأي طلب جديد يعيدها برتقالية. ──
-  const friendReqSeenKey = `stooorna_friend_req_seen_${user?.id ?? 'anon'}`;
-  const [friendReqSeenIds, setFriendReqSeenIds] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem(friendReqSeenKey);
-      const arr = raw ? JSON.parse(raw) : [];
-      return new Set(Array.isArray(arr) ? arr.map(String) : []);
-    } catch { return new Set(); }
-  });
-  const markFriendReqsSeen = useCallback(() => {
-    setFriendReqSeenIds(prev => {
-      const next = new Set(prev);
-      let changed = false;
-      for (const r of incoming) {
-        const k = String(r.id);
-        if (!next.has(k)) { next.add(k); changed = true; }
-      }
-      if (!changed) return prev;
-      try { localStorage.setItem(friendReqSeenKey, JSON.stringify(Array.from(next).slice(-500))); } catch { /* storage optional */ }
-      return next;
-    });
-  }, [incoming, friendReqSeenKey]);
-  const hasUnseenFriendReq = incoming.some(r => !friendReqSeenIds.has(String(r.id)));
-  // لو الصندوق مفتوح على تبويب الطلبات ووصل طلب جديد، نعتبره مشاهداً مباشرة
-  useEffect(() => {
-    if (storyRequestsBoxOpen && storyReqTab === 'requests') markFriendReqsSeen();
-  }, [storyRequestsBoxOpen, storyReqTab, incoming, markFriendReqsSeen]);
+  // ── أيقونة طلبات الإضافة العلوية: برتقالية عند وصول طلب جديد، وترجع عادية بعد فتح الصندوق (المنطق في lib/friendRequestSeen.ts) ──
+  const { hasUnseen: hasUnseenFriendReq, markSeen: markFriendReqsSeen } = useFriendRequestSeen(
+    user?.id,
+    incoming,
+    storyRequestsBoxOpen && storyReqTab === 'requests',
+  );
   useEffect(() => {
     if (!storyRequestsBoxOpen) return;
     const q = storyReqQuery.trim();
