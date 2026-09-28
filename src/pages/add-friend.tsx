@@ -26,6 +26,8 @@ import { useGuestGuard } from '@/hooks/useGuestGuard';
 import PostTextMore from '@/components/PostTextMore';
 import { publishFeedPost, uploadPostMedia, deleteStoryInstant, POST_TEXT_MAX_CHARS } from '@/lib/postStoryPatch';
 import { mediaAiProcessGalleryFiles, mediaAiForceWorkingMedia, mediaAiNormalizeImage, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
+import { StoryModerationBell, StoryModerateDialog, StoryBanModal } from '@/components/StoryModeration';
+import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, moderatorDeleteStory } from '@/lib/storyModeration';
 interface SearchUser {
   id: string;
   name: string | null;
@@ -3382,6 +3384,11 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 
   async function publish() {
     if (!captured) return;
+    if (myId && getActiveBan(myId)) {
+      try { window.dispatchEvent(new CustomEvent('stooorna:story-ban-blocked')); } catch { /* */ }
+      setError('غير مسموح لك بالنشر حالياً');
+      return;
+    }
     setPublishing(true);
     setError('');
     try {
@@ -4705,7 +4712,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 }
 
 // ── StoryViewer — fullscreen viewer ───────────────────────────────────────────
-function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = null, onClose, onSeen, onAddMedia, onPublishPhoto, onPublishVideo, onOpenCamera, onDeleteItem, onSendComment, isCompanyPublisher = false, onOpenSettings, onOpenFriends, onOpenChat }: {
+function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = null, onClose, onSeen, onAddMedia, onPublishPhoto, onPublishVideo, onOpenCamera, onDeleteItem, onSendComment, isCompanyPublisher = false, onOpenSettings, onOpenFriends, onOpenChat, canModerate = false }: {
   groups: StoryGroup[];
   startGroupIdx: number;
   myId: string;
@@ -4726,11 +4733,16 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
   onOpenSettings?: () => void;
   onOpenFriends?: () => void;
   onOpenChat?: () => void;
+  /** Owner (@Stooorna) or a moderator the owner granted: can delete any user's story with a notice */
+  canModerate?: boolean;
 }) {
   const [gIdx, setGIdx] = useState(startGroupIdx);
   const [iIdx, setIIdx] = useState(0);
   const [progress, setProgress] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [modDialogOpen, setModDialogOpen] = useState(false);
+  const modDialogOpenRef = useRef(false);
+  useEffect(() => { modDialogOpenRef.current = modDialogOpen; }, [modDialogOpen]);
   const [storyMenuOpen, setStoryMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -4850,7 +4862,7 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
     const tick = 50;
     timerRef.current = setInterval(() => {
       setProgress(p => {
-        if (commentsSheetOpenRef.current) return p; // موقوف مؤقتاً — شيت التعليقات مفتوح
+        if (commentsSheetOpenRef.current || modDialogOpenRef.current) return p; // موقوف مؤقتاً — شيت التعليقات / نافذة الإشراف مفتوحة
         const next = p + (tick / dur) * 100;
         if (next >= 100) { clearInterval(timerRef.current!); goNext(); return 100; }
         return next;
@@ -5151,6 +5163,17 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
             )}
           </div>
         )}
+        {!isMyStory && canModerate && (
+          <motion.button
+            whileTap={{ scale: 0.88 }}
+            onClick={e => { e.stopPropagation(); setModDialogOpen(true); }}
+            style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(239,68,68,0.16)', border: '1px solid rgba(239,68,68,0.55)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            aria-label="حذف الستوري (إشراف)"
+            title="حذف الستوري (إشراف)"
+          >
+            <Trash2 size={17} strokeWidth={2.2} />
+          </motion.button>
+        )}
         <button onClick={e => { e.stopPropagation(); onClose(); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--foreground))', cursor: 'pointer', padding: 4 }} aria-label="إغلاق">
           <X size={22} strokeWidth={2.2} />
         </button>
@@ -5271,6 +5294,19 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
             >{deleting ? '…' : 'حذف'}</motion.button>
           </div>
         </motion.div>
+      )}
+
+      {/* ── Owner/moderator: delete any user's story + message + level (gray / orange / red) ── */}
+      {modDialogOpen && !isMyStory && canModerate && (
+        <StoryModerateDialog
+          story={{ id: item.id, mediaUrl: item.mediaUrl, mediaType: item.mediaType, overlayText: item.overlayText }}
+          target={{ userId: group.userId, username: group.username, name: group.name }}
+          onClose={() => setModDialogOpen(false)}
+          onConfirmDelete={() => {
+            void moderatorDeleteStory(item.id, item.mediaUrl);
+            void handleDelete();
+          }}
+        />
       )}
 
       {/* ── الشريط السفلي لصفحة القصة — يظهر دائمًا (فيه زر الزائد)، وصندوق التعليق يظهر فقط لغير صاحب القصة ── */}
@@ -13134,6 +13170,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const storyFileRef = useRef<HTMLInputElement>(null);
   // ref for adding extra media from inside the viewer
   const storyAddFileRef = useRef<HTMLInputElement>(null);
+  // ── Story moderation: who can delete any story (owner + granted moderators) + publish-ban modal ──
+  const [modTick, setModTick] = useState(0);
+  const [storyBanOpen, setStoryBanOpen] = useState(false);
+  useEffect(() => {
+    void fetchModerators();
+    const off = onModerationChanged(() => setModTick(x => x + 1));
+    const onBlocked = () => setStoryBanOpen(true);
+    window.addEventListener('stooorna:story-ban-blocked', onBlocked);
+    return () => { off(); window.removeEventListener('stooorna:story-ban-blocked', onBlocked); };
+  }, []);
+  const storyCanModerate = (void modTick, !!user && (isStoryOwner(user as { email?: string | null; username?: string | null; name?: string | null }) || isModerator(user.id)));
   // اختيار صورة/فيديو للستوري: مربّعان فقط بدون خيار "ملفات" ثالث —
   // نحدّد نوع الملف المسموح على الـ input قبل فتحه بدل قبول النوعين معاً.
   const [storyPickerOpen, setStoryPickerOpen] = useState<null | 'main' | 'add'>(null);
@@ -13259,6 +13306,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   //   1) multipart  (media + file + type)
   //   2) raw body   (Content-Type = file type, X-File-Ext header)
   async function uploadStory(file: File) {
+    if (user?.id && getActiveBan(user.id)) { setStoryBanOpen(true); return; }
     const kind: 'image' | 'video' = (file.type.startsWith('video/') || /\.(mp4|webm|mov|m4v)$/i.test(file.name || '')) ? 'video' : 'image';
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/') && kind !== 'video') {
       setQuickPublishError('Please choose an image or video for your story.');
@@ -18402,6 +18450,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
                   {/* Settings — نُقلت من قائمة (+) إلى نهاية صف الأيقونات (أقصى اليمين)، بيضاء ومميّزة وتدور ببطء.
                       margin سالب حتى لا يزيد ارتفاع الصف رغم أن حجمها 38px. */}
+                  <div style={{ position: 'relative', marginLeft: 'auto', marginTop: -7, marginBottom: -7, width: 38, height: 38, flexShrink: 0 }}>
                   <motion.button
                     type="button"
                     whileTap={{ scale: 0.9 }}
@@ -18412,7 +18461,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     aria-label="Settings"
                     title="Settings"
                     style={{
-                      marginLeft: 'auto', marginTop: -7, marginBottom: -7,
                       width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
                       border: '1.5px solid rgba(255,255,255,0.6)',
                       background: 'rgba(255,255,255,0.1)',
@@ -18431,6 +18479,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <Settings size={18} strokeWidth={2.2} color="#ffffff" />
                     </motion.span>
                   </motion.button>
+                  {/* Bell — under Settings: notices the owner sent (deleted story + message) */}
+                  <div style={{ position: 'absolute', top: 46, left: 0, zIndex: 5 }}>
+                    <StoryModerationBell userId={user?.id} />
+                  </div>
+                  </div>
 
                 </div>
               </div>
@@ -23757,6 +23810,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
       {/* قائمة Photo/Video للقصة أُلغيت — الفتح مباشرة من المعرض أو الكاميرا */}
 
+      {storyBanOpen && <StoryBanModal userId={user?.id} onClose={() => setStoryBanOpen(false)} />}
+
       {/* ── Story Viewer ── */}
       <AnimatePresence>
         {viewerGroupIdx !== null && (
@@ -23794,6 +23849,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               setNormalChatPickerOpen(true);
               void loadFriends();
             }}
+            canModerate={storyCanModerate}
             onDeleteItem={(storyId) => {
               // نسجّل المعرّف كمحذوف محلياً أولاً حتى لو رجع الريفرش التلقائي
               // (كل ثانيتين) بنسخة كان قد طلبها قبل اكتمال الحذف على السيرفر،

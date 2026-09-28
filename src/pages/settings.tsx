@@ -13,6 +13,7 @@ import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
 import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, getVipFeats, setVipFeat, hydrateVipFromServer, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown } from '@/lib/vipPatch';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
+import StoryModerationManager from '@/components/StoryModerationManager';
 
 // ─── Replaced virtual:content ───────────────────────────────────────────────
 const settings = {
@@ -5533,6 +5534,7 @@ export default function SettingsPage() {
   const [recoveredBusyId, setRecoveredBusyId] = useState<string>('');
   // ── Owner-only: Business manager ──
   const [showOwnerBiz, setShowOwnerBiz] = useState(false);
+  const [showOwnerStoryMod, setShowOwnerStoryMod] = useState(false);
   const [ownerBizQuery, setOwnerBizQuery] = useState('');
   const [ownerBizSel, setOwnerBizSel] = useState<{ id: string; username: string | null; email: string } | null>(null);
   const [ownerBizProject, setOwnerBizProject] = useState('');
@@ -5776,7 +5778,7 @@ export default function SettingsPage() {
 
   // Hide global app bottom tabs while any support chat / inbox overlay is open
   useEffect(() => {
-    const hidden = !!(showSupportChat || ownerChatUser || showOwnerInbox || showSupportUsers || supportCtrlUser || showOwnerCompanies || ownerCompanyDetail || showRecoveredUsers || showOwnerVip || showOwnerBiz || showOwnerBusiness);
+    const hidden = !!(showSupportChat || ownerChatUser || showOwnerInbox || showSupportUsers || supportCtrlUser || showOwnerCompanies || ownerCompanyDetail || showRecoveredUsers || showOwnerVip || showOwnerBiz || showOwnerStoryMod || showOwnerBusiness);
     try {
       document.body.classList.toggle('stooorna-support-chat-open', hidden);
       window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden } }));
@@ -5787,7 +5789,7 @@ export default function SettingsPage() {
         window.dispatchEvent(new CustomEvent('stooorna:bottom-nav', { detail: { hidden: false } }));
       } catch { /* ignore */ }
     };
-  }, [showSupportChat, ownerChatUser, showOwnerInbox, showSupportUsers, supportCtrlUser, showOwnerCompanies, ownerCompanyDetail, showRecoveredUsers, showOwnerVip, showOwnerBiz, showOwnerBusiness]);
+  }, [showSupportChat, ownerChatUser, showOwnerInbox, showSupportUsers, supportCtrlUser, showOwnerCompanies, ownerCompanyDetail, showRecoveredUsers, showOwnerVip, showOwnerBiz, showOwnerStoryMod, showOwnerBusiness]);
 
   async function patchSupportUser(userId: string, body: Record<string, unknown>) {
     // Prefer owner admin route; fallback to support-specific if added later
@@ -9265,6 +9267,42 @@ export default function SettingsPage() {
                   whileTap={{ scale: 0.98 }}
                   type="button"
                   onClick={() => {
+                    if (allUsers.length === 0) { void loadOwnerData(); }
+                    startTransition(() => setShowOwnerStoryMod(true));
+                  }}
+                  className="flex items-center justify-between"
+                  style={{
+                    width: '100%',
+                    background: T.surface,
+                    border: `1px solid ${T.surfaceBorder}`,
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    color: T.text,
+                    cursor: 'pointer',
+                  }}
+                  aria-label="Story Moderation"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center" style={{
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(239,68,68,0.12)',
+                      border: '1px solid rgba(239,68,68,0.35)', color: '#ef4444',
+                    }}>
+                      <ShieldCheck size={19} strokeWidth={2.1} />
+                    </span>
+                    <span style={{ textAlign: 'left' }}>
+                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Story Moderation</span>
+                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
+                        Delete any story · Warn / ban · Moderators
+                      </span>
+                    </span>
+                  </div>
+                  <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
+                </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => {
                     setOwnerBusinessList(loadBusinessRegistry());
                     startTransition(() => setShowOwnerBusiness(true));
                   }}
@@ -9315,7 +9353,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Bottom nav bar — hidden while support overlays are open */}
-        {!showSupportChat && !ownerChatUser && !showOwnerInbox && !showSupportUsers && !supportCtrlUser && !showOwnerCompanies && !ownerCompanyDetail && !showRecoveredUsers && !showOwnerVip && !showOwnerBiz && !showOwnerBusiness && (
+        {!showSupportChat && !ownerChatUser && !showOwnerInbox && !showSupportUsers && !supportCtrlUser && !showOwnerCompanies && !ownerCompanyDetail && !showRecoveredUsers && !showOwnerVip && !showOwnerBiz && !showOwnerStoryMod && !showOwnerBusiness && (
           <div className="w-full flex items-center justify-center px-10 py-4 z-10" style={{
             background: T.navBg,
             borderTop: `1px solid ${T.navBorder}`
@@ -11545,6 +11583,18 @@ export default function SettingsPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Owner: Story moderation (moderators + notices log) ── */}
+      {showOwnerStoryMod && isSupportOwnerAccount(
+        user as { email?: string | null; username?: string | null; name?: string | null },
+        profileUsername,
+      ) && (
+        <StoryModerationManager
+          users={allUsers as unknown as { id: string; username: string | null; email: string; name?: string | null }[]}
+          onClose={() => setShowOwnerStoryMod(false)}
+          onRefreshUsers={() => { void loadOwnerData(); }}
+        />
+      )}
 
       {/* ── Owner note for Business applicant (one-time) ── */}
       <AnimatePresence>
