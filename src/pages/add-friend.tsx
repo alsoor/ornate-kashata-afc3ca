@@ -13695,29 +13695,6 @@ function PublicLiveCommentsPanel({
         pointerEvents: 'none',
         background: 'transparent',
       }} />
-      <div style={{
-        flexShrink: 0,
-        display: 'flex',
-        justifyContent: 'flex-end',
-        alignItems: 'center',
-        padding: '4px 10px 0',
-        background: '#ffffff',
-        pointerEvents: 'auto',
-      }}>
-        <button
-          type="button"
-          onClick={() => setChatCoverHeader(v => !v)}
-          aria-label={chatCoverHeader ? 'إظهار الهيدر' : 'تغطية الهيدر'}
-          style={{
-            width: 34, height: 26, borderRadius: 8,
-            border: '1px solid #e5e7eb', background: '#fff', color: '#111',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
-          }}
-        >
-          {chatCoverHeader ? <Minimize2 size={15} strokeWidth={2.3} /> : <Maximize2 size={15} strokeWidth={2.3} />}
-        </button>
-      </div>
       <div
         ref={listRef}
         onTouchStart={e => e.stopPropagation()}
@@ -14070,6 +14047,19 @@ function PublicLiveCommentsPanel({
               Post
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setChatCoverHeader(v => !v)}
+            aria-label={chatCoverHeader ? 'إظهار الهيدر' : 'تغطية الهيدر'}
+            style={{
+              width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+              border: 'none', background: '#ef4444', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', marginLeft: 2,
+            }}
+          >
+            {chatCoverHeader ? <Minimize2 size={16} strokeWidth={2.4} color="#fff" /> : <Maximize2 size={16} strokeWidth={2.4} color="#fff" />}
+          </button>
         </div>
       </div>
     </div>
