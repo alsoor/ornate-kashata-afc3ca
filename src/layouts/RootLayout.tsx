@@ -5411,6 +5411,7 @@ export default function RootLayout({
     const buzz = (e: Event) => {
       const el = e.target as HTMLElement | null;
       if (!el || !el.closest('button, [role="button"], a')) return;
+      try { if (localStorage.getItem('stooorna_haptic_off') === '1') return; } catch { /* */ }
       try { navigator.vibrate?.(14); } catch { /* */ }
     };
     document.addEventListener('pointerdown', buzz, true);

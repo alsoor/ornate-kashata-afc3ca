@@ -9243,32 +9243,26 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             </p>
           )}
 
-          {/* Post / Followers / Views / Likes */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{profile?.postsCount ?? authorPosts.length}</span>
-              <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Post</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-              {(!isCompanyProfile && (!!profile?.isPrivate || profile?.followersVisible === false)) ? (
-                <Lock size={13} strokeWidth={2.2} color={CLR_TEXT_DIM} />
-              ) : (
-                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>{formatCompactCount(profile?.followersCount ?? 0)}</span>
-              )}
-              <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Followers</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>
-                {formatCompactCount(resolveProfileViewsCount(profile as any, authorPosts))}
-              </span>
-              <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Views</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-              <span style={{ fontSize: '0.9rem', fontWeight: 700, color: CLR_TEXT }}>
-                {formatCompactCount(profile?.likesCount ?? authorPosts.reduce((sum, p) => sum + (p.likesCount ?? 0), 0))}
-              </span>
-              <span style={{ fontSize: '0.6rem', color: CLR_TEXT_DIM }}>Likes</span>
-            </div>
+          {/* Story-page icons: followers / live / map / like — no counts, no dots */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 8, justifyContent: 'center' }}>
+            {(() => {
+              const hiddenFollowers = !isCompanyProfile && (!!profile?.isPrivate || profile?.followersVisible === false);
+              const likedHere = authorPosts.some(p => !!(p as any).likedByMe || !!(p as any).isLiked);
+              const ic = (color: string, child: React.ReactNode) => (
+                <span style={{
+                  width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
+                  background: 'rgba(225,225,225,0.1)', color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>{child}</span>
+              );
+              return (
+                <>
+                  {ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', hiddenFollowers ? <Lock size={12} strokeWidth={2.2} /> : <Users size={12} strokeWidth={2.3} />)}
+                  {ic(liveActive ? '#ef4444' : 'rgba(230,230,230,0.9)', <Radio size={12} strokeWidth={2.3} />)}
+                  {ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <MapPin size={12} strokeWidth={2.3} />)}
+                  {ic(likedHere ? '#ef4444' : 'rgba(230,230,230,0.9)', <Heart size={12} strokeWidth={2.3} fill={likedHere ? '#ef4444' : 'none'} />)}
+                </>
+              );
+            })()}
           </div>
 
           {/* Friend state + live broadcast */}
@@ -13131,6 +13125,9 @@ function saveAdminBellNotices(uid: string, list: AdminBellNotice[]) {
 function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?: number }) {
   const uid = String(userId || '');
   const [open, setOpen] = useState(false);
+  const [hapticOff, setHapticOff] = useState(() => {
+    try { return localStorage.getItem('stooorna_haptic_off') === '1'; } catch { return false; }
+  });
   const [items, setItems] = useState<AdminBellNotice[]>(() => loadAdminBellNotices(uid));
   const unread = items.some(x => !x.read);
 
@@ -13172,18 +13169,30 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
       <button
         type="button"
         onClick={openPanel}
+        onContextMenu={e => e.preventDefault()}
+        onPointerDown={e => {
+          (e.currentTarget as any)._hapticHold = window.setTimeout(() => {
+            const next = !hapticOff;
+            setHapticOff(next);
+            try { localStorage.setItem('stooorna_haptic_off', next ? '1' : '0'); } catch { /* */ }
+            try { window.dispatchEvent(new CustomEvent('stooorna:haptic', { detail: { off: next } })); } catch { /* */ }
+          }, 480);
+        }}
+        onPointerUp={e => { const t = (e.currentTarget as any)._hapticHold; if (t) window.clearTimeout(t); }}
+        onPointerLeave={e => { const t = (e.currentTarget as any)._hapticHold; if (t) window.clearTimeout(t); }}
         aria-label="Admin notices"
         style={{
           width: size, height: size, borderRadius: '50%',
-          border: `1.5px solid ${unread ? 'rgba(234,179,8,0.75)' : 'rgba(255,255,255,0.35)'}`,
-          background: unread ? 'rgba(234,179,8,0.16)' : 'rgba(255,255,255,0.08)',
-          color: unread ? '#eab308' : 'rgba(230,230,230,0.95)',
+          border: `1.5px solid ${hapticOff ? 'rgba(249,115,22,0.85)' : unread ? 'rgba(234,179,8,0.75)' : 'rgba(255,255,255,0.35)'}`,
+          background: hapticOff ? 'rgba(249,115,22,0.2)' : unread ? 'rgba(234,179,8,0.16)' : 'rgba(255,255,255,0.08)',
+          color: hapticOff ? '#f97316' : unread ? '#eab308' : 'rgba(230,230,230,0.95)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', padding: 0,
         }}
       >
         <span style={{ position: 'relative', display: 'flex' }}>
           <Bell size={15} strokeWidth={2.2} />
+          {hapticOff ? <span style={{ position: 'absolute', inset: 2, borderTop: '2px solid #f97316', transform: 'rotate(-35deg)', transformOrigin: 'center' }} /> : null}
           {unread ? <span style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: '50%', background: '#eab308' }} /> : null}
         </span>
       </button>
@@ -13483,6 +13492,16 @@ async function postLiveChatToServer(row: PublicLiveComment): Promise<void> {
 
 const LIVE_EMOJI_BAR = ['❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂'] as const;
 const LIVE_EMOJI_PICKER = ['😀', '😁', '😂', '🤣', '😊', '😍', '🥰', '😘', '😎', '🤩', '😢', '😭', '😡', '🔥', '❤️', '💯', '👍', '👎', '👏', '🙌', '🎉', '✨', '🙏', '👀'];
+const LIVE_CHAT_EMOJI_CATS: { icon: string; items: string[] }[] = [
+  { icon: '😀', items: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','😉','😊','😇','😍','🥰','😘','😋','😜','🤪','🤗','🤔','😐','😏','😒','🙄','😌','😔','😪','😴','😷','🤒','🤢','🤮','🥵','🥶','😎','🤓','🥳','😮','😲','😳','🥺','😢','😭','😱','😤','😡','😠','🤬','😈','💀','💩','🤡','👻','👽','🤖'] },
+  { icon: '🙌', items: ['👋','🤚','🖐','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','👇','👍','👎','✊','👊','👏','🙌','👐','🤲','🤝','🙏','💪'] },
+  { icon: '❤️', items: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','🔥','✨','⭐','🌟'] },
+  { icon: '🐶', items: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🐔','🐧','🐦','🐤','🦆','🦉','🐺','🐴','🦄','🐝','🦋','🐞','🐢','🐙','🐠','🐬','🐳'] },
+  { icon: '🍕', items: ['🍏','🍎','🍊','🍋','🍌','🍉','🍇','🍓','🍑','🍍','🥝','🥑','🥦','🥕','🍞','🧀','🍳','🥞','🥓','🍗','🌭','🍔','🍟','🍕','🌮','🍝','🍜','🍣','🍙','🍦','🍩','🍪','🎂','🍫','🍿','☕️','🍵','🍺','🍷'] },
+  { icon: '✈️', items: ['🚗','🚕','🚌','🚓','🚑','🚒','🚚','🚜','🏍','🚲','✈️','🚀','🚁','⛵️','🚢'] },
+  { icon: '💡', items: ['⌚️','📱','💻','📷','📸','🎥','📞','📺','💡','💵','💰','💳','💎','🔑'] },
+  { icon: '🔔', items: ['❤️','💯','🔔','🔕','🎵','🎶','✔️','❌','❗','❓','💬','🔴','🟢','🔵'] },
+];
 
 function PublicLiveCommentsPanel({
   user,
@@ -13496,6 +13515,8 @@ function PublicLiveCommentsPanel({
   const [comments, setComments] = useState<PublicLiveComment[]>(() => loadPublicLiveComments());
   const [text, setText] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [composerDock, setComposerDock] = useState<'none' | 'emoji' | 'gallery'>('none');
+  const [emojiCat, setEmojiCat] = useState(0);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingVoice, setPendingVoice] = useState<{ url: string; duration: number } | null>(null);
   const [recording, setRecording] = useState(false);
@@ -13973,23 +13994,24 @@ function PublicLiveCommentsPanel({
           ))}
         </div>
 
-        {emojiOpen && (
-          <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 6,
-            padding: '4px 12px 8px',
-          }}>
-            {LIVE_EMOJI_PICKER.map(em => (
-              <button
-                key={em}
-                type="button"
-                onClick={() => { setText(t => (t + em).slice(0, 500)); }}
-                style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', padding: 2 }}
-              >
-                {em}
-              </button>
-            ))}
+        {composerDock === 'emoji' && (
+          <div style={{ height: 'min(42vh, 340px)', display: 'flex', flexDirection: 'column', borderTop: '1px solid #ececec', background: '#f7f7f8' }}>
+            <div style={{ display: 'flex', gap: 4, padding: '6px 8px', overflowX: 'auto', borderBottom: '1px solid #eee' }}>
+              {LIVE_CHAT_EMOJI_CATS.map((cat, i) => (
+                <button key={cat.icon} type="button" onClick={() => setEmojiCat(i)} style={{ background: emojiCat === i ? '#fff' : 'transparent', border: '1px solid #e5e7eb', borderRadius: 10, padding: '4px 8px', fontSize: '1.05rem', cursor: 'pointer' }}>{cat.icon}</button>
+              ))}
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 8, display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
+              {(LIVE_CHAT_EMOJI_CATS[emojiCat]?.items || LIVE_EMOJI_PICKER).map(em => (
+                <button key={em} type="button" onClick={() => setText(t => (t + em).slice(0, 500))} style={{ background: 'none', border: 'none', fontSize: '1.28rem', cursor: 'pointer', padding: 4 }}>{em}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        {composerDock === 'gallery' && (
+          <div style={{ height: 'min(38vh, 300px)', borderTop: '1px solid #ececec', background: '#f7f7f8', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            <button type="button" onClick={() => fileRef.current?.click()} style={{ padding: '10px 16px', borderRadius: 12, border: '1px solid #ddd', background: '#fff', fontWeight: 800, cursor: 'pointer' }}>اختيار صورة</button>
+            {pendingImage ? <img src={pendingImage} alt="" style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 12 }} /> : <p style={{ margin: 0, color: '#888', fontSize: '0.8rem' }}>افتح المعرض من الأسفل</p>}
           </div>
         )}
 
@@ -14136,7 +14158,14 @@ function PublicLiveCommentsPanel({
             <button
               type="button"
               aria-label="صورة"
-              onClick={() => fileRef.current?.click()}
+              onClick={() => {
+                try { (document.activeElement as HTMLElement | null)?.blur(); } catch { /* */ }
+                lockPageForKeyboard(false);
+                chatInputFocused.current = false;
+                setKbInset(0);
+                setComposerDock(d => d === 'gallery' ? 'none' : 'gallery');
+                setEmojiOpen(false);
+              }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
             >
               <ImageIcon size={18} strokeWidth={2} />
@@ -14182,7 +14211,14 @@ function PublicLiveCommentsPanel({
             <button
               type="button"
               aria-label="إيموجي"
-              onClick={() => setEmojiOpen(v => !v)}
+              onClick={() => {
+                try { (document.activeElement as HTMLElement | null)?.blur(); } catch { /* */ }
+                lockPageForKeyboard(false);
+                chatInputFocused.current = false;
+                setKbInset(0);
+                setComposerDock(d => d === 'emoji' ? 'none' : 'emoji');
+                setEmojiOpen(v => !v);
+              }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
             >
               <Smile size={18} strokeWidth={2} />
