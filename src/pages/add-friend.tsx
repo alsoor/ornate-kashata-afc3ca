@@ -129,9 +129,21 @@ function camChannelForHost(hostId: string): string {
   return `stooorna-livecam-${uid}`;
 }
 
-/** Voice or camera live for this host. Returns kind for UI labels. */
-function useLiveBroadcastKind(hostId: string | null | undefined): 'voice' | 'camera' | null {
-  const [kind, setKind] = useState<'voice' | 'camera' | null>(null);
+// كاش على مستوى الموديول لحالة بث كل مستخدم، عشان دائرة البروفايل بالهيدر ما تختفي عند الدخول للبث والرجوع منه
+const liveKindStickyCache = new Map<string, { kind: 'voice' | 'camera'; at: number }>();
+const LIVE_KIND_GRACE_MS = 25_000;
+const LIVE_KIND_CACHE_TTL_MS = 120_000;
+// كاش قوائم الأصدقاء/القصص: تنعرض فوراً عند الرجوع بدل ما تبدأ فاضية لين يرجع السيرفر
+const headerListsCache: { uid: string; friends: any[]; stories: any[] } = { uid: '', friends: [], stories: [] };
+
+/** Voice or camera live for this host. Returns kind for UI labels.
+ *  sticky=true: يبقى البث ظاهراً حتى يتأكد انتهاؤه لمدة متواصلة (تجاوز أي انقطاع لحظي). */
+function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false): 'voice' | 'camera' | null {
+  const [kind, setKind] = useState<'voice' | 'camera' | null>(() => {
+    if (!sticky || !hostId) return null;
+    const c = liveKindStickyCache.get(String(hostId));
+    return c && Date.now() - c.at < LIVE_KIND_CACHE_TTL_MS ? c.kind : null;
+  });
 
   useEffect(() => {
     if (!hostId) {
@@ -142,8 +154,21 @@ function useLiveBroadcastKind(hostId: string | null | undefined): 'voice' | 'cam
     const channel = liveChannelForHost(hostId);
     const camChannel = camChannelForHost(hostId);
 
+    let missSince = 0;
     const apply = (v: 'voice' | 'camera' | null) => {
-      if (!cancelled) setKind(v);
+      if (cancelled) return;
+      if (!sticky) { setKind(v); return; }
+      if (v) {
+        missSince = 0;
+        liveKindStickyCache.set(String(hostId), { kind: v, at: Date.now() });
+        setKind(v);
+        return;
+      }
+      if (!missSince) missSince = Date.now();
+      if (Date.now() - missSince >= LIVE_KIND_GRACE_MS) {
+        liveKindStickyCache.delete(String(hostId));
+        setKind(null);
+      }
     };
 
     const checkLocal = (): 'voice' | 'camera' | null => {
@@ -2328,7 +2353,7 @@ function HeaderStoryCircle({
   extraButtonStyle?: React.CSSProperties;
 }) {
   const navigate = useNavigate();
-  const liveKind = useLiveBroadcastKind(userId);
+  const liveKind = useLiveBroadcastKind(userId, true);
   const liveActive = liveKind != null;
   const hasStory = items.length > 0;
   const hasUnseen = items.some(it => !it.seen);
@@ -14963,7 +14988,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }, [myUsername]);
 
   // ── Stories state ────────────────────────────────────────────────────────────
-  const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
+  const [storyGroups, setStoryGroups] = useState<StoryGroup[]>(() => (user?.id && headerListsCache.uid === String(user.id) ? headerListsCache.stories as StoryGroup[] : []));
   const [viewerGroupIdx, setViewerGroupIdx] = useState<number | null>(null);
   const [storyUploading, setStoryUploading] = useState(false);
   const storyFileRef = useRef<HTMLInputElement>(null);
@@ -15075,6 +15100,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         if (hasNewFromOthers) playNewPostSound();
       }
       knownStoryItemIdsRef.current = new Set(fresh.flatMap(g => g.items.map(it => it.id)));
+      if (user?.id) { if (headerListsCache.uid !== String(user.id)) { headerListsCache.friends = []; } headerListsCache.uid = String(user.id); }
+      headerListsCache.stories = fresh as any[];
       setStoryGroups(fresh);
     } catch {/* silent */}
   }, []);
@@ -18219,7 +18246,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [searching, setSearching] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
-  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friends, setFriends] = useState<Friend[]>(() => (user?.id && headerListsCache.uid === String(user.id) ? headerListsCache.friends as Friend[] : []));
   // ── Followers list (my own accepted friends) + the "hide my followers from others"
   // switch shown inside that modal. Persisted locally and best-effort synced to the
   // backend; degrades gracefully if the backend field doesn't exist yet. ──
@@ -18996,6 +19023,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       });
       if (!r.ok) return;
       const d = await r.json();
+      if (user?.id) { if (headerListsCache.uid !== String(user.id)) { headerListsCache.stories = []; } headerListsCache.uid = String(user.id); }
+      headerListsCache.friends = d.accepted ?? [];
       setFriends(d.accepted ?? []);
       setIncoming(d.incoming ?? []);
       setOutgoingRequestedIds(new Set(
