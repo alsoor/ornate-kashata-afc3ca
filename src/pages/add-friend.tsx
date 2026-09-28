@@ -13336,6 +13336,27 @@ function liveChatImageLooksBlocked(imageUrl?: string | null, text?: string): boo
   return /(porn|xxx|nsfw|nude|naked|sex|hentai|onlyfans)/i.test(u);
 }
 
+
+function splitLiveChatLinks(text: string): Array<{ type: 'text' | 'link'; value: string; href: string }> {
+  const raw = String(text || '');
+  if (!raw) return [];
+  const re = /((?:https?:\/\/|www\.)[^\s<>"')\]]+|[a-zA-Z0-9][a-zA-Z0-9-]*\.(?:com|net|org|io|co|app|me|ai|dev|info|biz|xyz|online|site|shop|tv|cc|uk|us|de|fr|qa|sa|kw|ae|eg)(?:\/[^\s<>"')\]]*)?)/gi;
+  const out: Array<{ type: 'text' | 'link'; value: string; href: string }> = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw))) {
+    if (m.index > last) out.push({ type: 'text', value: raw.slice(last, m.index), href: '' });
+    const value = m[0];
+    let href = value;
+    if (/^www\./i.test(href)) href = `https://${href}`;
+    else if (!/^https?:\/\//i.test(href)) href = `https://${href}`;
+    out.push({ type: 'link', value, href });
+    last = m.index + value.length;
+  }
+  if (last < raw.length) out.push({ type: 'text', value: raw.slice(last), href: '' });
+  return out;
+}
+
 function makeLiveChatJoinNotice(username: string | null, name: string | null): PublicLiveComment {
   const handle = username ? `@${String(username).replace(/^@/, '')}` : (name || 'User');
   return {
@@ -13573,17 +13594,6 @@ function PublicLiveCommentsPanel({
   };
 
   useEffect(() => {
-    if (!myId) return;
-    if (welcomedIdsRef.current.has(myId)) return;
-    welcomedIdsRef.current.add(myId);
-    const notice = makeLiveChatJoinNotice(myUsername, myName);
-    const next = [...loadPublicLiveComments(), notice];
-    savePublicLiveComments(next);
-    setComments(next);
-    void postLiveChatToServer(notice);
-  }, [myId]);
-
-  useEffect(() => {
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel('stooorna-public-live-comments');
@@ -13800,7 +13810,7 @@ function PublicLiveCommentsPanel({
             كن أول من يكتب تعليقاً مباشراً
           </p>
         )}
-        {comments.map(c => {
+        {comments.filter(c => !/Join Live Chat/i.test(c.text || '')).map(c => {
           const liked = myId ? c.likes.includes(myId) : false;
           return (
             <div key={c.id} style={{
@@ -13832,8 +13842,8 @@ function PublicLiveCommentsPanel({
                   <span style={{ fontWeight: 800, color: (c.userId === LIVE_CHAT_BOT_ID || c.name === LIVE_CHAT_BOT_NAME) ? LIVE_CHAT_BOT_COLOR : '#111', marginRight: 6 }}>{displayName(c)}</span>
                   {c.voiceUrl || c.text === '🎤' ? null : (
                     <span style={{ fontWeight: 500, color: '#222' }}>
-                      {String(c.text || '').split(/(https?:\/\/[^\s<>"')\]]+|www\.[^\s<>"')\]]+)/gi).map((part, i) => {
-                        if (/^(https?:\/\/|www\.)/i.test(part)) {
+                      {splitLiveChatLinks(c.text).map((part, i) => {
+                        if (part.type === 'link') {
                           return (
                             <button
                               key={i}
@@ -13841,16 +13851,15 @@ function PublicLiveCommentsPanel({
                               onClick={e => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                const href = /^https?:\/\//i.test(part) ? part : `https://${part}`;
-                                setInAppUrl(href);
+                                setInAppUrl(part.href);
                               }}
-                              style={{ color: '#1d4ed8', fontWeight: 700, background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', wordBreak: 'break-all' }}
+                              style={{ color: '#1d4ed8', fontWeight: 800, background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', wordBreak: 'break-all', textDecoration: 'underline' }}
                             >
-                              {part}
+                              {part.value}
                             </button>
                           );
                         }
-                        return <React.Fragment key={i}>{part}</React.Fragment>;
+                        return <React.Fragment key={i}>{part.value}</React.Fragment>;
                       })}
                     </span>
                   )}
