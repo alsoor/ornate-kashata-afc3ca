@@ -11,7 +11,7 @@ import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -13479,6 +13479,7 @@ function PublicLiveCommentsPanel({
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingVoice, setPendingVoice] = useState<{ url: string; duration: number } | null>(null);
   const [recording, setRecording] = useState(false);
+  const [chatCoverHeader, setChatCoverHeader] = useState(false);
   const recRef = useRef<MediaRecorder | null>(null);
   const recChunksRef = useRef<Blob[]>([]);
   const recStartedAt = useRef(0);
@@ -13655,7 +13656,7 @@ function PublicLiveCommentsPanel({
         right: 0,
         bottom: 0,
         top: 0,
-        zIndex: 15,
+        zIndex: chatCoverHeader ? 40 : 15,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'flex-end',
@@ -13668,10 +13669,33 @@ function PublicLiveCommentsPanel({
     >
       <div style={{
         flexShrink: 0,
-        height: 'max(188px, calc(env(safe-area-inset-top) + 168px))',
+        height: chatCoverHeader ? 'max(8px, env(safe-area-inset-top))' : 'max(188px, calc(env(safe-area-inset-top) + 168px))',
         pointerEvents: 'none',
         background: 'transparent',
       }} />
+      <div style={{
+        flexShrink: 0,
+        display: 'flex',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        padding: '4px 10px 0',
+        background: '#ffffff',
+        pointerEvents: 'auto',
+      }}>
+        <button
+          type="button"
+          onClick={() => setChatCoverHeader(v => !v)}
+          aria-label={chatCoverHeader ? 'إظهار الهيدر' : 'تغطية الهيدر'}
+          style={{
+            width: 34, height: 26, borderRadius: 8,
+            border: '1px solid #e5e7eb', background: '#fff', color: '#111',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}
+        >
+          {chatCoverHeader ? <Minimize2 size={15} strokeWidth={2.3} /> : <Maximize2 size={15} strokeWidth={2.3} />}
+        </button>
+      </div>
       <div
         ref={listRef}
         onTouchStart={e => e.stopPropagation()}
