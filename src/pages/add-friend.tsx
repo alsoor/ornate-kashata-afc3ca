@@ -13090,6 +13090,8 @@ type PublicLiveComment = {
   avatarUrl: string | null;
   text: string;
   imageUrl?: string | null;
+  voiceUrl?: string | null;
+  voiceDuration?: number | null;
   likes: string[];
   createdAt: number;
 };
@@ -13099,7 +13101,7 @@ function loadPublicLiveComments(): PublicLiveComment[] {
     const raw = JSON.parse(localStorage.getItem(PUBLIC_LIVE_COMMENTS_KEY) || '[]');
     if (!Array.isArray(raw)) return [];
     return raw
-      .filter((x: any) => x && x.id && x.text)
+      .filter((x: any) => x && x.id && (x.text || x.voiceUrl))
       .map((x: any) => ({
         id: String(x.id),
         userId: String(x.userId || ''),
@@ -13108,6 +13110,8 @@ function loadPublicLiveComments(): PublicLiveComment[] {
         avatarUrl: x.avatarUrl ?? null,
         text: String(x.text || '').slice(0, 500),
         imageUrl: x.imageUrl ?? null,
+        voiceUrl: x.voiceUrl ?? null,
+        voiceDuration: x.voiceDuration ?? null,
         likes: Array.isArray(x.likes) ? x.likes.map(String) : [],
         createdAt: Number(x.createdAt) || Date.now(),
       }))
@@ -13136,7 +13140,7 @@ function normalizeLiveChatRows(raw: unknown): PublicLiveComment[] {
       : (raw && typeof raw === 'object' && Array.isArray((raw as any).messages) ? (raw as any).messages
         : (raw && typeof raw === 'object' && Array.isArray((raw as any).list) ? (raw as any).list : [])));
   return arr
-    .filter((x: any) => x && (x.id || x.text || x.body))
+    .filter((x: any) => x && (x.id || x.text || x.body || x.voiceUrl))
     .map((x: any) => ({
       id: String(x.id || `srv_${x.createdAt || x.at || Date.now()}`),
       userId: String(x.userId || x.senderId || x.fromId || ''),
@@ -13145,6 +13149,8 @@ function normalizeLiveChatRows(raw: unknown): PublicLiveComment[] {
       avatarUrl: x.avatarUrl ?? x.authorAvatar ?? x.image ?? null,
       text: String(x.text || x.body || '').slice(0, 500),
       imageUrl: x.imageUrl ?? null,
+      voiceUrl: x.voiceUrl ?? null,
+      voiceDuration: x.voiceDuration ?? x.duration ?? null,
       likes: Array.isArray(x.likes) ? x.likes.map(String) : [],
       createdAt: Number(x.createdAt || x.at || Date.parse(x.created_at || '') || Date.now()),
     }))
@@ -13197,6 +13203,8 @@ async function postLiveChatToServer(row: PublicLiveComment): Promise<void> {
     text: row.text,
     body: row.text,
     imageUrl: row.imageUrl || null,
+    voiceUrl: row.voiceUrl || null,
+    voiceDuration: row.voiceDuration ?? null,
     createdAt: row.createdAt,
   };
   const attempts: Array<() => Promise<Response>> = [
@@ -13228,6 +13236,11 @@ function PublicLiveCommentsPanel({
   const [text, setText] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [pendingVoice, setPendingVoice] = useState<{ url: string; duration: number } | null>(null);
+  const [recording, setRecording] = useState(false);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const recChunksRef = useRef<Blob[]>([]);
+  const recStartedAt = useRef(0);
   const [profilePeer, setProfilePeer] = useState<PublicLiveComment | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -13289,9 +13302,9 @@ function PublicLiveCommentsPanel({
     el.scrollTop = el.scrollHeight;
   }, [comments.length]);
 
-  const pushComment = (body: string, imageUrl?: string | null) => {
+  const pushComment = (body: string, imageUrl?: string | null, voice?: { url: string; duration: number } | null) => {
     const trimmed = body.trim().slice(0, 500);
-    if (!trimmed && !imageUrl) return;
+    if (!trimmed && !imageUrl && !voice?.url) return;
     if (!myId) return;
     const row: PublicLiveComment = {
       id: `plc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -13299,8 +13312,10 @@ function PublicLiveCommentsPanel({
       name: myName,
       username: myUsername,
       avatarUrl: myAvatar,
-      text: trimmed || (imageUrl ? '📷' : ''),
+      text: trimmed || (voice?.url ? '🎤' : (imageUrl ? '📷' : '')),
       imageUrl: imageUrl || null,
+      voiceUrl: voice?.url || null,
+      voiceDuration: voice?.duration ?? null,
       likes: [],
       createdAt: Date.now(),
     };
@@ -13309,6 +13324,7 @@ function PublicLiveCommentsPanel({
     setComments(next);
     setText('');
     setPendingImage(null);
+    setPendingVoice(null);
     setEmojiOpen(false);
     void postLiveChatToServer(row);
   };
@@ -13426,8 +13442,20 @@ function PublicLiveCommentsPanel({
               <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
                 <p style={{ margin: 0, fontSize: '0.84rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
                   <span style={{ fontWeight: 800, color: '#111', marginRight: 6 }}>{displayName(c)}</span>
-                  <span style={{ fontWeight: 500, color: '#222' }}>{c.text}</span>
+                  {c.voiceUrl ? null : <span style={{ fontWeight: 500, color: '#222' }}>{c.text}</span>}
                 </p>
+                {c.voiceUrl ? (
+                  <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 14, background: '#f3f4f6', border: '1px solid #e5e7eb', display: 'inline-block' }}>
+                    <ScVoiceBubble
+                      url={c.voiceUrl}
+                      duration={c.voiceDuration ?? null}
+                      isMe={c.userId === myId}
+                      primaryColor="#00BCD4"
+                      primaryBorder="rgba(0,188,212,0.35)"
+                      textDim="#6b7280"
+                    />
+                  </div>
+                ) : null}
                 {c.imageUrl ? (
                   <img src={c.imageUrl} alt="" style={{ marginTop: 6, maxWidth: 180, maxHeight: 160, borderRadius: 10, display: 'block', objectFit: 'cover' }} />
                 ) : null}
@@ -13529,6 +13557,27 @@ function PublicLiveCommentsPanel({
             <button type="button" onClick={() => setPendingImage(null)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem' }}>إزالة</button>
           </div>
         )}
+        {(recording || pendingVoice) && (
+          <div style={{ padding: '6px 14px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {recording ? (
+              <span style={{ color: '#ef4444', fontWeight: 800, fontSize: '0.8rem' }}>● Recording…</span>
+            ) : pendingVoice ? (
+              <div style={{ flex: 1, padding: '6px 10px', borderRadius: 14, background: '#f3f4f6', border: '1px solid #e5e7eb' }}>
+                <ScVoiceBubble url={pendingVoice.url} duration={pendingVoice.duration} isMe primaryColor="#00BCD4" primaryBorder="rgba(0,188,212,0.35)" textDim="#6b7280" />
+              </div>
+            ) : null}
+            {pendingVoice && !recording && (
+              <>
+                <button type="button" onClick={() => setPendingVoice(null)} style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer' }} aria-label="حذف">
+                  <Trash2 size={15} />
+                </button>
+                <button type="button" onClick={() => pushComment('', null, pendingVoice)} style={{ width: 36, height: 36, borderRadius: 10, border: 'none', background: '#00BCD4', color: '#041018', cursor: 'pointer' }} aria-label="إرسال">
+                  <Send size={15} />
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         <div style={{
           display: 'flex',
@@ -13592,6 +13641,37 @@ function PublicLiveCommentsPanel({
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
             >
               <ImageIcon size={18} strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              aria-label="تسجيل صوتي"
+              onClick={async () => {
+                if (recording) {
+                  recRef.current?.stop();
+                  setRecording(false);
+                  return;
+                }
+                try {
+                  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                  const rec = new MediaRecorder(stream);
+                  recChunksRef.current = [];
+                  recStartedAt.current = Date.now();
+                  rec.ondataavailable = ev => { if (ev.data.size) recChunksRef.current.push(ev.data); };
+                  rec.onstop = () => {
+                    stream.getTracks().forEach(tr => tr.stop());
+                    const blob = new Blob(recChunksRef.current, { type: 'audio/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const duration = Math.max(1, Math.round((Date.now() - recStartedAt.current) / 1000));
+                    setPendingVoice({ url, duration });
+                  };
+                  recRef.current = rec;
+                  rec.start();
+                  setRecording(true);
+                } catch { /* mic denied */ }
+              }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: recording ? '#ef4444' : '#111', padding: 6, display: 'flex' }}
+            >
+              {recording ? <MicOff size={18} strokeWidth={2} /> : <Mic size={18} strokeWidth={2} />}
             </button>
             <button
               type="button"
