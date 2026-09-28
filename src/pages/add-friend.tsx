@@ -13183,21 +13183,30 @@ function PublicLiveCommentsPanel({
 
   return (
     <div style={{
+      position: 'fixed',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 45,
       display: 'flex',
       flexDirection: 'column',
-      minHeight: '58vh',
-      height: 'calc(100dvh - 210px)',
-      background: '#ffffff',
-      color: '#111',
-      borderRadius: 0,
+      justifyContent: 'flex-end',
+      pointerEvents: 'none',
+      maxHeight: 'min(62vh, calc(100dvh - 168px))',
+      paddingBottom: 'env(safe-area-inset-bottom)',
     }}>
       <div
         ref={listRef}
         style={{
-          flex: 1,
+          pointerEvents: 'auto',
           overflowY: 'auto',
           WebkitOverflowScrolling: 'touch',
-          padding: '10px 12px 8px',
+          padding: '8px 12px 6px',
+          maxHeight: 'min(48vh, calc(100dvh - 250px))',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'flex-end',
+          background: 'linear-gradient(180deg, rgba(6,14,14,0) 0%, rgba(6,14,14,0.55) 18%, rgba(6,14,14,0.92) 100%)',
         }}
       >
         {comments.length === 0 && (
@@ -13257,9 +13266,11 @@ function PublicLiveCommentsPanel({
       </div>
 
       <div style={{
+        pointerEvents: 'auto',
         borderTop: '1px solid #ececec',
         background: '#fff',
         paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+        flexShrink: 0,
       }}>
         <div style={{
           display: 'flex',
@@ -19154,6 +19165,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           </div>
         )}
 
+        {/* Public LIVE comments docked to the BOTTOM of the page (composer first),
+            independently of the collapsing/moving header above. */}
+        {pageTab === 'profile' && !isFriendManagement && (
+          <PublicLiveCommentsPanel user={user as any} />
+        )}
+
         {/* ── Content ── */}
         <style>{`.profile-content-scroll::-webkit-scrollbar{display:none}`}</style>
         <div
@@ -19218,10 +19235,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     />
                   </div>
                 )}
-
-                {/* Public LIVE comments — fills the area under the header grabber (green box).
-                    No chat header. Same Instagram-style composer as the reference screenshot. */}
-                <PublicLiveCommentsPanel user={user as any} />
 
 
               </motion.div>}
