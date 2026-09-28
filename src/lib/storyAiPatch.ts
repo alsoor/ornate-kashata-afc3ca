@@ -334,8 +334,8 @@ async function patchStoryMedia(id: string | number, url: string, kind: MediaAiKi
 async function deleteStoryQuiet(id: string | number): Promise<void> {
   const h = { 'Content-Type': 'application/json' };
   const attempts = [
+    () => fetch(`/api/status?id=${encodeURIComponent(String(id))}&statusId=${encodeURIComponent(String(id))}`, { method: 'DELETE', credentials: 'include' }),
     () => fetch(`/api/status/${encodeURIComponent(String(id))}`, { method: 'DELETE', credentials: 'include' }),
-    () => fetch(`/api/status?id=${encodeURIComponent(String(id))}`, { method: 'DELETE', credentials: 'include' }),
     () => fetch('/api/status/delete', { method: 'POST', credentials: 'include', headers: h, body: JSON.stringify({ id, statusId: id }) }),
   ];
   for (const run of attempts) {
@@ -418,11 +418,9 @@ async function storyAiEnsureWorks(
         if (sid != null && (await patchStoryMedia(sid, link, kind)) && (await storyHasUrlPrefix(sid, link.slice(0, 20)))) {
           return { ok: true, mediaUrl: link };
         }
-        const r = await postStatusJson({ mediaUrl: link, url: link, mediaType: kind, type: kind, duration: kind === 'video' ? 15 : 5 });
-        if (r && r.ok) {
-          if (sid != null) await deleteStoryQuiet(sid);
-          return { ok: true, mediaUrl: link };
-        }
+        // server has no PATCH route → try re-upload as a fresh multipart story
+        const nf = await fetchWithTimeout('/api/status', { method: 'POST', credentials: 'include', body: (() => { const fd = new FormData(); fd.append('media', file, file.name); fd.append('file', file, file.name); fd.append('type', kind); fd.append('mediaUrl', link); fd.append('url', link); return fd; })() });
+        if (nf && nf.ok && sid != null) { await deleteStoryQuiet(sid); return { ok: true, mediaUrl: link }; }
       }
     } catch { /* fall through */ }
   }
@@ -431,11 +429,6 @@ async function storyAiEnsureWorks(
   const dataUrl = await storyAiToDataUrl(file, kind);
   if (dataUrl) {
     if (sid != null && (await patchStoryMedia(sid, dataUrl, kind)) && (await storyHasUrlPrefix(sid, 'data:'))) {
-      return { ok: true, mediaUrl: dataUrl };
-    }
-    const r = await postStatusJson({ mediaUrl: dataUrl, url: dataUrl, mediaType: kind, type: kind, duration: kind === 'video' ? 15 : 5 });
-    if (r && r.ok) {
-      if (sid != null) await deleteStoryQuiet(sid);
       return { ok: true, mediaUrl: dataUrl };
     }
   }
@@ -626,22 +619,6 @@ export async function storyAiPublish(
       lastError = await readErr(r);
     }
 
-    // 4) real permanent link via the app's uploader, then publish by URL
-    if (upload) {
-      try {
-        const link = await upload(candidates[0], kind);
-        if (link && isPermanentUrl(link)) {
-          const r = await postStatusJson({
-            mediaUrl: link, url: link, mediaType: kind, type: kind,
-            duration: kind === 'video' ? 15 : 5,
-          });
-          if (r && r.ok) return await done(r, candidates[0]);
-          lastError = await readErr(r);
-        }
-      } catch (e) {
-        lastError = e instanceof Error ? e.message : lastError;
-      }
-    }
   } catch (e) {
     lastError = e instanceof Error ? e.message : String(e);
   }
@@ -649,7 +626,11 @@ export async function storyAiPublish(
   // 5) last resort: the v3 data:/blob: chain (unchanged)
   try {
     const legacy = await storyAiPublishLegacy(file, upload, onStatus);
-    if (legacy.ok) return legacy;
+    if (legacy.ok) {
+      const chk = await storyAiEnsureWorks(file, kind, null, legacy.mediaUrl, upload, onStatus);
+      if (chk.ok) return { ...legacy, mediaUrl: chk.mediaUrl };
+      return { ok: false, mediaUrl: '', type: kind, error: 'تعذر عرض الوسائط بعد النشر' };
+    }
     lastError = legacy.error || lastError;
   } catch (e) {
     lastError = e instanceof Error ? e.message : lastError;
