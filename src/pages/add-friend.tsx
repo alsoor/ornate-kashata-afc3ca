@@ -9110,7 +9110,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 10420,
+        zIndex: 13040,
         background: 'rgba(0,0,0,0.32)',
       }}
     />
@@ -9128,7 +9128,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           bottom: 0,
           right: 0,
           left: 42,
-          zIndex: 10421,
+          zIndex: 13041,
           background: PAGE_BG,
           display: 'flex',
           flexDirection: 'column' as const,
@@ -9144,7 +9144,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         style: {
           position: 'fixed' as const,
           inset: 0,
-          zIndex: 10420,
+          zIndex: 13040,
           background: PAGE_BG,
           display: 'flex',
           flexDirection: 'column' as const,
@@ -13753,7 +13753,11 @@ function PublicLiveCommentsPanel({
             }}>
               <button
                 type="button"
-                onClick={() => { if (c.userId) setProfilePeer(c); }}
+                onClick={() => {
+                  if (!c.userId) return;
+                  setProfilePeer(c);
+                  try { window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: true } })); } catch { /* */ }
+                }}
                 style={{ background: 'none', border: 'none', padding: 0, cursor: c.userId ? 'pointer' : 'default', flexShrink: 0 }}
                 aria-label="فتح البروفايل"
               >
@@ -14075,7 +14079,10 @@ function PublicLiveCommentsPanel({
         authorName={profilePeer.name}
         authorUsername={profilePeer.username}
         authorAvatarUrl={profilePeer.avatarUrl}
-        onClose={() => setProfilePeer(null)}
+        onClose={() => {
+          setProfilePeer(null);
+          try { window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: false } })); } catch { /* */ }
+        }}
         onOpenPost={() => {}}
         sheetMode
       />
@@ -17022,6 +17029,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       }));
     } catch { /* ignore */ }
   }, [pageTab]);
+
+  useEffect(() => {
+    const onProf = (e: Event) => {
+      setVisitorProfileOpen(!!(e as CustomEvent).detail?.open);
+    };
+    window.addEventListener('stooorna:visitor-profile', onProf as EventListener);
+    return () => window.removeEventListener('stooorna:visitor-profile', onProf as EventListener);
+  }, []);
   useEffect(() => {
     return () => {
       try {
@@ -17035,6 +17050,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // stories strip, new-post + inbox) like a shutter. Swiping up on the posts feed
   // also collapses it; scrolling back to the top expands it again.
   const [headerOpen, setHeaderOpen] = useState(true);
+  const [visitorProfileOpen, setVisitorProfileOpen] = useState(false);
   // Once true, the grabber's attention-drawing bounce animation stops for good.
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
   // Quick "+" menu below the header: no longer touches headerOpen at all. Clicking it
@@ -19739,7 +19755,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             "+" reappears. ── */}
         {/* الأيقونات الثلاث (Friends / Call / Live) تظهر فقط عندما يكون الهيدر مرفوعاً (مطويّ)،
             وعندما يكون الهيدر نازلاً لا يوجد زر "+" ولا أيقونات. */}
-        {!isFriendManagement && !headerOpen && (
+        {!isFriendManagement && !headerOpen && !visitorProfileOpen && (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '2px 0 8px', position: 'relative' }}>
                 <div style={{
                   position: 'relative',
