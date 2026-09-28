@@ -13102,6 +13102,8 @@ function PublicLiveCommentsPanel({
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [sheetExpanded, setSheetExpanded] = useState(true);
+  const dragStartY = useRef<number | null>(null);
   const myId = String(user?.id || '');
   const myName = user?.name ?? null;
   const myUsername = (user as any)?.username ?? null;
@@ -13181,6 +13183,17 @@ function PublicLiveCommentsPanel({
   const displayName = (c: PublicLiveComment) =>
     c.username ? `@${String(c.username).replace(/^@/, '')}` : (c.name || 'مستخدم');
 
+  const onSheetPointerDown = (e: React.PointerEvent) => {
+    dragStartY.current = e.clientY;
+  };
+  const onSheetPointerUp = (e: React.PointerEvent) => {
+    if (dragStartY.current == null) return;
+    const dy = e.clientY - dragStartY.current;
+    dragStartY.current = null;
+    if (dy > 28) setSheetExpanded(false);
+    else if (dy < -28) setSheetExpanded(true);
+  };
+
   return (
     <div style={{
       position: 'fixed',
@@ -13190,23 +13203,53 @@ function PublicLiveCommentsPanel({
       zIndex: 45,
       display: 'flex',
       flexDirection: 'column',
-      justifyContent: 'flex-end',
-      pointerEvents: 'none',
-      maxHeight: 'min(62vh, calc(100dvh - 168px))',
-      paddingBottom: 'env(safe-area-inset-bottom)',
+      height: sheetExpanded ? 'min(78vh, calc(100dvh - 132px))' : 56,
+      background: '#ffffff',
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      boxShadow: '0 -8px 28px rgba(0,0,0,0.28)',
+      overflow: 'hidden',
+      color: '#111',
     }}>
+      <button
+        type="button"
+        aria-label={sheetExpanded ? 'طي الشات' : 'فتح الشات'}
+        onPointerDown={onSheetPointerDown}
+        onPointerUp={onSheetPointerUp}
+        onClick={() => setSheetExpanded(v => !v)}
+        style={{
+          flexShrink: 0,
+          width: '100%',
+          height: 28,
+          border: 'none',
+          background: '#fff',
+          cursor: 'grab',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 0,
+        }}
+      >
+        <span style={{
+          width: 42,
+          height: 4,
+          borderRadius: 2,
+          background: '#d4d4d4',
+          display: 'block',
+        }} />
+      </button>
       <div
         ref={listRef}
         style={{
-          pointerEvents: 'auto',
-          overflowY: 'auto',
+          flex: 1,
+          minHeight: 0,
+          overflowY: sheetExpanded ? 'auto' : 'hidden',
           WebkitOverflowScrolling: 'touch',
-          padding: '8px 12px 6px',
-          maxHeight: 'min(48vh, calc(100dvh - 250px))',
-          display: 'flex',
+          padding: sheetExpanded ? '4px 12px 6px' : 0,
+          display: sheetExpanded ? 'flex' : 'none',
           flexDirection: 'column',
           justifyContent: 'flex-end',
-          background: 'linear-gradient(180deg, rgba(6,14,14,0) 0%, rgba(6,14,14,0.55) 18%, rgba(6,14,14,0.92) 100%)',
+          background: '#ffffff',
         }}
       >
         {comments.length === 0 && (
@@ -13266,6 +13309,7 @@ function PublicLiveCommentsPanel({
       </div>
 
       <div style={{
+        display: sheetExpanded ? 'block' : 'none',
         pointerEvents: 'auto',
         borderTop: '1px solid #ececec',
         background: '#fff',
