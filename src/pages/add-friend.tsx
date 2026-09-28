@@ -11,7 +11,7 @@ import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin } from 'lucide-react';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
@@ -475,6 +475,47 @@ function useAnyOnline(hostIds: string[], selfId?: string | null): boolean {
       window.removeEventListener('stooorna:online-active', onEvt);
       window.removeEventListener('storage', onStorage);
     };
+  }, [key]);
+  return any;
+}
+
+/** أي صديق (غيري) ظاهر على الخريطة الحية الآن؟ — نفس مصدر الخريطة (/api/live-gps + الكاش المحلي) وبنفس مدة الصلاحية. */
+function useAnyOnMap(friendIds: string[], selfId?: string | null): boolean {
+  const [any, setAny] = useState(false);
+  const key = Array.from(new Set(friendIds.filter(Boolean).map(String))).filter(id => id !== String(selfId || '')).sort().join('|');
+  useEffect(() => {
+    const ids = new Set(key ? key.split('|') : []);
+    let cancelled = false;
+    const apply = (v: boolean) => { if (!cancelled) setAny(prev => (prev === v ? prev : v)); };
+    if (ids.size === 0) { apply(false); return; }
+    const fresh = (p: any) => p && typeof p.lat === 'number' && Date.now() - Number(p.at || Date.now()) < 30 * 60 * 1000;
+    const localAny = () => {
+      try {
+        const raw = JSON.parse(localStorage.getItem('stooorna_live_gps_pins') || '{}') as Record<string, any>;
+        return Object.values(raw).some(p => p && ids.has(String(p.id)) && fresh(p));
+      } catch { return false; }
+    };
+    if (localAny()) apply(true);
+    let busy = false;
+    const check = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        if (localAny()) { apply(true); return; }
+        const r = await fetch('/api/live-gps', { credentials: 'include' });
+        if (!r.ok) { apply(false); return; }
+        const d = await r.json() as { pins?: any[] };
+        apply(Array.isArray(d.pins) && d.pins.some(p => p && ids.has(String(p.id)) && fresh(p)));
+      } catch { /* keep last value */ } finally { busy = false; }
+    };
+    void check();
+    const interval = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void check();
+    }, 3000);
+    const onStorage = (e: StorageEvent) => { if (e.key === 'stooorna_live_gps_pins') void check(); };
+    window.addEventListener('storage', onStorage);
+    return () => { cancelled = true; window.clearInterval(interval); window.removeEventListener('storage', onStorage); };
   }, [key]);
   return any;
 }
@@ -16860,6 +16901,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // نقطة أيقونة المتابعين: خضراء مباشرة إذا أي مضاف عندي أونلاين (مسار سريع بجانب presence)
   usePublishOnline(user?.id ? String(user.id) : null);
   const anyFriendOnlineFast = useAnyOnline(friendIds, user?.id ? String(user.id) : null);
+  // أيقونة الخريطة (بجانب أيقونة البث): خضراء إذا أي صديق ظاهر على الخريطة الحية
+  const anyFriendOnMap = useAnyOnMap(friendIds, user?.id ? String(user.id) : null);
   // Heartbeat so friends see this user as online (shared presence store on server)
   useEffect(() => {
     if (!user?.id) return;
@@ -18175,6 +18218,29 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
                       width: 7, height: 7, borderRadius: '50%',
                       background: (myLiveBroadcastKind || anyLiveBroadcast) ? '#22c55e' : '#9ca3af',
+                      border: '1.5px solid hsl(var(--background))',
+                    }} />
+                  </div>
+                  {/* Live map — نُقلت من الإعدادات؛ تفتح نفس الخريطة الحية السابقة */}
+                  <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => { setCameraStartWithLiveMap(true); setCameraCaptureOpen(true); }}
+                      aria-label={anyFriendOnMap ? 'يوجد أشخاص على الخريطة' : 'الخريطة'}
+                      title={anyFriendOnMap ? 'يوجد أشخاص على الخريطة' : 'الخريطة'}
+                      style={{
+                        width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
+                        background: 'rgba(225,225,225,0.1)',
+                        color: anyFriendOnMap ? '#22c55e' : '#9ca3af',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0, cursor: 'pointer',
+                      }}
+                    >
+                      <MapPin size={12} strokeWidth={2.3} />
+                    </button>
+                    <span aria-hidden="true" style={{
+                      position: 'absolute', left: '50%', bottom: -6, transform: 'translateX(-50%)',
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: anyFriendOnMap ? '#22c55e' : '#9ca3af',
                       border: '1.5px solid hsl(var(--background))',
                     }} />
                   </div>

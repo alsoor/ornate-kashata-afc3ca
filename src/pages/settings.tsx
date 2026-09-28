@@ -6670,34 +6670,8 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between px-5 pt-10 pb-4 z-10" style={{
         borderBottom: `1px solid ${T.navBorder}`
       }}>
-          <motion.button
-            type="button"
-            whileTap={{ scale: 0.88 }}
-            onClick={() => {
-              try {
-                window.dispatchEvent(new CustomEvent('stooorna:open-live-map'));
-              } catch { /* */ }
-              setShowLiveLocation(true);
-            }}
-            title="Map"
-            aria-label="Open live map"
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'rgba(239,68,68,0.12)',
-              border: '1.5px solid #ef4444',
-              color: '#ef4444',
-              cursor: 'pointer',
-              boxShadow: '0 0 12px rgba(239,68,68,0.25)',
-              padding: 0,
-            }}
-          >
-            <MapPin size={18} strokeWidth={2.4} />
-          </motion.button>
+          {/* أيقونة الخريطة نُقلت لصفحة القصة بجانب أيقونة البث — مساحة فارغة تحافظ على توسّط العنوان */}
+          <span aria-hidden="true" style={{ width: 36, height: 36, flexShrink: 0 }} />
           <p style={{
           letterSpacing: '0.3em',
           fontSize: '0.7rem',
