@@ -13093,8 +13093,10 @@ const LIVE_EMOJI_PICKER = ['😀', '😁', '😂', '🤣', '😊', '😍', '🥰
 
 function PublicLiveCommentsPanel({
   user,
+  headerOpen,
 }: {
   user: { id?: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null } | null | undefined;
+  headerOpen: boolean;
 }) {
   const [comments, setComments] = useState<PublicLiveComment[]>(() => loadPublicLiveComments());
   const [text, setText] = useState('');
@@ -13102,8 +13104,6 @@ function PublicLiveCommentsPanel({
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const [sheetExpanded, setSheetExpanded] = useState(true);
-  const dragStartY = useRef<number | null>(null);
   const myId = String(user?.id || '');
   const myName = user?.name ?? null;
   const myUsername = (user as any)?.username ?? null;
@@ -13183,70 +13183,60 @@ function PublicLiveCommentsPanel({
   const displayName = (c: PublicLiveComment) =>
     c.username ? `@${String(c.username).replace(/^@/, '')}` : (c.name || 'مستخدم');
 
-  const onSheetPointerDown = (e: React.PointerEvent) => {
-    dragStartY.current = e.clientY;
-  };
-  const onSheetPointerUp = (e: React.PointerEvent) => {
-    if (dragStartY.current == null) return;
-    const dy = e.clientY - dragStartY.current;
-    dragStartY.current = null;
-    if (dy > 28) setSheetExpanded(false);
-    else if (dy < -28) setSheetExpanded(true);
-  };
+  if (!headerOpen) return null;
 
   return (
-    <div style={{
-      position: 'fixed',
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: 45,
-      display: 'flex',
-      flexDirection: 'column',
-      height: sheetExpanded ? 'min(78vh, calc(100dvh - 132px))' : 56,
-      background: '#ffffff',
-      borderTopLeftRadius: 16,
-      borderTopRightRadius: 16,
-      boxShadow: '0 -8px 28px rgba(0,0,0,0.28)',
-      overflow: 'hidden',
-      color: '#111',
-    }}>
-      <button
-        type="button"
-        aria-label={sheetExpanded ? 'طي الشات' : 'فتح الشات'}
-        onPointerDown={onSheetPointerDown}
-        onPointerUp={onSheetPointerUp}
-        onClick={() => setSheetExpanded(v => !v)}
+    <div
+      onTouchStart={e => e.stopPropagation()}
+      onTouchMove={e => e.stopPropagation()}
+      onTouchEnd={e => e.stopPropagation()}
+      onWheel={e => e.stopPropagation()}
+      style={{
+        position: 'fixed',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        top: 'auto',
+        zIndex: 40,
+        display: 'flex',
+        flexDirection: 'column',
+        height: 'min(72vh, calc(100dvh - 148px))',
+        background: '#ffffff',
+        overflow: 'hidden',
+        color: '#111',
+        touchAction: 'pan-y',
+      }}
+    >
+      <div
+        aria-hidden
         style={{
           flexShrink: 0,
-          width: '100%',
-          height: 28,
-          border: 'none',
-          background: '#fff',
-          cursor: 'grab',
+          height: 22,
+          background: '#ffffff',
+          borderBottom: '1px solid #e5e7eb',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: 0,
         }}
       >
         <span style={{
-          width: 42,
-          height: 4,
+          width: 40,
+          height: 3,
           borderRadius: 2,
-          background: '#d4d4d4',
+          background: '#22c55e',
           display: 'block',
         }} />
-      </button>
+      </div>
       <div
         ref={listRef}
         style={{
           flex: 1,
           minHeight: 0,
-          overflowY: sheetExpanded ? 'auto' : 'hidden',
+          overflowY: 'auto',
           WebkitOverflowScrolling: 'touch',
-          padding: sheetExpanded ? '4px 12px 6px' : 0,
-          display: sheetExpanded ? 'flex' : 'none',
+          overscrollBehavior: 'contain',
+          padding: '4px 12px 6px',
+          display: 'flex',
           flexDirection: 'column',
           justifyContent: 'flex-end',
           background: '#ffffff',
@@ -13309,7 +13299,6 @@ function PublicLiveCommentsPanel({
       </div>
 
       <div style={{
-        display: sheetExpanded ? 'block' : 'none',
         pointerEvents: 'auto',
         borderTop: '1px solid #ececec',
         background: '#fff',
@@ -19212,7 +19201,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {/* Public LIVE comments docked to the BOTTOM of the page (composer first),
             independently of the collapsing/moving header above. */}
         {pageTab === 'profile' && !isFriendManagement && (
-          <PublicLiveCommentsPanel user={user as any} />
+          <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen} />
         )}
 
         {/* ── Content ── */}
