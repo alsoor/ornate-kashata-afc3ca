@@ -13481,6 +13481,7 @@ function PublicLiveCommentsPanel({
   const [recording, setRecording] = useState(false);
   const [chatLift, setChatLift] = useState(0);
   const [kbInset, setKbInset] = useState(0);
+  const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string }>>([]);
   const chatInputFocused = useRef(false);
   const recRef = useRef<MediaRecorder | null>(null);
   const recChunksRef = useRef<Blob[]>([]);
@@ -13495,6 +13496,40 @@ function PublicLiveCommentsPanel({
   const myName = user?.name ?? null;
   const myUsername = (user as any)?.username ?? null;
   const myAvatar = (user as any)?.avatarUrl || (user as any)?.image || null;
+  const typingTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!myId) return;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/live-chat/typing?room=${encodeURIComponent(LIVE_CHAT_ROOM)}`, { credentials: 'include' });
+        if (!r.ok) return;
+        const d = await r.json() as { typers?: Array<{ userId: string; name: string }> };
+        const list = (d.typers || []).filter(x => x.userId && x.userId !== myId);
+        setLiveTypers(list);
+      } catch { /* */ }
+    };
+    void tick();
+    const id = window.setInterval(tick, 1500);
+    return () => window.clearInterval(id);
+  }, [myId]);
+
+  const pingTyping = (on: boolean) => {
+    if (!myId) return;
+    try {
+      void fetch('/api/live-chat/typing', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room: LIVE_CHAT_ROOM,
+          userId: myId,
+          username: myUsername || myName || 'User',
+          name: myName,
+          typing: on,
+        }),
+      });
+    } catch { /* */ }
+  };
 
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
@@ -13863,6 +13898,12 @@ function PublicLiveCommentsPanel({
         paddingBottom: kbInset > 0 ? kbInset + 6 : 'max(8px, env(safe-area-inset-bottom))',
         flexShrink: 0,
       }}>
+        <style>{`
+          @keyframes stooornaTypeDots { 0%,20%{opacity:.2} 50%{opacity:1} 100%{opacity:.2} }
+          .stooorna-type-dots span { display:inline-block; animation: stooornaTypeDots 1.1s infinite; }
+          .stooorna-type-dots span:nth-child(2){ animation-delay:.2s }
+          .stooorna-type-dots span:nth-child(3){ animation-delay:.4s }
+        `}</style>
         <div style={{
           display: chatLift === 0 ? 'none' : 'flex',
           alignItems: 'center',
@@ -13988,16 +14029,34 @@ function PublicLiveCommentsPanel({
             minHeight: 38,
             background: '#fff',
           }}>
+            <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+            {chatLift === 0 && liveTypers.length > 0 && !text.trim() ? (
+              <div style={{
+                position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                pointerEvents: 'none', color: '#191970', fontWeight: 800, fontSize: '0.86rem',
+              }}>
+                {liveTypers[0].name} Type
+                <span className="stooorna-type-dots" style={{ marginLeft: 1 }}>
+                  <span>.</span><span>.</span><span>.</span>
+                </span>
+              </div>
+            ) : null}
             <input
               value={text}
-              onChange={e => setText(e.target.value.slice(0, 500))}
+              onChange={e => {
+                const v = e.target.value.slice(0, 500);
+                setText(v);
+                pingTyping(!!v.trim());
+                if (typingTimer.current) window.clearTimeout(typingTimer.current);
+                typingTimer.current = window.setTimeout(() => pingTyping(false), 2500);
+              }}
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   pushComment(text, pendingImage);
                 }
               }}
-              placeholder={myUsername ? `Comment as ${String(myUsername).replace(/^@/, '')}…` : 'Comment…'}
+              placeholder={chatLift === 0 && liveTypers.length > 0 && !text.trim() ? '' : (myUsername ? `Comment as ${String(myUsername).replace(/^@/, '')}…` : 'Comment…')}
               onFocus={() => {
                 chatInputFocused.current = true;
                 lockPageForKeyboard(true);
@@ -14006,6 +14065,7 @@ function PublicLiveCommentsPanel({
                 chatInputFocused.current = false;
                 setKbInset(0);
                 lockPageForKeyboard(false);
+                pingTyping(false);
               }}
               style={{
                 flex: 1,
@@ -14017,6 +14077,7 @@ function PublicLiveCommentsPanel({
                 minWidth: 0,
               }}
             />
+            </div>
             <input
               ref={fileRef}
               type="file"

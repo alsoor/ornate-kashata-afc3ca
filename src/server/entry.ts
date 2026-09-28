@@ -442,6 +442,33 @@ app.get("/api/live-chat/voice", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.send(row.buf);
 });
+const liveChatTypingMem = () => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveChatTyping?: Map<string, Map<string, { name: string; at: number }>> };
+  if (!g.__stooornaLiveChatTyping) g.__stooornaLiveChatTyping = new Map();
+  return g.__stooornaLiveChatTyping;
+};
+app.post("/api/live-chat/typing", (req, res) => {
+  const body = (req.body || {}) as any;
+  const channel = String(body.channel || body.room || "stooorna-live-chat");
+  const userId = String(body.userId || "");
+  if (!userId) return res.status(400).json({ error: "user" });
+  const store = liveChatTypingMem();
+  const map = store.get(channel) || new Map();
+  if (body.typing === false) map.delete(userId);
+  else map.set(userId, { name: String(body.username || body.name || "User").replace(/^@/, ""), at: Date.now() });
+  store.set(channel, map);
+  res.json({ ok: true });
+});
+app.get("/api/live-chat/typing", (req, res) => {
+  const channel = String(req.query.channel || req.query.room || "stooorna-live-chat");
+  const map = liveChatTypingMem().get(channel) || new Map();
+  const now = Date.now();
+  const typers = [...map.entries()]
+    .filter(([, v]) => now - v.at < 4000)
+    .map(([userId, v]) => ({ userId, name: v.name }));
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ ok: true, typers });
+});
 app.post("/api/live-chat", (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
   const channel = String(body.channel || body.room || body.roomId || "stooorna-live-chat");
