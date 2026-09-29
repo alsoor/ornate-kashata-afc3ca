@@ -102,7 +102,7 @@ function readLocalActive(prefix: 'stooorna_live_active_' | 'stooorna_livecam_act
 // ════════════════════════════════════════════════════════════════════════════
 // 3) اكتشاف البثوث للزائر
 // ════════════════════════════════════════════════════════════════════════════
-type GuestHost = { id: string; name: string | null; username: string | null; avatarUrl: string | null };
+type GuestHost = { id: string; name: string | null; username: string | null; avatarUrl: string | null; srv?: { kind: 'voice' | 'camera'; count: number } };
 type GuestEntry = GuestHost & { kind: 'voice' | 'camera'; count: number; lastSeen: number; since: number };
 type Diag = Record<string, string | number>;
 
@@ -138,19 +138,50 @@ async function discoverHosts(diag: Diag): Promise<GuestHost[]> {
       name: info?.name ?? prev.name ?? null,
       username: info?.username ?? prev.username ?? null,
       avatarUrl: info?.avatarUrl ?? prev.avatarUrl ?? null,
+      srv: info?.srv ?? map.get(k)?.srv,
     };
     map.set(k, next);
-    hostInfoCache.set(k, next);
+    hostInfoCache.set(k, { ...next, srv: undefined });
   };
+
+  // (أ0) قائمة البثوث الشغّالة من السيرفر مباشرة: GET /api/room?live=1 (مفتوح للزائر)
+  const rl = await getJson('/api/room?live=1', diag, 'room_list');
+  if (rl) {
+    diag.room_list_supported = String(!!rl.supported);
+    if (Array.isArray(rl.hosts)) {
+      diag.room_list_hosts = rl.hosts.length;
+      rl.hosts.forEach((h: any) => {
+        const srv = { kind: (h?.kind === 'camera' ? 'camera' : 'voice') as 'voice' | 'camera', count: Number(h?.count) || 0 };
+        add(h?.id, { name: h?.name ?? null, username: h?.username ?? null, avatarUrl: h?.avatarUrl ?? null, srv });
+      });
+    }
+  }
 
   // (أ) مسار اختياري مخصص للزوار من السيرفر إن وُجد: { hosts: [{id,name,username,avatarUrl}] }
   const g = await getJson('/api/guest/live', diag, 'guest_live');
-  if (g && Array.isArray(g.hosts)) g.hosts.forEach((h: any) => add(h?.id, h));
+  // إن أرجع السيرفر kind (voice|camera) و count فيُعتمد مباشرة بدون فحص /api/room.
+  if (g && Array.isArray(g.hosts)) {
+    g.hosts.forEach((h: any) => {
+      const rawKind = String(h?.kind ?? '').toLowerCase();
+      const srv = rawKind
+        ? { kind: (rawKind === 'camera' || rawKind === 'video' ? 'camera' : 'voice') as 'voice' | 'camera', count: Number(h?.count ?? h?.members ?? 0) || 0 }
+        : undefined;
+      add(h?.id, { name: h?.name ?? null, username: h?.username ?? null, avatarUrl: h?.avatarUrl ?? null, srv });
+    });
+  }
 
   // (ب) أصحاب الحالات/القصص
   const st = await getJson('/api/status', diag, 'status');
   if (st && Array.isArray(st.statuses)) {
     st.statuses.forEach((s: any) => add(s?.userId, { name: s?.name ?? null, username: s?.username ?? null, avatarUrl: s?.avatarUrl ?? null }));
+  }
+
+  // (ب2) كتّاب المنشورات العامة: هذي الصفحة يشوفها الزائر أصلاً، فهي أضمن مصدر لأسماء المستخدمين
+  for (const [aud, dk] of [['text', 'posts_text'], ['public', 'posts_public']] as const) {
+    const pr = await getJson(`/api/posts?audience=${aud}`, diag, dk);
+    if (pr && Array.isArray(pr.posts)) {
+      pr.posts.forEach((p: any) => add(p?.authorId, { name: p?.authorName ?? null, username: p?.authorUsername ?? null, avatarUrl: p?.authorAvatarUrl ?? null }));
+    }
   }
 
   // (ج) الخريطة الحية + المتواجدون الآن
@@ -176,10 +207,11 @@ async function discoverHosts(diag: Diag): Promise<GuestHost[]> {
     })();
   });
 
-  return Array.from(map.values()).slice(0, 60);
+  return Array.from(map.values()).slice(0, 40);
 }
 
 async function probeHost(h: GuestHost, diag: Diag): Promise<{ kind: 'voice' | 'camera'; count: number } | null> {
+  if (h.srv) return h.srv;
   const cam = await membersOf(camChannel(h.id), diag, 'room_cam');
   if (cam && cam > 0) return { kind: 'camera', count: cam };
   const voice = await membersOf(voiceChannel(h.id), diag, 'room_voice');
@@ -264,10 +296,11 @@ export function GuestLiveStack({ enabled, onSignIn, offsetPx = 20 }: {
       try {
         const hosts = await discoverHosts(d);
         d.candidates = hosts.length;
+        if (hosts.length === 0) console.warn('[GuestLive] no candidate hosts found — check server access for guests (/api/posts, /api/status, /api/guest/live)');
         const prevIds = new Set(entriesRef.current.map(e => e.id));
         const cand = new Map<string, GuestHost>();
         hosts.forEach(h => cand.set(h.id, h));
-        entriesRef.current.forEach(e => { if (!cand.has(e.id)) cand.set(e.id, e); });
+        entriesRef.current.forEach(e => { if (!cand.has(e.id)) cand.set(e.id, { id: e.id, name: e.name, username: e.username, avatarUrl: e.avatarUrl }); });
         const res = await Promise.all(Array.from(cand.values()).map(async h => ({ h, r: await probeHost(h, d) })));
         if (cancelled) return;
         const now = Date.now();
@@ -286,6 +319,7 @@ export function GuestLiveStack({ enabled, onSignIn, offsetPx = 20 }: {
         Array.from(sinceRef.current.keys()).forEach(k => { if (!next.some(e => e.id === k)) sinceRef.current.delete(k); });
         next.sort((a, b) => a.since - b.since);
         d.live = next.length;
+        if (next.length === 0 && hosts.length > 0 && String(d.room_cam) !== '200' && String(d.room_voice) !== '200') console.warn('[GuestLive] /api/room not readable by guests', d.room_cam, d.room_voice);
         void prevIds;
         setEntries(prev => {
           const same = prev.length === next.length && prev.every((p, i) => p.id === next[i].id && p.kind === next[i].kind && p.count === next[i].count && p.name === next[i].name && p.avatarUrl === next[i].avatarUrl);
@@ -297,7 +331,7 @@ export function GuestLiveStack({ enabled, onSignIn, offsetPx = 20 }: {
       }
     };
     void tick();
-    const iv = window.setInterval(() => { void tick(); }, 3000);
+    const iv = window.setInterval(() => { void tick(); }, 4000);
     const onEvt = () => { void tick(); };
     window.addEventListener('stooorna:live-active', onEvt);
     window.addEventListener('stooorna:livecam-active', onEvt);
