@@ -410,7 +410,8 @@ export function GuestLiveStack({ enabled, onSignIn, offsetPx = 20 }: {
     <>
       <div
         style={{
-          position: 'fixed', left: 0, right: 0, top: topPx, zIndex: 16,
+          // فوق شيت المنشورات (10300) الذي كان يغطي البطاقات، وتحت لوحات الأصدقاء (10650) وتسجيل الدخول
+          position: 'fixed', left: 0, right: 0, top: topPx, zIndex: 10600,
           display: 'flex', flexDirection: 'column', gap: 10,
           padding: entries.length ? '8px 12px' : 0,
           maxHeight: `calc(100dvh - ${topPx}px - 104px)`,

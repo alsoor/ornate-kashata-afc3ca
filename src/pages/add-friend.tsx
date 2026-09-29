@@ -20663,7 +20663,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             picking an item (or tapping the backdrop) closes the row and the
             "+" reappears. ── */}
         {/* الأيقونات (Friends / Call / Live / Settings) تظهر دائماً تحت الخط: عند الدخول مباشرة، وعند رفع الهيدر أو إنزاله. */}
-        {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
+        {/* الأيقونات الأربع: تظهر في الرئيسية (الهيدر مفتوح) فقط، وتختفي بعد رفع الشيت ليبقى الشات وحده.
+            الزائر يبقى عنده الصف (زر Sign in و Ar/En) لأن الهيدر عنده مقفل دائماً. */}
+        {!isFriendManagement && !visitorProfileOpen && !chatLifted && (headerOpen || guestMode) && (
           <div data-stooorna-header-icons="1" style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 10px', position: 'relative' }}>
                 <div style={{
                   position: 'relative',
