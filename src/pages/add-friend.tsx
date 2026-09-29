@@ -4,7 +4,71 @@ import { createPortal } from 'react-dom';
 import React from 'react';
 // Full Settings page, rendered directly inside the dock bubble (no route change → no slide-in sheet, no red close X).
 const EmbeddedSettingsPage = React.lazy(() => import('./settings'));
-import { useNavigate, useSearchParams, useLocation } from "react-router";
+const EmbeddedPrivacyPage = React.lazy(() => import('./privacy'));
+const EmbeddedProfilePage = React.lazy(() => import('./profile'));
+
+/**
+ * Tiny in-memory router for the dock bubble. Settings / Privacy / Profile call useNavigate(), so we give them
+ * their own navigation + location contexts (exactly what a MemoryRouter provides, but without rendering a nested
+ * <Router>, which react-router forbids). Pages we host stay INSIDE the bubble; any other target (e.g. /add-friend,
+ * /share) is handed to the real router through onExit and the bubble closes.
+ */
+const DOCK_EMBED_PATHS = ['/settings', '/privacy', '/profile'];
+function DockEmbeddedApp({ onExit }: { onExit: (to: string) => void }) {
+  const [hist, setHist] = useState<{ stack: string[]; i: number }>({ stack: ['/settings'], i: 0 });
+  const exitRef = useRef(onExit);
+  exitRef.current = onExit;
+  const cur = hist.stack[hist.i] || '/settings';
+  const q = cur.indexOf('?');
+  const pathname = q < 0 ? cur : cur.slice(0, q);
+  const search = q < 0 ? '' : cur.slice(q);
+  const toStr = (to: any): string => (typeof to === 'string' ? to : `${to?.pathname || ''}${to?.search || ''}${to?.hash || ''}`);
+  const isEmbedded = (str: string) => DOCK_EMBED_PATHS.includes(str.split(/[?#]/)[0]);
+  const navigator = useMemo(() => ({
+    createHref: (to: any) => toStr(to),
+    encodeLocation: (to: any) => {
+      const str = toStr(to); const k = str.indexOf('?');
+      return { pathname: k < 0 ? str : str.slice(0, k), search: k < 0 ? '' : str.slice(k), hash: '' };
+    },
+    push: (to: any) => {
+      const str = toStr(to);
+      if (!isEmbedded(str)) { exitRef.current(str); return; }
+      setHist(h => ({ stack: [...h.stack.slice(0, h.i + 1), str], i: h.i + 1 }));
+    },
+    replace: (to: any) => {
+      const str = toStr(to);
+      if (!isEmbedded(str)) { exitRef.current(str); return; }
+      setHist(h => { const stack = h.stack.slice(); stack[h.i] = str; return { stack, i: h.i }; });
+    },
+    go: (n: number) => setHist(h => ({ stack: h.stack, i: Math.max(0, Math.min(h.stack.length - 1, h.i + n)) })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), []);
+  const location = useMemo(() => ({ pathname, search, hash: '', state: null, key: `dock-${hist.i}` }), [pathname, search, hist.i]);
+  const Page = pathname === '/privacy' ? EmbeddedPrivacyPage : pathname === '/profile' ? EmbeddedProfilePage : EmbeddedSettingsPage;
+  return (
+    <UNSAFE_NavigationContext.Provider value={{ basename: '/', navigator, static: false, future: {} } as any}>
+      <UNSAFE_LocationContext.Provider value={{ location, navigationType: 'PUSH' } as any}>
+        <UNSAFE_RouteContext.Provider value={{ outlet: null, matches: [], isDataRoute: false } as any}>
+          {/* these pages size themselves with 100dvh — inside the bubble that means "the bubble" */}
+          <style>{`.stooorna-dock-embed [style*="100dvh"], .stooorna-dock-embed [style*="100vh"] { height: 100% !important; max-height: 100% !important; min-height: 100% !important; }
+.stooorna-dock-embed [style*="position: fixed"] { max-height: 100dvh; }`}</style>
+          <div
+            className="stooorna-dock-embed"
+            style={{
+              position: 'absolute', inset: 0, overflowY: 'auto', overflowX: 'hidden',
+              WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y', scrollBehavior: 'smooth',
+            }}
+          >
+            <React.Suspense fallback={<p style={{ margin: '24px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}>
+              <Page key={pathname} />
+            </React.Suspense>
+          </div>
+        </UNSAFE_RouteContext.Provider>
+      </UNSAFE_LocationContext.Provider>
+    </UNSAFE_NavigationContext.Provider>
+  );
+}
+import { useNavigate, useSearchParams, useLocation, UNSAFE_NavigationContext, UNSAFE_LocationContext, UNSAFE_RouteContext } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import UserAvatar from '@/components/UserAvatar';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
@@ -21252,8 +21316,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         onClick={e => e.stopPropagation()}
         style={{
           position: 'fixed', zIndex: 10075, left: SIDE, right: SIDE, bottom: 'calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
-          height: 'min(62dvh, 520px)', display: 'flex', flexDirection: 'column',
-          borderRadius: 22, padding: '14px 14px 12px',
+          height: dockBubble.kind === 'settings' ? 'calc(100dvh - var(--stooorna-bottom-bar-h, 96px) - 30px - env(safe-area-inset-top, 0px))' : 'min(62dvh, 520px)',
+          display: 'flex', flexDirection: 'column',
+          borderRadius: 22, padding: dockBubble.kind === 'settings' ? '12px 6px 6px' : '14px 14px 12px',
           background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
           border: '1.5px solid rgba(0,188,212,0.35)',
           boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
@@ -21262,7 +21327,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       >
         {/* tail → points at the tapped icon */}
         <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: tailLeft - 9, width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: dockBubble.kind === 'settings' ? '0 8px' : 0 }}>
           <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,188,212,0.14)', color: '#00BCD4' }}>
             {dockBubble.kind === 'call' ? <Phone size={15} strokeWidth={2.2} /> : dockBubble.kind === 'live' ? <Radio size={15} strokeWidth={2.2} /> : <Settings size={15} strokeWidth={2.2} />}
           </span>
@@ -21271,7 +21336,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             <X size={15} strokeWidth={2.4} />
           </button>
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: dockBubble.kind === 'settings' ? 0 : 8, WebkitOverflowScrolling: 'touch', borderRadius: 14 }}>
+        <div style={{ flex: 1, minHeight: 0, position: 'relative', overflowY: dockBubble.kind === 'settings' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', gap: 8, WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', borderRadius: 14 }}>
           {dockBubble.kind === 'call' && (
             <>
               {dockFriendsLoading && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}
@@ -21333,9 +21398,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             );
           })()}
           {dockBubble.kind === 'settings' && (
-            <React.Suspense fallback={<p style={{ margin: '24px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}>
-              <EmbeddedSettingsPage />
-            </React.Suspense>
+            <DockEmbeddedApp onExit={(to) => { closeBubble(); navigate(to); }} />
           )}
         </div>
       </div>
