@@ -14552,6 +14552,13 @@ function homeLiveSameEntries(a: HomeLiveEntry[], b: HomeLiveEntry[]): boolean {
   return true;
 }
 
+// ── الهيدر السفلي: الأيقونات الأربع (Friends | Call | LIVE | Settings) تُعرض في أسفل الشاشة عبر بورتال
+// عشان ما تتأثر بأي transform في الصفحة. الأشكال والأسماء وطريقة الفتح نفس ما كانت بالضبط. ──
+function BottomHeaderPortal({ enabled, children }: { enabled: boolean; children: React.ReactNode }) {
+  if (!enabled || typeof document === 'undefined') return <>{children}</>;
+  return createPortal(<>{children}</>, document.body);
+}
+
 function HomeLiveStack({ myId, hosts, enabled, showCards, guest, onGuestTap }: {
   myId: string;
   hosts: HomeLiveHost[];
@@ -14613,7 +14620,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, guest, onGuestTap }: {
     if (!showCards) return;
     const measure = () => {
       // تحت صف الأيقونات (Friends/Call/Live/Settings) إن وُجد، وإلا تحت الخط. حافة الحاوية هي اللي تقصّ البطاقات عند التمرير.
-      const el = (document.querySelector('[data-stooorna-header-icons]') || document.querySelector('[data-stooorna-header-grabber]')) as HTMLElement | null;
+      const el = (document.querySelector('[data-stooorna-header-icons]:not([data-stooorna-icons-bottom])') || document.querySelector('[data-stooorna-header-grabber]')) as HTMLElement | null;
       if (!el) return;
       const b = Math.round(el.getBoundingClientRect().bottom);
       setAnchorTop(prev => (Math.abs(prev - b) < 1 ? prev : b));
@@ -18004,6 +18011,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     window.addEventListener('stooorna:chat-lift', onLift as EventListener);
     return () => window.removeEventListener('stooorna:chat-lift', onLift as EventListener);
   }, []);
+  // الهيدر السفلي (الأيقونات الأربع) للمسجّلين: نعرّف ارتفاعه كمتغير CSS ليتجنبه أي مربع/لوحة (اتصال، أصدقاء، بث)
+  const bottomHeaderShown = !guestMode && headerOpen && !chatLifted && !isFriendManagement && !visitorProfileOpen;
+  useEffect(() => {
+    try {
+      document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(96px + env(safe-area-inset-bottom, 0px))' : '0px');
+    } catch { /* */ }
+    return () => { try { document.documentElement.style.setProperty('--stooorna-bottom-bar-h', '0px'); } catch { /* */ } };
+  }, [bottomHeaderShown]);
   // Quick "+" menu below the header: no longer touches headerOpen at all. Clicking it
   // hides the "+" itself and reveals the Settings/Friends/Call/Chat/Live row; closing
   // the menu (backdrop tap or picking an item) brings the "+" back.
@@ -20666,7 +20681,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {/* الأيقونات الأربع: تظهر في الرئيسية (الهيدر مفتوح) فقط، وتختفي بعد رفع الشيت ليبقى الشات وحده.
             الزائر يبقى عنده الصف (زر Sign in و Ar/En) لأن الهيدر عنده مقفل دائماً. */}
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && (headerOpen || guestMode) && (
-          <div data-stooorna-header-icons="1" style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 10px', position: 'relative' }}>
+          <BottomHeaderPortal enabled={!guestMode}>
+          <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
+            position: 'fixed', left: 0, right: 0, bottom: 0,
+            // تحت مربعات الأقسام (الأصدقاء 10080، الاتصال، البث) عشان ما تتضارب معه، وفوق الشات (15/40)
+            zIndex: 10070,
+            display: 'flex', justifyContent: 'center',
+            padding: '8px 0 calc(8px + env(safe-area-inset-bottom, 0px))',
+            background: 'rgba(4,12,12,0.96)',
+            backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+            borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
+          } : { display: 'flex', justifyContent: 'center', padding: '8px 0 10px', position: 'relative' }}>
                 <div style={{
                   position: 'relative',
                   display: 'flex',
@@ -20877,6 +20902,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 )}
                 </div>
           </div>
+          </BottomHeaderPortal>
         )}
 
         {/* ── Content ── */}
@@ -26417,7 +26443,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               zIndex: textPostsPageOpen ? 10650 : 10080,
               background: 'rgba(0,0,0,0.45)',
               display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-              padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
+              padding: '12px 16px calc(64px + env(safe-area-inset-bottom) + var(--stooorna-bottom-bar-h, 0px))',
               boxSizing: 'border-box',
             }}
           >
