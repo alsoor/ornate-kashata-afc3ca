@@ -1,6 +1,14 @@
 import { Helmet } from '@dr.pogodin/react-helmet';
-import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ScrollRestoration, useLocation, useNavigate } from "react-router";
+
+// True on the profile/story tab of /add-friend (the "+" lives inline there, so the bottom nav bar must never show).
+// Works from the URL alone so the very first render (refresh / coming back) is already correct — no flash of the bar.
+function isStoryProfileRoute(pathname: string, search: string): boolean {
+  if (!pathname.startsWith('/add-friend')) return false;
+  const tab = new URLSearchParams(search || '').get('tab');
+  return !(tab === 'search' || tab === 'requests');
+}
 import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus, Image as ImageIcon, Video, MoreVertical, Clock } from 'lucide-react';
 import HomepageSameAsJsonLd from '@/components/HomepageSameAsJsonLd';
 import Website from '@/layouts/Website';
@@ -819,7 +827,7 @@ function GlobalBottomNavigation() {
   // True while the profile/story tab (add-friend.tsx) is the active tab —
   // the "+" now lives inline there, so the whole bottom nav bar is removed
   // (not just hidden) on that page.
-  const [storyPageActive, setStoryPageActive] = useState(false);
+  const [storyPageActive, setStoryPageActive] = useState(() => isStoryProfileRoute(location.pathname, location.search));
   useEffect(() => {
     const onStoryPage = (e: Event) => {
       const active = !!(e as CustomEvent).detail?.active;
@@ -828,9 +836,10 @@ function GlobalBottomNavigation() {
     window.addEventListener('stooorna:story-page-active', onStoryPage);
     return () => window.removeEventListener('stooorna:story-page-active', onStoryPage);
   }, []);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!location.pathname.startsWith('/add-friend')) setStoryPageActive(false);
-  }, [location.pathname]);
+    else if (isStoryProfileRoute(location.pathname, location.search)) setStoryPageActive(true);
+  }, [location.pathname, location.search]);
   const [liveMapOpen, setLiveMapOpen] = useState(false);
   useEffect(() => {
     const onFeedScroll = (e: Event) => {
@@ -5520,7 +5529,7 @@ export default function RootLayout({
   // Mirrors the same flag inside GlobalBottomNavigation: true while the
   // profile/story tab is active, so the space reserved for the bottom nav
   // bar collapses too (the bar itself is fully removed there, not just hidden).
-  const [storyPageActive, setStoryPageActive] = useState(false);
+  const [storyPageActive, setStoryPageActive] = useState(() => isStoryProfileRoute(location.pathname, location.search));
   useEffect(() => {
     const onStoryPage = (e: Event) => {
       setStoryPageActive(!!(e as CustomEvent).detail?.active);
@@ -5528,9 +5537,10 @@ export default function RootLayout({
     window.addEventListener('stooorna:story-page-active', onStoryPage);
     return () => window.removeEventListener('stooorna:story-page-active', onStoryPage);
   }, []);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!location.pathname.startsWith('/add-friend')) setStoryPageActive(false);
-  }, [location.pathname]);
+    else if (isStoryProfileRoute(location.pathname, location.search)) setStoryPageActive(true);
+  }, [location.pathname, location.search]);
   const isSettingsPage = location.pathname === '/settings' || location.pathname.startsWith('/settings');
   const [settingsClosing, setSettingsClosing] = useState(false);
   const [textPostsOverlayOpen, setTextPostsOverlayOpen] = useState(() => {

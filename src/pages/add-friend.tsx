@@ -1,5 +1,5 @@
 import { add_friend } from 'virtual:content';
-import { useState, useEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import React from 'react';
 import { useNavigate, useSearchParams, useLocation } from "react-router";
@@ -29,6 +29,21 @@ import { publishFeedPost, uploadPostMedia, deleteStoryInstant, POST_TEXT_MAX_CHA
 import { mediaAiProcessGalleryFiles, mediaAiForceWorkingMedia, mediaAiNormalizeImage, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
 import { StoryModerationBell, StoryModerateDialog, StoryBanModal, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
+
+// Refresh / coming back to this page: RootLayout's bottom bar (with the "+") used to flash for a moment until this page mounted and
+// told it to hide. Announce it as early as possible (module load), and again when the browser restores the page from cache.
+function announceStoryPageActive() {
+  try {
+    if (typeof window === 'undefined') return;
+    if (!window.location.pathname.startsWith('/add-friend')) return; // never touch other routes
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab === 'search' || tab === 'requests') return;
+    window.dispatchEvent(new CustomEvent('stooorna:story-page-active', { detail: { active: true } }));
+  } catch { /* ignore */ }
+}
+announceStoryPageActive();
+if (typeof window !== 'undefined') window.addEventListener('pageshow', announceStoryPageActive);
+
 interface SearchUser {
   id: string;
   name: string | null;
@@ -18764,7 +18779,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Tell RootLayout whether we're on the profile/story tab, so it can remove
   // the bottom nav bar entirely there (the "+" now lives inline under the
   // header grabber instead).
-  useEffect(() => {
+  useLayoutEffect(() => {
     try {
       window.dispatchEvent(new CustomEvent('stooorna:story-page-active', {
         detail: { active: pageTab === 'profile' },
