@@ -3,14 +3,14 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, Briefcase, Menu, ChevronDown, AlertTriangle, FileText, MapPin } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, Briefcase, Menu, ChevronDown, AlertTriangle, FileText } from 'lucide-react';
 import { useSession, signOut, signIn, signUp } from '@/lib/auth/auth-client';
 import { usePresenceQuery } from '@/hooks/usePresence';
 import LiveLocationMap from '@/components/LiveLocationMap';
 import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
-import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, getVipFeats, setVipFeat, hydrateVipFromServer, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown } from '@/lib/vipPatch';
+import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown } from '@/lib/vipPatch';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import StoryModerationManager from '@/components/StoryModerationManager';
@@ -3757,8 +3757,8 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   const [companyName, setCompanyName] = useState('');
   const [tradeName, setTradeName] = useState('');
   const [ownerName, setOwnerName] = useState('');
-  const [licenseNumber, setLicenseNumber] = useState('');
-  const [tradeLicenseNumber, setTradeLicenseNumber] = useState('');
+  const [licenseNumber] = useState('');
+  const [tradeLicenseNumber] = useState('');
   const [commercialRegFile, setCommercialRegFile] = useState<{ dataUrl: string; name: string } | null>(null);
   const [tradeLicenseFile, setTradeLicenseFile] = useState<{ dataUrl: string; name: string } | null>(null);
   // حالة فحص الشهادتين بالذكاء الاصطناعي: idle (لم يُرفع شيء بعد) | checking (جاري الفحص) | valid (تم التحقق ومطابقة الرقم) | invalid (شهادة غير صحيحة أو لا تطابق الرقم)
@@ -3769,18 +3769,6 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   const [commercialRegVerifyMessage, setCommercialRegVerifyMessage] = useState('');
   const [tradeLicenseVerifyMessage, setTradeLicenseVerifyMessage] = useState('');
   // AI-extracted fields shown under each certificate after verification
-  const [commercialRegMeta, setCommercialRegMeta] = useState<{
-    extractedNumber?: string | null;
-    extractedExpiryDate?: string | null;
-    isExpired?: boolean;
-    numbersMatch?: boolean;
-  } | null>(null);
-  const [tradeLicenseMeta, setTradeLicenseMeta] = useState<{
-    extractedNumber?: string | null;
-    extractedExpiryDate?: string | null;
-    isExpired?: boolean;
-    numbersMatch?: boolean;
-  } | null>(null);
   const [companySector, setCompanySector] = useState('');
   const [companySectorCustom, setCompanySectorCustom] = useState('');
   const [sectorOpen, setSectorOpen] = useState(false);
@@ -3803,7 +3791,6 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
       setCommercialRegVerify('idle');
       setCommercialRegFile(null);
       setCommercialRegVerifyMessage('');
-      setCommercialRegMeta(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [licenseNumber]);
@@ -3814,7 +3801,6 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
       setTradeLicenseVerify('idle');
       setTradeLicenseFile(null);
       setTradeLicenseVerifyMessage('');
-      setTradeLicenseMeta(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tradeLicenseNumber]);
@@ -4629,7 +4615,6 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                   setCommercialRegFile(null);
                   setCommercialRegVerify('checking');
                   setCommercialRegVerifyMessage('');
-                  setCommercialRegMeta(null);
                   try {
                     const result = await verifyCertificateFile(file, 'commercial_registry', '');
                     if (result.valid) {
@@ -4676,7 +4661,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             {commercialRegFile && commercialRegVerify === 'valid' && (
               <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
                 <Check size={11} /> {commercialRegFile.name}
-                <button type="button" onClick={() => { setCommercialRegFile(null); setCommercialRegVerify('idle'); setCommercialRegVerifyMessage(''); setCommercialRegMeta(null); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                <button type="button" onClick={() => { setCommercialRegFile(null); setCommercialRegVerify('idle'); setCommercialRegVerifyMessage(''); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
                   <X size={11} />
                 </button>
               </p>
@@ -4712,7 +4697,6 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                   setTradeLicenseFile(null);
                   setTradeLicenseVerify('checking');
                   setTradeLicenseVerifyMessage('');
-                  setTradeLicenseMeta(null);
                   try {
                     const result = await verifyCertificateFile(file, 'trade_license', '');
                     if (result.valid) {
@@ -4759,7 +4743,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             {tradeLicenseFile && tradeLicenseVerify === 'valid' && (
               <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
                 <Check size={11} /> {tradeLicenseFile.name}
-                <button type="button" onClick={() => { setTradeLicenseFile(null); setTradeLicenseVerify('idle'); setTradeLicenseVerifyMessage(''); setTradeLicenseMeta(null); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                <button type="button" onClick={() => { setTradeLicenseFile(null); setTradeLicenseVerify('idle'); setTradeLicenseVerifyMessage(''); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
                   <X size={11} />
                 </button>
               </p>
@@ -6183,7 +6167,6 @@ export default function SettingsPage() {
   const [displayNameState, setDisplayNameState] = useState<string>(user?.name ?? '');
 
   // Business registration (regular user -> Business after owner approval)
-  const [businessToggleOn, setBusinessToggleOn] = useState(false);
   const [businessModalOpen, setBusinessModalOpen] = useState(false);
   const [businessRow, setBusinessRow] = useState<BusinessRegistration | null>(null);
   const [bizBalance, setBizBalance] = useState(0);
@@ -6194,10 +6177,6 @@ export default function SettingsPage() {
   const [bizCardCvv, setBizCardCvv] = useState('');
   const [vipOn, setVipOn] = useState(false);
   const [vipPayOpen, setVipPayOpen] = useState(false);
-  const [vipCardName, setVipCardName] = useState('');
-  const [vipCard, setVipCard] = useState('');
-  const [vipExp, setVipExp] = useState('');
-  const [vipCvv, setVipCvv] = useState('');
   const [vipColor, setVipColor] = useState<'blue' | 'gold' | 'red' | 'green' | 'gray'>('gold');
   const [vipNewUser, setVipNewUser] = useState('');
   const [vipRenameMsg, setVipRenameMsg] = useState('');
@@ -6242,13 +6221,11 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!user?.id) {
       setBusinessRow(null);
-      setBusinessToggleOn(false);
       setBizBalance(0);
       return;
     }
     const row = getBusinessForUser(user.id);
     setBusinessRow(row);
-    setBusinessToggleOn(!!(row && (row.status === 'approved' || row.status === 'pending')));
     if (row?.ownerNote && !row.ownerNoteSeen) setBizOwnerNoteOpen(true);
     try {
       const bal = Number(localStorage.getItem(`stooorna_biz_balance_${user.id}`) || '0') || 0;
@@ -6280,7 +6257,6 @@ export default function SettingsPage() {
     const onBiz = () => {
       const r = getBusinessForUser(user.id);
       setBusinessRow(r);
-      setBusinessToggleOn(!!(r && (r.status === 'approved' || r.status === 'pending')));
       if (r?.ownerNote && !r.ownerNoteSeen) setBizOwnerNoteOpen(true);
     };
     window.addEventListener('stooorna:business-registry', onBiz);
@@ -11880,7 +11856,6 @@ export default function SettingsPage() {
                       };
                       upsertBusinessRegistration(row);
                       setBusinessRow(row);
-                      setBusinessToggleOn(true);
                       setBizSubmitting(false);
                     }}
                     style={{
@@ -12413,7 +12388,6 @@ export default function SettingsPage() {
                       } else if (cancelSubConfirm === 'business') {
                         cancelBusinessSubscription(user.id);
                         setBusinessRow(getBusinessForUser(user.id));
-                        setBusinessToggleOn(false);
                       }
                     } finally {
                       setCancellingSub(false);
