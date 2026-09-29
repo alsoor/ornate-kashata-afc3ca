@@ -18629,6 +18629,29 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // hides the "+" itself and reveals the Settings/Friends/Call/Chat/Live row; closing
   // the menu (backdrop tap or picking an item) brings the "+" back.
   const [, setProfilePlusOpen] = useState(false);
+  // ── Dock bubble: tapping Call / LIVE / Settings opens a speech-bubble panel above the dock, with a tail pointing at the tapped icon ──
+  const [dockBubble, setDockBubble] = useState<null | { kind: 'call' | 'live' | 'settings'; x: number }>(null);
+  const [dockFriends, setDockFriends] = useState<Friend[]>([]);
+  const [dockFriendsLoading, setDockFriendsLoading] = useState(false);
+  const openDockBubble = (kind: 'call' | 'live' | 'settings', el: HTMLElement | null) => {
+    const r = el?.getBoundingClientRect();
+    const x = r ? r.left + r.width / 2 : (typeof window !== 'undefined' ? window.innerWidth / 2 : 180);
+    setDockBubble(cur => (cur && cur.kind === kind ? null : { kind, x }));
+  };
+  useEffect(() => {
+    if (dockBubble?.kind !== 'call') return;
+    let off = false;
+    setDockFriendsLoading(true);
+    (async () => {
+      try {
+        const r = await fetch('/api/friends', { credentials: 'include' });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!off) setDockFriends(Array.isArray(d?.accepted) ? d.accepted : []);
+      } catch { /* keep empty */ } finally { if (!off) setDockFriendsLoading(false); }
+    })();
+    return () => { off = true; };
+  }, [dockBubble?.kind]);
   const profilePlusCallPressRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; long: boolean }>({ timer: null, long: false });
   const profilePlusIncomingCallUi = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
   const lastFeedScrollTopRef = useRef(0);
@@ -21210,6 +21233,113 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 @keyframes stooornaFrameShine { to { --stooorna-frame-angle: 360deg; } }
 .stooorna-frame-shine { position: absolute; inset: -1px; border-radius: 20px; padding: 1px; pointer-events: none; background: conic-gradient(from var(--stooorna-frame-angle), rgba(255,255,255,0) 0deg, rgba(255,255,255,0) 290deg, rgba(255,255,255,0.35) 325deg, rgba(255,255,255,0.95) 345deg, rgba(255,255,255,0) 360deg); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; filter: drop-shadow(0 0 3px rgba(255,255,255,0.55)); animation: stooornaFrameShine 16s linear infinite; }`}</style>
                   <span aria-hidden="true" className="stooorna-frame-shine" />
+
+{/* ── Speech-bubble panel: sits above the dock, tail points at the tapped icon ── */}
+{!guestMode && dockBubble && typeof document !== 'undefined' && createPortal((() => {
+  const SIDE = 12;
+  const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, dockBubble.x - SIDE)) ;
+  const closeBubble = () => setDockBubble(null);
+  const title = dockBubble.kind === 'call' ? 'Call' : dockBubble.kind === 'live' ? 'LIVE' : 'Settings';
+  const primaryBtn: React.CSSProperties = { width: '100%', padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.5)', background: 'rgba(0,188,212,0.16)', color: '#7ee8f5', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
+  return (
+    <>
+      <div onPointerDown={e => { e.preventDefault(); closeBubble(); }} style={{ position: 'fixed', inset: 0, zIndex: 10068, background: 'rgba(0,6,8,0.45)' }} />
+      <div
+        key={dockBubble.kind}
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'fixed', zIndex: 10075, left: SIDE, right: SIDE, bottom: 'calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
+          height: 'min(62dvh, 520px)', display: 'flex', flexDirection: 'column',
+          borderRadius: 22, padding: '14px 14px 12px',
+          background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
+          border: '1.5px solid rgba(0,188,212,0.35)',
+          boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
+          animation: 'stooornaPlusFanIn 0.22s ease-out',
+        }}
+      >
+        {/* tail → points at the tapped icon */}
+        <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: tailLeft - 9, width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0 }}>
+          <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,188,212,0.14)', color: '#00BCD4' }}>
+            {dockBubble.kind === 'call' ? <Phone size={15} strokeWidth={2.2} /> : dockBubble.kind === 'live' ? <Radio size={15} strokeWidth={2.2} /> : <Settings size={15} strokeWidth={2.2} />}
+          </span>
+          <p style={{ margin: 0, flex: 1, color: '#7ee8f5', fontWeight: 800, fontSize: '0.98rem' }}>{title}</p>
+          <button type="button" aria-label="Close" onClick={closeBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <X size={15} strokeWidth={2.4} />
+          </button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, WebkitOverflowScrolling: 'touch' }}>
+          {dockBubble.kind === 'call' && (
+            <>
+              {dockFriendsLoading && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}
+              {!dockFriendsLoading && dockFriends.length === 0 && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No friends to call yet</p>}
+              {dockFriends.map(f => (
+                <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.18)', background: 'rgba(0,188,212,0.05)' }}>
+                  <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: 'none' }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', color: '#d7eeee', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
+                    {f.username ? <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(150,200,200,0.65)' }}>@{f.username}</span> : null}
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Call ${f.name || f.username || 'friend'}`}
+                    onClick={() => {
+                      closeBubble();
+                      try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
+                    }}
+                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid rgba(34,197,94,0.55)', background: 'rgba(34,197,94,0.16)', color: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                  >
+                    <Phone size={16} strokeWidth={2.3} />
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+          {dockBubble.kind === 'live' && (
+            <>
+              <p style={{ margin: '4px 2px 6px', fontSize: '0.8rem', lineHeight: 1.6, color: 'rgba(190,225,225,0.8)' }}>Start a live broadcast, or open the live options to pick the kind of live.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  closeBubble();
+                  setProfilePlusOpen(false);
+                  try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
+                  try { window.dispatchEvent(new CustomEvent('stooorna:open-live-kind', { detail: { overPosts: true, returnTo: 'text-posts' } })); } catch { /* */ }
+                }}
+                style={primaryBtn}
+              >
+                <Radio size={17} strokeWidth={2.3} /> Go LIVE
+              </button>
+            </>
+          )}
+          {dockBubble.kind === 'settings' && (
+            <>
+              <button
+                type="button"
+                onClick={() => { void handleToggleFollowersVisible(!followersVisible); }}
+                style={{ ...primaryBtn, justifyContent: 'space-between', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(0,188,212,0.22)', color: '#d7eeee' }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{followersVisible ? <Users size={17} strokeWidth={2.2} /> : <Lock size={17} strokeWidth={2.2} />} Followers list</span>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: followersVisible ? '#22c55e' : '#f59e0b' }}>{followersVisible ? 'Visible' : 'Locked'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  closeBubble();
+                  try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
+                  navigate('/settings');
+                }}
+                style={primaryBtn}
+              >
+                <Settings size={17} strokeWidth={2.3} /> All settings
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+})(), document.body)}
                   {user?.id && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
 <button
@@ -21237,9 +21367,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           profilePlusCallPressRef.current.timer = null;
                         }
                       }}
-                      onClick={() => {
+                      onClick={(e) => {
                         if (profilePlusCallPressRef.current.long) {
                           profilePlusCallPressRef.current.long = false;
+                          return;
+                        }
+                        if (!profilePlusIncomingCallUi.ringing) {
+                          openDockBubble('call', e.currentTarget);
                           return;
                         }
                         if (profilePlusIncomingCallUi.ringing) {
@@ -21282,15 +21416,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
 <button
                       type="button"
-                      onClick={() => {
-                        setProfilePlusOpen(false);
-                        try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
-                        try {
-                          window.dispatchEvent(new CustomEvent('stooorna:open-live-kind', {
-                            detail: { overPosts: true, returnTo: 'text-posts' },
-                          }));
-                        } catch { /* */ }
-                      }}
+                      onClick={(e) => openDockBubble('live', e.currentTarget)}
                       aria-label="Live broadcast"
                       style={{
                         width: 38, height: 38, borderRadius: '50%',
@@ -21343,10 +21469,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 <motion.button
                     type="button"
                     whileTap={{ scale: 0.9 }}
-                    onClick={() => {
-                      try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
-                      navigate('/settings');
-                    }}
+                    onClick={(e) => openDockBubble('settings', e.currentTarget)}
                     aria-label="Settings"
                     title="Settings"
                     style={{
