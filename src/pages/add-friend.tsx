@@ -13985,9 +13985,14 @@ function liveMediaAgo(ts: number): string {
 }
 const LIVE_MEDIA_QUICK = ['❤️', '🩶', '🔥', '👏', '😍', '💔', '🤍', '🙌'] as const;
 
-/** Full-screen viewer for a public video/photo. The media fills the screen; a dark comments sheet rises from the bottom
- *  (avatar · name · time · text · "رد" · heart with count, emoji bar, composer). Everyone comments on the same post live
- *  (the thread is polled every 2s by the panel, new comments appear at the bottom and the list scrolls up). */
+const LIVE_MEDIA_LOW_H = 'calc(158px + env(safe-area-inset-bottom, 0px))';   // lowered comments bar: emoji row + composer only
+const LIVE_MEDIA_UP_H = '58%';                                                // raised comments sheet (while typing)
+
+/** Full-screen viewer for a public video/photo.
+ *  • Comments start LOWERED (only the emoji row + composer) so the whole video is visible; typing raises the sheet.
+ *  • Tap the video/photo = it fills the screen (X in the corner brings it back); comments stay available in both modes.
+ *  • No native video controls (no big play button / fullscreen / 3-dots): small custom bar with time, seek and sound.
+ *  Everyone comments on the same post live (thread is polled every 2s by the panel). */
 function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike, onLikeComment, onSend, onClose, onOpenProfile }: {
   post: PublicLiveComment;
   comments: PublicLiveComment[];
@@ -14003,125 +14008,216 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
 }) {
   const [draft, setDraft] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [tall, setTall] = useState(false);
+  const [up, setUp] = useState(false);
+  const [full, setFull] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [kb, setKb] = useState(0);
+  const [cur, setCur] = useState(0);
+  const [dur, setDur] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [, setTick] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const vref = useRef<HTMLVideoElement | null>(null);
+  const isVideo = post.text !== LIVE_PHOTO_CAPTION;
   const thread = comments
     .map(x => ({ x, p: parseMediaComment(x.text) }))
     .filter(r => r.p && r.p.parentId === post.id) as { x: PublicLiveComment; p: { parentId: string; body: string } }[];
+
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight + 500;
-  }, [thread.length, tall]);
+  }, [thread.length, up]);
   useEffect(() => { const id = window.setInterval(() => setTick(v => v + 1), 30000); return () => window.clearInterval(id); }, []);
-  const isVideo = post.text !== LIVE_PHOTO_CAPTION;
+
+  // keyboard: lift the whole viewer above it so the composer stays visible while typing
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return;
+    const apply = () => setKb(focused ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0);
+    apply();
+    vv.addEventListener('resize', apply);
+    vv.addEventListener('scroll', apply);
+    return () => { vv.removeEventListener('resize', apply); vv.removeEventListener('scroll', apply); };
+  }, [focused]);
+
+  // video: autoplay with sound (the tap on the tile counts as a gesture); fall back to muted if the browser refuses
+  useEffect(() => {
+    const v = vref.current;
+    if (!v || !isVideo) return;
+    const onT = () => setCur(v.currentTime || 0);
+    const onM = () => setDur(isFinite(v.duration) ? v.duration : 0);
+    const onPlay = () => setPaused(false);
+    const onPause = () => setPaused(true);
+    v.addEventListener('timeupdate', onT);
+    v.addEventListener('loadedmetadata', onM);
+    v.addEventListener('durationchange', onM);
+    v.addEventListener('play', onPlay);
+    v.addEventListener('pause', onPause);
+    v.muted = false;
+    v.play().catch(() => { v.muted = true; setMuted(true); v.play().catch(() => { /* */ }); });
+    return () => {
+      v.removeEventListener('timeupdate', onT);
+      v.removeEventListener('loadedmetadata', onM);
+      v.removeEventListener('durationchange', onM);
+      v.removeEventListener('play', onPlay);
+      v.removeEventListener('pause', onPause);
+    };
+  }, [post.id, isVideo]);
+  useEffect(() => { if (vref.current) vref.current.muted = muted; }, [muted]);
+
   const send = (raw?: string) => {
     const t = (raw ?? draft).trim();
     if (!t || !myId) return;
     onSend(t);
     if (raw == null) setDraft('');
     setEmojiOpen(false);
+    setUp(true);
   };
   const reply = (c: PublicLiveComment) => {
+    setUp(true);
     setDraft(d => `${nameOf(c)} ${d.replace(/^@\S+\s*/, '')}`);
     window.setTimeout(() => inputRef.current?.focus(), 30);
   };
+  const onMediaTap = () => {
+    if (up) { setUp(false); setEmojiOpen(false); try { inputRef.current?.blur(); } catch { /* */ } return; }
+    setFull(f => !f);
+  };
+  const roundBtn: React.CSSProperties = { width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.5)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
   if (typeof document === 'undefined') return null;
+
+  const mediaBottom = full ? 0 : (up ? LIVE_MEDIA_UP_H : LIVE_MEDIA_LOW_H);
+  const showControls = isVideo && !(full && up);
   return createPortal(
     <div
       onClick={e => e.stopPropagation()}
-      style={{ position: 'fixed', inset: 0, zIndex: 11000, background: '#000', color: '#fff', pointerEvents: 'auto' }}
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: kb, zIndex: 11000, background: '#000', color: '#fff', pointerEvents: 'auto', overflow: 'hidden' }}
     >
-      {/* media (behind the sheet) */}
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
+      {/* media — tap = fill the screen / go back */}
+      <div
+        onClick={onMediaTap}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: mediaBottom, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'bottom 0.25s ease', cursor: 'pointer' }}
+      >
         {isVideo
-          ? <video key={post.id} src={post.imageUrl || ''} autoPlay loop playsInline controls={!tall} style={{ width: '100%', height: '46%', objectFit: 'contain', background: '#000' }} />
-          : <img src={post.imageUrl || ''} alt="" style={{ width: '100%', height: '46%', objectFit: 'contain' }} />}
+          ? <video key={post.id} ref={vref} src={post.imageUrl || ''} loop playsInline disablePictureInPicture style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+          : <img src={post.imageUrl || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+        {showControls ? (
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ position: 'absolute', left: 0, right: 0, bottom: full && !up ? LIVE_MEDIA_LOW_H : 0, display: 'flex', alignItems: 'center', gap: 8, padding: '18px 12px 8px', background: 'linear-gradient(transparent, rgba(0,0,0,0.55))', direction: 'ltr', cursor: 'default' }}
+          >
+            <button type="button" aria-label={paused ? 'Play' : 'Pause'} onClick={() => { const v = vref.current; if (!v) return; if (v.paused) void v.play().catch(() => {}); else v.pause(); }} style={{ ...roundBtn, width: 30, height: 30, background: 'none' }}>
+              {paused ? <Play size={18} fill="#fff" /> : <Pause size={18} fill="#fff" />}
+            </button>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap', minWidth: 74 }}>{formatVideoClock(cur)} / {formatVideoClock(dur)}</span>
+            <input
+              type="range" min={0} max={dur > 0 ? dur : 1} step={0.05} value={Math.min(cur, dur > 0 ? dur : 1)}
+              aria-label="Seek"
+              onChange={e => { const v = vref.current; const t = Number(e.target.value); if (v) v.currentTime = t; setCur(t); }}
+              style={{ flex: 1, minWidth: 0, accentColor: CLR_PRIMARY, height: 20 }}
+            />
+            <button type="button" aria-label={muted ? 'Unmute' : 'Mute'} onClick={() => setMuted(m => !m)} style={{ ...roundBtn, width: 30, height: 30, background: 'none' }}>
+              {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      {/* top bar: publisher + like + close */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px', background: 'linear-gradient(rgba(0,0,0,0.6), transparent)', zIndex: 2 }}>
-        <button type="button" onClick={onOpenProfile} aria-label="Open profile" style={{ background: 'none', border: `2px solid ${CLR_PRIMARY}`, borderRadius: '50%', padding: 0, display: 'flex', cursor: post.userId ? 'pointer' : 'default' }}>
-          <UserAvatar name={post.name || post.username || '?'} avatarUrl={post.avatarUrl} size={34} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
+      {/* top bar */}
+      {full ? (
+        <button type="button" aria-label="Back" onClick={() => setFull(false)} style={{ ...roundBtn, position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', right: 14, zIndex: 4 }}>
+          <X size={20} />
         </button>
-        <span style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'ltr', textAlign: 'left' }}>{nameOf(post)}</span>
-        <button type="button" onClick={onLike} aria-label="Like" style={{ background: 'rgba(0,0,0,0.45)', border: 'none', borderRadius: 999, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, color: '#fff', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer' }}>
-          <Heart size={16} strokeWidth={2.2} color={liked ? '#ef4444' : '#fff'} fill={liked ? '#ef4444' : 'none'} />
-          {post.likes.length > 0 ? post.likes.length : null}
-        </button>
-        <button type="button" onClick={onClose} aria-label="Close" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <X size={18} />
-        </button>
-      </div>
-
-      {/* comments sheet */}
-      <div style={{
-        position: 'absolute', left: 0, right: 0, bottom: 0, height: tall ? '88%' : '56%', zIndex: 3,
-        background: '#161616', borderRadius: '24px 24px 0 0', display: 'flex', flexDirection: 'column',
-        transition: 'height 0.28s ease', paddingBottom: 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
-      }}>
-        <button type="button" aria-label="Expand comments" onClick={() => setTall(v => !v)} style={{ background: 'none', border: 'none', padding: '10px 0 8px', cursor: 'pointer', display: 'flex', justifyContent: 'center' }}>
-          <span style={{ width: 46, height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.35)' }} />
-        </button>
-
-        <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '0 14px', direction: 'rtl' }}>
-          {thread.length === 0 ? (
-            <p style={{ margin: '28px 0', textAlign: 'center', color: 'rgba(255,255,255,0.45)', fontSize: '0.86rem', fontWeight: 600 }}>كن أول من يعلّق</p>
-          ) : thread.map(({ x, p }) => {
-            const lk = myId ? x.likes.includes(myId) : false;
-            return (
-              <div key={x.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0' }}>
-                <div style={{ flexShrink: 0, border: `2px solid ${CLR_PRIMARY}`, borderRadius: '50%', display: 'flex' }}>
-                  <UserAvatar name={x.name || x.username || '?'} avatarUrl={x.avatarUrl} size={38} style={{ border: 'none' }} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                    <span style={{ fontWeight: 800, fontSize: '0.84rem', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' }}>{nameOf(x)}</span>
-                    <span style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>{liveMediaAgo(x.createdAt)}</span>
-                  </div>
-                  <p style={{ margin: '3px 0 0', fontSize: '0.95rem', color: '#f2f2f2', wordBreak: 'break-word', whiteSpace: 'pre-wrap', textAlign: 'start' }}>{p.body}</p>
-                  <button type="button" onClick={() => reply(x)} style={{ background: 'none', border: 'none', padding: '6px 0 0', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontWeight: 700 }}>رد</button>
-                </div>
-                <button type="button" aria-label="Like comment" onClick={() => onLikeComment(x.id)} style={{ background: 'none', border: 'none', padding: '2px 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, color: lk ? '#ef4444' : 'rgba(255,255,255,0.55)', minWidth: 30 }}>
-                  <Heart size={22} strokeWidth={2.2} color={lk ? '#ef4444' : 'rgba(255,255,255,0.7)'} fill={lk ? '#ef4444' : 'none'} />
-                  {x.likes.length > 0 ? <span style={{ fontSize: '0.78rem', fontWeight: 800 }}>{x.likes.length}</span> : null}
-                </button>
-              </div>
-            );
-          })}
+      ) : (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px', background: 'linear-gradient(rgba(0,0,0,0.65), transparent)', zIndex: 4, pointerEvents: 'none' }}>
+          <button type="button" onClick={onOpenProfile} aria-label="Open profile" style={{ background: 'none', border: `2px solid ${CLR_PRIMARY}`, borderRadius: '50%', padding: 0, display: 'flex', cursor: post.userId ? 'pointer' : 'default', pointerEvents: 'auto' }}>
+            <UserAvatar name={post.name || post.username || '?'} avatarUrl={post.avatarUrl} size={34} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
+          </button>
+          <span style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'ltr', textAlign: 'left' }}>{nameOf(post)}</span>
+          <button type="button" onClick={onLike} aria-label="Like" style={{ background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: 999, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, color: '#fff', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer', pointerEvents: 'auto' }}>
+            <Heart size={16} strokeWidth={2.2} color={liked ? '#ef4444' : '#fff'} fill={liked ? '#ef4444' : 'none'} />
+            {post.likes.length > 0 ? post.likes.length : null}
+          </button>
+          <button type="button" onClick={onClose} aria-label="Close" style={{ ...roundBtn, pointerEvents: 'auto' }}>
+            <X size={18} />
+          </button>
         </div>
+      )}
 
-        {emojiOpen ? (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '8px 12px', borderTop: '1px solid rgba(255,255,255,0.08)', maxHeight: 130, overflowY: 'auto' }}>
+      {/* comments sheet: lowered by default, rises while typing */}
+      <div style={{
+        position: 'absolute', left: 0, right: 0, bottom: 0, height: up ? LIVE_MEDIA_UP_H : LIVE_MEDIA_LOW_H, zIndex: 3,
+        background: full && !up ? 'rgba(22,22,22,0.9)' : '#161616', borderRadius: '22px 22px 0 0', display: 'flex', flexDirection: 'column',
+        transition: 'height 0.25s ease', paddingBottom: 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+      }}>
+        <button type="button" aria-label="Comments" onClick={() => setUp(v => !v)} style={{ background: 'none', border: 'none', padding: '8px 0 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <span style={{ width: 46, height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.35)' }} />
+          {!up ? <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>{thread.length > 0 ? `${thread.length.toLocaleString('ar-EG')} تعليق` : 'التعليقات'}</span> : null}
+        </button>
+
+        {up ? (
+          <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '0 14px', direction: 'rtl' }}>
+            {thread.length === 0 ? (
+              <p style={{ margin: '28px 0', textAlign: 'center', color: 'rgba(255,255,255,0.45)', fontSize: '0.86rem', fontWeight: 600 }}>كن أول من يعلّق</p>
+            ) : thread.map(({ x, p }) => {
+              const lk = myId ? x.likes.includes(myId) : false;
+              return (
+                <div key={x.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0' }}>
+                  <div style={{ flexShrink: 0, border: `2px solid ${CLR_PRIMARY}`, borderRadius: '50%', display: 'flex' }}>
+                    <UserAvatar name={x.name || x.username || '?'} avatarUrl={x.avatarUrl} size={38} style={{ border: 'none' }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.84rem', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' }}>{nameOf(x)}</span>
+                      <span style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>{liveMediaAgo(x.createdAt)}</span>
+                    </div>
+                    <p style={{ margin: '3px 0 0', fontSize: '0.95rem', color: '#f2f2f2', wordBreak: 'break-word', whiteSpace: 'pre-wrap', textAlign: 'start' }}>{p.body}</p>
+                    <button type="button" onClick={() => reply(x)} style={{ background: 'none', border: 'none', padding: '6px 0 0', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontWeight: 700 }}>رد</button>
+                  </div>
+                  <button type="button" aria-label="Like comment" onClick={() => onLikeComment(x.id)} style={{ background: 'none', border: 'none', padding: '2px 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, color: lk ? '#ef4444' : 'rgba(255,255,255,0.55)', minWidth: 30 }}>
+                    <Heart size={22} strokeWidth={2.2} color={lk ? '#ef4444' : 'rgba(255,255,255,0.7)'} fill={lk ? '#ef4444' : 'none'} />
+                    {x.likes.length > 0 ? <span style={{ fontSize: '0.78rem', fontWeight: 800 }}>{x.likes.length}</span> : null}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {up && emojiOpen ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '8px 12px', borderTop: '1px solid rgba(255,255,255,0.08)', maxHeight: 110, overflowY: 'auto', flexShrink: 0 }}>
             {LIVE_EMOJI_PICKER.map(em => (
               <button key={em} type="button" onClick={() => { setDraft(d => d + em); inputRef.current?.focus(); }} style={{ background: 'none', border: 'none', fontSize: '1.5rem', padding: 4, cursor: 'pointer' }}>{em}</button>
             ))}
           </div>
         ) : null}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 18px', borderTop: '1px solid rgba(255,255,255,0.08)', direction: 'ltr' }}>
-          {LIVE_MEDIA_QUICK.map(em => (
-            <button key={em} type="button" onClick={() => send(em)} style={{ background: 'none', border: 'none', fontSize: '1.7rem', padding: 0, cursor: 'pointer', lineHeight: 1 }}>{em}</button>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px 12px', borderTop: '1px solid rgba(255,255,255,0.08)', direction: 'ltr' }}>
-          <UserAvatar name="me" avatarUrl={myAvatar} size={40} style={{ flexShrink: 0, border: `2px solid ${CLR_PRIMARY}` }} />
-          <input
-            ref={inputRef}
-            value={draft}
-            onChange={e => setDraft(e.target.value.slice(0, 400))}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); send(); } }}
-            placeholder="Comments"
-            style={{ flex: 1, minWidth: 0, height: 46, borderRadius: 999, border: '1px solid rgba(255,255,255,0.14)', outline: 'none', padding: '0 18px', background: '#2a2a2a', color: '#fff', fontSize: '0.95rem' }}
-          />
-          <button type="button" aria-label="Emoji" onClick={() => setEmojiOpen(v => !v)} style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: '#2a2a2a', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Smile size={22} strokeWidth={2} />
-          </button>
-          <button type="button" aria-label="Send" onClick={() => send()} disabled={!draft.trim()} style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: draft.trim() ? CLR_PRIMARY : '#2a2a2a', color: draft.trim() ? '#03181b' : 'rgba(255,255,255,0.55)', cursor: draft.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Send size={20} />
-          </button>
+        <div style={{ marginTop: up ? 0 : 'auto', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 18px', borderTop: '1px solid rgba(255,255,255,0.08)', direction: 'ltr' }}>
+            {LIVE_MEDIA_QUICK.map(em => (
+              <button key={em} type="button" onClick={() => send(em)} style={{ background: 'none', border: 'none', fontSize: '1.6rem', padding: 0, cursor: 'pointer', lineHeight: 1 }}>{em}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px 10px', borderTop: '1px solid rgba(255,255,255,0.08)', direction: 'ltr' }}>
+            <UserAvatar name="me" avatarUrl={myAvatar} size={38} style={{ flexShrink: 0, border: `2px solid ${CLR_PRIMARY}` }} />
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={e => setDraft(e.target.value.slice(0, 400))}
+              onFocus={() => { setFocused(true); setUp(true); }}
+              onBlur={() => setFocused(false)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); send(); } }}
+              placeholder="Comments"
+              style={{ flex: 1, minWidth: 0, height: 44, borderRadius: 999, border: '1px solid rgba(255,255,255,0.14)', outline: 'none', padding: '0 18px', background: '#2a2a2a', color: '#fff', fontSize: '0.95rem' }}
+            />
+            <button type="button" aria-label="Emoji" onClick={() => { setUp(true); setEmojiOpen(v => !v); }} style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: '#2a2a2a', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Smile size={21} strokeWidth={2} />
+            </button>
+            <button type="button" aria-label="Send" onClick={() => send()} disabled={!draft.trim()} style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: draft.trim() ? CLR_PRIMARY : '#2a2a2a', color: draft.trim() ? '#03181b' : 'rgba(255,255,255,0.55)', cursor: draft.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Send size={19} />
+            </button>
+          </div>
         </div>
       </div>
     </div>,
