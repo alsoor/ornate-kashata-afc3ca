@@ -14092,8 +14092,8 @@ function PublicLiveCommentsPanel({
 
       <div style={{
         pointerEvents: 'auto',
-        borderTop: '1px solid #ececec',
-        background: '#fff',
+        borderTop: chatLift === 0 ? ('1px solid ' + CLR_PRIMARY) : '1px solid #ececec',
+        background: chatLift === 0 ? CLR_PRIMARY : '#fff',
         paddingBottom: kbInset > 0 ? kbInset + 6 : 'max(8px, env(safe-area-inset-bottom))',
         flexShrink: 0,
       }}>
