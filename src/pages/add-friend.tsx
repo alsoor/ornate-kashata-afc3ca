@@ -21295,23 +21295,40 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               ))}
             </>
           )}
-          {dockBubble.kind === 'live' && (
-            <>
-              <p style={{ margin: '4px 2px 6px', fontSize: '0.8rem', lineHeight: 1.6, color: 'rgba(190,225,225,0.8)' }}>Start a live broadcast, or open the live options to pick the kind of live.</p>
-              <button
-                type="button"
-                onClick={() => {
-                  closeBubble();
-                  setProfilePlusOpen(false);
-                  try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
-                  try { window.dispatchEvent(new CustomEvent('stooorna:open-live-kind', { detail: { overPosts: true, returnTo: 'text-posts' } })); } catch { /* */ }
-                }}
-                style={primaryBtn}
-              >
-                <Radio size={17} strokeWidth={2.3} /> Go LIVE
-              </button>
-            </>
-          )}
+          {dockBubble.kind === 'live' && (() => {
+            // Same routes the app already uses to start a live (/live = voice, /live-camera = video), host = me.
+            const startLive = (path: '/live' | '/live-camera') => {
+              closeBubble();
+              setProfilePlusOpen(false);
+              try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
+              const qs = new URLSearchParams({
+                hostId: String(user?.id ?? ''),
+                hostName: String((user as any)?.name || (user as any)?.username || 'Host'),
+              });
+              if ((user as any)?.username) qs.set('hostUsername', String((user as any).username));
+              const av = (user as any)?.avatarUrl || (user as any)?.image;
+              if (av) qs.set('hostAvatar', String(av));
+              navigate(`${path}?${qs.toString()}`);
+            };
+            return (
+              <>
+                <button
+                  type="button"
+                  onClick={() => startLive('/live')}
+                  style={{ ...primaryBtn, justifyContent: 'flex-start', gap: 12, padding: '16px 16px', fontSize: '1rem', background: 'rgba(0,188,212,0.10)', border: '1px solid rgba(0,188,212,0.35)', color: '#e6fbfd' }}
+                >
+                  <Mic size={20} strokeWidth={2.2} color="#00BCD4" /> Voice Live
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startLive('/live-camera')}
+                  style={{ ...primaryBtn, justifyContent: 'flex-start', gap: 12, padding: '16px 16px', fontSize: '1rem', background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.35)', color: '#ffeceb' }}
+                >
+                  <Video size={20} strokeWidth={2.2} color="#ef4444" /> Video Live
+                </button>
+              </>
+            );
+          })()}
           {dockBubble.kind === 'settings' && (
             <>
               <button
