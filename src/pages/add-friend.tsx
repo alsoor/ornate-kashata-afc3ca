@@ -8178,22 +8178,66 @@ interface MiniProfileData {
   // /api/users/by-username/:username and /api/users/me. ──
   pinnedPostId?: number | null;
 }
-// ── FollowersListModal — switch only (no user list). When on, others see a lock
-// instead of the followers count. Independent from the private-account rule. ──
+// ── Followers of ANOTHER user (visitor view). The backend endpoint is a best-effort guess:
+// it tries a couple of routes and quietly returns [] if none exists / the list is hidden. ──
+async function fetchUserFollowersList(userId: string): Promise<Friend[]> {
+  const id = encodeURIComponent(String(userId));
+  const urls = [`/api/users/${id}/followers`, `/api/users/${id}/friends`];
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) continue;
+      const d = await r.json();
+      const rows: any[] = Array.isArray(d) ? d : (d?.followers || d?.accepted || d?.friends || d?.items || d?.data || []);
+      if (!Array.isArray(rows)) continue;
+      const seen = new Set<string>();
+      const out: Friend[] = [];
+      for (const f of rows) {
+        const fid = String(f?.friendId ?? f?.userId ?? f?.followerId ?? f?.id ?? '').trim();
+        if (!fid || seen.has(fid)) continue;
+        seen.add(fid);
+        out.push({
+          id: Number(f?.id) || 0,
+          friendId: fid,
+          name: f?.name ?? null,
+          username: f?.username ?? null,
+          email: f?.email ?? null,
+          avatarUrl: f?.avatarUrl ?? f?.image ?? null,
+          since: f?.since ?? null,
+        });
+      }
+      return out;
+    } catch { /* try next endpoint */ }
+  }
+  return [];
+}
+// ── FollowersListModal — followers shown as a vertical list. Owner mode (onToggleVisible given)
+// also shows the lock switch: locked → nobody else can see the list (others just see a lock icon).
+// Tapping any user calls onOpenProfile so the caller can open that user's profile page. ──
 function FollowersListModal({
-  friends: _friends,
+  friends,
   followersVisible,
   onToggleVisible,
+  onOpenProfile,
+  loading = false,
+  title,
+  zIndex = 12120,
   onClose,
 }: {
   friends?: Friend[];
   followersVisible: boolean;
-  onToggleVisible: (next: boolean) => void;
+  onToggleVisible?: (next: boolean) => void;
+  onOpenProfile?: (f: Friend) => void;
+  loading?: boolean;
+  title?: string;
+  zIndex?: number;
   onClose: () => void;
 }) {
-  // Switch only — no followers list for owner or visitors.
-  void _friends;
+  const isOwner = !!onToggleVisible;
   const hidden = !followersVisible;
+  const list = friends ?? [];
+  // A visitor can never see a locked list.
+  const showList = isOwner || !hidden;
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -8206,7 +8250,7 @@ function FollowersListModal({
         background: 'rgba(0,8,10,0.72)',
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
-        zIndex: 12120,
+        zIndex,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 20,
       }}
@@ -8218,7 +8262,8 @@ function FollowersListModal({
         exit={{ opacity: 0, scale: 0.92, y: 16 }}
         transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
         style={{
-          width: '100%', maxWidth: 300,
+          width: '100%', maxWidth: 340,
+          maxHeight: '82dvh',
           borderRadius: 24,
           overflow: 'hidden',
           background: 'linear-gradient(165deg, rgba(14,36,40,0.98) 0%, rgba(8,18,20,0.99) 55%, rgba(6,14,16,1) 100%)',
@@ -8227,7 +8272,7 @@ function FollowersListModal({
             ? '0 24px 60px rgba(0,0,0,0.55), 0 0 40px rgba(0,188,212,0.18), inset 0 1px 0 rgba(255,255,255,0.06)'
             : '0 24px 60px rgba(0,0,0,0.5), 0 0 24px rgba(0,188,212,0.08), inset 0 1px 0 rgba(255,255,255,0.05)',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
-          padding: '22px 20px 20px',
+          padding: '20px 16px 16px',
           position: 'relative',
         }}
       >
@@ -8255,8 +8300,8 @@ function FollowersListModal({
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 380, damping: 22 }}
           style={{
-            width: 64, height: 64, borderRadius: 20,
-            marginBottom: 14,
+            width: 52, height: 52, borderRadius: 16,
+            marginBottom: 10, flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: hidden
               ? 'linear-gradient(145deg, rgba(0,188,212,0.28), rgba(0,188,212,0.08))'
@@ -8266,78 +8311,131 @@ function FollowersListModal({
             color: '#00BCD4',
           }}
         >
-          {hidden ? <Lock size={26} strokeWidth={2.1} /> : <Users size={26} strokeWidth={2.1} />}
+          {hidden ? <Lock size={22} strokeWidth={2.1} /> : <Users size={22} strokeWidth={2.1} />}
         </motion.div>
 
         <p style={{
           margin: 0, fontSize: '1rem', fontWeight: 800, color: 'rgba(220,245,245,0.95)',
-          letterSpacing: '0.01em', textAlign: 'center',
+          letterSpacing: '0.01em', textAlign: 'center', flexShrink: 0,
         }}>
-          خصوصية المتابعين
+          {title || (isOwner ? 'متابعيني' : 'المتابعون')}
+          {showList && !loading ? <span style={{ fontWeight: 600, fontSize: '0.8rem', opacity: 0.6 }}> · {list.length}</span> : null}
         </p>
         <p style={{
-          margin: '8px 0 0', fontSize: '0.72rem', fontWeight: 500,
-          color: 'rgba(150,200,200,0.65)', lineHeight: 1.55, textAlign: 'center',
-          maxWidth: 240,
+          margin: '6px 0 0', fontSize: '0.7rem', fontWeight: 500,
+          color: 'rgba(150,200,200,0.65)', lineHeight: 1.5, textAlign: 'center',
+          maxWidth: 260, flexShrink: 0,
         }}>
-          {hidden
-            ? 'المتابعون مخفيون — يظهر قفل بدل العدد للزوار'
-            : 'العدد ظاهر للجميع. فعّل المفتاح لإخفائه'}
+          {isOwner
+            ? (hidden
+                ? 'القائمة مقفولة — محد غيرك يقدر يشوف متابعينك'
+                : 'القائمة ظاهرة للجميع. اقفلها إذا تبي تخفيها')
+            : (hidden ? 'قائمة المتابعين مقفولة' : 'اضغط على أي مستخدم لفتح بروفايله')}
         </p>
 
-        {/* Toggle row */}
-        <div
-          style={{
-            width: '100%', marginTop: 20,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-            padding: '14px 14px',
-            borderRadius: 16,
-            background: hidden ? 'rgba(0,188,212,0.12)' : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${hidden ? 'rgba(0,188,212,0.35)' : 'rgba(0,188,212,0.12)'}`,
-            transition: 'background 0.25s ease, border-color 0.25s ease',
-          }}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, textAlign: 'right' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: hidden ? '#00BCD4' : 'rgba(200,230,230,0.9)' }}>
-              {hidden ? 'مخفي' : 'ظاهر'}
-            </span>
-            <span style={{ fontSize: '0.64rem', color: 'rgba(150,200,200,0.55)', lineHeight: 1.4 }}>
-              إخفاء متابعيني عن الآخرين
-            </span>
-          </div>
-          <motion.button
-            type="button"
-            whileTap={{ scale: 0.9 }}
-            onClick={() => onToggleVisible(!followersVisible)}
-            aria-label="تبديل إخفاء المتابعين"
-            aria-pressed={hidden}
+        {/* Toggle row — owner only */}
+        {isOwner && (
+          <div
             style={{
-              width: 52, height: 30, borderRadius: 999, padding: 3, border: 'none',
-              cursor: 'pointer', flexShrink: 0,
-              background: hidden
-                ? 'linear-gradient(90deg, #00BCD4, #26C6DA)'
-                : 'rgba(255,255,255,0.12)',
-              display: 'flex', alignItems: 'center',
-              justifyContent: hidden ? 'flex-end' : 'flex-start',
-              boxShadow: hidden ? '0 4px 16px rgba(0,188,212,0.4)' : 'none',
-              transition: 'background 0.25s ease, box-shadow 0.25s ease',
+              width: '100%', marginTop: 12, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+              padding: '10px 12px',
+              borderRadius: 16,
+              background: hidden ? 'rgba(0,188,212,0.12)' : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${hidden ? 'rgba(0,188,212,0.35)' : 'rgba(0,188,212,0.12)'}`,
+              transition: 'background 0.25s ease, border-color 0.25s ease',
             }}
           >
-            <motion.span
-              layout
-              transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, textAlign: 'right' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: hidden ? '#00BCD4' : 'rgba(200,230,230,0.9)' }}>
+                {hidden ? 'مقفولة' : 'ظاهرة'}
+              </span>
+              <span style={{ fontSize: '0.64rem', color: 'rgba(150,200,200,0.55)', lineHeight: 1.4 }}>
+                إخفاء متابعيني عن الآخرين
+              </span>
+            </div>
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.9 }}
+              onClick={() => onToggleVisible?.(!followersVisible)}
+              aria-label="تبديل إخفاء المتابعين"
+              aria-pressed={hidden}
               style={{
-                width: 24, height: 24, borderRadius: '50%',
-                background: '#fff',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-                color: hidden ? '#00BCD4' : 'rgba(100,120,120,0.7)',
+                width: 52, height: 30, borderRadius: 999, padding: 3, border: 'none',
+                cursor: 'pointer', flexShrink: 0,
+                background: hidden
+                  ? 'linear-gradient(90deg, #00BCD4, #26C6DA)'
+                  : 'rgba(255,255,255,0.12)',
+                display: 'flex', alignItems: 'center',
+                justifyContent: hidden ? 'flex-end' : 'flex-start',
+                boxShadow: hidden ? '0 4px 16px rgba(0,188,212,0.4)' : 'none',
+                transition: 'background 0.25s ease, box-shadow 0.25s ease',
               }}
             >
-              {hidden ? <Lock size={11} strokeWidth={2.6} /> : <Eye size={11} strokeWidth={2.6} />}
-            </motion.span>
-          </motion.button>
-        </div>
+              <motion.span
+                layout
+                transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+                style={{
+                  width: 24, height: 24, borderRadius: '50%',
+                  background: '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+                  color: hidden ? '#00BCD4' : 'rgba(100,120,120,0.7)',
+                }}
+              >
+                {hidden ? <Lock size={11} strokeWidth={2.6} /> : <Eye size={11} strokeWidth={2.6} />}
+              </motion.span>
+            </motion.button>
+          </div>
+        )}
+
+        {/* Followers list — stacked one under another */}
+        {showList && (
+          <div
+            style={{
+              width: '100%', marginTop: 12, flex: 1, minHeight: 0,
+              overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+              display: 'flex', flexDirection: 'column', gap: 6,
+              paddingBottom: 2,
+            }}
+          >
+            {loading && (
+              <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', color: 'rgba(150,200,200,0.6)' }}>جاري التحميل…</p>
+            )}
+            {!loading && list.length === 0 && (
+              <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', color: 'rgba(150,200,200,0.6)' }}>لا يوجد متابعون بعد</p>
+            )}
+            {!loading && list.map(f => {
+              const label = f.name || f.username || 'User';
+              return (
+                <button
+                  key={f.friendId}
+                  type="button"
+                  onClick={() => onOpenProfile?.(f)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 10px', borderRadius: 14, cursor: onOpenProfile ? 'pointer' : 'default',
+                    background: 'rgba(0,188,212,0.05)',
+                    border: '1px solid rgba(0,188,212,0.16)',
+                    textAlign: 'right', direction: 'rtl',
+                    color: 'rgba(200,230,230,0.95)',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}>
+                    <UserAvatar name={label} avatarUrl={f.avatarUrl ?? null} size={40} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+                    <span style={{ display: 'block', fontWeight: 800, fontSize: '0.85rem', color: '#00BCD4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+                    {f.username ? (
+                      <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(150,200,200,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{f.username}</span>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </motion.div>
     </motion.div>
   );
@@ -8742,6 +8840,18 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [authorPosts, setAuthorPosts] = useState<PostItem[]>([]);
   // فتح الصورة/الفيديو فقط بملء الشاشة — بدون فتح صفحة المنشور الكاملة القديمة
   const [mediaLightbox, setMediaLightbox] = useState<{ url: string; type: 'image' | 'video'; post: PostItem } | null>(null);
+  // Followers list of the profile I'm visiting (only reachable when its owner hasn't locked it)
+  const [theirFollowersOpen, setTheirFollowersOpen] = useState(false);
+  const [theirFollowers, setTheirFollowers] = useState<Friend[]>([]);
+  const [theirFollowersLoading, setTheirFollowersLoading] = useState(false);
+  const [subProfile, setSubProfile] = useState<{ id: string; name: string | null; username: string | null; avatarUrl: string | null } | null>(null);
+  const openTheirFollowers = async () => {
+    setTheirFollowersOpen(true);
+    setTheirFollowersLoading(true);
+    const list = await fetchUserFollowersList(authorId);
+    setTheirFollowers(list);
+    setTheirFollowersLoading(false);
+  };
 
   useEffect(() => {
     let live = true;
@@ -9071,7 +9181,19 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               );
               return (
                 <>
-                  {ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', hiddenFollowers ? <Lock size={12} strokeWidth={2.2} /> : <Users size={12} strokeWidth={2.3} />)}
+                  {hiddenFollowers ? (
+                    ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <Lock size={12} strokeWidth={2.2} />)
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { void openTheirFollowers(); }}
+                      aria-label="Followers"
+                      title="Followers"
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', WebkitTapHighlightColor: 'transparent' }}
+                    >
+                      {ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <Users size={12} strokeWidth={2.3} />)}
+                    </button>
+                  )}
                   {ic(liveActive ? '#ef4444' : 'rgba(230,230,230,0.9)', <Radio size={12} strokeWidth={2.3} />)}
                   {ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <MapPin size={12} strokeWidth={2.3} />)}
                   {ic(likedHere ? '#ef4444' : 'rgba(230,230,230,0.9)', <Heart size={12} strokeWidth={2.3} fill={likedHere ? '#ef4444' : 'none'} />)}
@@ -9348,6 +9470,46 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Their followers list (portal'd above this sheet) — tapping a user opens that user's profile */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {theirFollowersOpen && (
+            <FollowersListModal
+              key="their-followers-modal"
+              friends={theirFollowers}
+              followersVisible
+              loading={theirFollowersLoading}
+              title="المتابعون"
+              zIndex={13100}
+              onOpenProfile={f => {
+                setTheirFollowersOpen(false);
+                setSubProfile({ id: f.friendId, name: f.name, username: f.username, avatarUrl: f.avatarUrl ?? null });
+              }}
+              onClose={() => setTheirFollowersOpen(false)}
+            />
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {subProfile && (
+            <FriendStoryProfile
+              key={`sub-profile-${subProfile.id}`}
+              authorId={subProfile.id}
+              authorName={subProfile.name}
+              authorUsername={subProfile.username}
+              authorAvatarUrl={subProfile.avatarUrl}
+              sheetMode
+              onClose={() => setSubProfile(null)}
+              onOpenPost={onOpenPost}
+              onToggleLike={onToggleLike}
+            />
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </motion.div>
     </>
   );
@@ -20733,37 +20895,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
 <button
                       type="button"
-                      onClick={() => {
-                        setProfilePlusOpen(false);
-                        setFriendsPanelTab('friends');
-                        setNamesBarOpen(true);
-                        try {
-                          window.dispatchEvent(new CustomEvent('stooorna:friends-panel-opened'));
-                          window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', {
-                            detail: { tab: 'friends', overPosts: true },
-                          }));
-                        } catch { /* */ }
-                      }}
-                      aria-label="Friends"
-                      style={{
-                        width: 38, height: 38, borderRadius: '50%',
-                        border: '1px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
-                        cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                      }}
-                    >
-                      <Users size={18} strokeWidth={2.2} />
-                    </button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Friends</span>
-</div>
-                  )}
-                  {user?.id && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
-<button
-                      type="button"
                       onPointerDown={() => {
                         if (!profilePlusIncomingCallUi.ringing) return;
                         profilePlusCallPressRef.current.long = false;
@@ -26843,6 +26974,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             friends={friends}
             followersVisible={followersVisible}
             onToggleVisible={handleToggleFollowersVisible}
+            onOpenProfile={f => {
+              setFollowersModalOpen(false);
+              setViewingProfile({ id: f.friendId, name: f.name, username: f.username, avatarUrl: f.avatarUrl ?? null });
+            }}
             onClose={() => setFollowersModalOpen(false)}
           />
         )}
