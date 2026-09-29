@@ -14011,6 +14011,7 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
   const [up, setUp] = useState(false);
   const [full, setFull] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [expanded, setExpanded] = useState(false); // sheet raised to the very top — ONLY by tapping the grabber line, never by tapping the input
   const [vp, setVp] = useState<{ top: number; height: number } | null>(null);
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
@@ -14082,7 +14083,7 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
     window.setTimeout(() => inputRef.current?.focus(), 30);
   };
   const onMediaTap = () => {
-    if (up) { setUp(false); setEmojiOpen(false); try { inputRef.current?.blur(); } catch { /* */ } return; }
+    if (up) { setUp(false); setExpanded(false); setEmojiOpen(false); try { inputRef.current?.blur(); } catch { /* */ } return; }
     setFull(f => !f);
   };
   const roundBtn: React.CSSProperties = { width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.5)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
@@ -14093,12 +14094,18 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
   // The media + the black viewer stay fixed underneath, so nothing behind the viewer can show through and nothing bounces.
   const kbBottom = vp ? Math.max(0, Math.round(window.innerHeight - vp.top - vp.height)) : 0;
   const kbTop = vp ? Math.max(0, vp.top) : 0;
-  const mediaBottom = focused ? 0 : (up ? LIVE_MEDIA_UP_H : (full ? 0 : LIVE_MEDIA_LOW_H));
+  const visH = vp ? vp.height : window.innerHeight;
+  const kb = focused && kbBottom > 100 ? kbBottom : 0;
+  // tapping the input: half-height sheet sitting right above the keyboard. Grabber tap (expanded): whole screen above the keyboard.
+  const sheetPos: React.CSSProperties = focused
+    ? (expanded ? { top: kbTop, bottom: kb } : { bottom: kb, height: Math.round(visH * 0.6) })
+    : (expanded ? { bottom: 0, height: '100%' } : { bottom: 0, height: up ? LIVE_MEDIA_UP_H : LIVE_MEDIA_LOW_H });
+  const mediaBottom = expanded ? 0 : (up ? LIVE_MEDIA_UP_H : (full ? 0 : LIVE_MEDIA_LOW_H));
   const showControls = isVideo;
   return createPortal(
     <div
       onClick={e => e.stopPropagation()}
-      style={{ position: 'fixed', left: 0, right: 0, top: 0, bottom: 0, zIndex: 11000, background: focused ? '#161616' : '#000', color: '#fff', pointerEvents: 'auto', overflow: 'hidden' }}
+      style={{ position: 'fixed', left: 0, right: 0, top: 0, bottom: 0, zIndex: 11000, background: expanded ? '#161616' : '#000', color: '#fff', pointerEvents: 'auto', overflow: 'hidden' }}
     >
       {/* media — tap = fill the screen / go back */}
       <div
@@ -14131,7 +14138,7 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
       </div>
 
       {/* top bar (hidden while typing: the comments sheet then covers the whole screen) */}
-      {focused ? null : full ? (
+      {expanded ? null : full ? (
         <button type="button" aria-label="Back" onClick={() => setFull(false)} style={{ ...roundBtn, position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', right: 14, zIndex: 4 }}>
           <X size={20} />
         </button>
@@ -14153,11 +14160,11 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
 
       {/* comments sheet: lowered by default, rises while typing */}
       <div style={{
-        position: 'absolute', left: 0, right: 0, ...(focused ? { top: kbTop, bottom: kbBottom > 100 ? kbBottom : 0 } : { bottom: 0, height: up ? LIVE_MEDIA_UP_H : LIVE_MEDIA_LOW_H }), zIndex: 5,
-        background: full && !up && !focused ? 'rgba(22,22,22,0.9)' : '#161616', borderRadius: focused ? 0 : '22px 22px 0 0', display: 'flex', flexDirection: 'column',
-        transition: focused ? 'none' : 'height 0.25s ease', paddingTop: focused ? 'env(safe-area-inset-top, 0px)' : 0, paddingBottom: focused ? 0 : 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+        position: 'absolute', left: 0, right: 0, ...sheetPos, zIndex: 5,
+        background: full && !up && !expanded ? 'rgba(22,22,22,0.9)' : '#161616', borderRadius: expanded ? 0 : '22px 22px 0 0', display: 'flex', flexDirection: 'column',
+        transition: focused ? 'none' : 'height 0.25s ease', paddingTop: expanded ? 'env(safe-area-inset-top, 0px)' : 0, paddingBottom: focused ? 0 : 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
       }}>
-        <button type="button" aria-label="Comments" onClick={() => { if (focused) { try { inputRef.current?.blur(); } catch { /* */ } return; } setUp(v => !v); }} style={{ background: 'none', border: 'none', padding: '8px 0 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <button type="button" aria-label="Comments" onMouseDown={e => e.preventDefault()} onClick={() => { if (expanded) { setExpanded(false); return; } setUp(true); setExpanded(true); }} style={{ background: 'none', border: 'none', padding: '8px 0 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           <span style={{ width: 46, height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.35)' }} />
           {!up ? <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>{thread.length > 0 ? `${thread.length.toLocaleString('ar-EG')} تعليق` : 'التعليقات'}</span> : null}
         </button>
