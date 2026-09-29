@@ -14546,6 +14546,75 @@ function homeLiveSameEntries(a: HomeLiveEntry[], b: HomeLiveEntry[]): boolean {
   return true;
 }
 
+// ── الزائر (قبل تسجيل الدخول): ما عنده أصدقاء ولا قصص، فنكتشف أصحاب البثوث من مصادر عامة:
+// حالات/قصص التطبيق + الخريطة الحية + المتواجدين الآن. بعدها HomeLiveStack يفحص غرف البث لكل واحد منهم. ──
+const guestHostInfoCache = new Map<string, HomeLiveHost>();
+function useGuestLiveHosts(enabled: boolean): HomeLiveHost[] {
+  const [hosts, setHosts] = useState<HomeLiveHost[]>([]);
+  useEffect(() => {
+    if (!enabled) { setHosts([]); return; }
+    let stop = false;
+    const resolveInfo = async (id: string) => {
+      if (guestHostInfoCache.has(id)) return;
+      guestHostInfoCache.set(id, { id, name: null, username: null, avatarUrl: null });
+      try {
+        const r = await fetch(`/api/users/${encodeURIComponent(id)}`, { credentials: 'include' });
+        if (!r.ok) return;
+        const d = await r.json() as any;
+        const u = d?.user ?? d;
+        guestHostInfoCache.set(id, {
+          id,
+          name: u?.name ?? null,
+          username: u?.username ?? null,
+          avatarUrl: u?.avatarUrl ?? u?.image ?? null,
+        });
+      } catch { /* */ }
+    };
+    const tick = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      const ids = new Map<string, HomeLiveHost>();
+      const add = (id: unknown, info?: Partial<HomeLiveHost>) => {
+        const k = String(id ?? '').trim();
+        if (!k || k === 'guest') return;
+        const prev = ids.get(k) || guestHostInfoCache.get(k) || { id: k, name: null, username: null, avatarUrl: null };
+        ids.set(k, {
+          id: k,
+          name: info?.name ?? prev.name ?? null,
+          username: info?.username ?? prev.username ?? null,
+          avatarUrl: info?.avatarUrl ?? prev.avatarUrl ?? null,
+        });
+      };
+      try {
+        const r = await fetch('/api/status', { credentials: 'include' });
+        if (r.ok) {
+          const d = await r.json() as { statuses?: Array<{ userId: string; name?: string | null; username?: string | null; avatarUrl?: string | null }> };
+          (d.statuses ?? []).forEach(g => add(g.userId, { name: g.name ?? null, username: g.username ?? null, avatarUrl: g.avatarUrl ?? null }));
+        }
+      } catch { /* */ }
+      try {
+        const pings = await pullLiveLocations();
+        (pings || []).forEach((p: any) => { if (p && p.id != null) add(p.id, { name: p.name ?? null, username: p.username ?? null, avatarUrl: p.avatarUrl ?? null }); });
+      } catch { /* */ }
+      try {
+        const onl = await pullOnlineIds();
+        Array.from((onl as Iterable<unknown>) || []).forEach(x => add(x));
+      } catch { /* */ }
+      if (stop) return;
+      ids.forEach((h, id) => { if (!h.name && !h.username) void resolveInfo(id); });
+      const list = Array.from(ids.values()).map(h => {
+        const c = guestHostInfoCache.get(h.id);
+        return { ...h, name: h.name ?? c?.name ?? null, username: h.username ?? c?.username ?? null, avatarUrl: h.avatarUrl ?? c?.avatarUrl ?? null };
+      });
+      const key = (a: HomeLiveHost[]) => a.map(x => `${x.id}|${x.name}|${x.username}|${x.avatarUrl}`).sort().join('~');
+      setHosts(prev => (key(prev) === key(list) ? prev : list));
+    };
+    void tick();
+    const iv = window.setInterval(tick, 4000);
+    return () => { stop = true; window.clearInterval(iv); };
+  }, [enabled]);
+  return hosts;
+}
+
 function HomeLiveStack({ myId, hosts, enabled, showCards, guest, onGuestTap }: {
   myId: string;
   hosts: HomeLiveHost[];
@@ -14609,14 +14678,14 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, guest, onGuestTap }: {
       // تحت صف الأيقونات (Friends/Call/Live/Settings) إن وُجد، وإلا تحت الخط. حافة الحاوية هي اللي تقصّ البطاقات عند التمرير.
       const el = (document.querySelector('[data-stooorna-header-icons]') || document.querySelector('[data-stooorna-header-grabber]')) as HTMLElement | null;
       if (!el) return;
-      const b = Math.round(el.getBoundingClientRect().bottom);
+      const b = Math.round(el.getBoundingClientRect().bottom) + (guest ? 26 : 0);
       setAnchorTop(prev => (Math.abs(prev - b) < 1 ? prev : b));
     };
     measure();
     const id = window.setInterval(measure, 150);
     window.addEventListener('resize', measure);
     return () => { window.clearInterval(id); window.removeEventListener('resize', measure); };
-  }, [showCards]);
+  }, [showCards, guest]);
 
   // ── اكتشاف البثوث الشغّالة الآن (صوتي/مرئي) ──
   useEffect(() => {
@@ -18597,6 +18666,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     return Array.from(map.values());
   }, [user?.id, friends, storyGroups]);
   const isLiveRoute = routeLocation.pathname.includes('/live');
+  // الزائر: مرشّحو البثوث من مصادر عامة (ما عنده أصدقاء/قصص)
+  const guestLiveHosts = useGuestLiveHosts(!isPending && !user?.id && !isLiveRoute);
   // نقطة أيقونة السجل: خضراء إذا أنا أو أي مستخدم ظاهر عندي داخل مكالمة (حتى لو مو معي)
   usePublishInCall(user?.id ? String(user.id) : null, !!callHistoryDotState.joined);
   const anyInCall = useAnyInCall(anyLiveHostIds);
@@ -27429,7 +27500,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       {!isFriendManagement && (
         <HomeLiveStack
           myId={user?.id ? String(user.id) : (guestMode ? 'guest' : '')}
-          hosts={homeLiveHosts}
+          hosts={guestMode ? guestLiveHosts : homeLiveHosts}
           enabled={!isLiveRoute && (!!user?.id || guestMode)}
           showCards={pageTab === 'profile' && (headerOpen || guestMode) && !isLiveRoute}
           guest={guestMode}
