@@ -5021,10 +5021,11 @@ function GlobalBottomNavigation() {
       style={{
         position: 'fixed',
         right: 30,
-        bottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
+        // Compact size, vertically centered inside the ~50px bottom bar
+        bottom: 'calc(11px + env(safe-area-inset-bottom, 0px))',
         zIndex: 13200,
-        width: 40,
-        height: 40,
+        width: 28,
+        height: 28,
         padding: 0,
         borderRadius: '50%',
         border: '1.5px solid rgba(239,68,68,0.75)',
@@ -5034,11 +5035,11 @@ function GlobalBottomNavigation() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.5), 0 0 12px rgba(239,68,68,0.35)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.45), 0 0 8px rgba(239,68,68,0.3)',
         WebkitTapHighlightColor: 'transparent',
       }}
     >
-      <X size={20} strokeWidth={2.6} />
+      <X size={14} strokeWidth={2.6} />
     </button>
   )}
   {storyPlusMenuOpen && (

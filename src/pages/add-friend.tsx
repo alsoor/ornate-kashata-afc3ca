@@ -8417,7 +8417,8 @@ function FollowersListModal({
                     padding: '8px 10px', borderRadius: 14, cursor: onOpenProfile ? 'pointer' : 'default',
                     background: 'rgba(0,188,212,0.05)',
                     border: '1px solid rgba(0,188,212,0.16)',
-                    textAlign: 'right', direction: 'rtl',
+                    // LTR row: avatar on the left, username right beside it
+                    textAlign: 'left', direction: 'ltr',
                     color: 'rgba(200,230,230,0.95)',
                     WebkitTapHighlightColor: 'transparent',
                   }}
@@ -8425,11 +8426,11 @@ function FollowersListModal({
                   <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}>
                     <UserAvatar name={label} avatarUrl={f.avatarUrl ?? null} size={40} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
                   </div>
-                  <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
-                    <span style={{ display: 'block', fontWeight: 800, fontSize: '0.85rem', color: '#00BCD4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
-                    {f.username ? (
-                      <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(150,200,200,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{f.username}</span>
-                    ) : null}
+                  <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                    {/* Username only (display name removed); falls back to name if no username */}
+                    <span style={{ display: 'block', fontWeight: 800, fontSize: '0.85rem', color: '#00BCD4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {f.username ? `@${f.username}` : label}
+                    </span>
                   </div>
                 </button>
               );
