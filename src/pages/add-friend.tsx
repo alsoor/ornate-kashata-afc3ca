@@ -14089,12 +14089,16 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
   if (typeof document === 'undefined') return null;
 
   // when the comments sheet is up the media always shrinks to sit ABOVE it (never hidden behind it), even when enlarged
+  // the keyboard only moves the comments sheet: its bottom edge sits exactly on top of the keyboard, its top edge on the visible top.
+  // The media + the black viewer stay fixed underneath, so nothing behind the viewer can show through and nothing bounces.
+  const kbBottom = vp ? Math.max(0, Math.round(window.innerHeight - vp.top - vp.height)) : 0;
+  const kbTop = vp ? Math.max(0, vp.top) : 0;
   const mediaBottom = focused ? 0 : (up ? LIVE_MEDIA_UP_H : (full ? 0 : LIVE_MEDIA_LOW_H));
   const showControls = isVideo;
   return createPortal(
     <div
       onClick={e => e.stopPropagation()}
-      style={{ position: 'fixed', left: 0, right: 0, ...(vp ? { top: vp.top, height: vp.height } : { top: 0, bottom: 0 }), zIndex: 11000, background: '#000', color: '#fff', pointerEvents: 'auto', overflow: 'hidden' }}
+      style={{ position: 'fixed', left: 0, right: 0, top: 0, bottom: 0, zIndex: 11000, background: focused ? '#161616' : '#000', color: '#fff', pointerEvents: 'auto', overflow: 'hidden' }}
     >
       {/* media — tap = fill the screen / go back */}
       <div
@@ -14149,9 +14153,9 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
 
       {/* comments sheet: lowered by default, rises while typing */}
       <div style={{
-        position: 'absolute', left: 0, right: 0, bottom: 0, height: focused ? '100%' : (up ? LIVE_MEDIA_UP_H : LIVE_MEDIA_LOW_H), zIndex: 5,
+        position: 'absolute', left: 0, right: 0, ...(focused ? { top: kbTop, bottom: kbBottom > 100 ? kbBottom : 0 } : { bottom: 0, height: up ? LIVE_MEDIA_UP_H : LIVE_MEDIA_LOW_H }), zIndex: 5,
         background: full && !up && !focused ? 'rgba(22,22,22,0.9)' : '#161616', borderRadius: focused ? 0 : '22px 22px 0 0', display: 'flex', flexDirection: 'column',
-        transition: 'height 0.25s ease', paddingTop: focused ? 'env(safe-area-inset-top, 0px)' : 0, paddingBottom: focused ? 0 : 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+        transition: focused ? 'none' : 'height 0.25s ease', paddingTop: focused ? 'env(safe-area-inset-top, 0px)' : 0, paddingBottom: focused ? 0 : 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
       }}>
         <button type="button" aria-label="Comments" onClick={() => { if (focused) { try { inputRef.current?.blur(); } catch { /* */ } return; } setUp(v => !v); }} style={{ background: 'none', border: 'none', padding: '8px 0 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           <span style={{ width: 46, height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.35)' }} />
