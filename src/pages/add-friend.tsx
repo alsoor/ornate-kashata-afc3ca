@@ -18740,6 +18740,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // switch shown inside that modal. Persisted locally and best-effort synced to the
   // backend; degrades gracefully if the backend field doesn't exist yet. ──
   const [followersModalOpen, setFollowersModalOpen] = useState(false);
+  // True when the profile on screen was opened from the followers list, so closing it
+  // (X) returns to the followers list instead of dropping back to the home page.
+  const [returnToFollowers, setReturnToFollowers] = useState(false);
   const [followersVisible, setFollowersVisible] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
     try {
@@ -26892,6 +26895,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             sheetMode={!!viewingProfile.sheetMode}
             onClose={() => {
               setViewingProfile(null);
+              // Opened from the followers list -> go back to that list
+              if (returnToFollowers) {
+                setReturnToFollowers(false);
+                setFollowersModalOpen(true);
+              }
               setUserShareChatPeer(null);
               setShareMiniText('');
               setShareMiniRecording(false);
@@ -26977,6 +26985,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             onToggleVisible={handleToggleFollowersVisible}
             onOpenProfile={f => {
               setFollowersModalOpen(false);
+              setReturnToFollowers(true);
               setViewingProfile({ id: f.friendId, name: f.name, username: f.username, avatarUrl: f.avatarUrl ?? null });
             }}
             onClose={() => setFollowersModalOpen(false)}
