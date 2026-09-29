@@ -14089,7 +14089,7 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
   if (typeof document === 'undefined') return null;
 
   // when the comments sheet is up the media always shrinks to sit ABOVE it (never hidden behind it), even when enlarged
-  const mediaBottom = up ? LIVE_MEDIA_UP_H : (full ? 0 : LIVE_MEDIA_LOW_H);
+  const mediaBottom = focused ? 0 : (up ? LIVE_MEDIA_UP_H : (full ? 0 : LIVE_MEDIA_LOW_H));
   const showControls = isVideo;
   return createPortal(
     <div
@@ -14126,8 +14126,8 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
         ) : null}
       </div>
 
-      {/* top bar */}
-      {full ? (
+      {/* top bar (hidden while typing: the comments sheet then covers the whole screen) */}
+      {focused ? null : full ? (
         <button type="button" aria-label="Back" onClick={() => setFull(false)} style={{ ...roundBtn, position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', right: 14, zIndex: 4 }}>
           <X size={20} />
         </button>
@@ -14149,11 +14149,11 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
 
       {/* comments sheet: lowered by default, rises while typing */}
       <div style={{
-        position: 'absolute', left: 0, right: 0, bottom: 0, height: up ? LIVE_MEDIA_UP_H : LIVE_MEDIA_LOW_H, zIndex: 3,
-        background: full && !up ? 'rgba(22,22,22,0.9)' : '#161616', borderRadius: '22px 22px 0 0', display: 'flex', flexDirection: 'column',
-        transition: 'height 0.25s ease', paddingBottom: focused ? 0 : 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+        position: 'absolute', left: 0, right: 0, bottom: 0, height: focused ? '100%' : (up ? LIVE_MEDIA_UP_H : LIVE_MEDIA_LOW_H), zIndex: 5,
+        background: full && !up && !focused ? 'rgba(22,22,22,0.9)' : '#161616', borderRadius: focused ? 0 : '22px 22px 0 0', display: 'flex', flexDirection: 'column',
+        transition: 'height 0.25s ease', paddingTop: focused ? 'env(safe-area-inset-top, 0px)' : 0, paddingBottom: focused ? 0 : 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
       }}>
-        <button type="button" aria-label="Comments" onClick={() => setUp(v => !v)} style={{ background: 'none', border: 'none', padding: '8px 0 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <button type="button" aria-label="Comments" onClick={() => { if (focused) { try { inputRef.current?.blur(); } catch { /* */ } return; } setUp(v => !v); }} style={{ background: 'none', border: 'none', padding: '8px 0 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           <span style={{ width: 46, height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.35)' }} />
           {!up ? <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>{thread.length > 0 ? `${thread.length.toLocaleString('ar-EG')} تعليق` : 'التعليقات'}</span> : null}
         </button>
@@ -14213,10 +14213,10 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
               placeholder="Comments"
               style={{ flex: 1, minWidth: 0, height: 44, borderRadius: 999, border: '1px solid rgba(255,255,255,0.14)', outline: 'none', padding: '0 18px', background: '#2a2a2a', color: '#fff', fontSize: '0.95rem' }}
             />
-            <button type="button" aria-label="Emoji" onClick={() => { setUp(true); setEmojiOpen(v => !v); }} style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: '#2a2a2a', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <button type="button" aria-label="Emoji" onMouseDown={e => e.preventDefault()} onClick={() => { setUp(true); setEmojiOpen(v => !v); }} style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: '#2a2a2a', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Smile size={21} strokeWidth={2} />
             </button>
-            <button type="button" aria-label="Send" onClick={() => send()} disabled={!draft.trim()} style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: draft.trim() ? CLR_PRIMARY : '#2a2a2a', color: draft.trim() ? '#03181b' : 'rgba(255,255,255,0.55)', cursor: draft.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <button type="button" aria-label="Send" onMouseDown={e => e.preventDefault()} onClick={() => send()} disabled={!draft.trim()} style={{ width: 44, height: 44, borderRadius: '50%', border: 'none', background: draft.trim() ? CLR_PRIMARY : '#2a2a2a', color: draft.trim() ? '#03181b' : 'rgba(255,255,255,0.55)', cursor: draft.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Send size={19} />
             </button>
           </div>
