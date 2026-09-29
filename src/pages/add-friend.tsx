@@ -20659,6 +20659,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   zIndex: 10620,
                   animation: 'stooornaPlusFanIn 0.28s ease-out',
                 }}>
+                  <style>{`@property --stooorna-frame-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes stooornaFrameShine { to { --stooorna-frame-angle: 360deg; } }
+.stooorna-frame-shine { position: absolute; inset: -1px; border-radius: 20px; padding: 1px; pointer-events: none; background: conic-gradient(from var(--stooorna-frame-angle), rgba(255,255,255,0) 0deg, rgba(255,255,255,0) 290deg, rgba(255,255,255,0.35) 325deg, rgba(255,255,255,0.95) 345deg, rgba(255,255,255,0) 360deg); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; filter: drop-shadow(0 0 3px rgba(255,255,255,0.55)); animation: stooornaFrameShine 16s linear infinite; }`}</style>
+                  <span aria-hidden="true" className="stooorna-frame-shine" />
                   {user?.id && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
 <button
