@@ -13627,16 +13627,6 @@ function LiveChatClearCountdown() {
   );
 }
 
-// ── Live chat TEMPLATES (Titanic 1912 / WW2 1944) — creation UI removed; kept only so template
-// posts already in the chat (imageUrl = merged JPEG, text = caption) keep rendering in the 2-per-row grid.
-type LiveTemplateId = 'titanic' | 'ww2';
-type TplBox = { x: number; y: number; w: number; h: number };
-const LIVE_TEMPLATES: { id: LiveTemplateId; label: string; sub: string; caption: string; box: TplBox; thumb: string }[] = [
-  { id: 'titanic', label: 'Titanic', sub: '1912', caption: '🎞 Titanic 1912', box: { x: 175, y: 80, w: 250, h: 300 }, thumb: 'linear-gradient(180deg,#040914 0%,#0d2140 55%,#33506e 100%)' },
-  { id: 'ww2', label: 'WW2', sub: '1944', caption: '🎞 WW2 1944', box: { x: -140, y: -185, w: 280, h: 320 }, thumb: 'linear-gradient(180deg,#14100e 0%,#4a3020 40%,#d08a46 70%,#120d0a 100%)' },
-];
-const LIVE_TEMPLATE_CAPTIONS = LIVE_TEMPLATES.map(t => t.caption);
-
 // ── AI Video merge (film icon → pick video → pick your photo → AI puts YOU in the video) ─────
 // A posted AI video is a normal live-chat row: imageUrl = merged MP4 url, text = LIVE_VIDEO_CAPTION.
 // (Same trick as the templates, so no server schema change is needed.) It is NOT drawn inside the
@@ -13654,15 +13644,20 @@ function stooornaHoldForFilePicker() {
   try {
     document.body.dataset.stooornaFilePicking = '1';
     let done = false;
-    const onVis = () => { if (document.visibilityState === 'visible') release(); };
+    let left = false;   // page really went away (blur / hidden) → only then the return can release
+    const onLeave = () => { left = true; };
+    const onBack = () => { if (left) release(); };
+    const onVis = () => { if (document.visibilityState === 'hidden') onLeave(); else onBack(); };
     const release = () => {
       if (done) return;
       done = true;
-      window.removeEventListener('focus', release);
+      window.removeEventListener('blur', onLeave);
+      window.removeEventListener('focus', onBack);
       document.removeEventListener('visibilitychange', onVis);
-      window.setTimeout(() => { delete document.body.dataset.stooornaFilePicking; }, 2500);
+      window.setTimeout(() => { delete document.body.dataset.stooornaFilePicking; }, 4000);
     };
-    window.addEventListener('focus', release);
+    window.addEventListener('blur', onLeave);
+    window.addEventListener('focus', onBack);
     document.addEventListener('visibilitychange', onVis);
     window.setTimeout(release, 10 * 60 * 1000);
   } catch { /* */ }
@@ -13926,21 +13921,11 @@ function LiveVideoTile({ c, liked, name, onLike, onOpenProfile }: {
   );
 }
 
-type LiveChatRowItem =
-  | { kind: 'msg'; c: PublicLiveComment }
-  | { kind: 'tpl'; key: string; cs: PublicLiveComment[] };
+type LiveChatRowItem = { kind: 'msg'; c: PublicLiveComment };
 
-/** Template posts that follow each other are grouped two per row; everything else stays a normal comment. */
+/** Every comment is a normal row (the old Titanic/WW2 template grid was removed). */
 function groupLiveChatRows(list: PublicLiveComment[]): LiveChatRowItem[] {
-  const out: LiveChatRowItem[] = [];
-  for (const c of list) {
-    const isTpl = !!c.imageUrl && LIVE_TEMPLATE_CAPTIONS.includes(c.text);
-    if (!isTpl) { out.push({ kind: 'msg', c }); continue; }
-    const last = out[out.length - 1];
-    if (last && last.kind === 'tpl' && last.cs.length < 2) { last.cs.push(c); continue; }
-    out.push({ kind: 'tpl', key: c.id, cs: [c] });
-  }
-  return out;
+  return list.map(c => ({ kind: 'msg' as const, c }));
 }
 
 /** Film-icon screen: video-only (the old Titanic/WW2 template tab was removed on request). */
@@ -14294,10 +14279,25 @@ function PublicLiveCommentsPanel({
   // الشات بالأسفل: ينتقل من الرئيسية إلى ما بعد نقر الخط (الهيدر مرفوع/مخفي).
   // عند إنزال الهيدر (الرئيسية) يختفي الشات ويرجع لوضعه المصغّر، بنفس آلياته كاملة.
   useEffect(() => {
-    if (headerOpen && chatLift !== 0) setChatLift(0);
-  }, [headerOpen, chatLift]);
-  if (headerOpen || !user?.id) return null;
+    if (headerOpen && chatLift !== 0 && !tplOpen) setChatLift(0);
+  }, [headerOpen, chatLift, tplOpen]);
   if (typeof document === 'undefined') return null;
+  if (!user?.id) return null;
+  if (headerOpen) {
+    // Header forced open (e.g. after the system gallery closes): keep the Video AI page alive instead of kicking the user out.
+    return tplOpen ? (
+      <LiveChatVideoStudio
+        open={tplOpen}
+        userId={myId}
+        onClose={() => setTplOpen(false)}
+        onPost={(caption, dataUrl) => {
+          pushComment(caption, dataUrl);
+          setTplOpen(false);
+          setChatLift(caption === LIVE_VIDEO_CAPTION ? 0 : 1);
+        }}
+      />
+    ) : null;
+  }
   const videoPosts = comments.filter(isLiveVideoPost).slice().reverse();
 
   return createPortal(
@@ -14400,50 +14400,6 @@ function PublicLiveCommentsPanel({
           </p>
         )}
         {groupLiveChatRows(comments.filter(c => !/Join Live Chat/i.test(c.text || '') && !isLiveVideoPost(c))).map(item => {
-          if (item.kind === 'tpl') {
-            return (
-              <div key={item.key} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '8px 2px', direction: 'ltr' }}>
-                {item.cs.map(tc => {
-                  const tLiked = myId ? tc.likes.includes(myId) : false;
-                  return (
-                    <div key={tc.id} style={{ minWidth: 0 }}>
-                      <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#0b1512', aspectRatio: '3 / 4' }}>
-                        <img src={tc.imageUrl || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                        <button
-                          type="button"
-                          aria-label="Open profile"
-                          onClick={() => {
-                            if (!tc.userId) return;
-                            setProfilePeer(tc);
-                            try { window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: true } })); } catch { /* */ }
-                          }}
-                          style={{ position: 'absolute', left: 6, bottom: 6, background: 'none', border: '2px solid #fff', borderRadius: '50%', padding: 0, cursor: tc.userId ? 'pointer' : 'default', display: 'flex' }}
-                        >
-                          <UserAvatar name={tc.name || tc.username || '?'} avatarUrl={tc.avatarUrl} size={30} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Like"
-                          onClick={() => toggleLike(tc.id)}
-                          style={{
-                            position: 'absolute', right: 6, bottom: 6, display: 'flex', alignItems: 'center', gap: 4,
-                            background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 999, padding: '4px 8px', cursor: 'pointer',
-                            color: '#fff', fontSize: '0.68rem', fontWeight: 800,
-                          }}
-                        >
-                          <Heart size={14} strokeWidth={2.2} color={tLiked ? '#ef4444' : '#fff'} fill={tLiked ? '#ef4444' : 'none'} />
-                          {tc.likes.length > 0 ? tc.likes.length : null}
-                        </button>
-                      </div>
-                      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 800, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {displayName(tc)}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          }
           const c = item.c;
           const liked = myId ? c.likes.includes(myId) : false;
           return (
@@ -14829,7 +14785,7 @@ function PublicLiveCommentsPanel({
             </button>
             <button
               type="button"
-              aria-label="Templates"
+              aria-label="Video AI"
               onPointerDown={e => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -18565,6 +18521,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
   const snapHomeLayout = useCallback(() => {
     if (document.body.dataset.stooornaChatLock != null) return;
+    // Video AI / gallery picker is open → returning from the system gallery must NOT push us to the main story page.
+    if (document.body.dataset.stooornaFilePicking != null) return;
     setHeaderOpen(true);
     setStoryPullProgress(0);
     storyPullProgressRef.current = 0;
