@@ -14546,11 +14546,13 @@ function homeLiveSameEntries(a: HomeLiveEntry[], b: HomeLiveEntry[]): boolean {
   return true;
 }
 
-function HomeLiveStack({ myId, hosts, enabled, showCards }: {
+function HomeLiveStack({ myId, hosts, enabled, showCards, guest, onGuestTap }: {
   myId: string;
   hosts: HomeLiveHost[];
   enabled: boolean;
   showCards: boolean;
+  guest?: boolean;
+  onGuestTap?: () => void;
 }) {
   const navigate = useNavigate();
   const [entries, setEntries] = useState<HomeLiveEntry[]>(() => (homeLiveCache.uid === myId ? homeLiveCache.entries : []));
@@ -14872,6 +14874,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards }: {
   }, []);
 
   const enterLive = (e: HomeLiveEntry) => {
+    if (guest) { onGuestTap?.(); return; }
     const qs = new URLSearchParams({ hostId: e.id, hostName: e.name || e.username || 'Host' });
     if (e.username) qs.set('hostUsername', e.username);
     if (e.avatarUrl) qs.set('hostAvatar', e.avatarUrl);
@@ -17976,6 +17979,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // also collapses it; scrolling back to the top expands it again.
   const [headerOpen, setHeaderOpen] = useState(true);
   const [visitorProfileOpen, setVisitorProfileOpen] = useState(false);
+  // Visitor (not signed in): header stays fully lifted, sign-in icon + language choice replace Settings
+  const guestMode = !isPending && !user?.id;
+  const [guestLang, setGuestLang] = useState<'en' | 'ar'>(() => {
+    try { return localStorage.getItem('stooorna_guest_lang') === 'ar' ? 'ar' : 'en'; } catch { return 'en'; }
+  });
+  const chooseGuestLang = (l: 'en' | 'ar') => {
+    setGuestLang(l);
+    try { localStorage.setItem('stooorna_guest_lang', l); } catch { /* */ }
+  };
+  const GUEST_SIGNIN_LABEL = { en: 'Sign in', ar: '\u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644' };
+  useEffect(() => { if (guestMode && headerOpen) setHeaderOpen(false); }, [guestMode, headerOpen]);
 
   // Once true, the grabber's attention-drawing bounce animation stops for good.
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
@@ -20276,7 +20290,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               expands the space first, then the fog lifts to reveal everything cleanly. ── */}
           <div style={{
             display: 'grid',
-            gridTemplateRows: headerOpen ? '1fr' : '0fr',
+            gridTemplateRows: (headerOpen && !guestMode) ? '1fr' : '0fr',
             transition: 'grid-template-rows 320ms cubic-bezier(0.22,1,0.36,1)',
           }}>
             <div style={{
@@ -20792,7 +20806,38 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 </div>
                   )}
                   {/* Settings — نُقلت من الهيدر إلى هنا بجانب الأصدقاء والاتصال والبث */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
+                  {guestMode ? (
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 64 }}>
+<motion.button
+  type="button"
+  whileTap={{ scale: 0.9 }}
+  onClick={() => {
+    try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
+    navigate('/settings');
+  }}
+  aria-label={GUEST_SIGNIN_LABEL[guestLang]}
+  title={GUEST_SIGNIN_LABEL[guestLang]}
+  style={{
+    width: 38, height: 38, borderRadius: '50%',
+    border: '1px solid rgba(0,188,212,0.4)',
+    background: 'rgba(6,20,22,0.96)',
+    color: '#00BCD4',
+    cursor: 'pointer', padding: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+  }}
+>
+  <LogIn size={18} strokeWidth={2.2} />
+</motion.button>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>{GUEST_SIGNIN_LABEL[guestLang]}</span>
+<div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
+  <button type="button" onClick={() => chooseGuestLang('ar')} aria-pressed={guestLang === 'ar'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'ar' ? 600 : 300, color: guestLang === 'ar' ? '#00BCD4' : 'rgba(255,255,255,0.6)' }}>Ar</button>
+  <span aria-hidden="true" style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>|</span>
+  <button type="button" onClick={() => chooseGuestLang('en')} aria-pressed={guestLang === 'en'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'en' ? 600 : 300, color: guestLang === 'en' ? '#00BCD4' : 'rgba(255,255,255,0.6)' }}>En</button>
+</div>
+</div>
+) : (
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
 <motion.button
                     type="button"
                     whileTap={{ scale: 0.9 }}
@@ -20823,6 +20868,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </motion.button>
 <span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Settings</span>
 </div>
+)}
                 </div>
           </div>
         )}
@@ -27382,10 +27428,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       )}
       {!isFriendManagement && (
         <HomeLiveStack
-          myId={user?.id ? String(user.id) : ''}
+          myId={user?.id ? String(user.id) : (guestMode ? 'guest' : '')}
           hosts={homeLiveHosts}
-          enabled={!isLiveRoute && !!user?.id}
-          showCards={pageTab === 'profile' && headerOpen && !isLiveRoute}
+          enabled={!isLiveRoute && (!!user?.id || guestMode)}
+          showCards={pageTab === 'profile' && (headerOpen || guestMode) && !isLiveRoute}
+          guest={guestMode}
+          onGuestTap={() => {
+            try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
+            navigate('/settings');
+          }}
         />
       )}
       {pageTab === 'profile' && !isFriendManagement && (
