@@ -13916,7 +13916,7 @@ function PublicLiveCommentsPanel({
   // العدّاد يظهر فقط عندما لا يكتب أحد (لا أنا ولا غيري)
   const showClearTimer = liveTypers.length === 0 && !text.trim() && !composerFocused;
 
-  if (!headerOpen) return null;
+  if (!headerOpen || !user?.id) return null;
   if (typeof document === 'undefined') return null;
 
   return createPortal(
@@ -27439,7 +27439,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           }}
         />
       )}
-      {pageTab === 'profile' && !isFriendManagement && (
+      {pageTab === 'profile' && !isFriendManagement && !guestMode && (
         <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen} onToggleHeader={toggleHeaderOpen} />
       )}
       {GuestModal}
