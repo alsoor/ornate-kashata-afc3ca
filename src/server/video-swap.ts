@@ -8,17 +8,19 @@
  * video with the person in the photo, keeping the original motion, expressions, lighting and scene).
  *
  * Setup:
- *   npm i express multer @fal-ai/client          (+ npm i -D @types/multer if you use TypeScript types)
- *   Render → Environment:  FAL_KEY=xxxxxxxx      (create it at https://fal.ai/dashboard/keys)
- *   Mount once in the server entry:
- *       import videoSwapRouter from './video-swap';
- *       app.use('/api/video-swap', videoSwapRouter);
+ *   npm i @fal-ai/client            (multer is already used by /api/status; if missing: npm i multer)
+ *   Railway → Variables:  FAL_KEY=xxxxxxxx      (https://fal.ai/dashboard/keys)
+ *   entry.ts already has:  import { registerVideoSwap } from "./video-swap";  registerVideoSwap(app, ASSETS_DIR);
+ *   The finished video is copied into ASSETS_DIR/video-swap/ and served from /airo-assets/video-swap/…
+ *   (fal links expire; on Railway mount a Volume on ASSETS_DIR so files survive redeploys).
  *
  * Optional env: VIDEO_SWAP_RESOLUTION (480p | 580p | 720p, default 480p),
  *               VIDEO_SWAP_MAX_PER_HOUR (default 5 per user), VIDEO_SWAP_MAX_SEC (default 30),
  *               VIDEO_SWAP_MAX_MB (default 50).
  */
-import { Router, type Request, type Response } from 'express';
+import { Router, type Express, type Request, type Response } from 'express';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import multer from 'multer';
 import { fal } from '@fal-ai/client';
 
@@ -40,6 +42,23 @@ type Job = {
   error?: string;
   code?: string;
 };
+
+let ASSETS_DIR = process.env.ASSETS_DIR || '/shared-storage/public/assets';
+
+async function saveResultLocally(id: string, remoteUrl: string): Promise<string> {
+  try {
+    const r = await fetch(remoteUrl);
+    if (!r.ok) throw new Error(`download ${r.status}`);
+    const buf = Buffer.from(await r.arrayBuffer());
+    const dir = join(ASSETS_DIR, 'video-swap');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, `${id}.mp4`), buf);
+    return `/airo-assets/video-swap/${id}.mp4`;
+  } catch (e) {
+    console.error('[video-swap] could not save result locally, using provider url:', (e as any)?.message || e);
+    return remoteUrl;
+  }
+}
 
 const jobs = new Map<string, Job>();
 const history = new Map<string, number[]>(); // userId → timestamps of started jobs
@@ -127,7 +146,7 @@ async function runJob(id: string, video: Buffer, videoType: string, photo: Buffe
         const out: any = await fal.queue.result(MODEL_ID, { requestId: request_id });
         const url = out?.data?.video?.url || out?.data?.video_url || out?.data?.url;
         if (!url) throw Object.assign(new Error('no video in result'), { status: 502 });
-        job.url = String(url);
+        job.url = await saveResultLocally(id, String(url));
         job.status = 'done';
         return;
       }
@@ -195,5 +214,11 @@ router.get('/', (req: Request, res: Response) => {
   if (job.status === 'error') return res.json({ status: 'error', error: job.error, code: job.code });
   return res.json({ status: job.status });
 });
+
+/** Called from entry.ts: registerVideoSwap(app, ASSETS_DIR). */
+export function registerVideoSwap(app: Express, assetsDir?: string) {
+  if (assetsDir) ASSETS_DIR = assetsDir;
+  app.use('/api/video-swap', router);
+}
 
 export default router;
