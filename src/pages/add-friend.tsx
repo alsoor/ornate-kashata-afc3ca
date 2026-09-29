@@ -8180,13 +8180,24 @@ interface MiniProfileData {
 }
 // ── Followers of ANOTHER user (visitor view). The backend endpoint is a best-effort guess:
 // it tries a couple of routes and quietly returns [] if none exists / the list is hidden. ──
-async function fetchUserFollowersList(userId: string): Promise<Friend[]> {
+async function fetchUserFollowersResult(userId: string): Promise<{ list: Friend[]; error: string | null }> {
   const id = encodeURIComponent(String(userId));
-  const urls = [`/api/users/${id}/followers`, `/api/users/${id}/friends`];
+  const urls = [
+    `/api/users/${id}/followers`,
+    `/api/users/${id}/friends`,
+    `/api/followers/${id}`,
+    `/api/friends/of/${id}`,
+    `/api/friends/user/${id}`,
+  ];
+  // Remember WHY nothing loaded so the sheet can say it instead of pretending the list is empty.
+  let lastStatus = 0;
+  let sawNetworkError = false;
   for (const url of urls) {
     try {
       const r = await fetch(url, { credentials: 'include' });
-      if (!r.ok) continue;
+      if (!r.ok) { lastStatus = lastStatus === 401 || lastStatus === 403 ? lastStatus : r.status; continue; }
+      const ct = r.headers.get('content-type') || '';
+      if (!ct.includes('json')) { lastStatus = lastStatus || 404; continue; }   // SPA fallback page = route doesn't exist
       const d = await r.json();
       const rows: any[] = Array.isArray(d) ? d : (d?.followers || d?.accepted || d?.friends || d?.items || d?.data || []);
       if (!Array.isArray(rows)) continue;
@@ -8206,10 +8217,19 @@ async function fetchUserFollowersList(userId: string): Promise<Friend[]> {
           since: f?.since ?? null,
         });
       }
-      return out;
-    } catch { /* try next endpoint */ }
+      return { list: out, error: null };
+    } catch { sawNetworkError = true; /* try next endpoint */ }
   }
-  return [];
+  let error = 'تعذر تحميل قائمة المتابعين';
+  if (lastStatus === 401) error = 'لازم تسجل دخولك عشان تشوف قائمة المتابعين';
+  else if (lastStatus === 403) error = 'صاحب الحساب ما يسمح بعرض قائمة المتابعين';
+  else if (lastStatus === 404 || lastStatus === 405) error = 'السيرفر ما عنده مسار لقائمة متابعين المستخدمين الثانيين بعد (/api/users/:id/followers)';
+  else if (lastStatus >= 500) error = `خطأ في السيرفر (${lastStatus}) أثناء تحميل المتابعين`;
+  else if (sawNetworkError) error = 'مشكلة اتصال — تأكد من الإنترنت وحاول مرة ثانية';
+  return { list: [], error };
+}
+async function fetchUserFollowersList(userId: string): Promise<Friend[]> {
+  return (await fetchUserFollowersResult(userId)).list;
 }
 // ── FollowersListModal — followers shown as a vertical list. Owner mode (onToggleVisible given)
 // also shows the lock switch: locked → nobody else can see the list (others just see a lock icon).
@@ -8220,6 +8240,7 @@ function FollowersListModal({
   onToggleVisible,
   onOpenProfile,
   loading = false,
+  errorText = null,
   title,
   zIndex = 12120,
   onClose,
@@ -8229,6 +8250,8 @@ function FollowersListModal({
   onToggleVisible?: (next: boolean) => void;
   onOpenProfile?: (f: Friend) => void;
   loading?: boolean;
+  /** When the list could not be loaded, show this reason instead of "no followers yet". */
+  errorText?: string | null;
   title?: string;
   zIndex?: number;
   onClose: () => void;
@@ -8319,7 +8342,7 @@ function FollowersListModal({
           letterSpacing: '0.01em', textAlign: 'center', flexShrink: 0,
         }}>
           {title || (isOwner ? 'متابعيني' : 'المتابعون')}
-          {showList && !loading ? <span style={{ fontWeight: 600, fontSize: '0.8rem', opacity: 0.6 }}> · {list.length}</span> : null}
+          {showList && !loading && !errorText ? <span style={{ fontWeight: 600, fontSize: '0.8rem', opacity: 0.6 }}> · {list.length}</span> : null}
         </p>
         <p style={{
           margin: '6px 0 0', fontSize: '0.7rem', fontWeight: 500,
@@ -8402,7 +8425,10 @@ function FollowersListModal({
             {loading && (
               <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', color: 'rgba(150,200,200,0.6)' }}>جاري التحميل…</p>
             )}
-            {!loading && list.length === 0 && (
+            {!loading && list.length === 0 && errorText && (
+              <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', lineHeight: 1.6, color: 'rgba(255,170,150,0.85)' }}>{errorText}</p>
+            )}
+            {!loading && list.length === 0 && !errorText && (
               <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', color: 'rgba(150,200,200,0.6)' }}>لا يوجد متابعون بعد</p>
             )}
             {!loading && list.map(f => {
@@ -8845,12 +8871,15 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [theirFollowersOpen, setTheirFollowersOpen] = useState(false);
   const [theirFollowers, setTheirFollowers] = useState<Friend[]>([]);
   const [theirFollowersLoading, setTheirFollowersLoading] = useState(false);
+  const [theirFollowersError, setTheirFollowersError] = useState<string | null>(null);
   const [subProfile, setSubProfile] = useState<{ id: string; name: string | null; username: string | null; avatarUrl: string | null } | null>(null);
   const openTheirFollowers = async () => {
     setTheirFollowersOpen(true);
     setTheirFollowersLoading(true);
-    const list = await fetchUserFollowersList(authorId);
+    setTheirFollowersError(null);
+    const { list, error } = await fetchUserFollowersResult(authorId);
     setTheirFollowers(list);
+    setTheirFollowersError(error);
     setTheirFollowersLoading(false);
   };
 
@@ -9481,6 +9510,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               friends={theirFollowers}
               followersVisible
               loading={theirFollowersLoading}
+              errorText={theirFollowersError}
               title="المتابعون"
               zIndex={13100}
               onOpenProfile={f => {
@@ -14959,7 +14989,8 @@ function PublicLiveCommentsPanel({
                 <div
                   style={{
                     position: 'absolute', right: -4, bottom: 'calc(100% + 12px)', zIndex: 61,
-                    display: 'flex', gap: 6, padding: 8, borderRadius: 22,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                    width: 'max-content', padding: 6, borderRadius: 999,
                     background: '#fff', border: '1px solid #e5e7eb',
                     boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
                   }}
@@ -15006,14 +15037,14 @@ function PublicLiveCommentsPanel({
                         setPlusOpen(false);
                         it.run();
                       }}
+                      title={it.label}
                       style={{
-                        width: 62, padding: '8px 0 6px', borderRadius: 16, border: 'none', cursor: 'pointer',
+                        width: 40, height: 40, flexShrink: 0, padding: 0, borderRadius: '50%', border: 'none', cursor: 'pointer',
                         background: '#f7f7f8', color: '#111',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
                     >
                       {it.icon}
-                      <span style={{ fontSize: '0.64rem', fontWeight: 800, whiteSpace: 'nowrap' }}>{it.label}</span>
                     </button>
                   ))}
                 </div>
