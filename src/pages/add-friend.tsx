@@ -14011,7 +14011,7 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
   const [up, setUp] = useState(false);
   const [full, setFull] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [kb, setKb] = useState(0);
+  const [vp, setVp] = useState<{ top: number; height: number } | null>(null);
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
   const [muted, setMuted] = useState(false);
@@ -14031,16 +14031,17 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
   }, [thread.length, up]);
   useEffect(() => { const id = window.setInterval(() => setTick(v => v + 1), 30000); return () => window.clearInterval(id); }, []);
 
-  // keyboard: lift the whole viewer above it so the composer stays visible while typing
+  // keyboard: fit the whole viewer to the VISIBLE area (visualViewport) so the comment box always sits right above
+  // the keyboard and the sheet opens upward — works whether the browser resizes the layout viewport or only the visual one.
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
     if (!vv) return;
-    const apply = () => setKb(focused ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0);
+    const apply = () => setVp({ top: Math.round(vv.offsetTop), height: Math.round(vv.height) });
     apply();
     vv.addEventListener('resize', apply);
     vv.addEventListener('scroll', apply);
     return () => { vv.removeEventListener('resize', apply); vv.removeEventListener('scroll', apply); };
-  }, [focused]);
+  }, []);
 
   // video: autoplay with sound (the tap on the tile counts as a gesture); fall back to muted if the browser refuses
   useEffect(() => {
@@ -14087,12 +14088,13 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
   const roundBtn: React.CSSProperties = { width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.5)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
   if (typeof document === 'undefined') return null;
 
-  const mediaBottom = full ? 0 : (up ? LIVE_MEDIA_UP_H : LIVE_MEDIA_LOW_H);
-  const showControls = isVideo && !(full && up);
+  // when the comments sheet is up the media always shrinks to sit ABOVE it (never hidden behind it), even when enlarged
+  const mediaBottom = up ? LIVE_MEDIA_UP_H : (full ? 0 : LIVE_MEDIA_LOW_H);
+  const showControls = isVideo;
   return createPortal(
     <div
       onClick={e => e.stopPropagation()}
-      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: kb, zIndex: 11000, background: '#000', color: '#fff', pointerEvents: 'auto', overflow: 'hidden' }}
+      style={{ position: 'fixed', left: 0, right: 0, ...(vp ? { top: vp.top, height: vp.height } : { top: 0, bottom: 0 }), zIndex: 11000, background: '#000', color: '#fff', pointerEvents: 'auto', overflow: 'hidden' }}
     >
       {/* media — tap = fill the screen / go back */}
       <div
@@ -14149,7 +14151,7 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
       <div style={{
         position: 'absolute', left: 0, right: 0, bottom: 0, height: up ? LIVE_MEDIA_UP_H : LIVE_MEDIA_LOW_H, zIndex: 3,
         background: full && !up ? 'rgba(22,22,22,0.9)' : '#161616', borderRadius: '22px 22px 0 0', display: 'flex', flexDirection: 'column',
-        transition: 'height 0.25s ease', paddingBottom: 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+        transition: 'height 0.25s ease', paddingBottom: focused ? 0 : 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
       }}>
         <button type="button" aria-label="Comments" onClick={() => setUp(v => !v)} style={{ background: 'none', border: 'none', padding: '8px 0 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           <span style={{ width: 46, height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.35)' }} />
@@ -14194,11 +14196,11 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
         ) : null}
 
         <div style={{ marginTop: up ? 0 : 'auto', flexShrink: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 18px', borderTop: '1px solid rgba(255,255,255,0.08)', direction: 'ltr' }}>
+          {!focused ? <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 18px', borderTop: '1px solid rgba(255,255,255,0.08)', direction: 'ltr' }}>
             {LIVE_MEDIA_QUICK.map(em => (
               <button key={em} type="button" onClick={() => send(em)} style={{ background: 'none', border: 'none', fontSize: '1.6rem', padding: 0, cursor: 'pointer', lineHeight: 1 }}>{em}</button>
             ))}
-          </div>
+          </div> : null}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px 10px', borderTop: '1px solid rgba(255,255,255,0.08)', direction: 'ltr' }}>
             <UserAvatar name="me" avatarUrl={myAvatar} size={38} style={{ flexShrink: 0, border: `2px solid ${CLR_PRIMARY}` }} />
             <input
