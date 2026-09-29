@@ -4965,7 +4965,7 @@ function GlobalBottomNavigation() {
       )}
 
   {(() => {
-    if (storyPageActive) return null;
+    if (storyPageActive || settingsSheetOpen) return null;
     const hideBottomBar =
       // navBarHidden (auto-hide on scroll in the profile/story page) intentionally
       // excluded — the "+" button lives on this bar and must always stay reachable
@@ -5010,6 +5010,37 @@ function GlobalBottomNavigation() {
     </nav>
     );
   })()}
+  {settingsSheetOpen && (
+    <button
+      type="button"
+      aria-label="Close settings"
+      title="Close"
+      onClick={() => {
+        try { window.dispatchEvent(new CustomEvent('stooorna:close-settings-sheet')); } catch { /* */ }
+      }}
+      style={{
+        position: 'fixed',
+        right: 30,
+        bottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
+        zIndex: 13200,
+        width: 40,
+        height: 40,
+        padding: 0,
+        borderRadius: '50%',
+        border: '1.5px solid rgba(239,68,68,0.75)',
+        background: 'rgba(239,68,68,0.18)',
+        color: '#ef4444',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.5), 0 0 12px rgba(239,68,68,0.35)',
+        WebkitTapHighlightColor: 'transparent',
+      }}
+    >
+      <X size={20} strokeWidth={2.6} />
+    </button>
+  )}
   {storyPlusMenuOpen && (
     <>
       <button
@@ -5370,7 +5401,7 @@ export default function RootLayout({
               style={{
                 position: 'absolute',
                 top: 0,
-                bottom: 'calc(56px + env(safe-area-inset-bottom, 0px))',
+                bottom: 0,
                 right: 0,
                 left: 42,
                 background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',

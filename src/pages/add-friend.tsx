@@ -2002,7 +2002,7 @@ function MusicSearchModal({ onClose, currentTrack, isPlaying, onPlayTrack, favor
 // presses play hears the pinned 30-second preview and sees its title. Purely a display +
 // playback control; pinning/unpinning itself happens from the music search modal. ──
 function PinnedTrackBar({ track, style }: { track: MusicTrack | null; style?: React.CSSProperties }) {
-  const musicSnapshot = useSyncExternalStore(musicPlayerStore.subscribe, musicPlayerStore.getSnapshot);
+  const musicSnapshot = useSyncExternalStore(musicPlayerStore.subscribe, musicPlayerStore.getSnapshot, musicPlayerStore.getSnapshot);
   if (!track) return null;
   const isThisPlaying = musicSnapshot.currentTrack?.id === track.id && musicSnapshot.isPlaying;
   return (
@@ -15320,7 +15320,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Groups the Music and Posts-box (shared inbox) features into one small menu, so
   // they're tucked away instead of taking up their own row of icons. ──
   // قائمة الثلاث خطوط أُزيلت بالكامل — الموسيقى في الإعدادات فقط
-  const musicSnapshot = useSyncExternalStore(musicPlayerStore.subscribe, musicPlayerStore.getSnapshot);
+  const musicSnapshot = useSyncExternalStore(musicPlayerStore.subscribe, musicPlayerStore.getSnapshot, musicPlayerStore.getSnapshot);
   const musicCurrentTrack = musicSnapshot.currentTrack;
   const musicIsPlaying = musicSnapshot.isPlaying;
   const [musicFavorites, setMusicFavorites] = useState<MusicTrack[]>(() => {
