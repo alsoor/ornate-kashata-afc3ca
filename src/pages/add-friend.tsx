@@ -2,6 +2,8 @@ import { add_friend } from 'virtual:content';
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import React from 'react';
+// Full Settings page, rendered directly inside the dock bubble (no route change → no slide-in sheet, no red close X).
+const EmbeddedSettingsPage = React.lazy(() => import('./settings'));
 import { useNavigate, useSearchParams, useLocation } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import UserAvatar from '@/components/UserAvatar';
@@ -18638,6 +18640,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const x = r ? r.left + r.width / 2 : (typeof window !== 'undefined' ? window.innerWidth / 2 : 180);
     setDockBubble(cur => (cur && cur.kind === kind ? null : { kind, x }));
   };
+  useEffect(() => { setDockBubble(null); }, [routeLocation.pathname, routeLocation.search]);
   useEffect(() => {
     if (dockBubble?.kind !== 'call') return;
     let off = false;
@@ -21268,7 +21271,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             <X size={15} strokeWidth={2.4} />
           </button>
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8, WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: dockBubble.kind === 'settings' ? 0 : 8, WebkitOverflowScrolling: 'touch', borderRadius: 14 }}>
           {dockBubble.kind === 'call' && (
             <>
               {dockFriendsLoading && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}
@@ -21330,27 +21333,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             );
           })()}
           {dockBubble.kind === 'settings' && (
-            <>
-              <button
-                type="button"
-                onClick={() => { void handleToggleFollowersVisible(!followersVisible); }}
-                style={{ ...primaryBtn, justifyContent: 'space-between', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(0,188,212,0.22)', color: '#d7eeee' }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{followersVisible ? <Users size={17} strokeWidth={2.2} /> : <Lock size={17} strokeWidth={2.2} />} Followers list</span>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: followersVisible ? '#22c55e' : '#f59e0b' }}>{followersVisible ? 'Visible' : 'Locked'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  closeBubble();
-                  try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
-                  navigate('/settings');
-                }}
-                style={primaryBtn}
-              >
-                <Settings size={17} strokeWidth={2.3} /> All settings
-              </button>
-            </>
+            <React.Suspense fallback={<p style={{ margin: '24px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}>
+              <EmbeddedSettingsPage />
+            </React.Suspense>
           )}
         </div>
       </div>
