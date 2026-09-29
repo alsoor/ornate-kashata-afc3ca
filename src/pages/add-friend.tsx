@@ -12956,6 +12956,8 @@ type PublicLiveComment = {
   voiceDuration?: number | null;
   likes: string[];
   createdAt: number;
+  /** how many times the author edited the text (max LIVE_CHAT_MAX_EDITS) */
+  editCount?: number;
 };
 
 function loadPublicLiveComments(): PublicLiveComment[] {
@@ -12976,6 +12978,7 @@ function loadPublicLiveComments(): PublicLiveComment[] {
         voiceDuration: x.voiceDuration ?? null,
         likes: Array.isArray(x.likes) ? x.likes.map(String) : [],
         createdAt: Number(x.createdAt) || Date.now(),
+        editCount: Math.max(0, Number(x.editCount) || 0),
       }))
       .slice(-400);
   } catch {
@@ -13113,6 +13116,7 @@ function normalizeLiveChatRows(raw: unknown): PublicLiveComment[] {
       voiceDuration: x.voiceDuration ?? x.duration ?? null,
       likes: Array.isArray(x.likes) ? x.likes.map(String) : [],
       createdAt: Number(x.createdAt || x.at || Date.parse(x.created_at || '') || Date.now()),
+      editCount: Math.max(0, Number(x.editCount || x.edits || 0) || 0),
     }))
     .filter(x => x.text)
     .slice(-400);
@@ -13127,9 +13131,18 @@ function mergeLiveChatLists(a: PublicLiveComment[], b: PublicLiveComment[]): Pub
       continue;
     }
     const likes = Array.from(new Set([...(prev.likes || []), ...(row.likes || [])]));
+    // The copy with MORE edits wins (a stale server copy must never revert an edit, and the
+    // edit counter can never go back down, so the 3-edit limit cannot be bypassed by a re-sync).
+    const prevEdits = prev.editCount || 0;
+    const rowEdits = row.editCount || 0;
     map.set(row.id, {
       ...prev,
       ...row,
+      text: prevEdits > rowEdits
+        ? prev.text
+        // keep my "big emoji" marker if the server echoed the same emoji back without it
+        : (isLiveBigEmoji(prev.text) && !isLiveBigEmoji(row.text) && stripLiveBigEmojiMark(prev.text) === row.text ? prev.text : row.text),
+      editCount: Math.max(prevEdits, rowEdits),
       likes,
       voiceUrl: row.voiceUrl || prev.voiceUrl || null,
       voiceDuration: row.voiceDuration ?? prev.voiceDuration ?? null,
@@ -13173,6 +13186,7 @@ async function postLiveChatToServer(row: PublicLiveComment): Promise<void> {
     voiceUrl: row.voiceUrl || null,
     voiceDuration: row.voiceDuration ?? null,
     createdAt: row.createdAt,
+    editCount: row.editCount || 0,
   };
   const attempts: Array<() => Promise<Response>> = [
     () => fetch('/api/live-chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
@@ -13186,6 +13200,47 @@ async function postLiveChatToServer(row: PublicLiveComment): Promise<void> {
     } catch { /* next */ }
   }
 }
+
+/** Sends an edited message to the server (same id, new text + edit counter). */
+async function editLiveChatOnServer(row: PublicLiveComment): Promise<void> {
+  const payload = {
+    action: 'edit',
+    roomId: LIVE_CHAT_ROOM,
+    room: LIVE_CHAT_ROOM,
+    id: row.id,
+    commentId: row.id,
+    userId: row.userId,
+    name: row.name,
+    username: row.username,
+    avatarUrl: row.avatarUrl,
+    text: row.text,
+    body: row.text,
+    imageUrl: row.imageUrl || null,
+    voiceUrl: row.voiceUrl || null,
+    voiceDuration: row.voiceDuration ?? null,
+    createdAt: row.createdAt,
+    editCount: row.editCount || 0,
+    edited: (row.editCount || 0) > 0,
+  };
+  const attempts: Array<() => Promise<Response>> = [
+    () => fetch('/api/live-chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+    () => fetch('/api/public-chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+    () => fetch('/api/room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+  ];
+  for (const fn of attempts) {
+    try {
+      const r = await fn();
+      if (r.ok) return;
+    } catch { /* next */ }
+  }
+}
+
+/** Max number of times the author can edit one live-chat message. */
+const LIVE_CHAT_MAX_EDITS = 3;
+/** Invisible marker appended to a message that is a "big emoji" drop (old clients just show a normal emoji). */
+const LIVE_BIG_EMOJI_MARK = '\u2063';
+const isLiveBigEmoji = (t: string) => typeof t === 'string' && t.endsWith(LIVE_BIG_EMOJI_MARK) && t.length > 1;
+const stripLiveBigEmojiMark = (t: string) => t.split(LIVE_BIG_EMOJI_MARK).join('');
 
 const LIVE_EMOJI_BAR = ['❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂'] as const;
 const LIVE_EMOJI_PICKER = ['😀', '😁', '😂', '🤣', '😊', '😍', '🥰', '😘', '😎', '🤩', '😢', '😭', '😡', '🔥', '❤️', '💯', '👍', '👎', '👏', '🙌', '🎉', '✨', '🙏', '👀'];
@@ -13202,7 +13257,7 @@ const LIVE_CHAT_EMOJI_CATS: { icon: string; items: string[] }[] = [
 
 /** Top-center badge inside the live chat: two small stacked rectangles.
  *  Top = live countdown to the 24h chat clear, bottom = "Live Chat" + small green dot. */
-function LiveChatClearCountdown() {
+function LiveChatClearCountdown({ onDotClick, dotActive = false }: { onDotClick?: () => void; dotActive?: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -13240,7 +13295,24 @@ function LiveChatClearCountdown() {
       </div>
       <div style={{ ...rectBase, borderRadius: '0 0 10px 10px', direction: 'ltr' }}>
         <span>Live Chat</span>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 5px rgba(34,197,94,0.9)', display: 'inline-block' }} />
+        {/* Green dot = button: opens the big-emoji picker (extra padding + negative margin = bigger tap area, same visual size) */}
+        <button
+          type="button"
+          aria-label="Big emoji"
+          onPointerDown={e => { e.preventDefault(); e.stopPropagation(); }}
+          onClick={e => { e.stopPropagation(); onDotClick?.(); }}
+          style={{
+            pointerEvents: 'auto', background: 'none', border: 'none', cursor: 'pointer',
+            padding: 12, margin: -12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%', background: '#22c55e',
+            boxShadow: dotActive ? '0 0 0 3px rgba(34,197,94,0.35), 0 0 8px rgba(34,197,94,1)' : '0 0 5px rgba(34,197,94,0.9)',
+            display: 'inline-block', transition: 'box-shadow 0.18s ease',
+          }} />
+        </button>
       </div>
     </div>
   );
@@ -13926,6 +13998,19 @@ function PublicLiveCommentsPanel({
   const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string }>>([]);
   const [tplOpen, setTplOpen] = useState(false);
   const [openMediaId, setOpenMediaId] = useState<string | null>(null);
+  // ── Edit own message (long-press → pencil → edit in the composer, max LIVE_CHAT_MAX_EDITS times) ──
+  const [actionFor, setActionFor] = useState<string | null>(null);   // message whose pencil chip is showing
+  const [editingId, setEditingId] = useState<string | null>(null);   // message currently being edited
+  // ── Big emoji picker (opened from the green dot in the top badge) ──
+  const [bigEmojiOpen, setBigEmojiOpen] = useState(false);
+  const lpTimerRef = useRef<number | null>(null);
+  const lpStartRef = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!actionFor) return;
+    const t = window.setTimeout(() => setActionFor(null), 5000);
+    return () => window.clearTimeout(t);
+  }, [actionFor]);
+  useEffect(() => () => { if (lpTimerRef.current) window.clearTimeout(lpTimerRef.current); }, []);
   const chatInputFocused = useRef(false);
   /** timestamp of the last tap on a composer icon: the grid behind the chat ignores taps right after it (no click-through) */
   const composerGuardRef = useRef(0);
@@ -14180,6 +14265,72 @@ function PublicLiveCommentsPanel({
     })();
   };
 
+  // ── long-press detection on my own text messages ──
+  const clearPress = () => {
+    if (lpTimerRef.current) { window.clearTimeout(lpTimerRef.current); lpTimerRef.current = null; }
+    lpStartRef.current = null;
+  };
+  const beginPress = (id: string, e: React.PointerEvent<HTMLDivElement>) => {
+    setActionFor(prev => (prev && prev !== id ? null : prev));
+    if ((e.target as HTMLElement).closest?.('button, a')) return;   // avatar / links / like keep their own tap
+    clearPress();
+    lpStartRef.current = { x: e.clientX, y: e.clientY };
+    lpTimerRef.current = window.setTimeout(() => {
+      lpTimerRef.current = null;
+      setActionFor(id);
+      try { navigator.vibrate?.(12); } catch { /* */ }
+    }, 450);
+  };
+  const movePress = (e: React.PointerEvent<HTMLDivElement>) => {
+    const st = lpStartRef.current;
+    if (!st) return;
+    if (Math.abs(e.clientX - st.x) > 10 || Math.abs(e.clientY - st.y) > 10) clearPress();
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setText('');
+    pingTyping(false);
+  };
+  const startEdit = (c: PublicLiveComment) => {
+    if ((c.editCount || 0) >= LIVE_CHAT_MAX_EDITS) return;
+    setActionFor(null);
+    setEditingId(c.id);
+    setText(c.text);
+    setPendingImage(null);
+    setPendingVoice(null);
+    setComposerDock('none');
+    setEmojiOpen(false);
+    window.setTimeout(() => { try { chatInputRef.current?.focus(); } catch { /* */ } }, 60);
+  };
+  const submitEdit = () => {
+    if (!editingId || !myId) return;
+    const cur = loadPublicLiveComments().find(x => x.id === editingId);
+    if (!cur || cur.userId !== myId) { cancelEdit(); return; }
+    const used = cur.editCount || 0;
+    if (used >= LIVE_CHAT_MAX_EDITS) { cancelEdit(); return; }
+    const trimmed = text.trim().slice(0, 500);
+    if (!trimmed) return;
+    if (trimmed === cur.text) { cancelEdit(); return; }   // nothing changed → does not use up an edit
+    if (liveChatTextIsBlocked(trimmed)) {
+      const notice = makeLiveChatBotNotice('text');
+      const withNotice = [...loadPublicLiveComments(), notice];
+      savePublicLiveComments(withNotice);
+      setComments(withNotice);
+      void postLiveChatToServer(notice);
+      cancelEdit();
+      return;
+    }
+    const updated: PublicLiveComment = { ...cur, text: trimmed, editCount: used + 1 };
+    const next = loadPublicLiveComments().map(x => (x.id === cur.id ? updated : x));
+    savePublicLiveComments(next);
+    setComments(next);
+    setEditingId(null);
+    setText('');
+    pingTyping(false);
+    void editLiveChatOnServer(updated);
+  };
+
   const toggleLike = (id: string) => {
     if (!myId) return;
     const next = comments.map(c => {
@@ -14295,7 +14446,42 @@ function PublicLiveCommentsPanel({
         pointerEvents: 'none',
       }}
     >
-      {chatLift === 1 ? <LiveChatClearCountdown /> : null}
+      {chatLift === 1 ? <LiveChatClearCountdown onDotClick={() => setBigEmojiOpen(v => !v)} dotActive={bigEmojiOpen} /> : null}
+      {chatLift === 1 && bigEmojiOpen ? (
+        <>
+          <div
+            onClick={() => setBigEmojiOpen(false)}
+            style={{ position: 'absolute', inset: 0, zIndex: 6, pointerEvents: 'auto', background: 'transparent' }}
+          />
+          <div
+            style={{
+              position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+              top: 'calc(max(8px, env(safe-area-inset-top)) + 8px + 58px)',
+              zIndex: 7, pointerEvents: 'auto', width: 'min(92vw, 340px)',
+              background: '#06171a', border: '1px solid rgba(0,188,212,0.28)', borderRadius: 16,
+              padding: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.38)',
+              display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 4, direction: 'ltr',
+            }}
+          >
+            {LIVE_EMOJI_PICKER.map(em => (
+              <button
+                key={em}
+                type="button"
+                onPointerDown={e => { e.preventDefault(); e.stopPropagation(); composerGuardRef.current = Date.now(); }}
+                onClick={e => {
+                  e.stopPropagation();
+                  composerGuardRef.current = Date.now();
+                  pushComment(em + LIVE_BIG_EMOJI_MARK);
+                  setBigEmojiOpen(false);
+                }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '2rem', lineHeight: 1, padding: '6px 0', WebkitTapHighlightColor: 'transparent' }}
+              >
+                {em}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
       <div style={{
         flex: chatLift === 0 ? 1 : undefined,
         flexShrink: 0,
@@ -14361,13 +14547,27 @@ function PublicLiveCommentsPanel({
         {groupLiveChatRows(comments.filter(c => !/Join Live Chat/i.test(c.text || '') && !isLiveMediaPost(c) && !parseMediaComment(c.text))).map(item => {
           const c = item.c;
           const liked = myId ? c.likes.includes(myId) : false;
+          const bigEmoji = isLiveBigEmoji(c.text);
+          // Only my own plain-text messages can be edited (not voice, image-only, big emoji, or bot rows)
+          const canEdit = !!myId && c.userId === myId && !bigEmoji && !c.voiceUrl && c.text !== '🎤'
+            && !(c.imageUrl && c.text === '📷') && c.userId !== LIVE_CHAT_BOT_ID;
+          const editsLeft = Math.max(0, LIVE_CHAT_MAX_EDITS - (c.editCount || 0));
           return (
-            <div key={c.id} style={{
+            <div
+              key={c.id}
+              onPointerDown={canEdit ? (e => beginPress(c.id, e)) : undefined}
+              onPointerMove={canEdit ? movePress : undefined}
+              onPointerUp={canEdit ? clearPress : undefined}
+              onPointerCancel={canEdit ? clearPress : undefined}
+              onPointerLeave={canEdit ? clearPress : undefined}
+              onContextMenu={canEdit ? (e => e.preventDefault()) : undefined}
+              style={{
               display: 'flex',
               alignItems: 'flex-start',
               gap: 10,
               padding: '10px 2px',
               direction: 'ltr',
+              ...(canEdit ? { WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' } as React.CSSProperties : null),
             }}>
               <button
                 type="button"
@@ -14389,7 +14589,7 @@ function PublicLiveCommentsPanel({
               <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
                 <p style={{ margin: 0, fontSize: '0.84rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
                   <span style={{ fontWeight: 800, color: (c.userId === LIVE_CHAT_BOT_ID || c.name === LIVE_CHAT_BOT_NAME) ? LIVE_CHAT_BOT_COLOR : '#111', marginRight: 6 }}>{displayName(c)}</span>
-                  {c.voiceUrl || c.text === '🎤' ? null : (
+                  {c.voiceUrl || c.text === '🎤' || bigEmoji ? null : (
                     <span style={{ fontWeight: 500, color: '#222' }}>
                       {splitLiveChatLinks(c.text).map((part, i) => {
                         if (part.type === 'link') {
@@ -14413,6 +14613,14 @@ function PublicLiveCommentsPanel({
                     </span>
                   )}
                 </p>
+                {bigEmoji ? (
+                  <div
+                    className={c.createdAt > Date.now() - 4000 ? 'stooorna-big-emoji' : undefined}
+                    style={{ marginTop: 2, fontSize: '3.6rem', lineHeight: 1.15, display: 'inline-block' }}
+                  >
+                    {stripLiveBigEmojiMark(c.text)}
+                  </div>
+                ) : null}
                 {(c.voiceUrl || c.text === '🎤') ? (
                   <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 14, background: '#f3f4f6', border: '1px solid #e5e7eb', display: 'inline-block', minWidth: 180 }}>
                     {c.voiceUrl ? (
@@ -14438,7 +14646,34 @@ function PublicLiveCommentsPanel({
                 <p style={{ margin: '4px 0 0', fontSize: '0.68rem', color: '#9ca3af', fontWeight: 600 }}>
                   {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   {c.likes.length > 0 ? `  ·  ${c.likes.length}` : ''}
+                  {(c.editCount || 0) > 0 ? '  ·  edited' : ''}
                 </p>
+                {canEdit && actionFor === c.id ? (
+                  <div style={{ marginTop: 6 }}>
+                    {editsLeft > 0 ? (
+                      <button
+                        type="button"
+                        aria-label="Edit message"
+                        onClick={e => { e.stopPropagation(); startEdit(c); }}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          padding: '6px 12px', borderRadius: 999, border: 'none',
+                          background: '#111', color: '#fff', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
+                        }}
+                      >
+                        <PenLine size={14} strokeWidth={2.4} />
+                        <span>Edit · {editsLeft} left</span>
+                      </button>
+                    ) : (
+                      <span style={{
+                        display: 'inline-block', padding: '5px 10px', borderRadius: 999,
+                        background: '#f3f4f6', color: '#6b7280', fontSize: '0.7rem', fontWeight: 700,
+                      }}>
+                        No edits left ({LIVE_CHAT_MAX_EDITS}/{LIVE_CHAT_MAX_EDITS})
+                      </span>
+                    )}
+                  </div>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -14485,6 +14720,13 @@ function PublicLiveCommentsPanel({
           .stooorna-type-dots span { display:inline-block; animation: stooornaTypeDots 1.1s infinite; }
           .stooorna-type-dots span:nth-child(2){ animation-delay:.2s }
           .stooorna-type-dots span:nth-child(3){ animation-delay:.4s }
+          @keyframes stooornaBigEmojiDrop {
+            0%   { transform: translateY(-56px) scale(.35); opacity: 0; }
+            55%  { transform: translateY(6px) scale(1.14); opacity: 1; }
+            78%  { transform: translateY(-3px) scale(.96); }
+            100% { transform: translateY(0) scale(1); opacity: 1; }
+          }
+          .stooorna-big-emoji { animation: stooornaBigEmojiDrop .55s cubic-bezier(.22,1,.36,1) both; }
         `}</style>
         <div style={{
           display: chatLift === 0 ? 'none' : 'flex',
@@ -14569,6 +14811,26 @@ function PublicLiveCommentsPanel({
           </div>
         )}
 
+        {editingId ? (
+          <div style={{
+            margin: '0 12px 6px', padding: '6px 10px', borderRadius: 12,
+            background: '#f3f4f6', border: '1px solid #e5e7eb', color: '#111',
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <PenLine size={14} strokeWidth={2.4} />
+            <span style={{ flex: 1, fontSize: '0.74rem', fontWeight: 800 }}>
+              Editing message · {Math.max(0, LIVE_CHAT_MAX_EDITS - (comments.find(x => x.id === editingId)?.editCount || 0))} left
+            </span>
+            <button
+              type="button"
+              aria-label="Cancel edit"
+              onClick={cancelEdit}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 2, display: 'flex' }}
+            >
+              <X size={16} strokeWidth={2.4} />
+            </button>
+          </div>
+        ) : null}
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -14618,7 +14880,8 @@ function PublicLiveCommentsPanel({
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  pushComment(text, pendingImage);
+                  if (editingId) submitEdit();
+                  else pushComment(text, pendingImage);
                 }
               }}
               placeholder={(chatLift === 0 && liveTypers.length > 0 && !text.trim()) ? '' : (myUsername ? `Comment as ${String(myUsername).replace(/^@/, '')}…` : 'Comment…')}
@@ -14743,6 +15006,10 @@ function PublicLiveCommentsPanel({
           <button
             type="button"
             onClick={() => {
+              if (editingId) {
+                submitEdit();
+                return;
+              }
               if (text.trim() || pendingImage || pendingVoice) {
                 pushComment(text, pendingImage, pendingVoice);
                 return;
