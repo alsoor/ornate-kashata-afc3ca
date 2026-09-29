@@ -795,9 +795,6 @@ function GlobalBottomNavigation() {
   const miniChunks = useRef<Blob[]>([]);
   const miniFileRef = useRef<HTMLInputElement | null>(null);
   const prevUserUnreadRef = useRef(0);
-  /** فقاعات النقر — مرة واحدة عند الضغط ثم تُزال تلقائياً (لا تتكرر كل ثانية) */
-  const [navBubble, setNavBubble] = useState<Record<string, number>>({});
-  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   // Plus button that lives inline in the profile/story page (under the header
   // grabber) instead of the bottom nav. Same menu, opens DOWNWARD since the
   // button sits near the top of the screen instead of the bottom.
@@ -815,6 +812,7 @@ function GlobalBottomNavigation() {
   const [liveKindOpen, setLiveKindOpen] = useState(false);
   const [friendsPanelOpen, setFriendsPanelOpen] = useState(false);
   const [storyMediaOpen, setStoryMediaOpen] = useState(false);
+  void friendsPanelOpen; void storyMediaOpen; // were read only by the removed bottom-bar plus button
   const settingsSheetOpen = location.pathname === '/settings' || location.pathname.startsWith('/settings');
 
   // ── Auto-hide bottom bar on scroll ──────────────────────────────────────
@@ -865,7 +863,6 @@ function GlobalBottomNavigation() {
     window.addEventListener('stooorna:story-media-closed', onMediaClose);
     window.addEventListener('stooorna:close-story-media', onMediaClose);
     const onLiveKind = (e: Event) => {
-      setPlusMenuOpen(false);
       setLiveKindOpen(true);
       const overPosts = !!(e as CustomEvent).detail?.overPosts;
       try {
@@ -889,51 +886,6 @@ function GlobalBottomNavigation() {
       window.removeEventListener('stooorna:live-map', onLiveMap);
     };
   }, []);
-  useEffect(() => {
-    if (!settingsSheetOpen) return;
-    setPlusMenuOpen(false);
-  }, [settingsSheetOpen]);
-  const navBubbleTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  function popNavBubble(id: string) {
-    if (navBubbleTimers.current[id]) clearTimeout(navBubbleTimers.current[id]);
-    const tick = Date.now();
-    setNavBubble(prev => ({ ...prev, [id]: tick }));
-    navBubbleTimers.current[id] = setTimeout(() => {
-      setNavBubble(prev => {
-        if (prev[id] !== tick) return prev;
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      delete navBubbleTimers.current[id];
-    }, 560);
-  }
-  function NavBubble({ id, color = 'rgba(0,188,212,0.55)' }: { id: string; color?: string }) {
-    const tick = navBubble[id];
-    if (!tick) return null;
-    return (
-      <span
-        key={tick}
-        aria-hidden
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: '50%',
-          width: 52,
-          height: 52,
-          marginLeft: -26,
-          marginTop: -26,
-          borderRadius: '50%',
-          border: `2px solid ${color}`,
-          boxShadow: `0 0 16px ${color}`,
-          pointerEvents: 'none',
-          animation: 'stooornaNavBubble 0.55s ease-out forwards',
-          zIndex: 2,
-        }}
-      />
-    );
-  }
-
   useEffect(() => {
     if (!user?.id || !isCompanyAccount) {
       setCompanyInbox([]);
@@ -2144,7 +2096,6 @@ function GlobalBottomNavigation() {
   useEffect(() => {
     const onOpenCallPicker = (e: Event) => {
       const detail = (e as CustomEvent).detail as { friendId?: string; direct?: boolean } | undefined;
-      setPlusMenuOpen(false);
       if (detail?.friendId && detail?.direct) {
         const fid = String(detail.friendId);
         pendingVideoRef.current = !!(detail as any).video;
@@ -5053,219 +5004,6 @@ function GlobalBottomNavigation() {
       position: 'relative',
     }}>
 
-        {/* Plus menu — Settings / Friends / Account live */}
-        <div style={{
-          position: 'absolute',
-          right: 8,
-          top: '50%',
-          transform: 'translateY(-50%)',
-          width: 48,
-          height: 40,
-          zIndex: 3,
-        }}>
-          {plusMenuOpen && (
-            <>
-              <button
-                type="button"
-                aria-label="Close menu"
-                onClick={() => setPlusMenuOpen(false)}
-                style={{
-                  position: 'fixed', inset: 0, zIndex: 10210,
-                  background: 'transparent', border: 'none', cursor: 'default',
-                }}
-              />
-              <div style={{
-                position: 'absolute',
-                bottom: 48,
-                right: 0,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 10,
-                zIndex: 10220,
-                animation: 'stooornaPlusFanIn 0.28s ease-out',
-              }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlusMenuOpen(false);
-                    popNavBubble('menu');
-                    if (settingsSheetOpen) {
-                      window.dispatchEvent(new CustomEvent('stooorna:close-settings-sheet'));
-                      return;
-                    }
-                    navigate('/settings');
-                  }}
-                  aria-label="Settings"
-                  style={{
-                    width: 44, height: 44, borderRadius: '50%',
-                    border: '1px solid rgba(0,188,212,0.4)',
-                    background: 'rgba(6,20,22,0.96)',
-                    color: '#00BCD4',
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                  }}
-                >
-                  <Settings size={20} strokeWidth={2.2} />
-                </button>
-                {user && (
-                <div style={{
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPlusMenuOpen(false);
-                      setHomeCallPickerOpen(true);
-                    }}
-                    aria-label="Call"
-                    style={{
-                      width: 44, height: 44, borderRadius: '50%',
-                      border: '1px solid rgba(0,188,212,0.4)',
-                      background: 'rgba(6,20,22,0.96)',
-                      color: '#00BCD4',
-                      cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                    }}
-                  >
-                    <Phone size={20} strokeWidth={2.2} />
-                  </button>
-                </div>
-                )}
-                {user && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlusMenuOpen(false);
-                    popNavBubble('friends');
-                    setFriendsPanelOpen(true);
-                    const open = () => {
-                      try {
-                        window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', {
-                          detail: { tab: 'friends' },
-                        }));
-                      } catch { /* */ }
-                    };
-                    if (location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend')) {
-                      open();
-                      return;
-                    }
-                    navigate('/add-friend?tab=friends&openFriendsPanel=1');
-                    window.setTimeout(open, 80);
-                  }}
-                  aria-label="Friends"
-                  style={{
-                    width: 44, height: 44, borderRadius: '50%',
-                    border: '1px solid rgba(0,188,212,0.4)',
-                    background: 'rgba(6,20,22,0.96)',
-                    color: '#00BCD4',
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                  }}
-                >
-                  <Users size={20} strokeWidth={2.2} />
-                </button>
-                )}
-                {user && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlusMenuOpen(false);
-                    try { sessionStorage.removeItem('stooorna_return_text_posts'); } catch { /* ignore */ }
-                    setLiveKindOpen(true);
-                  }}
-                  aria-label="Account live broadcast"
-                  style={{
-                    width: 44, height: 44, borderRadius: '50%',
-                    border: myLiveActive ? '1px solid rgba(239,68,68,0.65)' : '1px solid rgba(0,188,212,0.4)',
-                    background: myLiveActive ? 'rgba(239,68,68,0.12)' : 'rgba(6,20,22,0.96)',
-                    color: myLiveActive ? '#ef4444' : '#00BCD4',
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: myLiveActive
-                      ? '0 0 14px rgba(239,68,68,0.55)'
-                      : '0 4px 16px rgba(0,0,0,0.45)',
-                    animation: myLiveActive ? 'stooornaLivePulse 1s ease-in-out infinite' : 'none',
-                  }}
-                >
-                  <Radio size={20} strokeWidth={2.2} />
-                </button>
-                )}
-              </div>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              popNavBubble('plus');
-              // If fan open -> close fan
-              if (plusMenuOpen) {
-                setPlusMenuOpen(false);
-                return;
-              }
-              // If settings open -> close settings
-              if (settingsSheetOpen) {
-                window.dispatchEvent(new CustomEvent('stooorna:close-settings-sheet'));
-                return;
-              }
-              // If friends square open -> close it
-              if (friendsPanelOpen) {
-                window.dispatchEvent(new CustomEvent('stooorna:close-friends-panel'));
-                setFriendsPanelOpen(false);
-                return;
-              }
-              if (homeCallPickerOpen) {
-                setHomeCallPickerOpen(false);
-                return;
-              }
-              if (storyMediaOpen) {
-                window.dispatchEvent(new CustomEvent('stooorna:close-story-media'));
-                setStoryMediaOpen(false);
-                return;
-              }
-              // Otherwise open fan
-              setPlusMenuOpen(true);
-            }}
-            aria-label="Open menu"
-            aria-expanded={plusMenuOpen || settingsSheetOpen || friendsPanelOpen}
-            style={{
-              position: 'absolute',
-              right: 0,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              width: 44,
-              height: 36,
-              border: 'none',
-              background: (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? 'rgba(0,188,212,0.14)' : 'transparent',
-              borderRadius: 12,
-              color: (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? '#00BCD4' : 'rgba(0,188,212,0.85)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 2,
-              WebkitTapHighlightColor: 'transparent',
-              boxShadow: 'none',
-            }}
-          >
-            <NavBubble id="plus" color="rgba(0,188,212,0.65)" />
-            <span style={{
-              display: 'flex',
-              transition: 'transform 0.25s ease',
-              transform: (plusMenuOpen || settingsSheetOpen || friendsPanelOpen) ? 'rotate(45deg)' : 'rotate(0deg)',
-              transformOrigin: 'center center',
-            }}>
-              <Plus size={26} strokeWidth={2.4} />
-            </span>
-          </button>
-        </div>
-
         {/* طلبات الإضافة تُستقبل من كاميرا نشر القصة — لا شارة عائمة هنا */}
       </div>
 
@@ -5346,7 +5084,6 @@ function GlobalBottomNavigation() {
             type="button"
             onClick={() => {
               setStoryPlusMenuOpen(false);
-              popNavBubble('friends');
               setFriendsPanelOpen(true);
               const open = () => {
                 try {
