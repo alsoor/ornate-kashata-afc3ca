@@ -843,10 +843,6 @@ function CallSwipeSheet({ progress, onCancel, labelColor }: CallSwipeSheetProps)
 export default function RecorderScreen({
   theme,
   appName,
-  onSettingsPress,
-  onUserPress,
-  onFriendsPress,
-  onGroupsPress,
   onCallPress,
   onFeedPress,
   pageTitle,
