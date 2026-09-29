@@ -14289,6 +14289,8 @@ function PublicLiveCommentsPanel({
   const [tplOpen, setTplOpen] = useState(false);
   const [openMediaId, setOpenMediaId] = useState<string | null>(null);
   const chatInputFocused = useRef(false);
+  /** timestamp of the last tap on a composer icon: the grid behind the chat ignores taps right after it (no click-through) */
+  const composerGuardRef = useRef(0);
   const recRef = useRef<MediaRecorder | null>(null);
   const recChunksRef = useRef<Blob[]>([]);
   const recStartedAt = useRef(0);
@@ -14685,9 +14687,9 @@ function PublicLiveCommentsPanel({
                   liked={myId ? vc.likes.includes(myId) : false}
                   name={displayName(vc)}
                   commentCount={commentCountOf(vc.id)}
-                  onLike={() => toggleLike(vc.id)}
-                  onOpen={() => setOpenMediaId(vc.id)}
-                  onOpenProfile={() => openProfileOf(vc)}
+                  onLike={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleLike(vc.id); }}
+                  onOpen={() => { if (Date.now() - composerGuardRef.current < 700) return; setOpenMediaId(vc.id); }}
+                  onOpenProfile={() => { if (Date.now() - composerGuardRef.current < 700) return; openProfileOf(vc); }}
                 />
               ))}
             </div>
@@ -15022,9 +15024,12 @@ function PublicLiveCommentsPanel({
             <button
               type="button"
               aria-label="صورة"
-              onPointerDown={e => {
-                e.preventDefault();
+              onPointerDown={e => { e.preventDefault(); e.stopPropagation(); composerGuardRef.current = Date.now(); }}
+              onClick={e => {
+                // Toggle on CLICK (not pointerdown): opening the dock moves the composer up, and a click that fires after that
+                // move used to land on the photos/videos behind the chat.
                 e.stopPropagation();
+                composerGuardRef.current = Date.now();
                 chatInputFocused.current = false;
                 setKbInset(0);
                 lockPageForKeyboard(false);
@@ -15039,45 +15044,21 @@ function PublicLiveCommentsPanel({
             <button
               type="button"
               aria-label="تسجيل صوتي"
-              onPointerDown={e => {
-                e.preventDefault();
+              onPointerDown={e => { e.preventDefault(); e.stopPropagation(); composerGuardRef.current = Date.now(); }}
+              onClick={e => {
                 e.stopPropagation();
-                chatInputFocused.current = false;
-                setKbInset(0);
-                lockPageForKeyboard(false);
-                setComposerDock(d => d === 'voice' ? 'none' : 'voice');
-                try { chatInputRef.current?.blur(); } catch { /* */ }
-              }}
-              onClick={async () => {
+                composerGuardRef.current = Date.now();
                 if (recording) {
                   recRef.current?.stop();
                   setRecording(false);
                   return;
                 }
-                try {
-                  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                  const rec = new MediaRecorder(stream);
-                  recChunksRef.current = [];
-                  recStartedAt.current = Date.now();
-                  rec.ondataavailable = ev => { if (ev.data.size) recChunksRef.current.push(ev.data); };
-                  rec.onstop = () => {
-                    stream.getTracks().forEach(tr => tr.stop());
-                    const blob = new Blob(recChunksRef.current, { type: 'audio/webm' });
-                    const duration = Math.max(1, Math.round((Date.now() - recStartedAt.current) / 1000));
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      const dataUrl = typeof reader.result === 'string' && reader.result.startsWith('data:')
-                        ? reader.result
-                        : URL.createObjectURL(blob);
-                      setPendingVoice({ url: dataUrl, duration });
-                    };
-                    reader.onerror = () => setPendingVoice({ url: URL.createObjectURL(blob), duration });
-                    reader.readAsDataURL(blob);
-                  };
-                  recRef.current = rec;
-                  rec.start();
-                  setRecording(true);
-                } catch { /* mic denied */ }
+                chatInputFocused.current = false;
+                setKbInset(0);
+                lockPageForKeyboard(false);
+                setEmojiOpen(false);
+                setComposerDock(d => d === 'voice' ? 'none' : 'voice');   // recording itself starts from the big mic button in the dock
+                try { chatInputRef.current?.blur(); } catch { /* */ }
               }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: recording ? '#ef4444' : '#111', padding: 6, display: 'flex' }}
             >
@@ -15086,17 +15067,16 @@ function PublicLiveCommentsPanel({
             <button
               type="button"
               aria-label="إيموجي"
-              onPointerDown={e => {
-                e.preventDefault();
+              onPointerDown={e => { e.preventDefault(); e.stopPropagation(); composerGuardRef.current = Date.now(); }}
+              onClick={e => {
                 e.stopPropagation();
+                composerGuardRef.current = Date.now();
                 chatInputFocused.current = false;
                 setKbInset(0);
                 lockPageForKeyboard(false);
-                setComposerDock(d => {
-                  const next = d === 'emoji' ? 'none' : 'emoji';
-                  setEmojiOpen(next === 'emoji');
-                  return next;
-                });
+                const next = composerDock === 'emoji' ? 'none' : 'emoji';
+                setComposerDock(next);
+                setEmojiOpen(next === 'emoji');
                 try { chatInputRef.current?.blur(); } catch { /* */ }
               }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
@@ -15106,9 +15086,10 @@ function PublicLiveCommentsPanel({
             <button
               type="button"
               aria-label="Templates"
-              onPointerDown={e => {
-                e.preventDefault();
+              onPointerDown={e => { e.preventDefault(); e.stopPropagation(); composerGuardRef.current = Date.now(); }}
+              onClick={e => {
                 e.stopPropagation();
+                composerGuardRef.current = Date.now();
                 chatInputFocused.current = false;
                 setKbInset(0);
                 lockPageForKeyboard(false);
@@ -15149,15 +15130,16 @@ function PublicLiveCommentsPanel({
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 8px 6px', borderBottom: '1px solid #ececec' }}>
               <div style={{ flex: 1, display: 'flex', gap: 4, overflow: 'hidden' }}>
                 {LIVE_CHAT_EMOJI_CATS.map((cat, i) => (
-                  <button key={cat.icon} type="button" onPointerDown={e => { e.preventDefault(); setEmojiCat(i); }} style={{ flex: 1, minWidth: 0, background: emojiCat === i ? '#fff' : 'transparent', border: '1px solid #e5e7eb', borderRadius: 10, padding: '6px 0', fontSize: '1.05rem', cursor: 'pointer' }}>{cat.icon}</button>
+                  <button key={cat.icon} type="button" onPointerDown={e => { e.preventDefault(); composerGuardRef.current = Date.now(); setEmojiCat(i); }} style={{ flex: 1, minWidth: 0, background: emojiCat === i ? '#fff' : 'transparent', border: '1px solid #e5e7eb', borderRadius: 10, padding: '6px 0', fontSize: '1.05rem', cursor: 'pointer' }}>{cat.icon}</button>
                 ))}
               </div>
               <button
                 type="button"
                 aria-label="كيبورد"
-                onPointerDown={e => {
-                  e.preventDefault();
+                onPointerDown={e => { e.preventDefault(); e.stopPropagation(); composerGuardRef.current = Date.now(); }}
+                onClick={e => {
                   e.stopPropagation();
+                  composerGuardRef.current = Date.now();
                   setComposerDock('none');
                   setEmojiOpen(false);
                   setTimeout(() => {
@@ -15174,14 +15156,14 @@ function PublicLiveCommentsPanel({
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 6, display: 'grid', gridTemplateColumns: 'repeat(8, minmax(0, 1fr))', gridAutoRows: '40px', gap: 2 }}>
               {(LIVE_CHAT_EMOJI_CATS[emojiCat]?.items || LIVE_EMOJI_PICKER).map(em => (
-                <button key={em} type="button" onPointerDown={e => { e.preventDefault(); setText(t => (t + em).slice(0, 500)); }} style={{ background: 'none', border: 'none', fontSize: '1.35rem', cursor: 'pointer', width: '100%', height: 40 }}>{em}</button>
+                <button key={em} type="button" onPointerDown={e => { e.preventDefault(); composerGuardRef.current = Date.now(); setText(t => (t + em).slice(0, 500)); }} style={{ background: 'none', border: 'none', fontSize: '1.35rem', cursor: 'pointer', width: '100%', height: 40 }}>{em}</button>
               ))}
             </div>
           </div>
         )}
         {composerDock === 'gallery' && (
           <div style={{ height: 'min(38vh, 300px)', borderTop: '1px solid #ececec', background: '#f7f7f8', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-            <button type="button" onClick={() => { stooornaHoldForFilePicker(); fileRef.current?.click(); }} style={{ padding: '10px 16px', borderRadius: 12, border: '1px solid #ddd', background: '#fff', fontWeight: 800, cursor: 'pointer' }}>اختيار صورة</button>
+            <button type="button" onClick={e => { e.stopPropagation(); composerGuardRef.current = Date.now(); stooornaHoldForFilePicker(); fileRef.current?.click(); }} style={{ padding: '10px 16px', borderRadius: 12, border: '1px solid #ddd', background: '#fff', fontWeight: 800, cursor: 'pointer' }}>اختيار صورة</button>
             {pendingImage ? <img src={pendingImage} alt="" style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 12 }} /> : <p style={{ margin: 0, color: '#888', fontSize: '0.8rem' }}>افتح المعرض من الأسفل</p>}
           </div>
         )}
