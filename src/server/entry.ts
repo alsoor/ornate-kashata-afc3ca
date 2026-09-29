@@ -220,6 +220,7 @@ import {
 import { loadIndexNowKey } from "./indexnow-key";
 import { isSystemHost } from "./seo-host";
 import { llmsTxtHandler } from "./llms-txt";
+import { registerVideoSwap } from "./video-swap";
 
 export interface SsrRenderResult {
 	html: string;
@@ -333,6 +334,9 @@ app.use(express.urlencoded({ extended: true }));
 // On Railway, mount a Volume at this path (or set ASSETS_DIR) so files survive redeploys.
 const ASSETS_DIR = process.env.ASSETS_DIR || '/shared-storage/public/assets';
 app.use('/airo-assets', express.static(ASSETS_DIR, { maxAge: '7d', fallthrough: true }));
+
+// ── AI video merge (live-chat film icon): POST/GET /api/video-swap — needs FAL_KEY ──
+registerVideoSwap(app, ASSETS_DIR);
 
 // ── Story delete: real server-side delete (friends stop seeing it) ───────────
 // Must be registered BEFORE the generic status routes below.
