@@ -1,277 +1,199 @@
-import type { Express, Request, Response, NextFunction } from "express";
-import multer from "multer";
-import { randomUUID } from "node:crypto";
-import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
 /**
- * AI video merge for the live-chat film icon: takes the user's video + photo and replaces the
- * person in the video with the person in the photo (fal.ai PixVerse Swap, mode "person").
+ * /api/video-swap — real AI "put YOU in the video" backend.
  *
- *   POST /api/video-swap        multipart {userId, video, photo}  → { ok, jobId }
- *   GET  /api/video-swap?job=ID                                   → { status: processing|done|error, url? }
+ *   POST  multipart {userId, video, photo, duration?}  → 202 {jobId}
+ *   GET   ?job=ID                                       → {status: 'queued'|'working'|'done'|'error', url?, error?}
  *
- * The finished MP4 is downloaded and re-hosted under ASSETS_DIR (served at /airo-assets/...),
- * so posts never depend on the provider's CDN.
+ * Model: fal.ai  fal-ai/wan/v2.2-14b/animate/replace  (Alibaba Wan 2.2 Animate — replaces the person in the
+ * video with the person in the photo, keeping the original motion, expressions, lighting and scene).
  *
- * Env:
- *   FAL_KEY                       required (https://fal.ai/dashboard/keys)
- *   PUBLIC_BASE_URL               optional, e.g. https://stooorna.com (else derived from the request)
- *   VIDEO_SWAP_RESOLUTION         360p | 540p | 720p            (default 720p)
- *   VIDEO_SWAP_MAX_MB             max input video size           (default 25)
- *   VIDEO_SWAP_USER_PER_HOUR      per user                       (default 5)
- *   VIDEO_SWAP_IP_PER_HOUR        per IP                         (default 10)
- *   VIDEO_SWAP_DAILY_CAP          all users, per UTC day         (default 100)
- *   VIDEO_SWAP_FAL_ENDPOINT       default fal-ai/pixverse/swap
+ * Setup:
+ *   npm i express multer @fal-ai/client          (+ npm i -D @types/multer if you use TypeScript types)
+ *   Render → Environment:  FAL_KEY=xxxxxxxx      (create it at https://fal.ai/dashboard/keys)
+ *   Mount once in the server entry:
+ *       import videoSwapRouter from './video-swap';
+ *       app.use('/api/video-swap', videoSwapRouter);
+ *
+ * Optional env: VIDEO_SWAP_RESOLUTION (480p | 580p | 720p, default 480p),
+ *               VIDEO_SWAP_MAX_PER_HOUR (default 5 per user), VIDEO_SWAP_MAX_SEC (default 30),
+ *               VIDEO_SWAP_MAX_MB (default 50).
  */
+import { Router, type Request, type Response } from 'express';
+import multer from 'multer';
+import { fal } from '@fal-ai/client';
+
+const MODEL_ID = 'fal-ai/wan/v2.2-14b/animate/replace';
+const MAX_SEC = Number(process.env.VIDEO_SWAP_MAX_SEC || 30);
+const MAX_MB = Number(process.env.VIDEO_SWAP_MAX_MB || 50);
+const MAX_PER_HOUR = Number(process.env.VIDEO_SWAP_MAX_PER_HOUR || 5);
+const RESOLUTION = (['480p', '580p', '720p'].includes(String(process.env.VIDEO_SWAP_RESOLUTION))
+  ? String(process.env.VIDEO_SWAP_RESOLUTION)
+  : '480p') as '480p' | '580p' | '720p';
+const JOB_TTL_MS = 60 * 60 * 1000;
 
 type Job = {
-  id: string;
   userId: string;
+  requestId: string;
   createdAt: number;
-  status: "processing" | "done" | "error";
-  statusUrl: string;
-  responseUrl: string;
-  inputs: string[];
+  status: 'queued' | 'working' | 'done' | 'error';
   url?: string;
   error?: string;
-  finalizing?: Promise<void>;
+  code?: string;
 };
 
-type UploadedFile = { buffer: Buffer; mimetype: string; size: number; originalname: string };
-
-const FAL_BASE = () => (process.env.VIDEO_SWAP_FAL_BASE || "https://queue.fal.run").replace(/\/$/, "");
-const FAL_ENDPOINT = () => process.env.VIDEO_SWAP_FAL_ENDPOINT || "fal-ai/pixverse/swap";
-const num = (v: string | undefined, d: number) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
-const MAX_VIDEO_MB = () => num(process.env.VIDEO_SWAP_MAX_MB, 25);
-const USER_PER_HOUR = () => num(process.env.VIDEO_SWAP_USER_PER_HOUR, 5);
-const IP_PER_HOUR = () => num(process.env.VIDEO_SWAP_IP_PER_HOUR, 10);
-const DAILY_CAP = () => num(process.env.VIDEO_SWAP_DAILY_CAP, 100);
-
-const HOUR = 60 * 60 * 1000;
-const JOB_TIMEOUT_MS = 10 * 60 * 1000;
-const JOB_KEEP_MS = HOUR;
-const OUT_KEEP_MS = 48 * HOUR;
-const TMP_KEEP_MS = 30 * 60 * 1000;
-
 const jobs = new Map<string, Job>();
-const userHits = new Map<string, number[]>();
-const ipHits = new Map<string, number[]>();
-let daily = { day: "", count: 0 };
+const history = new Map<string, number[]>(); // userId → timestamps of started jobs
 
-const falAuth = () => ({ Authorization: `Key ${process.env.FAL_KEY || ""}` });
-const outDirOf = (assetsDir: string) => join(assetsDir, "video-swap");
-const tmpDirOf = (assetsDir: string) => join(assetsDir, "video-swap", "tmp");
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_MB * 1024 * 1024, files: 2 },
+});
 
-function recent(map: Map<string, number[]>, key: string): number[] {
+function sweep() {
   const now = Date.now();
-  const list = (map.get(key) || []).filter((t) => now - t < HOUR);
-  map.set(key, list);
-  return list;
-}
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
-function dailyCount() {
-  if (daily.day !== todayKey()) daily = { day: todayKey(), count: 0 };
-  return daily.count;
-}
-
-function extFor(mime: string, kind: "video" | "image"): string {
-  const m = (mime || "").toLowerCase();
-  if (kind === "video") {
-    if (m.includes("quicktime")) return ".mov";
-    if (m.includes("webm")) return ".webm";
-    return ".mp4";
+  for (const [id, j] of jobs) if (now - j.createdAt > JOB_TTL_MS) jobs.delete(id);
+  for (const [u, list] of history) {
+    const fresh = list.filter(t => now - t < 60 * 60 * 1000);
+    if (fresh.length) history.set(u, fresh); else history.delete(u);
   }
-  if (m.includes("png")) return ".png";
-  if (m.includes("webp")) return ".webp";
-  return ".jpg";
+}
+setInterval(sweep, 5 * 60 * 1000).unref?.();
+
+function fail(res: Response, status: number, code: string, message: string) {
+  return res.status(status).json({ error: code, code, message });
 }
 
-function publicBase(req: Request): string {
-  const env = (process.env.PUBLIC_BASE_URL || "").trim().replace(/\/$/, "");
-  return env || `${req.protocol}://${req.get("host")}`;
+function currentUserId(req: Request): string {
+  const r = req as any;
+  return String(
+    r.user?.id ?? r.session?.user?.id ?? r.session?.userId ?? r.auth?.userId ?? req.body?.userId ?? '',
+  ).trim();
 }
 
-async function cleanupInputs(job: Job) {
-  const list = job.inputs;
-  job.inputs = [];
-  await Promise.all(list.map((p) => rm(p, { force: true }).catch(() => {})));
+/** Real file-type check (magic bytes) — never trust the client mime type alone. */
+function looksLikeVideo(b: Buffer): boolean {
+  if (b.length < 12) return false;
+  if (b.slice(4, 8).toString('ascii') === 'ftyp') return true;                       // mp4 / mov / 3gp
+  if (b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return true; // webm / mkv
+  return false;
+}
+function looksLikeImage(b: Buffer): boolean {
+  if (b.length < 12) return false;
+  if (b[0] === 0xff && b[1] === 0xd8) return true;                                   // jpeg
+  if (b.slice(1, 4).toString('ascii') === 'PNG') return true;                        // png
+  if (b.slice(0, 4).toString('ascii') === 'RIFF' && b.slice(8, 12).toString('ascii') === 'WEBP') return true;
+  return false;
 }
 
-async function falSubmit(input: Record<string, unknown>) {
-  const r = await fetch(`${FAL_BASE()}/${FAL_ENDPOINT()}`, {
-    method: "POST",
-    headers: { ...falAuth(), "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`fal submit ${r.status}: ${text.slice(0, 300)}`);
-  const d = JSON.parse(text) as { request_id?: string; status_url?: string; response_url?: string };
-  if (!d.status_url || !d.response_url) throw new Error("fal submit: unexpected response");
-  return { statusUrl: d.status_url, responseUrl: d.response_url };
+function mapProviderError(e: any): { status: number; code: string; message: string } {
+  const status = Number(e?.status || e?.response?.status || 0);
+  const text = String(e?.message || e?.body?.detail || '').toLowerCase();
+  if (status === 401 || status === 403 || text.includes('balance') || text.includes('locked') || text.includes('unauthorized')) {
+    return { status: 503, code: 'PROVIDER_AUTH', message: 'خدمة الذكاء الاصطناعي متوقفة مؤقتاً (تحقق من مفتاح FAL_KEY ورصيد الحساب في السيرفر)' };
+  }
+  if (status === 429) return { status: 429, code: 'LIMIT', message: 'الخدمة مزدحمة الحين، حاول بعد شوي' };
+  if (status === 422 || text.includes('safety') || text.includes('nsfw') || text.includes('content')) {
+    return { status: 422, code: 'REJECTED', message: 'ما قدر الذكاء الاصطناعي يعالج هذا الفيديو أو الصورة، جرّب صورة وجه واضحة من الأمام وفيديو فيه شخص واضح' };
+  }
+  return { status: 502, code: 'PROVIDER', message: 'تعذّر الاتصال بخدمة الذكاء الاصطناعي، حاول مرة ثانية' };
 }
 
-async function finalize(job: Job, assetsDir: string) {
+async function runJob(id: string, video: Buffer, videoType: string, photo: Buffer) {
+  const job = jobs.get(id);
+  if (!job) return;
   try {
-    const rr = await fetch(job.responseUrl, { headers: falAuth() });
-    if (!rr.ok) throw new Error(`fal result ${rr.status}`);
-    const data = (await rr.json()) as { video?: { url?: string }; response?: { video?: { url?: string } } };
-    const src = data?.video?.url || data?.response?.video?.url;
-    if (!src) throw new Error("fal result has no video");
-    const vr = await fetch(src);
-    if (!vr.ok) throw new Error(`download ${vr.status}`);
-    const buf = Buffer.from(await vr.arrayBuffer());
-    await mkdir(outDirOf(assetsDir), { recursive: true });
-    await writeFile(join(outDirOf(assetsDir), `${job.id}.mp4`), buf);
-    job.url = `/airo-assets/video-swap/${job.id}.mp4`;
-    job.status = "done";
-  } catch (e) {
-    job.status = "error";
-    job.error = "FAILED";
-    console.error("video-swap.finalize", { job: job.id, error: e instanceof Error ? e.message : String(e) });
-  } finally {
-    await cleanupInputs(job);
+    const [videoUrl, imageUrl] = await Promise.all([
+      fal.storage.upload(new Blob([new Uint8Array(video)], { type: videoType || 'video/mp4' })),
+      fal.storage.upload(new Blob([new Uint8Array(photo)], { type: 'image/jpeg' })),
+    ]);
+    const { request_id } = await fal.queue.submit(MODEL_ID, {
+      input: {
+        video_url: videoUrl,
+        image_url: imageUrl,
+        resolution: RESOLUTION,
+        enable_safety_checker: true,
+      } as any,
+    });
+    job.requestId = request_id;
+    job.status = 'queued';
+
+    // Poll the provider until it finishes (the browser polls OUR endpoint, not the provider).
+    const t0 = Date.now();
+    while (Date.now() - t0 < 12 * 60 * 1000) {
+      await new Promise(r => setTimeout(r, 3000));
+      const st: any = await fal.queue.status(MODEL_ID, { requestId: request_id });
+      if (st.status === 'IN_PROGRESS') job.status = 'working';
+      if (st.status === 'COMPLETED') {
+        const out: any = await fal.queue.result(MODEL_ID, { requestId: request_id });
+        const url = out?.data?.video?.url || out?.data?.video_url || out?.data?.url;
+        if (!url) throw Object.assign(new Error('no video in result'), { status: 502 });
+        job.url = String(url);
+        job.status = 'done';
+        return;
+      }
+    }
+    throw Object.assign(new Error('timeout'), { code: 'TIMEOUT' });
+  } catch (e: any) {
+    if (e?.code === 'TIMEOUT') {
+      job.status = 'error'; job.code = 'TIMEOUT'; job.error = 'طوّلت العملية، حاول مرة ثانية';
+    } else {
+      const m = mapProviderError(e);
+      job.status = 'error'; job.code = m.code; job.error = m.message;
+      console.error('[video-swap] job failed:', e?.status || '', e?.message || e);
+    }
   }
 }
 
-/** Called on every status poll from the client: asks fal, and finishes the job when it is ready. */
-async function advance(job: Job, assetsDir: string) {
-  if (job.status !== "processing") return;
-  if (job.finalizing) { await job.finalizing; return; }
-  if (Date.now() - job.createdAt > JOB_TIMEOUT_MS) {
-    job.status = "error";
-    job.error = "TIMEOUT";
-    await cleanupInputs(job);
-    return;
+const router = Router();
+
+router.post('/', upload.fields([{ name: 'video', maxCount: 1 }, { name: 'photo', maxCount: 1 }]), (req: Request, res: Response) => {
+  if (!process.env.FAL_KEY) {
+    return fail(res, 503, 'NO_KEY', 'خدمة دمج الفيديو غير مفعّلة على السيرفر بعد (FAL_KEY ناقص)');
   }
-  let st: { status?: string } | null = null;
-  try {
-    const r = await fetch(job.statusUrl, { headers: falAuth() });
-    if (r.ok) st = (await r.json()) as { status?: string };
-  } catch { /* transient — next poll retries */ }
-  if (!st || st.status !== "COMPLETED") return;
-  job.finalizing = finalize(job, assetsDir).finally(() => { job.finalizing = undefined; });
-  await job.finalizing;
-}
+  fal.config({ credentials: process.env.FAL_KEY });
 
-export async function handleSubmit(req: Request, res: Response, assetsDir: string) {
-  const body = (req.body || {}) as Record<string, unknown>;
-  const userId = String(body.userId || "").trim().slice(0, 128);
-  if (!userId) return res.status(401).json({ error: "LOGIN" });
+  const userId = currentUserId(req);
+  if (!userId) return fail(res, 401, 'LOGIN', 'سجّل دخولك أول');
 
-  const files = ((req as unknown as { files?: Record<string, UploadedFile[]> }).files) || {};
+  const files = (req.files || {}) as Record<string, Express.Multer.File[]>;
   const video = files.video?.[0];
   const photo = files.photo?.[0];
-  if (!video || !photo) return res.status(400).json({ error: "FILES" });
-  if (!/^video\//i.test(video.mimetype) || !/^image\//i.test(photo.mimetype)) return res.status(400).json({ error: "TYPE" });
-  if (video.size > MAX_VIDEO_MB() * 1024 * 1024) return res.status(413).json({ error: "TOO_BIG" });
+  if (!video || !photo) return fail(res, 400, 'MISSING', 'لازم ترسل الفيديو والصورة');
+  if (!looksLikeVideo(video.buffer)) return fail(res, 400, 'BAD_VIDEO', 'ملف الفيديو غير صالح');
+  if (!looksLikeImage(photo.buffer)) return fail(res, 400, 'BAD_PHOTO', 'ملف الصورة غير صالح');
 
-  const ip = String(req.ip || "unknown");
+  const dur = Number(req.body?.duration);
+  if (Number.isFinite(dur) && dur > MAX_SEC + 0.5) {
+    return fail(res, 400, 'TOO_LONG', `الفيديو أطول من ${MAX_SEC} ثانية`);
+  }
+
+  sweep();
+  // One active job per user + hourly quota (each generation costs real money).
   for (const j of jobs.values()) {
-    if (j.userId === userId && j.status === "processing") return res.status(429).json({ error: "BUSY" });
-  }
-  if (recent(userHits, userId).length >= USER_PER_HOUR() || recent(ipHits, ip).length >= IP_PER_HOUR() || dailyCount() >= DAILY_CAP()) {
-    return res.status(429).json({ error: "LIMIT" });
-  }
-
-  const id = randomUUID();
-  const vName = `${id}-video${extFor(video.mimetype, "video")}`;
-  const pName = `${id}-photo${extFor(photo.mimetype, "image")}`;
-  const tmpDir = tmpDirOf(assetsDir);
-  const vPath = join(tmpDir, vName);
-  const pPath = join(tmpDir, pName);
-  const job: Job = { id, userId, createdAt: Date.now(), status: "processing", statusUrl: "", responseUrl: "", inputs: [vPath, pPath] };
-
-  try {
-    await mkdir(tmpDir, { recursive: true });
-    await writeFile(vPath, video.buffer);
-    await writeFile(pPath, photo.buffer);
-    const base = publicBase(req);
-    const sub = await falSubmit({
-      video_url: `${base}/airo-assets/video-swap/tmp/${vName}`,
-      image_url: `${base}/airo-assets/video-swap/tmp/${pName}`,
-      mode: "person",
-      keyframe_id: 1,
-      resolution: process.env.VIDEO_SWAP_RESOLUTION || "720p",
-      original_sound_switch: true,
-    });
-    job.statusUrl = sub.statusUrl;
-    job.responseUrl = sub.responseUrl;
-  } catch (e) {
-    console.error("video-swap.submit", { user: userId, error: e instanceof Error ? e.message : String(e) });
-    await cleanupInputs(job);
-    return res.status(502).json({ error: "UPSTREAM" });
-  }
-
-  jobs.set(id, job);
-  recent(userHits, userId).push(Date.now());
-  recent(ipHits, ip).push(Date.now());
-  dailyCount();
-  daily.count += 1;
-  return res.json({ ok: true, jobId: id });
-}
-
-export async function handleStatus(req: Request, res: Response, assetsDir: string) {
-  res.setHeader("Cache-Control", "no-store");
-  const job = jobs.get(String(req.query.job || ""));
-  if (!job) return res.status(404).json({ status: "error", error: "NOT_FOUND" });
-  await advance(job, assetsDir);
-  if (job.status === "done") return res.json({ status: "done", url: job.url });
-  if (job.status === "error") return res.json({ status: "error", error: job.error || "FAILED" });
-  return res.json({ status: "processing" });
-}
-
-async function sweep(assetsDir: string) {
-  const now = Date.now();
-  for (const [id, j] of jobs) {
-    if (now - j.createdAt > JOB_KEEP_MS) {
-      await cleanupInputs(j);
-      jobs.delete(id);
+    if (j.userId === userId && (j.status === 'queued' || j.status === 'working')) {
+      return fail(res, 429, 'BUSY', 'عندك عملية دمج شغّالة الحين، انتظر تخلص');
     }
   }
-  for (const [dir, keep] of [[outDirOf(assetsDir), OUT_KEEP_MS], [tmpDirOf(assetsDir), TMP_KEEP_MS]] as const) {
-    let names: string[] = [];
-    try { names = await readdir(dir); } catch { continue; }
-    for (const n of names) {
-      const p = join(dir, n);
-      try {
-        const s = await stat(p);
-        if (s.isFile() && now - s.mtimeMs > keep) await rm(p, { force: true });
-      } catch { /* ignore */ }
-    }
-  }
-}
+  const recent = history.get(userId) || [];
+  if (recent.length >= MAX_PER_HOUR) return fail(res, 429, 'LIMIT', 'وصلت للحد المسموح حالياً، حاول بعد شوي');
+  history.set(userId, [...recent, Date.now()]);
 
-export function registerVideoSwap(app: Express, assetsDir: string) {
-  void rm(tmpDirOf(assetsDir), { recursive: true, force: true }).catch(() => {}); // leftovers from a previous run
-  const timer = setInterval(() => { void sweep(assetsDir); }, 10 * 60 * 1000);
-  timer.unref?.();
+  const id = `vs_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  jobs.set(id, { userId, requestId: '', createdAt: Date.now(), status: 'queued' });
+  void runJob(id, video.buffer, video.mimetype, photo.buffer);
+  return res.status(202).json({ jobId: id });
+});
 
-  const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: (MAX_VIDEO_MB() + 5) * 1024 * 1024, files: 2 },
-  }).fields([{ name: "video", maxCount: 1 }, { name: "photo", maxCount: 1 }]);
+router.get('/', (req: Request, res: Response) => {
+  const id = String(req.query.job || '');
+  const job = jobs.get(id);
+  if (!job) return fail(res, 404, 'NOT_FOUND', 'العملية غير موجودة أو انتهت صلاحيتها');
+  const userId = currentUserId(req);
+  if (userId && userId !== job.userId) return fail(res, 403, 'FORBIDDEN', 'مو مسموح');
+  res.setHeader('Cache-Control', 'no-store');
+  if (job.status === 'done') return res.json({ status: 'done', url: job.url });
+  if (job.status === 'error') return res.json({ status: 'error', error: job.error, code: job.code });
+  return res.json({ status: job.status });
+});
 
-  const gate = (_req: Request, res: Response, next: NextFunction) => {
-    if (!process.env.FAL_KEY) return res.status(503).json({ error: "NOT_CONFIGURED" });
-    next();
-  };
-
-  app.post(
-    "/api/video-swap",
-    gate,
-    (req: Request, res: Response, next: NextFunction) => {
-      upload(req, res, (err: unknown) => {
-        if (err) {
-          const code = (err as { code?: string }).code;
-          return res.status(code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: code === "LIMIT_FILE_SIZE" ? "TOO_BIG" : "UPLOAD" });
-        }
-        next();
-      });
-    },
-    (req: Request, res: Response) => { void handleSubmit(req, res, assetsDir); },
-  );
-  app.get("/api/video-swap", (req: Request, res: Response) => { void handleStatus(req, res, assetsDir); });
-}
+export default router;

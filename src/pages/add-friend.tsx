@@ -13633,10 +13633,10 @@ function LiveChatClearCountdown() {
 // chat list; it is shown outside the chat, in a 2-per-row autoplay grid when the chat is lowered.
 const LIVE_VIDEO_CAPTION = '🎬 AI Video';
 const VIDEO_SWAP_ENDPOINT = '/api/video-swap';   // POST multipart {video, photo} → {jobId} | {url}; GET ?job=ID → {status, url?, error?}
-const VIDEO_SWAP_MAX_MB = 25;
-const VIDEO_SWAP_MAX_SEC = 15;
+const VIDEO_SWAP_MAX_MB = 50;
+const VIDEO_SWAP_MAX_SEC = 30;
 const VIDEO_SWAP_POLL_MS = 2500;
-const VIDEO_SWAP_TIMEOUT_MS = 5 * 60 * 1000;
+const VIDEO_SWAP_TIMEOUT_MS = 12 * 60 * 1000;
 const LIVE_VIDEO_GALLERY_TOP = 'calc(max(8px, env(safe-area-inset-top)) + 72px)'; // clears the header grabber
 /** Opening the system gallery blurs the page; on return `focus`/`visibilitychange` used to run snapHomeLayout()
  *  which force-opened the header → the chat panel (and this studio) unmounted = "kicked out". Call right before .click(). */
@@ -13746,24 +13746,31 @@ function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url:
     try {
       const fd = new FormData();
       fd.append('userId', userId);
+      try { const dur = await videoSwapProbe(videoUrl || ''); if (isFinite(dur)) fd.append('duration', String(dur)); } catch { /* */ }
       fd.append('video', video, video.name || 'video.mp4');
       fd.append('photo', photo, 'photo.jpg');
       const r = await fetch(VIDEO_SWAP_ENDPOINT, { method: 'POST', body: fd, credentials: 'include', signal: ac.signal });
-      if (!r.ok) throw new Error(r.status === 404 || r.status === 503 ? 'NO_ENDPOINT' : r.status === 429 ? 'LIMIT' : r.status === 413 ? 'TOO_BIG' : r.status === 401 ? 'LOGIN' : `HTTP ${r.status}`);
+      if (!r.ok) {
+        const eb = await r.json().catch(() => null) as { message?: string; code?: string } | null;
+        if (eb?.message) throw Object.assign(new Error(eb.code || 'SERVER'), { serverMsg: eb.message });
+        throw new Error(r.status === 404 ? 'NO_ENDPOINT' : r.status === 429 ? 'LIMIT' : r.status === 413 ? 'TOO_BIG' : r.status === 401 ? 'LOGIN' : `HTTP ${r.status}`);
+      }
       const d = await r.json() as { url?: string; jobId?: string; id?: string };
       if (d.url) { setResultUrl(d.url); setStage('done'); setMsg(''); return; }
       const jobId = d.jobId || d.id;
       if (!jobId) throw new Error('NO_JOB');
-      setMsg('الذكاء الاصطناعي يدمجك بالفيديو… ممكن ياخذ دقيقة أو دقيقتين');
+      setMsg('الذكاء الاصطناعي يدمجك بالفيديو… ممكن ياخذ من 2 إلى 6 دقائق حسب طول الفيديو، لا تقفل الصفحة');
       const t0 = Date.now();
       while (Date.now() - t0 < VIDEO_SWAP_TIMEOUT_MS) {
         await sleep(VIDEO_SWAP_POLL_MS, ac.signal);
         if (ac.signal.aborted) return;
         const pr = await fetch(`${VIDEO_SWAP_ENDPOINT}?job=${encodeURIComponent(jobId)}`, { credentials: 'include', cache: 'no-store', signal: ac.signal });
+        if (pr.status === 404 || pr.status === 403) throw new Error('LOST');
         if (!pr.ok) continue;
         const pd = await pr.json() as { status?: string; url?: string; error?: string };
         if (pd.status === 'done' && pd.url) { setResultUrl(pd.url); setStage('done'); setMsg(''); return; }
-        if (pd.status === 'error' || pd.status === 'failed') throw new Error(pd.error || 'FAILED');
+        if (pd.status === 'working') setMsg('الذكاء الاصطناعي يشتغل على الدمج الحين…');
+        if (pd.status === 'error' || pd.status === 'failed') throw Object.assign(new Error('FAILED'), { serverMsg: pd.error });
       }
       throw new Error('TIMEOUT');
     } catch (e: any) {
@@ -13771,7 +13778,9 @@ function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url:
       const m = String(e?.message || '');
       setStage('error');
       setMsg(
-        m === 'NO_ENDPOINT' ? 'خدمة دمج الفيديو غير مفعّلة على السيرفر بعد'
+        (e as any)?.serverMsg ? String((e as any).serverMsg)
+        : m === 'LOST' ? 'انقطعت العملية (السيرفر انعاد تشغيله)، حاول مرة ثانية'
+        : m === 'NO_ENDPOINT' ? 'خدمة دمج الفيديو غير مفعّلة على السيرفر بعد'
         : m === 'LIMIT' ? 'وصلت للحد المسموح حالياً، حاول بعد شوي'
         : m === 'TOO_BIG' ? 'حجم الفيديو كبير على السيرفر'
         : m === 'LOGIN' ? 'سجّل دخولك أول'
@@ -13834,7 +13843,7 @@ function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url:
             </button>
           </div>
           <p style={{ margin: 0, textAlign: 'center', fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)' }}>
-            الفيديو حتى {VIDEO_SWAP_MAX_SEC} ثانية و{VIDEO_SWAP_MAX_MB}MB · صورة وجه واضحة من الأمام تعطي أحسن نتيجة
+            الفيديو حتى {VIDEO_SWAP_MAX_SEC} ثانية و{VIDEO_SWAP_MAX_MB}MB · صورة وجه واضحة من الأمام تعطي أحسن نتيجة · استخدم صورتك أنت أو صورة شخص وافق على ذلك
           </p>
           {msg ? <p style={{ margin: 0, textAlign: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#f87171' }}>{msg}</p> : null}
           <button
