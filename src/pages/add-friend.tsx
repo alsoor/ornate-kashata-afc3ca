@@ -14519,6 +14519,9 @@ const homeLiveCache: { uid: string; entries: HomeLiveEntry[]; since: Map<string,
 // البث ما يختفي من الرئيسية إلا إذا تأكدنا أنه منتهي فعلاً لمدة متواصلة (تجاوز أي انقطاع لحظي بالفحص/الشبكة)
 const HOME_LIVE_SILVER = 'linear-gradient(135deg,#f4f6f9 0%,#9ba3ae 28%,#e6e9ee 52%,#8a929d 78%,#f1f3f6 100%)';
 const HOME_LIVE_CHAT_LIFT_EVT = 'stooorna:chat-lift';
+// Many open broadcasts: list scrolls; finger up hides header + icon row, finger down shows them again.
+const HOME_LIVE_SCROLL_EVT = 'stooorna:home-live-scroll';
+const HOME_LIVE_SCROLL_MIN = 3;
 
 // أيقونات صف الهيدر: خافتة قليلاً عند الخمول، وعند النشاط تتحول للأخضر (أو البرتقالي لطلبات الإضافة) مع إضاءة واضحة. (بدل النقاط)
 function hdrIconTone(active: boolean, tone: 'green' | 'orange' = 'green'): React.CSSProperties {
@@ -14559,11 +14562,12 @@ function BottomHeaderPortal({ enabled, children }: { enabled: boolean; children:
   return createPortal(<>{children}</>, document.body);
 }
 
-function HomeLiveStack({ myId, hosts, enabled, showCards, guest, onGuestTap }: {
+function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGuestTap }: {
   myId: string;
   hosts: HomeLiveHost[];
   enabled: boolean;
   showCards: boolean;
+  collapsed?: boolean;
   guest?: boolean;
   onGuestTap?: () => void;
 }) {
@@ -14589,6 +14593,26 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, guest, onGuestTap }: {
   const videoTracksRef = useRef<Map<string, any>>(new Map());
   const videoRefCbs = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
   const cardElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  // ── scroll-to-hide state (used when there are many open broadcasts) ──
+  const liveScrollLastTopRef = useRef(0);
+  const liveScrollLockRef = useRef(0);
+  const liveScrollHiddenRef = useRef(false);
+  liveScrollHiddenRef.current = !!collapsed;
+  const liveVisibleList = showCards ? entries.filter(e => !dismissed.has(e.id) && liveSharedIsHeld(e.id)) : [];
+  const liveCount = liveVisibleList.length;
+  const liveScrollMode = liveCount >= HOME_LIVE_SCROLL_MIN;
+  // fewer broadcasts than the threshold (or leaving the page) -> bring header back
+  useEffect(() => {
+    if (!liveScrollMode && liveScrollHiddenRef.current) {
+      liveScrollHiddenRef.current = false;
+      try { window.dispatchEvent(new CustomEvent(HOME_LIVE_SCROLL_EVT, { detail: { hidden: false } })); } catch { /* */ }
+    }
+  }, [liveScrollMode]);
+  useEffect(() => () => {
+    if (liveScrollHiddenRef.current) {
+      try { window.dispatchEvent(new CustomEvent(HOME_LIVE_SCROLL_EVT, { detail: { hidden: false } })); } catch { /* */ }
+    }
+  }, []);
 
   const attachVideo = useCallback((hostId: string) => {
     const el = videoElsRef.current.get(hostId);
@@ -14904,8 +14928,24 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, guest, onGuestTap }: {
 
   if (typeof document === 'undefined') return null;
 
-  const visible = showCards ? entries.filter(e => !dismissed.has(e.id) && liveSharedIsHeld(e.id)) : [];
+  const visible = liveVisibleList;
   const topPx = anchorTop || 120;
+  const handleLiveListScroll = (ev: React.UIEvent<HTMLDivElement>) => {
+    if (!liveScrollMode) return;
+    const cur = ev.currentTarget.scrollTop;
+    const delta = cur - liveScrollLastTopRef.current;
+    liveScrollLastTopRef.current = cur;
+    // ignore the scroll jitter caused by the header/list resizing right after a toggle
+    if (Date.now() < liveScrollLockRef.current) return;
+    let hide: boolean | null = null;
+    if (cur <= 4) hide = false;          // back at the top -> show
+    else if (delta > 6) hide = true;     // finger up -> hide header + icons
+    else if (delta < -6) hide = false;   // finger down -> show them
+    if (hide === null || hide === liveScrollHiddenRef.current) return;
+    liveScrollHiddenRef.current = hide;
+    liveScrollLockRef.current = Date.now() + 550;
+    try { window.dispatchEvent(new CustomEvent(HOME_LIVE_SCROLL_EVT, { detail: { hidden: hide } })); } catch { /* */ }
+  };
 
   return createPortal(
     <>
@@ -14916,10 +14956,13 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, guest, onGuestTap }: {
           position: 'fixed', left: 0, right: 0, top: topPx, zIndex: 16,
           display: 'flex', flexDirection: 'column', gap: 10,
           padding: visible.length ? '8px 12px' : 0,
-          maxHeight: `calc(100dvh - ${topPx}px - 104px)`,
+          maxHeight: `calc(100dvh - ${topPx}px - ${collapsed ? 12 : 104}px)`,
           overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none',
-          pointerEvents: 'none',
+          WebkitOverflowScrolling: 'touch', touchAction: 'pan-y',
+          background: liveScrollMode && collapsed ? PAGE_BG : 'transparent',
+          pointerEvents: liveScrollMode && !lifted ? 'auto' : 'none',
         }}
+        onScroll={handleLiveListScroll}
       >
         <AnimatePresence initial={false}>
           {visible.map(e => {
@@ -17991,6 +18034,18 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // stories strip, new-post + inbox) like a shutter. Swiping up on the posts feed
   // also collapses it; scrolling back to the top expands it again.
   const [headerOpen, setHeaderOpen] = useState(true);
+  // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
+  const [liveScrollHidden, setLiveScrollHidden] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const hide = !!(e as CustomEvent).detail?.hidden;
+      setLiveScrollHidden(hide);
+      setHeaderOpen(!hide);
+    };
+    window.addEventListener(HOME_LIVE_SCROLL_EVT, on as EventListener);
+    return () => window.removeEventListener(HOME_LIVE_SCROLL_EVT, on as EventListener);
+  }, []);
+  useEffect(() => { if (headerOpen) setLiveScrollHidden(false); }, [headerOpen]);
   const [visitorProfileOpen, setVisitorProfileOpen] = useState(false);
   // Visitor (not signed in): header stays fully lifted, sign-in icon + language choice replace Settings
   const guestMode = !isPending && !user?.id;
@@ -26442,8 +26497,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               // Above public posts page (10300) when opened from its plus menu
               zIndex: textPostsPageOpen ? 10650 : 10080,
               background: 'rgba(0,0,0,0.45)',
-              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-              padding: '12px 16px calc(64px + env(safe-area-inset-bottom) + var(--stooorna-bottom-bar-h, 0px))',
+              display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+              // Box sits UNDER the header sheet: its top edge (Friends header) is at ~56% of the screen height
+              // (the green line), and never runs below the bottom icon row.
+              padding: 'min(56vh, calc(100dvh - 170px - 64px - env(safe-area-inset-bottom, 0px) - var(--stooorna-bottom-bar-h, 0px))) 16px 12px',
               boxSizing: 'border-box',
             }}
           >
@@ -26458,7 +26515,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 width: 'min(92vw, 360px)',
                 height: 170,
                 maxHeight: 170,
-                marginBottom: 'calc(min(56vh, 420px) - 170px)',
                 display: 'flex',
                 flexDirection: 'column',
                 background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
@@ -27463,7 +27519,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           myId={user?.id ? String(user.id) : (guestMode ? 'guest' : '')}
           hosts={homeLiveHosts}
           enabled={!isLiveRoute && !!user?.id}
-          showCards={pageTab === 'profile' && headerOpen && !isLiveRoute}
+          showCards={pageTab === 'profile' && (headerOpen || liveScrollHidden) && !isLiveRoute}
+          collapsed={liveScrollHidden}
           guest={guestMode}
           onGuestTap={() => {
             try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
@@ -27480,7 +27537,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         }}
       />
       {pageTab === 'profile' && !isFriendManagement && !guestMode && (
-        <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen} onToggleHeader={toggleHeaderOpen} />
+        <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen || liveScrollHidden} onToggleHeader={toggleHeaderOpen} />
       )}
       {GuestModal}
     </>;

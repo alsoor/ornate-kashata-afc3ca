@@ -13,6 +13,9 @@ import { playNotificationSound } from '@/lib/notificationSound';
 import SplashScreen from '@/components/SplashScreen';
 import WelcomeGuide from '@/components/WelcomeGuide';
 import { startPublicBadgeSync } from '@/lib/publicVisibility';
+// Welcome guide + splash are DISABLED (files kept). Set to true to bring them back.
+const WELCOME_SPLASH_ENABLED: boolean = false;
+
 interface RootLayoutProps {
   children: ReactElement;
 }
@@ -5418,6 +5421,7 @@ export default function RootLayout({
     return () => document.removeEventListener('pointerdown', buzz, true);
   }, []);
   const [showWelcome, setShowWelcome] = useState(() => {
+    if (!WELCOME_SPLASH_ENABLED) return false;
     try {
       return localStorage.getItem('stooorna_welcome_ok') !== '1';
     } catch {
@@ -5563,8 +5567,8 @@ export default function RootLayout({
   }, [isSettingsPage, settingsClosing, navigate]);
 
   return <Website>
-      {showWelcome ? <WelcomeGuide onEnter={finishWelcome} /> : null}
-      {!showWelcome && showSplash ? <SplashScreen onDone={finishSplash} /> : null}
+      {WELCOME_SPLASH_ENABLED && showWelcome ? <WelcomeGuide onEnter={finishWelcome} /> : null}
+      {WELCOME_SPLASH_ENABLED && !showWelcome && showSplash ? <SplashScreen onDone={finishSplash} /> : null}
       <Helmet>
         <title>Stooorna — Voice, Whisper &amp; Connect</title>
         <meta name="description" content="Stooorna is a real-time voice app for push-to-talk broadcasts, private whispers, group voice rooms, and instant messaging." />
