@@ -160,10 +160,18 @@ async function runJob(id: string, video: Buffer, videoType: string, photo: Buffe
       job.status = 'error'; job.code = m.code; job.error = m.message;
       console.error('[video-swap] job failed:', e?.status || '', e?.message || e);
     }
+    refundQuota(job.userId); // a failed generation shouldn't eat the user's hourly quota
   }
 }
 
+function refundQuota(userId: string) {
+  const list = history.get(userId);
+  if (list && list.length) { list.pop(); if (list.length) history.set(userId, list); else history.delete(userId); }
+}
+
 const router = Router();
+
+if (process.env.FAL_KEY) fal.config({ credentials: process.env.FAL_KEY });
 
 router.post('/', upload.fields([{ name: 'video', maxCount: 1 }, { name: 'photo', maxCount: 1 }]), (req: Request, res: Response) => {
   if (!process.env.FAL_KEY) {
@@ -204,6 +212,8 @@ router.post('/', upload.fields([{ name: 'video', maxCount: 1 }, { name: 'photo',
 });
 
 router.get('/', (req: Request, res: Response) => {
+  // Client asks "is Stooorna Ai switched on?" (FAL_KEY present) — never reveals the key.
+  if (req.query.ping) return res.json({ enabled: !!process.env.FAL_KEY });
   const id = String(req.query.job || '');
   const job = jobs.get(id);
   if (!job) return fail(res, 404, 'NOT_FOUND', 'العملية غير موجودة أو انتهت صلاحيتها');

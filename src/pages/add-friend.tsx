@@ -13689,108 +13689,185 @@ async function videoSwapPrepPhoto(file: File): Promise<Blob> {
 function videoSwapProbe(url: string): Promise<number> {
   return new Promise(res => {
     const v = document.createElement('video');
+    let done = false;
+    const fin = (n: number) => { if (done) return; done = true; window.clearTimeout(t); v.removeAttribute('src'); res(n); };
+    const t = window.setTimeout(() => fin(NaN), 8000);
     v.preload = 'metadata';
-    v.onloadedmetadata = () => res(v.duration);
-    v.onerror = () => res(NaN);
+    v.onloadedmetadata = () => fin(v.duration);
+    v.onerror = () => fin(NaN);
     v.src = url;
   });
 }
 
-function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url: string) => void; userId: string }) {
-  const [video, setVideo] = useState<File | null>(null);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [photo, setPhoto] = useState<Blob | null>(null);
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [stage, setStage] = useState<'pick' | 'working' | 'done' | 'error'>('pick');
-  const [msg, setMsg] = useState('');
-  const [resultUrl, setResultUrl] = useState<string | null>(null);
-  const vidInputRef = useRef<HTMLInputElement | null>(null);
-  const photoInputRef = useRef<HTMLInputElement | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+// ── Stooorna Ai — state lives OUTSIDE React ─────────────────────────────────────────────
+// Why: the studio is mounted in two different places of the tree (headerOpen true/false). When the system
+// gallery closes, headerOpen flips → React remounts the panel → useState was reset → the picked video/photo
+// vanished and the user had to pick again. A module-level store survives any remount, and the merge job keeps
+// running (and keeps its progress) even if the panel re-mounts.
+type VsStage = 'pick' | 'working' | 'done' | 'error';
+type VsState = {
+  video: Blob | null; videoUrl: string | null; duration: number;
+  photo: Blob | null; photoUrl: string | null;
+  stage: VsStage; msg: string; progress: number; resultUrl: string | null;
+  enabled: boolean | null;
+};
+let VS: VsState = { video: null, videoUrl: null, duration: NaN, photo: null, photoUrl: null, stage: 'pick', msg: '', progress: 0, resultUrl: null, enabled: null };
+const vsSubs = new Set<() => void>();
+let vsAbort: AbortController | null = null;
+const vsGet = () => VS;
+const vsSubscribe = (f: () => void) => { vsSubs.add(f); return () => { vsSubs.delete(f); }; };
+function vsSet(p: Partial<VsState>) { VS = { ...VS, ...p }; vsSubs.forEach(f => f()); }
+function vsReset() {
+  if (VS.videoUrl) URL.revokeObjectURL(VS.videoUrl);
+  if (VS.photoUrl) URL.revokeObjectURL(VS.photoUrl);
+  vsAbort?.abort(); vsAbort = null;
+  vsSet({ video: null, videoUrl: null, duration: NaN, photo: null, photoUrl: null, stage: 'pick', msg: '', progress: 0, resultUrl: null });
+}
+function vsCancel() { vsAbort?.abort(); vsAbort = null; vsSet({ stage: 'pick', msg: '', progress: 0 }); }
 
-  useEffect(() => () => { abortRef.current?.abort(); }, []);
-  useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
-  useEffect(() => () => { if (photoUrl) URL.revokeObjectURL(photoUrl); }, [photoUrl]);
+async function vsCheckEnabled() {
+  if (VS.enabled !== null) return;
+  try {
+    const r = await fetch(`${VIDEO_SWAP_ENDPOINT}?ping=1`, { credentials: 'include', cache: 'no-store' });
+    if (!r.ok) { vsSet({ enabled: r.status === 404 ? false : true }); return; }
+    const d = await r.json() as { enabled?: boolean };
+    vsSet({ enabled: d.enabled !== false });
+  } catch { vsSet({ enabled: true }); }
+}
 
-  const onPickVideo = async (f: File | undefined) => {
-    if (!f) return;
-    if (!f.type.startsWith('video/')) { setMsg('اختر ملف فيديو'); return; }
-    if (f.size > VIDEO_SWAP_MAX_MB * 1024 * 1024) { setMsg(`حجم الفيديو أكبر من ${VIDEO_SWAP_MAX_MB}MB`); return; }
-    const url = URL.createObjectURL(f);
+async function vsPickVideo(f: File | undefined) {
+  if (!f) return;
+  const okType = f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|3gp|mkv)$/i.test(f.name || '');
+  if (!okType) { vsSet({ msg: 'اختر ملف فيديو' }); return; }
+  if (f.size > VIDEO_SWAP_MAX_MB * 1024 * 1024) { vsSet({ msg: `حجم الفيديو أكبر من ${VIDEO_SWAP_MAX_MB}MB` }); return; }
+  try {
+    // Copy into memory right now: gallery/cloud files can become unreadable after the picker closes.
+    const buf = await f.arrayBuffer();
+    const blob = new Blob([buf], { type: f.type.startsWith('video/') ? f.type : 'video/mp4' });
+    const url = URL.createObjectURL(blob);
     const dur = await videoSwapProbe(url);
-    if (!isFinite(dur)) { URL.revokeObjectURL(url); setMsg('ما قدرت أقرأ هذا الفيديو، جرّب فيديو ثاني'); return; }
-    if (dur > VIDEO_SWAP_MAX_SEC + 0.5) { URL.revokeObjectURL(url); setMsg(`الفيديو أطول من ${VIDEO_SWAP_MAX_SEC} ثانية`); return; }
-    setVideo(f); setVideoUrl(url); setMsg(''); setStage('pick'); setResultUrl(null);
-  };
+    if (isFinite(dur) && dur > VIDEO_SWAP_MAX_SEC + 0.5) { URL.revokeObjectURL(url); vsSet({ msg: `الفيديو أطول من ${VIDEO_SWAP_MAX_SEC} ثانية` }); return; }
+    if (VS.videoUrl) URL.revokeObjectURL(VS.videoUrl);
+    vsSet({ video: blob, videoUrl: url, duration: dur, msg: '', stage: 'pick', resultUrl: null, progress: 0 });
+  } catch {
+    vsSet({ msg: 'ما قدرت أقرأ هذا الفيديو، جرّب فيديو ثاني' });
+  }
+}
 
-  const onPickPhoto = async (f: File | undefined) => {
-    if (!f) return;
-    try {
-      const blob = await videoSwapPrepPhoto(f);
-      setPhoto(blob); setPhotoUrl(URL.createObjectURL(blob)); setMsg(''); setStage('pick'); setResultUrl(null);
-    } catch {
-      setMsg('ما قدرت أقرأ هذي الصورة، جرّب صورة ثانية');
-    }
-  };
+async function vsPickPhoto(f: File | undefined) {
+  if (!f) return;
+  try {
+    const blob = await videoSwapPrepPhoto(f);
+    const url = URL.createObjectURL(blob);
+    if (VS.photoUrl) URL.revokeObjectURL(VS.photoUrl);
+    vsSet({ photo: blob, photoUrl: url, msg: '', stage: 'pick', resultUrl: null, progress: 0 });
+  } catch {
+    vsSet({ msg: 'ما قدرت أقرأ هذي الصورة، جرّب صورة ثانية' });
+  }
+}
 
-  const sleep = (ms: number, sig: AbortSignal) => new Promise<void>(res => {
-    const t = window.setTimeout(res, ms);
-    sig.addEventListener('abort', () => { window.clearTimeout(t); res(); }, { once: true });
+/** XHR (not fetch) so we get real upload progress. */
+function vsUpload(fd: FormData, sig: AbortSignal, onFrac: (f: number) => void) {
+  return new Promise<{ ok: boolean; status: number; json: any }>((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', VIDEO_SWAP_ENDPOINT);
+    x.withCredentials = true;
+    x.upload.onprogress = e => { if (e.lengthComputable && e.total > 0) onFrac(e.loaded / e.total); };
+    x.onload = () => {
+      let j: any = null;
+      try { j = JSON.parse(x.responseText); } catch { /* */ }
+      resolve({ ok: x.status >= 200 && x.status < 300, status: x.status, json: j });
+    };
+    x.onerror = () => reject(new Error('NETWORK'));
+    x.onabort = () => reject(new Error('ABORT'));
+    sig.addEventListener('abort', () => x.abort(), { once: true });
+    x.send(fd);
   });
+}
 
-  const run = async () => {
-    if (!video || !photo) return;
-    const ac = new AbortController();
-    abortRef.current = ac;
-    setStage('working'); setMsg('جاري رفع الفيديو والصورة…');
-    try {
-      const fd = new FormData();
-      fd.append('userId', userId);
-      try { const dur = await videoSwapProbe(videoUrl || ''); if (isFinite(dur)) fd.append('duration', String(dur)); } catch { /* */ }
-      fd.append('video', video, video.name || 'video.mp4');
-      fd.append('photo', photo, 'photo.jpg');
-      const r = await fetch(VIDEO_SWAP_ENDPOINT, { method: 'POST', body: fd, credentials: 'include', signal: ac.signal });
-      if (!r.ok) {
-        const eb = await r.json().catch(() => null) as { message?: string; code?: string } | null;
-        if (eb?.message) throw Object.assign(new Error(eb.code || 'SERVER'), { serverMsg: eb.message });
-        throw new Error(r.status === 404 ? 'NO_ENDPOINT' : r.status === 429 ? 'LIMIT' : r.status === 413 ? 'TOO_BIG' : r.status === 401 ? 'LOGIN' : `HTTP ${r.status}`);
-      }
-      const d = await r.json() as { url?: string; jobId?: string; id?: string };
-      if (d.url) { setResultUrl(d.url); setStage('done'); setMsg(''); return; }
-      const jobId = d.jobId || d.id;
-      if (!jobId) throw new Error('NO_JOB');
-      setMsg('الذكاء الاصطناعي يدمجك بالفيديو… ممكن ياخذ من 2 إلى 6 دقائق حسب طول الفيديو، لا تقفل الصفحة');
-      const t0 = Date.now();
-      while (Date.now() - t0 < VIDEO_SWAP_TIMEOUT_MS) {
-        await sleep(VIDEO_SWAP_POLL_MS, ac.signal);
-        if (ac.signal.aborted) return;
-        const pr = await fetch(`${VIDEO_SWAP_ENDPOINT}?job=${encodeURIComponent(jobId)}`, { credentials: 'include', cache: 'no-store', signal: ac.signal });
-        if (pr.status === 404 || pr.status === 403) throw new Error('LOST');
-        if (!pr.ok) continue;
-        const pd = await pr.json() as { status?: string; url?: string; error?: string };
-        if (pd.status === 'done' && pd.url) { setResultUrl(pd.url); setStage('done'); setMsg(''); return; }
-        if (pd.status === 'working') setMsg('الذكاء الاصطناعي يشتغل على الدمج الحين…');
-        if (pd.status === 'error' || pd.status === 'failed') throw Object.assign(new Error('FAILED'), { serverMsg: pd.error });
-      }
-      throw new Error('TIMEOUT');
-    } catch (e: any) {
+const vsSleep = (ms: number, sig: AbortSignal) => new Promise<void>(res => {
+  const t = window.setTimeout(res, ms);
+  sig.addEventListener('abort', () => { window.clearTimeout(t); res(); }, { once: true });
+});
+
+async function vsRun(userId: string) {
+  const { video, photo } = VS;
+  if (!video || !photo || VS.stage === 'working') return;
+  const ac = new AbortController();
+  vsAbort = ac;
+  let ticker: number | null = null;
+  const finish = async (url: string) => {
+    vsSet({ progress: 100, msg: 'تم الدمج ✅' });
+    await vsSleep(600, ac.signal);
+    vsSet({ stage: 'done', resultUrl: url, msg: '' });
+  };
+  vsSet({ stage: 'working', msg: 'جاري رفع الفيديو والصورة…', progress: 0, resultUrl: null });
+  try {
+    const fd = new FormData();
+    fd.append('userId', userId);
+    if (isFinite(VS.duration)) fd.append('duration', String(VS.duration));
+    fd.append('video', video, 'video.mp4');
+    fd.append('photo', photo, 'photo.jpg');
+    const up = await vsUpload(fd, ac.signal, fr => { const p = Math.round(fr * 20); if (p > VS.progress) vsSet({ progress: p }); });
+    if (!up.ok) {
+      const eb = up.json as { message?: string; code?: string } | null;
+      if (eb?.message) throw Object.assign(new Error(eb.code || 'SERVER'), { serverMsg: eb.message });
+      throw new Error(up.status === 404 ? 'NO_ENDPOINT' : up.status === 429 ? 'LIMIT' : up.status === 413 ? 'TOO_BIG' : up.status === 401 ? 'LOGIN' : `HTTP ${up.status}`);
+    }
+    const d = (up.json || {}) as { url?: string; jobId?: string; id?: string };
+    if (d.url) { await finish(d.url); return; }
+    const jobId = d.jobId || d.id;
+    if (!jobId) throw new Error('NO_JOB');
+    vsSet({ progress: Math.max(VS.progress, 20), msg: 'الذكاء الاصطناعي يدمجك بالفيديو… ممكن ياخذ من 2 إلى 6 دقائق، لا تقفل الصفحة' });
+    const t0 = Date.now();
+    // The provider gives no real percentage → the bar creeps towards 95 and only hits 100 when the video is really ready.
+    ticker = window.setInterval(() => {
+      if (VS.stage !== 'working') return;
+      const el = (Date.now() - t0) / 1000;
+      const target = Math.min(95, Math.round(20 + 75 * (1 - Math.exp(-el / 150))));
+      if (target > VS.progress) vsSet({ progress: target });
+    }, 800);
+    while (Date.now() - t0 < VIDEO_SWAP_TIMEOUT_MS) {
+      await vsSleep(VIDEO_SWAP_POLL_MS, ac.signal);
       if (ac.signal.aborted) return;
-      const m = String(e?.message || '');
-      setStage('error');
-      setMsg(
-        (e as any)?.serverMsg ? String((e as any).serverMsg)
+      let pr: Response;
+      try { pr = await fetch(`${VIDEO_SWAP_ENDPOINT}?job=${encodeURIComponent(jobId)}`, { credentials: 'include', cache: 'no-store', signal: ac.signal }); }
+      catch { if (ac.signal.aborted) return; continue; }
+      if (pr.status === 404 || pr.status === 403) throw new Error('LOST');
+      if (!pr.ok) continue;
+      const pd = await pr.json().catch(() => null) as { status?: string; url?: string; error?: string } | null;
+      if (!pd) continue;
+      if (pd.status === 'done' && pd.url) { await finish(pd.url); return; }
+      if (pd.status === 'working') vsSet({ msg: 'الذكاء الاصطناعي يشتغل على الدمج الحين…', progress: Math.max(VS.progress, 30) });
+      if (pd.status === 'error' || pd.status === 'failed') throw Object.assign(new Error('FAILED'), { serverMsg: pd.error });
+    }
+    throw new Error('TIMEOUT');
+  } catch (e: any) {
+    if (ac.signal.aborted) return;
+    const m = String(e?.message || '');
+    vsSet({
+      stage: 'error', progress: 0,
+      msg: e?.serverMsg ? String(e.serverMsg)
+        : m === 'NETWORK' ? 'تعذّر الاتصال بالسيرفر، تأكد من النت وحاول مرة ثانية'
         : m === 'LOST' ? 'انقطعت العملية (السيرفر انعاد تشغيله)، حاول مرة ثانية'
         : m === 'NO_ENDPOINT' ? 'خدمة دمج الفيديو غير مفعّلة على السيرفر بعد'
         : m === 'LIMIT' ? 'وصلت للحد المسموح حالياً، حاول بعد شوي'
         : m === 'TOO_BIG' ? 'حجم الفيديو كبير على السيرفر'
         : m === 'LOGIN' ? 'سجّل دخولك أول'
         : m === 'TIMEOUT' ? 'طوّلت العملية، حاول مرة ثانية'
-        : 'ما اكتمل الدمج، حاول مرة ثانية (يفضّل صورة وجه واضحة من الأمام)'
-      );
-    }
-  };
+        : 'ما اكتمل الدمج، حاول مرة ثانية (يفضّل صورة وجه واضحة من الأمام)',
+    });
+  } finally {
+    if (ticker != null) window.clearInterval(ticker);
+    if (vsAbort === ac) vsAbort = null;
+  }
+}
 
-  const cancel = () => { abortRef.current?.abort(); setStage('pick'); setMsg(''); };
+function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url: string) => void; userId: string }) {
+  const s = useSyncExternalStore(vsSubscribe, vsGet, vsGet);
+  const vidInputRef = useRef<HTMLInputElement | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => { void vsCheckEnabled(); }, []);
 
   const tile: React.CSSProperties = {
     flex: 1, minWidth: 0, aspectRatio: '3 / 4', borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
@@ -13802,57 +13879,60 @@ function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url:
     height: 46, borderRadius: 12, fontWeight: 800, fontSize: '0.9rem', cursor: 'pointer', border: 'none',
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%',
   };
+  const ready = !!s.video && !!s.photo;
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 14px 12px', display: 'flex', flexDirection: 'column', gap: 12, direction: 'rtl' }}>
       <style>{`@keyframes stooornaSwapSpin { to { transform: rotate(360deg) } }`}</style>
-      <input ref={vidInputRef} type="file" accept="video/*" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; void onPickVideo(f); }} />
-      <input ref={photoInputRef} type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; void onPickPhoto(f); }} />
+      <input ref={vidInputRef} type="file" accept="video/*" hidden onChange={e => { const el = e.target; const f = el.files?.[0]; void vsPickVideo(f).finally(() => { try { el.value = ''; } catch { /* */ } }); }} />
+      <input ref={photoInputRef} type="file" accept="image/*" hidden onChange={e => { const el = e.target; const f = el.files?.[0]; void vsPickPhoto(f).finally(() => { try { el.value = ''; } catch { /* */ } }); }} />
 
-      {stage === 'done' && resultUrl ? (
+      {s.stage === 'done' && s.resultUrl ? (
         <>
-          <video src={resultUrl} autoPlay loop muted playsInline controls style={{ width: '100%', maxHeight: '58vh', borderRadius: 14, background: '#000', objectFit: 'contain' }} />
+          <video src={s.resultUrl} autoPlay loop muted playsInline controls style={{ width: '100%', maxHeight: '58vh', borderRadius: 14, background: '#000', objectFit: 'contain' }} />
           <p style={{ margin: 0, textAlign: 'center', fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)' }}>هذي النتيجة، تبي تنشرها؟</p>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button type="button" onClick={() => { setStage('pick'); setResultUrl(null); }} style={{ ...btn, background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>إعادة</button>
-            <button type="button" onClick={() => onPost(LIVE_VIDEO_CAPTION, resultUrl)} style={{ ...btn, background: '#16a34a', color: '#fff' }}><Send size={18} /> نشر</button>
+            <button type="button" onClick={() => vsSet({ stage: 'pick', resultUrl: null, progress: 0 })} style={{ ...btn, background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>إعادة</button>
+            <button type="button" onClick={() => { const u = s.resultUrl as string; vsReset(); onPost(LIVE_VIDEO_CAPTION, u); }} style={{ ...btn, background: '#16a34a', color: '#fff' }}><Send size={18} /> نشر</button>
           </div>
         </>
-      ) : stage === 'working' ? (
+      ) : s.stage === 'working' ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '40px 10px' }}>
           <div style={{ width: 46, height: 46, borderRadius: '50%', border: '4px solid rgba(255,255,255,0.15)', borderTopColor: '#22c55e', animation: 'stooornaSwapSpin 0.9s linear infinite' }} />
-          <p style={{ margin: 0, textAlign: 'center', fontWeight: 700, fontSize: '0.88rem' }}>{msg}</p>
-          <button type="button" onClick={cancel} style={{ ...btn, width: 160, background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>إلغاء</button>
+          <p style={{ margin: 0, textAlign: 'center', fontWeight: 700, fontSize: '0.88rem' }}>{s.msg}</p>
+          <div style={{ width: '100%', maxWidth: 320, direction: 'ltr' }}>
+            <div style={{ height: 10, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+              <div style={{ width: `${s.progress}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#16a34a,#4ade80)', transition: 'width 0.6s ease' }} />
+            </div>
+            <p style={{ margin: '8px 0 0', textAlign: 'center', fontWeight: 800, fontSize: '0.95rem', letterSpacing: 0.5 }}>{s.progress}/100</p>
+          </div>
+          <button type="button" onClick={vsCancel} style={{ ...btn, width: 160, background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>إلغاء</button>
         </div>
       ) : (
         <>
           <p style={{ margin: 0, textAlign: 'center', fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)' }}>
-            {!video ? '١ — اختر الفيديو' : !photo ? '٢ — اختر صورتك' : '٣ — ادمج ونزّل النتيجة'}
+            {!s.video ? '١ — اختر الفيديو' : !s.photo ? '٢ — اختر صورتك' : '٣ — ادمج ونزّل النتيجة'}
           </p>
           <div style={{ display: 'flex', gap: 10, direction: 'ltr' }}>
-            <button type="button" onClick={() => { stooornaHoldForFilePicker(); vidInputRef.current?.click(); }} style={{ ...tile, borderStyle: video ? 'solid' : 'dashed' }}>
-              {videoUrl ? <video src={videoUrl} muted loop playsInline autoPlay style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (<><Film size={26} /><span>الفيديو</span></>)}
+            <button type="button" onClick={() => { stooornaHoldForFilePicker(); vidInputRef.current?.click(); }} style={{ ...tile, borderStyle: s.video ? 'solid' : 'dashed', borderColor: s.video ? '#22c55e' : undefined }}>
+              {s.videoUrl ? <video src={s.videoUrl} muted loop playsInline autoPlay style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (<><Film size={26} /><span>الفيديو</span></>)}
             </button>
-            <button
-              type="button"
-              disabled={!video}
-              onClick={() => { stooornaHoldForFilePicker(); photoInputRef.current?.click(); }}
-              style={{ ...tile, opacity: video ? 1 : 0.4, cursor: video ? 'pointer' : 'default', borderStyle: photo ? 'solid' : 'dashed' }}
-            >
-              {photoUrl ? <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (<><ImageIcon size={26} /><span>صورتك</span></>)}
+            <button type="button" onClick={() => { stooornaHoldForFilePicker(); photoInputRef.current?.click(); }} style={{ ...tile, borderStyle: s.photo ? 'solid' : 'dashed', borderColor: s.photo ? '#22c55e' : undefined }}>
+              {s.photoUrl ? <img src={s.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (<><ImageIcon size={26} /><span>صورتك</span></>)}
             </button>
           </div>
           <p style={{ margin: 0, textAlign: 'center', fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)' }}>
             الفيديو حتى {VIDEO_SWAP_MAX_SEC} ثانية و{VIDEO_SWAP_MAX_MB}MB · صورة وجه واضحة من الأمام تعطي أحسن نتيجة · استخدم صورتك أنت أو صورة شخص وافق على ذلك
           </p>
-          {msg ? <p style={{ margin: 0, textAlign: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#f87171' }}>{msg}</p> : null}
+          {s.enabled === false ? <p style={{ margin: 0, textAlign: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#fbbf24' }}>خدمة Stooorna Ai غير مفعّلة على السيرفر حالياً (FAL_KEY ناقص)</p> : null}
+          {s.msg ? <p style={{ margin: 0, textAlign: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#f87171' }}>{s.msg}</p> : null}
           <button
             type="button"
-            disabled={!video || !photo}
-            onClick={() => void run()}
-            style={{ ...btn, background: video && photo ? '#16a34a' : 'rgba(255,255,255,0.12)', color: video && photo ? '#fff' : 'rgba(255,255,255,0.4)', cursor: video && photo ? 'pointer' : 'default' }}
+            disabled={!ready}
+            onClick={() => void vsRun(userId)}
+            style={{ ...btn, background: ready ? '#16a34a' : 'rgba(255,255,255,0.12)', color: ready ? '#fff' : 'rgba(255,255,255,0.4)', cursor: ready ? 'pointer' : 'default' }}
           >
-            <Zap size={18} /> {stage === 'error' ? 'حاول مرة ثانية' : 'دمج بالذكاء الاصطناعي'}
+            <Zap size={18} /> {s.stage === 'error' ? 'حاول مرة ثانية' : 'دمج بالذكاء الاصطناعي'}
           </button>
         </>
       )}
@@ -13955,7 +14035,7 @@ function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px' }}>
-        <span style={{ fontWeight: 800, fontSize: '1rem' }}>Video AI</span>
+        <span style={{ fontWeight: 800, fontSize: '1rem' }}>Stooorna Ai</span>
         <button type="button" onClick={onClose} aria-label="Close" style={{
           width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff',
           cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -14794,7 +14874,7 @@ function PublicLiveCommentsPanel({
             </button>
             <button
               type="button"
-              aria-label="Video AI"
+              aria-label="Stooorna Ai"
               onPointerDown={e => {
                 e.preventDefault();
                 e.stopPropagation();
