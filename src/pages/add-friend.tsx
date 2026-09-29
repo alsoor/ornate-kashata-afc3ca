@@ -13628,15 +13628,14 @@ function LiveChatClearCountdown() {
 }
 
 // ── AI Video merge (film icon → pick video → pick your photo → AI puts YOU in the video) ─────
-// A posted AI video is a normal live-chat row: imageUrl = merged MP4 url, text = LIVE_VIDEO_CAPTION.
+// A shared public video/photo is a normal live-chat row: imageUrl = uploaded file url, text = LIVE_VIDEO_CAPTION / LIVE_PHOTO_CAPTION.
 // (Same trick as the templates, so no server schema change is needed.) It is NOT drawn inside the
 // chat list; it is shown outside the chat, in a 2-per-row autoplay grid when the chat is lowered.
-const LIVE_VIDEO_CAPTION = '🎬 AI Video';
-const VIDEO_SWAP_ENDPOINT = '/api/video-swap';   // POST multipart {video, photo} → {jobId} | {url}; GET ?job=ID → {status, url?, error?}
+const LIVE_VIDEO_CAPTION = '🎬 AI Video';   // legacy value kept on purpose: it is the marker of every video post already published
+const LIVE_PHOTO_CAPTION = '🖼 Photo';
+const VIDEO_SWAP_ENDPOINT = '/api/video-swap';   // (name kept so entry.ts needs no change) POST multipart {userId, kind, file} → {url}
 const VIDEO_SWAP_MAX_MB = 50;
 const VIDEO_SWAP_MAX_SEC = 30;
-const VIDEO_SWAP_POLL_MS = 2500;
-const VIDEO_SWAP_TIMEOUT_MS = 12 * 60 * 1000;
 const LIVE_VIDEO_GALLERY_TOP = 'calc(max(8px, env(safe-area-inset-top)) + 72px)'; // clears the header grabber
 /** Opening the system gallery blurs the page; on return `focus`/`visibilitychange` used to run snapHomeLayout()
  *  which force-opened the header → the chat panel (and this studio) unmounted = "kicked out". Call right before .click(). */
@@ -13662,7 +13661,14 @@ function stooornaHoldForFilePicker() {
     window.setTimeout(release, 10 * 60 * 1000);
   } catch { /* */ }
 }
-const isLiveVideoPost = (c: { imageUrl?: string | null; text: string }) => !!c.imageUrl && c.text === LIVE_VIDEO_CAPTION;
+const isLiveMediaPost = (c: { imageUrl?: string | null; text: string }) => !!c.imageUrl && (c.text === LIVE_VIDEO_CAPTION || c.text === LIVE_PHOTO_CAPTION);
+/** A comment on a public video/photo is a normal live-chat row whose text is "↩<postId>\u200b<comment>" (no server change needed).
+ *  It is hidden from the main chat list and shown only inside that post's viewer. */
+const MEDIA_CMT_RE = /^↩([^\u200b\s]+)\u200b([\s\S]*)$/;
+const parseMediaComment = (text: string): { parentId: string; body: string } | null => {
+  const m = MEDIA_CMT_RE.exec(String(text || ''));
+  return m ? { parentId: m[1], body: m[2] } : null;
+};
 
 async function videoSwapPrepPhoto(file: File): Promise<Blob> {
   const url = URL.createObjectURL(file);
@@ -13673,7 +13679,7 @@ async function videoSwapPrepPhoto(file: File): Promise<Blob> {
       i.onerror = () => rej(new Error('bad image'));
       i.src = url;
     });
-    const k = Math.min(1, 1024 / Math.max(im.naturalWidth, im.naturalHeight));
+    const k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(im.naturalWidth * k));
     c.height = Math.max(1, Math.round(im.naturalHeight * k));
@@ -13699,21 +13705,21 @@ function videoSwapProbe(url: string): Promise<number> {
   });
 }
 
-// ── Stooorna Ai — state lives OUTSIDE React ─────────────────────────────────────────────
-// Why: the studio is mounted in two different places of the tree (headerOpen true/false). When the system
-// gallery closes, headerOpen flips → React remounts the panel → useState was reset → the picked video/photo
-// vanished and the user had to pick again. A module-level store survives any remount, and the merge job keeps
-// running (and keeps its progress) even if the panel re-mounts.
-type VsStage = 'pick' | 'working' | 'done' | 'error';
+// ── Templates (film icon): share public videos / photos ─────────────────────────────────
+// State lives OUTSIDE React on purpose: the studio is mounted in two places of the tree (headerOpen true/false),
+// so when the system gallery closes React remounts it and useState would forget the picked files.
+// A module-level store survives any remount, and an upload in progress keeps its 0/100 progress.
+type VsStage = 'pick' | 'working' | 'error';
 type VsState = {
   video: Blob | null; videoUrl: string | null; duration: number;
   photo: Blob | null; photoUrl: string | null;
-  stage: VsStage; msg: string; progress: number; resultUrl: string | null;
-  enabled: boolean | null;
+  stage: VsStage; msg: string; progress: number;
 };
-let VS: VsState = { video: null, videoUrl: null, duration: NaN, photo: null, photoUrl: null, stage: 'pick', msg: '', progress: 0, resultUrl: null, enabled: null };
+let VS: VsState = { video: null, videoUrl: null, duration: NaN, photo: null, photoUrl: null, stage: 'pick', msg: '', progress: 0 };
 const vsSubs = new Set<() => void>();
 let vsAbort: AbortController | null = null;
+/** Latest mounted panel's "publish this row" callback (so a remount never loses the finished upload). */
+let vsPostHandler: ((caption: string, url: string) => void) | null = null;
 const vsGet = () => VS;
 const vsSubscribe = (f: () => void) => { vsSubs.add(f); return () => { vsSubs.delete(f); }; };
 function vsSet(p: Partial<VsState>) { VS = { ...VS, ...p }; vsSubs.forEach(f => f()); }
@@ -13721,18 +13727,12 @@ function vsReset() {
   if (VS.videoUrl) URL.revokeObjectURL(VS.videoUrl);
   if (VS.photoUrl) URL.revokeObjectURL(VS.photoUrl);
   vsAbort?.abort(); vsAbort = null;
-  vsSet({ video: null, videoUrl: null, duration: NaN, photo: null, photoUrl: null, stage: 'pick', msg: '', progress: 0, resultUrl: null });
+  vsSet({ video: null, videoUrl: null, duration: NaN, photo: null, photoUrl: null, stage: 'pick', msg: '', progress: 0 });
 }
 function vsCancel() { vsAbort?.abort(); vsAbort = null; vsSet({ stage: 'pick', msg: '', progress: 0 }); }
-
-async function vsCheckEnabled() {
-  if (VS.enabled !== null) return;
-  try {
-    const r = await fetch(`${VIDEO_SWAP_ENDPOINT}?ping=1`, { credentials: 'include', cache: 'no-store' });
-    if (!r.ok) { vsSet({ enabled: r.status === 404 ? false : true }); return; }
-    const d = await r.json() as { enabled?: boolean };
-    vsSet({ enabled: d.enabled !== false });
-  } catch { vsSet({ enabled: true }); }
+function vsClear(kind: 'video' | 'photo') {
+  if (kind === 'video') { if (VS.videoUrl) URL.revokeObjectURL(VS.videoUrl); vsSet({ video: null, videoUrl: null, duration: NaN, msg: '' }); }
+  else { if (VS.photoUrl) URL.revokeObjectURL(VS.photoUrl); vsSet({ photo: null, photoUrl: null, msg: '' }); }
 }
 
 async function vsPickVideo(f: File | undefined) {
@@ -13748,7 +13748,7 @@ async function vsPickVideo(f: File | undefined) {
     const dur = await videoSwapProbe(url);
     if (isFinite(dur) && dur > VIDEO_SWAP_MAX_SEC + 0.5) { URL.revokeObjectURL(url); vsSet({ msg: `الفيديو أطول من ${VIDEO_SWAP_MAX_SEC} ثانية` }); return; }
     if (VS.videoUrl) URL.revokeObjectURL(VS.videoUrl);
-    vsSet({ video: blob, videoUrl: url, duration: dur, msg: '', stage: 'pick', resultUrl: null, progress: 0 });
+    vsSet({ video: blob, videoUrl: url, duration: dur, msg: '', stage: 'pick', progress: 0 });
   } catch {
     vsSet({ msg: 'ما قدرت أقرأ هذا الفيديو، جرّب فيديو ثاني' });
   }
@@ -13760,7 +13760,7 @@ async function vsPickPhoto(f: File | undefined) {
     const blob = await videoSwapPrepPhoto(f);
     const url = URL.createObjectURL(blob);
     if (VS.photoUrl) URL.revokeObjectURL(VS.photoUrl);
-    vsSet({ photo: blob, photoUrl: url, msg: '', stage: 'pick', resultUrl: null, progress: 0 });
+    vsSet({ photo: blob, photoUrl: url, msg: '', stage: 'pick', progress: 0 });
   } catch {
     vsSet({ msg: 'ما قدرت أقرأ هذي الصورة، جرّب صورة ثانية' });
   }
@@ -13790,58 +13790,46 @@ const vsSleep = (ms: number, sig: AbortSignal) => new Promise<void>(res => {
   sig.addEventListener('abort', () => { window.clearTimeout(t); res(); }, { once: true });
 });
 
+/** Share = upload the picked video and/or photo (progress 0→100 by real bytes), then publish each as a public post. */
 async function vsRun(userId: string) {
-  const { video, photo } = VS;
-  if (!video || !photo || VS.stage === 'working') return;
+  if (VS.stage === 'working') return;
+  const items: { blob: Blob; name: string; kind: 'video' | 'photo'; caption: string }[] = [];
+  if (VS.video) items.push({ blob: VS.video, name: 'video.mp4', kind: 'video', caption: LIVE_VIDEO_CAPTION });
+  if (VS.photo) items.push({ blob: VS.photo, name: 'photo.jpg', kind: 'photo', caption: LIVE_PHOTO_CAPTION });
+  if (!items.length) return;
   const ac = new AbortController();
   vsAbort = ac;
-  let ticker: number | null = null;
-  const finish = async (url: string) => {
-    vsSet({ progress: 100, msg: 'تم الدمج ✅' });
-    await vsSleep(600, ac.signal);
-    vsSet({ stage: 'done', resultUrl: url, msg: '' });
-  };
-  vsSet({ stage: 'working', msg: 'جاري رفع الفيديو والصورة…', progress: 0, resultUrl: null });
+  const total = items.reduce((a, i) => a + i.blob.size, 0) || 1;
+  let doneBytes = 0;
+  const posted: { caption: string; url: string }[] = [];
+  vsSet({ stage: 'working', msg: 'جاري النشر…', progress: 0 });
   try {
-    const fd = new FormData();
-    fd.append('userId', userId);
-    if (isFinite(VS.duration)) fd.append('duration', String(VS.duration));
-    fd.append('video', video, 'video.mp4');
-    fd.append('photo', photo, 'photo.jpg');
-    const up = await vsUpload(fd, ac.signal, fr => { const p = Math.round(fr * 20); if (p > VS.progress) vsSet({ progress: p }); });
-    if (!up.ok) {
-      const eb = up.json as { message?: string; code?: string } | null;
-      if (eb?.message) throw Object.assign(new Error(eb.code || 'SERVER'), { serverMsg: eb.message });
-      throw new Error(up.status === 404 ? 'NO_ENDPOINT' : up.status === 429 ? 'LIMIT' : up.status === 413 ? 'TOO_BIG' : up.status === 401 ? 'LOGIN' : `HTTP ${up.status}`);
+    for (const it of items) {
+      const fd = new FormData();
+      fd.append('userId', userId);
+      fd.append('kind', it.kind);
+      if (it.kind === 'video' && isFinite(VS.duration)) fd.append('duration', String(VS.duration));
+      fd.append('file', it.blob, it.name);
+      const up = await vsUpload(fd, ac.signal, fr => {
+        const p = Math.min(99, Math.floor(((doneBytes + fr * it.blob.size) / total) * 100));
+        if (p > VS.progress) vsSet({ progress: p });
+      });
+      if (!up.ok) {
+        const eb = up.json as { message?: string; code?: string } | null;
+        if (eb?.message) throw Object.assign(new Error(eb.code || 'SERVER'), { serverMsg: eb.message });
+        throw new Error(up.status === 404 ? 'NO_ENDPOINT' : up.status === 429 ? 'LIMIT' : up.status === 413 ? 'TOO_BIG' : up.status === 401 ? 'LOGIN' : `HTTP ${up.status}`);
+      }
+      const url = String((up.json as any)?.url || '');
+      if (!url) throw new Error('NO_URL');
+      doneBytes += it.blob.size;
+      posted.push({ caption: it.caption, url });
     }
-    const d = (up.json || {}) as { url?: string; jobId?: string; id?: string };
-    if (d.url) { await finish(d.url); return; }
-    const jobId = d.jobId || d.id;
-    if (!jobId) throw new Error('NO_JOB');
-    vsSet({ progress: Math.max(VS.progress, 20), msg: 'الذكاء الاصطناعي يدمجك بالفيديو… ممكن ياخذ من 2 إلى 6 دقائق، لا تقفل الصفحة' });
-    const t0 = Date.now();
-    // The provider gives no real percentage → the bar creeps towards 95 and only hits 100 when the video is really ready.
-    ticker = window.setInterval(() => {
-      if (VS.stage !== 'working') return;
-      const el = (Date.now() - t0) / 1000;
-      const target = Math.min(95, Math.round(20 + 75 * (1 - Math.exp(-el / 150))));
-      if (target > VS.progress) vsSet({ progress: target });
-    }, 800);
-    while (Date.now() - t0 < VIDEO_SWAP_TIMEOUT_MS) {
-      await vsSleep(VIDEO_SWAP_POLL_MS, ac.signal);
-      if (ac.signal.aborted) return;
-      let pr: Response;
-      try { pr = await fetch(`${VIDEO_SWAP_ENDPOINT}?job=${encodeURIComponent(jobId)}`, { credentials: 'include', cache: 'no-store', signal: ac.signal }); }
-      catch { if (ac.signal.aborted) return; continue; }
-      if (pr.status === 404 || pr.status === 403) throw new Error('LOST');
-      if (!pr.ok) continue;
-      const pd = await pr.json().catch(() => null) as { status?: string; url?: string; error?: string } | null;
-      if (!pd) continue;
-      if (pd.status === 'done' && pd.url) { await finish(pd.url); return; }
-      if (pd.status === 'working') vsSet({ msg: 'الذكاء الاصطناعي يشتغل على الدمج الحين…', progress: Math.max(VS.progress, 30) });
-      if (pd.status === 'error' || pd.status === 'failed') throw Object.assign(new Error('FAILED'), { serverMsg: pd.error });
-    }
-    throw new Error('TIMEOUT');
+    vsSet({ progress: 100, msg: 'تم النشر ✅' });
+    await vsSleep(700, ac.signal);
+    if (ac.signal.aborted) return;
+    const post = vsPostHandler;
+    for (const p of posted) post?.(p.caption, p.url);
+    vsReset();
   } catch (e: any) {
     if (ac.signal.aborted) return;
     const m = String(e?.message || '');
@@ -13849,60 +13837,52 @@ async function vsRun(userId: string) {
       stage: 'error', progress: 0,
       msg: e?.serverMsg ? String(e.serverMsg)
         : m === 'NETWORK' ? 'تعذّر الاتصال بالسيرفر، تأكد من النت وحاول مرة ثانية'
-        : m === 'LOST' ? 'انقطعت العملية (السيرفر انعاد تشغيله)، حاول مرة ثانية'
-        : m === 'NO_ENDPOINT' ? 'خدمة دمج الفيديو غير مفعّلة على السيرفر بعد'
+        : m === 'NO_ENDPOINT' ? 'خدمة النشر غير مفعّلة على السيرفر بعد'
         : m === 'LIMIT' ? 'وصلت للحد المسموح حالياً، حاول بعد شوي'
-        : m === 'TOO_BIG' ? 'حجم الفيديو كبير على السيرفر'
+        : m === 'TOO_BIG' ? 'حجم الملف كبير على السيرفر'
         : m === 'LOGIN' ? 'سجّل دخولك أول'
-        : m === 'TIMEOUT' ? 'طوّلت العملية، حاول مرة ثانية'
-        : 'ما اكتمل الدمج، حاول مرة ثانية (يفضّل صورة وجه واضحة من الأمام)',
+        : 'ما اكتمل النشر، حاول مرة ثانية',
     });
   } finally {
-    if (ticker != null) window.clearInterval(ticker);
     if (vsAbort === ac) vsAbort = null;
   }
 }
 
 function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url: string) => void; userId: string }) {
   const s = useSyncExternalStore(vsSubscribe, vsGet, vsGet);
+  vsPostHandler = onPost;
   const vidInputRef = useRef<HTMLInputElement | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
-  useEffect(() => { void vsCheckEnabled(); }, []);
 
   const tile: React.CSSProperties = {
     flex: 1, minWidth: 0, aspectRatio: '3 / 4', borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
-    border: '1px dashed rgba(255,255,255,0.28)', background: 'rgba(255,255,255,0.05)', color: '#fff',
+    border: `1px dashed ${CLR_PRIMARY_DIM}`, background: CLR_CARD_BG, color: '#fff',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
-    fontWeight: 800, fontSize: '0.82rem', padding: 0, position: 'relative',
+    fontWeight: 800, fontSize: '0.9rem', padding: 0, position: 'relative',
   };
   const btn: React.CSSProperties = {
-    height: 46, borderRadius: 12, fontWeight: 800, fontSize: '0.9rem', cursor: 'pointer', border: 'none',
+    height: 46, borderRadius: 12, fontWeight: 800, fontSize: '0.95rem', cursor: 'pointer', border: 'none',
     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%',
   };
-  const ready = !!s.video && !!s.photo;
+  const ready = !!s.video || !!s.photo;
+  const clearBadge: React.CSSProperties = {
+    position: 'absolute', top: 6, left: 6, width: 26, height: 26, borderRadius: '50%', background: 'rgba(0,0,0,0.6)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', zIndex: 2,
+  };
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 14px 12px', display: 'flex', flexDirection: 'column', gap: 12, direction: 'rtl' }}>
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 12, direction: 'rtl' }}>
       <style>{`@keyframes stooornaSwapSpin { to { transform: rotate(360deg) } }`}</style>
       <input ref={vidInputRef} type="file" accept="video/*" hidden onChange={e => { const el = e.target; const f = el.files?.[0]; void vsPickVideo(f).finally(() => { try { el.value = ''; } catch { /* */ } }); }} />
       <input ref={photoInputRef} type="file" accept="image/*" hidden onChange={e => { const el = e.target; const f = el.files?.[0]; void vsPickPhoto(f).finally(() => { try { el.value = ''; } catch { /* */ } }); }} />
 
-      {s.stage === 'done' && s.resultUrl ? (
-        <>
-          <video src={s.resultUrl} autoPlay loop muted playsInline controls style={{ width: '100%', maxHeight: '58vh', borderRadius: 14, background: '#000', objectFit: 'contain' }} />
-          <p style={{ margin: 0, textAlign: 'center', fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)' }}>هذي النتيجة، تبي تنشرها؟</p>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button type="button" onClick={() => vsSet({ stage: 'pick', resultUrl: null, progress: 0 })} style={{ ...btn, background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>إعادة</button>
-            <button type="button" onClick={() => { const u = s.resultUrl as string; vsReset(); onPost(LIVE_VIDEO_CAPTION, u); }} style={{ ...btn, background: '#16a34a', color: '#fff' }}><Send size={18} /> نشر</button>
-          </div>
-        </>
-      ) : s.stage === 'working' ? (
+      {s.stage === 'working' ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '40px 10px' }}>
-          <div style={{ width: 46, height: 46, borderRadius: '50%', border: '4px solid rgba(255,255,255,0.15)', borderTopColor: '#22c55e', animation: 'stooornaSwapSpin 0.9s linear infinite' }} />
+          <div style={{ width: 46, height: 46, borderRadius: '50%', border: '4px solid rgba(255,255,255,0.15)', borderTopColor: CLR_PRIMARY, animation: 'stooornaSwapSpin 0.9s linear infinite' }} />
           <p style={{ margin: 0, textAlign: 'center', fontWeight: 700, fontSize: '0.88rem' }}>{s.msg}</p>
           <div style={{ width: '100%', maxWidth: 320, direction: 'ltr' }}>
             <div style={{ height: 10, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
-              <div style={{ width: `${s.progress}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg,#16a34a,#4ade80)', transition: 'width 0.6s ease' }} />
+              <div style={{ width: `${s.progress}%`, height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${CLR_PRIMARY}, #4dd0e1)`, transition: 'width 0.4s ease' }} />
             </div>
             <p style={{ margin: '8px 0 0', textAlign: 'center', fontWeight: 800, fontSize: '0.95rem', letterSpacing: 0.5 }}>{s.progress}/100</p>
           </div>
@@ -13910,29 +13890,24 @@ function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url:
         </div>
       ) : (
         <>
-          <p style={{ margin: 0, textAlign: 'center', fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)' }}>
-            {!s.video ? '١ — اختر الفيديو' : !s.photo ? '٢ — اختر صورتك' : '٣ — ادمج ونزّل النتيجة'}
-          </p>
           <div style={{ display: 'flex', gap: 10, direction: 'ltr' }}>
-            <button type="button" onClick={() => { stooornaHoldForFilePicker(); vidInputRef.current?.click(); }} style={{ ...tile, borderStyle: s.video ? 'solid' : 'dashed', borderColor: s.video ? '#22c55e' : undefined }}>
-              {s.videoUrl ? <video src={s.videoUrl} muted loop playsInline autoPlay style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (<><Film size={26} /><span>الفيديو</span></>)}
+            <button type="button" onClick={() => { stooornaHoldForFilePicker(); vidInputRef.current?.click(); }} style={{ ...tile, borderStyle: s.video ? 'solid' : 'dashed', borderColor: s.video ? CLR_PRIMARY : undefined }}>
+              {s.videoUrl ? <video src={s.videoUrl} muted loop playsInline autoPlay style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (<><Film size={26} /><span>Video</span></>)}
+              {s.video ? <span role="button" aria-label="Remove video" onClick={e => { e.stopPropagation(); vsClear('video'); }} style={clearBadge}><X size={14} /></span> : null}
             </button>
-            <button type="button" onClick={() => { stooornaHoldForFilePicker(); photoInputRef.current?.click(); }} style={{ ...tile, borderStyle: s.photo ? 'solid' : 'dashed', borderColor: s.photo ? '#22c55e' : undefined }}>
-              {s.photoUrl ? <img src={s.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (<><ImageIcon size={26} /><span>صورتك</span></>)}
+            <button type="button" onClick={() => { stooornaHoldForFilePicker(); photoInputRef.current?.click(); }} style={{ ...tile, borderStyle: s.photo ? 'solid' : 'dashed', borderColor: s.photo ? CLR_PRIMARY : undefined }}>
+              {s.photoUrl ? <img src={s.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (<><ImageIcon size={26} /><span>Photo</span></>)}
+              {s.photo ? <span role="button" aria-label="Remove photo" onClick={e => { e.stopPropagation(); vsClear('photo'); }} style={clearBadge}><X size={14} /></span> : null}
             </button>
           </div>
-          <p style={{ margin: 0, textAlign: 'center', fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)' }}>
-            الفيديو حتى {VIDEO_SWAP_MAX_SEC} ثانية و{VIDEO_SWAP_MAX_MB}MB · صورة وجه واضحة من الأمام تعطي أحسن نتيجة · استخدم صورتك أنت أو صورة شخص وافق على ذلك
-          </p>
-          {s.enabled === false ? <p style={{ margin: 0, textAlign: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#fbbf24' }}>خدمة Stooorna Ai غير مفعّلة على السيرفر حالياً (FAL_KEY ناقص)</p> : null}
           {s.msg ? <p style={{ margin: 0, textAlign: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#f87171' }}>{s.msg}</p> : null}
           <button
             type="button"
             disabled={!ready}
             onClick={() => void vsRun(userId)}
-            style={{ ...btn, background: ready ? '#16a34a' : 'rgba(255,255,255,0.12)', color: ready ? '#fff' : 'rgba(255,255,255,0.4)', cursor: ready ? 'pointer' : 'default' }}
+            style={{ ...btn, background: ready ? CLR_PRIMARY : 'rgba(255,255,255,0.12)', color: ready ? '#03181b' : 'rgba(255,255,255,0.4)', cursor: ready ? 'pointer' : 'default' }}
           >
-            <Zap size={18} /> {s.stage === 'error' ? 'حاول مرة ثانية' : 'دمج بالذكاء الاصطناعي'}
+            <Send size={18} /> Share
           </button>
         </>
       )}
@@ -13940,21 +13915,19 @@ function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url:
   );
 }
 
-/** One autoplaying tile of the outside-the-chat video grid: publisher avatar, like, tap = sound on/off. */
-function LiveVideoTile({ c, liked, name, onLike, onOpenProfile }: {
+/** One tile of the public media grid (outside the chat): video autoplays muted, photo is static.
+ *  Publisher avatar bottom-left, like bottom-right, comment count top-left. Tap = open (viewer with live comments). */
+function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenProfile }: {
   c: PublicLiveComment;
   liked: boolean;
   name: string;
+  commentCount: number;
   onLike: () => void;
+  onOpen: () => void;
   onOpenProfile: () => void;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
-  const [muted, setMuted] = useState(true);
-  useEffect(() => {
-    const v = ref.current;
-    if (!v) return;
-    v.muted = muted;
-  }, [muted]);
+  const isVideo = c.text !== LIVE_PHOTO_CAPTION;
   useEffect(() => {
     const v = ref.current;
     if (!v || typeof IntersectionObserver === 'undefined') return;
@@ -13966,27 +13939,35 @@ function LiveVideoTile({ c, liked, name, onLike, onOpenProfile }: {
     io.observe(v);
     return () => io.disconnect();
   }, [c.imageUrl]);
+  const chip: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 999,
+    padding: '4px 8px', color: '#fff', fontSize: '0.68rem', fontWeight: 800,
+  };
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#0b1512', aspectRatio: '3 / 4' }}>
-        <video
-          ref={ref}
-          src={c.imageUrl || ''}
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="metadata"
-          onClick={() => setMuted(m => !m)}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-        />
-        <div style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.5)', borderRadius: 999, padding: 5, display: 'flex', pointerEvents: 'none' }}>
-          {muted ? <VolumeX size={13} color="#fff" /> : <Volume2 size={13} color="#fff" />}
-        </div>
+      <div
+        onClick={onOpen}
+        style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#0b1512', aspectRatio: '3 / 4', cursor: 'pointer', border: `1px solid ${CLR_CARD_BORDER}` }}
+      >
+        {isVideo ? (
+          <video ref={ref} src={c.imageUrl || ''} autoPlay loop muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+        ) : (
+          <img src={c.imageUrl || ''} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+        )}
+        {isVideo ? (
+          <div style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.5)', borderRadius: 999, padding: 5, display: 'flex', pointerEvents: 'none' }}>
+            <Play size={13} color="#fff" fill="#fff" />
+          </div>
+        ) : null}
+        {commentCount > 0 ? (
+          <div style={{ ...chip, position: 'absolute', top: 6, left: 6, pointerEvents: 'none' }}>
+            <MessageCircle size={13} strokeWidth={2.2} color="#fff" />{commentCount}
+          </div>
+        ) : null}
         <button
           type="button"
           aria-label="Open profile"
-          onClick={onOpenProfile}
+          onClick={e => { e.stopPropagation(); onOpenProfile(); }}
           style={{ position: 'absolute', left: 6, bottom: 6, background: 'none', border: '2px solid #fff', borderRadius: '50%', padding: 0, cursor: c.userId ? 'pointer' : 'default', display: 'flex' }}
         >
           <UserAvatar name={c.name || c.username || '?'} avatarUrl={c.avatarUrl} size={30} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
@@ -13994,12 +13975,8 @@ function LiveVideoTile({ c, liked, name, onLike, onOpenProfile }: {
         <button
           type="button"
           aria-label="Like"
-          onClick={onLike}
-          style={{
-            position: 'absolute', right: 6, bottom: 6, display: 'flex', alignItems: 'center', gap: 4,
-            background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 999, padding: '4px 8px', cursor: 'pointer',
-            color: '#fff', fontSize: '0.68rem', fontWeight: 800,
-          }}
+          onClick={e => { e.stopPropagation(); onLike(); }}
+          style={{ ...chip, position: 'absolute', right: 6, bottom: 6, cursor: 'pointer' }}
         >
           <Heart size={14} strokeWidth={2.2} color={liked ? '#ef4444' : '#fff'} fill={liked ? '#ef4444' : 'none'} />
           {c.likes.length > 0 ? c.likes.length : null}
@@ -14007,6 +13984,95 @@ function LiveVideoTile({ c, liked, name, onLike, onOpenProfile }: {
       </div>
       <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 800, color: CLR_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
     </div>
+  );
+}
+
+/** Full-screen viewer for a public video/photo. Inside: only live comments (like story comments) — no AI, no chat. */
+function LiveMediaViewer({ post, comments, myId, myName, nameOf, liked, onLike, onSend, onClose, onOpenProfile }: {
+  post: PublicLiveComment;
+  comments: PublicLiveComment[];
+  myId: string;
+  myName: string;
+  nameOf: (c: PublicLiveComment) => string;
+  liked: boolean;
+  onLike: () => void;
+  onSend: (text: string) => void;
+  onClose: () => void;
+  onOpenProfile: () => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const thread = comments
+    .map(x => ({ x, p: parseMediaComment(x.text) }))
+    .filter(r => r.p && r.p.parentId === post.id) as { x: PublicLiveComment; p: { parentId: string; body: string } }[];
+  useEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight + 500;
+  }, [thread.length]);
+  const isVideo = post.text !== LIVE_PHOTO_CAPTION;
+  const send = () => {
+    const t = draft.trim();
+    if (!t || !myId) return;
+    onSend(t);
+    setDraft('');
+  };
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div
+      onClick={e => e.stopPropagation()}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 11000, background: '#050d0f', color: '#fff', display: 'flex', flexDirection: 'column',
+        paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)', pointerEvents: 'auto',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
+        <button type="button" onClick={onOpenProfile} aria-label="Open profile" style={{ background: 'none', border: `2px solid ${CLR_PRIMARY}`, borderRadius: '50%', padding: 0, display: 'flex', cursor: post.userId ? 'pointer' : 'default' }}>
+          <UserAvatar name={post.name || post.username || '?'} avatarUrl={post.avatarUrl} size={34} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
+        </button>
+        <span style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'ltr', textAlign: 'left' }}>{nameOf(post)}</span>
+        <button type="button" onClick={onLike} aria-label="Like" style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 999, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, color: '#fff', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer' }}>
+          <Heart size={16} strokeWidth={2.2} color={liked ? '#ef4444' : '#fff'} fill={liked ? '#ef4444' : 'none'} />
+          {post.likes.length > 0 ? post.likes.length : null}
+        </button>
+        <button type="button" onClick={onClose} aria-label="Close" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <X size={18} />
+        </button>
+      </div>
+
+      <div style={{ flex: 1, minHeight: 0, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {isVideo
+          ? <video key={post.id} src={post.imageUrl || ''} autoPlay loop playsInline controls style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+          : <img src={post.imageUrl || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+      </div>
+
+      <div ref={listRef} style={{ flex: '0 0 auto', maxHeight: '30%', overflowY: 'auto', padding: '6px 14px', direction: 'ltr', overscrollBehavior: 'contain' }}>
+        {thread.length === 0 ? (
+          <p style={{ margin: '10px 0', textAlign: 'center', color: CLR_TEXT_DIM, fontSize: '0.82rem', fontWeight: 600 }}>كن أول من يعلّق</p>
+        ) : thread.map(({ x, p }) => (
+          <div key={x.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 0' }}>
+            <UserAvatar name={x.name || x.username || '?'} avatarUrl={x.avatarUrl} size={28} style={{ flexShrink: 0 }} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <span style={{ fontWeight: 800, fontSize: '0.78rem', color: CLR_PRIMARY }}>{nameOf(x)}</span>
+              <p style={{ margin: '1px 0 0', fontSize: '0.86rem', color: '#fff', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{p.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px 10px', borderTop: `1px solid ${CLR_NAV_BORDER}`, background: '#060e0e' }}>
+        <input
+          value={draft}
+          onChange={e => setDraft(e.target.value.slice(0, 400))}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); send(); } }}
+          placeholder={myName ? `Comment as ${String(myName).replace(/^@/, '')}…` : 'Comment…'}
+          style={{ flex: 1, minWidth: 0, height: 42, borderRadius: 999, border: 'none', outline: 'none', padding: '0 16px', background: '#fff', color: '#111', fontSize: '0.9rem', direction: 'auto' as any }}
+        />
+        <button type="button" onClick={send} aria-label="Send" disabled={!draft.trim()} style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: draft.trim() ? CLR_PRIMARY : 'rgba(255,255,255,0.12)', color: draft.trim() ? '#03181b' : 'rgba(255,255,255,0.4)', cursor: draft.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Send size={18} />
+        </button>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -14035,7 +14101,7 @@ function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px' }}>
-        <span style={{ fontWeight: 800, fontSize: '1rem' }}>Stooorna Ai</span>
+        <span style={{ fontWeight: 800, fontSize: '1rem' }}>Templates</span>
         <button type="button" onClick={onClose} aria-label="Close" style={{
           width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff',
           cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -14072,6 +14138,7 @@ function PublicLiveCommentsPanel({
   const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string }>>([]);
   const [inAppUrl, setInAppUrl] = useState<string | null>(null);
   const [tplOpen, setTplOpen] = useState(false);
+  const [openMediaId, setOpenMediaId] = useState<string | null>(null);
   const chatInputFocused = useRef(false);
   const recRef = useRef<MediaRecorder | null>(null);
   const recChunksRef = useRef<Blob[]>([]);
@@ -14372,35 +14439,51 @@ function PublicLiveCommentsPanel({
   }, [headerOpen, chatLift, tplOpen]);
   if (typeof document === 'undefined') return null;
   if (!user?.id) return null;
+  const mediaPosts = comments.filter(isLiveMediaPost).slice().reverse();
+  const commentCountOf = (id: string) => comments.reduce((n, x) => (parseMediaComment(x.text)?.parentId === id ? n + 1 : n), 0);
+  const openMedia = openMediaId ? (mediaPosts.find(m => m.id === openMediaId) || null) : null;
+  const openProfileOf = (vc: PublicLiveComment) => {
+    if (!vc.userId) return;
+    setProfilePeer(vc);
+    try { window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: true } })); } catch { /* */ }
+  };
+  const mediaViewer = openMedia ? (
+    <LiveMediaViewer
+      post={openMedia}
+      comments={comments}
+      myId={myId}
+      myName={myUsername || myName || ''}
+      nameOf={displayName}
+      liked={myId ? openMedia.likes.includes(myId) : false}
+      onLike={() => toggleLike(openMedia.id)}
+      onSend={body => {
+        const keep = text; // pushComment clears the chat draft — restore it
+        pushComment(`↩${openMedia.id}\u200b${body}`);
+        setText(keep);
+      }}
+      onClose={() => setOpenMediaId(null)}
+      onOpenProfile={() => openProfileOf(openMedia)}
+    />
+  ) : null;
+  const studioPost = (caption: string, url: string) => {
+    pushComment(caption, url);
+    setTplOpen(false);
+    setChatLift(0);
+  };
   if (headerOpen) {
-    // Header forced open (e.g. after the system gallery closes): keep the Video AI page alive instead of kicking the user out.
-    return tplOpen ? (
-      <LiveChatVideoStudio
-        open={tplOpen}
-        userId={myId}
-        onClose={() => setTplOpen(false)}
-        onPost={(caption, dataUrl) => {
-          pushComment(caption, dataUrl);
-          setTplOpen(false);
-          setChatLift(caption === LIVE_VIDEO_CAPTION ? 0 : 1);
-        }}
-      />
+    // Header forced open (e.g. after the system gallery closes): keep the Templates page alive instead of kicking the user out.
+    return (tplOpen || mediaViewer) ? (
+      <>
+        {tplOpen ? <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} /> : null}
+        {mediaViewer}
+      </>
     ) : null;
   }
-  const videoPosts = comments.filter(isLiveVideoPost).slice().reverse();
 
   return createPortal(
     <>
-    <LiveChatVideoStudio
-      open={tplOpen}
-      userId={myId}
-      onClose={() => setTplOpen(false)}
-      onPost={(caption, dataUrl) => {
-        pushComment(caption, dataUrl);
-        setTplOpen(false);
-        setChatLift(caption === LIVE_VIDEO_CAPTION ? 0 : 1);
-      }}
-    />
+    <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />
+    {mediaViewer}
     <div
       onTouchStart={e => e.stopPropagation()}
       onTouchMove={e => e.stopPropagation()}
@@ -14433,7 +14516,7 @@ function PublicLiveCommentsPanel({
         background: 'transparent',
         position: 'relative',
       }}>
-        {chatLift === 0 && videoPosts.length > 0 ? (
+        {chatLift === 0 && mediaPosts.length > 0 ? (
           <div
             onTouchStart={e => e.stopPropagation()}
             onTouchMove={e => e.stopPropagation()}
@@ -14445,18 +14528,16 @@ function PublicLiveCommentsPanel({
             }}
           >
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, direction: 'ltr' }}>
-              {videoPosts.map(vc => (
-                <LiveVideoTile
+              {mediaPosts.map(vc => (
+                <LiveMediaTile
                   key={vc.id}
                   c={vc}
                   liked={myId ? vc.likes.includes(myId) : false}
                   name={displayName(vc)}
+                  commentCount={commentCountOf(vc.id)}
                   onLike={() => toggleLike(vc.id)}
-                  onOpenProfile={() => {
-                    if (!vc.userId) return;
-                    setProfilePeer(vc);
-                    try { window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: true } })); } catch { /* */ }
-                  }}
+                  onOpen={() => setOpenMediaId(vc.id)}
+                  onOpenProfile={() => openProfileOf(vc)}
                 />
               ))}
             </div>
@@ -14488,7 +14569,7 @@ function PublicLiveCommentsPanel({
             كن أول من يكتب تعليقاً مباشراً
           </p>
         )}
-        {groupLiveChatRows(comments.filter(c => !/Join Live Chat/i.test(c.text || '') && !isLiveVideoPost(c))).map(item => {
+        {groupLiveChatRows(comments.filter(c => !/Join Live Chat/i.test(c.text || '') && !isLiveMediaPost(c) && !parseMediaComment(c.text))).map(item => {
           const c = item.c;
           const liked = myId ? c.likes.includes(myId) : false;
           return (
@@ -14874,7 +14955,7 @@ function PublicLiveCommentsPanel({
             </button>
             <button
               type="button"
-              aria-label="Stooorna Ai"
+              aria-label="Templates"
               onPointerDown={e => {
                 e.preventDefault();
                 e.stopPropagation();
