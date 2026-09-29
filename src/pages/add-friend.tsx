@@ -13642,6 +13642,272 @@ const LIVE_TEMPLATES: { id: LiveTemplateId; label: string; sub: string; caption:
 ];
 const LIVE_TEMPLATE_CAPTIONS = LIVE_TEMPLATES.map(t => t.caption);
 
+// ── AI Video merge (film icon → pick video → pick your photo → AI puts YOU in the video) ─────
+// A posted AI video is a normal live-chat row: imageUrl = merged MP4 url, text = LIVE_VIDEO_CAPTION.
+// (Same trick as the templates, so no server schema change is needed.) It is NOT drawn inside the
+// chat list; it is shown outside the chat, in a 2-per-row autoplay grid when the chat is lowered.
+const LIVE_VIDEO_CAPTION = '🎬 AI Video';
+const VIDEO_SWAP_ENDPOINT = '/api/video-swap';   // POST multipart {video, photo} → {jobId} | {url}; GET ?job=ID → {status, url?, error?}
+const VIDEO_SWAP_MAX_MB = 25;
+const VIDEO_SWAP_MAX_SEC = 15;
+const VIDEO_SWAP_POLL_MS = 2500;
+const VIDEO_SWAP_TIMEOUT_MS = 5 * 60 * 1000;
+const LIVE_VIDEO_GALLERY_TOP = 'calc(max(8px, env(safe-area-inset-top)) + 72px)'; // clears the header grabber
+const isLiveVideoPost = (c: { imageUrl?: string | null; text: string }) => !!c.imageUrl && c.text === LIVE_VIDEO_CAPTION;
+
+async function videoSwapPrepPhoto(file: File): Promise<Blob> {
+  const url = URL.createObjectURL(file);
+  try {
+    const im = await new Promise<HTMLImageElement>((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = () => rej(new Error('bad image'));
+      i.src = url;
+    });
+    const k = Math.min(1, 1024 / Math.max(im.naturalWidth, im.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(im.naturalWidth * k));
+    c.height = Math.max(1, Math.round(im.naturalHeight * k));
+    const ctx = c.getContext('2d');
+    if (!ctx) throw new Error('canvas');
+    ctx.drawImage(im, 0, 0, c.width, c.height);
+    return await new Promise<Blob>((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error('encode'))), 'image/jpeg', 0.9));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function videoSwapProbe(url: string): Promise<number> {
+  return new Promise(res => {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.onloadedmetadata = () => res(v.duration);
+    v.onerror = () => res(NaN);
+    v.src = url;
+  });
+}
+
+function LiveVideoSwapPanel({ onPost }: { onPost: (caption: string, url: string) => void }) {
+  const [video, setVideo] = useState<File | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<Blob | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [stage, setStage] = useState<'pick' | 'working' | 'done' | 'error'>('pick');
+  const [msg, setMsg] = useState('');
+  const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const vidInputRef = useRef<HTMLInputElement | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+  useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
+  useEffect(() => () => { if (photoUrl) URL.revokeObjectURL(photoUrl); }, [photoUrl]);
+
+  const onPickVideo = async (f: File | undefined) => {
+    if (!f) return;
+    if (!f.type.startsWith('video/')) { setMsg('اختر ملف فيديو'); return; }
+    if (f.size > VIDEO_SWAP_MAX_MB * 1024 * 1024) { setMsg(`حجم الفيديو أكبر من ${VIDEO_SWAP_MAX_MB}MB`); return; }
+    const url = URL.createObjectURL(f);
+    const dur = await videoSwapProbe(url);
+    if (!isFinite(dur)) { URL.revokeObjectURL(url); setMsg('ما قدرت أقرأ هذا الفيديو، جرّب فيديو ثاني'); return; }
+    if (dur > VIDEO_SWAP_MAX_SEC + 0.5) { URL.revokeObjectURL(url); setMsg(`الفيديو أطول من ${VIDEO_SWAP_MAX_SEC} ثانية`); return; }
+    setVideo(f); setVideoUrl(url); setMsg(''); setStage('pick'); setResultUrl(null);
+  };
+
+  const onPickPhoto = async (f: File | undefined) => {
+    if (!f) return;
+    try {
+      const blob = await videoSwapPrepPhoto(f);
+      setPhoto(blob); setPhotoUrl(URL.createObjectURL(blob)); setMsg(''); setStage('pick'); setResultUrl(null);
+    } catch {
+      setMsg('ما قدرت أقرأ هذي الصورة، جرّب صورة ثانية');
+    }
+  };
+
+  const sleep = (ms: number, sig: AbortSignal) => new Promise<void>(res => {
+    const t = window.setTimeout(res, ms);
+    sig.addEventListener('abort', () => { window.clearTimeout(t); res(); }, { once: true });
+  });
+
+  const run = async () => {
+    if (!video || !photo) return;
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setStage('working'); setMsg('جاري رفع الفيديو والصورة…');
+    try {
+      const fd = new FormData();
+      fd.append('video', video, video.name || 'video.mp4');
+      fd.append('photo', photo, 'photo.jpg');
+      const r = await fetch(VIDEO_SWAP_ENDPOINT, { method: 'POST', body: fd, credentials: 'include', signal: ac.signal });
+      if (!r.ok) throw new Error(r.status === 404 ? 'NO_ENDPOINT' : `HTTP ${r.status}`);
+      const d = await r.json() as { url?: string; jobId?: string; id?: string };
+      if (d.url) { setResultUrl(d.url); setStage('done'); setMsg(''); return; }
+      const jobId = d.jobId || d.id;
+      if (!jobId) throw new Error('NO_JOB');
+      setMsg('الذكاء الاصطناعي يدمجك بالفيديو… ممكن ياخذ دقيقة أو دقيقتين');
+      const t0 = Date.now();
+      while (Date.now() - t0 < VIDEO_SWAP_TIMEOUT_MS) {
+        await sleep(VIDEO_SWAP_POLL_MS, ac.signal);
+        if (ac.signal.aborted) return;
+        const pr = await fetch(`${VIDEO_SWAP_ENDPOINT}?job=${encodeURIComponent(jobId)}`, { credentials: 'include', cache: 'no-store', signal: ac.signal });
+        if (!pr.ok) continue;
+        const pd = await pr.json() as { status?: string; url?: string; error?: string };
+        if (pd.status === 'done' && pd.url) { setResultUrl(pd.url); setStage('done'); setMsg(''); return; }
+        if (pd.status === 'error' || pd.status === 'failed') throw new Error(pd.error || 'FAILED');
+      }
+      throw new Error('TIMEOUT');
+    } catch (e: any) {
+      if (ac.signal.aborted) return;
+      const m = String(e?.message || '');
+      setStage('error');
+      setMsg(
+        m === 'NO_ENDPOINT' ? 'خدمة دمج الفيديو غير مفعّلة على السيرفر بعد'
+        : m === 'TIMEOUT' ? 'طوّلت العملية، حاول مرة ثانية'
+        : 'ما اكتمل الدمج، حاول مرة ثانية (يفضّل صورة وجه واضحة من الأمام)'
+      );
+    }
+  };
+
+  const cancel = () => { abortRef.current?.abort(); setStage('pick'); setMsg(''); };
+
+  const tile: React.CSSProperties = {
+    flex: 1, minWidth: 0, aspectRatio: '3 / 4', borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
+    border: '1px dashed rgba(255,255,255,0.28)', background: 'rgba(255,255,255,0.05)', color: '#fff',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
+    fontWeight: 800, fontSize: '0.82rem', padding: 0, position: 'relative',
+  };
+  const btn: React.CSSProperties = {
+    height: 46, borderRadius: 12, fontWeight: 800, fontSize: '0.9rem', cursor: 'pointer', border: 'none',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%',
+  };
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 14px 12px', display: 'flex', flexDirection: 'column', gap: 12, direction: 'rtl' }}>
+      <style>{`@keyframes stooornaSwapSpin { to { transform: rotate(360deg) } }`}</style>
+      <input ref={vidInputRef} type="file" accept="video/*" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; void onPickVideo(f); }} />
+      <input ref={photoInputRef} type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; void onPickPhoto(f); }} />
+
+      {stage === 'done' && resultUrl ? (
+        <>
+          <video src={resultUrl} autoPlay loop muted playsInline controls style={{ width: '100%', maxHeight: '58vh', borderRadius: 14, background: '#000', objectFit: 'contain' }} />
+          <p style={{ margin: 0, textAlign: 'center', fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)' }}>هذي النتيجة، تبي تنشرها؟</p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" onClick={() => { setStage('pick'); setResultUrl(null); }} style={{ ...btn, background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>إعادة</button>
+            <button type="button" onClick={() => onPost(LIVE_VIDEO_CAPTION, resultUrl)} style={{ ...btn, background: '#16a34a', color: '#fff' }}><Send size={18} /> نشر</button>
+          </div>
+        </>
+      ) : stage === 'working' ? (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '40px 10px' }}>
+          <div style={{ width: 46, height: 46, borderRadius: '50%', border: '4px solid rgba(255,255,255,0.15)', borderTopColor: '#22c55e', animation: 'stooornaSwapSpin 0.9s linear infinite' }} />
+          <p style={{ margin: 0, textAlign: 'center', fontWeight: 700, fontSize: '0.88rem' }}>{msg}</p>
+          <button type="button" onClick={cancel} style={{ ...btn, width: 160, background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>إلغاء</button>
+        </div>
+      ) : (
+        <>
+          <p style={{ margin: 0, textAlign: 'center', fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)' }}>
+            {!video ? '١ — اختر الفيديو' : !photo ? '٢ — اختر صورتك' : '٣ — ادمج ونزّل النتيجة'}
+          </p>
+          <div style={{ display: 'flex', gap: 10, direction: 'ltr' }}>
+            <button type="button" onClick={() => vidInputRef.current?.click()} style={{ ...tile, borderStyle: video ? 'solid' : 'dashed' }}>
+              {videoUrl ? <video src={videoUrl} muted loop playsInline autoPlay style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (<><Film size={26} /><span>الفيديو</span></>)}
+            </button>
+            <button
+              type="button"
+              disabled={!video}
+              onClick={() => photoInputRef.current?.click()}
+              style={{ ...tile, opacity: video ? 1 : 0.4, cursor: video ? 'pointer' : 'default', borderStyle: photo ? 'solid' : 'dashed' }}
+            >
+              {photoUrl ? <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (<><ImageIcon size={26} /><span>صورتك</span></>)}
+            </button>
+          </div>
+          <p style={{ margin: 0, textAlign: 'center', fontSize: '0.7rem', color: 'rgba(255,255,255,0.45)' }}>
+            الفيديو حتى {VIDEO_SWAP_MAX_SEC} ثانية و{VIDEO_SWAP_MAX_MB}MB · صورة وجه واضحة من الأمام تعطي أحسن نتيجة
+          </p>
+          {msg ? <p style={{ margin: 0, textAlign: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#f87171' }}>{msg}</p> : null}
+          <button
+            type="button"
+            disabled={!video || !photo}
+            onClick={() => void run()}
+            style={{ ...btn, background: video && photo ? '#16a34a' : 'rgba(255,255,255,0.12)', color: video && photo ? '#fff' : 'rgba(255,255,255,0.4)', cursor: video && photo ? 'pointer' : 'default' }}
+          >
+            <Zap size={18} /> {stage === 'error' ? 'حاول مرة ثانية' : 'دمج بالذكاء الاصطناعي'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** One autoplaying tile of the outside-the-chat video grid: publisher avatar, like, tap = sound on/off. */
+function LiveVideoTile({ c, liked, name, onLike, onOpenProfile }: {
+  c: PublicLiveComment;
+  liked: boolean;
+  name: string;
+  onLike: () => void;
+  onOpenProfile: () => void;
+}) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  const [muted, setMuted] = useState(true);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    v.muted = muted;
+  }, [muted]);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(en => {
+        if (en.isIntersecting) { void v.play().catch(() => { /* autoplay blocked */ }); } else { v.pause(); }
+      });
+    }, { threshold: 0.35 });
+    io.observe(v);
+    return () => io.disconnect();
+  }, [c.imageUrl]);
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#0b1512', aspectRatio: '3 / 4' }}>
+        <video
+          ref={ref}
+          src={c.imageUrl || ''}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="metadata"
+          onClick={() => setMuted(m => !m)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+        <div style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.5)', borderRadius: 999, padding: 5, display: 'flex', pointerEvents: 'none' }}>
+          {muted ? <VolumeX size={13} color="#fff" /> : <Volume2 size={13} color="#fff" />}
+        </div>
+        <button
+          type="button"
+          aria-label="Open profile"
+          onClick={onOpenProfile}
+          style={{ position: 'absolute', left: 6, bottom: 6, background: 'none', border: '2px solid #fff', borderRadius: '50%', padding: 0, cursor: c.userId ? 'pointer' : 'default', display: 'flex' }}
+        >
+          <UserAvatar name={c.name || c.username || '?'} avatarUrl={c.avatarUrl} size={30} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
+        </button>
+        <button
+          type="button"
+          aria-label="Like"
+          onClick={onLike}
+          style={{
+            position: 'absolute', right: 6, bottom: 6, display: 'flex', alignItems: 'center', gap: 4,
+            background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 999, padding: '4px 8px', cursor: 'pointer',
+            color: '#fff', fontSize: '0.68rem', fontWeight: 800,
+          }}
+        >
+          <Heart size={14} strokeWidth={2.2} color={liked ? '#ef4444' : '#fff'} fill={liked ? '#ef4444' : 'none'} />
+          {c.likes.length > 0 ? c.likes.length : null}
+        </button>
+      </div>
+      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 800, color: CLR_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+    </div>
+  );
+}
+
 type LiveChatRowItem =
   | { kind: 'msg'; c: PublicLiveComment }
   | { kind: 'tpl'; key: string; cs: PublicLiveComment[] };
@@ -14005,6 +14271,7 @@ function LiveChatTemplateStudio({ open, onClose, onPost }: {
   onClose: () => void;
   onPost: (caption: string, dataUrl: string) => void;
 }) {
+  const [studioMode, setStudioMode] = useState<'video' | 'template'>('video');
   const [tplId, setTplId] = useState<LiveTemplateId>('titanic');
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -14058,6 +14325,24 @@ function LiveChatTemplateStudio({ open, onClose, onPost }: {
         }}><X size={18} /></button>
       </div>
 
+      <div style={{ display: 'flex', gap: 8, padding: '0 14px 10px' }}>
+        {([['video', 'فيديو AI'], ['template', 'قوالب']] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setStudioMode(id)}
+            style={{
+              flex: 1, height: 38, borderRadius: 10, fontWeight: 800, fontSize: '0.84rem', cursor: 'pointer', color: '#fff',
+              background: studioMode === id ? 'rgba(34,197,94,0.14)' : 'rgba(255,255,255,0.05)',
+              border: studioMode === id ? '1px solid rgba(34,197,94,0.7)' : '1px solid rgba(255,255,255,0.12)',
+            }}
+          >{label}</button>
+        ))}
+      </div>
+
+      {studioMode === 'video' ? (
+        <LiveVideoSwapPanel onPost={onPost} />
+      ) : (<>
       <div style={{ display: 'flex', gap: 10, padding: '0 14px 10px' }}>
         {LIVE_TEMPLATES.map(t => (
           <button
@@ -14149,6 +14434,7 @@ function LiveChatTemplateStudio({ open, onClose, onPost }: {
           </button>
         </div>
       </div>
+      </>)}
     </div>,
     document.body,
   );
@@ -14479,6 +14765,7 @@ function PublicLiveCommentsPanel({
   }, [headerOpen, chatLift]);
   if (headerOpen || !user?.id) return null;
   if (typeof document === 'undefined') return null;
+  const videoPosts = comments.filter(isLiveVideoPost).slice().reverse();
 
   return createPortal(
     <>
@@ -14488,7 +14775,7 @@ function PublicLiveCommentsPanel({
       onPost={(caption, dataUrl) => {
         pushComment(caption, dataUrl);
         setTplOpen(false);
-        setChatLift(1);
+        setChatLift(caption === LIVE_VIDEO_CAPTION ? 0 : 1);
       }}
     />
     <div
@@ -14521,7 +14808,38 @@ function PublicLiveCommentsPanel({
         minHeight: chatLift === 0 ? 0 : undefined,
         pointerEvents: 'none',
         background: 'transparent',
-      }} />
+        position: 'relative',
+      }}>
+        {chatLift === 0 && videoPosts.length > 0 ? (
+          <div
+            onTouchStart={e => e.stopPropagation()}
+            onTouchMove={e => e.stopPropagation()}
+            onWheel={e => e.stopPropagation()}
+            style={{
+              position: 'absolute', left: 0, right: 0, bottom: 0, top: LIVE_VIDEO_GALLERY_TOP,
+              overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
+              touchAction: 'pan-y', pointerEvents: 'auto', padding: '0 10px 10px',
+            }}
+          >
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, direction: 'ltr' }}>
+              {videoPosts.map(vc => (
+                <LiveVideoTile
+                  key={vc.id}
+                  c={vc}
+                  liked={myId ? vc.likes.includes(myId) : false}
+                  name={displayName(vc)}
+                  onLike={() => toggleLike(vc.id)}
+                  onOpenProfile={() => {
+                    if (!vc.userId) return;
+                    setProfilePeer(vc);
+                    try { window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: true } })); } catch { /* */ }
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
       <div
         ref={listRef}
         onTouchStart={e => e.stopPropagation()}
@@ -14547,7 +14865,7 @@ function PublicLiveCommentsPanel({
             كن أول من يكتب تعليقاً مباشراً
           </p>
         )}
-        {groupLiveChatRows(comments.filter(c => !/Join Live Chat/i.test(c.text || ''))).map(item => {
+        {groupLiveChatRows(comments.filter(c => !/Join Live Chat/i.test(c.text || '') && !isLiveVideoPost(c))).map(item => {
           if (item.kind === 'tpl') {
             return (
               <div key={item.key} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '8px 2px', direction: 'ltr' }}>
