@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, Phone, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin, Smile, Paperclip, Video as VideoIcon, Plus } from 'lucide-react';
+import { Send, Play, X, Reply, Copy, Trash2, Check, LogOut, ChevronDown, UserPlus, UserMinus, Search, Mic, MicOff, Volume2, VolumeX, Lock, Camera, PhoneOff, Pencil, MoreVertical, Images, FileText, Link2, ArrowLeft, ExternalLink, RotateCcw, Zap, ZapOff, Image as ImageIcon, MapPin, Smile, Video as VideoIcon, Plus } from 'lucide-react';
 import {
   guardMergeMessages,
   guardPinMessage,
@@ -146,7 +146,6 @@ const SPEEDS = [1, 1.5, 2];
 function VoiceBubble({
   url,
   duration,
-  isMe,
   avatarUrl,
 }: {
   url: string;
@@ -397,7 +396,6 @@ function StoryReplyBubble({
   mediaType,
   comment,
   timeLabel,
-  isMe,
 }: {
   mediaUrl: string;
   mediaType: string;
@@ -726,13 +724,7 @@ function parseLocationBody(body: string | null | undefined): { lat: number; lng:
   }
 }
 
-function googleEmbedSrc(lat: number, lng: number): string {
-  return `https://maps.google.com/maps?q=${lat},${lng}&z=16&output=embed`;
-}
 
-function osmEmbedSrc(lat: number, lng: number, _zoomDelta = 0.012): string {
-  return googleEmbedSrc(lat, lng);
-}
 
 function MapPanZoom({ lat, lng, children }: { lat: number; lng: number; children?: React.ReactNode }) {
   const [zoom, setZoom] = useState(1);
@@ -787,7 +779,6 @@ function LocationMapBubble({
   live,
   name,
   username,
-  avatarUrl,
 }: {
   lat: number;
   lng: number;
@@ -866,14 +857,6 @@ function LocationMapBubble({
   );
 }
 
-const nudgeBtnStyle: React.CSSProperties = {
-  width: 36, height: 36, borderRadius: 10,
-  border: '1px solid rgba(0,188,212,0.35)',
-  background: 'rgba(6,20,22,0.88)',
-  color: '#00BCD4',
-  fontWeight: 800,
-  cursor: 'pointer',
-};
 
 function LocationPickerOverlay({
   onClose,
@@ -913,11 +896,6 @@ function LocationPickerOverlay({
 
   useEffect(() => { readGps(); }, [readGps]);
 
-  const nudge = (dLat: number, dLng: number) => {
-    if (lat == null || lng == null) return;
-    setLat(lat + dLat);
-    setLng(lng + dLng);
-  };
 
   return (
     <motion.div
@@ -1125,30 +1103,6 @@ function ImageBubble({
     </>;
 }
 
-// ─── Call Bubble (logged "missed" / "answered" call messages) ─────────────────
-function CallBubble({
-  body,
-  duration,
-  isMe
-}: {
-  body: string | null;
-  duration: number | null;
-  isMe: boolean;
-}) {
-  const missed = body === 'missed';
-  const label = missed ? 'Missed call' : duration ? `Call · ${fmtCallDuration(duration)}` : 'Call';
-  return <div style={{
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '8px 12px',
-  }}>
-      <Phone size={15} strokeWidth={2.2} style={{ color: missed ? T.red : T.primary, flexShrink: 0 }} />
-      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: missed ? T.red : T.text }}>
-        {label}
-      </span>
-    </div>;
-}
 
 // ─── Swipeable message row ────────────────────────────────────────────────────
 
@@ -4587,7 +4541,6 @@ export default function ChatPage() {
   // ── Fetch messages ──────────────────────────────────────────────────────────
   const fetchMsgs = useCallback(async () => {
     try {
-      let url: string;
       let raw: unknown = [];
       if (isGroup) {
         const r = await fetch(`/api/groups/${groupId}/messages`, { credentials: 'include' });
@@ -5052,8 +5005,6 @@ export default function ChatPage() {
             window.dispatchEvent(new CustomEvent('stooorna:company-inbox', { detail: { userId: peerId, list: merged } }));
             window.dispatchEvent(new CustomEvent('stooorna:bottom-chat-blink', { detail: { target: 'company', userId: peerId, yellow: true } }));
           } else if (user?.id && peerId) {
-            // أي رد نصي (مثلاً من الشركة) → أيقونة شات المستخدم صفراء
-            const ukey = `stooorna_user_product_chats_${peerId}`;
             // peerId هنا الطرف الآخر؛ نخزّن على مفتاح الطرف المستلم عندما نكون نحن الشركة
             const recipientKey = `stooorna_user_product_chats_${peerId}`;
             const uprev = JSON.parse(localStorage.getItem(recipientKey) || '[]');
@@ -5305,7 +5256,6 @@ export default function ChatPage() {
     playBubblePop('send');
     try {
       const ct = file.type || 'application/octet-stream';
-      const isVid = ct.startsWith('video/') || isLikelyVideoUrl(file.name);
       const isImg = ct.startsWith('image/') || isLikelyImageUrl(file.name);
       if (isImg && !isGroup) {
         await sendImage(file);
@@ -6132,7 +6082,6 @@ export default function ChatPage() {
           const senderName = isMe ? myProfile?.name ?? user.name ?? 'Me' : m.senderName ?? m.senderUsername ?? 'User';
           const senderUser = isMe ? myProfile?.username ?? null : m.senderUsername ?? null;
           const senderAvatar = isMe ? myProfile?.avatarUrl ?? null : m.senderAvatarUrl ?? null;
-          const senderNameColor = isMe ? null : m.senderNameColor ?? null;
 
           // Time label — e.g. "02:45 PM"
           const msgDate = m.createdAt ? new Date(m.createdAt) : null;
