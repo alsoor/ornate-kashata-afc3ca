@@ -11,7 +11,7 @@ import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin, Headphones, Film } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -25,8 +25,8 @@ import { normalizeComment, sortCommentsTree, authorCountryLabel } from '@/lib/po
 import { useGuestGuard } from '@/hooks/useGuestGuard';
 import { GuestLiveStack, GUEST_SIGNIN_LABEL, GUEST_HEADER_LOCKED, readGuestLang, saveGuestLang } from '@/components/GuestLive';
 import PostTextMore from '@/components/PostTextMore';
-import { publishFeedPost, uploadPostMedia, deleteStoryInstant, POST_TEXT_MAX_CHARS } from '@/lib/postStoryPatch';
-import { mediaAiProcessGalleryFiles, mediaAiForceWorkingMedia, mediaAiNormalizeImage, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
+import { publishFeedPost, uploadPostMedia, deleteStoryInstant } from '@/lib/postStoryPatch';
+import { mediaAiProcessGalleryFiles, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
 import { StoryModerationBell, StoryModerateDialog, StoryBanModal, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
 
@@ -93,8 +93,6 @@ const CLR_CARD_BG       = 'rgba(0,188,212,0.05)';
 const CLR_CARD_BORDER   = 'rgba(0,188,212,0.12)';
 const CLR_INPUT_BG      = 'rgba(0,30,35,0.8)';
 const CLR_NAV_BORDER    = 'rgba(0,188,212,0.08)';
-const CLR_TAB_ACTIVE    = 'rgba(0,188,212,0.15)';
-const CLR_TAB_BORDER    = 'rgba(0,188,212,0.3)';
 
 const CLR_POST_BORDER   = '#0d3d33';
 
@@ -291,10 +289,6 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
   return kind;
 }
 
-/** Whether voice or camera live is active for this host */
-function useLiveBroadcastActive(hostId: string | null | undefined): boolean {
-  return useLiveBroadcastKind(hostId) != null;
-}
 
 /** أي مستخدم من القائمة في بث (صوتي/مرئي) الآن؟ — يتحدّث فوراً بحدث البث، ويتحقق دورياً من الغرف. */
 function useAnyLiveBroadcast(hostIds: string[]): boolean {
@@ -1420,69 +1414,7 @@ type ShareThreadMsg = {
   read?: boolean;
 };
 
-const FRIEND_CHAT_REACT_EMOJIS = ['❤️', '😂', '😮', '😢', '🙏', '👍', '🔥', '👏'];
 
-function toggleMsgReaction(
-  a: string,
-  b: string,
-  postId: string | number,
-  msgId: string,
-  fromId: string,
-  emoji: string,
-): ShareThreadMsg[] {
-  const list = loadShareThread(a, b, postId);
-  const next = list.map((m) => {
-    if (m.id !== msgId) return m;
-    const reactions = Array.isArray(m.reactions) ? [...m.reactions] : [];
-    const idx = reactions.findIndex((r) => String(r.fromId) === String(fromId) && r.emoji === emoji);
-    if (idx >= 0) {
-      reactions.splice(idx, 1);
-      return { ...m, reactions };
-    }
-    const filtered = reactions.filter((r) => String(r.fromId) !== String(fromId));
-    filtered.push({ emoji, fromId });
-    return { ...m, reactions: filtered };
-  });
-  saveShareThread(a, b, postId, next);
-  return next;
-}
-function isLiveLocationMsg(m: ShareThreadMsg): boolean {
-  if (m.kind === 'live-location') return true;
-  return m.type === 'text' && /^Live Location:/i.test(m.body || '');
-}
-function isLiveLocationReplyMsg(m: ShareThreadMsg): boolean {
-  if (m.kind === 'live-location-reply') return true;
-  return m.type === 'text' && /^Live Location reply:/i.test(m.body || '');
-}
-function liveLocationPlainText(m: ShareThreadMsg): string {
-  return String(m.body || '')
-    .replace(/^Live Location reply:\s*/i, '')
-    .replace(/^Live Location:\s*/i, '')
-    .trim();
-}
-function hasLiveLocationReplyFromMe(msgs: ShareThreadMsg[], myId: string | undefined, targetId: string): boolean {
-  if (!myId) return false;
-  return msgs.some(x =>
-    (x.kind === 'live-location-reply' || isLiveLocationReplyMsg(x))
-    && String(x.fromId) === String(myId)
-    && String(x.replyToId || '') === String(targetId)
-  );
-}
-function hasStoryReplyFromMe(msgs: ShareThreadMsg[], myId: string | undefined, targetId: string): boolean {
-  if (!myId) return false;
-  return msgs.some(x => (x.kind === 'story-reply' || isStoryReplyMsg(x)) && String(x.fromId) === String(myId) && String(x.replyToId || '') === String(targetId));
-}
-function isStoryCommentMsg(m: ShareThreadMsg): boolean {
-  if (m.kind === 'story-comment') return true;
-  return m.type === 'text' && /^Story comment:\s*/i.test(m.body || '');
-}
-function isStoryReplyMsg(m: ShareThreadMsg): boolean {
-  if (m.kind === 'story-reply') return true;
-  return m.type === 'text' && /^Story reply:\s*/i.test(m.body || '');
-}
-function storyMsgPlainText(m: ShareThreadMsg): string {
-  return String(m.body || '').replace(/^Story comment:\s*/i, '').replace(/^Story reply:\s*/i, '');
-}
 const SHARE_THREAD_KEY = (a: string, b: string, postId: string | number) => {
   const [x, y] = [String(a), String(b)].sort();
   return `stooorna_share_thread_${x}_${y}_${postId}`;
@@ -1670,27 +1602,6 @@ async function syncDirectTextMessage(meId: string, peerId: string, localMsgId: s
   } catch { /* offline — message stays local-only until the next successful send */ }
 }
 
-// ── Chat header / message timestamp helpers (friend chat) ──────────────────
-function formatLastSeen(value: number | string): string {
-  const ts = typeof value === 'number' ? value : new Date(value).getTime();
-  if (!Number.isFinite(ts)) return '';
-  const now = Date.now();
-  const diffMs = Math.max(0, now - ts);
-  const diffMin = Math.floor(diffMs / 60000);
-  const date = new Date(ts);
-  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  const fullDate = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  if (diffMin < 1) return `last seen just now · ${time}`;
-  if (diffMin < 60) return `last seen ${diffMin} min ago · ${time}`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `last seen ${diffHr}h ago · ${time}`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay === 1) return `last seen yesterday at ${time} · ${fullDate}`;
-  if (diffDay < 30) return `last seen ${diffDay} days ago · ${time} · ${fullDate}`;
-  const diffMo = Math.floor(diffDay / 30);
-  if (diffMo < 12) return `last seen ${diffMo} mo ago · ${time} · ${fullDate}`;
-  return `last seen ${fullDate} at ${time}`;
-}
 function formatMsgTime(ts: number): string {
   return new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
@@ -1721,16 +1632,6 @@ function readFriendTyping(fromId: string, toId: string): boolean {
   } catch { return false; }
 }
 
-function formatDayLabel(ts: number): string {
-  const date = new Date(ts);
-  const today = new Date();
-  if (date.toDateString() === today.toDateString()) return 'Today';
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  if (today.getTime() - date.getTime() < 6 * 24 * 60 * 60 * 1000) return date.toLocaleDateString('en-US', { weekday: 'long' });
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
-}
 
 // ── Shared-posts inbox types — posts someone sent me via the share sheet ──────
 interface SharedPostComment {
@@ -2191,14 +2092,6 @@ function storyRelativeTime(dateStr: string): string {
   return `منذ ${n(years)} سنة`;
 }
 
-/** تسمية وقت صغيرة لشبكة المنشورات (3 أعمدة) — من الخارج أسفل المربع */
-function postGridTimeLabel(dateStr: string | null | undefined): { relative: string; date: string } {
-  if (!dateStr) return { relative: '', date: '' };
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return { relative: '', date: '' };
-  const date = d.toLocaleDateString('ar-KW', { day: 'numeric', month: 'short', year: 'numeric' });
-  return { relative: storyRelativeTime(dateStr), date };
-}
 
 
 /** هل الحساب الحالي شركة؟ (صلاحية New Post / إعلان للقصة) — الأفراد لا ينشرون بوستات */
@@ -2326,53 +2219,6 @@ function useBusinessApproved(userId?: string | null): boolean {
 }
 
 
-function PostGridTimeFooter({ createdAt, onMedia }: { createdAt?: string | null; onMedia?: boolean }) {
-  const { relative, date } = postGridTimeLabel(createdAt);
-  if (!relative && !date) return null;
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        padding: '10px 4px 3px',
-        background: onMedia
-          ? 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.35) 55%, transparent 100%)'
-          : 'linear-gradient(to top, rgba(0,20,24,0.88) 0%, rgba(0,20,24,0.45) 60%, transparent 100%)',
-        pointerEvents: 'none',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 1,
-        zIndex: 2,
-      }}
-    >
-      <span style={{
-        color: onMedia ? 'rgba(255,255,255,0.95)' : 'rgba(200,230,230,0.95)',
-        fontSize: '0.52rem',
-        fontWeight: 700,
-        lineHeight: 1.15,
-        textAlign: 'center',
-        maxWidth: '100%',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-      }}>{relative}</span>
-      <span style={{
-        color: onMedia ? 'rgba(255,255,255,0.7)' : 'rgba(150,200,200,0.75)',
-        fontSize: '0.48rem',
-        fontWeight: 600,
-        lineHeight: 1.1,
-        textAlign: 'center',
-        maxWidth: '100%',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-      }}>{date}</span>
-    </div>
-  );
-}
 
 // ── لون حلقة الستوري: حالتان فقط بدون أي فواصل أو عدّ تنازلي —
 //    أصفر بالكامل ما دام في عنصر واحد على الأقل لم يُشاهَد بعد،
@@ -2563,7 +2409,7 @@ const CAMERA_FILTERS: { id: CameraFilterId; label: string; css: string }[] = [
   { id: 'bw', label: 'B&W', css: 'grayscale(1) contrast(1.08)' },
 ];
 
-function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendRequests = [], onRespondFriendRequest, onOpenStoryComments, storyCommentUnread = 0, shareChatUnread = 0, allowMusic = true, publishLabel, liveFriends = [], myId, onSendLiveChat, startWithLiveMap = false }: {
+function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendRequests = [], onRespondFriendRequest, allowMusic = true, publishLabel, liveFriends = [], myId, onSendLiveChat, startWithLiveMap = false }: {
   onClose: () => void;
   onPublish: (file: File) => Promise<void> | void;
   avatarUrl?: string | null;
@@ -2593,9 +2439,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const recordedChunksRef = useRef<Blob[]>([]);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRecordingRef = useRef(false);
-  const lastTapRef = useRef<number>(0);
 
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [facingMode] = useState<'user' | 'environment'>('user');
 
   function handleVideoDoubleTap() {
     // Double-tap flip disabled
@@ -2643,7 +2488,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const [livePlace, setLivePlace] = useState('');
   const [liveZoom, setLiveZoom] = useState(16);
   const [liveFocus, setLiveFocus] = useState<{ lat: number; lng: number } | null>(null);
-  const [liveMapSrc, setLiveMapSrc] = useState('');
+  const [, setLiveMapSrc] = useState('');
   const liveDragRef = useRef<{
     pts: Record<number, { x: number; y: number }>;
     startFocus: { lat: number; lng: number };
@@ -4794,7 +4639,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
 }
 
 // ── StoryViewer — fullscreen viewer ───────────────────────────────────────────
-function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = null, onClose, onSeen, onAddMedia, onPublishPhoto, onPublishVideo, onOpenCamera, onDeleteItem, onSendComment, isCompanyPublisher = false, onOpenSettings, onOpenFriends, onOpenChat, canModerate = false, onRequestModerate, moderationOpen = false }: {
+function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = null, onClose, onSeen, onAddMedia, onDeleteItem, onSendComment, isCompanyPublisher = false, onOpenSettings, onOpenFriends, onOpenChat, canModerate = false, onRequestModerate, moderationOpen = false }: {
   groups: StoryGroup[];
   startGroupIdx: number;
   myId: string;
@@ -6041,55 +5886,8 @@ function composerSaveShortLink(entry: { code: string; url: string; shortUrl: str
     localStorage.setItem(COMPOSER_SHORT_LINKS_KEY, JSON.stringify(next));
   } catch { /* ignore */ }
 }
-function composerPublicShortUrl(url: string): string {
-  try {
-    const list = JSON.parse(localStorage.getItem(COMPOSER_SHORT_LINKS_KEY) || '[]') as Array<{ url: string; shortUrl: string }>;
-    const n = composerNormalizeUrl(url) || url;
-    const hit = list.find(e => e.url === n || e.shortUrl === url || e.shortUrl === n);
-    if (hit?.shortUrl) return hit.shortUrl;
-  } catch { /* */ }
-  return url;
-}
 
-function composerLocalShortUrl(normalized: string): string {
-  const existing = (() => {
-    try {
-      const list = JSON.parse(localStorage.getItem(COMPOSER_SHORT_LINKS_KEY) || '[]') as Array<{ url: string; shortUrl: string }>;
-      const hit = list.find(e => e.url === normalized);
-      if (hit?.shortUrl) return hit.shortUrl;
-    } catch { /* */ }
-    return '';
-  })();
-  if (existing) return existing;
-  const code = composerMakeShortCode();
-  const shortUrl = `https://stooorna.com/s/${code}`;
-  composerSaveShortLink({ code, url: normalized, shortUrl, createdAt: Date.now() });
-  return shortUrl;
-}
 
-async function composerCreateShortLink(rawUrl: string): Promise<string | null> {
-  const normalized = composerNormalizeUrl(rawUrl);
-  if (!normalized) return null;
-  if (/^https?:\/\/(www\.)?stooorna\.com\/s\//i.test(normalized)) return normalized;
-  try {
-    const r = await fetch('/api/short-links', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: normalized }),
-    });
-    if (r.ok) {
-      const d = await r.json() as { code?: string; shortUrl?: string; url?: string; id?: string };
-      const code = d.code || d.id;
-      const shortUrl = d.shortUrl || (code ? `https://stooorna.com/s/${code}` : null);
-      if (shortUrl && code) {
-        composerSaveShortLink({ code, url: normalized, shortUrl, createdAt: Date.now() });
-        return shortUrl;
-      }
-    }
-  } catch { /* local short link */ }
-  return composerLocalShortUrl(normalized);
-}
 
 // ── X status → full image/video embed (fetches direct media) ───────────────────
 function XStatusEmbed({ statusUrl }: { statusUrl: string }) {
@@ -6176,22 +5974,6 @@ function PostLinkEmbeds({ embeds }: { embeds: { url: string; type: 'image' | 'vi
 // (معاينة مربع الكتابة + الفييد + صفحة البوست المفتوح).
 const X_MEDIA_CACHE = new Map<string, Promise<{ url: string; type: 'image' | 'video' }[]>>();
 
-/** كل روابط تغريدات X/Twitter داخل نص (بدون تكرار، بنفس ترتيب ظهورها) */
-function extractXStatusUrls(text: string | null | undefined): string[] {
-  if (!text) return [];
-  const out: string[] = [];
-  const seen = new Set<string>();
-  const matches = text.match(URL_IN_TEXT_RE) || [];
-  for (const m of matches) {
-    const raw = m.replace(/[.,;:!?،؛]+$/, '');
-    const resolved = composerLookupOriginalUrl(raw);
-    const id = parseXStatusId(resolved);
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    out.push(resolved);
-  }
-  return out;
-}
 
 /** نفس resolveXStatusMedia لكن مع كاش (لا يعيد الجلب عند كل عرض/تمرير). الفشل لا يُخزَّن حتى يمكن إعادة المحاولة */
 function resolveXStatusMediaCached(statusUrl: string): Promise<{ url: string; type: 'image' | 'video' }[]> {
@@ -6565,9 +6347,6 @@ async function fetchWithTimeout(resource: string, ms = 4500): Promise<Response |
   }
 }
 
-function inAppSiteShot(pageUrl: string): string {
-  return `https://s.wordpress.com/mshots/v1/${encodeURIComponent(pageUrl)}?w=1080`;
-}
 
 function inAppVisualFrame(pageUrl: string, stage = 0): string {
   const embed = inAppEmbedSrc(pageUrl);
@@ -7405,11 +7184,7 @@ function PostCard({
   onRequestDelete,
   onRemoveMedia,
   onHashtag,
-  onToggleFavorite,
-  isFavorited,
   onShare,
-  onRepost,
-  onDownload,
   onOpenProfile,
   isPinned,
   onTogglePin,
@@ -7469,9 +7244,6 @@ function PostCard({
   const [postMenuOpen, setPostMenuOpen] = useState(false);
   // ── قائمة الثلاث نقاط + كتم الصوت داخل المعاينة كاملة الشاشة (mediaLightbox) ──
   const [lightboxMenuOpen, setLightboxMenuOpen] = useState(false);
-  const [lightboxMuted, setLightboxMuted] = useState(false);
-  // ── Per-video mute state for the small feed preview (sound is ON by default while scrolling) ──
-  const [feedMuted, setFeedMuted] = useState<Record<number, boolean>>({});
   // ── معرض الصور المتعددة داخل المنشور — تنقل يمين/يسار + عداد صفحات (1/N) زي انستغرام ──
   const [mediaPage, setMediaPage] = useState(0);
   const [cardEngTick, setCardEngTick] = useState(0);
@@ -7537,13 +7309,6 @@ function PostCard({
   // روابط X داخل نص المنشور — نص إعلان/منشور المنتج مخفي في الفييد، فنعرض وسائط الرابط مباشرة
   const postXUrls = isProductAd ? extractLinkMediaUrls(post.text) : [];
   const [productDetailsOpen, setProductDetailsOpen] = useState(false);
-  function goToMediaPage(idx: number) {
-    const el = mediaScrollRef.current;
-    if (!el) return;
-    const clamped = Math.max(0, Math.min(idx, mediaItems.length - 1));
-    el.scrollTo({ left: clamped * el.clientWidth, behavior: 'smooth' });
-    setMediaPage(clamped);
-  }
 
   return (
     <>
@@ -8592,7 +8357,6 @@ const MiniProfileModal = ({
   authorAvatarUrl: string | null;
   onClose: () => void;
 }) => {
-  const navigate = useNavigate();
   const { user } = useSession();
   const isOwnProfile = user?.id === authorId;
   const [profile, setProfile] = useState<MiniProfileData | null>(null);
@@ -8963,14 +8727,13 @@ export interface FriendStoryProfileProps {
   /** Settings-style right sheet: slides from the right, leaves a left strip to dismiss */
   sheetMode?: boolean;
 }
-export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, onRepost, isCompanyProfile = false, sheetMode = false }: FriendStoryProfileProps) {
+export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, isCompanyProfile = false, sheetMode = false }: FriendStoryProfileProps) {
   const navigate = useNavigate();
   const { user } = useSession();
   const liveKind = useLiveBroadcastKind(authorId);
   const liveActive = liveKind != null;
   const [profile, setProfile] = useState<MiniProfileData | null>(null);
-  const [friendProfileMediaTab, setFriendProfileMediaTab] = useState<'videos' | 'photos'>('videos');
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [avatarExpanded, setAvatarExpanded] = useState(false);
   const [friendState, setFriendState] = useState<'none' | 'pending' | 'accepted'>('none');
   const [visitorCountry, setVisitorCountry] = useState('');
@@ -8979,8 +8742,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [authorPosts, setAuthorPosts] = useState<PostItem[]>([]);
   // فتح الصورة/الفيديو فقط بملء الشاشة — بدون فتح صفحة المنشور الكاملة القديمة
   const [mediaLightbox, setMediaLightbox] = useState<{ url: string; type: 'image' | 'video'; post: PostItem } | null>(null);
-  // كتم صوت معاينة الفيديو كاملة الشاشة
-  const [lightboxMuted, setLightboxMuted] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -9151,26 +8912,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const pinnedTrack = pinnedTrackFromProfile(profile);
   // الشركات عامة دائماً — لا تُخفى حتى لو وُسم الحساب خاصاً أو بدون صداقة
   const isHiddenPrivate = !isCompanyProfile && !!profile?.isPrivate && friendState !== 'accepted';
-  // منشور هذا المستخدم المثبّت (إن وُجد) يظهر أولًا، والباقي تحته بترتيبه الطبيعي بدون تثبيت
-  const sortedAuthorPosts = useMemo(() => {
-    // الشركة: كل المنشورات/المنتجات بدون تبويب Video/Photo
-    let list = isCompanyProfile
-      ? [...authorPosts]
-      : authorPosts.filter(p => {
-          const t = (p.mediaTypes?.[0] ?? p.mediaType) || '';
-          const dest = String(p.destination || p.audience || '');
-          const isVid = t === 'video' || dest === 'videos';
-          const isPhoto = t === 'image' || dest === 'photos' || (!!p.mediaUrl && t !== 'video');
-          return true;
-        });
-    if (profile?.pinnedPostId == null) return list;
-    const pinnedIndex = list.findIndex(p => p.id === profile.pinnedPostId);
-    if (pinnedIndex <= 0) return list;
-    const copy = [...list];
-    const [pinned] = copy.splice(pinnedIndex, 1);
-    copy.unshift(pinned);
-    return copy;
-  }, [authorPosts, profile?.pinnedPostId, friendProfileMediaTab, isCompanyProfile]);
 
   const sheetShell = sheetMode ? (
     <motion.div
@@ -9819,278 +9560,6 @@ function InstagramCommentsSheet({
   );
 }
 
-// ── PostDetailPage — fullscreen "single post" page: media fills the screen edge-to-edge,
-// with the author/time overlaid on top. Likes + comments only apply to other people's posts —
-// the owner just sees their own media fullscreen with nothing under it. ──
-function PostDetailPage({
-  post,
-  isMine,
-  comments,
-  commentText,
-  commentSending,
-  onChangeCommentText,
-  onSubmitComment,
-  onToggleLike,
-  onRemoveMedia,
-  onRequestDelete,
-  onSaveMediaText,
-  onClose,
-  enterFromSide = false,
-}: {
-  post: PostItem;
-  isMine: boolean;
-  comments: PostComment[];
-  commentText: string;
-  commentSending: boolean;
-  onChangeCommentText: (v: string) => void;
-  onSubmitComment: (parentCommentId?: number | null) => void;
-  onToggleLike: (post: PostItem, mediaIndex?: number) => void;
-  onRemoveMedia: (post: PostItem) => void;
-  onRequestDelete: (post: PostItem) => void;
-  onSaveMediaText: (post: PostItem, text: string) => Promise<void>;
-  onClose: () => void;
-  enterFromSide?: boolean;
-}) {
-  const [replyingTo, setReplyingTo] = useState<PostComment | null>(null);
-  const [mediaText, setMediaText] = useState(post.text ?? '');
-  const [savingMediaText, setSavingMediaText] = useState(false);
-  const [activeMediaIndex, setActiveMediaIndex] = useState(0);
-  const media = PostMediaItems(post);
-  const hasMedia = media.length > 0;
-  // ── دفاع إضافي ضد مشكلة "النص الأبيض ينزل على التعليقات": حتى مع الـ key الموجود على
-  // مستوى الأب (الذي يفرض إعادة تركيب هذا المكوّن بالكامل عند تغيّر المنشور)، نتأكد هنا
-  // أيضاً أن شريط التمرير يرجع للأعلى فور فتح أي منشور، بدل أن يبقى بمكانه من منشور سابق. ──
-  const panelScrollRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (panelScrollRef.current) panelScrollRef.current.scrollTop = 0;
-    setActiveMediaIndex(0);
-    setMediaText(post.text ?? '');
-  }, [post.id, post.text]);
-
-  const postDate = new Date(post.createdAt);
-  const timeAgo = storyRelativeTime(post.createdAt);
-
-  const formatCommentDate = (value: string) => new Intl.DateTimeFormat('ar-KW', {
-    dateStyle: 'medium', timeStyle: 'short',
-  }).format(new Date(value));
-  const submitWithReply = () => {
-    onSubmitComment(replyingTo?.id ?? null);
-    setReplyingTo(null);
-  };
-
-  // Below the fullscreen media: caption (everyone) + like/comments (other people's posts only).
-  const showBelowPanel = !!post.text || isMine || !isMine;
-  const isMediaPost = hasMedia && (post.mediaType === 'image' || post.mediaType === 'video');
-  const saveMediaText = async () => {
-    setSavingMediaText(true);
-    try { await onSaveMediaText(post, mediaText); } finally { setSavingMediaText(false); }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }} animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }} transition={{ type: 'spring', stiffness: 400, damping: 34, mass: 0.85 }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 10400,
-        background: PAGE_BG,
-        display: 'flex', flexDirection: 'column',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Header — overlaid directly on the media so nothing eats into it */}
-      <div style={{
-        position: hasMedia ? 'absolute' : 'relative',
-        top: 0, left: 0, right: 0, zIndex: 2,
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '40px 14px 16px',
-        background: hasMedia ? 'linear-gradient(to bottom, rgba(0,0,0,0.68), rgba(0,0,0,0.32) 60%, transparent)' : CLR_HEADER_BG,
-        backdropFilter: hasMedia ? undefined : 'blur(14px)',
-        borderBottom: hasMedia ? undefined : `1px solid ${CLR_NAV_BORDER}`,
-      }}>
-        <button onClick={onClose} aria-label="إغلاق" style={{
-          background: 'none', border: 'none', color: hasMedia ? '#fff' : CLR_TEXT, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, flexShrink: 0,
-        }}>
-          <X size={20} strokeWidth={2.2} />
-        </button>
-        <VipAvatarFrame userId={post.authorId} size={34}><UserAvatar name={post.authorName} avatarUrl={post.authorAvatarUrl} size={34} /></VipAvatarFrame>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ color: hasMedia ? '#fff' : CLR_TEXT, fontSize: '0.82rem', fontWeight: 700, margin: 0, textShadow: hasMedia ? '0 1px 3px rgba(0,0,0,0.5)' : undefined }}>
-            {post.authorName || post.authorUsername || '—'}
-          </p>
-          <p style={{ color: hasMedia ? 'rgba(255,255,255,0.82)' : CLR_TEXT_DIM, fontSize: '0.66rem', margin: '1px 0 0', textShadow: hasMedia ? '0 1px 3px rgba(0,0,0,0.5)' : undefined }}>
-            {timeAgo}
-          </p>
-        </div>
-        {isMine && (
-          <button onClick={() => onRequestDelete(post)} aria-label="حذف المنشور" style={{
-            background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4,
-          }}>
-            <Trash2 size={19} strokeWidth={2.2} />
-          </button>
-        )}
-      </div>
-
-      {/* Fullscreen media — edge to edge, no border/padding/box, cover-fit so there are no gaps */}
-      {hasMedia && (
-        <div style={{
-          position: 'relative', width: '100%', background: '#000', overflow: 'hidden',
-          border: '3px solid #000', boxSizing: 'border-box',
-          flex: '0 0 auto',
-          height: 'min(62dvh, 520px)',
-          minHeight: 220,
-          maxHeight: '62dvh',
-        }}>
-          <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-            {media[activeMediaIndex] && (
-              media[activeMediaIndex].type === 'video' ? (
-                <video
-                  key={media[activeMediaIndex].url}
-                  src={media[activeMediaIndex].url}
-                  controls
-                  autoPlay
-                  playsInline
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                />
-              ) : (
-                <img key={media[activeMediaIndex].url} src={media[activeMediaIndex].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-              )
-            )}
-            {media.length > 1 && (
-              <>
-                <button type="button" aria-label="الوسائط السابقة" onClick={() => setActiveMediaIndex(index => (index - 1 + media.length) % media.length)} className="absolute top-1/2 start-2 -translate-y-1/2 rounded-full border-0 bg-primary text-primary-foreground" style={{ width: 36, height: 36, cursor: 'pointer', fontSize: '1.35rem', lineHeight: 1 }}>‹</button>
-                <button type="button" aria-label="الوسائط التالية" onClick={() => setActiveMediaIndex(index => (index + 1) % media.length)} className="absolute top-1/2 end-2 -translate-y-1/2 rounded-full border-0 bg-primary text-primary-foreground" style={{ width: 36, height: 36, cursor: 'pointer', fontSize: '1.35rem', lineHeight: 1 }}>›</button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Below the media: caption, then — for other people's posts only — the like frame and comments */}
-      {showBelowPanel && (
-        <>
-        <style>{`.post-detail-panel::-webkit-scrollbar{display:none}`}</style>
-        <div
-          ref={panelScrollRef}
-          className="post-detail-panel flex-1 min-h-0 overflow-y-auto overscroll-contain"
-          style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', display: 'flex', flexDirection: 'column', minHeight: 180, flexGrow: 1, background: '#ffffff' }}
-        >
-          {isMine && isMediaPost && (
-            <div style={{ margin: '14px 14px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <textarea
-                value={mediaText}
-                onChange={event => setMediaText(event.target.value)}
-                placeholder="اكتب منشوراً نصياً للصورة أو الفيديو"
-                rows={3}
-                style={{ width: '100%', resize: 'vertical', borderRadius: 12, border: `1px solid ${CLR_POST_BORDER}`, background: CLR_INPUT_BG, color: CLR_TEXT, padding: '10px 12px', fontFamily: 'inherit', fontSize: '0.82rem', boxSizing: 'border-box' }}
-              />
-              <button type="button" onClick={saveMediaText} disabled={savingMediaText} style={{ alignSelf: 'flex-end', border: 'none', borderRadius: 10, background: CLR_PRIMARY, color: 'hsl(var(--primary-foreground))', padding: '8px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: savingMediaText ? 'wait' : 'pointer' }}>
-                {savingMediaText ? 'جارٍ الحفظ...' : 'نشر النص'}
-              </button>
-            </div>
-          )}
-          {/* نص البوست يظهر دائماً إن وُجد */}
-          {!!post.text && (
-            <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: '16px 16px', margin: '14px 14px 0' }}>
-              <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold embedMediaLinks />
-            </div>
-          )}
-
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            margin: '12px 14px 0', padding: '10px 14px',
-            border: `1px solid ${CLR_POST_BORDER}`, borderRadius: 14,
-            background: 'hsl(var(--muted))',
-          }}>
-            <motion.button whileTap={{ scale: 0.88 }} onClick={() => onToggleLike(post, multiMedia ? mediaPage : undefined)} style={{
-              display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
-              color: post.likedByMe ? '#ef4444' : CLR_TEXT_DIM,
-            }}>
-              <Heart size={17} strokeWidth={2} fill={post.likedByMe ? '#ef4444' : 'none'} />
-              <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>{post.likesCount > 0 ? formatCompactCount(post.likesCount) : 'Like'}</span>
-            </motion.button>
-          </div>
-
-          <div style={{ padding: '14px 14px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <p style={{ color: '#000000', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', margin: '4px 0' }}>
-              الردود {comments.length > 0 ? `(${comments.length})` : ''}
-            </p>
-            {comments.length === 0 && (
-              <p style={{ color: '#000000', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center', padding: '24px 0' }}>
-                لا توجد ردود بعد — كن أول من يعلّق
-              </p>
-            )}
-              {sortCommentsTree(comments).map(c => (
-                <div key={c.id} style={{ display: 'flex', gap: 8, marginLeft: c.parentCommentId ? 22 : 0 }}>
-                  <UserAvatar name={c.authorName} avatarUrl={c.authorAvatarUrl} size={30} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: '#000000', fontSize: '0.76rem', fontWeight: 700, margin: 0 }}>{c.authorName}</p>
-                    <p style={{ color: '#000000', fontSize: '0.8rem', fontWeight: 700, margin: '2px 0 0', lineHeight: 1.5, wordBreak: 'break-word' }}>{c.text}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-                      <time dateTime={c.createdAt} style={{ color: '#000000', fontSize: '0.62rem', fontWeight: 700 }}>{formatCommentDate(c.createdAt)}</time>
-                      <button onClick={() => setReplyingTo(c)} style={{ background: 'none', border: 'none', padding: 0, color: CLR_PRIMARY, cursor: 'pointer', fontSize: '0.66rem', fontWeight: 700 }}>رد</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-        </div>
-        </>
-      )}
-
-      {/* Comment composer — fixed at bottom for everyone */}
-      {(
-        <div style={{
-          position: 'relative',
-          display: 'flex', alignItems: 'center', gap: hasMedia ? 8 : 0,
-          padding: hasMedia ? '10px 14px calc(10px + env(safe-area-inset-bottom))' : `0 0 env(safe-area-inset-bottom)`,
-          borderTop: `1px solid ${CLR_NAV_BORDER}`,
-          background: CLR_HEADER_BG, backdropFilter: 'blur(14px)',
-        }}>
-          {replyingTo && (
-            <div style={{ position: 'absolute', bottom: 58, left: 14, right: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 10, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}` }}>
-              <span style={{ color: CLR_TEXT_DIM, fontSize: '0.68rem' }}>رد على {replyingTo.authorName}</span>
-              <button onClick={() => setReplyingTo(null)} aria-label="إلغاء الرد" style={{ background: 'none', border: 'none', color: CLR_TEXT_DIM, cursor: 'pointer', padding: 0 }}><X size={14} /></button>
-            </div>
-          )}
-          <input
-            value={commentText}
-            onChange={e => onChangeCommentText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !commentSending) submitWithReply(); }}
-            placeholder="اكتب ردّاً على هذا المنشور..."
-            style={hasMedia ? {
-              flex: 1, background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
-              borderRadius: 20, padding: '10px 14px', color: CLR_TEXT, fontSize: '0.82rem', outline: 'none',
-            } : {
-              flex: 1, background: CLR_HEADER_BG, border: 'none', boxShadow: 'none',
-              borderRadius: 0, padding: '14px 14px', color: CLR_TEXT, fontSize: '0.82rem',
-              outline: 'none', WebkitAppearance: 'none', appearance: 'none',
-            }}
-          />
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            disabled={commentSending || !commentText.trim()}
-            onClick={submitWithReply}
-            style={hasMedia ? {
-              width: 38, height: 38, borderRadius: '50%',
-              background: commentText.trim() ? CLR_PRIMARY : CLR_PRIMARY_FAINT,
-              border: 'none', color: commentText.trim() ? '#06171a' : CLR_TEXT_DIM,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            } : {
-              width: 52, height: 52, borderRadius: 0,
-              background: CLR_HEADER_BG,
-              border: 'none', borderInlineStart: `1px solid ${CLR_NAV_BORDER}`,
-              color: commentText.trim() ? CLR_PRIMARY : CLR_TEXT_DIM,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            }}
-          >
-            <Send size={15} strokeWidth={2.4} />
-          </motion.button>
-        </div>
-      )}
-    </motion.div>
-  );
-}
 
 
 // ── GlobeVoiceControl — public Agora room beside the story creator ────────────
@@ -10376,14 +9845,9 @@ type MessageAlertState = {
 };
 let messageAlertState: MessageAlertState = { active: false, fromId: null };
 const messageAlertListeners = new Set<() => void>();
-function getMessageAlertSnapshot(): MessageAlertState { return messageAlertState; }
 function setMessageAlertState(patch: Partial<MessageAlertState>) {
   messageAlertState = { ...messageAlertState, ...patch };
   messageAlertListeners.forEach(listener => listener());
-}
-function subscribeMessageAlert(listener: () => void) {
-  messageAlertListeners.add(listener);
-  return () => { messageAlertListeners.delete(listener); };
 }
 // Clears the alert once the user actually opens the chat it came from.
 function clearMessageAlertFor(peerId: string) {
@@ -10952,10 +10416,6 @@ function setVideoIncomingSnap(next: VideoIncomingSnap) {
   videoIncomingListeners.forEach(fn => fn());
 }
 function getVideoIncomingSnap(): VideoIncomingSnap { return videoIncomingSnap; }
-function subscribeVideoIncomingSnap(fn: () => void) {
-  videoIncomingListeners.add(fn);
-  return () => { videoIncomingListeners.delete(fn); };
-}
 
 function FriendVideoCallStage({
   userId,
@@ -12373,9 +11833,6 @@ function SharedInboxDrawer({
   onOpenPostThread,
   favoritedPosts,
   onOpenFavoritePost,
-  userShareInbox = [],
-  onOpenUserShare,
-  onDeleteUserShare,
   initialSection = 'story',
   storyOnly = false,
   zIndex = 10295,
@@ -12407,7 +11864,6 @@ function SharedInboxDrawer({
   }).format(new Date(value));
 
   const storyUnread = storyThreads.filter(t => !t.read).length;
-  const chatUnread = (userShareInbox || []).filter(t => !t.read).length;
   const tiles: { key: Exclude<SharedInboxSection, 'grid'>; label: string; caption: string; Icon: typeof Camera; count: number; unread: number }[] = [
     { key: 'story', label: 'Story', caption: 'تعليقات على قصتك', Icon: Camera, count: storyThreads.length, unread: storyUnread },
   ];
@@ -13458,21 +12914,6 @@ function splitLiveChatLinks(text: string): Array<{ type: 'text' | 'link'; value:
   return out;
 }
 
-function makeLiveChatJoinNotice(username: string | null, name: string | null): PublicLiveComment {
-  const handle = username ? `@${String(username).replace(/^@/, '')}` : (name || 'User');
-  return {
-    id: `bot_join_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    userId: LIVE_CHAT_BOT_ID,
-    name: LIVE_CHAT_BOT_NAME,
-    username: 'Bot',
-    avatarUrl: null,
-    text: `${handle}  Join Live Chat`,
-    imageUrl: null,
-    voiceUrl: null,
-    likes: [],
-    createdAt: Date.now(),
-  };
-}
 
 function makeLiveChatBotNotice(reason: 'text' | 'image' = 'text'): PublicLiveComment {
   return {
@@ -14301,7 +13742,6 @@ function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
 function PublicLiveCommentsPanel({
   user,
   headerOpen,
-  onToggleHeader,
   onBusyChange,
 }: {
   user: { id?: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null } | null | undefined;
@@ -14312,7 +13752,7 @@ function PublicLiveCommentsPanel({
 }) {
   const [comments, setComments] = useState<PublicLiveComment[]>(() => loadPublicLiveComments());
   const [text, setText] = useState('');
-  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [, setEmojiOpen] = useState(false);
   const [composerDock, setComposerDock] = useState<'none' | 'emoji' | 'gallery'>('none');
   const [emojiCat, setEmojiCat] = useState(0);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
@@ -14321,7 +13761,6 @@ function PublicLiveCommentsPanel({
   const [chatLift, setChatLift] = useState(0);
   const [kbInset, setKbInset] = useState(0);
   const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string }>>([]);
-  const [inAppUrl, setInAppUrl] = useState<string | null>(null);
   const [tplOpen, setTplOpen] = useState(false);
   const [openMediaId, setOpenMediaId] = useState<string | null>(null);
   const chatInputFocused = useRef(false);
@@ -14336,7 +13775,6 @@ function PublicLiveCommentsPanel({
   const chatInputRef = useRef<HTMLInputElement | null>(null);
   const liveSigRef = useRef('');
   const liveBusyRef = useRef(false);
-  const welcomedIdsRef = useRef<Set<string>>(new Set());
   const myId = String(user?.id || '');
   const myName = user?.name ?? null;
   const myUsername = (user as any)?.username ?? null;
@@ -15996,7 +15434,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const storyCanModerate = (void modTick, !!user && (isStoryOwner(user as { email?: string | null; username?: string | null; name?: string | null }) || isModerator(user.id)));
   // اختيار صورة/فيديو للستوري: مربّعان فقط بدون خيار "ملفات" ثالث —
   // نحدّد نوع الملف المسموح على الـ input قبل فتحه بدل قبول النوعين معاً.
-  const [storyPickerOpen, setStoryPickerOpen] = useState<null | 'main' | 'add'>(null);
+  const [, setStoryPickerOpen] = useState<null | 'main' | 'add'>(null);
   // 4-option menu opened from the "+" badge on my story avatar: نشر إعلان للقصة / نشر صورة / نشر فيديو / نشر إعلان للقصة عبر الكاميرا
   const [publishMenuOpen, setPublishMenuOpen] = useState(false);
   // فتح الكاميرا المدمجة لالتقاط ونشر القصة مباشرة
@@ -16009,18 +15447,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       window.dispatchEvent(new CustomEvent('stooorna:story-camera-state', { detail: { open: false } }));
     };
   }, [cameraCaptureOpen]);
-  const openStoryPicker = useCallback((kind: 'image' | 'video', target: 'main' | 'add') => {
-    const ref = target === 'main' ? storyFileRef : storyAddFileRef;
-    const input = ref.current;
-    if (!input) {
-      setQuickPublishError('تعذّر فتح مكتبة الوسائط. أعد المحاولة.');
-      return;
-    }
-
-    input.accept = kind === 'image' ? 'image/*' : 'video/*';
-    setStoryPickerOpen(null);
-    requestAnimationFrame(() => input.click());
-  }, []);
 
   useEffect(() => {
     const openStoryCamera = () => {
@@ -16276,7 +15702,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [businessAdTitle, setBusinessAdTitle] = useState('');
   const [businessAdBody, setBusinessAdBody] = useState('');
   const [businessAdMedia, setBusinessAdMedia] = useState<{ name: string; dataUrl: string; type: 'image' | 'video' | 'pdf'; mime: string } | null>(null);
-  const [composerBizHint, setComposerBizHint] = useState(false);
+  const [composerBizHint] = useState(false);
   const [myAdsHubOpen, setMyAdsHubOpen] = useState(false);
   const [myAdsHubTab, setMyAdsHubTab] = useState<'video' | 'photo' | 'pdf'>('video');
   const [feedAdViewer, setFeedAdViewer] = useState<any | null>(null);
@@ -16336,27 +15762,24 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }, [feedAdsTick === 0]);
   const isBusinessUser = !!(user?.id && (() => { try { const raw = localStorage.getItem('stooorna_business_registry'); const list = raw ? JSON.parse(raw) : []; return Array.isArray(list) && list.some((x: any) => String(x.userId) === String(user.id) && x.status === 'approved'); } catch { return false; } })());
   // وضع النشر: اختيار فقط (لا يفتح المعرض) — Text | Photo | Video
-  const [composerDestination, setComposerDestination] = useState<'text' | 'photos' | 'videos'>('text');
-  const [composerText, setComposerText] = useState('');
+  const [, setComposerDestination] = useState<'text' | 'photos' | 'videos'>('text');
+  const [, setComposerText] = useState('');
   // ── Product ad composer fields (title bold + details + price + dynamic + boxes) ──
   const [composerProductTitle, setComposerProductTitle] = useState('');
   const [composerProductDetails, setComposerProductDetails] = useState('');
   const [composerProductPrice, setComposerProductPrice] = useState('');
   const [composerProductExtras, setComposerProductExtras] = useState<string[]>([]);
   const [composerMediaFiles, setComposerMediaFiles] = useState<{ file: File; type: 'image' | 'video' | 'pdf'; preview: string }[]>([]);
-  // الحد الأقصى لعدد الصور التي يمكن إرفاقها بالمنشور الواحد (تُعرض بعدها كمعرض قابل للتصفح يمين/يسار)
-  const MAX_COMPOSER_IMAGES = 10;
   const [composerPosting, setComposerPosting] = useState(false);
   const [composerStatus, setComposerStatus] = useState('');
   const [composerError, setComposerError] = useState('');
   // setters used in clearPostMedia — values not read directly
   const [, setComposerAwaitingMedia] = useState(false);
   // composerLinkStep: يتحكم بإظهار/إخفاء مستطيل «رابط صورة أو فيديو» داخل صفحة كتابة البوست
-  const [composerLinkStep, setComposerLinkStep] = useState(false);
+  const [, setComposerLinkStep] = useState(false);
   const [composerLinkInput, setComposerLinkInput] = useState('');
   /** Media URLs from gallery/paste that must publish as real image/video */
   const [composerLinkMediaItems, setComposerLinkMediaItems] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
-  const [composerLinkShortening, setComposerLinkShortening] = useState(false);
   // ── روابط X داخل مربع الكتابة (العنوان + التفاصيل + الحقول الإضافية) ──
   // بمجرد لصق/كتابة الرابط تظهر الصورة أو الفيديو كاملة أسفل المربع (مستخدم + شركة — نفس الـ composer).
   // debounce قصير حتى لا نجلب أثناء كتابة رقم التغريدة. الرابط يبقى داخل النص كما هو.
@@ -16415,12 +15838,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [openComments, setOpenComments] = useState<PostItem | null>(null);
   // Only the "Post" tab (text posts) opens PostDetailPage with a slide-in-from-the-side
   // animation; Video/Photo grid thumbnails keep the original fade/scale-in behavior.
-  const [postDetailEnterSide, setPostDetailEnterSide] = useState(false);
+  const [, setPostDetailEnterSide] = useState(false);
   function openTextPostDetail(post: PostItem) { setPostDetailEnterSide(true); loadComments(post); }
-  function openMediaPostDetail(post: PostItem) {
-    setPostDetailEnterSide(false);
-    loadComments(post);
-  }
 
   function closePostDetail() {
     setOpenComments(null); setOpenCommentsMediaIndex(null);
@@ -16431,8 +15850,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   /** عند فتح بوست من داخل البروفايل — البوست فوق البروفايل؛ عند فتح بروفايل من البوست — البروفايل فوق البوست */
   const [singlePostFromProfile, setSinglePostFromProfile] = useState(false);
   const [adDetailsOpen, setAdDetailsOpen] = useState(false);
-  const [adVideoPaused, setAdVideoPaused] = useState(false);
-  const [singlePostChromeVisible, setSinglePostChromeVisible] = useState(true);
+  const [, setAdVideoPaused] = useState(false);
+  const [, setSinglePostChromeVisible] = useState(true);
   const [singlePostMediaPage, setSinglePostMediaPage] = useState(0);
   const pendingOpenMediaIndexRef = useRef(0);
   const singlePostMediaScrollRef = useRef<HTMLDivElement | null>(null);
@@ -16721,7 +16140,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       window.dispatchEvent(new CustomEvent('stooorna:share-sheet-state', { detail: { open: false } }));
     };
   }, [sharePost]);
-  const [shareRecipients, setShareRecipients] = useState<string[]>([]);
+  const [, setShareRecipients] = useState<string[]>([]);
   const [sharingPost, setSharingPost] = useState(false);
   const [shareError, setShareError] = useState('');
 
@@ -16730,7 +16149,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [postInteractions, setPostInteractions] = useState<PostInteractionItem[]>([]);
   const [sharedInboxLoading, setSharedInboxLoading] = useState(false);
   const [sharedInboxOpen, setSharedInboxOpen] = useState(false);
-  const [sharedInboxStoryOnly, setSharedInboxStoryOnly] = useState(false);
+  const [, setSharedInboxStoryOnly] = useState(false);
   const [openSharedThread, setOpenSharedThread] = useState<SharedPostItem | null>(null);
   const [sharedThreadComments, setSharedThreadComments] = useState<Record<number, SharedPostComment[]>>({});
   const [sharedCommentText, setSharedCommentText] = useState('');
@@ -16865,15 +16284,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     window.addEventListener('stooorna:refresh-text-feed', refresh);
     return () => window.removeEventListener('stooorna:refresh-text-feed', refresh);
   }, [fetchMyMediaPosts]);
-  const myMediaLikesTotal = myMediaPosts.reduce((sum, p) => sum + (p.likesCount ?? 0), 0);
   // Repost stat = how many posts I've reposted (repostedByMe), not reposts received on my own posts.
-  const myMediaRepostsTotal = posts.filter(p => p.repostedByMe).length;
-  // Split my media grid by type so a photo always lands in "صور" and a video always lands in
-  // "فيديوهات" — never the other section. Mirrors the same type-detection the grid itself uses.
-  const getPostThumbType = (post: PostItem) =>
-    post.mediaTypes && post.mediaTypes.length > 0 ? post.mediaTypes[0] : post.mediaType;
-  const myVideoPosts = useMemo(() => myMediaPosts.filter(p => getPostThumbType(p) === 'video' && p.audience !== 'text' && p.destination !== 'text'), [myMediaPosts]);
-  const myPhotoPosts = useMemo(() => myMediaPosts.filter(p => getPostThumbType(p) === 'image' && p.audience !== 'text' && p.destination !== 'text'), [myMediaPosts]);
 
   // ── دمج منشوراتي المنشورة كـ"عام" (صور/فيديو عبر زر "+" في قصتي) مع تغذية
   // المنشورات النصية: هذه المنشورات كانت تُحسب فقط ضمن myMediaPosts (للإحصائية أعلى
@@ -17075,61 +16486,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
 
 
-  async function shortenComposerLink(raw: string): Promise<string | null> {
-    setComposerLinkShortening(true);
-    setComposerError('');
-    try {
-      // روابط X: استخرج الصورة/الفيديو المباشر ليعرض كاملًا داخل البوست
-      const media = await resolveLinkToDirectMedia(raw);
-      if (media && media.length) {
-        // أول وسيط (أو اجمع الروابط) — نضع الروابط المباشرة
-        const joined = media.map(m => m.url).join('\n');
-        setComposerLinkInput(joined);
-        return joined;
-      }
-      const short = await composerCreateShortLink(raw);
-      if (!short) {
-        setComposerError('الرابط غير صالح أو لا يمكن استخراج وسائط منه');
-        return null;
-      }
-      setComposerLinkInput(short);
-      return short;
-    } finally {
-      setComposerLinkShortening(false);
-    }
-  }
 
-  async function pasteAndShortenComposerLink() {
-    setComposerError('');
-    try {
-      const clip = await navigator.clipboard.readText();
-      if (!clip?.trim()) {
-        setComposerError('الحافظة فارغة');
-        return;
-      }
-      // افتح خطوة الرابط إن لم تكن مفتوحة
-      setComposerLinkStep(true);
-      const short = await shortenComposerLink(clip.trim());
-      // بعد التحويل مباشرة جاهز للنشر
-      if (short) {
-        // لا ننشر تلقائيًا إلا إذا المستخدم ضغط نشر — لكن الرابط صار جاهزًا
-      }
-    } catch {
-      setComposerError('تعذر القراءة من الحافظة — الصق يدويًا');
-    }
-  }
 
-  async function handleComposerTextPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    if (composerDestination !== 'text') return;
-    const pasted = e.clipboardData?.getData('text')?.trim() || '';
-    if (!pasted) return;
-    // إذا كان الملصق رابطًا فقط (أو يبدأ برابط) → حوّله لرابط قصير في خانة الرابط
-    const looksLikeUrl = /^(https?:\/\/\S+)$/i.test(pasted) || /^(www\.\S+)$/i.test(pasted);
-    if (!looksLikeUrl) return;
-    e.preventDefault();
-    setComposerLinkStep(true);
-    await shortenComposerLink(pasted);
-  }
 
 
   /** Fast gallery prep: HEIC→JPEG + downscale large photos so upload finishes in ~1–2s. */
@@ -17376,28 +16734,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     return null;
   }
 
-  /** Compress image then produce a durable data: URL when server storage is unavailable (Railway without volume). */
-  async function fileToPlayableDataUrl(file: File, mediaType: 'image' | 'video'): Promise<string | null> {
-    try {
-      if (mediaType === 'video') {
-        // videos stay blob for local preview only — not durable across devices
-        return URL.createObjectURL(file);
-      }
-      let f = file;
-      try { f = await normalizeGalleryFileForUpload(file, 'image'); } catch { /* keep */ }
-      const buf = await f.arrayBuffer();
-      let binary = '';
-      const bytes = new Uint8Array(buf);
-      const chunk = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-      }
-      const mime = (f.type || 'image/jpeg').split(';')[0] || 'image/jpeg';
-      return `data:${mime};base64,${btoa(binary)}`;
-    } catch {
-      return null;
-    }
-  }
 
   async function submitPost(destination: 'text' | 'photos' | 'videos' = 'text') {
     /**
@@ -18178,21 +17514,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     }
   }
 
-  async function sendPostShare() {
-    if (guestGuard()) return;
-    if (!sharePost || !shareRecipients.length) return;
-    setSharingPost(true);
-    setShareError('');
-    try {
-      for (const friendId of shareRecipients) {
-        await sharePostToFriend(friendId);
-      }
-    } catch (error) {
-      setShareError(error instanceof Error ? error.message : 'تعذر إرسال المنشور');
-    } finally {
-      setSharingPost(false);
-    }
-  }
 
   const fetchPostInteractions = useCallback(async () => {
     try {
@@ -18647,28 +17968,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     }
   }
 
-  // Removes just the attached image/video from a post, keeping its text intact
-  async function saveMediaPostText(post: PostItem, text: string) {
-    const previousPosts = posts;
-    const previousMediaPosts = myMediaPosts;
-    const previousOpenPost = openComments;
-    const updatedText = text.trim();
-    const applyText = (item: PostItem) => item.id === post.id ? { ...item, text: updatedText } : item;
-    setPosts(current => current.map(applyText));
-    setMyMediaPosts(current => current.map(applyText));
-    setOpenComments(current => current && current.id === post.id ? applyText(current) : current);
-    try {
-      const response = await fetch(`/api/posts/${post.id}/caption`, {
-        method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: updatedText }),
-      });
-      if (!response.ok) throw new Error('Failed to save post text');
-    } catch {
-      setPosts(previousPosts);
-      setMyMediaPosts(previousMediaPosts);
-      setOpenComments(previousOpenPost);
-    }
-  }
 
   async function removePostMedia(post: PostItem) {
     const applyRemoval = (p: PostItem) => p.id === post.id ? { ...p, mediaUrl: null, mediaType: null, mediaUrls: [], mediaTypes: [] } : p;
@@ -19039,7 +18338,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Sub-tab inside the Profile page, replacing the old STOOORNA divider: switches the content
   // strip below it between the text-posts feed and the video/photo grid — independently of
   // everything above (stories strip, header, etc. never move when this changes).
-  const [profileContentTab, setProfileContentTab] = useState<'videos' | 'text' | 'photos'>('videos');
+  const [, setProfileContentTab] = useState<'videos' | 'text' | 'photos'>('videos');
   // Standalone fullscreen page listing text posts only — opened via the pen icon next
   // to the compose button, no header/story chrome, closes with a slide-down X.
   // Also auto-opens when returning from the chat page's back button after chatting
@@ -19304,7 +18603,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   //    next to "Likes" in the profile stats row opens a floating, horizontally-scrollable strip
   //    of friends at the top of the screen; tapping a friend opens their mini profile. ──
   const [namesBarOpen, setNamesBarOpen] = useState(false);
-  const [storyMoreOpen, setStoryMoreOpen] = useState(false);
   const [friendsPanelTab, setFriendsPanelTab] = useState<'friends' | 'company'>('friends');
   const [storyMediaOpen, setStoryMediaOpen] = useState(false);
   const [storyMediaText, setStoryMediaText] = useState('');
@@ -19347,7 +18645,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     fromAvatar: string | null; post: PostItem; note: string; at: number; read: boolean;
   }>>([]);
 
-  const myLiveActive = useLiveBroadcastActive(user?.id ? String(user.id) : null);
 
   // Publish the text-posts alert state so the bottom bar radar button can mirror it
   useEffect(() => {
@@ -19358,7 +18655,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     window.dispatchEvent(new CustomEvent('stooorna:text-posts-alert', { detail }));
   }, [textPostsPageOpen, newPostsAvailable, userShareInbox]);
   const [companyInboxOpen, setCompanyInboxOpen] = useState(false);
-  const [companyInboxTick, setCompanyInboxTick] = useState(0);
+  const [, setCompanyInboxTick] = useState(0);
   const [userShareChatPeer, setUserShareChatPeer] = useState<{
     id: string; name: string | null; username: string | null; avatarUrl: string | null; post?: PostItem | null; note?: string;
   } | null>(null);
@@ -19414,13 +18711,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     if (!friendChatListOpen || !user) return;
     void loadFriends();
   }, [friendChatListOpen, user?.id]);
-  const [friendChatReactMsgId, setFriendChatReactMsgId] = useState<string | null>(null);
+  const [, setFriendChatReactMsgId] = useState<string | null>(null);
   const [friendChatPeer, setFriendChatPeer] = useState<Friend | null>(null);
   const [friendChatTypingTick, setFriendChatTypingTick] = useState(0);
-  const incomingVideoCall = useSyncExternalStore(subscribeVideoIncomingSnap, getVideoIncomingSnap, getVideoIncomingSnap);
 
-  const [friendChatMsgs, setFriendChatMsgs] = useState<ShareThreadMsg[]>([]);
-  const [friendChatText, setFriendChatText] = useState('');
+  const [, setFriendChatMsgs] = useState<ShareThreadMsg[]>([]);
+  const [, setFriendChatText] = useState('');
   const [friendChatCallLogOpen, setFriendChatCallLogOpen] = useState(false);
   const [friendChatCallLogMenuOpen, setFriendChatCallLogMenuOpen] = useState(false);
   const callHistoryDotState = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
@@ -19486,29 +18782,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     }, 350);
     return () => window.clearTimeout(t);
   }, [storyReqQuery, storyRequestsBoxOpen]);
-  const [friendChatStoryReplyTo, setFriendChatStoryReplyTo] = useState<ShareThreadMsg | null>(null);
-  const friendChatInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
-  const [friendChatRecording, setFriendChatRecording] = useState(false);
-  const [friendChatRecordSecs, setFriendChatRecordSecs] = useState(0);
-  const [friendChatPendingVoice, setFriendChatPendingVoice] = useState<{ url: string; duration: number } | null>(null);
-  const [friendChatShowEmoji, setFriendChatShowEmoji] = useState(false);
-  const [friendChatShowAttach, setFriendChatShowAttach] = useState(false);
+  const [, setFriendChatStoryReplyTo] = useState<ShareThreadMsg | null>(null);
+  const [, setFriendChatRecordSecs] = useState(0);
+  const [, setFriendChatPendingVoice] = useState<{ url: string; duration: number } | null>(null);
+  const [, setFriendChatShowEmoji] = useState(false);
+  const [, setFriendChatShowAttach] = useState(false);
   const [friendChatAvatarViewerOpen, setFriendChatAvatarViewerOpen] = useState(false);
-  // Which message currently has its AM/PM timestamp revealed (toggled by a single tap).
-  const [friendChatOpenTimeId, setFriendChatOpenTimeId] = useState<string | null>(null);
-  const friendChatRecRef = useRef<MediaRecorder | null>(null);
-  const friendChatChunksRef = useRef<Blob[]>([]);
-  const friendChatRecordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Guards against the record-button race condition: getUserMedia() is async, so a
-  // fast tap could fire start() and stop()/cancel() before the mic permission even
-  // resolves. friendChatRecStartingRef blocks overlapping start calls; friendChatRecCancelledRef
-  // lets a cancel that happens *during* that pending permission request take effect
-  // as soon as the stream arrives, instead of the recording starting on its own.
-  const friendChatRecStartingRef = useRef(false);
-  const friendChatRecCancelledRef = useRef(false);
-  const friendChatFileRef = useRef<HTMLInputElement | null>(null);
-  const friendChatVideoRef = useRef<HTMLInputElement | null>(null);
-  const friendChatDocRef = useRef<HTMLInputElement | null>(null);
   function openNormalChat(friend: Friend) {
     const qs = new URLSearchParams();
     qs.set('with', String(friend.friendId));
@@ -19635,109 +18914,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     };
   }, [user?.id, friendChatPeer?.friendId]);
 
-  async function friendChatStartRecording() {
-    // Ignore a second tap while a start is already in flight, and never start
-    // again once we're already recording.
-    if (friendChatRecStartingRef.current || friendChatRecRef.current) return;
-    friendChatRecStartingRef.current = true;
-    friendChatRecCancelledRef.current = false;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // The user tapped cancel while the permission prompt/mic was still resolving —
-      // discard the stream immediately instead of letting recording start on its own.
-      if (friendChatRecCancelledRef.current) {
-        friendChatRecCancelledRef.current = false;
-        stream.getTracks().forEach(t => t.stop());
-        return;
-      }
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
-      const recorder = new MediaRecorder(stream, { mimeType });
-      friendChatChunksRef.current = [];
-      recorder.ondataavailable = e => { if (e.data.size > 0) friendChatChunksRef.current.push(e.data); };
-      recorder.start(100);
-      friendChatRecRef.current = recorder;
-      setFriendChatRecording(true);
-      setFriendChatRecordSecs(0);
-      friendChatRecordTimerRef.current = setInterval(() => setFriendChatRecordSecs(s => s + 1), 1000);
-    } catch { /* microphone permission denied */ }
-    finally {
-      friendChatRecStartingRef.current = false;
-    }
-  }
-  async function friendChatStopRecording() {
-    if (friendChatRecordTimerRef.current) {
-      clearInterval(friendChatRecordTimerRef.current);
-      friendChatRecordTimerRef.current = null;
-    }
-    const recorder = friendChatRecRef.current;
-    if (!recorder) {
-      // Cancel arrived before the mic permission resolved — flag it so the
-      // pending start() call discards the stream instead of recording.
-      friendChatRecCancelledRef.current = true;
-      setFriendChatRecording(false);
-      setFriendChatRecordSecs(0);
-      return;
-    }
-    const secs = friendChatRecordSecs;
-    await new Promise<void>(resolve => {
-      recorder.onstop = () => resolve();
-      recorder.stop();
-    });
-    recorder.stream.getTracks().forEach(t => t.stop());
-    friendChatRecRef.current = null;
-    setFriendChatRecording(false);
-    if (friendChatChunksRef.current.length === 0) {
-      setFriendChatRecordSecs(0);
-      return;
-    }
-    const blob = new Blob(friendChatChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-    if (blob.size < 500) {
-      setFriendChatRecordSecs(0);
-      return;
-    }
-    const url = URL.createObjectURL(blob);
-    setFriendChatPendingVoice({ url, duration: secs });
-  }
-  // Cancels an in-progress recording outright (the trash icon shown while recording) —
-  // discards the audio instead of stopping into the send/preview state.
-  function friendChatCancelActiveRecording() {
-    if (friendChatRecordTimerRef.current) {
-      clearInterval(friendChatRecordTimerRef.current);
-      friendChatRecordTimerRef.current = null;
-    }
-    const recorder = friendChatRecRef.current;
-    if (recorder) {
-      recorder.ondataavailable = null;
-      recorder.onstop = () => { recorder.stream.getTracks().forEach(t => t.stop()); };
-      if (recorder.state !== 'inactive') recorder.stop();
-      friendChatRecRef.current = null;
-    } else {
-      // Still waiting on getUserMedia() — make sure it doesn't start recording once it resolves.
-      friendChatRecCancelledRef.current = true;
-    }
-    friendChatChunksRef.current = [];
-    setFriendChatRecording(false);
-    setFriendChatRecordSecs(0);
-  }
-  function friendChatCancelPendingVoice() {
-    if (friendChatPendingVoice) URL.revokeObjectURL(friendChatPendingVoice.url);
-    setFriendChatPendingVoice(null);
-    setFriendChatRecordSecs(0);
-  }
-  function friendChatSendPendingVoice() {
-    if (!user || !friendChatPeer || !friendChatPendingVoice) return;
-    pushShareThreadMsg(user.id, friendChatPeer.friendId, 'direct', {
-      fromId: user.id,
-      type: 'voice',
-      body: friendChatPendingVoice.url,
-      duration: friendChatPendingVoice.duration,
-    });
-    setFriendChatMsgs(loadShareThread(user.id, friendChatPeer.friendId, 'direct'));
-    setFriendChatPendingVoice(null);
-    setFriendChatRecordSecs(0);
-  }
 
   const [companiesLoading, setCompaniesLoading] = useState(false);
   // Also auto-reopens when returning from the chat page's back button after chatting
@@ -19868,8 +19044,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Secret Chat modal state
   const [showNewSecret, setShowNewSecret] = useState(false);
   const [scName, setScName] = useState('');
-  const [scPin, setScPin] = useState('');
-  const [scPinVisible, setScPinVisible] = useState(false);
+  const [, setScPin] = useState('');
   const [scSelectedMembers, setScSelectedMembers] = useState<string[]>([]);
   const [scCreating, setScCreating] = useState(false);
   const [scError, setScError] = useState('');
