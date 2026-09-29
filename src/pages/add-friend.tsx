@@ -11,7 +11,7 @@ import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin, Headphones } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, KeyRound, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Link2, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, Paperclip, MapPin, Headphones, Film } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -13418,6 +13418,7 @@ function liveChatImageLooksBlocked(imageUrl?: string | null, text?: string): boo
   if (liveChatTextIsBlocked(text || '')) return true;
   const u = String(imageUrl || '').toLowerCase();
   if (!u) return false;
+  if (u.startsWith('data:') || u.startsWith('blob:')) return false; // base64 payloads can contain random keyword matches
   return /(porn|xxx|nsfw|nude|naked|sex|hentai|onlyfans)/i.test(u);
 }
 
@@ -13626,6 +13627,533 @@ function LiveChatClearCountdown() {
   );
 }
 
+// ── Live chat TEMPLATES (Titanic 1912 / WW2 1944) ─────────────────────────────
+// Drawn procedurally on a canvas (no external assets). The user's gallery photo is graded
+// (sepia / B&W), clipped into the template frame and can be dragged + zoomed before posting.
+// A posted template is a normal live-chat comment: imageUrl = the merged JPEG, text = caption.
+type LiveTemplateId = 'titanic' | 'ww2';
+type TplBox = { x: number; y: number; w: number; h: number };
+type TplPhotoState = { img: HTMLImageElement | null; zoom: number; ox: number; oy: number };
+const TPL_W = 600;
+const TPL_H = 800;
+const LIVE_TEMPLATES: { id: LiveTemplateId; label: string; sub: string; caption: string; box: TplBox; thumb: string }[] = [
+  { id: 'titanic', label: 'Titanic', sub: '1912', caption: '🎞 Titanic 1912', box: { x: 175, y: 80, w: 250, h: 300 }, thumb: 'linear-gradient(180deg,#040914 0%,#0d2140 55%,#33506e 100%)' },
+  { id: 'ww2', label: 'WW2', sub: '1944', caption: '🎞 WW2 1944', box: { x: -140, y: -185, w: 280, h: 320 }, thumb: 'linear-gradient(180deg,#14100e 0%,#4a3020 40%,#d08a46 70%,#120d0a 100%)' },
+];
+const LIVE_TEMPLATE_CAPTIONS = LIVE_TEMPLATES.map(t => t.caption);
+
+type LiveChatRowItem =
+  | { kind: 'msg'; c: PublicLiveComment }
+  | { kind: 'tpl'; key: string; cs: PublicLiveComment[] };
+
+/** Template posts that follow each other are grouped two per row; everything else stays a normal comment. */
+function groupLiveChatRows(list: PublicLiveComment[]): LiveChatRowItem[] {
+  const out: LiveChatRowItem[] = [];
+  for (const c of list) {
+    const isTpl = !!c.imageUrl && LIVE_TEMPLATE_CAPTIONS.includes(c.text);
+    if (!isTpl) { out.push({ kind: 'msg', c }); continue; }
+    const last = out[out.length - 1];
+    if (last && last.kind === 'tpl' && last.cs.length < 2) { last.cs.push(c); continue; }
+    out.push({ kind: 'tpl', key: c.id, cs: [c] });
+  }
+  return out;
+}
+
+function tplRng(seed: number) {
+  let s = seed >>> 0;
+  return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+}
+
+let tplNoiseCanvas: HTMLCanvasElement | null = null;
+function getTplNoise(): HTMLCanvasElement {
+  if (tplNoiseCanvas) return tplNoiseCanvas;
+  const c = document.createElement('canvas');
+  c.width = 160; c.height = 160;
+  const x = c.getContext('2d');
+  if (x) {
+    const img = x.createImageData(160, 160);
+    const r = tplRng(7);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = Math.floor(r() * 255);
+      img.data[i] = v; img.data[i + 1] = v; img.data[i + 2] = v; img.data[i + 3] = 255;
+    }
+    x.putImageData(img, 0, 0);
+  }
+  tplNoiseCanvas = c;
+  return c;
+}
+function tplGrain(ctx: CanvasRenderingContext2D, alpha: number) {
+  const pat = ctx.createPattern(getTplNoise(), 'repeat');
+  if (!pat) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.fillStyle = pat;
+  ctx.fillRect(0, 0, TPL_W, TPL_H);
+  ctx.restore();
+}
+function tplVignette(ctx: CanvasRenderingContext2D, strength: number) {
+  const g = ctx.createRadialGradient(TPL_W / 2, TPL_H / 2, TPL_H * 0.32, TPL_W / 2, TPL_H / 2, TPL_H * 0.78);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, `rgba(0,0,0,${strength})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, TPL_W, TPL_H);
+}
+function tplText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, spacing: number) {
+  const anyCtx = ctx as any;
+  if ('letterSpacing' in anyCtx) {
+    anyCtx.letterSpacing = `${spacing}px`;
+    ctx.fillText(text, x + spacing / 2, y);
+    anyCtx.letterSpacing = '0px';
+  } else {
+    ctx.fillText(text, x, y);
+  }
+}
+
+function tplPhotoMetrics(img: HTMLImageElement, box: TplBox, zoom: number) {
+  const s = Math.max(box.w / img.naturalWidth, box.h / img.naturalHeight) * zoom;
+  const dw = img.naturalWidth * s;
+  const dh = img.naturalHeight * s;
+  return { dw, dh, maxX: Math.max(0, (dw - box.w) / 2), maxY: Math.max(0, (dh - box.h) / 2) };
+}
+function tplClampPan(img: HTMLImageElement, box: TplBox, zoom: number, ox: number, oy: number) {
+  const m = tplPhotoMetrics(img, box, zoom);
+  return { x: Math.max(-m.maxX, Math.min(m.maxX, ox)), y: Math.max(-m.maxY, Math.min(m.maxY, oy)) };
+}
+
+function tplGradeSepia(amount: number, contrast: number, bright: number) {
+  return (d: Uint8ClampedArray) => {
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const sr = 0.393 * r + 0.769 * g + 0.189 * b;
+      const sg = 0.349 * r + 0.686 * g + 0.168 * b;
+      const sb = 0.272 * r + 0.534 * g + 0.131 * b;
+      d[i] = ((r + (sr - r) * amount - 128) * contrast + 128) * bright;
+      d[i + 1] = ((g + (sg - g) * amount - 128) * contrast + 128) * bright;
+      d[i + 2] = ((b + (sb - b) * amount - 128) * contrast + 128) * bright;
+    }
+  };
+}
+function tplGradeBW(contrast: number, warm: number) {
+  return (d: Uint8ClampedArray) => {
+    for (let i = 0; i < d.length; i += 4) {
+      const g = (0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2] - 128) * contrast + 128;
+      d[i] = g * (1 + warm) + 4;
+      d[i + 1] = g;
+      d[i + 2] = g * (1 - warm);
+    }
+  };
+}
+
+/** Paints the user's photo into `box` (in the current ctx coordinates), clipped by `clip`. */
+function tplPaintPhoto(
+  ctx: CanvasRenderingContext2D,
+  st: TplPhotoState,
+  box: TplBox,
+  grade: (d: Uint8ClampedArray) => void,
+  clip: () => void,
+) {
+  ctx.save();
+  clip();
+  if (st.img) {
+    const off = document.createElement('canvas');
+    off.width = Math.round(box.w);
+    off.height = Math.round(box.h);
+    const o = off.getContext('2d');
+    if (o) {
+      const m = tplPhotoMetrics(st.img, box, st.zoom);
+      const pan = tplClampPan(st.img, box, st.zoom, st.ox, st.oy);
+      o.drawImage(st.img, (box.w - m.dw) / 2 + pan.x, (box.h - m.dh) / 2 + pan.y, m.dw, m.dh);
+      try {
+        const id = o.getImageData(0, 0, off.width, off.height);
+        grade(id.data);
+        o.putImageData(id, 0, 0);
+      } catch { /* keep ungraded */ }
+      ctx.drawImage(off, box.x, box.y);
+    }
+  } else {
+    ctx.fillStyle = '#1b2a2e';
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.fillStyle = '#34505a';
+    ctx.beginPath();
+    ctx.arc(box.x + box.w / 2, box.y + box.h * 0.4, box.w * 0.16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(box.x + box.w / 2, box.y + box.h * 0.86, box.w * 0.3, box.h * 0.26, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = '600 20px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Add your photo', box.x + box.w / 2, box.y + box.h - 14);
+  }
+  ctx.restore();
+}
+
+function drawTitanicTemplate(ctx: CanvasRenderingContext2D, st: TplPhotoState) {
+  const W = TPL_W, H = TPL_H;
+  const sky = ctx.createLinearGradient(0, 0, 0, 560);
+  sky.addColorStop(0, '#040914'); sky.addColorStop(0.55, '#0d2140'); sky.addColorStop(1, '#33506e');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  const r = tplRng(11);
+  for (let i = 0; i < 110; i++) {
+    const x = r() * W, y = r() * 430, a = 0.25 + r() * 0.65, sz = r() * 1.4 + 0.3;
+    ctx.fillStyle = `rgba(255,255,255,${a})`;
+    ctx.beginPath(); ctx.arc(x, y, sz, 0, Math.PI * 2); ctx.fill();
+  }
+  const mg = ctx.createRadialGradient(492, 110, 6, 492, 110, 90);
+  mg.addColorStop(0, 'rgba(255,245,215,0.95)'); mg.addColorStop(0.18, 'rgba(255,240,200,0.55)'); mg.addColorStop(1, 'rgba(255,240,200,0)');
+  ctx.fillStyle = mg; ctx.fillRect(390, 10, 200, 200);
+  ctx.fillStyle = '#fff6da'; ctx.beginPath(); ctx.arc(492, 110, 24, 0, Math.PI * 2); ctx.fill();
+
+  const sea = ctx.createLinearGradient(0, 560, 0, H);
+  sea.addColorStop(0, '#0c1c2c'); sea.addColorStop(1, '#02060c');
+  ctx.fillStyle = sea; ctx.fillRect(0, 560, W, H - 560);
+  for (let i = 0; i < 14; i++) {
+    const w = 40 - i * 1.8 + (i % 3) * 6;
+    ctx.fillStyle = `rgba(255,240,200,${Math.max(0.03, 0.22 - i * 0.012)})`;
+    ctx.fillRect(492 - w / 2 + Math.sin(i * 1.7) * 8, 566 + i * 9, w, 2.4);
+  }
+
+  // funnel smoke
+  const fx = [205, 275, 345, 415];
+  fx.forEach((x, i) => {
+    for (let k = 0; k < 5; k++) {
+      const cx = x - 20 - k * 30, cy = 396 - k * 6 - i, rad = 12 + k * 7;
+      const g = ctx.createRadialGradient(cx, cy, 1, cx, cy, rad);
+      g.addColorStop(0, 'rgba(170,185,200,0.18)'); g.addColorStop(1, 'rgba(170,185,200,0)');
+      ctx.fillStyle = g; ctx.fillRect(cx - rad, cy - rad, rad * 2, rad * 2);
+    }
+  });
+
+  // ship silhouette
+  ctx.fillStyle = '#04070c';
+  fx.forEach(x => {
+    ctx.beginPath(); ctx.moveTo(x - 14, 458); ctx.lineTo(x - 12, 404); ctx.lineTo(x + 12, 404); ctx.lineTo(x + 14, 458); ctx.closePath(); ctx.fill();
+  });
+  ctx.fillStyle = '#1a2230';
+  fx.forEach(x => ctx.fillRect(x - 12.5, 404, 25, 6));
+  ctx.strokeStyle = '#04070c'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(528, 520); ctx.lineTo(528, 372); ctx.moveTo(112, 520); ctx.lineTo(112, 392); ctx.stroke();
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(528, 376); ctx.lineTo(572, 506); ctx.moveTo(528, 376); ctx.lineTo(470, 470);
+  ctx.moveTo(112, 396); ctx.lineTo(70, 520); ctx.moveTo(112, 396); ctx.lineTo(150, 470);
+  ctx.stroke();
+  ctx.fillStyle = '#04070c';
+  ctx.fillRect(130, 486, 380, 36); ctx.fillRect(165, 466, 310, 22); ctx.fillRect(215, 450, 215, 18);
+  ctx.beginPath();
+  ctx.moveTo(68, 520); ctx.lineTo(546, 520); ctx.lineTo(574, 502); ctx.quadraticCurveTo(562, 548, 522, 563);
+  ctx.lineTo(102, 563); ctx.quadraticCurveTo(74, 548, 68, 520); ctx.closePath(); ctx.fill();
+  const wr = tplRng(3);
+  ctx.fillStyle = 'rgba(255,208,110,0.92)';
+  const rows = [{ y: 496, x0: 140, x1: 500, h: 4 }, { y: 476, x0: 175, x1: 465, h: 3.4 }, { y: 458, x0: 225, x1: 425, h: 3 }];
+  rows.forEach(row => { for (let x = row.x0; x < row.x1; x += 8) { if (wr() > 0.16) ctx.fillRect(x, row.y, 4.2, row.h); } });
+  for (let x = 90; x < 540; x += 13) { if (wr() > 0.1) { ctx.beginPath(); ctx.arc(x, 535, 1.8, 0, Math.PI * 2); ctx.fill(); } }
+  for (let x = 110; x < 520; x += 13) { if (wr() > 0.2) { ctx.beginPath(); ctx.arc(x, 548, 1.5, 0, Math.PI * 2); ctx.fill(); } }
+  for (let x = 140; x < 500; x += 9) {
+    ctx.fillStyle = `rgba(255,200,100,${0.10 + wr() * 0.12})`;
+    ctx.fillRect(x, 566, 2.4, 20 + wr() * 40);
+  }
+
+  // cameo frame with the user's photo
+  const cx = 300, cy = 230, rx = 125, ry = 150;
+  ctx.save();
+  ctx.shadowColor = 'rgba(255,215,140,0.55)'; ctx.shadowBlur = 28;
+  ctx.fillStyle = '#c9a35a';
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx + 12, ry + 12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = '#1a1208';
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx + 6, ry + 6, 0, 0, Math.PI * 2); ctx.fill();
+  const ovalClip = () => { ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.clip(); };
+  tplPaintPhoto(ctx, st, { x: cx - rx, y: cy - ry, w: rx * 2, h: ry * 2 }, tplGradeSepia(0.75, 1.08, 0.95), ovalClip);
+  ctx.save();
+  ovalClip();
+  const iv = ctx.createRadialGradient(cx, cy, ry * 0.45, cx, cy, ry * 1.05);
+  iv.addColorStop(0, 'rgba(0,0,0,0)'); iv.addColorStop(1, 'rgba(0,0,0,0.5)');
+  ctx.fillStyle = iv; ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2);
+  ctx.restore();
+  const goldStroke = ctx.createLinearGradient(0, cy - ry, 0, cy + ry);
+  goldStroke.addColorStop(0, '#f7e3a1'); goldStroke.addColorStop(1, '#a87a35');
+  ctx.strokeStyle = goldStroke; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx + 12, ry + 12, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.ellipse(cx, cy, rx + 3, ry + 3, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = '#f2d98d';
+  [[cx, cy - ry - 12], [cx, cy + ry + 12], [cx - rx - 12, cy], [cx + rx + 12, cy]].forEach(([px, py]) => {
+    ctx.beginPath(); ctx.arc(px, py, 4.5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // caption block
+  ctx.textAlign = 'center';
+  const gold = ctx.createLinearGradient(0, 610, 0, 660);
+  gold.addColorStop(0, '#f7e3a1'); gold.addColorStop(1, '#b98b3e');
+  ctx.fillStyle = gold; ctx.font = 'bold 46px Georgia, "Times New Roman", serif';
+  tplText(ctx, 'R.M.S. TITANIC', 300, 652, 4);
+  ctx.fillStyle = '#cbd5e1'; ctx.font = '600 17px Georgia, "Times New Roman", serif';
+  tplText(ctx, 'MAIDEN VOYAGE  ·  APRIL 1912', 300, 690, 3);
+  ctx.fillStyle = '#e9d9a8'; ctx.font = 'italic 20px Georgia, "Times New Roman", serif';
+  ctx.fillText('Southampton  →  New York', 300, 724);
+  ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '600 13px Arial, sans-serif';
+  tplText(ctx, 'WHITE STAR LINE', 300, 772, 6);
+
+  tplVignette(ctx, 0.5);
+  tplGrain(ctx, 0.1);
+  ctx.strokeStyle = 'rgba(201,163,90,0.55)'; ctx.lineWidth = 3;
+  ctx.strokeRect(14, 14, W - 28, H - 28);
+}
+
+function tplBomber(ctx: CanvasRenderingContext2D, x: number, y: number, sc: number) {
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(sc, sc);
+  ctx.fillStyle = 'rgba(10,8,6,0.92)';
+  ctx.beginPath(); ctx.ellipse(0, 0, 4.5, 30, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-4, -6); ctx.lineTo(-46, 4); ctx.lineTo(-46, 11); ctx.lineTo(-4, 7);
+  ctx.moveTo(4, -6); ctx.lineTo(46, 4); ctx.lineTo(46, 11); ctx.lineTo(4, 7);
+  ctx.moveTo(-3, 22); ctx.lineTo(-16, 28); ctx.lineTo(-16, 31); ctx.lineTo(-3, 28);
+  ctx.moveTo(3, 22); ctx.lineTo(16, 28); ctx.lineTo(16, 31); ctx.lineTo(3, 28);
+  ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-20, 4, 2.6, 7, 0, 0, Math.PI * 2); ctx.ellipse(20, 4, 2.6, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawWw2Template(ctx: CanvasRenderingContext2D, st: TplPhotoState) {
+  const W = TPL_W, H = TPL_H;
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#14100e'); bg.addColorStop(0.4, '#4a3020'); bg.addColorStop(0.68, '#d08a46');
+  bg.addColorStop(0.8, '#7a4a25'); bg.addColorStop(1, '#120d0a');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  [{ x: 70, a: -0.35 }, { x: 200, a: 0.2 }, { x: 430, a: -0.15 }, { x: 560, a: 0.4 }].forEach(b => {
+    ctx.save();
+    ctx.translate(b.x, 700); ctx.rotate(b.a);
+    const g = ctx.createLinearGradient(0, 0, 0, -760);
+    g.addColorStop(0, 'rgba(255,244,214,0.38)'); g.addColorStop(1, 'rgba(255,244,214,0.02)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.lineTo(48, -760); ctx.lineTo(-48, -760); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  });
+  tplBomber(ctx, 70, 215, 0.6); tplBomber(ctx, 135, 168, 0.45); tplBomber(ctx, 520, 190, 0.55);
+  tplBomber(ctx, 455, 140, 0.4); tplBomber(ctx, 560, 255, 0.35);
+
+  // ruined skyline
+  ctx.fillStyle = '#0c0907';
+  ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(0, 700);
+  const sr = tplRng(5);
+  let sx = 0;
+  while (sx < W) {
+    const w = 24 + sr() * 36, h = 650 + sr() * 60;
+    ctx.lineTo(sx, h); ctx.lineTo(sx + w * 0.5, h - sr() * 10); ctx.lineTo(sx + w, h + sr() * 14);
+    sx += w;
+  }
+  ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+
+  // title
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 110px Impact, "Arial Black", Arial, sans-serif';
+  ctx.lineWidth = 6; ctx.strokeStyle = '#140d08'; ctx.lineJoin = 'round';
+  ctx.strokeText('1944', 300, 132);
+  ctx.fillStyle = '#f0e2bf'; ctx.fillText('1944', 300, 132);
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 6;
+  ctx.font = 'bold 24px Arial, sans-serif';
+  tplText(ctx, 'THE HOME FRONT', 300, 174, 8);
+  ctx.restore();
+
+  // polaroid photo
+  ctx.save();
+  ctx.translate(300, 455); ctx.rotate(-0.045);
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10;
+  ctx.fillStyle = '#efe6d0'; ctx.fillRect(-160, -205, 320, 410);
+  ctx.restore();
+  const box: TplBox = { x: -140, y: -185, w: 280, h: 320 };
+  tplPaintPhoto(ctx, st, box, tplGradeBW(1.18, 0.07), () => { ctx.beginPath(); ctx.rect(box.x, box.y, box.w, box.h); ctx.clip(); });
+  ctx.strokeStyle = 'rgba(40,30,20,0.55)'; ctx.lineWidth = 1.5; ctx.strokeRect(box.x, box.y, box.w, box.h);
+  ctx.fillStyle = '#3b2f22'; ctx.font = 'italic 26px Georgia, "Times New Roman", serif';
+  ctx.fillText('Sept. 1944', 0, 178);
+  [[-140, -205, -0.6], [140, -205, 0.6]].forEach(([tx, ty, ang]) => {
+    ctx.save(); ctx.translate(tx, ty); ctx.rotate(ang);
+    ctx.fillStyle = 'rgba(230,214,150,0.78)'; ctx.fillRect(-32, -9, 64, 18);
+    ctx.restore();
+  });
+  ctx.restore();
+
+  // banner
+  ctx.fillStyle = '#8a1b16'; ctx.fillRect(0, 722, W, 58);
+  ctx.fillStyle = 'rgba(240,226,191,0.8)'; ctx.fillRect(0, 726, W, 2); ctx.fillRect(0, 774, W, 2);
+  ctx.fillStyle = '#f0e2bf'; ctx.font = 'bold 24px Impact, "Arial Black", Arial, sans-serif';
+  tplText(ctx, 'STAND TOGETHER  ·  VICTORY IS OURS', 300, 760, 3);
+
+  tplVignette(ctx, 0.55);
+  tplGrain(ctx, 0.14);
+  const scr = tplRng(21);
+  for (let i = 0; i < 7; i++) { ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fillRect(scr() * W, 0, 1, H); }
+  ctx.strokeStyle = 'rgba(240,226,191,0.5)'; ctx.lineWidth = 3;
+  ctx.strokeRect(10, 10, W - 20, H - 20);
+}
+
+function drawLiveTemplate(ctx: CanvasRenderingContext2D, id: LiveTemplateId, st: TplPhotoState) {
+  ctx.save();
+  ctx.clearRect(0, 0, TPL_W, TPL_H);
+  if (id === 'titanic') drawTitanicTemplate(ctx, st); else drawWw2Template(ctx, st);
+  ctx.restore();
+}
+
+function LiveChatTemplateStudio({ open, onClose, onPost }: {
+  open: boolean;
+  onClose: () => void;
+  onPost: (caption: string, dataUrl: string) => void;
+}) {
+  const [tplId, setTplId] = useState<LiveTemplateId>('titanic');
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const dragRef = useRef<{ id: number; x: number; y: number } | null>(null);
+  const tpl = LIVE_TEMPLATES.find(t => t.id === tplId) || LIVE_TEMPLATES[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const c = canvasRef.current;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx) return;
+    drawLiveTemplate(ctx, tplId, { img, zoom, ox: pan.x, oy: pan.y });
+  }, [open, tplId, img, zoom, pan]);
+
+  if (!open || typeof document === 'undefined') return null;
+
+  const post = () => {
+    const src = canvasRef.current;
+    if (!img || !src) return;
+    const out = document.createElement('canvas');
+    out.width = 480; out.height = 640;
+    const o = out.getContext('2d');
+    if (!o) return;
+    o.imageSmoothingQuality = 'high';
+    o.drawImage(src, 0, 0, 480, 640);
+    onPost(tpl.caption, out.toDataURL('image/jpeg', 0.82));
+  };
+
+  const btnBase: React.CSSProperties = {
+    height: 44, borderRadius: 12, fontWeight: 800, fontSize: '0.86rem', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+  };
+
+  return createPortal(
+    <div
+      onClick={e => e.stopPropagation()}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10900, background: '#050d0f', color: '#fff',
+        display: 'flex', flexDirection: 'column', pointerEvents: 'auto',
+        paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px' }}>
+        <span style={{ fontWeight: 800, fontSize: '1rem' }}>Templates</span>
+        <button type="button" onClick={onClose} aria-label="Close" style={{
+          width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}><X size={18} /></button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, padding: '0 14px 10px' }}>
+        {LIVE_TEMPLATES.map(t => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => { setTplId(t.id); setPan({ x: 0, y: 0 }); }}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: 8, borderRadius: 12, cursor: 'pointer',
+              background: tplId === t.id ? 'rgba(34,197,94,0.14)' : 'rgba(255,255,255,0.05)',
+              border: tplId === t.id ? '1px solid rgba(34,197,94,0.7)' : '1px solid rgba(255,255,255,0.12)',
+              color: '#fff', textAlign: 'left',
+            }}
+          >
+            <span style={{ width: 34, height: 44, borderRadius: 6, background: t.thumb, flexShrink: 0, border: '1px solid rgba(255,255,255,0.2)' }} />
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{t.label}</span>
+              <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)' }}>{t.sub}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ flex: 1, minHeight: 0, padding: '0 14px' }}>
+        <canvas
+          ref={canvasRef}
+          width={TPL_W}
+          height={TPL_H}
+          onPointerDown={e => {
+            if (!img) return;
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* */ }
+            dragRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+          }}
+          onPointerMove={e => {
+            const d = dragRef.current;
+            if (!d || d.id !== e.pointerId || !img) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const k = TPL_W / Math.max(1, Math.min(rect.width, rect.height * 0.75));
+            const dx = (e.clientX - d.x) * k, dy = (e.clientY - d.y) * k;
+            d.x = e.clientX; d.y = e.clientY;
+            setPan(p => tplClampPan(img, tpl.box, zoom, p.x + dx, p.y + dy));
+          }}
+          onPointerUp={() => { dragRef.current = null; }}
+          onPointerCancel={() => { dragRef.current = null; }}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', touchAction: 'none', borderRadius: 12, display: 'block' }}
+        />
+      </div>
+
+      <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <p style={{ margin: 0, textAlign: 'center', fontSize: '0.74rem', color: 'rgba(255,255,255,0.55)' }}>
+          {img ? 'Drag the photo to move it, use the slider to zoom' : 'Pick a photo from your gallery to merge it into the template'}
+        </p>
+        {img ? (
+          <input
+            type="range" min={1} max={3} step={0.01} value={zoom}
+            onChange={e => {
+              const z = Number(e.target.value);
+              setZoom(z);
+              setPan(p => tplClampPan(img, tpl.box, z, p.x, p.y));
+            }}
+            style={{ width: '100%', accentColor: '#22c55e' }}
+          />
+        ) : null}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={e => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (!f) return;
+            const url = URL.createObjectURL(f);
+            const im = new Image();
+            im.onload = () => { setImg(im); setZoom(1); setPan({ x: 0, y: 0 }); };
+            im.src = url;
+          }}
+        />
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="button" onClick={() => fileRef.current?.click()} style={{
+            ...btnBase, flex: 1, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.07)', color: '#fff',
+          }}>
+            <Images size={18} /> {img ? 'Change photo' : 'Choose photo'}
+          </button>
+          <button type="button" disabled={!img} onClick={post} style={{
+            ...btnBase, flex: 1, border: 'none', background: img ? '#16a34a' : 'rgba(255,255,255,0.12)',
+            color: img ? '#fff' : 'rgba(255,255,255,0.4)', cursor: img ? 'pointer' : 'default',
+          }}>
+            <Send size={18} /> Post to chat
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function PublicLiveCommentsPanel({
   user,
   headerOpen,
@@ -13650,6 +14178,7 @@ function PublicLiveCommentsPanel({
   const [kbInset, setKbInset] = useState(0);
   const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string }>>([]);
   const [inAppUrl, setInAppUrl] = useState<string | null>(null);
+  const [tplOpen, setTplOpen] = useState(false);
   const chatInputFocused = useRef(false);
   const recRef = useRef<MediaRecorder | null>(null);
   const recChunksRef = useRef<Blob[]>([]);
@@ -13953,6 +14482,15 @@ function PublicLiveCommentsPanel({
 
   return createPortal(
     <>
+    <LiveChatTemplateStudio
+      open={tplOpen}
+      onClose={() => setTplOpen(false)}
+      onPost={(caption, dataUrl) => {
+        pushComment(caption, dataUrl);
+        setTplOpen(false);
+        setChatLift(1);
+      }}
+    />
     <div
       onTouchStart={e => e.stopPropagation()}
       onTouchMove={e => e.stopPropagation()}
@@ -14009,7 +14547,52 @@ function PublicLiveCommentsPanel({
             كن أول من يكتب تعليقاً مباشراً
           </p>
         )}
-        {comments.filter(c => !/Join Live Chat/i.test(c.text || '')).map(c => {
+        {groupLiveChatRows(comments.filter(c => !/Join Live Chat/i.test(c.text || ''))).map(item => {
+          if (item.kind === 'tpl') {
+            return (
+              <div key={item.key} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, padding: '8px 2px', direction: 'ltr' }}>
+                {item.cs.map(tc => {
+                  const tLiked = myId ? tc.likes.includes(myId) : false;
+                  return (
+                    <div key={tc.id} style={{ minWidth: 0 }}>
+                      <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#0b1512', aspectRatio: '3 / 4' }}>
+                        <img src={tc.imageUrl || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        <button
+                          type="button"
+                          aria-label="Open profile"
+                          onClick={() => {
+                            if (!tc.userId) return;
+                            setProfilePeer(tc);
+                            try { window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: true } })); } catch { /* */ }
+                          }}
+                          style={{ position: 'absolute', left: 6, bottom: 6, background: 'none', border: '2px solid #fff', borderRadius: '50%', padding: 0, cursor: tc.userId ? 'pointer' : 'default', display: 'flex' }}
+                        >
+                          <UserAvatar name={tc.name || tc.username || '?'} avatarUrl={tc.avatarUrl} size={30} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Like"
+                          onClick={() => toggleLike(tc.id)}
+                          style={{
+                            position: 'absolute', right: 6, bottom: 6, display: 'flex', alignItems: 'center', gap: 4,
+                            background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 999, padding: '4px 8px', cursor: 'pointer',
+                            color: '#fff', fontSize: '0.68rem', fontWeight: 800,
+                          }}
+                        >
+                          <Heart size={14} strokeWidth={2.2} color={tLiked ? '#ef4444' : '#fff'} fill={tLiked ? '#ef4444' : 'none'} />
+                          {tc.likes.length > 0 ? tc.likes.length : null}
+                        </button>
+                      </div>
+                      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 800, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {displayName(tc)}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          }
+          const c = item.c;
           const liked = myId ? c.likes.includes(myId) : false;
           return (
             <div key={c.id} style={{
@@ -14391,6 +14974,24 @@ function PublicLiveCommentsPanel({
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
             >
               <Smile size={18} strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              aria-label="Templates"
+              onPointerDown={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                chatInputFocused.current = false;
+                setKbInset(0);
+                lockPageForKeyboard(false);
+                setComposerDock('none');
+                setEmojiOpen(false);
+                try { chatInputRef.current?.blur(); } catch { /* */ }
+                setTplOpen(true);
+              }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
+            >
+              <Film size={18} strokeWidth={2} />
             </button>
           </div>
           <button
