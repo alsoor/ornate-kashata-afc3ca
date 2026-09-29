@@ -14037,7 +14037,15 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
     if (!vv) return;
-    const apply = () => setVp({ top: Math.round(vv.offsetTop), height: Math.round(vv.height) });
+    let kbWasOpen = false;
+    const apply = () => {
+      setVp({ top: Math.round(vv.offsetTop), height: Math.round(vv.height) });
+      // Android keeps the input "focused" after the keyboard is dismissed (back button / swipe down) — that made the keyboard pop up
+      // again when the grabber was tapped. As soon as the keyboard is really gone, blur the input so it only opens by tapping the input.
+      const kbNow = window.innerHeight - vv.offsetTop - vv.height > 100;
+      if (kbWasOpen && !kbNow) { try { inputRef.current?.blur(); } catch { /* */ } }
+      kbWasOpen = kbNow;
+    };
     apply();
     vv.addEventListener('resize', apply);
     vv.addEventListener('scroll', apply);
@@ -14164,7 +14172,7 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
         background: full && !up && !expanded ? 'rgba(22,22,22,0.9)' : '#161616', borderRadius: expanded ? 0 : '22px 22px 0 0', display: 'flex', flexDirection: 'column',
         transition: focused ? 'none' : 'height 0.25s ease', paddingTop: expanded ? 'env(safe-area-inset-top, 0px)' : 0, paddingBottom: focused ? 0 : 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
       }}>
-        <button type="button" aria-label="Comments" onMouseDown={e => e.preventDefault()} onClick={() => { if (expanded) { setExpanded(false); return; } setUp(true); setExpanded(true); }} style={{ background: 'none', border: 'none', padding: '8px 0 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <button type="button" aria-label="Comments" onMouseDown={e => e.preventDefault()} onClick={() => { if (kb === 0) { try { inputRef.current?.blur(); } catch { /* */ } } if (expanded) { setExpanded(false); return; } setUp(true); setExpanded(true); }} style={{ background: 'none', border: 'none', padding: '8px 0 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           <span style={{ width: 46, height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.35)' }} />
           {!up ? <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>{thread.length > 0 ? `${thread.length.toLocaleString('ar-EG')} تعليق` : 'التعليقات'}</span> : null}
         </button>
