@@ -3,34 +3,50 @@
  * (File / route / export names are unchanged on purpose so entry.ts keeps working:
  *   import { registerVideoSwap } from "./video-swap";  registerVideoSwap(app, ASSETS_DIR);)
  *
- *   POST  multipart {userId, kind?, duration?, file}  → 200 {url, kind: 'video'|'photo'}
+ *   POST  multipart {userId, kind?, file}  → 200 {url, kind: 'video'|'photo'}
  *   GET   ?ping=1                                      → {enabled: true}
  *
  * Files are saved to ASSETS_DIR/public-media/ and served from /airo-assets/public-media/…
  * (on Railway mount a Volume on ASSETS_DIR so files survive redeploys).
  *
  * Setup:  npm i multer      (already used by /api/status).  @fal-ai/client and FAL_KEY are no longer needed.
- * Optional env: PUBLIC_MEDIA_MAX_VIDEO_MB (default 50), PUBLIC_MEDIA_MAX_PHOTO_MB (15),
- *               PUBLIC_MEDIA_MAX_SEC (30), PUBLIC_MEDIA_MAX_PER_HOUR (20 per user).
+ * Optional env: PUBLIC_MEDIA_MAX_VIDEO_MB (default 300; no limit on video length),
+ *               PUBLIC_MEDIA_MAX_PHOTO_MB (15), PUBLIC_MEDIA_MAX_PER_HOUR (20 per user).
  */
 import { Router, type Express, type Request, type Response } from 'express';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, open, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import multer from 'multer';
 
-const MAX_VIDEO_MB = Number(process.env.PUBLIC_MEDIA_MAX_VIDEO_MB || process.env.VIDEO_SWAP_MAX_MB || 50);
+const MAX_VIDEO_MB = Number(process.env.PUBLIC_MEDIA_MAX_VIDEO_MB || 300); // size cap only — video length is unlimited
 const MAX_PHOTO_MB = Number(process.env.PUBLIC_MEDIA_MAX_PHOTO_MB || 15);
-const MAX_SEC = Number(process.env.PUBLIC_MEDIA_MAX_SEC || process.env.VIDEO_SWAP_MAX_SEC || 30);
 const MAX_PER_HOUR = Number(process.env.PUBLIC_MEDIA_MAX_PER_HOUR || 20);
 
 let ASSETS_DIR = process.env.ASSETS_DIR || '/shared-storage/public/assets';
 
 const history = new Map<string, number[]>(); // userId → timestamps of uploads in the last hour
 
+// Disk storage (not memory): unlimited-length videos can be big and must not sit in RAM.
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      const dir = join(ASSETS_DIR, 'public-media');
+      mkdir(dir, { recursive: true }).then(() => cb(null, dir), err => cb(err, dir));
+    },
+    filename: (_req, _file, cb) => cb(null, `tmp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}.part`),
+  }),
   limits: { fileSize: MAX_VIDEO_MB * 1024 * 1024, files: 1 },
 });
+
+async function readHead(path: string): Promise<Buffer> {
+  const fh = await open(path, 'r');
+  try {
+    const buf = Buffer.alloc(16);
+    const { bytesRead } = await fh.read(buf, 0, 16, 0);
+    return buf.subarray(0, bytesRead);
+  } finally { await fh.close(); }
+}
+const dropTmp = (path?: string) => { if (path) void unlink(path).catch(() => {}); };
 
 function fail(res: Response, status: number, code: string, message: string) {
   return res.status(status).json({ error: code, code, message });
@@ -68,36 +84,33 @@ function sweepHistory() {
 setInterval(sweepHistory, 10 * 60 * 1000).unref?.();
 
 async function handleUpload(req: Request, res: Response) {
-  const userId = currentUserId(req);
-  if (!userId) return fail(res, 401, 'LOGIN', 'سجّل دخولك أول');
-
   const file = (req as any).file as Express.Multer.File | undefined;
-  if (!file || !file.buffer?.length) return fail(res, 400, 'MISSING', 'لازم ترسل ملف');
+  const userId = currentUserId(req);
+  if (!userId) { dropTmp(file?.path); return fail(res, 401, 'LOGIN', 'سجّل دخولك أول'); }
+  if (!file || !file.size) { dropTmp(file?.path); return fail(res, 400, 'MISSING', 'لازم ترسل ملف'); }
 
-  const vExt = videoExt(file.buffer);
-  const iExt = vExt ? null : imageExt(file.buffer);
-  if (!vExt && !iExt) return fail(res, 400, 'BAD_FILE', 'الملف غير صالح (فيديو أو صورة فقط)');
+  let head: Buffer;
+  try { head = await readHead(file.path); } catch { dropTmp(file.path); return fail(res, 500, 'SAVE', 'تعذّر قراءة الملف'); }
+  const vExt = videoExt(head);
+  const iExt = vExt ? null : imageExt(head);
+  if (!vExt && !iExt) { dropTmp(file.path); return fail(res, 400, 'BAD_FILE', 'الملف غير صالح (فيديو أو صورة فقط)'); }
   const kind: 'video' | 'photo' = vExt ? 'video' : 'photo';
   const ext = (vExt || iExt) as string;
 
   if (kind === 'photo' && file.size > MAX_PHOTO_MB * 1024 * 1024) {
+    dropTmp(file.path);
     return fail(res, 413, 'TOO_BIG', `حجم الصورة أكبر من ${MAX_PHOTO_MB}MB`);
-  }
-  if (kind === 'video') {
-    const dur = Number(req.body?.duration);
-    if (Number.isFinite(dur) && dur > MAX_SEC + 0.5) return fail(res, 400, 'TOO_LONG', `الفيديو أطول من ${MAX_SEC} ثانية`);
   }
 
   sweepHistory();
   const recent = history.get(userId) || [];
-  if (recent.length >= MAX_PER_HOUR) return fail(res, 429, 'LIMIT', 'وصلت للحد المسموح حالياً، حاول بعد شوي');
+  if (recent.length >= MAX_PER_HOUR) { dropTmp(file.path); return fail(res, 429, 'LIMIT', 'وصلت للحد المسموح حالياً، حاول بعد شوي'); }
 
   const id = `pm_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   try {
-    const dir = join(ASSETS_DIR, 'public-media');
-    await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, `${id}.${ext}`), file.buffer);
+    await rename(file.path, join(ASSETS_DIR, 'public-media', `${id}.${ext}`));
   } catch (e) {
+    dropTmp(file.path);
     console.error('[public-media] save failed:', (e as any)?.message || e);
     return fail(res, 500, 'SAVE', 'تعذّر حفظ الملف على السيرفر، حاول مرة ثانية');
   }
