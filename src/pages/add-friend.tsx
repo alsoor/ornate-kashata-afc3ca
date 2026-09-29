@@ -13580,7 +13580,8 @@ const LIVE_CHAT_EMOJI_CATS: { icon: string; items: string[] }[] = [
   { icon: '🔔', items: ['❤️','💯','🔔','🔕','🎵','🎶','✔️','❌','❗','❓','💬','🔴','🟢','🔵'] },
 ];
 
-/** عدّاد مباشر لوقت تنظيف الشات القادم — يظهر داخل مربع الكومنت فقط عندما لا يكتب أحد */
+/** Top-center badge inside the live chat: two small stacked rectangles.
+ *  Top = live countdown to the 24h chat clear, bottom = "Live Chat" + small green dot. */
 function LiveChatClearCountdown() {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -13592,17 +13593,35 @@ function LiveChatClearCountdown() {
   const hh = String(Math.floor(total / 3600)).padStart(2, '0');
   const mm = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
   const ss = String(total % 60).padStart(2, '0');
+  const rectBase: React.CSSProperties = {
+    background: '#06171a',
+    color: '#ffffff',
+    fontWeight: 800,
+    fontSize: '0.72rem',
+    lineHeight: 1,
+    padding: '6px 14px',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    whiteSpace: 'nowrap',
+    border: '1px solid rgba(0,188,212,0.28)',
+  };
   return (
     <div
       title="Chat clears in"
       style={{
-        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
-        pointerEvents: 'none', color: '#191970', fontWeight: 800, fontSize: '0.86rem',
-        fontVariantNumeric: 'tabular-nums', direction: 'ltr',
-        overflow: 'hidden', whiteSpace: 'nowrap',
+        position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+        top: 'calc(max(8px, env(safe-area-inset-top)) + 8px)',
+        display: 'flex', flexDirection: 'column', alignItems: 'stretch',
+        minWidth: 104, zIndex: 5, pointerEvents: 'none',
+        boxShadow: '0 4px 14px rgba(0,0,0,0.28)', borderRadius: 10,
       }}
     >
-      {hh}:{mm}:{ss}
+      <div style={{ ...rectBase, borderRadius: '10px 10px 0 0', borderBottom: 'none', fontVariantNumeric: 'tabular-nums', direction: 'ltr' }}>
+        {hh}:{mm}:{ss}
+      </div>
+      <div style={{ ...rectBase, borderRadius: '0 0 10px 10px', direction: 'ltr' }}>
+        <span>Live Chat</span>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 5px rgba(34,197,94,0.9)', display: 'inline-block' }} />
+      </div>
     </div>
   );
 }
@@ -13611,10 +13630,13 @@ function PublicLiveCommentsPanel({
   user,
   headerOpen,
   onToggleHeader,
+  onBusyChange,
 }: {
   user: { id?: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null } | null | undefined;
   headerOpen: boolean;
   onToggleHeader?: () => void;
+  /** true while someone is actively typing in the live chat (drives the green shimmering grabber) */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [comments, setComments] = useState<PublicLiveComment[]>(() => loadPublicLiveComments());
   const [text, setText] = useState('');
@@ -13644,7 +13666,7 @@ function PublicLiveCommentsPanel({
   const myUsername = (user as any)?.username ?? null;
   const myAvatar = (user as any)?.avatarUrl || (user as any)?.image || null;
   const typingTimer = useRef<number | null>(null);
-  const [composerFocused, setComposerFocused] = useState(false);
+  const [, setComposerFocused] = useState(false);
 
   // كل 24 ساعة: تنظيف الشات ومسح محتواه بالكامل
   const lastClearCycleRef = useRef<number>(liveChatCycleStart());
@@ -13914,8 +13936,12 @@ function PublicLiveCommentsPanel({
       ? LIVE_CHAT_BOT_NAME
       : (c.username ? `@${String(c.username).replace(/^@/, '')}` : (c.name || 'مستخدم'));
 
-  // العدّاد يظهر فقط عندما لا يكتب أحد (لا أنا ولا غيري)
-  const showClearTimer = liveTypers.length === 0 && !text.trim() && !composerFocused;
+  // Report active typing (others, or me) to the page so the header grabber can turn green + shimmer
+  const chatBusy = liveTypers.length > 0 || !!text.trim();
+  const onBusyChangeRef = useRef(onBusyChange);
+  onBusyChangeRef.current = onBusyChange;
+  useEffect(() => { onBusyChangeRef.current?.(chatBusy); }, [chatBusy]);
+  useEffect(() => () => { onBusyChangeRef.current?.(false); }, []);
 
   // الشات بالأسفل: ينتقل من الرئيسية إلى ما بعد نقر الخط (الهيدر مرفوع/مخفي).
   // عند إنزال الهيدر (الرئيسية) يختفي الشات ويرجع لوضعه المصغّر، بنفس آلياته كاملة.
@@ -13949,6 +13975,7 @@ function PublicLiveCommentsPanel({
         pointerEvents: 'none',
       }}
     >
+      {chatLift === 1 ? <LiveChatClearCountdown /> : null}
       <div style={{
         flex: chatLift === 0 ? 1 : undefined,
         flexShrink: 0,
@@ -13970,7 +13997,7 @@ function PublicLiveCommentsPanel({
           display: chatLift === 0 ? 'none' : undefined,
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
-          padding: '4px 12px 6px',
+          padding: chatLift === 1 ? '60px 12px 6px' : '4px 12px 6px',
           background: '#ffffff',
           touchAction: 'pan-y',
           pointerEvents: 'auto',
@@ -14226,7 +14253,6 @@ function PublicLiveCommentsPanel({
                 </span>
               </div>
             ) : null}
-            {showClearTimer ? <LiveChatClearCountdown /> : null}
             <input
               ref={chatInputRef}
               value={text}
@@ -14245,7 +14271,7 @@ function PublicLiveCommentsPanel({
                   pushComment(text, pendingImage);
                 }
               }}
-              placeholder={showClearTimer || (chatLift === 0 && liveTypers.length > 0 && !text.trim()) ? '' : (myUsername ? `Comment as ${String(myUsername).replace(/^@/, '')}…` : 'Comment…')}
+              placeholder={(chatLift === 0 && liveTypers.length > 0 && !text.trim()) ? '' : (myUsername ? `Comment as ${String(myUsername).replace(/^@/, '')}…` : 'Comment…')}
               onFocus={() => {
                 chatInputFocused.current = true;
                 setComposerFocused(true);
@@ -18059,6 +18085,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
   // Once true, the grabber's attention-drawing bounce animation stops for good.
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
+  const [liveChatBusy, setLiveChatBusy] = useState(false);
   // الشات العام مرفوع/مفتوح → نخفي صف الأيقونات (Friends / Call / Live / Settings)، وترجع عند الخروج منه.
   const [chatLifted, setChatLifted] = useState(false);
   useEffect(() => {
@@ -20708,6 +20735,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
+              <style>{`@keyframes stooornaGrabberShine { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }`}</style>
               <motion.span
                 animate={headerHintSeen ? { y: 0 } : { y: [0, -5, 0, -5, 0] }}
                 transition={headerHintSeen ? { duration: 0.2 } : {
@@ -20715,10 +20743,24 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 }}
                 style={{
                   display: 'block',
+                  position: 'relative', overflow: 'hidden',
                   width: 36, height: 4, borderRadius: 2,
-                  background: CLR_PRIMARY_BORDER,
+                  background: liveChatBusy ? '#16a34a' : CLR_PRIMARY_BORDER,
+                  boxShadow: liveChatBusy ? '0 0 6px rgba(34,197,94,0.55)' : 'none',
+                  transition: 'background 0.25s ease, box-shadow 0.25s ease',
                 }}
-              />
+              >
+                {liveChatBusy ? (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute', top: 0, bottom: 0, left: 0, width: '40%',
+                      background: 'linear-gradient(90deg, transparent, rgba(226,232,240,0.95), transparent)',
+                      animation: 'stooornaGrabberShine 1.6s ease-in-out infinite',
+                    }}
+                  />
+                ) : null}
+              </motion.span>
             </motion.button>
           </div>
 
@@ -25247,8 +25289,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               style={{
                 position: 'relative',
                 width: 'min(92vw, 360px)',
-                height: 'min(56vh, 420px)',
-                maxHeight: 'min(56vh, 420px)',
+                height: 'min(36vh, 262px)',
+                maxHeight: 'min(36vh, 262px)',
                 display: 'flex',
                 flexDirection: 'column',
                 background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
@@ -25369,16 +25411,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </div>
                 </>
               ) : incoming.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '20px 10px 16px', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ textAlign: 'center', padding: '4px 10px 6px', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <div style={{
-                    width: 48, height: 48, borderRadius: '50%', margin: '0 auto 12px',
+                    width: 40, height: 40, borderRadius: '50%', margin: '0 auto 8px',
                     background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     <UserPlus size={20} color="#ef4444" />
                   </div>
                   <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>No friend requests</p>
-                  <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', margin: '8px 0 0' }}>Search above or wait for incoming requests</p>
+                  <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', margin: '4px 0 0' }}>Search above or wait for incoming requests</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, overflowY: 'auto' }}>
@@ -27537,7 +27579,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         }}
       />
       {pageTab === 'profile' && !isFriendManagement && !guestMode && (
-        <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen || liveScrollHidden} onToggleHeader={toggleHeaderOpen} />
+        <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen || liveScrollHidden} onToggleHeader={toggleHeaderOpen} onBusyChange={setLiveChatBusy} />
       )}
       {GuestModal}
     </>;
