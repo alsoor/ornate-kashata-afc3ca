@@ -2700,6 +2700,7 @@ function GlobalBottomNavigation() {
       }
     };
     for (const peer of picked) pushInviteToPeer(peer, invitePayload.at);
+    homeCallLiveStartedAt.current = null; // brand-new outgoing call: forget any earlier call's live marker
     const callSession = ++homeCallSessionRef.current;
     const invitePulse = window.setInterval(() => {
       if (homeCallSessionRef.current !== callSession) {
@@ -2724,13 +2725,15 @@ function GlobalBottomNavigation() {
     (homeCallAgoraRef as any)._invitePulse = invitePulse;
     window.setTimeout(() => {
       if (homeCallSessionRef.current !== callSession) return;
+      // already answered before the ringback even started → never fall back to "Calling…" / never ring
+      if (homeCallPhaseRef.current === 'live' || homeCallLiveStartedAt.current) return;
       setHomeCallMinimized(true); setHomeCallPhase('connecting');
       // Outgoing ringback while waiting for answer
       try {
         playHomeIncomingRing();
         if (homeRingTimer.current) window.clearInterval(homeRingTimer.current);
         homeRingTimer.current = window.setInterval(() => {
-          if (homeCallPhaseRef.current === 'live' || homeCallPhaseRef.current === 'idle') {
+          if (homeCallPhaseRef.current === 'live' || homeCallPhaseRef.current === 'idle' || homeCallLiveStartedAt.current) {
             stopHomeIncomingRing();
             return;
           }
@@ -2869,8 +2872,10 @@ function GlobalBottomNavigation() {
       }
     } catch { /* partial room connect even if Agora fails */ }
     if (homeCallSessionRef.current !== callSession) return;
-    // Stay on connecting (Ringing) until the other party joins the room
-    setHomeCallMinimized(true); setHomeCallPhase('connecting');
+    // Stay on connecting (Ringing) until the other party joins the room —
+    // but NEVER demote a call that already went live while the awaits above were still pending (slow/hung requests on mobile data
+    // used to flip a live call back to "Calling…" and restart the ringback in the middle of the conversation).
+    if (homeCallPhaseRef.current !== 'live' && !homeCallLiveStartedAt.current) { setHomeCallMinimized(true); setHomeCallPhase('connecting'); }
     const poll = async () => {
       try {
         const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
@@ -3105,6 +3110,12 @@ function GlobalBottomNavigation() {
   }
 
   function playHomeIncomingRing() {
+    // Safety net: once this call was answered (live, or it went live earlier and the phase briefly fell back to "connecting"),
+    // no ring / ringback / vibration may ever play again — otherwise the phone "rings out" in the middle of a conversation.
+    if (homeCallPhaseRef.current === 'live' || (homeCallPhaseRef.current !== 'idle' && homeCallLiveStartedAt.current)) {
+      stopHomeIncomingRing();
+      return;
+    }
     try {
       const w = window as any;
       const Ctx: typeof AudioContext | undefined = w.AudioContext || w.webkitAudioContext;
@@ -3456,6 +3467,7 @@ function GlobalBottomNavigation() {
     if (invite.hostId && !members.some(m => m.id === invite.hostId)) members.push(host);
     setHomeCallChannel(channel);
     setHomeCallMembers(members);
+    homeCallLiveStartedAt.current = null; // brand-new answered call: forget any earlier call's live marker
     const session = ++homeCallSessionRef.current;
     setHomeCallPhase('connecting');
     setHomeCallMinimized(true);
