@@ -51,7 +51,8 @@ function DockEmbeddedApp({ onExit }: { onExit: (to: string) => void }) {
         <UNSAFE_RouteContext.Provider value={{ outlet: null, matches: [], isDataRoute: false } as any}>
           {/* these pages size themselves with 100dvh — inside the bubble that means "the bubble" */}
           <style>{`.stooorna-dock-embed [style*="100dvh"], .stooorna-dock-embed [style*="100vh"] { height: 100% !important; max-height: 100% !important; min-height: 100% !important; }
-.stooorna-dock-embed [style*="position: fixed"] { max-height: 100dvh; }`}</style>
+.stooorna-dock-embed [style*="position: fixed"] { max-height: 100dvh; }
+.stooorna-dock-embed div.flex.items-center.justify-between.pt-10 { padding-top: 14px !important; padding-bottom: 10px !important; }`}</style>
           <div
             className="stooorna-dock-embed"
             style={{
@@ -21318,7 +21319,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           position: 'fixed', zIndex: 10075, left: SIDE, right: SIDE, bottom: 'calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
           height: dockBubble.kind === 'settings' ? 'calc(100dvh - var(--stooorna-bottom-bar-h, 96px) - 30px - env(safe-area-inset-top, 0px))' : 'min(62dvh, 520px)',
           display: 'flex', flexDirection: 'column',
-          borderRadius: 22, padding: dockBubble.kind === 'settings' ? '12px 6px 6px' : '14px 14px 12px',
+          borderRadius: 22, padding: dockBubble.kind === 'settings' ? '0 6px 6px' : '14px 14px 12px',
           background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
           border: '1.5px solid rgba(0,188,212,0.35)',
           boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
@@ -21327,7 +21328,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       >
         {/* tail → points at the tapped icon */}
         <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: tailLeft - 9, width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: dockBubble.kind === 'settings' ? '0 8px' : 0 }}>
+        {dockBubble.kind !== 'settings' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: 0 }}>
           <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,188,212,0.14)', color: '#00BCD4' }}>
             {dockBubble.kind === 'call' ? <Phone size={15} strokeWidth={2.2} /> : dockBubble.kind === 'live' ? <Radio size={15} strokeWidth={2.2} /> : <Settings size={15} strokeWidth={2.2} />}
           </span>
@@ -21336,6 +21338,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             <X size={15} strokeWidth={2.4} />
           </button>
         </div>
+        )}
+        {dockBubble.kind === 'settings' && (
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={closeBubble}
+            style={{ position: 'absolute', top: 14, left: 16, zIndex: 20, width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            <X size={16} strokeWidth={2.4} />
+          </button>
+        )}
         <div style={{ flex: 1, minHeight: 0, position: 'relative', overflowY: dockBubble.kind === 'settings' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', gap: 8, WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', borderRadius: 14 }}>
           {dockBubble.kind === 'call' && (
             <>
