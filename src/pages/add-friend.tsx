@@ -13989,6 +13989,7 @@ function PublicLiveCommentsPanel({
   const [text, setText] = useState('');
   const [, setEmojiOpen] = useState(false);
   const [composerDock, setComposerDock] = useState<'none' | 'emoji' | 'gallery'>('none');
+  const [plusOpen, setPlusOpen] = useState(false);   // "+" bubble that holds Photos / Voice / Emoji / Video AI
   const [emojiCat, setEmojiCat] = useState(0);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingVoice, setPendingVoice] = useState<{ url: string; duration: number } | null>(null);
@@ -14921,87 +14922,103 @@ function PublicLiveCommentsPanel({
                 setPendingImage(url);
               }}
             />
-            <button
-              type="button"
-              aria-label="صورة"
-              onPointerDown={e => { e.preventDefault(); e.stopPropagation(); composerGuardRef.current = Date.now(); }}
-              onClick={e => {
-                // Toggle on CLICK (not pointerdown): opening the dock moves the composer up, and a click that fires after that
-                // move used to land on the photos/videos behind the chat.
-                e.stopPropagation();
-                composerGuardRef.current = Date.now();
-                chatInputFocused.current = false;
-                setKbInset(0);
-                lockPageForKeyboard(false);
-                setComposerDock(d => d === 'gallery' ? 'none' : 'gallery');
-                setEmojiOpen(false);
-                try { chatInputRef.current?.blur(); } catch { /* */ }
-              }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
-            >
-              <ImageIcon size={18} strokeWidth={2} />
-            </button>
-            <button
-              type="button"
-              aria-label="تسجيل صوتي"
-              onPointerDown={e => { e.preventDefault(); e.stopPropagation(); composerGuardRef.current = Date.now(); }}
-              onClick={e => {
-                e.stopPropagation();
-                composerGuardRef.current = Date.now();
-                if (recording) {
-                  recRef.current?.stop();
-                  setRecording(false);
-                  return;
-                }
-                chatInputFocused.current = false;
-                setKbInset(0);
-                lockPageForKeyboard(false);
-                setEmojiOpen(false);
-                setComposerDock(d => d === 'voice' ? 'none' : 'voice');   // recording itself starts from the big mic button in the dock
-                try { chatInputRef.current?.blur(); } catch { /* */ }
-              }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: recording ? '#ef4444' : '#111', padding: 6, display: 'flex' }}
-            >
-              {recording ? <MicOff size={18} strokeWidth={2} /> : <Mic size={18} strokeWidth={2} />}
-            </button>
-            <button
-              type="button"
-              aria-label="إيموجي"
-              onPointerDown={e => { e.preventDefault(); e.stopPropagation(); composerGuardRef.current = Date.now(); }}
-              onClick={e => {
-                e.stopPropagation();
-                composerGuardRef.current = Date.now();
-                chatInputFocused.current = false;
-                setKbInset(0);
-                lockPageForKeyboard(false);
-                const next = composerDock === 'emoji' ? 'none' : 'emoji';
-                setComposerDock(next);
-                setEmojiOpen(next === 'emoji');
-                try { chatInputRef.current?.blur(); } catch { /* */ }
-              }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
-            >
-              <Smile size={18} strokeWidth={2} />
-            </button>
-            <button
-              type="button"
-              aria-label="Templates"
-              onPointerDown={e => { e.preventDefault(); e.stopPropagation(); composerGuardRef.current = Date.now(); }}
-              onClick={e => {
-                e.stopPropagation();
-                composerGuardRef.current = Date.now();
-                chatInputFocused.current = false;
-                setKbInset(0);
-                lockPageForKeyboard(false);
-                setComposerDock('none');
-                setEmojiOpen(false);
-                try { chatInputRef.current?.blur(); } catch { /* */ }
-                setTplOpen(true);
-              }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', padding: 6, display: 'flex' }}
-            >
-              <Film size={18} strokeWidth={2} />
-            </button>
+            {/* ── "+" bubble: Photos / Voice / Emoji / Video AI live inside it (same handlers as the old inline buttons) ── */}
+            <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
+              {plusOpen && (
+                <div
+                  onPointerDown={e => { e.preventDefault(); e.stopPropagation(); setPlusOpen(false); }}
+                  style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'transparent' }}
+                />
+              )}
+              <button
+                type="button"
+                aria-label="More"
+                aria-expanded={plusOpen}
+                onPointerDown={e => { e.preventDefault(); e.stopPropagation(); composerGuardRef.current = Date.now(); }}
+                onClick={e => {
+                  e.stopPropagation();
+                  composerGuardRef.current = Date.now();
+                  chatInputFocused.current = false;
+                  setKbInset(0);
+                  lockPageForKeyboard(false);
+                  try { chatInputRef.current?.blur(); } catch { /* */ }
+                  setPlusOpen(v => !v);
+                }}
+                style={{
+                  width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
+                  background: plusOpen ? '#111' : '#f1f1f1', color: plusOpen ? '#fff' : '#111',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'transform .2s ease, background .2s ease',
+                  transform: plusOpen ? 'rotate(45deg)' : 'none',
+                  position: 'relative', zIndex: 62,
+                }}
+              >
+                <Plus size={18} strokeWidth={2.4} />
+              </button>
+              {plusOpen && (
+                <div
+                  style={{
+                    position: 'absolute', right: -4, bottom: 'calc(100% + 12px)', zIndex: 61,
+                    display: 'flex', gap: 6, padding: 8, borderRadius: 22,
+                    background: '#fff', border: '1px solid #e5e7eb',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+                  }}
+                >
+                  {([
+                    {
+                      key: 'photos', label: 'Photos', icon: <ImageIcon size={20} strokeWidth={2} />,
+                      run: () => { setComposerDock(d => d === 'gallery' ? 'none' : 'gallery'); setEmojiOpen(false); },
+                    },
+                    {
+                      key: 'voice', label: recording ? 'Stop' : 'Voice',
+                      icon: recording ? <MicOff size={20} strokeWidth={2} color="#ef4444" /> : <Mic size={20} strokeWidth={2} />,
+                      run: () => {
+                        if (recording) { recRef.current?.stop(); setRecording(false); return; }
+                        setEmojiOpen(false);
+                        setComposerDock(d => d === 'voice' ? 'none' : 'voice');   // recording itself starts from the big mic button in the dock
+                      },
+                    },
+                    {
+                      key: 'emoji', label: 'Emoji', icon: <Smile size={20} strokeWidth={2} />,
+                      run: () => {
+                        const next = composerDock === 'emoji' ? 'none' : 'emoji';
+                        setComposerDock(next);
+                        setEmojiOpen(next === 'emoji');
+                      },
+                    },
+                    {
+                      key: 'video-ai', label: 'Video AI', icon: <Film size={20} strokeWidth={2} />,
+                      run: () => { setComposerDock('none'); setEmojiOpen(false); setTplOpen(true); },
+                    },
+                  ] as { key: string; label: string; icon: React.ReactNode; run: () => void }[]).map(it => (
+                    <button
+                      key={it.key}
+                      type="button"
+                      aria-label={it.label}
+                      onPointerDown={e => { e.preventDefault(); e.stopPropagation(); composerGuardRef.current = Date.now(); }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        composerGuardRef.current = Date.now();
+                        chatInputFocused.current = false;
+                        setKbInset(0);
+                        lockPageForKeyboard(false);
+                        try { chatInputRef.current?.blur(); } catch { /* */ }
+                        setPlusOpen(false);
+                        it.run();
+                      }}
+                      style={{
+                        width: 62, padding: '8px 0 6px', borderRadius: 16, border: 'none', cursor: 'pointer',
+                        background: '#f7f7f8', color: '#111',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                      }}
+                    >
+                      {it.icon}
+                      <span style={{ fontSize: '0.64rem', fontWeight: 800, whiteSpace: 'nowrap' }}>{it.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <button
             type="button"
