@@ -30,6 +30,33 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// أيقونة التطبيق: لو ملف الصورة ما انحمّل تظهر أيقونة بديلة بدل الصورة المكسورة
+function AppIcon({ size }: { size: number }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div
+        aria-hidden
+        style={{
+          width: size, height: size, borderRadius: size * 0.25, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'linear-gradient(135deg, #00BCD4 0%, #006978 100%)',
+          color: '#041018', fontWeight: 900, fontSize: size * 0.55, lineHeight: 1,
+        }}
+      >
+        S
+      </div>
+    );
+  }
+  return (
+    <img
+      src="/icons/icon-192.png" alt="" width={size} height={size}
+      onError={() => setFailed(true)}
+      style={{ borderRadius: size * 0.25, flexShrink: 0, display: 'block' }}
+    />
+  );
+}
+
 function isStandalone(): boolean {
   try {
     return (
@@ -87,10 +114,7 @@ export default function PwaInstallBanner({
   const [hidden, setHidden] = useState(false);
   const [showPerms, setShowPerms] = useState(false);
   const [busy, setBusy] = useState(false);
-  // إذا المتصفح ما أرسل نافذة التثبيت (beforeinstallprompt) نعرض الشريط برضو + شرح التثبيت اليدوي
-  const [fallbackReady, setFallbackReady] = useState(false);
   const [installed, setInstalled] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     if (ANDROID_ONLY && !isAndroid()) return;
@@ -100,11 +124,6 @@ export default function PwaInstallBanner({
     listeners.add(sync);
     sync();
 
-    // بعد ثانيتين: لو ما وصل الحدث ولسنا داخل التطبيق المثبّت، اعرض شريط Install على أي حال
-    const fallbackTimer = window.setTimeout(() => {
-      if (!isStandalone()) setFallbackReady(true);
-    }, 2000);
-
     // أول فتح للتطبيق المثبّت: اعرض شاشة الأذونات
     try {
       if (isStandalone() && localStorage.getItem(PERMS_DONE_KEY) !== '1') setShowPerms(true);
@@ -112,24 +131,19 @@ export default function PwaInstallBanner({
 
     const onInstalled = () => {
       setInstalled(true);
-      setShowHelp(false);
       try { if (localStorage.getItem(PERMS_DONE_KEY) !== '1') setShowPerms(true); } catch { setShowPerms(true); }
     };
     window.addEventListener('appinstalled', onInstalled);
     return () => {
       listeners.delete(sync);
-      window.clearTimeout(fallbackTimer);
       window.removeEventListener('appinstalled', onInstalled);
     };
   }, []);
 
   const install = useCallback(async () => {
+    // ضغطة وحدة = تثبيت مباشر (نافذة تثبيت المتصفح الأصلية)
     const p = deferredPrompt;
-    if (!p) {
-      // المتصفح ما وفّر نافذة التثبيت → نعرض خطوات التثبيت اليدوي
-      setShowHelp(true);
-      return;
-    }
+    if (!p) return;
     try {
       await p.prompt();
       const { outcome } = await p.userChoice;
@@ -161,7 +175,7 @@ export default function PwaInstallBanner({
 
   return (
     <>
-      {(canInstall || fallbackReady) && !installed && !hidden && !showPerms && !showHelp && (
+      {canInstall && !installed && !hidden && !showPerms && (
         <div
           style={{
             position: 'fixed', top: 0, left: 0, right: 0, zIndex: 13100,
@@ -180,10 +194,7 @@ export default function PwaInstallBanner({
               animation: 'stooornaLiveBannerIn 0.35s ease-out',
             }}
           >
-            <img
-              src="/icons/icon-192.png" alt="" width={40} height={40}
-              style={{ borderRadius: 10, flexShrink: 0, display: 'block' }}
-            />
+            <AppIcon size={40} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: 15, lineHeight: 1.2 }}>Stooorna</p>
               <p style={{ margin: '2px 0 0', color: 'rgba(180,220,220,0.75)', fontSize: 11.5 }}>
@@ -215,56 +226,6 @@ export default function PwaInstallBanner({
         </div>
       )}
 
-      {showHelp && (
-        <div
-          onClick={() => setShowHelp(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 13300, background: 'rgba(3,8,9,0.78)',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-          }}
-        >
-          <div
-            dir="rtl"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: '100%', maxWidth: 480, boxSizing: 'border-box',
-              padding: '20px 18px max(20px, env(safe-area-inset-bottom))',
-              borderTopLeftRadius: 22, borderTopRightRadius: 22,
-              border: '1px solid rgba(0,188,212,0.3)',
-              background: 'linear-gradient(180deg,#0a1f22 0%,#061014 100%)',
-              animation: 'stooornaHomeCallSheet 0.34s cubic-bezier(0.32, 0.72, 0, 1)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <img src="/icons/icon-192.png" alt="" width={48} height={48} style={{ borderRadius: 12 }} />
-              <div>
-                <p style={{ margin: 0, color: '#fff', fontWeight: 900, fontSize: 18 }}>Stooorna</p>
-                <p style={{ margin: '2px 0 0', color: 'rgba(180,220,220,0.75)', fontSize: 12 }}>
-                  ثبّت التطبيق · Install the app
-                </p>
-              </div>
-            </div>
-            <ol style={{ margin: '0 0 14px', paddingInlineStart: 20, color: 'rgba(215,238,238,0.92)', fontSize: 13.5, lineHeight: 1.9 }}>
-              <li>اضغط على قائمة المتصفح ⋮ (أعلى اليمين)</li>
-              <li>اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»</li>
-              <li>اضغط «تثبيت» / Install</li>
-            </ol>
-            <p style={{ margin: '0 0 14px', color: 'rgba(180,220,220,0.6)', fontSize: 11.5, direction: 'ltr', textAlign: 'left' }}>
-              Tap the ⋮ menu → “Install app” or “Add to Home screen” → Install. Use Chrome for best results.
-            </p>
-            <button
-              type="button" onClick={() => setShowHelp(false)}
-              style={{
-                width: '100%', padding: 14, borderRadius: 14, border: 'none',
-                background: '#00BCD4', color: '#041018', fontWeight: 900, fontSize: 15, cursor: 'pointer',
-              }}
-            >
-              تمام · OK
-            </button>
-          </div>
-        </div>
-      )}
-
       {showPerms && (
         <div
           style={{
@@ -284,7 +245,7 @@ export default function PwaInstallBanner({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <img src="/icons/icon-192.png" alt="" width={48} height={48} style={{ borderRadius: 12 }} />
+              <AppIcon size={48} />
               <div>
                 <p style={{ margin: 0, color: '#fff', fontWeight: 900, fontSize: 18 }}>Stooorna</p>
                 <p style={{ margin: '2px 0 0', color: 'rgba(180,220,220,0.75)', fontSize: 12 }}>
