@@ -96,6 +96,7 @@ import PostTextMore from '@/components/PostTextMore';
 import { publishFeedPost, uploadPostMedia, deleteStoryInstant } from '@/lib/postStoryPatch';
 import { mediaAiProcessGalleryFiles, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
 import { publishLiveChatRoundVideo, normalizeLiveChatMediaFields, extractLiveChatMediaUrl, makeLiveChatRoundText } from '@/lib/liveChatVideoPatch';
+import { publishLiveChatVideoDelete, onLiveChatVideoDeleted, applyLiveChatVideoTombstone, isLiveChatRoundGone, LIVE_CHAT_ROUND_GONE } from '@/lib/liveChatVideoDeletePatch';
 import { StoryModerationBell, StoryModerateDialog, StoryBanModal, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
 
@@ -14841,18 +14842,28 @@ function mergeLiveChatLists(a: PublicLiveComment[], b: PublicLiveComment[]): Pub
     // edit counter can never go back down, so the 3-edit limit cannot be bypassed by a re-sync).
     const prevEdits = prev.editCount || 0;
     const rowEdits = row.editCount || 0;
+    // Tombstone (deleted video) always wins: clear media so it cannot revive on merge
+    const rowGone = (typeof isLiveChatRoundGone === 'function' && isLiveChatRoundGone(row.text))
+      || row.text === LIVE_ROUND_GONE
+      || (typeof LIVE_CHAT_ROUND_GONE !== 'undefined' && row.text === LIVE_CHAT_ROUND_GONE);
+    const prevGone = (typeof isLiveChatRoundGone === 'function' && isLiveChatRoundGone(prev.text))
+      || prev.text === LIVE_ROUND_GONE
+      || (typeof LIVE_CHAT_ROUND_GONE !== 'undefined' && prev.text === LIVE_CHAT_ROUND_GONE);
+    const gone = rowGone || prevGone;
     map.set(row.id, {
       ...prev,
       ...row,
-      text: prevEdits > rowEdits
-        ? prev.text
-        // keep my "big emoji" marker if the server echoed the same emoji back without it
-        : (isLiveBigEmoji(prev.text) && !isLiveBigEmoji(row.text) && stripLiveBigEmojiMark(prev.text) === row.text ? prev.text : row.text),
-      editCount: Math.max(prevEdits, rowEdits),
+      text: gone
+        ? (rowGone ? row.text : prev.text)
+        : (prevEdits > rowEdits
+          ? prev.text
+          : (isLiveBigEmoji(prev.text) && !isLiveBigEmoji(row.text) && stripLiveBigEmojiMark(prev.text) === row.text ? prev.text : row.text)),
+      editCount: Math.max(prevEdits, rowEdits, gone ? 99 : 0),
       likes,
-      voiceUrl: row.voiceUrl || prev.voiceUrl || null,
-      voiceDuration: row.voiceDuration ?? prev.voiceDuration ?? null,
-      imageUrl: row.imageUrl || prev.imageUrl || null,
+      voiceUrl: gone ? null : (row.voiceUrl || prev.voiceUrl || null),
+      voiceDuration: gone ? null : (row.voiceDuration ?? prev.voiceDuration ?? null),
+      // IMPORTANT: null from tombstone must replace old URL (|| would keep the video visible)
+      imageUrl: gone ? null : (row.imageUrl || prev.imageUrl || null),
     });
   }
   return [...map.values()].sort((x, y) => x.createdAt - y.createdAt).slice(-400);
@@ -15119,7 +15130,10 @@ const parseRoundSeen = (text: string): string | null => {
 };
 /** Rows that must never show as chat messages: "seen" receipts and deleted round videos. */
 const isRoundHiddenRow = (c: { id: string; text: string }, gone: string[]) =>
-  c.text === LIVE_ROUND_GONE || LIVE_ROUND_SEEN_RE.test(String(c.text || '')) || gone.includes(c.id);
+  c.text === LIVE_ROUND_GONE
+  || (typeof isLiveChatRoundGone === 'function' && isLiveChatRoundGone(c.text))
+  || LIVE_ROUND_SEEN_RE.test(String(c.text || ''))
+  || gone.includes(c.id);
 
 type RoundLocal = { seen: string[]; gone: string[] };
 function roundLocalGet(uid: string): RoundLocal {
@@ -17134,34 +17148,35 @@ function PublicLiveCommentsPanel({
     setComments(next);
     void postLiveChatToServer(row);
   };
-  /** Delete = dust animation, then a tombstone edit (same id) so the video disappears for everybody. */
+  /** Delete = dust animation, then independent delete patch so the video disappears for everybody. */
   const deleteRound = (c: PublicLiveComment, el: HTMLElement) => {
     if (!myId || c.userId !== myId) return;
     const oldUrl = c.imageUrl || '';
     liveDustDelete(el, () => {
       roundLocalAdd(myId, 'gone', c.id);
-      const tomb: PublicLiveComment = { ...c, text: LIVE_ROUND_GONE, imageUrl: null, editCount: LIVE_CHAT_MAX_EDITS };
-      const next = loadPublicLiveComments().map(x => (x.id === c.id ? tomb : x));
+      const tomb: PublicLiveComment = {
+        ...c,
+        text: LIVE_CHAT_ROUND_GONE,
+        imageUrl: null,
+        editCount: Math.max(LIVE_CHAT_MAX_EDITS, 99),
+      };
+      const next = applyLiveChatVideoTombstone(loadPublicLiveComments(), c.id).map(x =>
+        x.id === c.id ? { ...x, text: LIVE_CHAT_ROUND_GONE, imageUrl: null, editCount: Math.max(x.editCount || 0, 99) } : x,
+      );
       savePublicLiveComments(next);
       setComments(next);
       setRoundTick(v => v + 1);
       void editLiveChatOnServer(tomb);
-      const delBody = {
-        action: 'delete', roomId: LIVE_CHAT_ROOM, room: LIVE_CHAT_ROOM, id: c.id, commentId: c.id, userId: myId,
-        text: LIVE_ROUND_GONE, body: LIVE_ROUND_GONE, imageUrl: null, mediaUrl: null, videoUrl: null,
-        editCount: LIVE_CHAT_MAX_EDITS, noStory: 1, destination: 'live-chat',
-      };
-      void fetch('/api/live-chat', {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(delBody),
-      }).catch(() => {});
-      void fetch(`/api/live-chat?room=${encodeURIComponent(LIVE_CHAT_ROOM)}`, {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(delBody),
-      }).catch(() => {});
-      if (oldUrl && !oldUrl.startsWith('blob:')) {
-        void fetch('/api/upload', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: oldUrl }) }).catch(() => {});
-      }
+      void publishLiveChatVideoDelete({
+        id: c.id,
+        userId: myId,
+        room: LIVE_CHAT_ROOM,
+        mediaUrl: oldUrl,
+        name: myName,
+        username: myUsername,
+        avatarUrl: myAvatar,
+        createdAt: c.createdAt,
+      });
     });
   };
 
@@ -17178,7 +17193,7 @@ function PublicLiveCommentsPanel({
       }
     }
     for (const c of comments) {
-      if (c.text !== LIVE_ROUND_GONE) continue;
+      if (c.text !== LIVE_ROUND_GONE && !isLiveChatRoundGone(c.text)) continue;
       if (dustPlayedRef.current.has(c.id)) continue;
       if (c.userId === myId) { dustPlayedRef.current.add(c.id); continue; }
       dustPlayedRef.current.add(c.id);
@@ -17202,6 +17217,42 @@ function PublicLiveCommentsPanel({
       });
     }
   }, [comments, myId]);
+
+  // Instant remote delete from the independent patch (BroadcastChannel / custom event)
+  useEffect(() => {
+    if (!myId) return;
+    return onLiveChatVideoDeleted(({ id, userId }) => {
+      if (!id || userId === myId) return;
+      // Apply tombstone locally immediately
+      const list = applyLiveChatVideoTombstone(loadPublicLiveComments(), id);
+      savePublicLiveComments(list);
+      setComments(list);
+      // Trigger dust if bubble still visible
+      if (!dustPlayedRef.current.has(id)) {
+        dustPlayedRef.current.add(id);
+        setDustHoldIds(prev => {
+          const n = new Set(prev);
+          n.add(id);
+          return n;
+        });
+        window.requestAnimationFrame(() => {
+          const el = document.querySelector(`[data-live-round-id="${CSS.escape(id)}"]`) as HTMLElement | null;
+          const runHide = () => {
+            setDustHoldIds(prev => {
+              const n = new Set(prev);
+              n.delete(id);
+              return n;
+            });
+            setRoundTick(v => v + 1);
+          };
+          if (el) liveDustDelete(el, runHide);
+          else runHide();
+        });
+      } else {
+        setRoundTick(v => v + 1);
+      }
+    });
+  }, [myId]);
 
 
   // Report active typing (others, or me) to the page so the header grabber can turn green + shimmer
