@@ -13901,9 +13901,11 @@ function saveSavedMessages(uid: string, list: SavedMsg[]) {
 }
 
 /** Long-press → Delete with dust burst (same feel as temporary round video). */
-function SavedMsgDeleteFx({ enabled, onDelete, children }: {
+function SavedMsgDeleteFx({ enabled, onDelete, onShare, children }: {
   enabled: boolean;
   onDelete: () => void | Promise<void>;
+  /** When set (location only): long-press sheet shows Share (external) + Delete */
+  onShare?: () => void | Promise<void>;
   children: React.ReactNode;
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -13944,6 +13946,10 @@ function SavedMsgDeleteFx({ enabled, onDelete, children }: {
       void Promise.resolve(onDelete()).finally(() => { if (mountedRef.current) setBursting(false); });
     });
   };
+  const runShare = () => {
+    setConfirm(false);
+    void Promise.resolve(onShare?.());
+  };
   return (
     <>
       <div
@@ -13972,11 +13978,18 @@ function SavedMsgDeleteFx({ enabled, onDelete, children }: {
             onClick={e => e.stopPropagation()}
             style={{ background: '#14191c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: '20px 18px 12px', width: '100%', maxWidth: 300, direction: 'rtl' }}
           >
-            <p style={{ margin: '0 0 6px', color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>Delete</p>
-            <p style={{ margin: '0 0 14px', color: 'rgba(255,255,255,0.65)', fontSize: '0.82rem', lineHeight: 1.5 }}>متأكد تبي تحذف هذا العنصر؟</p>
-            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-start' }}>
+            <p style={{ margin: '0 0 6px', color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>
+              {onShare ? 'Location' : 'Delete'}
+            </p>
+            <p style={{ margin: '0 0 14px', color: 'rgba(255,255,255,0.65)', fontSize: '0.82rem', lineHeight: 1.5 }}>
+              {onShare ? 'شارك الموقع خارج التطبيق أو احذفه' : 'متأكد تبي تحذف هذا العنصر؟'}
+            </p>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-start', flexWrap: 'wrap' }}>
+              {onShare ? (
+                <button type="button" onClick={runShare} style={{ background: 'none', border: 'none', color: CLR_PRIMARY, fontWeight: 700, fontSize: '0.88rem', padding: '8px 14px', cursor: 'pointer' }}>Share</button>
+              ) : null}
               <button type="button" onClick={runDelete} style={{ background: 'none', border: 'none', color: '#ef4444', fontWeight: 700, fontSize: '0.88rem', padding: '8px 14px', cursor: 'pointer' }}>Delete</button>
-              <button type="button" onClick={() => setConfirm(false)} style={{ background: 'none', border: 'none', color: CLR_PRIMARY, fontWeight: 700, fontSize: '0.88rem', padding: '8px 14px', cursor: 'pointer' }}>إلغاء</button>
+              <button type="button" onClick={() => setConfirm(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.55)', fontWeight: 700, fontSize: '0.88rem', padding: '8px 14px', cursor: 'pointer' }}>إلغاء</button>
             </div>
           </div>
         </div>,
@@ -14163,9 +14176,43 @@ function SavedMessagesScreen({
     }, 30);
   };
 
+  const shareLocationExternal = async (m: SavedMsg) => {
+    const mapsUrl = (m.lat != null && m.lng != null)
+      ? `https://maps.google.com/?q=${m.lat},${m.lng}`
+      : String(m.text || '').trim();
+    if (!mapsUrl) { setToast('لا يوجد موقع للمشاركة'); return; }
+    const payload: { title: string; text: string; url?: string } = {
+      title: 'Location',
+      text: m.text ? `📍 ${m.text}` : '📍 Location',
+      url: mapsUrl.startsWith('http') ? mapsUrl : undefined,
+    };
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        await navigator.share(payload);
+        return;
+      }
+    } catch (err: any) {
+      // user cancelled share sheet — not an error
+      if (err && (err.name === 'AbortError' || err.name === 'NotAllowedError')) return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(mapsUrl);
+        setToast('تم نسخ رابط الموقع');
+      }
+    } catch { /* */ }
+    try { window.open(mapsUrl.startsWith('http') ? mapsUrl : `https://maps.google.com/?q=${encodeURIComponent(mapsUrl)}`, '_blank', 'noopener,noreferrer'); } catch { /* */ }
+  };
+
   const handleClose = () => {
     if (pickingRef.current || busy) return; // never kick out mid-pick
     try { sessionStorage.setItem('stooorna_saved_open', '0'); } catch { /* */ }
+    // Return to public live chat (not outside the app / blank home).
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:saved-messages-closed', {
+        detail: { restoreLiveChat: true },
+      }));
+    } catch { /* */ }
     onClose();
   };
 
@@ -14182,6 +14229,10 @@ function SavedMessagesScreen({
           transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.85 }}
           onClick={e => e.stopPropagation()}
           onPointerDown={e => e.stopPropagation()}
+          onTouchStart={e => e.stopPropagation()}
+          onTouchMove={e => e.stopPropagation()}
+          onTouchEnd={e => e.stopPropagation()}
+          onWheel={e => e.stopPropagation()}
           style={{
             position: 'fixed', inset: 0, zIndex: 120050,
             background: 'linear-gradient(180deg, #f4f6f8 0%, #eef1f4 40%, #e8ecf0 100%)',
@@ -14270,7 +14321,12 @@ function SavedMessagesScreen({
               </div>
             ) : null}
             {items.map(m => (
-              <SavedMsgDeleteFx key={m.id} enabled onDelete={() => removeItem(m.id)}>
+              <SavedMsgDeleteFx
+                key={m.id}
+                enabled
+                onDelete={() => removeItem(m.id)}
+                onShare={m.kind === 'location' ? () => shareLocationExternal(m) : undefined}
+              >
                 <div
                   style={{
                     marginBottom: 10,
@@ -16834,27 +16890,16 @@ function PublicLiveCommentsPanel({
     setTplOpen(false);
     setChatLift(0);
   };
-  if (headerOpen) {
-    // Header forced open (e.g. after the system gallery closes): keep the Templates page alive instead of kicking the user out.
-    // Also keep Saved Messages mounted — otherwise opening the system gallery for Video/Photo/File unmounts it and "kicks" the user out.
-    return (
+  // When header is forced open (e.g. after system gallery) but Saved Messages is closed,
+  // keep Templates/media alive and skip the chat portal. If Saved Messages is open, fall through
+  // so the public chat stays mounted underneath — closing Saved Messages returns to live chat, not "outside".
+  if (headerOpen && !savedOpen) {
+    return (tplOpen || mediaViewer) ? (
       <>
-        {(tplOpen || mediaViewer) ? (
-          <>
-            {tplOpen ? <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} /> : null}
-            {mediaViewer}
-          </>
-        ) : null}
-        <SavedMessagesScreen
-          open={savedOpen}
-          onClose={() => setSavedOpen(false)}
-          userId={myId}
-          userName={myName}
-          userUsername={myUsername}
-          userAvatar={myAvatar}
-        />
+        {tplOpen ? <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} /> : null}
+        {mediaViewer}
       </>
-    );
+    ) : null;
   }
 
   return createPortal(
@@ -17634,7 +17679,15 @@ function PublicLiveCommentsPanel({
     ) : null}
     <SavedMessagesScreen
       open={savedOpen}
-      onClose={() => setSavedOpen(false)}
+      onClose={() => {
+        setSavedOpen(false);
+        setChatLift(1);
+        try {
+          window.dispatchEvent(new CustomEvent('stooorna:saved-messages-closed', {
+            detail: { restoreLiveChat: true },
+          }));
+        } catch { /* */ }
+      }}
       userId={myId}
       userName={myName}
       userUsername={myUsername}
@@ -21091,6 +21144,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [liveChatBusy, setLiveChatBusy] = useState(false);
   // الشات العام مرفوع/مفتوح → نخفي صف الأيقونات (Friends / Call / Live / Settings)، وترجع عند الخروج منه.
   const [chatLifted, setChatLifted] = useState(false);
+  useEffect(() => {
+    const onSavedClosed = () => {
+      // Closing Saved Messages must land on public live chat, not blank/header-only home.
+      setHeaderOpen(false);
+      setLiveScrollHidden(false);
+    };
+    window.addEventListener('stooorna:saved-messages-closed', onSavedClosed);
+    return () => window.removeEventListener('stooorna:saved-messages-closed', onSavedClosed);
+  }, []);
+
   useEffect(() => {
     const onLift = (e: Event) => setChatLifted(!!(e as CustomEvent).detail?.lifted);
     window.addEventListener('stooorna:chat-lift', onLift as EventListener);
