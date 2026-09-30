@@ -16559,6 +16559,8 @@ const LIVE_MEDIA_STACKED = false;          // true = stacked feed directly insid
 const LIVE_MEDIA_TAP_OPENS_FEED = true;
 /** false = the Location option is removed from the PUBLIC chat "+" menu (Saved Messages keeps its own Location option). */
 const LIVE_CHAT_LOCATION_ENABLED = false;
+/** false = no @username text at the bottom-left of a full-screen post (the publisher avatar on the side still opens the profile). */
+const LIVE_MEDIA_FEED_SHOW_NAME = false;
 
 function liveMediaFavsKey(uid: string): string { return `stooorna_live_media_favs_${uid}`; }
 function loadLiveMediaFavs(uid: string): string[] {
@@ -16655,7 +16657,9 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
         ) : null}
       </div>
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 96, background: 'linear-gradient(transparent, rgba(0,0,0,0.55))', pointerEvents: 'none' }} />
-      <p style={{ position: 'absolute', left: 12, bottom: 14, right: 84, margin: 0, color: '#fff', fontWeight: 800, fontSize: '0.92rem', textShadow: '0 1px 3px rgba(0,0,0,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{name}</p>
+      {LIVE_MEDIA_FEED_SHOW_NAME ? (
+        <p style={{ position: 'absolute', left: 12, bottom: 14, right: 84, margin: 0, color: '#fff', fontWeight: 800, fontSize: '0.92rem', textShadow: '0 1px 3px rgba(0,0,0,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{name}</p>
+      ) : null}
       <div style={{ position: 'absolute', right: 8, bottom: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
         <button
           type="button"
@@ -16765,7 +16769,7 @@ function LiveMediaCommentsSheet({ post, comments, myId, myAvatar, nameOf, onLike
           <span style={{ width: 46, height: 5, borderRadius: 999, background: '#d1d5db' }} />
           <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#6b7280' }}>{thread.length > 0 ? `${thread.length.toLocaleString('ar-EG')} تعليق` : 'التعليقات'}</span>
         </button>
-        <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '0 14px', direction: 'rtl', borderTop: '1px solid #f0f0f0' }}>
+        <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '0 14px', direction: 'ltr', borderTop: '1px solid #f0f0f0' }}>
           {thread.length === 0 ? (
             <p style={{ margin: '28px 0', textAlign: 'center', color: '#9ca3af', fontSize: '0.86rem', fontWeight: 600 }}>كن أول من يعلّق</p>
           ) : thread.map(({ x, p }) => {
@@ -16780,7 +16784,7 @@ function LiveMediaCommentsSheet({ post, comments, myId, myAvatar, nameOf, onLike
                     <span style={{ fontWeight: 800, fontSize: '0.84rem', color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' }}>{nameOf(x)}</span>
                     <span style={{ fontSize: '0.72rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>{liveMediaAgo(x.createdAt)}</span>
                   </div>
-                  <p style={{ margin: '3px 0 0', fontSize: '0.94rem', color: '#111', wordBreak: 'break-word', whiteSpace: 'pre-wrap', textAlign: 'start' }}>{p.body}</p>
+                  <p style={{ margin: '3px 0 0', fontSize: '0.94rem', color: '#111', wordBreak: 'break-word', whiteSpace: 'pre-wrap', textAlign: 'left', unicodeBidi: 'plaintext' }}>{p.body}</p>
                   <button type="button" onClick={() => reply(x)} style={{ background: 'none', border: 'none', padding: '5px 0 0', cursor: 'pointer', color: '#6b7280', fontSize: '0.78rem', fontWeight: 700 }}>رد</button>
                 </div>
                 <button type="button" aria-label="Like comment" onClick={() => onLikeComment(x.id)} style={{ background: 'none', border: 'none', padding: '2px 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, color: lk ? '#ef4444' : '#6b7280' }}>
