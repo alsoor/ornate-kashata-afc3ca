@@ -38,6 +38,42 @@ interface Profile {
   online: boolean;
 }
 
+// ── Social share configs ──────────────────────────────────────────────────────
+function buildShareLinks(url: string, text: string) {
+  const enc = encodeURIComponent;
+  return [{
+    id: 'whatsapp',
+    label: 'WhatsApp',
+    color: '#25D366',
+    icon: <WhatsAppIcon />,
+    href: `https://wa.me/?text=${enc(text + '\n' + url)}`
+  }, {
+    id: 'telegram',
+    label: 'Telegram',
+    color: '#229ED9',
+    icon: <TelegramIcon />,
+    href: `https://t.me/share/url?url=${enc(url)}&text=${enc(text)}`
+  }, {
+    id: 'twitter',
+    label: 'X',
+    color: '#000000',
+    icon: <XIcon />,
+    href: `https://twitter.com/intent/tweet?text=${enc(text)}&url=${enc(url)}`
+  }, {
+    id: 'facebook',
+    label: 'Facebook',
+    color: '#1877F2',
+    icon: <FacebookIcon />,
+    href: `https://www.facebook.com/sharer/sharer.php?u=${enc(url)}`
+  }, {
+    id: 'snapchat',
+    label: 'Snapchat',
+    color: '#FFFC00',
+    icon: <SnapchatIcon />,
+    href: `https://www.snapchat.com/scan?attachmentUrl=${enc(url)}`
+  }];
+}
+
 // ── SVG social icons ──────────────────────────────────────────────────────────
 function WhatsAppIcon() {
   return <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
