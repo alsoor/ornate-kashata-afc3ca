@@ -91,9 +91,12 @@ export async function publishLiveChatVideoDelete(input: LiveChatVideoDeleteInput
   const room = input.room || LIVE_CHAT_ROOM_DEFAULT;
   const payload = {
     action: 'delete',
+    deleted: true,
     roomId: room,
     room,
+    channel: room,
     id: input.id,
+    // Do NOT send likeId — server treats likeId as like toggle
     commentId: input.id,
     userId: input.userId,
     name: input.name ?? null,

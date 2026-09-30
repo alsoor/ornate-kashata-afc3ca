@@ -406,6 +406,7 @@ const liveChatRow = (m: { at: number; payload: any }) => {
   const p = (m.payload || m) as any;
   const id = String(p.id || `lc_${m.at}`);
   const voice = liveChatVoiceMem().get(id);
+  const deleted = !!p.deleted || String(p.text || "") === "○​RVD" || String(p.text || "").includes("○​RVD");
   return {
     id,
     userId: String(p.userId || p.senderId || ""),
@@ -413,18 +414,31 @@ const liveChatRow = (m: { at: number; payload: any }) => {
     username: p.username ?? null,
     avatarUrl: p.avatarUrl ?? null,
     text: String(p.text || p.body || ""),
-    imageUrl: p.imageUrl ?? null,
-    voiceUrl: p.voiceUrl || (voice ? `/api/live-chat/voice?id=${encodeURIComponent(id)}` : null),
-    voiceDuration: p.voiceDuration ?? voice?.duration ?? null,
+    imageUrl: deleted ? null : (p.imageUrl ?? null),
+    voiceUrl: deleted ? null : (p.voiceUrl || (voice ? `/api/live-chat/voice?id=${encodeURIComponent(id)}` : null)),
+    voiceDuration: deleted ? null : (p.voiceDuration ?? voice?.duration ?? null),
     likes: Array.isArray(p.likes) ? p.likes.map(String) : [],
     createdAt: Number(p.createdAt || m.at || Date.now()),
+    editCount: Number(p.editCount || 0) || 0,
+    deleted: deleted || undefined,
   };
 };
 app.get("/api/live-chat", (req, res) => {
   const channel = String(req.query.channel || req.query.room || "stooorna-live-chat");
   const since = Number(req.query.since || 0);
   const raw = (liveChatMem().get(channel) || []).filter((m) => m.at > since).slice(-400);
-  const comments = raw.map((m) => liveChatRow(m)).filter((x) => x.text || x.voiceUrl);
+  // Dedupe by id: later entries (edit/delete) overwrite earlier ones
+  const byId = new Map<string, ReturnType<typeof liveChatRow>>();
+  for (const m of raw) {
+    const row = liveChatRow(m);
+    const prev = byId.get(row.id);
+    if (!prev) { byId.set(row.id, row); continue; }
+    const prevDel = !!(prev as any).deleted;
+    const rowDel = !!(row as any).deleted;
+    if (rowDel || (prev as any).editCount < (row as any).editCount) byId.set(row.id, { ...prev, ...row, imageUrl: rowDel ? null : (row.imageUrl ?? prev.imageUrl), voiceUrl: rowDel ? null : (row.voiceUrl ?? prev.voiceUrl) });
+    else byId.set(row.id, { ...row, ...prev, imageUrl: prevDel ? null : (prev.imageUrl ?? row.imageUrl), voiceUrl: prevDel ? null : (prev.voiceUrl ?? row.voiceUrl) });
+  }
+  const comments = [...byId.values()].filter((x) => x.text || x.voiceUrl || x.imageUrl);
   res.setHeader("Cache-Control", "no-store");
   res.json({ ok: true, comments, messages: comments, list: comments });
 });
@@ -479,9 +493,70 @@ app.post("/api/live-chat", (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
   const channel = String(body.channel || body.room || body.roomId || "stooorna-live-chat");
   const action = String(body.action || "");
-  const likeId = String(body.likeId || body.commentId || "");
-  if (action === "like" || likeId) {
-    const targetId = likeId || String(body.id || "");
+  // ── DELETE / EDIT (must run BEFORE like — commentId is also used on delete payloads) ──
+  if (action === "delete" || action === "edit" || body.deleted === true) {
+    const targetId = String(body.id || body.commentId || "");
+    const mem = liveChatMem();
+    const list = mem.get(channel) || [];
+    let found = false;
+    for (const m of list) {
+      const p = (m.payload || m) as any;
+      if (String(p.id || "") !== targetId) continue;
+      found = true;
+      if (action === "delete" || body.deleted === true) {
+        p.text = String(body.text || body.body || "○​RVD");
+        p.body = p.text;
+        p.imageUrl = null;
+        p.mediaUrl = null;
+        p.videoUrl = null;
+        p.voiceUrl = null;
+        p.voiceDuration = null;
+        p.deleted = true;
+        p.editCount = Math.max(Number(p.editCount || 0), Number(body.editCount || 99), 99);
+      } else {
+        if (body.text != null || body.body != null) {
+          p.text = String(body.text || body.body || p.text || "");
+          p.body = p.text;
+        }
+        if ("imageUrl" in body) p.imageUrl = body.imageUrl ?? null;
+        if ("mediaUrl" in body) p.mediaUrl = body.mediaUrl ?? null;
+        if ("videoUrl" in body) p.videoUrl = body.videoUrl ?? null;
+        if ("voiceUrl" in body) p.voiceUrl = body.voiceUrl ?? null;
+        p.editCount = Math.max(Number(p.editCount || 0), Number(body.editCount || 0));
+        p.edited = true;
+      }
+      m.payload = p;
+      m.at = Date.now();
+    }
+    // If original row missing (other instance), append tombstone so pollers still hide it
+    if (!found && targetId && (action === "delete" || body.deleted === true)) {
+      const at = Date.now();
+      list.push({
+        at,
+        payload: {
+          id: targetId,
+          userId: String(body.userId || ""),
+          name: body.name ?? null,
+          username: body.username ?? null,
+          avatarUrl: body.avatarUrl ?? null,
+          text: String(body.text || body.body || "○​RVD"),
+          body: String(body.text || body.body || "○​RVD"),
+          imageUrl: null,
+          voiceUrl: null,
+          deleted: true,
+          editCount: 99,
+          createdAt: Number(body.createdAt) || at,
+        },
+      });
+    }
+    mem.set(channel, list.slice(-400));
+    const comments = list.map((m) => liveChatRow(m)).filter((x) => x.text || x.voiceUrl || x.imageUrl);
+    return res.json({ ok: true, comments, messages: comments, list: comments });
+  }
+  const likeId = String(body.likeId || "");
+  // Only treat as like when explicitly requested (do NOT use commentId alone — delete/edit also send it)
+  if (action === "like" || (likeId && action !== "delete" && action !== "edit")) {
+    const targetId = String(body.likeId || body.id || body.commentId || "");
     const liker = String(body.userId || body.likerId || "");
     const mem = liveChatMem();
     const list = mem.get(channel) || [];
@@ -511,8 +586,9 @@ app.post("/api/live-chat", (req, res) => {
     return res.json({ ok: true, comments, messages: comments });
   }
   const voiceUrlIn = String(body.voiceUrl || body.audio || "");
-  const text = String(body.text || body.body || "").trim().slice(0, 500) || (voiceUrlIn ? "🎤" : "");
-  if (!text && !voiceUrlIn) return res.status(400).json({ error: "empty" });
+  const imageUrlIn = body.imageUrl ?? body.mediaUrl ?? body.videoUrl ?? null;
+  const text = String(body.text || body.body || "").trim().slice(0, 500) || (voiceUrlIn ? "🎤" : (imageUrlIn ? "📷" : ""));
+  if (!text && !voiceUrlIn && !imageUrlIn) return res.status(400).json({ error: "empty" });
   const at = Date.now();
   const payload = {
     id: String(body.id || `lc_${at}_${Math.random().toString(36).slice(2, 8)}`),
@@ -522,7 +598,7 @@ app.post("/api/live-chat", (req, res) => {
     avatarUrl: body.avatarUrl ?? null,
     text,
     body: text,
-    imageUrl: body.imageUrl ?? null,
+    imageUrl: imageUrlIn ?? body.imageUrl ?? null,
     voiceUrl: voiceUrlIn && voiceUrlIn.startsWith("/api/") ? voiceUrlIn : (voiceUrlIn ? voiceUrlIn : null),
     voiceDuration: body.voiceDuration ?? body.duration ?? null,
     likes: Array.isArray(body.likes) ? body.likes : [],
