@@ -47,30 +47,6 @@ function buildShareLinks(url: string, text: string) {
     color: '#25D366',
     icon: <WhatsAppIcon />,
     href: `https://wa.me/?text=${enc(text + '\n' + url)}`
-  }, {
-    id: 'telegram',
-    label: 'Telegram',
-    color: '#229ED9',
-    icon: <TelegramIcon />,
-    href: `https://t.me/share/url?url=${enc(url)}&text=${enc(text)}`
-  }, {
-    id: 'twitter',
-    label: 'X',
-    color: '#000000',
-    icon: <XIcon />,
-    href: `https://twitter.com/intent/tweet?text=${enc(text)}&url=${enc(url)}`
-  }, {
-    id: 'facebook',
-    label: 'Facebook',
-    color: '#1877F2',
-    icon: <FacebookIcon />,
-    href: `https://www.facebook.com/sharer/sharer.php?u=${enc(url)}`
-  }, {
-    id: 'snapchat',
-    label: 'Snapchat',
-    color: '#FFFC00',
-    icon: <SnapchatIcon />,
-    href: `https://www.snapchat.com/scan?attachmentUrl=${enc(url)}`
   }];
 }
 
