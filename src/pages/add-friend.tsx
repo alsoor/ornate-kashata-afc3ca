@@ -29547,7 +29547,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               position: 'fixed', inset: 0, zIndex: 20050,
               background: 'rgba(0,0,0,0.45)',
               display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-              padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
+              padding: '12px 12px calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
               boxSizing: 'border-box',
             }}
           >
@@ -29559,19 +29559,21 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
               style={{
                 position: 'relative',
-                width: 'min(92vw, 360px)',
+                width: '100%', maxWidth: 520,
                 height: 'min(36vh, 262px)',
                 maxHeight: 'min(36vh, 262px)',
                 display: 'flex',
                 flexDirection: 'column',
-                background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
-                border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                borderRadius: 18,
-                boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
-                overflow: 'hidden',
+                background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
+                border: '1.5px solid rgba(0,188,212,0.35)',
+                borderRadius: 22,
+                boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
+                overflow: 'visible',
                 boxSizing: 'border-box',
               }}
             >
+              {/* tail — نفس ذيل فقاعة الأقسام */}
+              <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: 'calc(50% - 9px)', width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
               {/* Header inside card: Requests + close — same pill/border style as the Friends panel */}
               <div style={{
                 display: 'flex',
@@ -29982,7 +29984,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               position: 'fixed', inset: 0, zIndex: 10985,
               background: 'rgba(0,0,0,0.45)',
               display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-              padding: '12px 16px calc(64px + env(safe-area-inset-bottom))',
+              padding: '12px 12px calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
               boxSizing: 'border-box',
             }}
           >
@@ -29994,19 +29996,21 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
               style={{
                 position: 'relative',
-                width: 'min(92vw, 360px)',
+                width: '100%', maxWidth: 520,
                 height: 'min(56vh, 420px)',
                 maxHeight: 'min(56vh, 420px)',
                 display: 'flex',
                 flexDirection: 'column',
-                background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
-                border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                borderRadius: 18,
-                boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+                background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
+                border: '1.5px solid rgba(0,188,212,0.35)',
+                borderRadius: 22,
+                boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
                 overflow: 'visible',
                 boxSizing: 'border-box',
               }}
             >
+              {/* tail — نفس ذيل فقاعة الأقسام */}
+              <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: 'calc(50% - 9px)', width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                 padding: '12px 12px 10px', flexShrink: 0,
