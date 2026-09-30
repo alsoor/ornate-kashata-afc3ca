@@ -17,7 +17,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import UserAvatar from '@/components/UserAvatar';
 import {
-  Layers, LocateFixed, MapPin, ArrowLeft, CornerUpRight,
+  Layers, LocateFixed, MapPin, ArrowLeft, CornerUpRight, Search,
   Coffee, ShoppingCart, Utensils, Fuel, Pill, GraduationCap, Landmark, Building2, Store,
 } from 'lucide-react';
 
@@ -294,36 +294,28 @@ async function reverseGeocode(lat: number, lng: number, signal: AbortSignal): Pr
 
 type Venue = { id: string; name: string; sub: string; lat: number; lng: number; cat: string; dist: number };
 
-const SKIP_AMENITY = new Set(['bench', 'waste_basket', 'parking', 'parking_space', 'parking_entrance', 'bicycle_parking', 'shelter', 'toilets', 'recycling', 'vending_machine', 'atm', 'post_box', 'drinking_water', 'fountain', 'waste_disposal', 'motorcycle_parking', 'charging_station', 'grit_bin']);
-
-async function fetchVenues(lat: number, lng: number, signal: AbortSignal): Promise<Venue[]> {
-  const a = `around:700,${lat},${lng}`;
-  const q = `[out:json][timeout:12];(node(${a})["name"]["amenity"];node(${a})["name"]["shop"];node(${a})["name"]["tourism"];node(${a})["name"]["leisure"];);out body 80;`;
-  const lang = uiLang();
-  for (const base of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
-    try {
-      const r = await fetch(`${base}?data=${encodeURIComponent(q)}`, { signal });
-      if (!r.ok) continue;
-      const d: any = await r.json();
-      const list: Venue[] = [];
-      for (const el of (d?.elements || [])) {
-        const t = el?.tags || {};
-        if (typeof el.lat !== 'number' || typeof el.lon !== 'number') continue;
-        if (t.amenity && SKIP_AMENITY.has(String(t.amenity))) continue;
-        const name = String(t[`name:${lang}`] || t.name || '').trim();
-        if (!name) continue;
-        const dist = distM({ lat, lng }, { lat: el.lat, lng: el.lon });
-        const cat = String(t.amenity || t.shop || t.tourism || t.leisure || '');
-        const addr = String(t['addr:street'] || t['addr:suburb'] || t['addr:city'] || '').trim();
-        list.push({ id: String(el.id), name, sub: addr || `${Math.round(dist)} m`, lat: el.lat, lng: el.lon, cat, dist });
-      }
-      list.sort((x, y) => x.dist - y.dist);
-      return list.slice(0, 40);
-    } catch (err) {
-      if (signal.aborted) throw err;
-    }
+async function searchPlaces(term: string, near: { lat: number; lng: number }, signal: AbortSignal): Promise<Venue[]> {
+  const d = 0.3;
+  const viewbox = `${near.lng - d},${near.lat + d},${near.lng + d},${near.lat - d}`;
+  const r = await fetch(
+    `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=12&accept-language=${uiLang()}&viewbox=${viewbox}&q=${encodeURIComponent(term)}`,
+    { signal },
+  );
+  if (!r.ok) throw new Error('search');
+  const data: any = await r.json();
+  const list: Venue[] = [];
+  for (const el of (Array.isArray(data) ? data : [])) {
+    const lat = Number(el?.lat);
+    const lng = Number(el?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    const full = String(el?.display_name || '').split(',').map((x: string) => x.trim()).filter(Boolean);
+    const name = String(el?.name || full[0] || '').trim();
+    if (!name) continue;
+    const sub = full.filter((x: string) => x !== name).slice(0, 3).join(', ');
+    const cat = `${el?.category || el?.class || ''} ${el?.type || ''}`.trim();
+    list.push({ id: String(el?.place_id ?? `${lat},${lng}`), name, sub, lat, lng, cat, dist: distM(near, { lat, lng }) });
   }
-  return [];
+  return list;
 }
 
 const VENUE_COLORS = ['#ef5350', '#f4b942', '#3b82f6', '#22c55e', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
@@ -423,10 +415,10 @@ export function LocationPickerSheet({
   const [geoState, setGeoState] = useState<'wait' | 'ok' | 'denied'>('wait');
   const [satellite, setSatellite] = useState(false);
   const [moving, setMoving] = useState(false);
-  const [showPlacesBtn, setShowPlacesBtn] = useState(false);
   const [address, setAddress] = useState('');
   const [venues, setVenues] = useState<Venue[]>([]);
   const [venuesLoading, setVenuesLoading] = useState(false);
+  const [placeQuery, setPlaceQuery] = useState('');
   const userMoved = useRef(false);
   const firstFix = useRef(true);
 
@@ -441,7 +433,6 @@ export function LocationPickerSheet({
         if (firstFix.current && !userMoved.current && !initial) {
           firstFix.current = false;
           setView({ lat: p.lat, lng: p.lng, z: 17 });
-          loadVenues(p.lat, p.lng);
         }
       },
       () => setGeoState('denied'),
@@ -451,22 +442,21 @@ export function LocationPickerSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // الأماكن القريبة
-  const venuesAbort = useRef<AbortController | null>(null);
-  const loadVenues = useCallback((lat: number, lng: number) => {
-    venuesAbort.current?.abort();
-    const ac = new AbortController();
-    venuesAbort.current = ac;
-    setVenuesLoading(true);
-    fetchVenues(lat, lng, ac.signal)
-      .then(list => { if (!ac.signal.aborted) { setVenues(list); setVenuesLoading(false); } })
-      .catch(() => { if (!ac.signal.aborted) setVenuesLoading(false); });
-  }, []);
+  const searchAbort = useRef<AbortController | null>(null);
   useEffect(() => {
-    // أول تحميل للأماكن (لو ما جاء GPS نحمّل حول الموقع الافتراضي/الممرَّر)
-    const t = window.setTimeout(() => { if (firstFix.current) loadVenues(viewRef.current.lat, viewRef.current.lng); }, 1800);
-    return () => { window.clearTimeout(t); venuesAbort.current?.abort(); };
-  }, [loadVenues]);
+    const term = placeQuery.trim();
+    searchAbort.current?.abort();
+    if (term.length < 2) { setVenues([]); setVenuesLoading(false); return; }
+    const ac = new AbortController();
+    searchAbort.current = ac;
+    setVenuesLoading(true);
+    const t = window.setTimeout(() => {
+      searchPlaces(term, { lat: viewRef.current.lat, lng: viewRef.current.lng }, ac.signal)
+        .then(list => { if (!ac.signal.aborted) { setVenues(list); setVenuesLoading(false); } })
+        .catch(() => { if (!ac.signal.aborted) { setVenues([]); setVenuesLoading(false); } });
+    }, 600);
+    return () => { window.clearTimeout(t); ac.abort(); };
+  }, [placeQuery]);
 
   // العنوان للنقطة المختارة (بعد ما تهدأ الحركة)
   useEffect(() => {
@@ -484,7 +474,6 @@ export function LocationPickerSheet({
     if (!me) return;
     userMoved.current = true;
     setView({ lat: me.lat, lng: me.lng, z: Math.max(viewRef.current.z, 17) });
-    setShowPlacesBtn(false);
   };
 
   const sendSelected = () => onSend(view.lat, view.lng, '');
@@ -498,7 +487,7 @@ export function LocationPickerSheet({
           satellite={satellite}
           markers={me ? [{ lat: me.lat, lng: me.lng, kind: 'me', acc: me.acc }] : []}
           onMoveStart={() => { userMoved.current = true; setMoving(true); }}
-          onMoveEnd={() => { setMoving(false); setShowPlacesBtn(true); }}
+          onMoveEnd={() => { setMoving(false); }}
         >
           {/* الدبوس الثابت في منتصف الخريطة */}
           <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -100%)', pointerEvents: 'none', zIndex: 3 }}>
@@ -506,17 +495,6 @@ export function LocationPickerSheet({
           </div>
           {moving ? <div style={{ position: 'absolute', left: '50%', top: '50%', width: 8, height: 4, marginLeft: -4, marginTop: -2, borderRadius: '50%', background: 'rgba(0,0,0,0.35)', pointerEvents: 'none' }} /> : null}
         </TgMap>
-
-        {showPlacesBtn && !moving ? (
-          <button
-            type="button"
-            onPointerDown={e => e.stopPropagation()}
-            onClick={e => { e.stopPropagation(); setShowPlacesBtn(false); loadVenues(view.lat, view.lng); }}
-            style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 5, padding: '9px 20px', borderRadius: 999, border: 'none', background: '#fff', color: BLUE, fontWeight: 700, fontSize: '0.86rem', boxShadow: '0 1px 8px rgba(0,0,0,0.28)', cursor: 'pointer' }}
-          >
-            Places in this area
-          </button>
-        ) : null}
 
         <MapRoundBtn label="Map type" onClick={() => setSatellite(s => !s)} style={{ top: 14, right: 12, zIndex: 5 }}>
           <Layers size={20} strokeWidth={2} />
@@ -542,7 +520,23 @@ export function LocationPickerSheet({
         </div>
 
         <div style={{ ...rowCard, marginTop: 10 }}>
-          <div style={{ padding: '12px 16px 6px', color: BLUE, fontWeight: 700, fontSize: '0.84rem' }}>Or choose a venue</div>
+          <div style={{ padding: '12px 16px 6px', color: BLUE, fontWeight: 700, fontSize: '0.84rem' }}>Or search for a place</div>
+          <div style={{ padding: '0 12px 8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f0f2f5', borderRadius: 12, padding: '0 12px' }}>
+              <Search size={18} color="#7d8590" strokeWidth={2.2} />
+              <input
+                type="text"
+                dir="auto"
+                value={placeQuery}
+                onChange={e => setPlaceQuery(e.target.value)}
+                placeholder="Search places"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', padding: '11px 0', font: 'inherit', fontSize: '16px', color: '#111' }}
+              />
+            </div>
+          </div>
           {venues.map((v, i) => (
             <button
               key={v.id}
@@ -557,9 +551,9 @@ export function LocationPickerSheet({
               </div>
             </button>
           ))}
-          {!venues.length ? (
-            <div style={{ padding: '14px 16px 18px', color: '#7d8590', fontSize: '0.84rem', fontWeight: 600 }}>
-              {venuesLoading ? 'Searching…' : 'No places found here'}
+          {placeQuery.trim().length >= 2 && !venues.length ? (
+            <div style={{ padding: '6px 16px 14px', color: '#7d8590', fontSize: '0.84rem', fontWeight: 600 }}>
+              {venuesLoading ? 'Searching…' : 'No places found'}
             </div>
           ) : null}
           <div style={{ padding: '8px 16px 12px', textAlign: 'center', color: '#9aa1ab', fontSize: '0.72rem', fontWeight: 700 }}>
