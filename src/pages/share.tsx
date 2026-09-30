@@ -165,7 +165,22 @@ function QRPlaceholder({
 export default function SharePage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const username = params.get('u') ?? '';
+  return <SharePageView username={params.get('u') ?? ''} onBack={() => navigate(-1)} />;
+}
+
+/**
+ * نفس صفحة المشاركة لكن قابلة للتضمين داخل فقاعة الإعدادات.
+ * embedded=true → تملأ الفقاعة نفسها (بدون 100dvh وبدون تغيير عنوان الصفحة / meta).
+ */
+export function SharePageView({
+  username,
+  onBack,
+  embedded = false
+}: {
+  username: string;
+  onBack: () => void;
+  embedded?: boolean;
+}) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(!!username);
   const [copied, setCopied] = useState(false);
@@ -235,7 +250,7 @@ export default function SharePage() {
     } catch {/* cancelled */}
   }
   return <>
-      <Helmet>
+      {!embedded && <Helmet>
         <title>{pageTitle}</title>
         <meta name="description" content={pageDesc} />
         <link rel="canonical" href={shareUrl} />
@@ -256,8 +271,20 @@ export default function SharePage() {
         <meta name="twitter:description" content={pageDesc} />
         <meta name="twitter:image" content={ogImageUrl} />
         <meta name="twitter:site" content="@stooorna" />
-      </Helmet>
-      <main style={{
+      </Helmet>}
+      <main style={embedded ? {
+      position: 'absolute',
+      inset: 0,
+      zIndex: 200,
+      overflowY: 'auto',
+      overflowX: 'hidden',
+      WebkitOverflowScrolling: 'touch',
+      background: T.bg,
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      fontFamily: 'var(--font-sans)'
+    } : {
       minHeight: '100dvh',
       background: T.bg,
       display: 'flex',
@@ -274,11 +301,11 @@ export default function SharePage() {
         display: 'flex',
         alignItems: 'center',
         gap: 12,
-        padding: '44px 20px 12px'
+        padding: embedded ? 'max(16px, env(safe-area-inset-top, 0px)) 20px 12px' : '44px 20px 12px'
       }}>
           <motion.button whileTap={{
           scale: 0.85
-        }} onClick={() => navigate(-1)} style={{
+        }} onClick={onBack} style={{
           color: T.primary,
           background: 'none',
           border: 'none',
@@ -653,7 +680,7 @@ export default function SharePage() {
           opacity: 0,
           y: 20
         }} style={{
-          position: 'fixed',
+          position: embedded ? 'absolute' : 'fixed',
           bottom: 32,
           left: '50%',
           transform: 'translateX(-50%)',
