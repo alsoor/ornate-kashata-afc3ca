@@ -820,6 +820,609 @@ function playIncomingCallRing() {
 
 // ── ScVoiceBubble — voice player for secret chat ──────────────────────────────
 const SC_BARS = 24;
+// ═══════════════════════════════════════════════════════════════════════════
+// Secret-chat studio — round record button (hold = record, tap = audio/video),
+// round video notes (normal / view-once) and the "dust" delete effect.
+// ═══════════════════════════════════════════════════════════════════════════
+const SC_VNOTE_PREFIX = 'vnote';
+const SC_LEGACY_MIC = false; // the old hold-to-record mic button is kept in the file but replaced by <ScRecordButton/>
+const SC_ONCE_KEY = 'stooorna_sc_once_viewed_v1';
+const SC_HIDDEN_KEY = 'stooorna_sc_hidden_msgs_v1';
+const SC_REC_MODE_KEY = 'stooorna_sc_rec_mode_v1';
+const SC_REC_ONCE_KEY = 'stooorna_sc_rec_once_v1';
+const SC_VNOTE_MAX_SECS = 60;
+
+function scReadSet(key: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(key);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  } catch { return new Set(); }
+}
+function scWriteSet(key: string, s: Set<string>) {
+  try { localStorage.setItem(key, JSON.stringify(Array.from(s).slice(-2000))); } catch { /* ignore */ }
+}
+function scOnceViewed(k: string): boolean { return scReadSet(SC_ONCE_KEY).has(k); }
+function scMarkOnceViewed(k: string) { const s = scReadSet(SC_ONCE_KEY); s.add(k); scWriteSet(SC_ONCE_KEY, s); }
+function scLoadHiddenIds(): Set<number> {
+  return new Set(Array.from(scReadSet(SC_HIDDEN_KEY)).map(Number).filter(n => Number.isFinite(n)));
+}
+function scSaveHiddenIds(s: Set<number>) { scWriteSet(SC_HIDDEN_KEY, new Set(Array.from(s).map(String))); }
+function scFmtSecs(s: number): string { return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`; }
+
+// The video-note flavour travels inside the uploaded file name (vnote-12s-<ts>.webm / vnote-once-12s-<ts>.webm)
+// so no server change is needed to tell a round note (and view-once) from a normal video.
+function scParseVideoNote(name?: string, url?: string): { once: boolean; secs: number } | null {
+  const m = /vnote(-once)?-(\d+)s-\d+/.exec(`${name || ''} ${url || ''}`);
+  if (!m) return null;
+  return { once: !!m[1], secs: Number(m[2]) || 0 };
+}
+
+type ScDustParticle = { sx: number; sy: number; x0: number; y0: number; delay: number; life: number; vx: number; vy: number; ph: number; amp: number };
+
+// Disintegration ("dust") effect: the element is cut into small tiles that break away left -> right,
+// drift up/outwards and fade. Pure canvas drawImage (never reads pixels, so cross-origin video is fine).
+function scRunDust(rect: DOMRect, video: HTMLVideoElement | null, round: boolean, done: () => void) {
+  const pad = 110;
+  const W = Math.max(8, Math.round(rect.width));
+  const H = Math.max(8, Math.round(rect.height));
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round((W + pad * 2) * dpr);
+  canvas.height = Math.round((H + pad * 2) * dpr);
+  const cs = canvas.style;
+  cs.position = 'fixed';
+  cs.left = `${rect.left - pad}px`;
+  cs.top = `${rect.top - pad}px`;
+  cs.width = `${W + pad * 2}px`;
+  cs.height = `${H + pad * 2}px`;
+  cs.pointerEvents = 'none';
+  cs.zIndex = '2147483000';
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  const src = document.createElement('canvas');
+  src.width = W; src.height = H;
+  const sctx = src.getContext('2d');
+  if (!ctx || !sctx) { canvas.remove(); done(); return; }
+  ctx.scale(dpr, dpr);
+  const grad = sctx.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, '#0f3a44'); grad.addColorStop(1, '#061418');
+  sctx.fillStyle = grad; sctx.fillRect(0, 0, W, H);
+  try {
+    if (video && video.readyState >= 2 && video.videoWidth > 0) {
+      const k = Math.max(W / video.videoWidth, H / video.videoHeight);
+      const dw = video.videoWidth * k, dh = video.videoHeight * k;
+      sctx.drawImage(video, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    }
+  } catch { /* keep the gradient snapshot */ }
+  const s = Math.max(4, Math.round(Math.min(W, H) / 30));
+  const cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2;
+  const parts: ScDustParticle[] = [];
+  for (let y = 0; y < H; y += s) {
+    for (let x = 0; x < W; x += s) {
+      const mx = x + s / 2, my = y + s / 2;
+      if (round && Math.hypot(mx - cx, my - cy) > R) continue;
+      parts.push({
+        sx: x, sy: y, x0: mx, y0: my,
+        delay: (x / W) * 0.6 + Math.random() * 0.15,
+        life: 0.8 + Math.random() * 0.6,
+        vx: 25 + Math.random() * 110,
+        vy: -(15 + Math.random() * 100),
+        ph: Math.random() * 6.28,
+        amp: 3 + Math.random() * 6,
+      });
+    }
+  }
+  try { navigator.vibrate?.(20); } catch { /* ignore */ }
+  const t0 = performance.now();
+  const frame = (now: number) => {
+    const t = (now - t0) / 1000;
+    ctx.clearRect(0, 0, W + pad * 2, H + pad * 2);
+    let alive = false;
+    for (const p of parts) {
+      const lt = t - p.delay;
+      if (lt < 0) {
+        alive = true;
+        ctx.globalAlpha = 1;
+        ctx.drawImage(src, p.sx, p.sy, s, s, p.sx + pad, p.sy + pad, s, s);
+        continue;
+      }
+      if (lt > p.life) continue;
+      alive = true;
+      const k = lt / p.life;
+      const px = p.x0 + p.vx * lt + Math.sin(lt * 7 + p.ph) * p.amp * k;
+      const py = p.y0 + p.vy * lt - 30 * lt * lt;
+      const sz = s * (1 - 0.65 * k);
+      ctx.globalAlpha = Math.max(0, 1 - k * k);
+      ctx.drawImage(src, p.sx, p.sy, s, s, px + pad - sz / 2, py + pad - sz / 2, sz, sz);
+    }
+    ctx.globalAlpha = 1;
+    if (alive) requestAnimationFrame(frame);
+    else { canvas.remove(); done(); }
+  };
+  frame(t0); // paint the first frame synchronously so there is no flicker when the real element is hidden
+  requestAnimationFrame(frame);
+}
+
+// Long-press a video -> "delete?" dialog -> the video crumbles into dust and is deleted.
+function ScVideoDeleteFx({ enabled, round, onDelete, children }: {
+  enabled: boolean;
+  round: boolean;
+  onDelete: () => void | Promise<void>;
+  children: React.ReactNode;
+}) {
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startRef = useRef({ x: 0, y: 0 });
+  const firedAtRef = useRef(0);
+  const mountedRef = useRef(true);
+  const [confirm, setConfirm] = useState(false);
+  const [bursting, setBursting] = useState(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; if (timerRef.current) clearTimeout(timerRef.current); };
+  }, []);
+  const clear = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
+  const onDown = (e: React.PointerEvent) => {
+    if (!enabled || bursting) return;
+    startRef.current = { x: e.clientX, y: e.clientY };
+    clear();
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      firedAtRef.current = Date.now();
+      try { navigator.vibrate?.(12); } catch { /* ignore */ }
+      setConfirm(true);
+    }, 480);
+  };
+  const onMove = (e: React.PointerEvent) => {
+    if (!timerRef.current) return;
+    if (Math.hypot(e.clientX - startRef.current.x, e.clientY - startRef.current.y) > 10) clear();
+  };
+  const runDelete = () => {
+    setConfirm(false);
+    const el = boxRef.current;
+    if (!el) { void onDelete(); return; }
+    const rect = el.getBoundingClientRect();
+    const vid = el.querySelector('video') as HTMLVideoElement | null;
+    setBursting(true);
+    scRunDust(rect, vid, round, () => {
+      void Promise.resolve(onDelete()).finally(() => { if (mountedRef.current) setBursting(false); });
+    });
+  };
+  return (
+    <>
+      <div
+        ref={boxRef}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={clear}
+        onPointerCancel={clear}
+        onPointerLeave={clear}
+        onContextMenu={e => { if (enabled) e.preventDefault(); }}
+        onClickCapture={e => { if (Date.now() - firedAtRef.current < 700) { e.stopPropagation(); e.preventDefault(); } }}
+        style={{
+          display: 'inline-block', position: 'relative',
+          visibility: bursting ? 'hidden' : 'visible',
+          userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+        } as React.CSSProperties}
+      >
+        {children}
+      </div>
+      {confirm && createPortal(
+        <div
+          onClick={() => setConfirm(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 2147483100, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#14191c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: '20px 18px 12px', width: '100%', maxWidth: 300, direction: 'rtl' }}
+          >
+            <p style={{ margin: '0 0 6px', color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>حذف الفيديو</p>
+            <p style={{ margin: '0 0 14px', color: 'rgba(255,255,255,0.65)', fontSize: '0.82rem', lineHeight: 1.5 }}>متأكد تبي تحذف هذا الفيديو؟</p>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-start' }}>
+              <button type="button" onClick={runDelete} style={{ background: 'none', border: 'none', color: '#ef4444', fontWeight: 700, fontSize: '0.88rem', padding: '8px 14px', cursor: 'pointer' }}>حذف</button>
+              <button type="button" onClick={() => setConfirm(false)} style={{ background: 'none', border: 'none', color: CLR_PRIMARY, fontWeight: 700, fontSize: '0.88rem', padding: '8px 14px', cursor: 'pointer' }}>إلغاء</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+// Full-screen player for a view-once note: plays once, then the note is gone for this user.
+function ScOnceViewer({ url, onClose }: { url: string; onClose: () => void }) {
+  const vRef = useRef<HTMLVideoElement | null>(null);
+  const [prog, setProg] = useState(0);
+  useEffect(() => {
+    const v = vRef.current;
+    if (!v) return;
+    v.muted = false;
+    v.play().catch(() => { try { v.muted = true; void v.play(); } catch { /* ignore */ } });
+  }, []);
+  const size = Math.min(340, Math.round(window.innerWidth * 0.78));
+  const r = size / 2 - 3;
+  const C = 2 * Math.PI * r;
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 2147483050, background: 'rgba(0,0,0,0.94)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18 }}>
+      <button
+        type="button" aria-label="إغلاق" onClick={onClose}
+        style={{ position: 'absolute', top: 'max(16px, env(safe-area-inset-top))', right: 16, width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+      >
+        <X size={20} />
+      </button>
+      <div style={{ position: 'relative', width: size, height: size, borderRadius: '50%', overflow: 'hidden', background: '#000' }}>
+        <video
+          ref={vRef} src={url} playsInline controlsList="nodownload" disablePictureInPicture
+          onContextMenu={e => e.preventDefault()}
+          onTimeUpdate={e => { const v = e.currentTarget; if (v.duration) setProg(v.currentTime / v.duration); }}
+          onEnded={onClose}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+        <svg width={size} height={size} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', transform: 'rotate(-90deg)' }}>
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={CLR_PRIMARY} strokeWidth={3} strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - prog)} />
+        </svg>
+      </div>
+      <p style={{ margin: 0, color: 'rgba(255,255,255,0.6)', fontSize: '0.78rem', direction: 'rtl' }}>مرة واحدة — بيختفي بعد المشاهدة</p>
+    </div>,
+    document.body
+  );
+}
+
+// The round video message. Normal: a looping muted circle, tap = play with sound. Once: a sealed "Open" circle.
+function ScVideoNote({ url, once, isMe, viewedKey, secs, onDelete }: {
+  url: string;
+  once: boolean;
+  isMe: boolean;
+  viewedKey: string;
+  secs: number;
+  onDelete: () => void | Promise<void>;
+}) {
+  const SIZE = 190;
+  const vidRef = useRef<HTMLVideoElement | null>(null);
+  const [muted, setMuted] = useState(true);
+  const [paused, setPaused] = useState(false);
+  const [prog, setProg] = useState(0);
+  const [viewed, setViewed] = useState<boolean>(() => (once && !isMe ? scOnceViewed(viewedKey) : false));
+  const [open, setOpen] = useState(false);
+
+  if (once) {
+    const sealed = !isMe && !viewed;
+    return (
+      <>
+        <ScVideoDeleteFx enabled={isMe} round onDelete={onDelete}>
+          <div
+            role="button"
+            aria-label={sealed ? 'Open' : 'مرة واحدة'}
+            onClick={() => {
+              if (!sealed) return;
+              scMarkOnceViewed(viewedKey);
+              setViewed(true);
+              setOpen(true);
+            }}
+            style={{
+              width: 132, height: 132, borderRadius: '50%',
+              border: sealed ? `2px dashed ${CLR_PRIMARY}` : '1.5px dashed rgba(255,255,255,0.18)',
+              background: 'radial-gradient(circle at 30% 25%, #14424d, #061418)',
+              color: sealed ? CLR_PRIMARY : 'rgba(255,255,255,0.45)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
+              cursor: sealed ? 'pointer' : 'default',
+            }}
+          >
+            <span style={{ width: 34, height: 34, borderRadius: '50%', border: '2px dashed currentColor', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.95rem' }}>1</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{isMe ? 'أُرسل · مرة واحدة' : viewed ? 'تمت المشاهدة' : 'Open'}</span>
+            {secs > 0 && <span style={{ fontSize: '0.62rem', opacity: 0.7 }}>{scFmtSecs(secs)}</span>}
+          </div>
+        </ScVideoDeleteFx>
+        {open && <ScOnceViewer url={url} onClose={() => setOpen(false)} />}
+      </>
+    );
+  }
+
+  const toggle = () => {
+    const v = vidRef.current;
+    if (!v) return;
+    if (v.muted) {
+      v.muted = false; v.loop = false; v.currentTime = 0;
+      setMuted(false);
+      void v.play().catch(() => { /* ignore */ });
+      return;
+    }
+    if (v.paused) void v.play().catch(() => { /* ignore */ });
+    else v.pause();
+  };
+  const r = SIZE / 2 - 3;
+  const C = 2 * Math.PI * r;
+  return (
+    <ScVideoDeleteFx enabled={isMe} round onDelete={onDelete}>
+      <div
+        onClick={toggle}
+        style={{ position: 'relative', width: SIZE, height: SIZE, borderRadius: '50%', overflow: 'hidden', background: '#000', cursor: 'pointer', boxShadow: '0 0 0 2px rgba(0,188,212,0.35)' }}
+      >
+        <video
+          ref={vidRef} src={`${url}#t=0.1`} muted loop autoPlay playsInline preload="auto"
+          onPlay={() => setPaused(false)}
+          onPause={() => setPaused(true)}
+          onTimeUpdate={e => { const v = e.currentTarget; if (!v.muted && v.duration) setProg(v.currentTime / v.duration); }}
+          onEnded={e => {
+            const v = e.currentTarget;
+            v.muted = true; v.loop = true; v.currentTime = 0;
+            setMuted(true); setProg(0);
+            void v.play().catch(() => { /* ignore */ });
+          }}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }}
+        />
+        {!muted && (
+          <svg width={SIZE} height={SIZE} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', transform: 'rotate(-90deg)' }}>
+            <circle cx={SIZE / 2} cy={SIZE / 2} r={r} fill="none" stroke={CLR_PRIMARY} strokeWidth={3} strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - prog)} />
+          </svg>
+        )}
+        {paused && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.25)', pointerEvents: 'none' }}>
+            <span style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Play size={20} color="#fff" fill="#fff" />
+            </span>
+          </div>
+        )}
+        <span style={{ position: 'absolute', left: 10, bottom: 12, background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: '0.62rem', fontWeight: 600, borderRadius: 10, padding: '2px 7px', display: 'flex', alignItems: 'center', gap: 4, pointerEvents: 'none' }}>
+          {muted && <VolumeX size={10} />}{secs > 0 ? scFmtSecs(secs) : ''}
+        </span>
+      </div>
+    </ScVideoDeleteFx>
+  );
+}
+
+// Round record button. Hold = record and send on release. Tap = switch audio <-> video.
+// Slide sideways / up while holding = cancel. In video mode a small "1" chip toggles view-once.
+function ScRecordButton({ onSendVoice, onSendVideo }: {
+  onSendVoice: (blob: Blob, secs: number) => void | Promise<void>;
+  onSendVideo: (blob: Blob, secs: number, once: boolean) => void | Promise<void>;
+}) {
+  const [mode, setMode] = useState<'audio' | 'video'>(() => {
+    try { return localStorage.getItem(SC_REC_MODE_KEY) === 'video' ? 'video' : 'audio'; } catch { return 'audio'; }
+  });
+  const [once, setOnce] = useState<boolean>(() => {
+    try { return localStorage.getItem(SC_REC_ONCE_KEY) === '1'; } catch { return false; }
+  });
+  const [recording, setRecording] = useState(false);
+  const [secs, setSecs] = useState(0);
+  const [cancelling, setCancelling] = useState(false);
+  const [hint, setHint] = useState('');
+  const [hintPos, setHintPos] = useState<{ left: number; top: number } | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [anchor, setAnchor] = useState<{ top: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const previewRef = useRef<HTMLVideoElement | null>(null);
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const r = useRef({
+    down: false, holdFired: false, starting: false, abort: false, cancel: false,
+    recorder: null as MediaRecorder | null, chunks: [] as Blob[], stream: null as MediaStream | null,
+    t0: 0, tick: null as ReturnType<typeof setInterval> | null, hold: null as ReturnType<typeof setTimeout> | null,
+    sx: 0, sy: 0, mime: '', recMode: 'audio' as 'audio' | 'video', mode: 'audio' as 'audio' | 'video', once: false,
+  });
+  r.current.mode = mode;
+  r.current.once = once;
+
+  const showHint = (msg: string) => {
+    const rc = btnRef.current?.getBoundingClientRect();
+    setHintPos(rc ? { left: Math.max(8, rc.left), top: rc.top } : null);
+    setHint(msg);
+    if (hintTimer.current) clearTimeout(hintTimer.current);
+    hintTimer.current = setTimeout(() => setHint(''), 2200);
+  };
+
+  useEffect(() => {
+    const v = previewRef.current;
+    if (v && stream) { v.srcObject = stream; void v.play().catch(() => { /* ignore */ }); }
+  }, [stream, recording]);
+
+  useEffect(() => () => {
+    const c = r.current;
+    if (c.tick) clearInterval(c.tick);
+    if (c.hold) clearTimeout(c.hold);
+    if (hintTimer.current) clearTimeout(hintTimer.current);
+    try { c.recorder?.state !== 'inactive' && c.recorder?.stop(); } catch { /* ignore */ }
+    c.stream?.getTracks().forEach(t => t.stop());
+  }, []);
+
+  const finish = async (send: boolean) => {
+    const c = r.current;
+    const rec = c.recorder;
+    if (!rec) return;
+    c.recorder = null;
+    if (c.tick) { clearInterval(c.tick); c.tick = null; }
+    const wantVideo = c.recMode === 'video';
+    const onceFlag = c.once;
+    const mime = c.mime;
+    const stopped = new Promise<void>(res => { rec.onstop = () => res(); });
+    try { if (rec.state !== 'inactive') rec.stop(); } catch { /* ignore */ }
+    await stopped;
+    const chunks = c.chunks; c.chunks = [];
+    c.stream?.getTracks().forEach(t => t.stop()); c.stream = null;
+    const ms = Date.now() - c.t0;
+    setStream(null); setRecording(false); setCancelling(false); setSecs(0);
+    if (!send) return;
+    if (ms < 900) { showHint('اضغط مطولاً للتسجيل'); return; }
+    const base = (mime || (wantVideo ? 'video/webm' : 'audio/webm')).split(';')[0];
+    const blob = new Blob(chunks, { type: wantVideo ? base : (mime || base) });
+    if (blob.size < 800) return;
+    const secsFinal = Math.max(1, Math.round(ms / 1000));
+    if (wantVideo) await onSendVideo(blob, secsFinal, onceFlag);
+    else await onSendVoice(blob, secsFinal);
+  };
+
+  const begin = async () => {
+    const c = r.current;
+    if (c.starting || c.recorder) return;
+    c.starting = true; c.abort = false; c.cancel = false;
+    const wantVideo = c.mode === 'video';
+    c.recMode = c.mode;
+    let st: MediaStream;
+    try {
+      st = await navigator.mediaDevices.getUserMedia(
+        wantVideo
+          ? { audio: true, video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 480 }, aspectRatio: { ideal: 1 } } }
+          : { audio: true }
+      );
+    } catch {
+      c.starting = false;
+      showHint(wantVideo ? 'ما قدرت أفتح الكاميرا أو المايك — تأكد من الصلاحيات' : 'ما قدرت أفتح المايك — تأكد من الصلاحيات');
+      return;
+    }
+    if (!c.down || c.abort) { st.getTracks().forEach(t => t.stop()); c.starting = false; return; }
+    const cands = wantVideo
+      ? ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+      : ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'];
+    let mime = '';
+    for (const m of cands) {
+      try { if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) { mime = m; break; } } catch { /* ignore */ }
+    }
+    let rec: MediaRecorder;
+    try {
+      rec = mime
+        ? new MediaRecorder(st, wantVideo ? { mimeType: mime, videoBitsPerSecond: 900000, audioBitsPerSecond: 64000 } : { mimeType: mime })
+        : new MediaRecorder(st);
+    } catch {
+      st.getTracks().forEach(t => t.stop());
+      c.starting = false;
+      showHint('التسجيل غير مدعوم على هذا المتصفح');
+      return;
+    }
+    c.chunks = []; c.stream = st; c.recorder = rec; c.mime = rec.mimeType || mime;
+    rec.ondataavailable = e => { if (e.data && e.data.size > 0) c.chunks.push(e.data); };
+    rec.start(200);
+    c.t0 = Date.now();
+    const rc = btnRef.current?.getBoundingClientRect();
+    setAnchor(rc ? { top: rc.top } : null);
+    setStream(wantVideo ? st : null);
+    setRecording(true); setSecs(0); setCancelling(false);
+    c.tick = setInterval(() => {
+      const s = Math.floor((Date.now() - c.t0) / 1000);
+      setSecs(s);
+      if (s >= SC_VNOTE_MAX_SECS) void finish(true);
+    }, 250);
+    c.starting = false;
+    try { navigator.vibrate?.(15); } catch { /* ignore */ }
+  };
+
+  const onDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    const c = r.current;
+    c.down = true; c.holdFired = false; c.cancel = false; c.sx = e.clientX; c.sy = e.clientY;
+    if (c.hold) clearTimeout(c.hold);
+    c.hold = setTimeout(() => { c.hold = null; c.holdFired = true; void begin(); }, 260);
+  };
+  const onMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const c = r.current;
+    if (!c.down || !c.recorder) return;
+    const cancel = Math.abs(e.clientX - c.sx) > 90 || e.clientY - c.sy < -90;
+    if (cancel !== c.cancel) { c.cancel = cancel; setCancelling(cancel); }
+  };
+  const release = (e: React.PointerEvent<HTMLButtonElement>, forceCancel: boolean) => {
+    const c = r.current;
+    if (!c.down) return;
+    c.down = false;
+    if (c.hold) { clearTimeout(c.hold); c.hold = null; }
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (!c.holdFired) {
+      if (forceCancel) return;
+      const next = c.mode === 'audio' ? 'video' : 'audio';
+      setMode(next);
+      try { localStorage.setItem(SC_REC_MODE_KEY, next); } catch { /* ignore */ }
+      showHint(next === 'video' ? 'اضغط مطولاً لتسجيل فيديو • انقر للتبديل للصوت' : 'اضغط مطولاً لتسجيل صوت • انقر للتبديل للفيديو');
+      return;
+    }
+    if (c.recorder) void finish(!forceCancel && !c.cancel);
+    else if (c.starting) c.abort = true;
+  };
+
+  const overlayBottom = anchor ? Math.max(12, window.innerHeight - anchor.top) : 120;
+  const ModeIcon = mode === 'video' ? Video : Mic;
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      {mode === 'video' && !recording && (
+        <button
+          type="button"
+          aria-label={once ? 'مرة واحدة' : 'عادي'}
+          onClick={() => {
+            const n = !once;
+            setOnce(n);
+            try { localStorage.setItem(SC_REC_ONCE_KEY, n ? '1' : '0'); } catch { /* ignore */ }
+            showHint(n ? 'مرة واحدة: يختفي الفيديو بعد ما المستقبِل يشوفه' : 'عادي: ينزل الفيديو ويبقى بالشات');
+          }}
+          style={{
+            position: 'absolute', bottom: 48, left: '50%', transform: 'translateX(-50%)',
+            width: 28, height: 28, borderRadius: '50%', padding: 0, cursor: 'pointer',
+            border: `1.5px dashed ${once ? CLR_PRIMARY : 'rgba(150,200,200,0.5)'}`,
+            background: once ? CLR_PRIMARY : 'rgba(0,0,0,0.25)',
+            color: once ? '#041018' : 'rgba(200,230,230,0.8)',
+            fontWeight: 800, fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >1</button>
+      )}
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label={mode === 'video' ? 'تسجيل فيديو' : 'تسجيل صوتي'}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={e => release(e, false)}
+        onPointerCancel={e => release(e, true)}
+        onContextMenu={e => e.preventDefault()}
+        style={{
+          width: 42, height: 42, borderRadius: '50%', padding: 0, cursor: 'pointer', position: 'relative',
+          border: `1px solid ${recording ? 'rgba(239,68,68,0.7)' : CLR_PRIMARY_BORDER}`,
+          background: recording ? 'rgba(239,68,68,0.92)' : CLR_PRIMARY_FAINT,
+          color: recording ? '#fff' : CLR_PRIMARY,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transform: recording ? 'scale(1.35)' : 'scale(1)',
+          transition: 'transform .15s ease, background .15s ease',
+          zIndex: recording ? 30 : undefined,
+          touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+        } as React.CSSProperties}
+      >
+        {recording && cancelling ? <Trash2 size={17} strokeWidth={2} /> : <ModeIcon size={17} strokeWidth={2} />}
+      </button>
+
+      {hint && hintPos && createPortal(
+        <div style={{
+          position: 'fixed', left: hintPos.left, bottom: window.innerHeight - hintPos.top + 46, zIndex: 20000,
+          background: '#1d2427', color: '#fff', fontSize: '0.72rem', borderRadius: 10, padding: '7px 11px',
+          boxShadow: '0 6px 18px rgba(0,0,0,0.35)', direction: 'rtl', maxWidth: '78vw', pointerEvents: 'none',
+        }}>{hint}</div>,
+        document.body
+      )}
+
+      {recording && createPortal(
+        <div style={{
+          position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: overlayBottom + 34, zIndex: 20000,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, pointerEvents: 'none',
+        }}>
+          {stream && (
+            <div style={{ width: 168, height: 168, borderRadius: '50%', overflow: 'hidden', background: '#000', border: `3px solid ${cancelling ? '#6b7280' : '#ef4444'}`, opacity: cancelling ? 0.55 : 1, boxShadow: '0 10px 30px rgba(0,0,0,0.45)' }}>
+              <video ref={previewRef} muted playsInline autoPlay style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', display: 'block' }} />
+            </div>
+          )}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, borderRadius: 999, padding: '7px 14px',
+            background: cancelling ? '#ef4444' : 'rgba(20,25,28,0.94)', color: '#fff', fontSize: '0.78rem', fontWeight: 600, direction: 'rtl',
+            boxShadow: '0 6px 18px rgba(0,0,0,0.35)',
+          }}>
+            {cancelling
+              ? <Trash2 size={14} />
+              : <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1, repeat: Infinity }} style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />}
+            <span style={{ direction: 'ltr' }}>{scFmtSecs(secs)}</span>
+            <span style={{ opacity: 0.85 }}>{cancelling ? 'أفلت للإلغاء' : 'اسحب للإلغاء'}</span>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 function ScVoiceBubble({
   url,
   duration,
@@ -19685,6 +20288,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const scFileInputRef = useRef<HTMLInputElement>(null);
   const scVideoInputRef = useRef<HTMLInputElement>(null);
   const scDocInputRef = useRef<HTMLInputElement>(null);
+  // Round record button / video notes: message ids the user deleted (persisted so they stay hidden)
+  const [scHiddenIds, setScHiddenIds] = useState<Set<number>>(() => scLoadHiddenIds());
 
   // Leave secret chat
   const [confirmLeaveChat, setConfirmLeaveChat] = useState<SecretChat | null>(null);
@@ -20780,6 +21385,51 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       await scRefreshMessages();
     } catch {/* silent */}
     setScRecordSecs(0);
+  }
+  // ── Round record button senders + video delete ─────────────────────────────
+  async function scSendVoiceBlob(blob: Blob, duration: number) {
+    if (!activeChat || blob.size < 500) return;
+    try {
+      await fetch(`/api/secret-chat/voice?chatId=${activeChat.id}&duration=${duration}`, {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type || 'audio/webm' },
+        credentials: 'include',
+        body: blob
+      });
+      await scRefreshMessages();
+    } catch {/* silent */}
+  }
+  async function scSendVideoNote(blob: Blob, duration: number, once: boolean) {
+    if (!activeChat || blob.size < 1000) return;
+    const ext = (blob.type || '').includes('mp4') ? 'mp4' : 'webm';
+    const name = `${SC_VNOTE_PREFIX}${once ? '-once' : ''}-${duration}s-${Date.now()}.${ext}`;
+    try {
+      await fetch(`/api/secret-chat/file?chatId=${activeChat.id}&name=${encodeURIComponent(name)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type || 'video/webm' },
+        credentials: 'include',
+        body: blob
+      });
+      await scRefreshMessages();
+    } catch {/* silent */}
+  }
+  async function scDeleteMessage(msgId: number) {
+    if (!activeChat) return;
+    try {
+      await fetch(`/api/secret-chat/message?chatId=${activeChat.id}&id=${msgId}&messageId=${msgId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ chatId: activeChat.id, id: msgId, messageId: msgId })
+      });
+    } catch {/* offline — still hide it locally */}
+    setScHiddenIds(prev => {
+      const next = new Set(prev);
+      next.add(msgId);
+      scSaveHiddenIds(next);
+      return next;
+    });
+    void scRefreshMessages();
   }
   async function leaveSecretChat(chat: SecretChat) {
     setLeavingChatId(chat.id);
@@ -22613,6 +23263,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       </span>
                     </div>;
             }
+            if (scHiddenIds.has(m.id)) return null;
             const isMe = m.sender_id === user?.id;
             const msgType = m.type || 'text';
             let filePayload: {
@@ -22631,6 +23282,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 };
               }
             }
+
+            const vnoteInfo = (msgType === 'video' || msgType === 'file') && filePayload ? scParseVideoNote(filePayload.name, filePayload.url) : null;
 
             // Format time
             const timeLabel = m.created_at ? new Date(m.created_at).toLocaleTimeString('ar-KW', {
@@ -22701,11 +23354,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
                       {/* Bubble */}
                       <div style={{
-                  background: isMe ? CLR_PRIMARY_FAINT : 'rgba(255,255,255,0.05)',
-                  border: `1px solid ${isMe ? CLR_PRIMARY_BORDER : 'rgba(255,255,255,0.08)'}`,
+                  background: vnoteInfo ? 'transparent' : isMe ? CLR_PRIMARY_FAINT : 'rgba(255,255,255,0.05)',
+                  border: vnoteInfo ? 'none' : `1px solid ${isMe ? CLR_PRIMARY_BORDER : 'rgba(255,255,255,0.08)'}`,
                   borderRadius: isMe ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                  padding: msgType === 'image' ? 5 : '9px 13px',
-                  overflow: 'hidden'
+                  padding: vnoteInfo ? 0 : msgType === 'image' ? 5 : '9px 13px',
+                  overflow: vnoteInfo ? 'visible' : 'hidden'
                 }}>
                         {msgType === 'post_share' && (() => {
                           let ps: { postId?: number; text?: string; authorName?: string; mediaUrl?: string | null } = {};
@@ -22765,13 +23418,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     objectFit: 'cover'
                   }} />}
                         {msgType === 'voice' && <ScVoiceBubble url={m.body} duration={m.duration} isMe={isMe} primaryColor={CLR_PRIMARY} primaryBorder={CLR_PRIMARY_BORDER} textDim={CLR_TEXT_DIM} />}
-                        {msgType === 'video' && filePayload && <video src={filePayload.url} controls playsInline style={{
+                        {vnoteInfo && filePayload && <ScVideoNote url={filePayload.url} once={vnoteInfo.once} isMe={isMe} viewedKey={`${user?.id}:${activeChat?.id}:${m.id}`} secs={vnoteInfo.secs} onDelete={() => scDeleteMessage(m.id)} />}
+                        {msgType === 'video' && filePayload && !vnoteInfo && <ScVideoDeleteFx enabled={isMe} round={false} onDelete={() => scDeleteMessage(m.id)}><video src={filePayload.url} controls playsInline style={{
                     maxWidth: 200,
                     maxHeight: 180,
                     borderRadius: 10,
                     display: 'block'
-                  }} />}
-                        {msgType === 'file' && filePayload && <a href={filePayload.url} target="_blank" rel="noopener noreferrer" download={filePayload.name} style={{
+                  }} /></ScVideoDeleteFx>}
+                        {msgType === 'file' && filePayload && !vnoteInfo && <a href={filePayload.url} target="_blank" rel="noopener noreferrer" download={filePayload.name} style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
@@ -23074,6 +23728,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </AnimatePresence>
                 </div>
 
+                {/* زر التسجيل الدائري: ضغط مطوّل = تسجيل، نقرة = تبديل صوت/فيديو */}
+                <ScRecordButton onSendVoice={scSendVoiceBlob} onSendVideo={scSendVideoNote} />
+
                 {/* Input */}
                 <input value={chatInput} onChange={e => handleScInputChange(e.target.value)} placeholder="اكتب رسالة…" onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -23125,7 +23782,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               flexShrink: 0
             }}>
                     <Send size={17} strokeWidth={2} />
-                  </motion.button> : <motion.button whileTap={{
+                  </motion.button> : !SC_LEGACY_MIC ? null : <motion.button whileTap={{
               scale: 0.9
             }} onPointerDown={() => void scStartRecording()} onPointerUp={() => {
               if (scIsRecording) void scStopRecording(true);
