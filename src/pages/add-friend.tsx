@@ -15439,7 +15439,7 @@ function LiveOnceIcon({ size = 18, color = 'currentColor' }: { size?: number; co
 }
 
 /** Round video inside the chat list. "once" videos never load in the bubble — they open in a full-screen viewer, one time per user. */
-function LiveRoundBubble({ url, mode, duration, isMe, seen, seenCount, uploading, onOpenOnce, onDelete }: {
+function LiveRoundBubble({ url, mode, duration, isMe, seen, seenCount, uploading, onOpenOnce, onDelete, roundId }: {
   url: string;
   mode: 'once' | 'normal';
   duration: number;
@@ -15449,6 +15449,7 @@ function LiveRoundBubble({ url, mode, duration, isMe, seen, seenCount, uploading
   uploading: boolean;
   onOpenOnce: () => void;
   onDelete: (el: HTMLElement) => void;
+  roundId?: string;
 }) {
   const SIZE = 168;
   const circleRef = useRef<HTMLDivElement | null>(null);
@@ -15474,7 +15475,7 @@ function LiveRoundBubble({ url, mode, duration, isMe, seen, seenCount, uploading
     color: '#fff', textAlign: 'center', fontSize: '0.72rem', fontWeight: 800,
   };
   return (
-    <div style={{ marginTop: 6, display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+    <div data-live-round-id={roundId || undefined} style={{ marginTop: 6, display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
       <style>{'@keyframes lrPulse{0%,100%{opacity:.55}50%{opacity:1}}'}</style>
       <div style={{ position: 'relative', width: SIZE, height: SIZE }}>
         <div
@@ -15647,12 +15648,13 @@ function LiveRoundOnceViewer({ url, onStarted, onClose }: { url: string; onStart
 }
 
 /** Circular record button next to the "+": hold = record, tap = cycle voice → once-video → video, slide up = lock, slide left = cancel. */
-function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
+function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError, onRecordingChange }: {
   disabled?: boolean;
   onTouch: () => void;
   onVoice: (dataUrl: string, seconds: number) => void;
   onRound: (blob: Blob, seconds: number, once: boolean) => void;
   onError: (msg: string) => void;
+  onRecordingChange?: (active: boolean, kind: 'voice' | 'once' | 'video' | null) => void;
 }) {
   // One button, three modes (tap cycles): voice → once-video (timed) → normal video. Hold = record.
   const [rmode, setRmode] = useState<'voice' | 'once' | 'video'>(() => {
@@ -15675,8 +15677,8 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
   const rmodeRef = useRef(rmode); rmodeRef.current = rmode;
   const modeRef = useRef<'voice' | 'video'>(mode); modeRef.current = mode;
   const onceRef = useRef(once); onceRef.current = once;
-  const cbRef = useRef({ onVoice, onRound, onError });
-  cbRef.current = { onVoice, onRound, onError };
+  const cbRef = useRef({ onVoice, onRound, onError, onRecordingChange });
+  cbRef.current = { onVoice, onRound, onError, onRecordingChange };
   const phaseRef = useRef<'idle' | 'rec'>('idle');
   const lockedRef = useRef(false);
   const cancelRef = useRef(false);
@@ -15705,6 +15707,7 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
     setCancelHint(false);
     setReady(false);
     setSec(0);
+    try { cbRef.current.onRecordingChange?.(false, null); } catch { /* */ }
   };
   const stopRec = (send: boolean) => {
     sendRef.current = send;
@@ -15735,6 +15738,10 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
     setReady(false);
     setSec(0);
     setPhase('rec');
+    try {
+      const k = rmodeRef.current === 'voice' ? 'voice' : (rmodeRef.current === 'once' ? 'once' : 'video');
+      cbRef.current.onRecordingChange?.(true, k as 'voice' | 'once' | 'video');
+    } catch { /* */ }
     let st: MediaStream;
     try {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') throw new Error('unsupported');
@@ -16591,7 +16598,7 @@ function PublicLiveCommentsPanel({
   const [recording, setRecording] = useState(false);
   const [chatLift, setChatLift] = useState(0);
   const [kbInset, setKbInset] = useState(0);
-  const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string }>>([]);
+  const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string; activity?: string }>>([]);
   const [tplOpen, setTplOpen] = useState(false);
   const [openMediaId, setOpenMediaId] = useState<string | null>(null);
   // ── round video / voice recorder state ──
@@ -16665,8 +16672,14 @@ function PublicLiveCommentsPanel({
       try {
         const r = await fetch(`/api/live-chat/typing?room=${encodeURIComponent(LIVE_CHAT_ROOM)}`, { credentials: 'include' });
         if (!r.ok) return;
-        const d = await r.json() as { typers?: Array<{ userId: string; name: string }> };
-        const list = (d.typers || []).filter(x => x.userId && x.userId !== myId);
+        const d = await r.json() as { typers?: Array<{ userId: string; name: string; activity?: string; typing?: string }> };
+        const list = (d.typers || [])
+          .filter(x => x.userId && x.userId !== myId)
+          .map(x => ({
+            userId: String(x.userId),
+            name: String(x.name || 'User'),
+            activity: String(x.activity || x.typing || 'type'),
+          }));
         setLiveTypers(list);
       } catch { /* */ }
     };
@@ -16675,7 +16688,40 @@ function PublicLiveCommentsPanel({
     return () => window.clearInterval(id);
   }, [myId]);
 
-  const pingTyping = (on: boolean) => {
+  useEffect(() => {
+    if (!myId) return;
+    const local = new Map<string, { userId: string; name: string; activity: string; exp: number }>();
+    const flush = () => {
+      const now = Date.now();
+      for (const [k, v] of [...local.entries()]) if (v.exp < now) local.delete(k);
+      if (local.size === 0) return;
+      setLiveTypers(prev => {
+        const byId = new Map(prev.map(x => [x.userId, x]));
+        for (const v of local.values()) {
+          if (v.userId === myId) continue;
+          byId.set(v.userId, { userId: v.userId, name: v.name, activity: v.activity });
+        }
+        return [...byId.values()];
+      });
+    };
+    const onAct = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      const uid = String(d.userId || '');
+      if (!uid || uid === myId) return;
+      const act = String(d.activity || 'none');
+      if (act === 'none') local.delete(uid);
+      else local.set(uid, { userId: uid, name: String(d.name || 'User'), activity: act, exp: Date.now() + 4000 });
+      flush();
+    };
+    window.addEventListener('stooorna:live-chat-activity', onAct as EventListener);
+    const id = window.setInterval(flush, 1000);
+    return () => {
+      window.removeEventListener('stooorna:live-chat-activity', onAct as EventListener);
+      window.clearInterval(id);
+    };
+  }, [myId]);
+
+  const pingTyping = (on: boolean, activity: 'type' | 'voice' | 'video' | 'once' = 'type') => {
     if (!myId) return;
     try {
       void fetch('/api/live-chat/typing', {
@@ -16687,8 +16733,16 @@ function PublicLiveCommentsPanel({
           username: myUsername || myName || 'User',
           name: myName,
           typing: on,
+          activity: on ? activity : 'none',
+          kind: on ? activity : 'none',
+          recording: on && activity !== 'type',
         }),
       });
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:live-chat-activity', {
+          detail: { userId: myId, name: myName || myUsername || 'User', activity: on ? activity : 'none', at: Date.now() },
+        }));
+      } catch { /* */ }
     } catch { /* */ }
   };
 
@@ -17092,18 +17146,63 @@ function PublicLiveCommentsPanel({
       setComments(next);
       setRoundTick(v => v + 1);
       void editLiveChatOnServer(tomb);
+      const delBody = {
+        action: 'delete', roomId: LIVE_CHAT_ROOM, room: LIVE_CHAT_ROOM, id: c.id, commentId: c.id, userId: myId,
+        text: LIVE_ROUND_GONE, body: LIVE_ROUND_GONE, imageUrl: null, mediaUrl: null, videoUrl: null,
+        editCount: LIVE_CHAT_MAX_EDITS, noStory: 1, destination: 'live-chat',
+      };
       void fetch('/api/live-chat', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'delete', roomId: LIVE_CHAT_ROOM, room: LIVE_CHAT_ROOM, id: c.id, commentId: c.id, userId: myId,
-          text: LIVE_ROUND_GONE, body: LIVE_ROUND_GONE, imageUrl: null, editCount: LIVE_CHAT_MAX_EDITS,
-        }),
+        body: JSON.stringify(delBody),
       }).catch(() => {});
-      if (oldUrl && !oldUrl.startsWith('blob:')) {   // best effort: free the stored file
+      void fetch(`/api/live-chat?room=${encodeURIComponent(LIVE_CHAT_ROOM)}`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(delBody),
+      }).catch(() => {});
+      if (oldUrl && !oldUrl.startsWith('blob:')) {
         void fetch('/api/upload', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: oldUrl }) }).catch(() => {});
       }
     });
   };
+
+  // Remote delete: same dust animation for other viewers, then hide.
+  const roundSnapRef = useRef<Map<string, { url: string; mode: 'once' | 'normal'; duration: number }>>(new Map());
+  const dustPlayedRef = useRef<Set<string>>(new Set());
+  const [dustHoldIds, setDustHoldIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    const snap = roundSnapRef.current;
+    for (const c of comments) {
+      const r = parseRoundVideo(c);
+      if (r && c.imageUrl && !String(c.imageUrl).startsWith('blob:')) {
+        snap.set(c.id, { url: c.imageUrl, mode: r.mode, duration: r.duration });
+      }
+    }
+    for (const c of comments) {
+      if (c.text !== LIVE_ROUND_GONE) continue;
+      if (dustPlayedRef.current.has(c.id)) continue;
+      if (c.userId === myId) { dustPlayedRef.current.add(c.id); continue; }
+      dustPlayedRef.current.add(c.id);
+      setDustHoldIds(prev => {
+        const n = new Set(prev);
+        n.add(c.id);
+        return n;
+      });
+      window.requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-live-round-id="${CSS.escape(c.id)}"]`) as HTMLElement | null;
+        const runHide = () => {
+          setDustHoldIds(prev => {
+            const n = new Set(prev);
+            n.delete(c.id);
+            return n;
+          });
+          setRoundTick(v => v + 1);
+        };
+        if (el) liveDustDelete(el, runHide);
+        else runHide();
+      });
+    }
+  }, [comments, myId]);
+
 
   // Report active typing (others, or me) to the page so the header grabber can turn green + shimmer
   const chatBusy = liveTypers.length > 0 || !!text.trim();
@@ -17305,8 +17404,25 @@ function PublicLiveCommentsPanel({
             كن أول من يكتب تعليقاً مباشراً
           </p>
         )}
-        {groupLiveChatRows(comments.filter(c => !/Join Live Chat/i.test(c.text || '') && !isLiveMediaPost(c) && !parseMediaComment(c.text) && !isRoundHiddenRow(c, roundLocalNow.gone) && !(String(c.imageUrl || '').startsWith('blob:') && !pendingRoundRef.current.has(c.id)))).map(item => {
-          const c = item.c;
+        {groupLiveChatRows(comments.filter(c => {
+          if (/Join Live Chat/i.test(c.text || '')) return false;
+          if (isLiveMediaPost(c)) return false;
+          if (parseMediaComment(c.text)) return false;
+          if (dustHoldIds.has(c.id)) return true;
+          if (isRoundHiddenRow(c, roundLocalNow.gone)) return false;
+          if (String(c.imageUrl || '').startsWith('blob:') && !pendingRoundRef.current.has(c.id)) return false;
+          return true;
+        })).map(item => {
+          const raw = item.c;
+          const c = (dustHoldIds.has(raw.id) && (!raw.imageUrl || raw.text === LIVE_ROUND_GONE))
+            ? {
+                ...raw,
+                imageUrl: roundSnapRef.current.get(raw.id)?.url || raw.imageUrl,
+                text: raw.text === LIVE_ROUND_GONE
+                  ? makeRoundText((roundSnapRef.current.get(raw.id)?.mode || 'normal') as 'once' | 'normal', roundSnapRef.current.get(raw.id)?.duration || 1)
+                  : raw.text,
+              }
+            : raw;
           const liked = myId ? c.likes.includes(myId) : false;
           const bigEmoji = isLiveBigEmoji(c.text);
           const round = parseRoundVideo(c);
@@ -17404,6 +17520,7 @@ function PublicLiveCommentsPanel({
                 ) : null}
                 {round && c.imageUrl ? (
                   <LiveRoundBubble
+                    roundId={c.id}
                     url={c.imageUrl}
                     mode={round.mode}
                     duration={round.duration}
@@ -17664,10 +17781,19 @@ function PublicLiveCommentsPanel({
                 position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
                 pointerEvents: 'none', color: '#191970', fontWeight: 800, fontSize: '0.86rem',
               }}>
-                {liveTypers[0].name} Type
-                <span className="stooorna-type-dots" style={{ marginLeft: 1 }}>
-                  <span>.</span><span>.</span><span>.</span>
-                </span>
+                {(() => {
+                  const t0 = liveTypers[0];
+                  const act = String(t0.activity || 'type');
+                  const label = act === 'voice' ? 'recording voice' : act === 'once' ? 'recording once' : act === 'video' ? 'recording video' : 'Type';
+                  return (
+                    <>
+                      {t0.name} {label}
+                      <span className="stooorna-type-dots" style={{ marginLeft: 1 }}>
+                        <span>.</span><span>.</span><span>.</span>
+                      </span>
+                    </>
+                  );
+                })()}
               </div>
             ) : null}
             <input
@@ -17734,6 +17860,10 @@ function PublicLiveCommentsPanel({
               onTouch={() => { composerGuardRef.current = Date.now(); }}
               onVoice={(url, seconds) => sendVoiceNow(url, seconds)}
               onRound={(blob, seconds, once) => sendRound(blob, seconds, once)}
+              onRecordingChange={(active, kind) => {
+                if (active && kind) pingTyping(true, kind);
+                else pingTyping(false);
+              }}
               onError={showRoundToast}
             />
             {/* ── "+" bubble: Photos / Voice / Emoji / Video AI live inside it (same handlers as the old inline buttons) ── */}
