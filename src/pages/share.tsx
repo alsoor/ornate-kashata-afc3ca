@@ -6,8 +6,6 @@
  *  - Full OG / Twitter meta tags pointing to /api/og-image
  *  - Animated profile card
  *  - Copy link + native share (Share via…)
- *  - QR code (CSS-drawn placeholder — links to the profile URL)
- *  - "Open in Stooorna" deep-link button
  */
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from "react-router";
@@ -60,40 +58,6 @@ function WaveDecor() {
       borderRadius: 2,
       background: T.primary,
       transformOrigin: 'bottom'
-    }} />)}
-    </div>;
-}
-
-// ── QR code (CSS grid — encodes the share URL visually) ───────────────────────
-function QRPlaceholder({
-  url
-}: {
-  url: string;
-}) {
-  // Simple deterministic pixel pattern derived from URL hash
-  const hash = url.split('').reduce((a, c) => a * 31 + c.charCodeAt(0) | 0, 0);
-  const SIZE = 11;
-  const cells: boolean[] = [];
-  for (let i = 0; i < SIZE * SIZE; i++) {
-    // Always-on finder pattern corners
-    const r = Math.floor(i / SIZE);
-    const c = i % SIZE;
-    const corner = r < 3 && c < 3 || r < 3 && c >= SIZE - 3 || r >= SIZE - 3 && c < 3;
-    cells.push(corner || (hash >> i % 31 & 1) === 1);
-  }
-  return <div style={{
-    display: 'grid',
-    gridTemplateColumns: `repeat(${SIZE}, 1fr)`,
-    gap: 1.5,
-    width: 88,
-    height: 88,
-    padding: 8,
-    background: 'white',
-    borderRadius: 10
-  }}>
-      {cells.map((on, i) => <div key={i} style={{
-      borderRadius: 1,
-      background: on ? '#060e0e' : 'white'
     }} />)}
     </div>;
 }
@@ -358,27 +322,6 @@ export function SharePageView({
           }}>
                   {profile.bio}
                 </p>}
-              {/* Open in app button */}
-              <motion.a whileTap={{
-            scale: 0.96
-          }} href={`/u/${encodeURIComponent(profile.username ?? '')}`} style={{
-            marginTop: 22,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '11px 28px',
-            background: `linear-gradient(135deg, rgba(0,188,212,0.18), rgba(0,188,212,0.08))`,
-            border: `1px solid ${T.primaryBorder}`,
-            borderRadius: 50,
-            color: T.primary,
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            textDecoration: 'none',
-            boxShadow: `0 0 20px rgba(0,188,212,0.1)`
-          }}>
-                <ExternalLink size={15} strokeWidth={2} />
-                View Profile
-              </motion.a>
             </>) : (/* ── App card (no user) ── */
         <>
               <p style={{
@@ -418,22 +361,6 @@ export function SharePageView({
                 Open Stooorna
               </motion.a>
             </>)}
-
-          {/* ── QR code ── */}
-          <div style={{
-          marginTop: 24,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 8
-        }}>
-            <QRPlaceholder url={shareUrl} />
-            <p style={{
-            color: T.textDim,
-            fontSize: '0.65rem',
-            margin: 0
-          }}>Scan to open</p>
-          </div>
         </motion.div>
 
         {/* ── Share URL strip ── */}

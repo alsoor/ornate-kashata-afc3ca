@@ -10,7 +10,7 @@ import LiveLocationMap from '@/components/LiveLocationMap';
 import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
-import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown } from '@/lib/vipPatch';
+import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, hydrateVipDirectory, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown } from '@/lib/vipPatch';
 import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import StoryModerationManager from '@/components/StoryModerationManager';
@@ -5892,18 +5892,58 @@ export default function SettingsPage() {
       accountType: 'business', businessProjectName: project, businessGrantedByOwner: true,
     });
   }
-  async function ownerRemoveBusiness(u: { id: string }) {
+  // ── حذف فعلي من السيرفر: نجرّب DELETE ثم POST ثم PATCH (كلها، مو أول نجاح) ──
+  // السبب: مسار POST قد يرجع 200 وهو يتجاهل الحقول، فلو وقفنا عند أول نجاح يبقى الإطار/البنر على السيرفر
+  // ثم يرجع للجهاز عبر المزامنة الدورية (كل 15 ثانية).
+  async function ownerServerClear(id: string, kind: 'vip' | 'business', body: Record<string, unknown>): Promise<boolean> {
+    const base = `/api/owner/users/${encodeURIComponent(id)}`;
+    const eps: Array<{ url: string; method: string }> = [
+      { url: `${base}/${kind}`, method: 'DELETE' },
+      { url: `${base}/${kind}`, method: 'POST' },
+      { url: base, method: 'PATCH' },
+    ];
+    let anyOk = false;
+    for (const ep of eps) {
+      try {
+        const r = await fetch(ep.url, {
+          method: ep.method, credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: ep.method === 'DELETE' ? undefined : JSON.stringify(body),
+        });
+        if (r.ok) anyOk = true;
+      } catch { /* next */ }
+    }
+    return anyOk;
+  }
+  async function ownerRemoveBusiness(u: { id: string }): Promise<boolean> {
+    const uid = String(u.id);
+    // 1) محلياً: نحذف كل سجلات البزنس لهذا المستخدم (مو مجرد تحويلها إلى rejected)
     const list = loadBusinessRegistry();
-    const next = list
-      .filter(x => !(String(x.userId) === String(u.id) && x.grantedByOwner))
-      .map(x => (String(x.userId) === String(u.id) && x.status === 'approved'
-        ? { ...x, status: 'rejected' as const, updatedAt: new Date().toISOString(), ownerNote: null, ownerNoteSeen: true }
-        : x));
-    saveBusinessRegistry(next);
+    const next = list.filter(x => String(x.userId) !== uid);
+    saveBusinessRegistry(next); // يعيد بناء الدليل العام (stooorna_business_directory) ويرسل الحدث
     try {
-      window.dispatchEvent(new CustomEvent('stooorna:business-posts-visibility', { detail: { userId: String(u.id), hidden: false } }));
+      window.dispatchEvent(new CustomEvent('stooorna:business-posts-visibility', { detail: { userId: uid, hidden: false } }));
     } catch { /* */ }
-    return ownerBizServerSync(u.id, { business: false, isBusiness: false, businessApproved: false, businessGrantedByOwner: false });
+    // 2) السيرفر: نصفّر كل خصائص البزنس (البنر/الهيدر/اسم المشروع/نوع الحساب)
+    const wasBizType = String((allUsers as any[]).find(x => String(x?.id) === uid)?.accountType || '').toLowerCase() === 'business';
+    const ok = await ownerServerClear(uid, 'business', {
+      business: false, isBusiness: false, businessApproved: false,
+      businessHeader: null, businessProjectName: null, businessGrantedByOwner: false,
+      banner: null, remove: true, action: 'remove',
+      ...(wasBizType ? { accountType: 'user' } : {}),
+    });
+    // 3) نتحقق من دليل السيرفر: لو لسا موجود، نعتبر الحذف ما تم
+    try {
+      const r = await fetch('/api/business/directory', { credentials: 'include' });
+      if (r.ok) {
+        const d = await r.json();
+        const users = Array.isArray(d?.users) ? d.users : [];
+        if (users.some((x: any) => String(x?.userId ?? x?.id) === uid)) return false;
+        localStorage.setItem('stooorna_business_directory', JSON.stringify(users));
+        window.dispatchEvent(new CustomEvent('stooorna:business-registry'));
+      }
+    } catch { /* */ }
+    return ok;
   }
   async function ownerGrantVip(u: { id: string }, color: string) {
     const FAR = new Date('2099-12-31T00:00:00Z').getTime();
@@ -5922,13 +5962,42 @@ export default function SettingsPage() {
       vipExpiresAt: FAR, vipGrantedByOwner: true, color,
     });
   }
-  async function ownerRemoveVip(u: { id: string }) {
-    try { deactivateVip(u.id); } catch { /* */ }
+  async function ownerRemoveVip(u: { id: string }): Promise<boolean> {
+    const uid = String(u.id);
+    // 1) محلياً: نحذف كل شي عن VIP لهذا المستخدم (الخطة، اللون/الإطار، الميزات، الانتهاء)
+    try { deactivateVip(uid); } catch { /* */ }
     try {
-      const plan = JSON.parse(localStorage.getItem('stooorna_vip_plan') || '{}');
-      if (plan && plan[u.id]) { plan[u.id] = { ...plan[u.id], active: false }; localStorage.setItem('stooorna_vip_plan', JSON.stringify(plan)); }
+      for (const k of Object.keys(localStorage)) {
+        if (!/^stooorna_vip/i.test(k) || /rename/i.test(k)) continue; // لا نمسح علامة "استُخدم تغيير الاسم"
+        if (k.includes(uid)) { localStorage.removeItem(k); continue; }
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        let parsed: any;
+        try { parsed = JSON.parse(raw); } catch { continue; }
+        let changed = false;
+        if (Array.isArray(parsed)) {
+          const f = parsed.filter((x: any) => String(x?.userId ?? x?.id ?? x?.user_id ?? '') !== uid);
+          if (f.length !== parsed.length) { parsed = f; changed = true; }
+        } else if (parsed && typeof parsed === 'object') {
+          if (uid in parsed) { delete parsed[uid]; changed = true; }
+          if (Array.isArray(parsed.users)) {
+            const f = parsed.users.filter((x: any) => String(x?.userId ?? x?.id ?? x?.user_id ?? '') !== uid);
+            if (f.length !== parsed.users.length) { parsed.users = f; changed = true; }
+          }
+        }
+        if (changed) localStorage.setItem(k, JSON.stringify(parsed));
+      }
     } catch { /* */ }
-    return ownerVipServerSync(u.id, { vip: false, isVip: false, vipActive: false, vipGrantedByOwner: false });
+    // 2) السيرفر: نصفّر الإطار واللون وهيدر VIP وتاريخ الانتهاء
+    const ok = await ownerServerClear(uid, 'vip', {
+      vip: false, isVip: false, vipActive: false,
+      vipColor: null, vipHeader: null, vipExpiresAt: null, vipGrantedByOwner: false,
+      color: null, frame: null, vipFrame: null, banner: null, remove: true, action: 'remove',
+    });
+    // 3) نحدّث الدليل العام من السيرفر عشان يظهر الوضع الحقيقي
+    try { await hydrateVipDirectory(); } catch { /* */ }
+    try { window.dispatchEvent(new CustomEvent('stooorna:vip-changed', { detail: { userId: uid } })); } catch { /* */ }
+    return ok;
   }
 
   async function permanentlyDeleteSupportUser(target: { id: string; email?: string | null; username?: string | null }) {
@@ -11372,8 +11441,10 @@ export default function SettingsPage() {
                           if (!window.confirm('Remove VIP from this user?')) return;
                           setOwnerVipBusy(true); setOwnerVipMsg('');
                           try {
-                            await ownerRemoveVip(ownerVipSel);
-                            setOwnerVipMsg('VIP removed.');
+                            const ok = await ownerRemoveVip(ownerVipSel);
+                            setOwnerVipMsg(ok
+                              ? 'VIP removed completely (frame, color and VIP header).'
+                              : 'Removed on this device only. The server did not accept the removal, so VIP may come back until the server route clears it.');
                             setOwnerVipTick(t => t + 1);
                           } finally { setOwnerVipBusy(false); }
                         }}
@@ -11526,8 +11597,10 @@ export default function SettingsPage() {
                           if (!window.confirm('Remove Business from this user?')) return;
                           setOwnerBizBusy(true); setOwnerBizMsg('');
                           try {
-                            await ownerRemoveBusiness(ownerBizSel);
-                            setOwnerBizMsg('Business removed.');
+                            const ok = await ownerRemoveBusiness(ownerBizSel);
+                            setOwnerBizMsg(ok
+                              ? 'Business removed completely (banner and account).'
+                              : 'Removed on this device only. The server still lists this user as Business, so it may come back until the server route clears it.');
                             setOwnerBizTick(t => t + 1);
                           } finally { setOwnerBizBusy(false); }
                         }}
