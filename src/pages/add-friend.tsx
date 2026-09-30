@@ -24894,14 +24894,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   alignItems: 'flex-start',
                   gap: 14,
                   padding: '10px 16px 8px',
-                  border: '1px solid rgba(192,192,192,0.85)',
+                  border: '1.5px solid #0f4040',
+                  background: 'linear-gradient(180deg, rgba(10,31,34,0.55) 0%, rgba(6,16,18,0.55) 100%)',
                   borderRadius: 20,
                   zIndex: 10620,
                   animation: 'stooornaPlusFanIn 0.28s ease-out',
                 }}>
                   <style>{`@property --stooorna-frame-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes stooornaFrameShine { to { --stooorna-frame-angle: 360deg; } }
-.stooorna-frame-shine { position: absolute; inset: -1px; border-radius: 20px; padding: 1px; pointer-events: none; background: conic-gradient(from var(--stooorna-frame-angle), rgba(255,255,255,0) 0deg, rgba(255,255,255,0) 290deg, rgba(255,255,255,0.35) 325deg, rgba(255,255,255,0.95) 345deg, rgba(255,255,255,0) 360deg); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; filter: drop-shadow(0 0 3px rgba(255,255,255,0.55)); animation: stooornaFrameShine 16s linear infinite; }`}</style>
+.stooorna-frame-shine { position: absolute; inset: -1px; border-radius: 20px; padding: 1px; pointer-events: none; background: conic-gradient(from var(--stooorna-frame-angle), rgba(215,222,228,0) 0deg, rgba(215,222,228,0) 290deg, rgba(215,222,228,0.4) 325deg, rgba(232,238,242,1) 345deg, rgba(215,222,228,0) 360deg); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; filter: drop-shadow(0 0 3px rgba(215,222,228,0.7)); animation: stooornaFrameShine 16s linear infinite; }`}</style>
                   <span aria-hidden="true" className="stooorna-frame-shine" />
 
 {/* ── Speech-bubble panel: sits above the dock, tail points at the tapped icon ── */}
@@ -25246,14 +25247,19 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       WebkitTapHighlightColor: 'transparent',
                     }}
                   >
-                    <motion.img
-                      src="/icons/icon-192.png"
-                      alt=""
-                      draggable={false}
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 16, repeat: Infinity, ease: 'linear' }}
-                      style={{ width: 46, height: 46, objectFit: 'contain', display: 'block', pointerEvents: 'none', userSelect: 'none' }}
-                    />
+                    {/* دائرة مقصوصة: نكبّر الصورة ونقصّها بدائرة عشان يختفي المربع/المعيّن خلف الأيقونة */}
+                    <span aria-hidden="true" style={{ width: 46, height: 46, borderRadius: '50%', overflow: 'hidden', display: 'block', flexShrink: 0, background: 'transparent', clipPath: 'circle(50% at 50% 50%)' }}>
+                      <span style={{ display: 'block', width: '100%', height: '100%', transform: 'scale(1.4)' }}>
+                        <motion.img
+                          src="/icons/icon-192.png"
+                          alt=""
+                          draggable={false}
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 16, repeat: Infinity, ease: 'linear' }}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', borderRadius: '50%', pointerEvents: 'none', userSelect: 'none' }}
+                        />
+                      </span>
+                    </span>
                   </motion.button>
                 )}
           </div>
