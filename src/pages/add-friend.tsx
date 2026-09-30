@@ -16919,8 +16919,6 @@ function PublicLiveCommentsPanel({
               const list = loadPublicLiveComments().map(x => x.id === row.id ? send : x);
               savePublicLiveComments(list);
               setComments(list);
-              // Land on the public outer gallery so the new tile is visible LIVE for this device too
-              try { setChatLift(0); } catch { /* */ }
             }
           }
         } catch { /* keep local preview; other users may not see until retry */ }
@@ -17306,52 +17304,7 @@ function PublicLiveCommentsPanel({
         }}
       >
         <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-        {chatLift === 1 && mediaPosts.length > 0 ? (
-          <div
-            style={{
-              flexShrink: 0,
-              margin: '0 0 10px',
-              paddingBottom: 8,
-              borderBottom: '1px solid #ececec',
-              overflowX: 'auto',
-              WebkitOverflowScrolling: 'touch',
-              direction: 'ltr',
-            }}
-          >
-            <p style={{ margin: '0 0 8px', fontSize: '0.72rem', fontWeight: 800, color: '#6b7280', letterSpacing: '0.02em' }}>
-              LIVE · Photos & Videos
-            </p>
-            <div style={{ display: 'flex', gap: 8, paddingBottom: 4 }}>
-              {mediaPosts.map(vc => (
-                <button
-                  key={vc.id}
-                  type="button"
-                  onClick={() => {
-                    if (Date.now() - composerGuardRef.current < 700) return;
-                    setOpenMediaId(vc.id);
-                  }}
-                  style={{
-                    flex: '0 0 auto', width: 88, height: 110, borderRadius: 12, overflow: 'hidden',
-                    border: '1px solid #e5e7eb', padding: 0, background: '#111', cursor: 'pointer',
-                    position: 'relative',
-                  }}
-                >
-                  {isLiveChatVideoUrl(vc.imageUrl) || vc.text === LIVE_VIDEO_CAPTION ? (
-                    <video src={vc.imageUrl || ''} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
-                  ) : (
-                    <img src={vc.imageUrl || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
-                  )}
-                  {(isLiveChatVideoUrl(vc.imageUrl) || vc.text === LIVE_VIDEO_CAPTION) ? (
-                    <span style={{ position: 'absolute', left: 6, bottom: 6, width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Play size={11} color="#fff" fill="#fff" />
-                    </span>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        {comments.length === 0 && mediaPosts.length === 0 && (
+        {comments.length === 0 && (
           <p style={{ margin: '28px 0 0', textAlign: 'center', color: '#9ca3af', fontSize: '0.86rem', fontWeight: 600 }}>
             كن أول من يكتب تعليقاً مباشراً
           </p>
