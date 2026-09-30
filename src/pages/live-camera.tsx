@@ -2801,7 +2801,7 @@ export default function LiveCameraPage() {
         )}
       </AnimatePresence>
       <LiveVipDock hostId={hostId} currentUserId={myId} />
-      <LiveCoinsDock hostId={hostId} currentUserId={myId} />
+      <LiveCoinsDock hostId={hostId} currentUserId={myId} yellowRight={74} />
     </div>
   );
 }

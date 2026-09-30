@@ -165,7 +165,7 @@ const CARD: React.CSSProperties = {
 };
 
 // ── المكوّن الرئيسي ─────────────────────────────────────────────────────
-export function LiveCoinsDock({ currentUserId }: { hostId?: string; currentUserId?: string }) {
+export function LiveCoinsDock({ currentUserId, yellowRight = YELLOW_DOT_RIGHT }: { hostId?: string; currentUserId?: string; yellowRight?: number }) {
   const uid = String(currentUserId || '');
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [coinsOpen, setCoinsOpen] = useState(false);
@@ -258,7 +258,7 @@ export function LiveCoinsDock({ currentUserId }: { hostId?: string; currentUserI
 
   return (
     <>
-      {dot(YELLOW_DOT_RIGHT, '#facc15', 'Coins', () => { setGiftsOpen(false); setCoinsOpen(true); })}
+      {dot(yellowRight, '#facc15', 'Coins', () => { setGiftsOpen(false); setCoinsOpen(true); })}
       {dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', () => { setCoinsOpen(false); setGiftsOpen(true); })}
 
       {/* مربع شحن Coins */}
