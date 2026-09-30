@@ -13479,12 +13479,32 @@ function adminBellKey(uid: string) {
   return `stooorna_admin_bell_${uid}`;
 }
 
+// ids the user deleted from the bell — kept so a deleted notice can't be re-imported
+// from the other mod/admin storage keys or from the server on the next poll.
+function adminBellDeletedKey(uid: string) {
+  return `stooorna_admin_bell_deleted_${uid}`;
+}
+function loadAdminBellDeleted(uid: string): Set<string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(adminBellDeletedKey(uid)) || '[]');
+    return new Set(Array.isArray(raw) ? raw.map(String) : []);
+  } catch { return new Set(); }
+}
+function markAdminBellDeleted(uid: string, id: string) {
+  try {
+    const set = loadAdminBellDeleted(uid);
+    set.add(id);
+    localStorage.setItem(adminBellDeletedKey(uid), JSON.stringify(Array.from(set).slice(-300)));
+  } catch { /* */ }
+}
+
 function loadAdminBellNotices(uid: string): AdminBellNotice[] {
   if (!uid) return [];
   const out: AdminBellNotice[] = [];
   const seen = new Set<string>();
+  const deleted = loadAdminBellDeleted(uid);
   const push = (row: AdminBellNotice) => {
-    if (!row.id || seen.has(row.id)) return;
+    if (!row.id || seen.has(row.id) || deleted.has(row.id)) return;
     seen.add(row.id);
     out.push(row);
   };
@@ -13539,6 +13559,86 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
     };
   }, [uid]);
 
+  // ── Pull Support/owner alerts from the SERVER into the bell ────────────────
+  // Before this, the bell only read localStorage: an alert the Support account sent
+  // (a direct message on /api/messages) reached the bell only if the user happened to
+  // open the chat with Support. Now we poll the unread counts, and when Support has
+  // something unread we fetch that thread and let ingestModMessageRows move the
+  // moderation/alert notices into the bell (same parser the chat screen already uses).
+  useEffect(() => {
+    if (!uid) return;
+    let cancelled = false;
+    let supportId: string | null = null;
+    let lastCount = -1; // -1 → first poll: fetch whatever is already waiting
+    const beforeIds = () => new Set(loadAdminBellNotices(uid).map(x => x.id));
+
+    const announce = (prev: Set<string>) => {
+      const now = loadAdminBellNotices(uid);
+      setItems(now);
+      if (now.some(x => !x.read && !prev.has(x.id))) {
+        try { navigator.vibrate?.([120, 80, 120]); } catch { /* */ }
+        try { playNotificationSound(); } catch { /* */ }
+      }
+    };
+
+    const pullServerNotifications = async () => {
+      // Optional: /api/notifications rows that are admin/support/warning alerts
+      try {
+        const r = await fetch('/api/notifications', { credentials: 'include' });
+        if (!r.ok || cancelled) return;
+        const rows = await r.json();
+        if (!Array.isArray(rows)) return;
+        const deleted = loadAdminBellDeleted(uid);
+        const known = new Set(loadAdminBellNotices(uid).map(x => x.id));
+        const fresh: AdminBellNotice[] = [];
+        for (const x of rows) {
+          const kind = String(x?.type || x?.kind || '');
+          if (!/admin|support|warn|alert|moderat|system/i.test(kind)) continue;
+          const id = String(x.id ?? '');
+          const body = String(x.body || x.message || x.text || x.title || '');
+          if (!id || !body || known.has(id) || deleted.has(id)) continue;
+          fresh.push({ id, body, at: Number(new Date(x.createdAt || x.at || Date.now()).getTime()) || Date.now(), read: !!(x.read || x.readAt) });
+        }
+        if (fresh.length) {
+          const prev = beforeIds();
+          saveAdminBellNotices(uid, [...fresh, ...loadAdminBellNotices(uid)]);
+          announce(prev);
+        }
+      } catch { /* endpoint missing/offline — ignore */ }
+    };
+
+    const pullSupportThread = async () => {
+      try {
+        if (!supportId) {
+          const ur = await fetch('/api/users/by-username/stooorna', { credentials: 'include' });
+          if (!ur.ok || cancelled) return;
+          const ud = await ur.json();
+          supportId = String(ud?.id || ud?.userId || ud?.user?.id || '') || null;
+        }
+        if (!supportId || supportId === uid) return; // Support itself has no alerts to receive
+        const r = await fetch('/api/messages/unread', { credentials: 'include' });
+        if (!r.ok || cancelled) return;
+        const data = await r.json() as { bySender?: Record<string, number> };
+        const count = Number(data.bySender?.[supportId] || 0);
+        if (count > 0 && count !== lastCount) {
+          const prev = beforeIds();
+          const mr = await fetch(`/api/messages?with=${encodeURIComponent(supportId)}`, { credentials: 'include' });
+          if (mr.ok && !cancelled) {
+            const rows = await mr.json();
+            if (Array.isArray(rows)) ingestModMessageRows(rows as ApiDirectMessageRow[]);
+            announce(prev);
+          }
+        }
+        lastCount = count;
+      } catch { /* offline — retry next tick */ }
+    };
+
+    const tick = () => { void pullSupportThread(); void pullServerNotifications(); };
+    tick();
+    const t = window.setInterval(tick, 6000);
+    return () => { cancelled = true; window.clearInterval(t); };
+  }, [uid]);
+
   const openPanel = () => {
     setOpen(v => !v);
     if (!uid) return;
@@ -13550,6 +13650,7 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
 
   const removeNotice = (id: string) => {
     if (!uid) return;
+    markAdminBellDeleted(uid, id);
     const next = loadAdminBellNotices(uid).filter(x => x.id !== id);
     saveAdminBellNotices(uid, next);
     setItems(next);
