@@ -16705,7 +16705,7 @@ function PublicLiveCommentsPanel({
                 }}
                 style={{
                   width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
-                  background: plusOpen ? '#111' : '#f1f1f1', color: plusOpen ? '#fff' : '#111',
+                  background: '#111', color: '#fff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   transition: 'transform .2s ease, background .2s ease',
                   transform: plusOpen ? 'rotate(45deg)' : 'none',
