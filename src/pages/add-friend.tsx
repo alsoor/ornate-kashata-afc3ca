@@ -16588,6 +16588,9 @@ function PublicLiveCommentsPanel({
           alignItems: 'center',
           gap: 8,
           padding: '4px 12px 10px',
+          boxSizing: 'border-box',
+          width: '100%',
+          maxWidth: '100%',
         }}>
           <UserAvatar
             name={myName || myUsername || '?'}
@@ -16596,7 +16599,8 @@ function PublicLiveCommentsPanel({
             style={{ flexShrink: 0, border: 'none' }}
           />
           <div style={{
-            flex: 1,
+            flex: '1 1 0%',
+            minWidth: 0,
             display: 'flex',
             alignItems: 'center',
             border: '1px solid #d4d4d4',
@@ -16651,6 +16655,7 @@ function PublicLiveCommentsPanel({
               }}
               style={{
                 flex: 1,
+                width: '100%',
                 border: 'none',
                 outline: 'none',
                 background: 'transparent',
