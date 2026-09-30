@@ -3556,7 +3556,7 @@ function OwnerSupportThread({
             if (peer.name) q.set('openProfileName', peer.name);
             if (peer.username) q.set('openProfileUsername', peer.username);
             if (peer.avatarUrl) q.set('openProfileAvatar', peer.avatarUrl);
-            window.location.href = `/add-friend?${q.toString()}`;
+            window.location.href = `/?${q.toString()}`;
           }}
           style={{
             display: 'flex',
@@ -9585,7 +9585,7 @@ export default function SettingsPage() {
                           if (peer.name) q.set('openProfileName', peer.name);
                           if (peer.username) q.set('openProfileUsername', peer.username);
                           if (peer.avatarUrl) q.set('openProfileAvatar', peer.avatarUrl);
-                          navigate(`/add-friend?${q.toString()}`);
+                          navigate(`/?${q.toString()}`);
                         }}
                         style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -10003,7 +10003,7 @@ export default function SettingsPage() {
                       if (isPublicBusinessAccount(supportCtrlUser)) {
                         q.set('openProfileBusiness', '1');
                       }
-                      navigate(`/add-friend?${q.toString()}`);
+                      navigate(`/?${q.toString()}`);
                     }}
                     style={{
                       background: 'hsl(var(--primary) / 0.12)', border: '1px solid hsl(var(--primary) / 0.35)',

@@ -1,5 +1,4 @@
 import { RouteObject } from "react-router";
-import HomePage from './pages/index';
 import WhisperPage from './pages/whisper';
 import SettingsPage from './pages/settings';
 import AddFriendPage from './pages/add-friend';
@@ -18,7 +17,7 @@ import ProdNotFoundPage from './pages/_404';
 const NotFoundPage = ProdNotFoundPage;
 export const routes: RouteObject[] = [{
   path: '/',
-  element: <HomePage />
+  element: <AddFriendPage />
 }, {
   path: '/feed',
   element: <FeedPage />

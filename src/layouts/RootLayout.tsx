@@ -4,8 +4,12 @@ import { ScrollRestoration, useLocation, useNavigate } from "react-router";
 
 // True on the profile/story tab of /add-friend (the "+" lives inline there, so the bottom nav bar must never show).
 // Works from the URL alone so the very first render (refresh / coming back) is already correct — no flash of the bar.
+// الصفحة الرئيسية = "/" (وما زال /add-friend يعمل كمسار قديم لنفس الصفحة)
+function isHomePath(pathname: string): boolean {
+  return pathname === '/' || pathname === '' || pathname.startsWith('/add-friend');
+}
 function isStoryProfileRoute(pathname: string, search: string): boolean {
-  if (!pathname.startsWith('/add-friend')) return false;
+  if (!isHomePath(pathname)) return false;
   const tab = new URLSearchParams(search || '').get('tab');
   return !(tab === 'search' || tab === 'requests');
 }
@@ -836,7 +840,7 @@ function GlobalBottomNavigation() {
     return () => window.removeEventListener('stooorna:story-page-active', onStoryPage);
   }, []);
   useLayoutEffect(() => {
-    if (!location.pathname.startsWith('/add-friend')) setStoryPageActive(false);
+    if (!isHomePath(location.pathname)) setStoryPageActive(false);
     else if (isStoryProfileRoute(location.pathname, location.search)) setStoryPageActive(true);
   }, [location.pathname, location.search]);
   const [liveMapOpen, setLiveMapOpen] = useState(false);
@@ -850,7 +854,7 @@ function GlobalBottomNavigation() {
     return () => window.removeEventListener('stooorna:feed-scroll', onFeedScroll);
   }, []);
   useEffect(() => {
-    if (!location.pathname.startsWith('/add-friend')) setNavBarHidden(false);
+    if (!isHomePath(location.pathname)) setNavBarHidden(false);
   }, [location.pathname]);
   useEffect(() => {
     const onOpen = () => setFriendsPanelOpen(true);
@@ -1072,7 +1076,7 @@ function GlobalBottomNavigation() {
   function openCompanyChatList() {
     setCompanyChatOpen(true);
     setCompanyIconAlert(false);
-    navigate('/add-friend?panel=chats');
+    navigate('/?panel=chats');
     if (user?.id) {
       try {
         localStorage.setItem(COMPANY_INBOX_SEEN_KEY(user.id), String(Date.now()));
@@ -1249,7 +1253,7 @@ function GlobalBottomNavigation() {
   function openUserChatList() {
     setUserChatIconAlert(false);
     setUserChatOpen(true);
-    navigate('/add-friend?panel=chats');
+    navigate('/?panel=chats');
   }
   function closeUserChatList() {
     setUserChatOpen(false);
@@ -1271,7 +1275,7 @@ function GlobalBottomNavigation() {
       setMiniChat(null);
       setUserChatOpen(false);
       setCompanyChatOpen(false);
-      navigate('/add-friend?tab=friends');
+      navigate('/');
     }, 280);
   }
   function markUserPeerRead(peerId: string) {
@@ -1521,7 +1525,7 @@ function GlobalBottomNavigation() {
     if (textPostsOpen) {
       window.dispatchEvent(new CustomEvent('stooorna:close-text-posts'));
     }
-    navigate('/add-friend?tab=friends');
+    navigate('/');
   };
 
   // ?? مكالمة جماعية من سحب الهوم للأعلى (شكل واتساب) ??
@@ -2882,7 +2886,7 @@ function GlobalBottomNavigation() {
       if (d.handledBy === 'friend-video' || d.skipHomeCall) return;
       try {
         const path = window.location.pathname || '';
-        if (path === '/add-friend' || path.startsWith('/add-friend')) return;
+        if (isHomePath(path)) return;
       } catch { /* ignore */ }
       const friendId = String(d.friendId || d.peerId || '');
       if (!friendId || !user?.id) return;
@@ -3722,7 +3726,7 @@ function GlobalBottomNavigation() {
   }, [homeCallChannel, homeCallPhase, user?.id]);
 
   const openFriendRequests = () => {
-    navigate('/add-friend?tab=requests');
+    navigate('/?tab=requests');
   };
 
   const openVoiceRoom = () => {
@@ -5093,11 +5097,11 @@ function GlobalBottomNavigation() {
                   }));
                 } catch { /* */ }
               };
-              if (location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend')) {
+              if (isHomePath(location.pathname)) {
                 open();
                 return;
               }
-              navigate('/add-friend?tab=friends&openFriendsPanel=1');
+              navigate('/?openFriendsPanel=1');
               window.setTimeout(open, 80);
             }}
             aria-label="Friends"
@@ -5202,12 +5206,17 @@ export default function RootLayout({
     setShowSplash(true);
   };
 
-  // عند فتح التطبيق على / نوجّه مباشرة لصفحة الهوم مع فتح البوستات النصية
+  // الصفحة الرئيسية تفتح مباشرة على "/" (stooorna.com) — ما في تحويل لـ /add-friend.
+  // لو أحد دخل على الرابط القديم /add-friend بدون باراميترات مهمة نرجّعه لـ "/" (مرة وحدة عند الدخول للمسار).
   useEffect(() => {
-    if (location.pathname === '/' || location.pathname === '') {
-      navigate('/add-friend?tab=friends', { replace: true });
+    if (location.pathname !== '/add-friend') return;
+    const sp = new URLSearchParams(location.search || '');
+    const keys = Array.from(sp.keys());
+    if (keys.length === 0 || (keys.length === 1 && sp.get('tab') === 'friends')) {
+      navigate('/', { replace: true });
     }
-  }, [location.pathname, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   useEffect(() => {
     const home = location.pathname === '/add-friend' || location.pathname.startsWith('/add-friend') || location.pathname === '/';
@@ -5235,7 +5244,7 @@ export default function RootLayout({
     const path = location.pathname || '';
     const isLive = path === '/live' || path.startsWith('/live/') || path === '/live-camera' || path.startsWith('/live-camera');
     if (isLive) return;
-    if (path !== '/add-friend' && !path.startsWith('/add-friend')) return;
+    if (!isHomePath(path)) return;
     try {
       if (sessionStorage.getItem('stooorna_return_text_posts') !== '1') return;
     } catch {
@@ -5288,7 +5297,7 @@ export default function RootLayout({
     return () => window.removeEventListener('stooorna:story-page-active', onStoryPage);
   }, []);
   useLayoutEffect(() => {
-    if (!location.pathname.startsWith('/add-friend')) setStoryPageActive(false);
+    if (!isHomePath(location.pathname)) setStoryPageActive(false);
     else if (isStoryProfileRoute(location.pathname, location.search)) setStoryPageActive(true);
   }, [location.pathname, location.search]);
   const isSettingsPage = location.pathname === '/settings' || location.pathname.startsWith('/settings');
@@ -5315,7 +5324,7 @@ export default function RootLayout({
     window.setTimeout(() => {
       setSettingsClosing(false);
       // Public posts is the primary app page — always return there
-      navigate('/add-friend?tab=friends');
+      navigate('/');
     }, 320);
   };
 

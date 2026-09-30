@@ -102,7 +102,8 @@ import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationC
 function announceStoryPageActive() {
   try {
     if (typeof window === 'undefined') return;
-    if (!window.location.pathname.startsWith('/add-friend')) return; // never touch other routes
+    const p0 = window.location.pathname;
+    if (!(p0 === '/' || p0.startsWith('/add-friend'))) return; // never touch other routes ('/' = الرئيسية)
     const tab = new URLSearchParams(window.location.search).get('tab');
     if (tab === 'search' || tab === 'requests') return;
     window.dispatchEvent(new CustomEvent('stooorna:story-page-active', { detail: { active: true } }));
