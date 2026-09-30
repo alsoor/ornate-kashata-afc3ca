@@ -14863,6 +14863,12 @@ async function fetchLiveChatFromServer(): Promise<PublicLiveComment[] | null> {
 }
 
 async function postLiveChatToServer(row: PublicLiveComment): Promise<void> {
+  const imgU = String(row.imageUrl || '');
+  const hasVideo = !!(imgU && (
+    /\.(mp4|webm|mov|m4v)(\?|$)/i.test(imgU)
+    || /^data:video\//i.test(imgU)
+    || String(row.text || '').includes('○​RV')
+  ));
   const payload = {
     roomId: LIVE_CHAT_ROOM,
     room: LIVE_CHAT_ROOM,
@@ -14874,13 +14880,20 @@ async function postLiveChatToServer(row: PublicLiveComment): Promise<void> {
     text: row.text,
     body: row.text,
     imageUrl: row.imageUrl || null,
+    mediaUrl: row.imageUrl || null,
+    videoUrl: hasVideo ? (row.imageUrl || null) : null,
     voiceUrl: row.voiceUrl || null,
     voiceDuration: row.voiceDuration ?? null,
     createdAt: row.createdAt,
     editCount: row.editCount || 0,
+    mediaType: row.voiceUrl ? 'voice' : (hasVideo ? 'video' : (row.imageUrl ? 'image' : 'text')),
+    kind: row.voiceUrl ? 'voice' : (hasVideo ? 'video' : (row.imageUrl ? 'image' : 'text')),
+    noStory: 1,
+    destination: 'live-chat',
   };
   const attempts: Array<() => Promise<Response>> = [
     () => fetch('/api/live-chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
+    () => fetch(`/api/live-chat?room=${encodeURIComponent(LIVE_CHAT_ROOM)}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
     () => fetch('/api/public-chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
     () => fetch('/api/room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }),
   ];
@@ -15117,122 +15130,15 @@ const fmtRecTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s %
  *  1st route = /api/video-swap (the same multipart route the working "Video" panel of this chat uses),
  *  then the post-media routes. Every request has a timeout so the bubble can never hang on "Sending…". */
 async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<{ url: string | null; err: string }> {
-  // LIVE CHAT ONLY — must never touch /api/status (stories) or feed/post publishers.
-  const rawType = String(blob.type || '').trim().toLowerCase();
-  const baseType = rawType.split(';')[0].trim();
-  const looksMp4 = /mp4|m4v|quicktime|avc1/i.test(rawType);
-  const looksWebm = /webm|vp8|vp9|av1/i.test(rawType);
-  const ext = looksMp4 && !looksWebm ? 'mp4' : 'webm';
-  const contentType = baseType.startsWith('video/') ? baseType : (ext === 'mp4' ? 'video/mp4' : 'video/webm');
-  const fileName = `live-round-${Date.now()}.${ext}`;
-  const file = new File([blob], fileName, { type: contentType });
-  let lastErr = '';
-  const isValid = (u: unknown): u is string => {
-    if (!u || typeof u !== 'string') return false;
-    const s = u.trim();
-    if (!s || s === 'null' || s === 'undefined') return false;
-    if (/^(https?:\/\/|\/|blob:|data:)/i.test(s)) return true;
-    return /^[a-z0-9_\-./]+\.(mp4|webm|mov|m4v)(\?|$)/i.test(s);
-  };
-  const toAbs = (u: string): string => {
-    const s = String(u).trim();
-    if (/^(https?:|blob:|data:)/i.test(s)) return s;
-    try { return resolveMediaUrl(s) || s; } catch { return s.startsWith('/') ? s : `/${s.replace(/^\/+/, '')}`; }
-  };
-  const usable = (u: string): string | null => (u && !mediaAiIsBrokenHostUrl(u) && !/airo-assets/i.test(u) ? u : null);
-  const urlFrom = (ct: string, loc: string | null, rawText: string): string | null => {
-    if (isValid(loc)) return usable(toAbs(loc));
-    const raw = String(rawText || '');
-    if (ct.includes('json') || /^\s*[{[]/.test(raw)) {
-      try {
-        const d = JSON.parse(raw) as any;
-        for (const u of [d?.url, d?.mediaUrl, d?.fileUrl, d?.path, d?.publicUrl, d?.src, d?.data?.url, d?.data?.mediaUrl, d?.result?.url, d?.file?.url, d?.media?.url, d?.location, d?.href]) {
-          if (typeof u === 'string' && u.trim().length > 2) {
-            const a = usable(toAbs(u));
-            if (a) return a;
-          }
-        }
-      } catch { /* */ }
-      return null;
-    }
-    const first = raw.trim().split(/\s/)[0];
-    return isValid(first) ? usable(toAbs(first)) : null;
-  };
-  const formLive = (field: string) => {
-    const fd = new FormData();
-    fd.append(field, file, fileName);
-    fd.append('userId', userId);
-    fd.append('kind', 'video');
-    fd.append('type', 'video');
-    fd.append('mediaType', 'video');
-    fd.append('destination', 'live-chat');
-    fd.append('scope', 'live-chat');
-    fd.append('channel', 'live-chat');
-    fd.append('noStory', '1');
-    fd.append('createStory', 'false');
-    fd.append('story', '0');
-    fd.append('skipStory', '1');
-    return fd;
-  };
-  const post = (endpoint: string, body: FormData, timeoutMs: number) =>
-    new Promise<string | null>(resolve => {
-      if (/\/api\/status\b/i.test(endpoint) || /\/api\/stories\b/i.test(endpoint) || /\/api\/posts\b/i.test(endpoint)) {
-        resolve(null);
-        return;
-      }
-      const x = new XMLHttpRequest();
-      let settled = false;
-      const done = (v: string | null, why?: string) => {
-        if (settled) return;
-        settled = true;
-        if (why) lastErr = why;
-        resolve(v);
-      };
-      try {
-        x.open('POST', endpoint);
-        x.withCredentials = true;
-        x.timeout = timeoutMs;
-        x.onload = () => {
-          if (x.status < 200 || x.status >= 300) { done(null, `${endpoint} ${x.status}`); return; }
-          done(urlFrom(x.getResponseHeader('content-type') || '', x.getResponseHeader('location'), x.responseText));
-        };
-        x.onerror = () => done(null, `${endpoint} network`);
-        x.ontimeout = () => done(null, `${endpoint} timeout`);
-        x.send(body);
-      } catch (e: any) { done(null, String(e?.message || e)); }
-    });
-
-  const endpoints: Array<{ ep: string; field: string; ms: number }> = [
-    { ep: '/api/live-chat/media', field: 'file', ms: 28000 },
-    { ep: '/api/live-chat/media', field: 'media', ms: 28000 },
-    { ep: '/api/live-chat/upload', field: 'file', ms: 28000 },
-    { ep: '/api/live-chat/video', field: 'file', ms: 28000 },
-    { ep: VIDEO_SWAP_ENDPOINT, field: 'file', ms: 28000 },
-  ];
-  for (const a of endpoints) {
-    const hit = await post(a.ep, formLive(a.field), a.ms);
-    if (hit) return { url: hit, err: '' };
-  }
-  if (blob.size > 0 && blob.size < 3_500_000) {
-    try {
-      const dataUrl = await new Promise<string | null>(resolve => {
-        const r = new FileReader();
-        r.onloadend = () => resolve(typeof r.result === 'string' && r.result.startsWith('data:') ? r.result : null);
-        r.onerror = () => resolve(null);
-        r.readAsDataURL(new Blob([blob], { type: contentType }));
-      });
-      if (dataUrl) return { url: dataUrl, err: '' };
-    } catch { /* */ }
-  }
-  return { url: null, err: lastErr || 'live-chat upload failed' };
+  return uploadLiveChatFile(blob, userId, 'video');
 }
 
-async function uploadLiveChatMedia(blob: Blob, userId: string, kind: 'image' | 'video' = 'image'): Promise<{ url: string | null; err: string }> {
-  // LIVE CHAT ONLY — isolated from stories (/api/status) and public feed posts.
+/** Shared live-chat media uploader. Stores file for chat sync only — never stories (/api/status). */
+async function uploadLiveChatFile(blob: Blob, userId: string, kind: 'image' | 'video'): Promise<{ url: string | null; err: string }> {
   const rawType = String(blob.type || '').trim().toLowerCase();
   const isVid = kind === 'video' || rawType.startsWith('video/');
-  const looksMp4 = /mp4|m4v|quicktime/i.test(rawType);
-  const looksWebm = /webm/i.test(rawType);
+  const looksMp4 = /mp4|m4v|quicktime|avc1/i.test(rawType);
+  const looksWebm = /webm|vp8|vp9|av1/i.test(rawType);
   const looksPng = /png/i.test(rawType);
   const looksWebp = /webp/i.test(rawType);
   const looksGif = /gif/i.test(rawType);
@@ -15245,21 +15151,21 @@ async function uploadLiveChatMedia(blob: Blob, userId: string, kind: 'image' | '
   const fileName = `live-chat-${isVid ? 'video' : 'image'}-${Date.now()}.${ext}`;
   const file = blob instanceof File ? blob : new File([blob], fileName, { type: contentType });
   let lastErr = '';
+
   const isValid = (u: unknown): u is string => {
     if (!u || typeof u !== 'string') return false;
     const s = u.trim();
     if (!s || s === 'null' || s === 'undefined') return false;
-    if (/^(https?:\/\/|\/)/i.test(s)) return true;
+    if (/^(https?:\/\/|\/|blob:|data:)/i.test(s)) return true;
     return /^[a-z0-9_\-./]+\.(jpe?g|png|gif|webp|mp4|webm|mov|m4v)(\?|$)/i.test(s);
   };
   const toAbs = (u: string): string => {
     const s = String(u).trim();
-    if (/^(https?:)/i.test(s)) return s;
+    if (/^(https?:|blob:|data:)/i.test(s)) return s;
     try { return resolveMediaUrl(s) || s; } catch { return s.startsWith('/') ? s : `/${s.replace(/^\/+/, '')}`; }
   };
   const usable = (u: string): string | null => {
     if (!u || mediaAiIsBrokenHostUrl(u) || /airo-assets/i.test(u)) return null;
-    if (/^(blob:|data:)/i.test(u)) return null;
     return u;
   };
   const urlFrom = (ct: string, loc: string | null, rawText: string): string | null => {
@@ -15280,7 +15186,8 @@ async function uploadLiveChatMedia(blob: Blob, userId: string, kind: 'image' | '
     const first = raw.trim().split(/\s/)[0];
     return isValid(first) ? usable(toAbs(first)) : null;
   };
-  const formLive = (field: string) => {
+
+  const formLive = (field: string, extra: Record<string, string> = {}) => {
     const fd = new FormData();
     fd.append(field, file, fileName);
     fd.append('userId', userId);
@@ -15294,11 +15201,14 @@ async function uploadLiveChatMedia(blob: Blob, userId: string, kind: 'image' | '
     fd.append('createStory', 'false');
     fd.append('story', '0');
     fd.append('skipStory', '1');
+    Object.entries(extra).forEach(([k, v]) => fd.append(k, v));
     return fd;
   };
-  const post = (endpoint: string, body: FormData, timeoutMs: number) =>
+
+  const postFd = (endpoint: string, body: FormData, timeoutMs: number) =>
     new Promise<string | null>(resolve => {
-      if (/\/api\/status\b/i.test(endpoint) || /\/api\/stories\b/i.test(endpoint) || /\/api\/posts\b/i.test(endpoint)) {
+      // Never write to stories
+      if (/\/api\/status\b/i.test(endpoint) || /\/api\/stories\b/i.test(endpoint)) {
         resolve(null);
         return;
       }
@@ -15324,18 +15234,64 @@ async function uploadLiveChatMedia(blob: Blob, userId: string, kind: 'image' | '
       } catch (e: any) { done(null, String(e?.message || e)); }
     });
 
+  // Reliable storage routes (file host only). Flags mark live-chat; status/stories are blocked above.
   const endpoints: Array<{ ep: string; field: string; ms: number }> = [
-    { ep: '/api/live-chat/media', field: 'file', ms: 28000 },
-    { ep: '/api/live-chat/media', field: 'media', ms: 28000 },
-    { ep: '/api/live-chat/upload', field: 'file', ms: 20000 },
-    { ep: isVid ? '/api/live-chat/video' : '/api/live-chat/image', field: 'file', ms: 20000 },
-    { ep: VIDEO_SWAP_ENDPOINT, field: 'file', ms: 28000 },
+    { ep: '/api/live-chat/media', field: 'file', ms: 30000 },
+    { ep: '/api/live-chat/media', field: 'media', ms: 30000 },
+    { ep: '/api/live-chat/upload', field: 'file', ms: 30000 },
+    { ep: isVid ? '/api/live-chat/video' : '/api/live-chat/image', field: 'file', ms: 30000 },
+    { ep: VIDEO_SWAP_ENDPOINT, field: 'file', ms: 30000 },
+    { ep: '/api/upload', field: 'file', ms: 30000 },
+    { ep: '/api/media', field: 'file', ms: 25000 },
+    { ep: '/api/files/upload', field: 'file', ms: 25000 },
+    { ep: '/api/posts/media', field: 'file', ms: 30000 },
+    { ep: '/api/posts/media', field: 'media', ms: 30000 },
   ];
   for (const a of endpoints) {
-    const hit = await post(a.ep, formLive(a.field), a.ms);
-    if (hit) return { url: hit, err: '' };
+    const hit = await postFd(a.ep, formLive(a.field), a.ms);
+    if (hit && !/^(blob:)/i.test(hit)) return { url: hit, err: '' };
   }
+
+  // Same pattern as voice notes: JSON body to live-chat endpoint (works when multipart is blocked)
+  if (blob.size > 0 && blob.size < 4_500_000) {
+    try {
+      const dataUrl = await new Promise<string | null>(resolve => {
+        const r = new FileReader();
+        r.onloadend = () => resolve(typeof r.result === 'string' && r.result.startsWith('data:') ? r.result : null);
+        r.onerror = () => resolve(null);
+        r.readAsDataURL(file);
+      });
+      if (dataUrl) {
+        const bodies = [
+          { id: `up_${Date.now()}`, userId, kind: isVid ? 'video' : 'image', video: isVid ? dataUrl : undefined, image: !isVid ? dataUrl : undefined, media: dataUrl, file: dataUrl, room: LIVE_CHAT_ROOM, roomId: LIVE_CHAT_ROOM, noStory: 1 },
+        ];
+        for (const path of ['/api/live-chat/media', '/api/live-chat/video', '/api/live-chat/upload', '/api/live-chat/voice']) {
+          try {
+            const r = await fetch(path, {
+              method: 'POST', credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(bodies[0]),
+            });
+            if (!r.ok) continue;
+            const d = await r.json() as any;
+            const u = String(d?.url || d?.mediaUrl || d?.voiceUrl || d?.fileUrl || '');
+            if (u && isValid(u)) {
+              const a = usable(toAbs(u));
+              if (a) return { url: a, err: '' };
+            }
+          } catch { /* next */ }
+        }
+        // Last resort: keep data URL inside the live-chat message payload (server may store it)
+        if (dataUrl.length < 3_800_000) return { url: dataUrl, err: '' };
+      }
+    } catch { /* */ }
+  }
+
   return { url: null, err: lastErr || 'live-chat media upload failed' };
+}
+
+async function uploadLiveChatMedia(blob: Blob, userId: string, kind: 'image' | 'video' = 'image'): Promise<{ url: string | null; err: string }> {
+  return uploadLiveChatFile(blob, userId, kind);
 }
 
 async function blobFromLocalUrl(url: string): Promise<Blob | null> {
@@ -16810,9 +16766,22 @@ function PublicLiveCommentsPanel({
       finally { liveBusyRef.current = false; }
     };
     void pull();
-    const iv = window.setInterval(pull, 2000);
+    // Lightweight realtime: poll only while tab visible; 1s cadence when chat is likely open.
+    // setComments runs only when signature changes — no UI thrash, no story/feed side effects.
+    let iv = window.setInterval(pull, 1000);
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') {
+        window.clearInterval(iv);
+      } else {
+        void pull();
+        window.clearInterval(iv);
+        iv = window.setInterval(pull, 1000);
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
     return () => {
       window.clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener(PUBLIC_LIVE_COMMENTS_EVT, onEvt);
       window.removeEventListener('storage', onStorage);
       try { bc?.close(); } catch { /* */ }
