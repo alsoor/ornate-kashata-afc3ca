@@ -14652,7 +14652,7 @@ function LiveRoundOnceViewer({ url, onStarted, onClose }: { url: string; onStart
   );
 }
 
-/** Circular record button next to the "+": hold = record, tap = switch voice ⇄ video, slide up = lock, slide left = cancel. */
+/** Circular record button next to the "+": hold = record, tap = cycle voice → once-video → video, slide up = lock, slide left = cancel. */
 function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
   disabled?: boolean;
   onTouch: () => void;
@@ -14660,14 +14660,24 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
   onRound: (blob: Blob, seconds: number, once: boolean) => void;
   onError: (msg: string) => void;
 }) {
-  const [mode, setMode] = useState<'voice' | 'video'>(() => { try { return localStorage.getItem(LIVE_ROUND_MODE_KEY) === 'video' ? 'video' : 'voice'; } catch { return 'voice'; } });
-  const [once, setOnce] = useState<boolean>(() => { try { return localStorage.getItem(LIVE_ROUND_ONCE_KEY) === '1'; } catch { return false; } });
+  // One button, three modes (tap cycles): voice → once-video (timed) → normal video. Hold = record.
+  const [rmode, setRmode] = useState<'voice' | 'once' | 'video'>(() => {
+    try {
+      const m = localStorage.getItem(LIVE_ROUND_MODE_KEY);
+      if (m === 'once') return 'once';
+      if (m === 'video') return localStorage.getItem(LIVE_ROUND_ONCE_KEY) === '1' ? 'once' : 'video';
+      return 'voice';
+    } catch { return 'voice'; }
+  });
+  const mode: 'voice' | 'video' = rmode === 'voice' ? 'voice' : 'video';
+  const once = rmode === 'once';
   const [phase, setPhase] = useState<'idle' | 'rec'>('idle');
   const [locked, setLocked] = useState(false);
   const [cancelHint, setCancelHint] = useState(false);
   const [sec, setSec] = useState(0);
   const [recKind, setRecKind] = useState<'voice' | 'video'>('voice');
-  const modeRef = useRef(mode); modeRef.current = mode;
+  const rmodeRef = useRef(rmode); rmodeRef.current = rmode;
+  const modeRef = useRef<'voice' | 'video'>(mode); modeRef.current = mode;
   const onceRef = useRef(once); onceRef.current = once;
   const cbRef = useRef({ onVoice, onRound, onError });
   cbRef.current = { onVoice, onRound, onError };
@@ -14823,10 +14833,14 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* */ }
     if (holdTimerRef.current) { window.clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
     if (!holdFiredRef.current) {
-      // plain tap → switch voice ⇄ video
-      const next = modeRef.current === 'voice' ? 'video' : 'voice';
-      setMode(next);
-      try { localStorage.setItem(LIVE_ROUND_MODE_KEY, next); } catch { /* */ }
+      // plain tap → voice → once-video → normal video → voice
+      const cur = rmodeRef.current;
+      const next: 'voice' | 'once' | 'video' = cur === 'voice' ? 'once' : cur === 'once' ? 'video' : 'voice';
+      setRmode(next);
+      try {
+        localStorage.setItem(LIVE_ROUND_MODE_KEY, next === 'once' ? 'video' : next);
+        localStorage.setItem(LIVE_ROUND_ONCE_KEY, next === 'once' ? '1' : '0');
+      } catch { /* */ }
       return;
     }
     if (lockedRef.current) return;                       // locked: keeps recording until Send / Cancel
@@ -14840,12 +14854,6 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
       if (recRef.current) stopRec(false); else abortRef.current = true;
     }
   };
-  const toggleOnce = () => {
-    const next = !onceRef.current;
-    setOnce(next);
-    try { localStorage.setItem(LIVE_ROUND_ONCE_KEY, next ? '1' : '0'); } catch { /* */ }
-  };
-
   const recording = phase === 'rec';
   const maxS = recKind === 'video' ? LIVE_ROUND_MAX_S : LIVE_VOICE_MAX_S;
   const pvSize = Math.min(300, Math.round((typeof window !== 'undefined' ? window.innerWidth : 360) * 0.72));
@@ -14907,24 +14915,10 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
 
   return (
     <>
-      {mode === 'video' && !recording ? (
-        <button
-          type="button"
-          aria-label={once ? 'Send once: on' : 'Send once: off'}
-          aria-pressed={once}
-          title="Send once"
-          disabled={disabled}
-          onPointerDown={e => { e.preventDefault(); e.stopPropagation(); onTouch(); }}
-          onClick={e => { e.stopPropagation(); onTouch(); toggleOnce(); }}
-          style={{ width: 26, height: 26, flexShrink: 0, padding: 0, borderRadius: '50%', border: once ? '1.5px solid #111' : '1.5px solid #d1d5db', background: once ? '#111' : 'transparent', color: once ? '#fff' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginRight: 4 }}
-        >
-          <LiveOnceIcon size={16} />
-        </button>
-      ) : null}
       <button
         type="button"
-        aria-label={mode === 'video' ? 'Record round video (hold). Tap to switch to voice' : 'Record voice (hold). Tap to switch to video'}
-        title={mode === 'video' ? 'Hold: round video · Tap: voice' : 'Hold: voice · Tap: round video'}
+        aria-label={rmode === 'voice' ? 'Record voice (hold). Tap to switch to once-video' : rmode === 'once' ? 'Record once-video (hold). Tap to switch to video' : 'Record video (hold). Tap to switch to voice'}
+        title={rmode === 'voice' ? 'Hold: voice · Tap: once-video' : rmode === 'once' ? 'Hold: once-video · Tap: video' : 'Hold: video · Tap: voice'}
         disabled={disabled}
         onPointerDown={onDown}
         onPointerMove={onMove}
@@ -14940,7 +14934,7 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
           position: 'relative', zIndex: 62,
         } as React.CSSProperties}
       >
-        {mode === 'video' ? <Video size={17} strokeWidth={2.2} /> : <Mic size={17} strokeWidth={2.2} />}
+        {rmode === 'once' ? <LiveOnceIcon size={18} /> : rmode === 'video' ? <Video size={17} strokeWidth={2.2} /> : <Mic size={17} strokeWidth={2.2} />}
       </button>
       {overlay}
     </>
