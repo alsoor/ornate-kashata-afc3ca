@@ -14335,13 +14335,12 @@ async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<{ url: 
   const baseType = rawType.split(';')[0].trim();
   const looksMp4 = /mp4|m4v|quicktime|avc1/i.test(rawType);
   const looksWebm = /webm|vp8|vp9|av1/i.test(rawType);
-  const ext = looksMp4 && !looksWebm ? 'mp4' : (looksWebm ? 'webm' : (baseType.includes('mp4') ? 'mp4' : 'webm'));
-  const contentType = baseType.startsWith('video/')
-    ? baseType
-    : (ext === 'mp4' ? 'video/mp4' : 'video/webm');
+  const ext = looksMp4 && !looksWebm ? 'mp4' : 'webm';
+  const contentType = baseType.startsWith('video/') ? baseType : (ext === 'mp4' ? 'video/mp4' : 'video/webm');
   const fileName = `live-round-${Date.now()}.${ext}`;
   const file = new File([blob], fileName, { type: contentType });
   let lastErr = '';
+  const FAST_KEY = 'stooorna_live_round_upload_ep_v1';
   const isValid = (u: unknown): u is string => {
     if (!u || typeof u !== 'string') return false;
     const s = u.trim();
@@ -14352,33 +14351,23 @@ async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<{ url: 
   const toAbs = (u: string): string => {
     const s = String(u).trim();
     if (/^(https?:|blob:|data:)/i.test(s)) return s;
-    try {
-      return resolveMediaUrl(s) || s;
-    } catch {
-      return s.startsWith('/') ? s : `/${s.replace(/^\/+/, '')}`;
-    }
+    try { return resolveMediaUrl(s) || s; } catch { return s.startsWith('/') ? s : `/${s.replace(/^\/+/, '')}`; }
   };
   const usable = (u: string): string | null => (u && !mediaAiIsBrokenHostUrl(u) && !/airo-assets/i.test(u) ? u : null);
-  const urlFrom = (ct: string, loc: string | null, text: string): string | null => {
+  const urlFrom = (ct: string, loc: string | null, rawText: string): string | null => {
     if (isValid(loc)) return usable(toAbs(loc));
-    const raw = String(text || '');
+    const raw = String(rawText || '');
     if (ct.includes('json') || /^\s*[{[]/.test(raw)) {
       try {
         const d = JSON.parse(raw) as any;
-        const candidates = [
-          d?.url, d?.mediaUrl, d?.fileUrl, d?.path, d?.publicUrl, d?.src,
-          d?.data?.url, d?.data?.mediaUrl, d?.data?.path, d?.data?.publicUrl,
-          d?.result?.url, d?.file?.url, d?.media?.url, d?.location, d?.href,
-          d?.key, d?.filename, d?.id && (typeof d.id === 'string' ? `/uploads/${d.id}` : null),
-        ];
-        for (const u of candidates) {
+        for (const u of [d?.url, d?.mediaUrl, d?.fileUrl, d?.path, d?.publicUrl, d?.src, d?.data?.url, d?.data?.mediaUrl, d?.result?.url, d?.file?.url, d?.media?.url, d?.location, d?.href]) {
           if (typeof u === 'string' && u.trim().length > 2) {
             const a = usable(toAbs(u));
             if (a) return a;
           }
         }
-        return null;
-      } catch { return null; }
+      } catch { /* */ }
+      return null;
     }
     const first = raw.trim().split(/\s/)[0];
     return isValid(first) ? usable(toAbs(first)) : null;
@@ -14392,14 +14381,13 @@ async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<{ url: 
         x.open('POST', endpoint);
         x.withCredentials = true;
         x.timeout = timeoutMs;
-        Object.keys(headers).forEach(k => x.setRequestHeader(k, headers[k]));
+        Object.keys(headers).forEach(k => { try { x.setRequestHeader(k, headers[k]); } catch { /* */ } });
         x.onload = () => {
           if (x.status < 200 || x.status >= 300) { done(null, `HTTP ${x.status}`); return; }
-          const u = urlFrom(
-            (x.getResponseHeader('content-type') || '').toLowerCase(),
-            x.getResponseHeader('location') || x.getResponseHeader('x-file-url') || x.getResponseHeader('x-media-url'),
-            x.responseText || '',
-          );
+          const u = urlFrom((x.getResponseHeader('content-type') || '').toLowerCase(), x.getResponseHeader('location') || x.getResponseHeader('x-file-url') || x.getResponseHeader('x-media-url'), x.responseText || '');
+          if (u) {
+            try { localStorage.setItem(FAST_KEY, endpoint); } catch { /* */ }
+          }
           done(u, u ? undefined : 'no url in reply');
         };
         x.onerror = () => done(null, 'network');
@@ -14414,46 +14402,47 @@ async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<{ url: 
     fd.append(field, file, fileName);
     return fd;
   };
-  const started = Date.now();
-  const left = () => 150000 - (Date.now() - started);
-  const T = (ms: number) => Math.max(5000, Math.min(ms, left()));
 
-  const attempts: Array<{ ep: string; body: FormData | Blob; headers?: Record<string, string>; tag: string; ms?: number }> = [
-    { ep: VIDEO_SWAP_ENDPOINT, body: formWith('file', { userId, kind: 'video', type: 'video', mediaType: 'video' }), tag: 'video-swap' },
-    { ep: VIDEO_SWAP_ENDPOINT, body: formWith('media', { userId, kind: 'video' }), tag: 'video-swap media' },
-    { ep: '/api/posts/media', body: formWith('file', { type: 'video', mediaType: 'video', kind: 'video' }), tag: 'posts/media' },
-    { ep: '/api/posts/media', body: formWith('media', { type: 'video', mediaType: 'video', kind: 'video' }), tag: 'posts/media field' },
-    { ep: '/api/posts/media', body: file, headers: { 'Content-Type': contentType, 'X-File-Ext': `.${ext}`, 'X-Media-Type': 'video' }, tag: 'posts/media raw' },
-    { ep: '/api/live-chat/media', body: formWith('file', { userId, room: 'public', roomId: 'public', kind: 'video', type: 'video' }), tag: 'live-chat/media' },
-    { ep: '/api/live-chat/voice', body: formWith('file', { userId, kind: 'video', type: 'video' }), tag: 'live-chat/voice' },
-    { ep: '/api/upload', body: formWith('file', { type: 'video', mediaType: 'video' }), tag: 'upload' },
-    { ep: '/api/files/upload', body: formWith('file', { type: 'video', mediaType: 'video' }), tag: 'files/upload' },
-    { ep: '/api/posts/upload', body: formWith('file', { type: 'video', mediaType: 'video' }), tag: 'posts/upload' },
-    { ep: '/api/media', body: formWith('file', { type: 'video', mediaType: 'video' }), tag: 'media' },
-    { ep: '/api/status', body: formWith('media', { type: 'video' }), tag: 'status' },
-  ];
-
-  for (const a of attempts) {
-    if (left() <= 6000) break;
-    const u = await post(a.ep, a.body, a.headers || {}, T(a.ms || 55000), a.tag);
+  // Fast path: reuse the endpoint that worked last time (avoids waiting on 404s).
+  let preferred = '';
+  try { preferred = localStorage.getItem(FAST_KEY) || ''; } catch { preferred = ''; }
+  if (preferred) {
+    const u = await post(preferred, formWith('file', { userId, kind: 'video', type: 'video', mediaType: 'video' }), {}, 25000, 'cached');
     if (u) return { url: u, err: '' };
   }
 
-  if (left() > 8000) {
-    try {
-      const extra = await Promise.race([
-        uploadPostMedia(file, { kind: 'video', fileName }),
-        new Promise<null>(res => window.setTimeout(() => res(null), T(40000))),
-      ]) as { ok?: boolean; url?: unknown } | null;
-      if (extra && extra.ok && isValid(extra.url)) {
-        const a = usable(toAbs(String(extra.url)));
-        if (a) return { url: a, err: '' };
-      }
-    } catch { /* */ }
-  }
+  // Wave 1 in parallel — first success wins, the rest are ignored.
+  const wave1: Array<{ ep: string; body: FormData | Blob; headers?: Record<string, string>; tag: string; ms: number }> = [
+    { ep: VIDEO_SWAP_ENDPOINT, body: formWith('file', { userId, kind: 'video', type: 'video', mediaType: 'video' }), tag: 'video-swap', ms: 28000 },
+    { ep: '/api/posts/media', body: formWith('file', { type: 'video', mediaType: 'video', kind: 'video' }), tag: 'posts/media', ms: 28000 },
+    { ep: '/api/posts/media', body: formWith('media', { type: 'video', mediaType: 'video', kind: 'video' }), tag: 'posts/media-field', ms: 28000 },
+  ];
+  const wave1Hits = await Promise.all(wave1.map(a => post(a.ep, a.body, a.headers || {}, a.ms, a.tag)));
+  const hit1 = wave1Hits.find(Boolean);
+  if (hit1) return { url: hit1, err: '' };
 
-  // Last resort for short notes: keep a data URL so the bubble actually sends
-  // instead of dying on "Sending..." when every storage route 404s.
+  // Wave 2: remaining routes, short timeout so a 404 does not stall Sending.
+  const wave2 = [
+    { ep: '/api/upload', field: 'file', tag: 'upload' },
+    { ep: '/api/files/upload', field: 'file', tag: 'files' },
+    { ep: '/api/posts/upload', field: 'file', tag: 'posts-up' },
+    { ep: '/api/live-chat/media', field: 'file', tag: 'lc-media' },
+  ];
+  const wave2Hits = await Promise.all(wave2.map(a => post(a.ep, formWith(a.field, { userId, kind: 'video', type: 'video' }), {}, 12000, a.tag)));
+  const hit2 = wave2Hits.find(Boolean);
+  if (hit2) return { url: hit2, err: '' };
+
+  try {
+    const extra = await Promise.race([
+      uploadPostMedia(file, { kind: 'video', fileName }),
+      new Promise<null>(res => window.setTimeout(() => res(null), 20000)),
+    ]) as { ok?: boolean; url?: unknown } | null;
+    if (extra && extra.ok && isValid(extra.url)) {
+      const a = usable(toAbs(String(extra.url)));
+      if (a) return { url: a, err: '' };
+    }
+  } catch { /* */ }
+
   if (blob.size > 0 && blob.size < 3_500_000) {
     try {
       const dataUrl = await new Promise<string | null>(resolve => {
@@ -14595,7 +14584,7 @@ function LiveRoundBubble({ url, mode, duration, isMe, seen, seenCount, uploading
   const once = mode === 'once';
   const toggle = () => {
     if (uploading || deleting) return;
-    if (once) { if (!isMe && !seen) onOpenOnce(); return; }
+    if (once) { if (isMe || !seen) onOpenOnce(); return; }
     const v = vidRef.current;
     if (!v) return;
     if (playing) { v.pause(); setPlaying(false); return; }
@@ -14695,15 +14684,37 @@ function LiveRoundOnceViewer({ url, onStarted, onClose }: { url: string; onStart
   const startedRef = useRef(false);
   const [prog, setProg] = useState(0);
   const [failed, setFailed] = useState(false);
+  const [needTap, setNeedTap] = useState(false);
   useEffect(() => {
     const v = vref.current;
-    if (!v) return;
-    v.muted = false;
-    v.play().catch(() => {
-      v.muted = true;
-      v.play().catch(() => setFailed(true));
-    });
-  }, []);
+    if (!v || !url) return;
+    setFailed(false);
+    setNeedTap(false);
+    setProg(0);
+    try { v.pause(); } catch { /* */ }
+    v.src = url;
+    v.playsInline = true;
+    v.setAttribute('playsinline', '');
+    v.setAttribute('webkit-playsinline', 'true');
+    v.muted = true;
+    const tryPlay = () => {
+      const p = v.play();
+      if (!p || typeof p.then !== 'function') return;
+      p.then(() => {
+        try { v.muted = false; } catch { /* */ }
+      }).catch(() => {
+        setNeedTap(true);
+        v.muted = true;
+        v.play().catch(() => setNeedTap(true));
+      });
+    };
+    if (v.readyState >= 2) tryPlay();
+    else {
+      const onReady = () => { v.removeEventListener('loadeddata', onReady); tryPlay(); };
+      v.addEventListener('loadeddata', onReady);
+      try { v.load(); } catch { /* */ }
+    }
+  }, [url]);
   const size = Math.min(320, Math.round((typeof window !== 'undefined' ? window.innerWidth : 360) * 0.78));
   const RR = size / 2 + 6;
   const CIRC = 2 * Math.PI * RR;
@@ -14723,13 +14734,20 @@ function LiveRoundOnceViewer({ url, onStarted, onClose }: { url: string; onStart
             ref={vref}
             src={url}
             playsInline
+            autoPlay
             disablePictureInPicture
             controlsList="nodownload noplaybackrate"
-            onPlaying={() => { if (!startedRef.current) { startedRef.current = true; onStarted(); } }}
+            onPlaying={() => { if (!startedRef.current) { startedRef.current = true; onStarted(); } setNeedTap(false); }}
             onTimeUpdate={e => { const v = e.currentTarget; if (v.duration > 0) setProg(v.currentTime / v.duration); }}
             onEnded={onClose}
             onError={() => setFailed(true)}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }}
+            onClick={() => {
+              const v = vref.current;
+              if (!v) return;
+              v.muted = false;
+              void v.play().then(() => setNeedTap(false)).catch(() => setFailed(true));
+            }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'auto' }}
           />
         </div>
         <svg width={size + 12} height={size + 12} viewBox={`0 0 ${size + 12} ${size + 12}`} style={{ position: 'absolute', left: -6, top: -6, pointerEvents: 'none', transform: 'rotate(-90deg)' }}>
@@ -14738,7 +14756,7 @@ function LiveRoundOnceViewer({ url, onStarted, onClose }: { url: string; onStart
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', fontWeight: 800, fontSize: '0.82rem' }}>
         <LiveOnceIcon size={20} color="#fff" />
-        <span>{failed ? "Couldn't play this video" : 'View once'}</span>
+        <span>{failed ? "Couldn't play this video" : (needTap ? 'Tap to play' : 'View once')}</span>
       </div>
       <button
         type="button"
@@ -16445,7 +16463,7 @@ function PublicLiveCommentsPanel({
                     seen={roundSeen(c.id)}
                     seenCount={roundSeenCount(c.id)}
                     uploading={c.userId === myId && String(c.imageUrl).startsWith('blob:')}
-                    onOpenOnce={() => { if (!roundSeen(c.id)) setOnceViewId(c.id); }}
+                    onOpenOnce={() => { setOnceViewId(c.id); }}
                     onDelete={el => deleteRound(c, el)}
                   />
                 ) : null}
