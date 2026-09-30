@@ -12,6 +12,53 @@ type BIPEvent = Event & {
 const ANDROID_ONLY = true;
 const PERMS_DONE_KEY = 'stooorna_pwa_perms_done';
 const BANNER_HIDDEN_KEY = 'stooorna_pwa_banner_hidden';
+const PERMS_TRIES_KEY = 'stooorna_pwa_perms_tries';
+
+// UI strings for the permission results view (kept as unicode escapes)
+const T = {
+  notifications: '\u0627\u0644\u0625\u0634\u0639\u0627\u0631\u0627\u062a',
+  microphone: '\u0627\u0644\u0645\u0627\u064a\u0643\u0631\u0648\u0641\u0648\u0646',
+  camera: '\u0627\u0644\u0643\u0627\u0645\u064a\u0631\u0627',
+  location: '\u0627\u0644\u0645\u0648\u0642\u0639',
+  clipboard: '\u0627\u0644\u062d\u0627\u0641\u0638\u0629',
+  clipboardItem: '\u0627\u0644\u062d\u0627\u0641\u0638\u0629 \u2014 \u0644\u0635\u0642 \u0627\u0644\u0631\u0648\u0627\u0628\u0637 \u0648\u0627\u0644\u0646\u0635\u0648\u0635',
+  deniedTitle: '\u0628\u0639\u0636 \u0627\u0644\u0623\u0630\u0648\u0646\u0627\u062a \u0645\u0631\u0641\u0648\u0636\u0629',
+  deniedHelp: '\u0641\u0639\u0651\u0644\u0647\u0627 \u064a\u062f\u0648\u064a\u0627\u064b: \u0625\u0639\u062f\u0627\u062f\u0627\u062a \u0627\u0644\u062c\u0648\u0627\u0644 \u2190 \u0627\u0644\u062a\u0637\u0628\u064a\u0642\u0627\u062a \u2190 Stooorna \u2190 \u0627\u0644\u0623\u0630\u0648\u0646\u0627\u062a.',
+  done: '\u062a\u0645',
+};
+
+type PermState = 'granted' | 'denied' | 'prompt' | 'unknown';
+
+async function queryPerm(name: string): Promise<PermState> {
+  try {
+    const r = await (navigator as any).permissions.query({ name });
+    return r.state as PermState;
+  } catch {
+    return 'unknown';
+  }
+}
+
+// Reads the current state of every permission the app uses.
+// denied  = labels the user refused (cannot be asked again from the page)
+// pending = at least one important permission was never answered
+async function checkPerms(): Promise<{ denied: string[]; pending: boolean }> {
+  const denied: string[] = [];
+  let pending = false;
+  const note = (state: string, label: string, counts = true) => {
+    if (state === 'denied') denied.push(label);
+    else if (state === 'prompt' && counts) pending = true;
+  };
+  try {
+    if ('Notification' in window) {
+      note(Notification.permission === 'default' ? 'prompt' : Notification.permission, T.notifications);
+    }
+  } catch { /* */ }
+  note(await queryPerm('microphone'), T.microphone);
+  note(await queryPerm('camera'), T.camera);
+  note(await queryPerm('geolocation'), T.location);
+  note(await queryPerm('clipboard-read'), T.clipboard, false);
+  return { denied, pending };
+}
 
 let deferredPrompt: BIPEvent | null = null;
 // لو الحدث انلقط بدري من سكربت في index.html (window.__stooornaBIP) نستخدمه
@@ -85,6 +132,8 @@ function isAndroid(): boolean {
 }
 
 async function requestAllPermissions(onEnablePush?: () => Promise<void> | void) {
+  // 0) Clipboard (first, while the tap is still a fresh user gesture)
+  try { await navigator.clipboard?.readText?.(); } catch { /* */ }
   // 1) الإشعارات
   try {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -92,16 +141,23 @@ async function requestAllPermissions(onEnablePush?: () => Promise<void> | void) 
     }
   } catch { /* */ }
   try { await onEnablePush?.(); } catch { /* */ }
-  // 2) المايك
+  // 2+3) Microphone and camera in a single prompt; fall back only if a device is missing
   try {
-    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-    s.getTracks().forEach((t) => t.stop());
-  } catch { /* */ }
-  // 3) الكاميرا
-  try {
-    const s = await navigator.mediaDevices.getUserMedia({ video: true });
-    s.getTracks().forEach((t) => t.stop());
-  } catch { /* */ }
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    s.getTracks().forEach((tr) => tr.stop());
+  } catch (e: any) {
+    const name = String(e?.name || '');
+    if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'NotReadableError') {
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+        s.getTracks().forEach((tr) => tr.stop());
+      } catch { /* */ }
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ video: true });
+        s.getTracks().forEach((tr) => tr.stop());
+      } catch { /* */ }
+    }
+  }
   // 4) الموقع
   try {
     await new Promise<void>((res) => {
@@ -125,6 +181,7 @@ export default function PwaInstallBanner({
   const [showPerms, setShowPerms] = useState(false);
   const [busy, setBusy] = useState(false);
   const [installed, setInstalled] = useState(false);
+  const [deniedLabels, setDeniedLabels] = useState<string[]>([]);
 
   useEffect(() => {
     if (ANDROID_ONLY && !isAndroid()) return;
@@ -174,10 +231,26 @@ export default function PwaInstallBanner({
     if (busy) return;
     setBusy(true);
     await requestAllPermissions(onEnablePush);
-    try { localStorage.setItem(PERMS_DONE_KEY, '1'); } catch { /* */ }
+    const { denied, pending } = await checkPerms();
+    let tries = 1;
+    try { tries = (Number(localStorage.getItem(PERMS_TRIES_KEY)) || 0) + 1; localStorage.setItem(PERMS_TRIES_KEY, String(tries)); } catch { /* */ }
+    // Done when nothing is left unanswered (or after 3 attempts, e.g. device without a camera)
+    if (!pending || tries >= 3) {
+      try { localStorage.setItem(PERMS_DONE_KEY, '1'); } catch { /* */ }
+    }
     setBusy(false);
-    setShowPerms(false);
+    if (denied.length > 0) {
+      setDeniedLabels(denied); // keep the sheet open and explain how to enable them manually
+    } else {
+      setShowPerms(false);
+    }
   }, [busy, onEnablePush]);
+
+  const closeDenied = () => {
+    try { localStorage.setItem(PERMS_DONE_KEY, '1'); } catch { /* */ }
+    setDeniedLabels([]);
+    setShowPerms(false);
+  };
 
   const dismissBanner = () => {
     setHidden(true);
@@ -282,6 +355,23 @@ export default function PwaInstallBanner({
                 </p>
               </div>
             </div>
+            {deniedLabels.length > 0 ? (
+              <>
+                <p style={{ margin: '0 0 8px', color: '#fff', fontWeight: 800, fontSize: 15 }}>{T.deniedTitle}</p>
+                <p style={{ margin: '0 0 6px', color: '#ffb4a8', fontSize: 13.5, lineHeight: 1.7 }}>{deniedLabels.join(' · ')}</p>
+                <p style={{ margin: '0 0 14px', color: 'rgba(215,238,238,0.85)', fontSize: 12.5, lineHeight: 1.7 }}>{T.deniedHelp}</p>
+                <button
+                  type="button" onClick={closeDenied}
+                  style={{
+                    width: '100%', padding: 14, borderRadius: 14, border: 'none',
+                    background: '#00BCD4', color: '#041018', fontWeight: 900, fontSize: 15, cursor: 'pointer',
+                  }}
+                >
+                  {T.done}
+                </button>
+              </>
+            ) : (
+              <>
             <ul style={{ margin: '0 0 14px', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
                 'الإشعارات — المكالمات والرسائل وطلبات الصداقة',
@@ -289,6 +379,7 @@ export default function PwaInstallBanner({
                 'الكاميرا — مكالمات الفيديو والقصص',
                 'الموقع — الخريطة والبث المباشر',
                 'تخزين دائم — حتى ما تنمسح بياناتك',
+                T.clipboardItem,
               ].map((t) => (
                 <li key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(215,238,238,0.92)', fontSize: 13.5 }}>
                   <ShieldCheck size={16} color="#00BCD4" style={{ flexShrink: 0 }} />
@@ -315,6 +406,8 @@ export default function PwaInstallBanner({
             >
               لاحقاً
             </button>
+              </>
+            )}
           </div>
         </div>
       )}
