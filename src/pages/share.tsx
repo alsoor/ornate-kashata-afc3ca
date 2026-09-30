@@ -38,18 +38,6 @@ interface Profile {
   online: boolean;
 }
 
-// ── Social share configs ──────────────────────────────────────────────────────
-function buildShareLinks(url: string, text: string) {
-  const enc = encodeURIComponent;
-  return [{
-    id: 'whatsapp',
-    label: 'WhatsApp',
-    color: '#25D366',
-    icon: <WhatsAppIcon />,
-    href: `https://wa.me/?text=${enc(text + '\n' + url)}`
-  }];
-}
-
 // ── SVG social icons ──────────────────────────────────────────────────────────
 function WhatsAppIcon() {
   return <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
