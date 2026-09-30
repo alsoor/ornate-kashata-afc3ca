@@ -13853,6 +13853,539 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
   );
 }
 
+
+// ── Saved Messages (per-user private vault, opened from live-chat profile circle) ──
+const SAVED_MESSAGES_KEY_PREFIX = 'stooorna_saved_messages_v1_';
+type SavedMsgKind = 'text' | 'image' | 'video' | 'file' | 'location';
+type SavedMsg = {
+  id: string;
+  kind: SavedMsgKind;
+  text?: string | null;
+  mediaUrl?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  lat?: number | null;
+  lng?: number | null;
+  createdAt: number;
+};
+function savedMessagesKey(uid: string) {
+  return SAVED_MESSAGES_KEY_PREFIX + String(uid || 'anon');
+}
+function loadSavedMessages(uid: string): SavedMsg[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(savedMessagesKey(uid)) || '[]');
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((x: any) => x && x.id && x.kind)
+      .map((x: any) => ({
+        id: String(x.id),
+        kind: (['text', 'image', 'video', 'file', 'location'].includes(x.kind) ? x.kind : 'text') as SavedMsgKind,
+        text: x.text != null ? String(x.text).slice(0, 2000) : null,
+        mediaUrl: x.mediaUrl ?? null,
+        fileName: x.fileName ?? null,
+        fileSize: typeof x.fileSize === 'number' ? x.fileSize : null,
+        lat: typeof x.lat === 'number' ? x.lat : null,
+        lng: typeof x.lng === 'number' ? x.lng : null,
+        createdAt: Number(x.createdAt) || Date.now(),
+      }))
+      .slice(-500);
+  } catch {
+    return [];
+  }
+}
+function saveSavedMessages(uid: string, list: SavedMsg[]) {
+  try {
+    localStorage.setItem(savedMessagesKey(uid), JSON.stringify(list.slice(-500)));
+    window.dispatchEvent(new CustomEvent('stooorna:saved-messages', { detail: { uid, list } }));
+  } catch { /* */ }
+}
+
+/** Long-press → Delete with dust burst (same feel as temporary round video). */
+function SavedMsgDeleteFx({ enabled, onDelete, children }: {
+  enabled: boolean;
+  onDelete: () => void | Promise<void>;
+  children: React.ReactNode;
+}) {
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startRef = useRef({ x: 0, y: 0 });
+  const firedAtRef = useRef(0);
+  const mountedRef = useRef(true);
+  const [confirm, setConfirm] = useState(false);
+  const [bursting, setBursting] = useState(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; if (timerRef.current) clearTimeout(timerRef.current); };
+  }, []);
+  const clear = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
+  const onDown = (e: React.PointerEvent) => {
+    if (!enabled || bursting) return;
+    startRef.current = { x: e.clientX, y: e.clientY };
+    clear();
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      firedAtRef.current = Date.now();
+      try { navigator.vibrate?.(12); } catch { /* */ }
+      setConfirm(true);
+    }, 480);
+  };
+  const onMove = (e: React.PointerEvent) => {
+    if (!timerRef.current) return;
+    if (Math.hypot(e.clientX - startRef.current.x, e.clientY - startRef.current.y) > 10) clear();
+  };
+  const runDelete = () => {
+    setConfirm(false);
+    const el = boxRef.current;
+    if (!el) { void onDelete(); return; }
+    const rect = el.getBoundingClientRect();
+    const vid = el.querySelector('video') as HTMLVideoElement | null;
+    setBursting(true);
+    scRunDust(rect, vid, false, () => {
+      void Promise.resolve(onDelete()).finally(() => { if (mountedRef.current) setBursting(false); });
+    });
+  };
+  return (
+    <>
+      <div
+        ref={boxRef}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={clear}
+        onPointerCancel={clear}
+        onPointerLeave={clear}
+        onContextMenu={e => { if (enabled) e.preventDefault(); }}
+        onClickCapture={e => { if (Date.now() - firedAtRef.current < 700) { e.stopPropagation(); e.preventDefault(); } }}
+        style={{
+          display: 'block', position: 'relative', width: '100%',
+          visibility: bursting ? 'hidden' : 'visible',
+          userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+        } as React.CSSProperties}
+      >
+        {children}
+      </div>
+      {confirm && createPortal(
+        <div
+          onClick={() => setConfirm(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 2147483100, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#14191c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: '20px 18px 12px', width: '100%', maxWidth: 300, direction: 'rtl' }}
+          >
+            <p style={{ margin: '0 0 6px', color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>Delete</p>
+            <p style={{ margin: '0 0 14px', color: 'rgba(255,255,255,0.65)', fontSize: '0.82rem', lineHeight: 1.5 }}>متأكد تبي تحذف هذا العنصر؟</p>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-start' }}>
+              <button type="button" onClick={runDelete} style={{ background: 'none', border: 'none', color: '#ef4444', fontWeight: 700, fontSize: '0.88rem', padding: '8px 14px', cursor: 'pointer' }}>Delete</button>
+              <button type="button" onClick={() => setConfirm(false)} style={{ background: 'none', border: 'none', color: CLR_PRIMARY, fontWeight: 700, fontSize: '0.88rem', padding: '8px 14px', cursor: 'pointer' }}>إلغاء</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+function SavedMessagesScreen({
+  open,
+  onClose,
+  userId,
+  userName,
+  userUsername,
+  userAvatar,
+}: {
+  open: boolean;
+  onClose: () => void;
+  userId: string;
+  userName: string | null;
+  userUsername: string | null;
+  userAvatar: string | null;
+}) {
+  const [items, setItems] = useState<SavedMsg[]>(() => (userId ? loadSavedMessages(userId) : []));
+  const [text, setText] = useState('');
+  const [plusOpen, setPlusOpen] = useState(false);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const photoRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLInputElement | null>(null);
+  const fileRefSm = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!open || !userId) return;
+    setItems(loadSavedMessages(userId));
+  }, [open, userId]);
+
+  useEffect(() => {
+    if (!open) return;
+    const t = window.setTimeout(() => {
+      try { listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' }); } catch { /* */ }
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [open, items.length]);
+
+  const persist = (next: SavedMsg[]) => {
+    setItems(next);
+    if (userId) saveSavedMessages(userId, next);
+  };
+
+  const pushItem = (partial: Omit<SavedMsg, 'id' | 'createdAt'>) => {
+    if (!userId) return;
+    const row: SavedMsg = {
+      ...partial,
+      id: `sm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: Date.now(),
+    };
+    persist([...loadSavedMessages(userId), row]);
+  };
+
+  const removeItem = (id: string) => {
+    if (!userId) return;
+    persist(loadSavedMessages(userId).filter(x => x.id !== id));
+  };
+
+  const sendText = () => {
+    const t = text.trim();
+    if (!t) return;
+    pushItem({ kind: 'text', text: t });
+    setText('');
+  };
+
+  const readFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('read failed'));
+    };
+    reader.onerror = () => reject(reader.error || new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
+
+  const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const url = await readFileAsDataUrl(file);
+      pushItem({ kind: 'image', mediaUrl: url, fileName: file.name, fileSize: file.size });
+    } catch { /* */ }
+  };
+  const onPickVideo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const url = await readFileAsDataUrl(file);
+      pushItem({ kind: 'video', mediaUrl: url, fileName: file.name, fileSize: file.size });
+    } catch { /* */ }
+  };
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const url = await readFileAsDataUrl(file);
+      pushItem({ kind: 'file', mediaUrl: url, fileName: file.name, fileSize: file.size, text: file.name });
+    } catch { /* */ }
+  };
+  const addLocation = () => {
+    if (!navigator.geolocation) {
+      pushItem({ kind: 'location', text: 'Location unavailable', lat: null, lng: null });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        pushItem({
+          kind: 'location',
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          text: `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`,
+        });
+      },
+      () => pushItem({ kind: 'location', text: 'Location denied', lat: null, lng: null }),
+      { enableHighAccuracy: true, timeout: 12000 },
+    );
+  };
+
+  if (!open) return null;
+
+  return createPortal(
+    <AnimatePresence>
+      {open ? (
+        <motion.div
+          key="saved-messages-screen"
+          initial={{ y: '100%', opacity: 0.6 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: '100%', opacity: 0.4 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.85 }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 120050,
+            background: 'linear-gradient(180deg, #f4f6f8 0%, #eef1f4 40%, #e8ecf0 100%)',
+            display: 'flex', flexDirection: 'column',
+            color: '#111',
+            pointerEvents: 'auto',
+          }}
+        >
+          {/* Top-center pill: profile circle + Saved Messages */}
+          <div
+            style={{
+              flexShrink: 0,
+              paddingTop: 'max(10px, env(safe-area-inset-top))',
+              paddingBottom: 8,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              background: 'transparent',
+              position: 'relative',
+              zIndex: 2,
+            }}
+          >
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close Saved Messages"
+              title="Close"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '6px 18px 6px 6px',
+                borderRadius: 999,
+                border: 'none',
+                background: 'linear-gradient(180deg, #ffffff 0%, #f3f5f7 100%)',
+                boxShadow: '0 4px 18px rgba(0,0,0,0.12), 0 1px 0 rgba(255,255,255,0.9) inset',
+                cursor: 'pointer',
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              <span style={{
+                width: 34, height: 34, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: '#00BCD4',
+                boxShadow: '0 0 0 2px rgba(0,188,212,0.25)',
+              }}>
+                <UserAvatar
+                  name={userName || userUsername || '?'}
+                  avatarUrl={userAvatar}
+                  size={34}
+                  style={{ border: 'none' }}
+                />
+              </span>
+              <span style={{
+                fontWeight: 700,
+                fontSize: '0.95rem',
+                color: '#1a1a1a',
+                letterSpacing: '-0.01em',
+                whiteSpace: 'nowrap',
+              }}>
+                Saved Messages
+              </span>
+            </button>
+          </div>
+
+          <div
+            ref={listRef}
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              padding: '8px 14px 12px',
+              WebkitOverflowScrolling: 'touch',
+            }}
+          >
+            {items.length === 0 ? (
+              <div style={{
+                marginTop: 48, textAlign: 'center', color: 'rgba(0,0,0,0.38)',
+                fontSize: '0.88rem', fontWeight: 600, lineHeight: 1.5,
+              }}>
+                <Bookmark size={28} strokeWidth={1.6} style={{ margin: '0 auto 10px', opacity: 0.45 }} />
+                <p style={{ margin: 0 }}>لا رسائل محفوظة بعد</p>
+                <p style={{ margin: '6px 0 0', fontSize: '0.78rem', fontWeight: 500 }}>
+                  احفظ نصوصك وصورك وملفاتك هنا — خاصة بك فقط
+                </p>
+              </div>
+            ) : null}
+            {items.map(m => (
+              <SavedMsgDeleteFx key={m.id} enabled onDelete={() => removeItem(m.id)}>
+                <div
+                  style={{
+                    marginBottom: 10,
+                    maxWidth: '88%',
+                    marginLeft: 'auto',
+                    background: '#fff',
+                    borderRadius: 14,
+                    border: '1px solid rgba(0,0,0,0.06)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                    padding: '10px 12px',
+                    direction: 'rtl',
+                  }}
+                >
+                  {m.kind === 'text' && (
+                    <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#111' }}>{m.text}</p>
+                  )}
+                  {m.kind === 'image' && m.mediaUrl && (
+                    <img src={m.mediaUrl} alt="" style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
+                  )}
+                  {m.kind === 'video' && m.mediaUrl && (
+                    <video src={m.mediaUrl} controls playsInline style={{ width: '100%', maxHeight: 280, borderRadius: 10, background: '#000', display: 'block' }} />
+                  )}
+                  {m.kind === 'file' && (
+                    <a
+                      href={m.mediaUrl || '#'}
+                      download={m.fileName || 'file'}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#0b3a82', textDecoration: 'none', fontWeight: 700, fontSize: '0.88rem' }}
+                    >
+                      <FileText size={20} />
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {m.fileName || m.text || 'File'}
+                      </span>
+                      {m.fileSize != null ? (
+                        <span style={{ color: 'rgba(0,0,0,0.4)', fontWeight: 600, fontSize: '0.72rem' }}>
+                          {m.fileSize < 1024 * 1024 ? `${Math.round(m.fileSize / 1024)} KB` : `${(m.fileSize / (1024 * 1024)).toFixed(1)} MB`}
+                        </span>
+                      ) : null}
+                    </a>
+                  )}
+                  {m.kind === 'location' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <MapPin size={20} color="#ef4444" />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontWeight: 800, fontSize: '0.88rem', color: '#111' }}>Location</p>
+                        <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'rgba(0,0,0,0.5)', fontWeight: 600 }}>
+                          {m.text || (m.lat != null && m.lng != null ? `${m.lat}, ${m.lng}` : '—')}
+                        </p>
+                      </div>
+                      {m.lat != null && m.lng != null ? (
+                        <a
+                          href={`https://maps.google.com/?q=${m.lat},${m.lng}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.75rem', textDecoration: 'none' }}
+                        >
+                          Map
+                        </a>
+                      ) : null}
+                    </div>
+                  )}
+                  <p style={{ margin: '6px 0 0', fontSize: '0.68rem', color: 'rgba(0,0,0,0.35)', fontWeight: 600, textAlign: 'left', direction: 'ltr' }}>
+                    {new Date(m.createdAt).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                  </p>
+                </div>
+              </SavedMsgDeleteFx>
+            ))}
+          </div>
+
+          <div
+            style={{
+              flexShrink: 0,
+              borderTop: '1px solid #e5e7eb',
+              background: '#fff',
+              padding: '8px 12px max(10px, env(safe-area-inset-bottom))',
+              position: 'relative',
+            }}
+          >
+            <input ref={photoRef} type="file" accept="image/*" hidden onChange={onPickPhoto} />
+            <input ref={videoRef} type="file" accept="video/*" hidden onChange={onPickVideo} />
+            <input ref={fileRefSm} type="file" hidden onChange={onPickFile} />
+            {plusOpen ? (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  bottom: 'calc(100% + 6px)',
+                  zIndex: 5,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                  padding: 8,
+                  borderRadius: 16,
+                  background: '#fff',
+                  border: '1px solid #e5e7eb',
+                  boxShadow: '0 12px 28px rgba(0,0,0,0.14)',
+                }}
+              >
+                {([
+                  { key: 'video', label: 'Video', icon: <Video size={18} strokeWidth={2.2} />, run: () => videoRef.current?.click() },
+                  { key: 'photo', label: 'Photo', icon: <ImageIcon size={18} strokeWidth={2.2} />, run: () => photoRef.current?.click() },
+                  { key: 'file', label: 'File', icon: <FileText size={18} strokeWidth={2.2} />, run: () => fileRefSm.current?.click() },
+                  { key: 'location', label: 'Location', icon: <MapPin size={18} strokeWidth={2.2} />, run: () => addLocation() },
+                ] as { key: string; label: string; icon: React.ReactNode; run: () => void }[]).map(it => (
+                  <button
+                    key={it.key}
+                    type="button"
+                    onClick={() => { setPlusOpen(false); it.run(); }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 14px', borderRadius: 12, border: 'none',
+                      background: '#f7f7f8', color: '#111', fontWeight: 700, fontSize: '0.86rem',
+                      cursor: 'pointer', minWidth: 140, textAlign: 'left',
+                    }}
+                  >
+                    <span style={{ width: 28, height: 28, borderRadius: 8, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0b3a82' }}>
+                      {it.icon}
+                    </span>
+                    {it.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                type="button"
+                aria-label="Attach"
+                onClick={() => setPlusOpen(v => !v)}
+                style={{
+                  width: 36, height: 36, borderRadius: '50%', border: '1px solid #d4d4d4',
+                  background: plusOpen ? '#111' : '#f7f7f8', color: plusOpen ? '#fff' : '#111',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
+                }}
+              >
+                <Plus size={18} strokeWidth={2.4} />
+              </button>
+              <div style={{
+                flex: 1, minWidth: 0, display: 'flex', alignItems: 'center',
+                border: '1px solid #d4d4d4', borderRadius: 999, padding: '4px 8px 4px 14px',
+                minHeight: 38, background: '#fff',
+              }}>
+                <input
+                  ref={inputRef}
+                  value={text}
+                  onChange={e => setText(e.target.value.slice(0, 2000))}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendText();
+                    }
+                  }}
+                  placeholder="Message…"
+                  style={{
+                    flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
+                    fontSize: '0.9rem', color: '#111', padding: '6px 0',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={sendText}
+                  disabled={!text.trim()}
+                  style={{
+                    width: 32, height: 32, borderRadius: '50%', border: 'none', flexShrink: 0,
+                    background: text.trim() ? '#ef4444' : 'transparent',
+                    color: text.trim() ? '#fff' : 'rgba(0,0,0,0.25)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: text.trim() ? 'pointer' : 'default',
+                  }}
+                >
+                  <Send size={15} strokeWidth={2.4} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>,
+    document.body,
+  );
+}
+
 // ── Public LIVE comments on the story/home page (under header grabber) ────────
 // Instagram-style list: avatar + @user + text, like on the far right.
 // Bottom: quick reactions + composer with profile photo, image attach, emoji (replaces GIF).
@@ -15696,6 +16229,7 @@ function PublicLiveCommentsPanel({
   const [, setEmojiOpen] = useState(false);
   const [composerDock, setComposerDock] = useState<'none' | 'emoji' | 'gallery' | 'voice'>('none');
   const [plusOpen, setPlusOpen] = useState(false);   // "+" bubble that holds Photos / Voice / Emoji / Video AI
+  const [savedOpen, setSavedOpen] = useState(false);
   const [emojiCat, setEmojiCat] = useState(0);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingVoice, setPendingVoice] = useState<{ url: string; duration: number } | null>(null);
@@ -16667,12 +17201,28 @@ function PublicLiveCommentsPanel({
           width: '100%',
           maxWidth: '100%',
         }}>
-          <UserAvatar
-            name={myName || myUsername || '?'}
-            avatarUrl={myAvatar}
-            size={34}
-            style={{ flexShrink: 0, border: 'none' }}
-          />
+          <button
+            type="button"
+            aria-label="Saved Messages"
+            title="Saved Messages"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!myId) return;
+              setSavedOpen(true);
+            }}
+            style={{
+              flexShrink: 0, padding: 0, border: 'none', background: 'transparent',
+              cursor: myId ? 'pointer' : 'default', borderRadius: '50%',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            <UserAvatar
+              name={myName || myUsername || '?'}
+              avatarUrl={myAvatar}
+              size={34}
+              style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }}
+            />
+          </button>
           <div style={{
             flex: '1 1 0%',
             minWidth: 0,
@@ -16986,6 +17536,14 @@ function PublicLiveCommentsPanel({
         sheetMode
       />
     ) : null}
+    <SavedMessagesScreen
+      open={savedOpen}
+      onClose={() => setSavedOpen(false)}
+      userId={myId}
+      userName={myName}
+      userUsername={myUsername}
+      userAvatar={myAvatar}
+    />
     </>,
     document.body
   );
