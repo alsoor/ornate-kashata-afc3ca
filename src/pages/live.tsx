@@ -44,6 +44,7 @@ import {
 } from '@/lib/liveRoomStage';
 import { getVipMaxSpeakers, isVip } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
+import { LiveCoinsDock } from '@/components/LiveCoinsDock';
 import { VipAvatarFrame, VipBadge } from '@/components/VipBadge';
 
 const AGORA_APP_ID = '149ef04e839c4132a08efb49d717c436';
@@ -2526,6 +2527,7 @@ export default function LivePage() {
         )}
       </AnimatePresence>
       <LiveVipDock hostId={hostId} currentUserId={myId} />
+      <LiveCoinsDock hostId={hostId} currentUserId={myId} />
     </div>
   );
 }
