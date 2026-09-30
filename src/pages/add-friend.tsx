@@ -14019,6 +14019,8 @@ function SavedMessagesScreen({
   const [plusOpen, setPlusOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
+  /** Full-screen media: first tap opens, second tap closes. kind image | video */
+  const [mediaView, setMediaView] = useState<{ kind: 'image' | 'video'; url: string } | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const photoRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLInputElement | null>(null);
@@ -14344,10 +14346,69 @@ function SavedMessagesScreen({
                     <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#111' }}>{m.text}</p>
                   )}
                   {m.kind === 'image' && m.mediaUrl && (
-                    <img src={m.mediaUrl} alt="" style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setMediaView({ kind: 'image', url: m.mediaUrl! });
+                      }}
+                      style={{
+                        display: 'block', width: '100%', padding: 0, border: 'none', background: 'none',
+                        cursor: 'pointer', borderRadius: 10, overflow: 'hidden',
+                        WebkitTapHighlightColor: 'transparent',
+                      }}
+                    >
+                      <img
+                        src={m.mediaUrl}
+                        alt=""
+                        draggable={false}
+                        style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 10, display: 'block', pointerEvents: 'none' }}
+                      />
+                    </button>
                   )}
                   {m.kind === 'video' && m.mediaUrl && (
-                    <video src={m.mediaUrl} controls playsInline preload="metadata" style={{ width: '100%', maxHeight: 280, borderRadius: 10, background: '#000', display: 'block' }} />
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setMediaView({ kind: 'video', url: m.mediaUrl! });
+                      }}
+                      style={{
+                        display: 'block', width: '100%', padding: 0, border: 'none', background: '#000',
+                        cursor: 'pointer', borderRadius: 10, overflow: 'hidden', position: 'relative',
+                        WebkitTapHighlightColor: 'transparent',
+                      }}
+                    >
+                      {/* No native controls — thumbnail only; full player opens on tap */}
+                      <video
+                        src={m.mediaUrl}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        controls={false}
+                        disablePictureInPicture
+                        controlsList="nodownload nofullscreen noremoteplayback"
+                        style={{
+                          width: '100%', maxHeight: 280, borderRadius: 10, background: '#000',
+                          display: 'block', pointerEvents: 'none', objectFit: 'cover',
+                        }}
+                      />
+                      <span
+                        aria-hidden
+                        style={{
+                          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        <span style={{
+                          width: 52, height: 52, borderRadius: '50%',
+                          background: 'rgba(0,0,0,0.45)', border: '2px solid rgba(255,255,255,0.85)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <Play size={22} color="#fff" fill="#fff" style={{ marginLeft: 3 }} />
+                        </span>
+                      </span>
+                    </button>
                   )}
                   {m.kind === 'file' && (
                     <a
@@ -14394,6 +14455,52 @@ function SavedMessagesScreen({
               </SavedMsgDeleteFx>
             ))}
           </div>
+
+          {/* Full-screen media: first tap opened it; second tap anywhere closes */}
+          {mediaView ? (
+            <div
+              role="dialog"
+              aria-modal="true"
+              onClick={() => setMediaView(null)}
+              onTouchStart={e => e.stopPropagation()}
+              onTouchMove={e => e.stopPropagation()}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 130000,
+                background: 'rgba(0,0,0,0.96)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              {mediaView.kind === 'image' ? (
+                <img
+                  src={mediaView.url}
+                  alt=""
+                  draggable={false}
+                  onClick={e => { e.stopPropagation(); setMediaView(null); }}
+                  style={{
+                    maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto',
+                    objectFit: 'contain', display: 'block',
+                  }}
+                />
+              ) : (
+                <video
+                  src={mediaView.url}
+                  autoPlay
+                  playsInline
+                  controls={false}
+                  disablePictureInPicture
+                  controlsList="nodownload nofullscreen noremoteplayback"
+                  onClick={e => { e.stopPropagation(); setMediaView(null); }}
+                  onEnded={() => { /* stay open until second tap */ }}
+                  style={{
+                    maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto',
+                    objectFit: 'contain', display: 'block', background: '#000',
+                  }}
+                />
+              )}
+            </div>
+          ) : null}
 
           {toast ? (
             <div style={{
