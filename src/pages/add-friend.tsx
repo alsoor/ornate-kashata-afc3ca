@@ -95,6 +95,7 @@ import { GuestLiveStack, GUEST_SIGNIN_LABEL, GUEST_HEADER_LOCKED, readGuestLang,
 import PostTextMore from '@/components/PostTextMore';
 import { publishFeedPost, uploadPostMedia, deleteStoryInstant } from '@/lib/postStoryPatch';
 import { mediaAiProcessGalleryFiles, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
+import { publishLiveChatRoundVideo, normalizeLiveChatMediaFields, extractLiveChatMediaUrl, makeLiveChatRoundText } from '@/lib/liveChatVideoPatch';
 import { StoryModerationBell, StoryModerateDialog, StoryBanModal, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
 
@@ -14794,22 +14795,36 @@ function normalizeLiveChatRows(raw: unknown): PublicLiveComment[] {
       : (raw && typeof raw === 'object' && Array.isArray((raw as any).messages) ? (raw as any).messages
         : (raw && typeof raw === 'object' && Array.isArray((raw as any).list) ? (raw as any).list : [])));
   return arr
-    .filter((x: any) => x && (x.id || x.text || x.body || x.voiceUrl))
-    .map((x: any) => ({
-      id: String(x.id || `srv_${x.createdAt || x.at || Date.now()}`),
-      userId: String(x.userId || x.senderId || x.fromId || ''),
-      name: x.name ?? x.authorName ?? null,
-      username: x.username ?? x.authorUsername ?? null,
-      avatarUrl: x.avatarUrl ?? x.authorAvatar ?? x.image ?? null,
-      text: String(x.text || x.body || '').slice(0, 500),
-      imageUrl: x.imageUrl ?? null,
-      voiceUrl: x.voiceUrl ?? null,
-      voiceDuration: x.voiceDuration ?? x.duration ?? null,
-      likes: Array.isArray(x.likes) ? x.likes.map(String) : [],
-      createdAt: Number(x.createdAt || x.at || Date.parse(x.created_at || '') || Date.now()),
-      editCount: Math.max(0, Number(x.editCount || x.edits || 0) || 0),
-    }))
-    .filter(x => x.text)
+    .map((x: any) => {
+      try {
+        const n = normalizeLiveChatMediaFields(x);
+        if (n) return n as PublicLiveComment;
+      } catch { /* fall through */ }
+      const imageUrl =
+        (typeof x?.imageUrl === 'string' && x.imageUrl) ||
+        (typeof x?.mediaUrl === 'string' && x.mediaUrl) ||
+        (typeof x?.videoUrl === 'string' && x.videoUrl) ||
+        (typeof x?.url === 'string' && x.url) ||
+        null;
+      const text = String(x?.text || x?.body || '').slice(0, 500);
+      const voiceUrl = x?.voiceUrl ?? null;
+      if (!x || (!x.id && !text && !imageUrl && !voiceUrl)) return null;
+      return {
+        id: String(x.id || `srv_${x.createdAt || x.at || Date.now()}`),
+        userId: String(x.userId || x.senderId || x.fromId || ''),
+        name: x.name ?? x.authorName ?? null,
+        username: x.username ?? x.authorUsername ?? null,
+        avatarUrl: x.avatarUrl ?? x.authorAvatar ?? x.image ?? null,
+        text,
+        imageUrl,
+        voiceUrl,
+        voiceDuration: x.voiceDuration ?? x.duration ?? null,
+        likes: Array.isArray(x.likes) ? x.likes.map(String) : [],
+        createdAt: Number(x.createdAt || x.at || Date.parse(x.created_at || '') || Date.now()),
+        editCount: Math.max(0, Number(x.editCount || x.edits || 0) || 0),
+      } as PublicLiveComment;
+    })
+    .filter((x): x is PublicLiveComment => !!x && !!(x.text || x.voiceUrl || x.imageUrl))
     .slice(-400);
 }
 
@@ -17009,9 +17024,10 @@ function PublicLiveCommentsPanel({
     if (!myId) return;
     const id = `plc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const localUrl = URL.createObjectURL(blob);
+    const marker = makeLiveChatRoundText(!!once, seconds);
     const row: PublicLiveComment = {
       id, userId: myId, name: myName, username: myUsername, avatarUrl: myAvatar,
-      text: makeRoundText(once ? 'once' : 'normal', seconds),
+      text: marker,
       imageUrl: localUrl, voiceUrl: null, voiceDuration: null, likes: [], createdAt: Date.now(),
     };
     pendingRoundRef.current.add(id);
@@ -17019,20 +17035,31 @@ function PublicLiveCommentsPanel({
     savePublicLiveComments(withRow);
     setComments(withRow);
     void (async () => {
-      const up = await uploadLiveRoundVideo(blob, myId);
-      const url = up.url;
+      // Dedicated independent patch — upload + post for all live-chat clients
+      const pub = await publishLiveChatRoundVideo({
+        id,
+        userId: myId,
+        name: myName,
+        username: myUsername,
+        avatarUrl: myAvatar,
+        blob,
+        seconds,
+        once: !!once,
+        room: LIVE_CHAT_ROOM,
+      });
       pendingRoundRef.current.delete(id);
-      if (!url) {
+      if (!pub.ok || !pub.url) {
         const list = loadPublicLiveComments().filter(x => x.id !== id);
         savePublicLiveComments(list);
         setComments(list);
-        showRoundToast(`Couldn't upload the video${up.err ? ` (${up.err})` : ''}. Try again.`);
+        showRoundToast(`Couldn't upload the video${pub.err ? ` (${pub.err})` : ''}. Try again.`);
         return;
       }
-      const send: PublicLiveComment = { ...row, imageUrl: url };
+      const send: PublicLiveComment = { ...row, imageUrl: pub.url, text: marker };
       const list = loadPublicLiveComments().map(x => (x.id === id ? send : x));
       savePublicLiveComments(list);
       setComments(list);
+      // Also echo via existing poster (idempotent same id)
       await postLiveChatToServer(send);
     })();
   };
