@@ -24825,8 +24825,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           <div data-stooorna-header-grabber="1" style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
             <motion.button
               whileTap={{ scale: 0.9 }}
-              onClick={toggleHeaderOpen}
-              aria-label={headerOpen ? 'Hide header' : 'Show header'}
+              onClick={() => { if (!headerOpen) toggleHeaderOpen(); }}
+              aria-label={headerOpen ? 'Header grabber' : 'Show header'}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
                 padding: '8px 30px',
@@ -24881,8 +24881,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             position: 'fixed', left: 0, right: 0, bottom: 0,
             // تحت مربعات الأقسام (الأصدقاء 10080، الاتصال، البث) عشان ما تتضارب معه، وفوق الشات (15/40)
             zIndex: 10070,
-            display: 'flex', justifyContent: 'center',
-            padding: '8px 0 calc(8px + env(safe-area-inset-bottom, 0px))',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '8px 14px calc(8px + env(safe-area-inset-bottom, 0px)) 12px',
             background: 'rgba(4,12,12,0.96)',
             backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
             borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
@@ -25228,6 +25228,34 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 </div>
 )}
                 </div>
+                {/* ── أيقونة التطبيق: بدون إطار، تدور ببطء. النقر عليها هو الوحيد الذي يرفع الشيت ويفتح صفحة الشات/الصور/الفيديوهات ── */}
+                {!guestMode && (
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.88 }}
+                    onClick={() => {
+                      setDockBubble(null);
+                      if (headerOpen) toggleHeaderOpen();
+                    }}
+                    aria-label="Open chat and posts"
+                    title="Open"
+                    style={{
+                      width: 54, height: 54, padding: 0, margin: '0 6px 0 0', flexShrink: 0,
+                      border: 'none', background: 'transparent', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      WebkitTapHighlightColor: 'transparent',
+                    }}
+                  >
+                    <motion.img
+                      src="/icons/icon-192.png"
+                      alt=""
+                      draggable={false}
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 16, repeat: Infinity, ease: 'linear' }}
+                      style={{ width: 46, height: 46, objectFit: 'contain', display: 'block', pointerEvents: 'none', userSelect: 'none' }}
+                    />
+                  </motion.button>
+                )}
           </div>
           </BottomHeaderPortal>
         )}
