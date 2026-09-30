@@ -14277,6 +14277,676 @@ const parseMediaComment = (text: string): { parentId: string; body: string } | n
   return m ? { parentId: m[1], body: m[2] } : null;
 };
 
+// ═══════════════ Live Chat — round video / voice recorder (Telegram-style) ═══════════════
+// A round video travels as a NORMAL live-chat row (no server change needed):
+//   imageUrl = uploaded video URL, text = invisible marker "○\u200bRV\u200b<once|normal>\u200b<seconds>".
+// "Seen" (view-once) and "deleted" states are also normal rows / edits, so every device stays in sync.
+const LIVE_ROUND_MAX_S = 30;                 // max round-video length
+const LIVE_VOICE_MAX_S = 180;                // max voice-note length
+const LIVE_ROUND_MIN_MS = 800;               // shorter holds are discarded
+const LIVE_ROUND_TAG = '\u25CB\u200bRV';
+const LIVE_ROUND_GONE = `${LIVE_ROUND_TAG}D`;
+const LIVE_ROUND_RE = /^\u25CB\u200bRV\u200b(once|normal)\u200b(\d{1,3})$/;
+const LIVE_ROUND_SEEN_RE = /^\u25CB\u200bRVS\u200b(.+)$/;
+const LIVE_ROUND_LOCAL_KEY = 'stooorna_live_round_local_v1';
+const LIVE_ROUND_MODE_KEY = 'stooorna_live_rec_mode_v1';
+const LIVE_ROUND_ONCE_KEY = 'stooorna_live_rec_once_v1';
+
+const makeRoundText = (mode: 'once' | 'normal', seconds: number) => `${LIVE_ROUND_TAG}\u200b${mode}\u200b${Math.max(1, Math.round(seconds))}`;
+const roundSeenText = (id: string) => `${LIVE_ROUND_TAG}S\u200b${id}`;
+const parseRoundVideo = (c: { imageUrl?: string | null; text: string }): { mode: 'once' | 'normal'; duration: number } | null => {
+  if (!c.imageUrl) return null;
+  const m = LIVE_ROUND_RE.exec(String(c.text || ''));
+  return m ? { mode: m[1] as 'once' | 'normal', duration: Number(m[2]) || 0 } : null;
+};
+const parseRoundSeen = (text: string): string | null => {
+  const m = LIVE_ROUND_SEEN_RE.exec(String(text || ''));
+  return m ? m[1] : null;
+};
+/** Rows that must never show as chat messages: "seen" receipts and deleted round videos. */
+const isRoundHiddenRow = (c: { id: string; text: string }, gone: string[]) =>
+  c.text === LIVE_ROUND_GONE || LIVE_ROUND_SEEN_RE.test(String(c.text || '')) || gone.includes(c.id);
+
+type RoundLocal = { seen: string[]; gone: string[] };
+function roundLocalGet(uid: string): RoundLocal {
+  try {
+    const j = JSON.parse(localStorage.getItem(`${LIVE_ROUND_LOCAL_KEY}:${uid}`) || '{}');
+    return {
+      seen: Array.isArray(j.seen) ? j.seen.map(String).slice(-500) : [],
+      gone: Array.isArray(j.gone) ? j.gone.map(String).slice(-500) : [],
+    };
+  } catch { return { seen: [], gone: [] }; }
+}
+function roundLocalAdd(uid: string, kind: 'seen' | 'gone', id: string) {
+  try {
+    const s = roundLocalGet(uid);
+    if (!s[kind].includes(id)) s[kind].push(id);
+    localStorage.setItem(`${LIVE_ROUND_LOCAL_KEY}:${uid}`, JSON.stringify({ seen: s.seen.slice(-500), gone: s.gone.slice(-500) }));
+  } catch { /* */ }
+}
+
+const fmtRecTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+/** Uploads a recorded round video; returns its public URL (or null when every upload route failed). */
+async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<string | null> {
+  const isMp4 = /mp4/i.test(blob.type);
+  const ext = isMp4 ? 'mp4' : 'webm';
+  const file = new File([blob], `round_${Date.now()}.${ext}`, { type: blob.type || (isMp4 ? 'video/mp4' : 'video/webm') });
+  const pick = (d: any): string | null => {
+    const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path || d?.publicUrl || d?.src || d?.data?.url || d?.data?.mediaUrl
+      || d?.file?.url || d?.media?.url || d?.location || d?.href;
+    if (typeof u !== 'string' || u.length < 3 || /airo-assets/i.test(u)) return null;
+    if (/^(https?:)?\/\//i.test(u) || u.startsWith('/')) return u;
+    return `/${u.replace(/^\/+/, '')}`;
+  };
+  const mk = (endpoint: string, extra?: Record<string, string>) => () => {
+    const fd = new FormData();
+    if (extra) Object.keys(extra).forEach(k => fd.append(k, extra[k]));
+    fd.append('file', file, file.name);
+    return fetch(endpoint, { method: 'POST', credentials: 'include', body: fd });
+  };
+  const attempts: Array<() => Promise<Response>> = [
+    mk('/api/posts/media', { type: 'video', mediaType: 'video' }),
+    mk('/api/upload', { type: 'video', mediaType: 'video' }),
+    mk('/api/media', { type: 'video', mediaType: 'video' }),
+    mk(VIDEO_SWAP_ENDPOINT, { userId, kind: 'video' }),
+  ];
+  for (const run of attempts) {
+    try {
+      const r = await run();
+      if (!r.ok) continue;
+      const loc = r.headers.get('location') || r.headers.get('x-file-url') || r.headers.get('x-media-url');
+      if (loc) return loc;
+      const ct = (r.headers.get('content-type') || '').toLowerCase();
+      if (ct.includes('application/json')) {
+        const u = pick(await r.json());
+        if (u) return u;
+      }
+    } catch { /* next route */ }
+  }
+  return null;
+}
+
+/** Telegram-style "dust" delete: the element is wiped left→right while its pixels break into particles and blow away. */
+function liveDustDelete(el: HTMLElement, done: () => void) {
+  const reduce = (() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } })();
+  const r = el.getBoundingClientRect();
+  if (reduce || r.width < 8 || r.height < 8) { done(); return; }
+  const pad = 70;
+  const cw = Math.ceil(r.width + pad * 2);
+  const ch = Math.ceil(r.height + pad * 2);
+  const canvas = document.createElement('canvas');
+  canvas.width = cw;
+  canvas.height = ch;
+  Object.assign(canvas.style, {
+    position: 'fixed', left: `${r.left - pad}px`, top: `${r.top - pad}px`, width: `${cw}px`, height: `${ch}px`,
+    pointerEvents: 'none', zIndex: '100002',
+  });
+  const ctx = canvas.getContext('2d');
+  if (!ctx) { done(); return; }
+  document.body.appendChild(canvas);
+  const W = Math.round(r.width);
+  const H = Math.round(r.height);
+  let data: Uint8ClampedArray | null = null;
+  try {
+    const media = el.querySelector('video') as HTMLVideoElement | null;
+    if (media && media.readyState >= 2) {
+      const off = document.createElement('canvas');
+      off.width = W;
+      off.height = H;
+      const octx = off.getContext('2d');
+      if (octx) {
+        octx.drawImage(media, 0, 0, W, H);
+        data = octx.getImageData(0, 0, W, H).data;   // throws when the video is cross-origin (tainted) → palette fallback
+      }
+    }
+  } catch { data = null; }
+  const palette = ['#e5e7eb', '#9ca3af', '#6b7280', '#4b5563', '#1f2937'];
+  type P = { x: number; y: number; c: string; d: number; vx: number; vy: number; s: number; l: number };
+  const ps: P[] = [];
+  const step = 3;
+  const cx = W / 2;
+  const cy = H / 2;
+  const rad = Math.min(W, H) / 2;
+  for (let y = 0; y < H; y += step) {
+    for (let x = 0; x < W; x += step) {
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx * dx + dy * dy > rad * rad) continue;
+      let col: string;
+      if (data) {
+        const i = (y * W + x) * 4;
+        col = `rgb(${data[i]},${data[i + 1]},${data[i + 2]})`;
+      } else {
+        col = palette[(Math.random() * palette.length) | 0];
+      }
+      ps.push({
+        x: pad + x, y: pad + y, c: col,
+        d: (x / W) * 0.9 + Math.random() * 0.08,
+        vx: 30 + Math.random() * 90, vy: -(20 + Math.random() * 90),
+        s: 1.6 + Math.random() * 1.6, l: 0.7 + Math.random() * 0.6,
+      });
+    }
+  }
+  const style = el.style as CSSStyleDeclaration & { webkitMaskImage?: string; maskImage?: string };
+  el.style.pointerEvents = 'none';
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    try { canvas.remove(); } catch { /* */ }
+    done();
+  };
+  const T0 = performance.now();
+  const tick = (now: number) => {
+    if (finished) return;
+    const t = (now - T0) / 1000;
+    ctx.clearRect(0, 0, cw, ch);
+    const edge = Math.min(1.25, t / 0.9);
+    const mask = `linear-gradient(90deg, transparent ${(edge - 0.12) * 100}%, #000 ${edge * 100}%)`;
+    style.webkitMaskImage = mask;
+    style.maskImage = mask;
+    for (const p of ps) {
+      const lt = t - p.d;
+      if (lt < 0 || lt > p.l) continue;
+      const k = lt / p.l;
+      const x = p.x + p.vx * lt + Math.sin(lt * 9 + p.y * 0.3) * 4 * k;
+      const y = p.y + p.vy * lt + Math.cos(lt * 7 + p.x * 0.2) * 3 * k;
+      ctx.globalAlpha = 1 - k * k;
+      ctx.fillStyle = p.c;
+      ctx.fillRect(x, y, p.s, p.s);
+    }
+    ctx.globalAlpha = 1;
+    if (t > 2.4) { finish(); return; }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  window.setTimeout(finish, 3500);   // safety net
+}
+
+function LiveOnceIcon({ size = 18, color = 'currentColor' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="9.5" stroke={color} strokeWidth="1.8" strokeDasharray="3.2 2.6" />
+      <text x="12" y="16.2" textAnchor="middle" fontSize="11.5" fontWeight="800" fill={color} fontFamily="system-ui, sans-serif">1</text>
+    </svg>
+  );
+}
+
+/** Round video inside the chat list. "once" videos never load in the bubble — they open in a full-screen viewer, one time per user. */
+function LiveRoundBubble({ url, mode, duration, isMe, seen, seenCount, uploading, onOpenOnce, onDelete }: {
+  url: string;
+  mode: 'once' | 'normal';
+  duration: number;
+  isMe: boolean;
+  seen: boolean;
+  seenCount: number;
+  uploading: boolean;
+  onOpenOnce: () => void;
+  onDelete: (el: HTMLElement) => void;
+}) {
+  const SIZE = 168;
+  const circleRef = useRef<HTMLDivElement | null>(null);
+  const vidRef = useRef<HTMLVideoElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [prog, setProg] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+  const once = mode === 'once';
+  const toggle = () => {
+    if (uploading || deleting) return;
+    if (once) { if (!isMe && !seen) onOpenOnce(); return; }
+    const v = vidRef.current;
+    if (!v) return;
+    if (playing) { v.pause(); setPlaying(false); return; }
+    v.muted = false;
+    if (v.ended) v.currentTime = 0;
+    void v.play().then(() => setPlaying(true)).catch(() => { /* */ });
+  };
+  const RR = SIZE / 2 + 3;
+  const CIRC = 2 * Math.PI * RR;
+  const overlayBase: React.CSSProperties = {
+    position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
+    color: '#fff', textAlign: 'center', fontSize: '0.72rem', fontWeight: 800,
+  };
+  return (
+    <div style={{ marginTop: 6, display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+      <style>{'@keyframes lrPulse{0%,100%{opacity:.55}50%{opacity:1}}'}</style>
+      <div style={{ position: 'relative', width: SIZE, height: SIZE }}>
+        <div
+          ref={circleRef}
+          role="button"
+          aria-label={once ? 'Round video (view once)' : 'Round video'}
+          onClick={e => { e.stopPropagation(); toggle(); }}
+          onContextMenu={e => e.preventDefault()}
+          style={{
+            width: SIZE, height: SIZE, borderRadius: '50%', overflow: 'hidden', position: 'relative', cursor: 'pointer',
+            background: once ? 'radial-gradient(circle at 30% 28%, #4b5563 0%, #111827 75%)' : '#111',
+            WebkitTapHighlightColor: 'transparent', userSelect: 'none',
+          }}
+        >
+          {!once ? (
+            <video
+              ref={vidRef}
+              src={url.startsWith('blob:') ? url : `${url}#t=0.1`}
+              preload="metadata"
+              playsInline
+              disablePictureInPicture
+              controlsList="nodownload noplaybackrate"
+              onTimeUpdate={e => { const v = e.currentTarget; if (v.duration > 0) setProg(v.currentTime / v.duration); }}
+              onEnded={() => { setPlaying(false); setProg(0); }}
+              onPause={() => setPlaying(false)}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }}
+            />
+          ) : null}
+          {uploading ? (
+            <div style={{ ...overlayBase, background: 'rgba(0,0,0,0.5)' }}>
+              <span style={{ animation: 'lrPulse 1.1s ease-in-out infinite' }}>Sending…</span>
+            </div>
+          ) : once ? (
+            <div style={overlayBase}>
+              {seen ? <Check size={26} strokeWidth={2.6} /> : <LiveOnceIcon size={30} color="#fff" />}
+              <span>{isMe ? (seenCount > 0 ? `Opened · ${seenCount}` : 'Sent once') : (seen ? 'Opened' : 'Tap to view')}</span>
+            </div>
+          ) : !playing ? (
+            <>
+              <div style={{ ...overlayBase, background: 'rgba(0,0,0,0.18)' }}>
+                <span style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Play size={22} fill="#fff" color="#fff" />
+                </span>
+              </div>
+              <span style={{ position: 'absolute', left: '50%', bottom: 10, transform: 'translateX(-50%)', padding: '2px 8px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: '0.66rem', fontWeight: 800 }}>
+                {fmtRecTime(duration)}
+              </span>
+            </>
+          ) : null}
+        </div>
+        {!once && (playing || prog > 0) ? (
+          <svg width={SIZE + 8} height={SIZE + 8} viewBox={`0 0 ${SIZE + 8} ${SIZE + 8}`} style={{ position: 'absolute', left: -4, top: -4, pointerEvents: 'none', transform: 'rotate(-90deg)' }}>
+            <circle cx={(SIZE + 8) / 2} cy={(SIZE + 8) / 2} r={RR} fill="none" stroke="#ef4444" strokeWidth={3} strokeLinecap="round" strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - prog)} />
+          </svg>
+        ) : null}
+      </div>
+      {isMe && !uploading ? (
+        <button
+          type="button"
+          aria-label="Delete video"
+          disabled={deleting}
+          onClick={e => {
+            e.stopPropagation();
+            if (deleting || !circleRef.current) return;
+            try { vidRef.current?.pause(); } catch { /* */ }
+            setDeleting(true);
+            onDelete(circleRef.current);
+          }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 4px', border: 'none', background: 'none', color: '#9ca3af', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}
+        >
+          <Trash2 size={12} strokeWidth={2.2} />
+          <span>Delete</span>
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Full-screen viewer for a view-once round video. Opening it consumes the view (marked as soon as playback starts). */
+function LiveRoundOnceViewer({ url, onStarted, onClose }: { url: string; onStarted: () => void; onClose: () => void }) {
+  const vref = useRef<HTMLVideoElement | null>(null);
+  const startedRef = useRef(false);
+  const [prog, setProg] = useState(0);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const v = vref.current;
+    if (!v) return;
+    v.muted = false;
+    v.play().catch(() => {
+      v.muted = true;
+      v.play().catch(() => setFailed(true));
+    });
+  }, []);
+  const size = Math.min(320, Math.round((typeof window !== 'undefined' ? window.innerWidth : 360) * 0.78));
+  const RR = size / 2 + 6;
+  const CIRC = 2 * Math.PI * RR;
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div
+      onContextMenu={e => e.preventDefault()}
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100001, background: 'rgba(0,0,0,0.86)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, userSelect: 'none',
+      }}
+    >
+      <div style={{ position: 'relative', width: size, height: size }} onClick={e => e.stopPropagation()}>
+        <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'hidden', background: '#000' }}>
+          <video
+            ref={vref}
+            src={url}
+            playsInline
+            disablePictureInPicture
+            controlsList="nodownload noplaybackrate"
+            onPlaying={() => { if (!startedRef.current) { startedRef.current = true; onStarted(); } }}
+            onTimeUpdate={e => { const v = e.currentTarget; if (v.duration > 0) setProg(v.currentTime / v.duration); }}
+            onEnded={onClose}
+            onError={() => setFailed(true)}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }}
+          />
+        </div>
+        <svg width={size + 12} height={size + 12} viewBox={`0 0 ${size + 12} ${size + 12}`} style={{ position: 'absolute', left: -6, top: -6, pointerEvents: 'none', transform: 'rotate(-90deg)' }}>
+          <circle cx={(size + 12) / 2} cy={(size + 12) / 2} r={RR} fill="none" stroke="#ef4444" strokeWidth={3} strokeLinecap="round" strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - prog)} />
+        </svg>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', fontWeight: 800, fontSize: '0.82rem' }}>
+        <LiveOnceIcon size={20} color="#fff" />
+        <span>{failed ? "Couldn't play this video" : 'View once'}</span>
+      </div>
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={e => { e.stopPropagation(); onClose(); }}
+        style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.16)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+      >
+        <X size={20} strokeWidth={2.4} />
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
+/** Circular record button next to the "+": hold = record, tap = switch voice ⇄ video, slide up = lock, slide left = cancel. */
+function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
+  disabled?: boolean;
+  onTouch: () => void;
+  onVoice: (dataUrl: string, seconds: number) => void;
+  onRound: (blob: Blob, seconds: number, once: boolean) => void;
+  onError: (msg: string) => void;
+}) {
+  const [mode, setMode] = useState<'voice' | 'video'>(() => { try { return localStorage.getItem(LIVE_ROUND_MODE_KEY) === 'video' ? 'video' : 'voice'; } catch { return 'voice'; } });
+  const [once, setOnce] = useState<boolean>(() => { try { return localStorage.getItem(LIVE_ROUND_ONCE_KEY) === '1'; } catch { return false; } });
+  const [phase, setPhase] = useState<'idle' | 'rec'>('idle');
+  const [locked, setLocked] = useState(false);
+  const [cancelHint, setCancelHint] = useState(false);
+  const [sec, setSec] = useState(0);
+  const [recKind, setRecKind] = useState<'voice' | 'video'>('voice');
+  const modeRef = useRef(mode); modeRef.current = mode;
+  const onceRef = useRef(once); onceRef.current = once;
+  const cbRef = useRef({ onVoice, onRound, onError });
+  cbRef.current = { onVoice, onRound, onError };
+  const phaseRef = useRef<'idle' | 'rec'>('idle');
+  const lockedRef = useRef(false);
+  const cancelRef = useRef(false);
+  const downRef = useRef(false);
+  const holdFiredRef = useRef(false);
+  const abortRef = useRef(false);
+  const sendRef = useRef(false);
+  const startRef = useRef({ x: 0, y: 0 });
+  const holdTimerRef = useRef<number | null>(null);
+  const tickRef = useRef<number | null>(null);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const startedAtRef = useRef(0);
+
+  const cleanup = () => {
+    if (tickRef.current) { window.clearInterval(tickRef.current); tickRef.current = null; }
+    try { streamRef.current?.getTracks().forEach(t => t.stop()); } catch { /* */ }
+    streamRef.current = null;
+    recRef.current = null;
+    phaseRef.current = 'idle';
+    lockedRef.current = false;
+    cancelRef.current = false;
+    setPhase('idle');
+    setLocked(false);
+    setCancelHint(false);
+    setSec(0);
+  };
+  const stopRec = (send: boolean) => {
+    sendRef.current = send;
+    const rec = recRef.current;
+    try {
+      if (rec && rec.state !== 'inactive') rec.stop();
+      else cleanup();
+    } catch { cleanup(); }
+  };
+  useEffect(() => () => {
+    if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
+    if (tickRef.current) window.clearInterval(tickRef.current);
+    try { recRef.current?.stop(); } catch { /* */ }
+    try { streamRef.current?.getTracks().forEach(t => t.stop()); } catch { /* */ }
+  }, []);
+
+  const startRec = async () => {
+    if (phaseRef.current !== 'idle') return;
+    const kind = modeRef.current;
+    phaseRef.current = 'rec';
+    abortRef.current = false;
+    sendRef.current = false;
+    lockedRef.current = false;
+    cancelRef.current = false;
+    setRecKind(kind);
+    setLocked(false);
+    setCancelHint(false);
+    setSec(0);
+    setPhase('rec');
+    let st: MediaStream;
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') throw new Error('unsupported');
+      st = await navigator.mediaDevices.getUserMedia(
+        kind === 'video'
+          ? { audio: true, video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 480 } } }
+          : { audio: true },
+      );
+    } catch {
+      cleanup();
+      cbRef.current.onError(kind === 'video' ? 'Camera or microphone is not available' : 'Microphone is not available');
+      return;
+    }
+    if (abortRef.current) { st.getTracks().forEach(t => t.stop()); cleanup(); return; }
+    streamRef.current = st;
+    const pickMime = (list: string[]) => list.find(m => { try { return MediaRecorder.isTypeSupported(m); } catch { return false; } }) || '';
+    const mime = kind === 'video'
+      ? pickMime(['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'])
+      : pickMime(['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']);
+    let rec: MediaRecorder;
+    try {
+      rec = new MediaRecorder(st, mime
+        ? (kind === 'video' ? { mimeType: mime, videoBitsPerSecond: 800000, audioBitsPerSecond: 64000 } : { mimeType: mime })
+        : undefined);
+    } catch {
+      st.getTracks().forEach(t => t.stop());
+      cleanup();
+      cbRef.current.onError('Recording is not supported on this device');
+      return;
+    }
+    chunksRef.current = [];
+    rec.ondataavailable = ev => { if (ev.data && ev.data.size) chunksRef.current.push(ev.data); };
+    rec.onstop = () => {
+      const ms = Date.now() - startedAtRef.current;
+      const secs = Math.max(1, Math.round(ms / 1000));
+      const type = String(rec.mimeType || mime || (kind === 'video' ? 'video/webm' : 'audio/webm')).split(';')[0];
+      const blob = new Blob(chunksRef.current, { type });
+      const ok = sendRef.current && ms >= LIVE_ROUND_MIN_MS && blob.size > 0;
+      cleanup();
+      if (!ok) return;
+      if (kind === 'video') {
+        cbRef.current.onRound(blob, secs, onceRef.current);
+      } else {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (typeof reader.result === 'string' && reader.result.startsWith('data:')) cbRef.current.onVoice(reader.result, secs);
+        };
+        reader.readAsDataURL(blob);
+      }
+    };
+    recRef.current = rec;
+    startedAtRef.current = Date.now();
+    rec.start(250);
+    const maxS = kind === 'video' ? LIVE_ROUND_MAX_S : LIVE_VOICE_MAX_S;
+    tickRef.current = window.setInterval(() => {
+      const s = (Date.now() - startedAtRef.current) / 1000;
+      setSec(s);
+      if (s >= maxS) stopRec(true);
+    }, 100);
+    // finger already lifted while the permission prompt / camera was starting → drop it
+    if (!downRef.current && !lockedRef.current) stopRec(false);
+  };
+
+  const onDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (disabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onTouch();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* */ }
+    downRef.current = true;
+    holdFiredRef.current = false;
+    startRef.current = { x: e.clientX, y: e.clientY };
+    if (holdTimerRef.current) window.clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = window.setTimeout(() => { holdFiredRef.current = true; void startRec(); }, 260);
+  };
+  const onMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!downRef.current || !holdFiredRef.current || lockedRef.current) return;
+    const dx = e.clientX - startRef.current.x;
+    const dy = e.clientY - startRef.current.y;
+    if (dy < -70) {
+      lockedRef.current = true;
+      cancelRef.current = false;
+      setLocked(true);
+      setCancelHint(false);
+      try { navigator.vibrate?.(12); } catch { /* */ }
+      return;
+    }
+    const c = dx < -80;
+    if (c !== cancelRef.current) { cancelRef.current = c; setCancelHint(c); }
+  };
+  const onUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!downRef.current) return;
+    downRef.current = false;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* */ }
+    if (holdTimerRef.current) { window.clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+    if (!holdFiredRef.current) {
+      // plain tap → switch voice ⇄ video
+      const next = modeRef.current === 'voice' ? 'video' : 'voice';
+      setMode(next);
+      try { localStorage.setItem(LIVE_ROUND_MODE_KEY, next); } catch { /* */ }
+      return;
+    }
+    if (lockedRef.current) return;                       // locked: keeps recording until Send / Cancel
+    if (!recRef.current) { abortRef.current = true; return; }
+    stopRec(!cancelRef.current);
+  };
+  const onCancelPtr = () => {
+    downRef.current = false;
+    if (holdTimerRef.current) { window.clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+    if (holdFiredRef.current && !lockedRef.current) {
+      if (recRef.current) stopRec(false); else abortRef.current = true;
+    }
+  };
+  const toggleOnce = () => {
+    const next = !onceRef.current;
+    setOnce(next);
+    try { localStorage.setItem(LIVE_ROUND_ONCE_KEY, next ? '1' : '0'); } catch { /* */ }
+  };
+
+  const recording = phase === 'rec';
+  const maxS = recKind === 'video' ? LIVE_ROUND_MAX_S : LIVE_VOICE_MAX_S;
+  const pvSize = Math.min(300, Math.round((typeof window !== 'undefined' ? window.innerWidth : 360) * 0.72));
+  const RR = pvSize / 2 + 8;
+  const CIRC = 2 * Math.PI * RR;
+  const timerRow = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}>
+      <style>{'@keyframes lrPulse{0%,100%{opacity:.55}50%{opacity:1}}'}</style>
+      <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444', animation: 'lrPulse 1s ease-in-out infinite' }} />
+      <span>{fmtRecTime(sec)}</span>
+      {recKind === 'video' && once ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.18)', fontSize: '0.72rem' }}><LiveOnceIcon size={14} color="#fff" />Once</span>) : null}
+    </div>
+  );
+  const actionRow = locked ? (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+      <button type="button" aria-label="Cancel recording" onClick={() => stopRec(false)} style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.18)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+        <Trash2 size={22} strokeWidth={2.2} />
+      </button>
+      <button type="button" aria-label="Send recording" onClick={() => stopRec(true)} style={{ width: 58, height: 58, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+        <Send size={24} strokeWidth={2.4} />
+      </button>
+    </div>
+  ) : (
+    <div style={{ color: cancelHint ? '#fca5a5' : 'rgba(255,255,255,0.85)', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center' }}>
+      {cancelHint ? 'Release to cancel' : '‹ Slide left to cancel  ·  Slide up to lock ↑'}
+    </div>
+  );
+  const overlay = recording && typeof document !== 'undefined' ? createPortal(
+    recKind === 'video' ? (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, pointerEvents: locked ? 'auto' : 'none' }}>
+        <div style={{ position: 'relative', width: pvSize, height: pvSize }}>
+          <div style={{ width: pvSize, height: pvSize, borderRadius: '50%', overflow: 'hidden', background: '#000', opacity: cancelHint ? 0.45 : 1, transition: 'opacity .15s' }}>
+            <video
+              muted
+              playsInline
+              ref={el => {
+                if (el && streamRef.current && el.srcObject !== streamRef.current) { el.srcObject = streamRef.current; void el.play().catch(() => { /* */ }); }
+              }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', display: 'block' }}
+            />
+          </div>
+          <svg width={pvSize + 16} height={pvSize + 16} viewBox={`0 0 ${pvSize + 16} ${pvSize + 16}`} style={{ position: 'absolute', left: -8, top: -8, pointerEvents: 'none', transform: 'rotate(-90deg)' }}>
+            <circle cx={(pvSize + 16) / 2} cy={(pvSize + 16) / 2} r={RR} fill="none" stroke="#ef4444" strokeWidth={4} strokeLinecap="round" strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - Math.min(1, sec / maxS))} />
+          </svg>
+        </div>
+        {timerRow}
+        {actionRow}
+      </div>
+    ) : (
+      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)', zIndex: 100000, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+        <div style={{ pointerEvents: locked ? 'auto' : 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '14px 20px', borderRadius: 22, background: 'rgba(17,17,17,0.92)', boxShadow: '0 10px 30px rgba(0,0,0,0.35)' }}>
+          {timerRow}
+          {actionRow}
+        </div>
+      </div>
+    ),
+    document.body,
+  ) : null;
+
+  return (
+    <>
+      {mode === 'video' && !recording ? (
+        <button
+          type="button"
+          aria-label={once ? 'Send once: on' : 'Send once: off'}
+          aria-pressed={once}
+          title="Send once"
+          disabled={disabled}
+          onPointerDown={e => { e.preventDefault(); e.stopPropagation(); onTouch(); }}
+          onClick={e => { e.stopPropagation(); onTouch(); toggleOnce(); }}
+          style={{ width: 26, height: 26, flexShrink: 0, padding: 0, borderRadius: '50%', border: once ? '1.5px solid #111' : '1.5px solid #d1d5db', background: once ? '#111' : 'transparent', color: once ? '#fff' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginRight: 4 }}
+        >
+          <LiveOnceIcon size={16} />
+        </button>
+      ) : null}
+      <button
+        type="button"
+        aria-label={mode === 'video' ? 'Record round video (hold). Tap to switch to voice' : 'Record voice (hold). Tap to switch to video'}
+        title={mode === 'video' ? 'Hold: round video · Tap: voice' : 'Hold: voice · Tap: round video'}
+        disabled={disabled}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onCancelPtr}
+        onContextMenu={e => e.preventDefault()}
+        style={{
+          width: 30, height: 30, flexShrink: 0, padding: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', marginRight: 4,
+          background: recording ? '#ef4444' : '#f1f1f1', color: recording ? '#fff' : '#111',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none',
+          WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none',
+          transform: recording ? 'scale(1.25)' : 'none', transition: 'transform .15s ease, background .15s ease',
+          position: 'relative', zIndex: 62,
+        } as React.CSSProperties}
+      >
+        {mode === 'video' ? <Video size={17} strokeWidth={2.2} /> : <Mic size={17} strokeWidth={2.2} />}
+      </button>
+      {overlay}
+    </>
+  );
+}
+
 async function videoSwapPrepPhoto(file: File): Promise<Blob> {
   const url = URL.createObjectURL(file);
   try {
@@ -14905,7 +15575,7 @@ function PublicLiveCommentsPanel({
   const [comments, setComments] = useState<PublicLiveComment[]>(() => loadPublicLiveComments());
   const [text, setText] = useState('');
   const [, setEmojiOpen] = useState(false);
-  const [composerDock, setComposerDock] = useState<'none' | 'emoji' | 'gallery'>('none');
+  const [composerDock, setComposerDock] = useState<'none' | 'emoji' | 'gallery' | 'voice'>('none');
   const [plusOpen, setPlusOpen] = useState(false);   // "+" bubble that holds Photos / Voice / Emoji / Video AI
   const [emojiCat, setEmojiCat] = useState(0);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
@@ -14916,6 +15586,11 @@ function PublicLiveCommentsPanel({
   const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string }>>([]);
   const [tplOpen, setTplOpen] = useState(false);
   const [openMediaId, setOpenMediaId] = useState<string | null>(null);
+  // ── round video / voice recorder state ──
+  const [onceViewId, setOnceViewId] = useState<string | null>(null);   // view-once round video currently open
+  const [roundToast, setRoundToast] = useState('');
+  const [, setRoundTick] = useState(0);                                 // re-render after local seen/deleted changes
+  const pendingRoundRef = useRef<Set<string>>(new Set());               // my round videos still uploading
   // ── Edit own message (long-press → pencil → edit in the composer, max LIVE_CHAT_MAX_EDITS times) ──
   const [actionFor, setActionFor] = useState<string | null>(null);   // message whose pencil chip is showing
   const [editingId, setEditingId] = useState<string | null>(null);   // message currently being edited
@@ -15282,6 +15957,88 @@ function PublicLiveCommentsPanel({
       ? LIVE_CHAT_BOT_NAME
       : (c.username ? `@${String(c.username).replace(/^@/, '')}` : (c.name || 'مستخدم'));
 
+  // ── Round video / voice: send, seen (view once), delete ──
+  const showRoundToast = (m: string) => {
+    setRoundToast(m);
+    window.setTimeout(() => setRoundToast(''), 3200);
+  };
+  const sendVoiceNow = (url: string, duration: number) => {
+    const keep = text;   // pushComment clears the draft → restore it
+    pushComment('', null, { url, duration });
+    setText(keep);
+  };
+  const sendRound = (blob: Blob, seconds: number, once: boolean) => {
+    if (!myId) return;
+    const id = `plc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const localUrl = URL.createObjectURL(blob);
+    const row: PublicLiveComment = {
+      id, userId: myId, name: myName, username: myUsername, avatarUrl: myAvatar,
+      text: makeRoundText(once ? 'once' : 'normal', seconds),
+      imageUrl: localUrl, voiceUrl: null, voiceDuration: null, likes: [], createdAt: Date.now(),
+    };
+    pendingRoundRef.current.add(id);
+    const withRow = [...loadPublicLiveComments(), row];
+    savePublicLiveComments(withRow);
+    setComments(withRow);
+    void (async () => {
+      const url = await uploadLiveRoundVideo(blob, myId);
+      pendingRoundRef.current.delete(id);
+      if (!url) {
+        const list = loadPublicLiveComments().filter(x => x.id !== id);
+        savePublicLiveComments(list);
+        setComments(list);
+        showRoundToast("Couldn't upload the video. Try again.");
+        return;
+      }
+      const send: PublicLiveComment = { ...row, imageUrl: url };
+      const list = loadPublicLiveComments().map(x => (x.id === id ? send : x));
+      savePublicLiveComments(list);
+      setComments(list);
+      await postLiveChatToServer(send);
+    })();
+  };
+  /** A "seen" receipt is a hidden live-chat row, so the view is remembered on every device of this user. */
+  const markRoundSeen = (postId: string) => {
+    if (!myId) return;
+    roundLocalAdd(myId, 'seen', postId);
+    setRoundTick(v => v + 1);
+    const rid = `plc_seen_${postId}_${myId}`;
+    const cur = loadPublicLiveComments();
+    if (cur.some(x => x.id === rid)) return;
+    const row: PublicLiveComment = {
+      id: rid, userId: myId, name: myName, username: myUsername, avatarUrl: myAvatar,
+      text: roundSeenText(postId), imageUrl: null, voiceUrl: null, voiceDuration: null, likes: [], createdAt: Date.now(),
+    };
+    const next = [...cur, row];
+    savePublicLiveComments(next);
+    setComments(next);
+    void postLiveChatToServer(row);
+  };
+  /** Delete = dust animation, then a tombstone edit (same id) so the video disappears for everybody. */
+  const deleteRound = (c: PublicLiveComment, el: HTMLElement) => {
+    if (!myId || c.userId !== myId) return;
+    const oldUrl = c.imageUrl || '';
+    liveDustDelete(el, () => {
+      roundLocalAdd(myId, 'gone', c.id);
+      const tomb: PublicLiveComment = { ...c, text: LIVE_ROUND_GONE, imageUrl: null, editCount: LIVE_CHAT_MAX_EDITS };
+      const next = loadPublicLiveComments().map(x => (x.id === c.id ? tomb : x));
+      savePublicLiveComments(next);
+      setComments(next);
+      setRoundTick(v => v + 1);
+      void editLiveChatOnServer(tomb);
+      void fetch('/api/live-chat', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete', roomId: LIVE_CHAT_ROOM, room: LIVE_CHAT_ROOM, id: c.id, commentId: c.id, userId: myId,
+          text: LIVE_ROUND_GONE, body: LIVE_ROUND_GONE, imageUrl: null, editCount: LIVE_CHAT_MAX_EDITS,
+        }),
+      }).catch(() => {});
+      if (oldUrl && !oldUrl.startsWith('blob:')) {   // best effort: free the stored file
+        void fetch('/api/upload', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: oldUrl }) }).catch(() => {});
+      }
+    });
+  };
+
   // Report active typing (others, or me) to the page so the header grabber can turn green + shimmer
   const chatBusy = liveTypers.length > 0 || !!text.trim();
   const onBusyChangeRef = useRef(onBusyChange);
@@ -15299,6 +16056,18 @@ function PublicLiveCommentsPanel({
   const mediaPosts = comments.filter(isLiveMediaPost).slice().reverse();
   const commentCountOf = (id: string) => comments.reduce((n, x) => (parseMediaComment(x.text)?.parentId === id ? n + 1 : n), 0);
   const openMedia = openMediaId ? (mediaPosts.find(m => m.id === openMediaId) || null) : null;
+  const roundLocalNow = roundLocalGet(myId);
+  const roundSeen = (id: string) => roundLocalNow.seen.includes(id) || comments.some(x => x.userId === myId && parseRoundSeen(x.text) === id);
+  const roundSeenCount = (id: string) => new Set(comments.filter(x => parseRoundSeen(x.text) === id).map(x => x.userId)).size;
+  const onceRow = onceViewId ? (comments.find(x => x.id === onceViewId) || null) : null;
+  const onceViewer = (onceRow && onceRow.imageUrl && parseRoundVideo(onceRow)) ? (
+    <LiveRoundOnceViewer
+      key={onceRow.id}
+      url={onceRow.imageUrl}
+      onStarted={() => markRoundSeen(onceRow.id)}
+      onClose={() => setOnceViewId(null)}
+    />
+  ) : null;
   const openProfileOf = (vc: PublicLiveComment) => {
     if (!vc.userId) return;
     setProfilePeer(vc);
@@ -15342,6 +16111,12 @@ function PublicLiveCommentsPanel({
     <>
     <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />
     {mediaViewer}
+    {onceViewer}
+    {roundToast ? (
+      <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)', zIndex: 100003, padding: '8px 14px', borderRadius: 999, background: 'rgba(17,17,17,0.92)', color: '#fff', fontSize: '0.78rem', fontWeight: 700, pointerEvents: 'none' }}>
+        {roundToast}
+      </div>
+    ) : null}
     <div
       onTouchStart={e => e.stopPropagation()}
       onTouchMove={e => e.stopPropagation()}
@@ -15462,12 +16237,13 @@ function PublicLiveCommentsPanel({
             كن أول من يكتب تعليقاً مباشراً
           </p>
         )}
-        {groupLiveChatRows(comments.filter(c => !/Join Live Chat/i.test(c.text || '') && !isLiveMediaPost(c) && !parseMediaComment(c.text))).map(item => {
+        {groupLiveChatRows(comments.filter(c => !/Join Live Chat/i.test(c.text || '') && !isLiveMediaPost(c) && !parseMediaComment(c.text) && !isRoundHiddenRow(c, roundLocalNow.gone) && !(String(c.imageUrl || '').startsWith('blob:') && !pendingRoundRef.current.has(c.id)))).map(item => {
           const c = item.c;
           const liked = myId ? c.likes.includes(myId) : false;
           const bigEmoji = isLiveBigEmoji(c.text);
+          const round = parseRoundVideo(c);
           // Only my own plain-text messages can be edited (not voice, image-only, big emoji, or bot rows)
-          const canEdit = !!myId && c.userId === myId && !bigEmoji && !c.voiceUrl && c.text !== '🎤'
+          const canEdit = !!myId && c.userId === myId && !bigEmoji && !round && !c.voiceUrl && c.text !== '🎤'
             && !(c.imageUrl && c.text === '📷') && c.userId !== LIVE_CHAT_BOT_ID;
           const editsLeft = Math.max(0, LIVE_CHAT_MAX_EDITS - (c.editCount || 0));
           return (
@@ -15507,7 +16283,7 @@ function PublicLiveCommentsPanel({
               <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
                 <p style={{ margin: 0, fontSize: '0.84rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
                   <span style={{ fontWeight: 800, color: (c.userId === LIVE_CHAT_BOT_ID || c.name === LIVE_CHAT_BOT_NAME) ? LIVE_CHAT_BOT_COLOR : '#111', marginRight: 6 }}>{displayName(c)}</span>
-                  {c.voiceUrl || c.text === '🎤' || bigEmoji ? null : (
+                  {c.voiceUrl || c.text === '🎤' || bigEmoji || round ? null : (
                     <span style={{ fontWeight: 500, color: '#222' }}>
                       {splitLiveChatLinks(c.text).map((part, i) => {
                         if (part.type === 'link') {
@@ -15558,7 +16334,20 @@ function PublicLiveCommentsPanel({
                     )}
                   </div>
                 ) : null}
-                {c.imageUrl ? (
+                {round && c.imageUrl ? (
+                  <LiveRoundBubble
+                    url={c.imageUrl}
+                    mode={round.mode}
+                    duration={round.duration}
+                    isMe={c.userId === myId}
+                    seen={roundSeen(c.id)}
+                    seenCount={roundSeenCount(c.id)}
+                    uploading={c.userId === myId && String(c.imageUrl).startsWith('blob:')}
+                    onOpenOnce={() => { if (!roundSeen(c.id)) setOnceViewId(c.id); }}
+                    onDelete={el => deleteRound(c, el)}
+                  />
+                ) : null}
+                {c.imageUrl && !round ? (
                   <img src={c.imageUrl} alt="" style={{ marginTop: 6, maxWidth: 180, maxHeight: 160, borderRadius: 10, display: 'block', objectFit: 'cover' }} />
                 ) : null}
                 <p style={{ margin: '4px 0 0', fontSize: '0.68rem', color: '#9ca3af', fontWeight: 600 }}>
@@ -15839,6 +16628,14 @@ function PublicLiveCommentsPanel({
                 setPendingImage(url);
               }}
             />
+            {/* Circular record button: hold = record, tap = switch voice ⇄ round video, slide up = lock, slide left = cancel */}
+            <LiveRecordButton
+              disabled={!!editingId}
+              onTouch={() => { composerGuardRef.current = Date.now(); }}
+              onVoice={(url, seconds) => sendVoiceNow(url, seconds)}
+              onRound={(blob, seconds, once) => sendRound(blob, seconds, once)}
+              onError={showRoundToast}
+            />
             {/* ── "+" bubble: Photos / Voice / Emoji / Video AI live inside it (same handlers as the old inline buttons) ── */}
             <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
               {plusOpen && (
@@ -15886,15 +16683,6 @@ function PublicLiveCommentsPanel({
                     {
                       key: 'photos', label: 'Photos', icon: <ImageIcon size={20} strokeWidth={2} />,
                       run: () => { setComposerDock(d => d === 'gallery' ? 'none' : 'gallery'); setEmojiOpen(false); },
-                    },
-                    {
-                      key: 'voice', label: recording ? 'Stop' : 'Voice',
-                      icon: recording ? <MicOff size={20} strokeWidth={2} color="#ef4444" /> : <Mic size={20} strokeWidth={2} />,
-                      run: () => {
-                        if (recording) { recRef.current?.stop(); setRecording(false); return; }
-                        setEmojiOpen(false);
-                        setComposerDock(d => d === 'voice' ? 'none' : 'voice');   // recording itself starts from the big mic button in the dock
-                      },
                     },
                     {
                       key: 'emoji', label: 'Emoji', icon: <Smile size={20} strokeWidth={2} />,
