@@ -95,6 +95,7 @@ import { GuestLiveStack, GUEST_SIGNIN_LABEL, GUEST_HEADER_LOCKED, readGuestLang,
 import PostTextMore from '@/components/PostTextMore';
 import { publishFeedPost, uploadPostMedia, deleteStoryInstant } from '@/lib/postStoryPatch';
 import { mediaAiProcessGalleryFiles, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
+import { LocationPickerSheet, LocationViewSheet, LocationChatCard, encodeChatLocation, parseChatLocation } from '@/components/LocationPickerPatch';
 import { publishLiveChatRoundVideo, normalizeLiveChatMediaFields, extractLiveChatMediaUrl, makeLiveChatRoundText } from '@/lib/liveChatVideoPatch';
 import { publishLiveChatVideoDelete, onLiveChatVideoDeleted, applyLiveChatVideoTombstone, isLiveChatRoundGone, LIVE_CHAT_ROUND_GONE } from '@/lib/liveChatVideoDeletePatch';
 import { StoryModerationBell, StoryModerateDialog, StoryBanModal, StoryModerationWatcher } from '@/components/StoryModeration';
@@ -14023,6 +14024,9 @@ function SavedMessagesScreen({
   const [toast, setToast] = useState('');
   /** Full-screen media: first tap opens, second tap closes. kind image | video */
   const [mediaView, setMediaView] = useState<{ kind: 'image' | 'video'; url: string } | null>(null);
+  /** Telegram-style location picker (send) + viewer (open a saved location) */
+  const [locPickerOpen, setLocPickerOpen] = useState(false);
+  const [locView, setLocView] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const photoRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLInputElement | null>(null);
@@ -14147,27 +14151,17 @@ function SavedMessagesScreen({
     await ingestFile(file, 'file');
   };
   const addLocation = () => {
-    if (!navigator.geolocation) {
-      pushItem({ kind: 'location', text: 'Location unavailable', lat: null, lng: null });
-      return;
-    }
-    setBusy(true);
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        pushItem({
-          kind: 'location',
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          text: `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`,
-        });
-        setBusy(false);
-      },
-      () => {
-        pushItem({ kind: 'location', text: 'Location denied', lat: null, lng: null });
-        setBusy(false);
-      },
-      { enableHighAccuracy: true, timeout: 12000 },
-    );
+    // نفس نظام تيليجرام: تفتح نافذة الخريطة (دبوس في المنتصف + Send selected location + أماكن قريبة)
+    setLocPickerOpen(true);
+  };
+  const sendPickedLocation = (lat: number, lng: number, label: string) => {
+    pushItem({
+      kind: 'location',
+      lat,
+      lng,
+      text: label || `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+    });
+    setLocPickerOpen(false);
   };
 
   const openPicker = (ref: React.RefObject<HTMLInputElement | null>) => {
@@ -14430,25 +14424,17 @@ function SavedMessagesScreen({
                     </a>
                   )}
                   {m.kind === 'location' && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <MapPin size={20} color="#ef4444" />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontWeight: 800, fontSize: '0.88rem', color: '#111' }}>Location</p>
-                        <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'rgba(0,0,0,0.5)', fontWeight: 600 }}>
-                          {m.text || (m.lat != null && m.lng != null ? `${m.lat}, ${m.lng}` : '—')}
-                        </p>
-                      </div>
-                      {m.lat != null && m.lng != null ? (
-                        <a
-                          href={`https://maps.google.com/?q=${m.lat},${m.lng}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{ color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.75rem', textDecoration: 'none' }}
-                        >
-                          Map
-                        </a>
-                      ) : null}
-                    </div>
+                    m.lat != null && m.lng != null ? (
+                      <LocationChatCard
+                        lat={m.lat}
+                        lng={m.lng}
+                        label={/^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(String(m.text || '').trim()) ? '' : String(m.text || '')}
+                        maxWidth={9999}
+                        onOpen={() => setLocView({ lat: m.lat as number, lng: m.lng as number, label: /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(String(m.text || '').trim()) ? '' : String(m.text || '') })}
+                      />
+                    ) : (
+                      <p style={{ margin: 0, fontWeight: 800, fontSize: '0.88rem', color: '#111' }}>{m.text || 'Location'}</p>
+                    )
                   )}
                   <p style={{ margin: '6px 0 0', fontSize: '0.68rem', color: 'rgba(0,0,0,0.35)', fontWeight: 600, textAlign: 'left', direction: 'ltr' }}>
                     {new Date(m.createdAt).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
@@ -14457,6 +14443,9 @@ function SavedMessagesScreen({
               </SavedMsgDeleteFx>
             ))}
           </div>
+
+          {locPickerOpen ? <LocationPickerSheet onClose={() => setLocPickerOpen(false)} onSend={sendPickedLocation} /> : null}
+          {locView ? <LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} onClose={() => setLocView(null)} /> : null}
 
           {/* Full-screen media: first tap opened it; second tap anywhere closes */}
           {mediaView ? (
@@ -16600,6 +16589,9 @@ function PublicLiveCommentsPanel({
   const [, setEmojiOpen] = useState(false);
   const [composerDock, setComposerDock] = useState<'none' | 'emoji' | 'gallery' | 'voice'>('none');
   const [plusOpen, setPlusOpen] = useState(false);   // "+" bubble that holds Photos / Voice / Emoji / Video AI
+  // ── Location (Telegram-style picker + viewer) ──
+  const [locPickerOpen, setLocPickerOpen] = useState(false);
+  const [locView, setLocView] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [savedOpen, setSavedOpen] = useState(() => {
     try { return sessionStorage.getItem('stooorna_saved_open') === '1'; } catch { return false; }
   });
@@ -16977,6 +16969,31 @@ function PublicLiveCommentsPanel({
       }
       await postLiveChatToServer(send);
     })();
+  };
+
+  /** Sends a location (map pin) to the public chat — stored inside the normal text field, so the server needs no change. */
+  const sendLocation = (lat: number, lng: number, label: string) => {
+    if (!myId) return;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const safeLabel = label && !liveChatTextIsBlocked(label) ? label : '';
+    const row: PublicLiveComment = {
+      id: `plc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      userId: myId,
+      name: myName,
+      username: myUsername,
+      avatarUrl: myAvatar,
+      text: encodeChatLocation(lat, lng, safeLabel),
+      imageUrl: null,
+      voiceUrl: null,
+      voiceDuration: null,
+      likes: [],
+      createdAt: Date.now(),
+    };
+    const next = [...loadPublicLiveComments(), row];
+    savePublicLiveComments(next);
+    setComments(next);
+    setLocPickerOpen(false);
+    void postLiveChatToServer(row);
   };
 
   // ── long-press detection on my own text messages ──
@@ -17477,8 +17494,9 @@ function PublicLiveCommentsPanel({
           const liked = myId ? c.likes.includes(myId) : false;
           const bigEmoji = isLiveBigEmoji(c.text);
           const round = parseRoundVideo(c);
+          const loc = parseChatLocation(c.text);
           // Only my own plain-text messages can be edited (not voice, image-only, big emoji, or bot rows)
-          const canEdit = !!myId && c.userId === myId && !bigEmoji && !round && !c.voiceUrl && c.text !== '🎤'
+          const canEdit = !!myId && c.userId === myId && !bigEmoji && !round && !loc && !c.voiceUrl && c.text !== '🎤'
             && !(c.imageUrl && c.text === '📷') && c.userId !== LIVE_CHAT_BOT_ID;
           const editsLeft = Math.max(0, LIVE_CHAT_MAX_EDITS - (c.editCount || 0));
           return (
@@ -17518,7 +17536,7 @@ function PublicLiveCommentsPanel({
               <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
                 <p style={{ margin: 0, fontSize: '0.84rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
                   <span style={{ fontWeight: 800, color: (c.userId === LIVE_CHAT_BOT_ID || c.name === LIVE_CHAT_BOT_NAME) ? LIVE_CHAT_BOT_COLOR : '#111', marginRight: 6 }}>{displayName(c)}</span>
-                  {c.voiceUrl || c.text === '🎤' || bigEmoji || round ? null : (
+                  {c.voiceUrl || c.text === '🎤' || bigEmoji || round || loc ? null : (
                     <span style={{ fontWeight: 500, color: '#222' }}>
                       {splitLiveChatLinks(c.text).map((part, i) => {
                         if (part.type === 'link') {
@@ -17542,6 +17560,14 @@ function PublicLiveCommentsPanel({
                     </span>
                   )}
                 </p>
+                {loc ? (
+                  <LocationChatCard
+                    lat={loc.lat}
+                    lng={loc.lng}
+                    label={loc.label}
+                    onOpen={() => setLocView({ lat: loc.lat, lng: loc.lng, label: loc.label })}
+                  />
+                ) : null}
                 {bigEmoji ? (
                   <div
                     className={c.createdAt > Date.now() - 4000 ? 'stooorna-big-emoji' : undefined}
@@ -17974,6 +18000,10 @@ function PublicLiveCommentsPanel({
                       },
                     },
                     {
+                      key: 'location', label: 'Location', icon: <MapPin size={20} strokeWidth={2} />,
+                      run: () => { setComposerDock('none'); setEmojiOpen(false); setLocPickerOpen(true); },
+                    },
+                    {
                       key: 'video-ai', label: 'Video AI', icon: <Film size={20} strokeWidth={2} />,
                       run: () => { setComposerDock('none'); setEmojiOpen(false); setTplOpen(true); },
                     },
@@ -18142,6 +18172,8 @@ function PublicLiveCommentsPanel({
         sheetMode
       />
     ) : null}
+    {locPickerOpen ? <LocationPickerSheet onClose={() => setLocPickerOpen(false)} onSend={sendLocation} /> : null}
+    {locView ? <LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} onClose={() => setLocView(null)} /> : null}
     <SavedMessagesScreen
       open={savedOpen}
       onClose={() => {
