@@ -14327,44 +14327,89 @@ function roundLocalAdd(uid: string, kind: 'seen' | 'gone', id: string) {
 
 const fmtRecTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-/** Uploads a recorded round video; returns its public URL (or null when every upload route failed). */
+/** Uploads a recorded round video; returns its public URL (or null when every upload route failed).
+ *  Uses the same routes + the same tolerant response parsing as the normal video-post upload. */
 async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<string | null> {
-  const isMp4 = /mp4/i.test(blob.type);
+  const baseType = String(blob.type || '').split(';')[0].trim().toLowerCase();
+  const isMp4 = /mp4/i.test(baseType);
   const ext = isMp4 ? 'mp4' : 'webm';
-  const file = new File([blob], `round_${Date.now()}.${ext}`, { type: blob.type || (isMp4 ? 'video/mp4' : 'video/webm') });
-  const pick = (d: any): string | null => {
-    const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path || d?.publicUrl || d?.src || d?.data?.url || d?.data?.mediaUrl
-      || d?.file?.url || d?.media?.url || d?.location || d?.href;
-    if (typeof u !== 'string' || u.length < 3 || /airo-assets/i.test(u)) return null;
-    if (/^(https?:)?\/\//i.test(u) || u.startsWith('/')) return u;
-    return `/${u.replace(/^\/+/, '')}`;
+  const contentType = baseType.startsWith('video/') ? baseType : (isMp4 ? 'video/mp4' : 'video/webm');
+  const file = new File([blob], `round_${Date.now()}.${ext}`, { type: contentType });
+  const isValid = (u: unknown): u is string => {
+    if (!u || typeof u !== 'string') return false;
+    const s = u.trim();
+    if (!s || s === 'null' || s === 'undefined') return false;
+    if (/^(https?:\/\/|\/|blob:|data:)/i.test(s)) return true;
+    return /^[a-z0-9_\-./]+\.(mp4|webm|mov|m4v)(\?|$)/i.test(s);
   };
-  const mk = (endpoint: string, extra?: Record<string, string>) => () => {
-    const fd = new FormData();
-    if (extra) Object.keys(extra).forEach(k => fd.append(k, extra[k]));
-    fd.append('file', file, file.name);
-    return fetch(endpoint, { method: 'POST', credentials: 'include', body: fd });
+  const toAbs = (u: string): string => {
+    const s = String(u).trim();
+    if (/^(https?:|blob:|data:)/i.test(s)) return s;
+    return resolveMediaUrl(s) || s;
   };
-  const attempts: Array<() => Promise<Response>> = [
-    mk('/api/posts/media', { type: 'video', mediaType: 'video' }),
-    mk('/api/upload', { type: 'video', mediaType: 'video' }),
-    mk('/api/media', { type: 'video', mediaType: 'video' }),
-    mk(VIDEO_SWAP_ENDPOINT, { userId, kind: 'video' }),
-  ];
-  for (const run of attempts) {
+  const usable = (u: string): string | null => (u && !mediaAiIsBrokenHostUrl(u) && !/airo-assets/i.test(u) ? u : null);
+  const extract = async (res: Response): Promise<string | null> => {
+    try {
+      const loc = res.headers.get('location') || res.headers.get('x-file-url') || res.headers.get('x-media-url');
+      if (isValid(loc)) return usable(toAbs(loc));
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (ct.includes('application/json')) {
+        const d = await res.json() as any;
+        const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path || d?.publicUrl || d?.src
+          || d?.data?.url || d?.data?.mediaUrl || d?.data?.path || d?.data?.publicUrl
+          || d?.result?.url || d?.file?.url || d?.media?.url || d?.location || d?.href
+          || d?.key || d?.filename;
+        if (typeof u === 'string' && u.trim().length > 2) return usable(toAbs(u));
+        return null;
+      }
+      const first = (await res.text()).trim().split(/\s/)[0];
+      if (isValid(first)) return usable(toAbs(first));
+    } catch { /* */ }
+    return null;
+  };
+  const tryOne = async (run: () => Promise<Response>): Promise<string | null> => {
     try {
       const r = await run();
-      if (!r.ok) continue;
-      const loc = r.headers.get('location') || r.headers.get('x-file-url') || r.headers.get('x-media-url');
-      if (loc) return loc;
-      const ct = (r.headers.get('content-type') || '').toLowerCase();
-      if (ct.includes('application/json')) {
-        const u = pick(await r.json());
-        if (u) return u;
-      }
-    } catch { /* next route */ }
+      if (!r.ok) return null;
+      return await extract(r);
+    } catch { return null; }
+  };
+  const form = (endpoint: string, fields: Record<string, string>, fileField = 'file') => () => {
+    const fd = new FormData();
+    Object.keys(fields).forEach(k => fd.append(k, fields[k]));
+    fd.append(fileField, file, file.name);
+    return fetch(endpoint, { method: 'POST', credentials: 'include', body: fd });
+  };
+
+  // 1) FormData → /api/posts/media (same as video posts)
+  let u = await tryOne(form('/api/posts/media', { type: 'video', mediaType: 'video' }));
+  if (u) return u;
+  // 2) raw body
+  u = await tryOne(() => fetch('/api/posts/media', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': contentType, 'X-File-Ext': `.${ext}`, 'X-Media-Type': 'video' },
+    body: file,
+  }));
+  if (u) return u;
+  // 3) alternate field names
+  u = await tryOne(form('/api/posts/media', { kind: 'video' }, 'media'));
+  if (u) return u;
+  // 4) shared helper used by the post composer
+  try {
+    const extra = await uploadPostMedia(file, { kind: 'video', fileName: file.name });
+    if (extra.ok && isValid(extra.url)) {
+      const a = usable(toAbs(String(extra.url)));
+      if (a) return a;
+    }
+  } catch { /* */ }
+  // 5) other storage endpoints
+  for (const endpoint of ['/api/upload', '/api/media', '/api/files/upload', '/api/posts/upload']) {
+    u = await tryOne(form(endpoint, { type: 'video', mediaType: 'video' }));
+    if (u) return u;
   }
-  return null;
+  // 6) legacy route
+  u = await tryOne(form(VIDEO_SWAP_ENDPOINT, { userId, kind: 'video' }));
+  return u;
 }
 
 /** Telegram-style "dust" delete: the element is wiped left→right while its pixels break into particles and blow away. */
@@ -14676,6 +14721,8 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
   const [cancelHint, setCancelHint] = useState(false);
   const [sec, setSec] = useState(0);
   const [recKind, setRecKind] = useState<'voice' | 'video'>('voice');
+  const [ready, setReady] = useState(false);            // camera/mic opened and recording really started
+  const [, setStreamTick] = useState(0);                // re-render as soon as the stream exists so the preview attaches at once
   const rmodeRef = useRef(rmode); rmodeRef.current = rmode;
   const modeRef = useRef<'voice' | 'video'>(mode); modeRef.current = mode;
   const onceRef = useRef(once); onceRef.current = once;
@@ -14707,6 +14754,7 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
     setPhase('idle');
     setLocked(false);
     setCancelHint(false);
+    setReady(false);
     setSec(0);
   };
   const stopRec = (send: boolean) => {
@@ -14735,6 +14783,7 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
     setRecKind(kind);
     setLocked(false);
     setCancelHint(false);
+    setReady(false);
     setSec(0);
     setPhase('rec');
     let st: MediaStream;
@@ -14752,6 +14801,7 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
     }
     if (abortRef.current) { st.getTracks().forEach(t => t.stop()); cleanup(); return; }
     streamRef.current = st;
+    setStreamTick(v => v + 1);   // show the live camera preview immediately (it stayed black until the first timer tick)
     const pickMime = (list: string[]) => list.find(m => { try { return MediaRecorder.isTypeSupported(m); } catch { return false; } }) || '';
     const mime = kind === 'video'
       ? pickMime(['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'])
@@ -14790,6 +14840,7 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
     recRef.current = rec;
     startedAtRef.current = Date.now();
     rec.start(250);
+    setReady(true);
     const maxS = kind === 'video' ? LIVE_ROUND_MAX_S : LIVE_VOICE_MAX_S;
     tickRef.current = window.setInterval(() => {
       const s = (Date.now() - startedAtRef.current) / 1000;
@@ -14863,7 +14914,7 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}>
       <style>{'@keyframes lrPulse{0%,100%{opacity:.55}50%{opacity:1}}'}</style>
       <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444', animation: 'lrPulse 1s ease-in-out infinite' }} />
-      <span>{fmtRecTime(sec)}</span>
+      <span>{ready ? fmtRecTime(sec) : (recKind === 'video' ? 'Starting camera…' : 'Starting mic…')}</span>
       {recKind === 'video' && once ? (<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.18)', fontSize: '0.72rem' }}><LiveOnceIcon size={14} color="#fff" />Once</span>) : null}
     </div>
   );
@@ -14926,15 +14977,15 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
         onPointerCancel={onCancelPtr}
         onContextMenu={e => e.preventDefault()}
         style={{
-          width: 30, height: 30, flexShrink: 0, padding: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', marginRight: 4,
-          background: recording ? '#ef4444' : '#f1f1f1', color: recording ? '#fff' : '#111',
+          width: 34, height: 34, flexShrink: 0, padding: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2,
+          background: recording ? '#ef4444' : '#111', color: '#fff',
           display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none',
           WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none',
           transform: recording ? 'scale(1.25)' : 'none', transition: 'transform .15s ease, background .15s ease',
           position: 'relative', zIndex: 62,
         } as React.CSSProperties}
       >
-        {rmode === 'once' ? <LiveOnceIcon size={18} /> : rmode === 'video' ? <Video size={17} strokeWidth={2.2} /> : <Mic size={17} strokeWidth={2.2} />}
+        {rmode === 'once' ? <LiveOnceIcon size={20} color="#fff" /> : rmode === 'video' ? <Video size={17} strokeWidth={2.2} color="#fff" /> : <Mic size={17} strokeWidth={2.2} color="#fff" />}
       </button>
       {overlay}
     </>
@@ -16535,7 +16586,7 @@ function PublicLiveCommentsPanel({
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
+          gap: 6,
           padding: '4px 12px 10px',
         }}>
           <UserAvatar
@@ -16621,14 +16672,6 @@ function PublicLiveCommentsPanel({
                 const url = URL.createObjectURL(file);
                 setPendingImage(url);
               }}
-            />
-            {/* Circular record button: hold = record, tap = switch voice ⇄ round video, slide up = lock, slide left = cancel */}
-            <LiveRecordButton
-              disabled={!!editingId}
-              onTouch={() => { composerGuardRef.current = Date.now(); }}
-              onVoice={(url, seconds) => sendVoiceNow(url, seconds)}
-              onRound={(blob, seconds, once) => sendRound(blob, seconds, once)}
-              onError={showRoundToast}
             />
             {/* ── "+" bubble: Photos / Voice / Emoji / Video AI live inside it (same handlers as the old inline buttons) ── */}
             <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
@@ -16720,6 +16763,14 @@ function PublicLiveCommentsPanel({
               )}
             </div>
           </div>
+          {/* Circular record button: hold = record, tap = cycle voice → once-video → video, slide up = lock, slide left = cancel */}
+          <LiveRecordButton
+            disabled={!!editingId}
+            onTouch={() => { composerGuardRef.current = Date.now(); }}
+            onVoice={(url, seconds) => sendVoiceNow(url, seconds)}
+            onRound={(blob, seconds, once) => sendRound(blob, seconds, once)}
+            onError={showRoundToast}
+          />
           <button
             type="button"
             onClick={() => {
