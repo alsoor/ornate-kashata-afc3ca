@@ -14331,11 +14331,15 @@ const fmtRecTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s %
  *  1st route = /api/video-swap (the same multipart route the working "Video" panel of this chat uses),
  *  then the post-media routes. Every request has a timeout so the bubble can never hang on "Sending…". */
 async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<{ url: string | null; err: string }> {
-  const baseType = String(blob.type || '').split(';')[0].trim().toLowerCase();
-  const isMp4 = !baseType || /mp4/i.test(baseType);
-  const ext = isMp4 ? 'mp4' : 'webm';
-  const contentType = baseType.startsWith('video/') ? baseType : (isMp4 ? 'video/mp4' : 'video/webm');
-  const fileName = `video.${ext}`;
+  const rawType = String(blob.type || '').trim().toLowerCase();
+  const baseType = rawType.split(';')[0].trim();
+  const looksMp4 = /mp4|m4v|quicktime|avc1/i.test(rawType);
+  const looksWebm = /webm|vp8|vp9|av1/i.test(rawType);
+  const ext = looksMp4 && !looksWebm ? 'mp4' : (looksWebm ? 'webm' : (baseType.includes('mp4') ? 'mp4' : 'webm'));
+  const contentType = baseType.startsWith('video/')
+    ? baseType
+    : (ext === 'mp4' ? 'video/mp4' : 'video/webm');
+  const fileName = `live-round-${Date.now()}.${ext}`;
   const file = new File([blob], fileName, { type: contentType });
   let lastErr = '';
   const isValid = (u: unknown): u is string => {
@@ -14348,27 +14352,37 @@ async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<{ url: 
   const toAbs = (u: string): string => {
     const s = String(u).trim();
     if (/^(https?:|blob:|data:)/i.test(s)) return s;
-    return resolveMediaUrl(s) || s;
+    try {
+      return resolveMediaUrl(s) || s;
+    } catch {
+      return s.startsWith('/') ? s : `/${s.replace(/^\/+/, '')}`;
+    }
   };
   const usable = (u: string): string | null => (u && !mediaAiIsBrokenHostUrl(u) && !/airo-assets/i.test(u) ? u : null);
-  /** Pulls the file URL out of whatever shape the server answered with. */
   const urlFrom = (ct: string, loc: string | null, text: string): string | null => {
     if (isValid(loc)) return usable(toAbs(loc));
-    if (ct.includes('json') || /^\s*[{[]/.test(text)) {
+    const raw = String(text || '');
+    if (ct.includes('json') || /^\s*[{[]/.test(raw)) {
       try {
-        const d = JSON.parse(text) as any;
-        const u = d?.url || d?.mediaUrl || d?.fileUrl || d?.path || d?.publicUrl || d?.src
-          || d?.data?.url || d?.data?.mediaUrl || d?.data?.path || d?.data?.publicUrl
-          || d?.result?.url || d?.file?.url || d?.media?.url || d?.location || d?.href
-          || d?.key || d?.filename;
-        if (typeof u === 'string' && u.trim().length > 2) return usable(toAbs(u));
+        const d = JSON.parse(raw) as any;
+        const candidates = [
+          d?.url, d?.mediaUrl, d?.fileUrl, d?.path, d?.publicUrl, d?.src,
+          d?.data?.url, d?.data?.mediaUrl, d?.data?.path, d?.data?.publicUrl,
+          d?.result?.url, d?.file?.url, d?.media?.url, d?.location, d?.href,
+          d?.key, d?.filename, d?.id && (typeof d.id === 'string' ? `/uploads/${d.id}` : null),
+        ];
+        for (const u of candidates) {
+          if (typeof u === 'string' && u.trim().length > 2) {
+            const a = usable(toAbs(u));
+            if (a) return a;
+          }
+        }
         return null;
       } catch { return null; }
     }
-    const first = text.trim().split(/\s/)[0];
+    const first = raw.trim().split(/\s/)[0];
     return isValid(first) ? usable(toAbs(first)) : null;
   };
-  /** XHR with a hard timeout. Never throws: resolves { status, ct, loc, text } or { status: 0, reason }. */
   const post = (endpoint: string, body: FormData | Blob, headers: Record<string, string>, timeoutMs: number, tag: string) =>
     new Promise<string | null>(resolve => {
       const x = new XMLHttpRequest();
@@ -14381,7 +14395,11 @@ async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<{ url: 
         Object.keys(headers).forEach(k => x.setRequestHeader(k, headers[k]));
         x.onload = () => {
           if (x.status < 200 || x.status >= 300) { done(null, `HTTP ${x.status}`); return; }
-          const u = urlFrom((x.getResponseHeader('content-type') || '').toLowerCase(), x.getResponseHeader('location') || x.getResponseHeader('x-file-url') || x.getResponseHeader('x-media-url'), x.responseText || '');
+          const u = urlFrom(
+            (x.getResponseHeader('content-type') || '').toLowerCase(),
+            x.getResponseHeader('location') || x.getResponseHeader('x-file-url') || x.getResponseHeader('x-media-url'),
+            x.responseText || '',
+          );
           done(u, u ? undefined : 'no url in reply');
         };
         x.onerror = () => done(null, 'network');
@@ -14390,9 +14408,9 @@ async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<{ url: 
         x.send(body);
       } catch { done(null, 'failed to start'); }
     });
-  const form = (fields: Record<string, string>, field = 'file') => {
+  const formWith = (field: string, extra: Record<string, string> = {}) => {
     const fd = new FormData();
-    Object.keys(fields).forEach(k => fd.append(k, fields[k]));
+    Object.keys(extra).forEach(k => fd.append(k, extra[k]));
     fd.append(field, file, fileName);
     return fd;
   };
@@ -14400,25 +14418,32 @@ async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<{ url: 
   const left = () => 150000 - (Date.now() - started);
   const T = (ms: number) => Math.max(5000, Math.min(ms, left()));
 
-  // 1) the route the working Video panel of this chat already uses
-  let u = await post(VIDEO_SWAP_ENDPOINT, form({ userId, kind: 'video' }), {}, T(90000), 'video-swap');
-  if (u) return { url: u, err: '' };
-  // 2) post media, multipart (same as video posts)
-  if (left() > 8000) {
-    u = await post('/api/posts/media', form({ type: 'video', mediaType: 'video' }), {}, T(60000), 'posts/media');
+  const attempts: Array<{ ep: string; body: FormData | Blob; headers?: Record<string, string>; tag: string; ms?: number }> = [
+    { ep: VIDEO_SWAP_ENDPOINT, body: formWith('file', { userId, kind: 'video', type: 'video', mediaType: 'video' }), tag: 'video-swap' },
+    { ep: VIDEO_SWAP_ENDPOINT, body: formWith('media', { userId, kind: 'video' }), tag: 'video-swap media' },
+    { ep: '/api/posts/media', body: formWith('file', { type: 'video', mediaType: 'video', kind: 'video' }), tag: 'posts/media' },
+    { ep: '/api/posts/media', body: formWith('media', { type: 'video', mediaType: 'video', kind: 'video' }), tag: 'posts/media field' },
+    { ep: '/api/posts/media', body: file, headers: { 'Content-Type': contentType, 'X-File-Ext': `.${ext}`, 'X-Media-Type': 'video' }, tag: 'posts/media raw' },
+    { ep: '/api/live-chat/media', body: formWith('file', { userId, room: 'public', roomId: 'public', kind: 'video', type: 'video' }), tag: 'live-chat/media' },
+    { ep: '/api/live-chat/voice', body: formWith('file', { userId, kind: 'video', type: 'video' }), tag: 'live-chat/voice' },
+    { ep: '/api/upload', body: formWith('file', { type: 'video', mediaType: 'video' }), tag: 'upload' },
+    { ep: '/api/files/upload', body: formWith('file', { type: 'video', mediaType: 'video' }), tag: 'files/upload' },
+    { ep: '/api/posts/upload', body: formWith('file', { type: 'video', mediaType: 'video' }), tag: 'posts/upload' },
+    { ep: '/api/media', body: formWith('file', { type: 'video', mediaType: 'video' }), tag: 'media' },
+    { ep: '/api/status', body: formWith('media', { type: 'video' }), tag: 'status' },
+  ];
+
+  for (const a of attempts) {
+    if (left() <= 6000) break;
+    const u = await post(a.ep, a.body, a.headers || {}, T(a.ms || 55000), a.tag);
     if (u) return { url: u, err: '' };
   }
-  // 3) post media, raw body
-  if (left() > 8000) {
-    u = await post('/api/posts/media', file, { 'Content-Type': contentType, 'X-File-Ext': `.${ext}`, 'X-Media-Type': 'video' }, T(60000), 'posts/media raw');
-    if (u) return { url: u, err: '' };
-  }
-  // 4) shared helper used by the post composer (guarded by a timeout)
+
   if (left() > 8000) {
     try {
       const extra = await Promise.race([
         uploadPostMedia(file, { kind: 'video', fileName }),
-        new Promise<null>(res => window.setTimeout(() => res(null), T(45000))),
+        new Promise<null>(res => window.setTimeout(() => res(null), T(40000))),
       ]) as { ok?: boolean; url?: unknown } | null;
       if (extra && extra.ok && isValid(extra.url)) {
         const a = usable(toAbs(String(extra.url)));
@@ -14426,11 +14451,19 @@ async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<{ url: 
       }
     } catch { /* */ }
   }
-  // 5) other storage endpoints
-  for (const endpoint of ['/api/upload', '/api/media']) {
-    if (left() <= 8000) break;
-    u = await post(endpoint, form({ type: 'video', mediaType: 'video' }), {}, T(45000), endpoint.replace('/api/', ''));
-    if (u) return { url: u, err: '' };
+
+  // Last resort for short notes: keep a data URL so the bubble actually sends
+  // instead of dying on "Sending..." when every storage route 404s.
+  if (blob.size > 0 && blob.size < 3_500_000) {
+    try {
+      const dataUrl = await new Promise<string | null>(resolve => {
+        const r = new FileReader();
+        r.onloadend = () => resolve(typeof r.result === 'string' && r.result.startsWith('data:') ? r.result : null);
+        r.onerror = () => resolve(null);
+        r.readAsDataURL(new Blob([blob], { type: contentType }));
+      });
+      if (dataUrl) return { url: dataUrl, err: '' };
+    } catch { /* */ }
   }
   return { url: null, err: lastErr };
 }
