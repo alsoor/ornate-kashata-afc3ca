@@ -16455,9 +16455,7 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
         </button>
       ) : (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px', background: 'linear-gradient(rgba(0,0,0,0.65), transparent)', zIndex: 4, pointerEvents: 'none' }}>
-          <button type="button" onClick={onOpenProfile} aria-label="Open profile" style={{ background: 'none', border: `2px solid ${CLR_PRIMARY}`, borderRadius: '50%', padding: 0, display: 'flex', cursor: post.userId ? 'pointer' : 'default', pointerEvents: 'auto' }}>
-            <UserAvatar name={post.name || post.username || '?'} avatarUrl={post.avatarUrl} size={34} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
-          </button>
+          <LiveRailAvatar c={post} size={34} onOpenProfile={onOpenProfile} wrapperStyle={{ pointerEvents: 'auto' }} />
           <span style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'ltr', textAlign: 'left' }}>{nameOf(post)}</span>
           <button type="button" onClick={onLike} aria-label="Like" style={{ background: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: 999, padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 5, color: '#fff', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer', pointerEvents: 'auto' }}>
             <Heart size={16} strokeWidth={2.2} color={liked ? '#ef4444' : '#fff'} fill={liked ? '#ef4444' : 'none'} />
@@ -16573,6 +16571,152 @@ function saveLiveMediaFavs(uid: string, ids: string[]) {
   try { localStorage.setItem(liveMediaFavsKey(uid), JSON.stringify(ids.slice(-500))); } catch { /* */ }
 }
 
+// ── Rail avatar (full-screen public media): "+" add-friend badge on the ring + live ring (yellow + silver shimmer) ──
+// • Publisher is in a voice/video live  → ring turns yellow with a silver light running around it; tap = open the live.
+// • No live                             → tap = open the publisher's profile (as before).
+// • Not a friend yet (and not me)       → small "+" badge on the bottom of the ring; tap = send the friend request.
+const railFriendCache: { at: number; p: Promise<void> | null; accepted: Set<string>; outgoing: Set<string>; incoming: Set<string> } = {
+  at: 0, p: null, accepted: new Set(), outgoing: new Set(), incoming: new Set(),
+};
+function railFriendsLoad(force = false): Promise<void> {
+  if (!force && Date.now() - railFriendCache.at < 15000) return Promise.resolve();
+  if (railFriendCache.p) return railFriendCache.p;
+  railFriendCache.p = (async () => {
+    try {
+      const r = await fetch('/api/friends', { credentials: 'include' });
+      if (!r.ok) return;
+      const data = await r.json();
+      railFriendCache.accepted = new Set((data.accepted ?? []).map((f: any) => String(f.friendId)));
+      railFriendCache.outgoing = new Set((data.outgoing ?? []).map((q: any) => String(q.addresseeId ?? q.userId)));
+      railFriendCache.incoming = new Set((data.incoming ?? []).map((q: any) => String(q.requesterId ?? q.userId)));
+      railFriendCache.at = Date.now();
+    } catch { /* keep last */ } finally { railFriendCache.p = null; }
+  })();
+  return railFriendCache.p;
+}
+
+function LiveRailAvatar({ c, size, onOpenProfile, wrapperStyle }: {
+  c: PublicLiveComment;
+  size: number;
+  onOpenProfile: () => void;
+  wrapperStyle?: React.CSSProperties;
+}) {
+  const navigate = useNavigate();
+  const { user } = useSession();
+  const uid = c.userId ? String(c.userId) : '';
+  const myId = user?.id ? String(user.id) : '';
+  const isMe = !!uid && uid === myId;
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = useState(false);
+  // Only the item that is actually on screen checks for a live / friend state (the feed can hold many items).
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setVisible(true); return; }
+    const io = new IntersectionObserver(entries => { entries.forEach(en => setVisible(en.isIntersecting)); }, { threshold: 0.3 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  const liveKind = useLiveBroadcastKind(visible && uid ? uid : null, true);
+  const liveActive = liveKind != null;
+
+  const [friendState, setFriendState] = useState<'unknown' | 'none' | 'pending' | 'accepted'>('unknown');
+  const [sending, setSending] = useState(false);
+  const [justAdded, setJustAdded] = useState(false);
+  useEffect(() => {
+    if (!visible || !uid || !myId || isMe) return;
+    let cancelled = false;
+    void railFriendsLoad().then(() => {
+      if (cancelled) return;
+      setFriendState(
+        railFriendCache.accepted.has(uid) ? 'accepted'
+        : (railFriendCache.outgoing.has(uid) || railFriendCache.incoming.has(uid)) ? 'pending'
+        : 'none'
+      );
+    });
+    return () => { cancelled = true; };
+  }, [visible, uid, myId, isMe]);
+
+  const addFriend = async () => {
+    if (sending || !uid || !myId) return;
+    setSending(true);
+    try {
+      const r = await fetch('/api/friends', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ addresseeId: uid }),
+      });
+      if (r.ok) {
+        railFriendCache.outgoing.add(uid);
+        setFriendState('pending');
+        setJustAdded(true);
+        window.setTimeout(() => setJustAdded(false), 1400);
+      }
+    } catch { /* ignore */ } finally { setSending(false); }
+  };
+
+  const goLive = () => {
+    const qs = new URLSearchParams({ hostId: uid, hostName: c.name || c.username || 'Host' });
+    if (c.username) qs.set('hostUsername', c.username);
+    if (c.avatarUrl) qs.set('hostAvatar', c.avatarUrl);
+    navigate(`${liveKind === 'camera' ? '/live-camera' : '/live'}?${qs.toString()}`);
+  };
+
+  const showPlus = !!uid && !!myId && !isMe && (friendState === 'none' || justAdded);
+  const badge = Math.max(15, Math.min(22, Math.round(size * 0.46)));
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', display: 'flex', flexShrink: 0, ...wrapperStyle }}>
+      <style>{`@keyframes stooornaRailShimmer { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <button
+        type="button"
+        aria-label={liveActive ? (liveKind === 'camera' ? 'Video Live' : 'Voice Live') : 'Open profile'}
+        onClick={e => {
+          e.stopPropagation();
+          if (liveActive && uid) { goLive(); return; }
+          onOpenProfile();
+        }}
+        style={{
+          position: 'relative', width: size + 6, height: size + 6, boxSizing: 'border-box', borderRadius: '50%', border: 'none',
+          padding: liveActive ? 3 : 2, margin: liveActive ? 0 : 1, cursor: uid ? 'pointer' : 'default', display: 'flex',
+          background: liveActive ? '#facc15' : '#fff',
+          boxShadow: liveActive ? '0 0 12px rgba(250,204,21,0.65)' : 'none',
+          WebkitTapHighlightColor: 'transparent',
+        }}
+      >
+        {liveActive ? (
+          <div
+            style={{
+              position: 'absolute', inset: 0, borderRadius: '50%', pointerEvents: 'none',
+              background: 'conic-gradient(from 0deg, transparent 0%, transparent 62%, rgba(255,255,255,0.98) 82%, #cbd5e1 90%, transparent 100%)',
+              animation: 'stooornaRailShimmer 1.6s linear infinite',
+            }}
+          />
+        ) : null}
+        <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: '#000' }}>
+          <UserAvatar name={c.name || c.username || '?'} avatarUrl={c.avatarUrl} size={size} style={{ width: '100%', height: '100%', flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
+        </div>
+      </button>
+      {showPlus ? (
+        <button
+          type="button"
+          aria-label="Add friend"
+          disabled={sending || justAdded}
+          onClick={e => { e.stopPropagation(); void addFriend(); }}
+          style={{
+            position: 'absolute', left: '50%', bottom: -Math.round(badge * 0.42), transform: 'translateX(-50%)',
+            width: badge, height: badge, borderRadius: '50%', border: '1.5px solid #fff', padding: 0,
+            background: justAdded ? '#22c55e' : '#ef4444', color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', WebkitTapHighlightColor: 'transparent',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+          }}
+        >
+          {justAdded ? <Check size={Math.round(badge * 0.62)} strokeWidth={3.2} /> : <Plus size={Math.round(badge * 0.66)} strokeWidth={3.4} />}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 /** One full-width item of the stacked public media feed.
  *  Video: autoplays when it is on screen, pauses when it leaves; tap = pause/play (first tap unmutes if the browser forced muted autoplay).
  *  Photo: shown complete (object-fit: contain). Side buttons: profile · like · comments · favorite. */
@@ -16661,14 +16805,7 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
         <p style={{ position: 'absolute', left: 12, bottom: 14, right: 84, margin: 0, color: '#fff', fontWeight: 800, fontSize: '0.92rem', textShadow: '0 1px 3px rgba(0,0,0,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{name}</p>
       ) : null}
       <div style={{ position: 'absolute', right: 8, bottom: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
-        <button
-          type="button"
-          aria-label="Open profile"
-          onClick={e => { e.stopPropagation(); onOpenProfile(); }}
-          style={{ background: 'none', border: '2px solid #fff', borderRadius: '50%', padding: 0, cursor: c.userId ? 'pointer' : 'default', display: 'flex' }}
-        >
-          <UserAvatar name={c.name || c.username || '?'} avatarUrl={c.avatarUrl} size={44} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
-        </button>
+        <LiveRailAvatar c={c} size={44} onOpenProfile={onOpenProfile} wrapperStyle={{ marginBottom: 6 }} />
         <button type="button" aria-label="Like" onClick={e => { e.stopPropagation(); onLike(); }} style={sideBtn}>
           <Heart size={34} strokeWidth={2} color={liked ? '#ef4444' : '#fff'} fill={liked ? '#ef4444' : 'rgba(255,255,255,0.0)'} style={{ filter: icoShadow }} />
           <span style={cnt}>{c.likes.length > 0 ? c.likes.length : ''}</span>
