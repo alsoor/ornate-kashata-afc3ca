@@ -13479,32 +13479,12 @@ function adminBellKey(uid: string) {
   return `stooorna_admin_bell_${uid}`;
 }
 
-// ids the user deleted from the bell — kept so a deleted notice can't be re-imported
-// from the other mod/admin storage keys or from the server on the next poll.
-function adminBellDeletedKey(uid: string) {
-  return `stooorna_admin_bell_deleted_${uid}`;
-}
-function loadAdminBellDeleted(uid: string): Set<string> {
-  try {
-    const raw = JSON.parse(localStorage.getItem(adminBellDeletedKey(uid)) || '[]');
-    return new Set(Array.isArray(raw) ? raw.map(String) : []);
-  } catch { return new Set(); }
-}
-function markAdminBellDeleted(uid: string, id: string) {
-  try {
-    const set = loadAdminBellDeleted(uid);
-    set.add(id);
-    localStorage.setItem(adminBellDeletedKey(uid), JSON.stringify(Array.from(set).slice(-300)));
-  } catch { /* */ }
-}
-
 function loadAdminBellNotices(uid: string): AdminBellNotice[] {
   if (!uid) return [];
   const out: AdminBellNotice[] = [];
   const seen = new Set<string>();
-  const deleted = loadAdminBellDeleted(uid);
   const push = (row: AdminBellNotice) => {
-    if (!row.id || seen.has(row.id) || deleted.has(row.id)) return;
+    if (!row.id || seen.has(row.id)) return;
     seen.add(row.id);
     out.push(row);
   };
@@ -13527,7 +13507,19 @@ function loadAdminBellNotices(uid: string): AdminBellNotice[] {
       }
     } catch { /* */ }
   }
-  return out.filter(x => x.body).sort((a, b) => b.at - a.at).slice(0, 80);
+  let dismissed: Set<string> = new Set();
+  try {
+    const dr = JSON.parse(localStorage.getItem(`stooorna_admin_bell_dismissed_${uid}`) || '[]');
+    if (Array.isArray(dr)) dismissed = new Set(dr.map(String));
+  } catch { /* */ }
+  const sorted = out.filter(x => x.body && !dismissed.has(x.id)).sort((a, b) => b.at - a.at);
+  // the same notice can reach the bell through two paths — keep one copy
+  const uniq: AdminBellNotice[] = [];
+  for (const n of sorted) {
+    if (uniq.some(u => u.body === n.body && Math.abs(u.at - n.at) < 10 * 60 * 1000)) continue;
+    uniq.push(n);
+  }
+  return uniq.slice(0, 80);
 }
 
 function saveAdminBellNotices(uid: string, list: AdminBellNotice[]) {
@@ -13535,6 +13527,205 @@ function saveAdminBellNotices(uid: string, list: AdminBellNotice[]) {
     localStorage.setItem(adminBellKey(uid), JSON.stringify(list.slice(0, 80)));
     window.dispatchEvent(new CustomEvent('stooorna:admin-bell', { detail: { userId: uid, list } }));
   } catch { /* */ }
+}
+
+// ── Admin bell server sync ────────────────────────────────────────────────
+// The visible bell (HeaderAdminBell) reads localStorage only. Warnings / notices sent by
+// support (@Stooorna) or a moderator live on the server, and were only copied into local
+// storage when the user opened the chat with that sender. This watcher checks the server
+// in the background, copies new notices into the bell's store, and alerts the user.
+const ADMIN_BELL_OWNER_USERNAME = 'stooorna';
+const ADMIN_BELL_DISMISSED_KEY = (uid: string) => `stooorna_admin_bell_dismissed_${uid}`;
+
+function adminBellDismissed(uid: string): Set<string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ADMIN_BELL_DISMISSED_KEY(uid)) || '[]');
+    return new Set(Array.isArray(raw) ? raw.map(String) : []);
+  } catch { return new Set(); }
+}
+function adminBellDismiss(uid: string, id: string) {
+  try {
+    const s = adminBellDismissed(uid);
+    s.add(id);
+    localStorage.setItem(ADMIN_BELL_DISMISSED_KEY(uid), JSON.stringify(Array.from(s).slice(-500)));
+  } catch { /* */ }
+}
+
+// A notice body can be plain text or a small JSON payload — pull out the readable part.
+function adminBellNoticeText(body: unknown): string {
+  const raw = String(body ?? '').trim();
+  if (!raw) return '';
+  const tryObj = (s: string): string => {
+    try {
+      const o = JSON.parse(s);
+      if (o && typeof o === 'object') {
+        const parts = [o.title, o.message, o.text, o.body, o.reason, o.note]
+          .map((x: unknown) => (typeof x === 'string' ? x.trim() : ''))
+          .filter(Boolean);
+        return Array.from(new Set(parts)).join(' — ');
+      }
+    } catch { /* */ }
+    return '';
+  };
+  const direct = tryObj(raw);
+  if (direct) return direct;
+  const i = raw.indexOf('{');
+  if (i > 0) {
+    const inner = tryObj(raw.slice(i));
+    if (inner) return inner;
+  }
+  return raw.slice(0, 600);
+}
+
+function AdminBellServerSync({ myUserId }: { myUserId: string | null }) {
+  const [toast, setToast] = useState<string | null>(null);
+  const ownerIdRef = useRef<string | null>(null);
+  const primedRef = useRef(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!myUserId) return;
+    const uid = String(myUserId);
+    let cancelled = false;
+    let busy = false;
+    primedRef.current = false;
+
+    const resolveOwnerId = async (): Promise<string | null> => {
+      if (ownerIdRef.current) return ownerIdRef.current;
+      try {
+        const r = await fetch(`/api/users/by-username/${encodeURIComponent(ADMIN_BELL_OWNER_USERNAME)}`, { credentials: 'include' });
+        if (!r.ok) return null;
+        const d = await r.json();
+        const id = d?.id || d?.userId || d?.user?.id || null;
+        if (id) ownerIdRef.current = String(id);
+      } catch { /* */ }
+      return ownerIdRef.current;
+    };
+
+    const pushNew = (fresh: AdminBellNotice[]) => {
+      if (!fresh.length) return;
+      const dismissed = adminBellDismissed(uid);
+      const current = loadAdminBellNotices(uid);
+      const have = new Set(current.map(x => x.id));
+      const add = fresh.filter(x => !have.has(x.id) && !dismissed.has(x.id));
+      if (!add.length) return;
+      saveAdminBellNotices(uid, [...add, ...current].sort((a, b) => b.at - a.at).slice(0, 80));
+      if (primedRef.current) {
+        try { playNotificationSound(); } catch { /* */ }
+        try { navigator.vibrate?.([120, 80, 120]); } catch { /* */ }
+        setToast(add[0].body.slice(0, 90));
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = setTimeout(() => setToast(null), 6000);
+      }
+    };
+
+    const syncMessages = async () => {
+      let bySender: Record<string, number> = {};
+      try {
+        const r = await fetch('/api/messages/unread', { credentials: 'include' });
+        if (!r.ok) return;
+        const d = await r.json() as { bySender?: Record<string, number> };
+        bySender = d.bySender || {};
+      } catch { return; }
+      const ownerId = await resolveOwnerId();
+      if (ownerId && ownerId === uid) return; // the support account itself has nothing to receive
+      try { void fetchModerators(); } catch { /* */ }
+      const senders = Object.entries(bySender)
+        .filter(([sid, n]) => n > 0 && sid !== uid && (sid === ownerId || isModerator(sid)))
+        .map(([sid]) => sid)
+        .slice(0, 5);
+      for (const sid of senders) {
+        try {
+          const r = await fetch(`/api/messages?with=${encodeURIComponent(sid)}`, { credentials: 'include' });
+          if (!r.ok) continue;
+          const rows = await r.json();
+          if (!Array.isArray(rows)) continue;
+          // ingestModMessageRows returns only the rows that are NOT moderation notices,
+          // so whatever it drops is exactly what the app treats as an admin notice.
+          const kept = new Set((ingestModMessageRows(rows as ApiDirectMessageRow[]) as ApiDirectMessageRow[]).map(x => String(x.id)));
+          const fresh: AdminBellNotice[] = (rows as ApiDirectMessageRow[])
+            .filter(x => !kept.has(String(x.id)) && String(x.senderId) !== uid)
+            .map(x => ({
+              id: `srv-msg-${x.id}`,
+              body: adminBellNoticeText(x.body),
+              at: new Date(x.createdAt).getTime() || Date.now(),
+              read: false,
+            }))
+            .filter(x => x.body);
+          pushNew(fresh);
+        } catch { /* try next sender */ }
+      }
+    };
+
+    const syncNotifications = async () => {
+      try {
+        const r = await fetch('/api/notifications', { credentials: 'include' });
+        if (!r.ok) return;
+        const d = await r.json();
+        const rows: any[] = Array.isArray(d) ? d : (d?.notifications || d?.items || []);
+        const looksAdmin = /warn|ban|moderat|admin|support|violation|strike|إنذار|انذار|تحذير/i;
+        const fresh: AdminBellNotice[] = rows
+          .filter(x => x && looksAdmin.test(`${x.type || ''} ${x.kind || ''} ${x.category || ''} ${x.title || ''}`))
+          .map(x => ({
+            id: `srv-ntf-${x.id}`,
+            body: adminBellNoticeText(x.body ?? x.text ?? x.message ?? x.title),
+            at: new Date(x.createdAt || x.at || Date.now()).getTime() || Date.now(),
+            read: !!(x.read || x.readAt),
+          }))
+          .filter(x => x.body);
+        pushNew(fresh);
+      } catch { /* */ }
+    };
+
+    const tick = async () => {
+      if (cancelled || busy) return;
+      busy = true;
+      try {
+        await syncMessages();
+        await syncNotifications();
+      } finally {
+        busy = false;
+        primedRef.current = true; // notices that already existed on open don't beep — only new ones do
+      }
+    };
+    void tick();
+    const iv = window.setInterval(() => { void tick(); }, 6000);
+    const onVis = () => { if (document.visibilityState === 'visible') void tick(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onVis);
+    return () => {
+      cancelled = true;
+      window.clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onVis);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, [myUserId]);
+
+  if (!toast || typeof document === 'undefined') return null;
+  return createPortal(
+    <button
+      type="button"
+      onClick={() => {
+        setToast(null);
+        try { window.dispatchEvent(new CustomEvent('stooorna:open-admin-bell')); } catch { /* */ }
+      }}
+      style={{
+        position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', left: '50%', transform: 'translateX(-50%)',
+        zIndex: 14100, width: 'min(92vw, 360px)', display: 'flex', alignItems: 'center', gap: 10,
+        padding: '10px 14px', borderRadius: 16, cursor: 'pointer', direction: 'rtl', textAlign: 'right',
+        background: 'rgba(30,22,4,0.97)', border: '1.5px solid rgba(234,179,8,0.8)',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.5)', color: '#fff',
+      }}
+    >
+      <Bell size={18} color="#eab308" />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#eab308' }}>إشعار من الإدارة</span>
+        <span style={{ display: 'block', fontSize: '0.76rem', lineHeight: 1.4, marginTop: 2 }}>{toast}</span>
+      </span>
+    </button>,
+    document.body
+  );
 }
 
 function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?: number }) {
@@ -13552,91 +13743,14 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
     window.addEventListener('stooorna:admin-bell', refresh);
     window.addEventListener('storage', refresh);
     const t = window.setInterval(refresh, 4000);
+    const openFromToast = () => { setItems(loadAdminBellNotices(uid)); setOpen(true); };
+    window.addEventListener('stooorna:open-admin-bell', openFromToast);
     return () => {
+      window.removeEventListener('stooorna:open-admin-bell', openFromToast);
       window.removeEventListener('stooorna:admin-bell', refresh);
       window.removeEventListener('storage', refresh);
       window.clearInterval(t);
     };
-  }, [uid]);
-
-  // ── Pull Support/owner alerts from the SERVER into the bell ────────────────
-  // Before this, the bell only read localStorage: an alert the Support account sent
-  // (a direct message on /api/messages) reached the bell only if the user happened to
-  // open the chat with Support. Now we poll the unread counts, and when Support has
-  // something unread we fetch that thread and let ingestModMessageRows move the
-  // moderation/alert notices into the bell (same parser the chat screen already uses).
-  useEffect(() => {
-    if (!uid) return;
-    let cancelled = false;
-    let supportId: string | null = null;
-    let lastCount = -1; // -1 → first poll: fetch whatever is already waiting
-    const beforeIds = () => new Set(loadAdminBellNotices(uid).map(x => x.id));
-
-    const announce = (prev: Set<string>) => {
-      const now = loadAdminBellNotices(uid);
-      setItems(now);
-      if (now.some(x => !x.read && !prev.has(x.id))) {
-        try { navigator.vibrate?.([120, 80, 120]); } catch { /* */ }
-        try { playNotificationSound(); } catch { /* */ }
-      }
-    };
-
-    const pullServerNotifications = async () => {
-      // Optional: /api/notifications rows that are admin/support/warning alerts
-      try {
-        const r = await fetch('/api/notifications', { credentials: 'include' });
-        if (!r.ok || cancelled) return;
-        const rows = await r.json();
-        if (!Array.isArray(rows)) return;
-        const deleted = loadAdminBellDeleted(uid);
-        const known = new Set(loadAdminBellNotices(uid).map(x => x.id));
-        const fresh: AdminBellNotice[] = [];
-        for (const x of rows) {
-          const kind = String(x?.type || x?.kind || '');
-          if (!/admin|support|warn|alert|moderat|system/i.test(kind)) continue;
-          const id = String(x.id ?? '');
-          const body = String(x.body || x.message || x.text || x.title || '');
-          if (!id || !body || known.has(id) || deleted.has(id)) continue;
-          fresh.push({ id, body, at: Number(new Date(x.createdAt || x.at || Date.now()).getTime()) || Date.now(), read: !!(x.read || x.readAt) });
-        }
-        if (fresh.length) {
-          const prev = beforeIds();
-          saveAdminBellNotices(uid, [...fresh, ...loadAdminBellNotices(uid)]);
-          announce(prev);
-        }
-      } catch { /* endpoint missing/offline — ignore */ }
-    };
-
-    const pullSupportThread = async () => {
-      try {
-        if (!supportId) {
-          const ur = await fetch('/api/users/by-username/stooorna', { credentials: 'include' });
-          if (!ur.ok || cancelled) return;
-          const ud = await ur.json();
-          supportId = String(ud?.id || ud?.userId || ud?.user?.id || '') || null;
-        }
-        if (!supportId || supportId === uid) return; // Support itself has no alerts to receive
-        const r = await fetch('/api/messages/unread', { credentials: 'include' });
-        if (!r.ok || cancelled) return;
-        const data = await r.json() as { bySender?: Record<string, number> };
-        const count = Number(data.bySender?.[supportId] || 0);
-        if (count > 0 && count !== lastCount) {
-          const prev = beforeIds();
-          const mr = await fetch(`/api/messages?with=${encodeURIComponent(supportId)}`, { credentials: 'include' });
-          if (mr.ok && !cancelled) {
-            const rows = await mr.json();
-            if (Array.isArray(rows)) ingestModMessageRows(rows as ApiDirectMessageRow[]);
-            announce(prev);
-          }
-        }
-        lastCount = count;
-      } catch { /* offline — retry next tick */ }
-    };
-
-    const tick = () => { void pullSupportThread(); void pullServerNotifications(); };
-    tick();
-    const t = window.setInterval(tick, 6000);
-    return () => { cancelled = true; window.clearInterval(t); };
   }, [uid]);
 
   const openPanel = () => {
@@ -13650,7 +13764,7 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
 
   const removeNotice = (id: string) => {
     if (!uid) return;
-    markAdminBellDeleted(uid, id);
+    adminBellDismiss(uid, id);
     const next = loadAdminBellNotices(uid).filter(x => x.id !== id);
     saveAdminBellNotices(uid, next);
     setItems(next);
@@ -21596,6 +21710,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       <GlobalMessageAlertWatcher myUserId={user?.id ?? null} />
       <DirectMessageSyncWatcher myUserId={user?.id ?? null} />
       <StoryModerationWatcher myUserId={user?.id ?? null} />
+      <AdminBellServerSync myUserId={user?.id ?? null} />
       <Helmet>
         <title>Chat | Stooorna</title>
         <meta name="description" content="Find friends, send requests, and manage your contacts on Stooorna — the real-time voice and whisper app." />
