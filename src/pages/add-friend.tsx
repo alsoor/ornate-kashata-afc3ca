@@ -14977,7 +14977,7 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError }: {
         onPointerCancel={onCancelPtr}
         onContextMenu={e => e.preventDefault()}
         style={{
-          width: 34, height: 34, flexShrink: 0, padding: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2,
+          width: 30, height: 30, flexShrink: 0, padding: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', marginRight: 4,
           background: recording ? '#ef4444' : '#111', color: '#fff',
           display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none',
           WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none',
@@ -16586,7 +16586,7 @@ function PublicLiveCommentsPanel({
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
+          gap: 8,
           padding: '4px 12px 10px',
         }}>
           <UserAvatar
@@ -16672,6 +16672,14 @@ function PublicLiveCommentsPanel({
                 const url = URL.createObjectURL(file);
                 setPendingImage(url);
               }}
+            />
+            {/* Circular record button: hold = record, tap = cycle voice → once-video → video, slide up = lock, slide left = cancel */}
+            <LiveRecordButton
+              disabled={!!editingId}
+              onTouch={() => { composerGuardRef.current = Date.now(); }}
+              onVoice={(url, seconds) => sendVoiceNow(url, seconds)}
+              onRound={(blob, seconds, once) => sendRound(blob, seconds, once)}
+              onError={showRoundToast}
             />
             {/* ── "+" bubble: Photos / Voice / Emoji / Video AI live inside it (same handlers as the old inline buttons) ── */}
             <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
@@ -16763,14 +16771,6 @@ function PublicLiveCommentsPanel({
               )}
             </div>
           </div>
-          {/* Circular record button: hold = record, tap = cycle voice → once-video → video, slide up = lock, slide left = cancel */}
-          <LiveRecordButton
-            disabled={!!editingId}
-            onTouch={() => { composerGuardRef.current = Date.now(); }}
-            onVoice={(url, seconds) => sendVoiceNow(url, seconds)}
-            onRound={(blob, seconds, once) => sendRound(blob, seconds, once)}
-            onError={showRoundToast}
-          />
           <button
             type="button"
             onClick={() => {
