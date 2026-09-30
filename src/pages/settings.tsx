@@ -5970,6 +5970,7 @@ export default function SettingsPage() {
       { url: base, method: 'PATCH' },
     ];
     let anyOk = false;
+    const info: string[] = [];
     for (const ep of eps) {
       try {
         const r = await fetch(ep.url, {
@@ -5978,9 +5979,20 @@ export default function SettingsPage() {
           body: ep.method === 'DELETE' ? undefined : JSON.stringify(body),
         });
         if (r.ok) anyOk = true;
-      } catch { /* next */ }
+        else {
+          let bodyTxt = '';
+          try { bodyTxt = (await r.text()).replace(/\s+/g, ' ').slice(0, 80); } catch { /* */ }
+          info.push(`${ep.method} ${r.status}${bodyTxt ? ' ' + bodyTxt : ''}`);
+        }
+      } catch { info.push(`${ep.method} network`); }
     }
+    try { (window as any).__ownerClearInfo = anyOk ? '' : info.join(', '); } catch { /* */ }
     return anyOk;
+  }
+  function ownerClearInfoSuffix(ok: boolean): string {
+    let i = '';
+    try { i = String((window as any).__ownerClearInfo || ''); } catch { /* */ }
+    return !ok && i ? ` [${i}]` : '';
   }
   async function ownerRemoveBusiness(u: { id: string }): Promise<boolean> {
     const uid = String(u.id);
@@ -10312,7 +10324,7 @@ export default function SettingsPage() {
                     setScSaving(true); setScMsg('');
                     const ok = await ownerRemoveVip(supportCtrlUser);
                     setScSaving(false);
-                    setScMsg(ok ? 'تم إزالة خاصية VIP' : 'فشلت الإزالة من السيرفر — حاول مرة ثانية');
+                    setScMsg(ok ? 'تم إزالة خاصية VIP' : 'فشلت الإزالة من السيرفر — حاول مرة ثانية' + ownerClearInfoSuffix(ok));
                     setSupportCtrlUser(prev => prev ? { ...prev } : prev);
                   }}
                   style={{
@@ -10331,7 +10343,7 @@ export default function SettingsPage() {
                     setScSaving(true); setScMsg('');
                     const ok = await ownerRemoveBusiness(supportCtrlUser);
                     setScSaving(false);
-                    setScMsg(ok ? 'تم إزالة خاصية Business' : 'فشلت الإزالة من السيرفر — حاول مرة ثانية');
+                    setScMsg(ok ? 'تم إزالة خاصية Business' : 'فشلت الإزالة من السيرفر — حاول مرة ثانية' + ownerClearInfoSuffix(ok));
                     const cid = supportCtrlUser.id;
                     setAllUsers(prev => prev.map(x => (x.id === cid && String(x.accountType || '').toLowerCase() === 'business') ? { ...x, accountType: 'user' } : x));
                     setSupportCtrlUser(prev => prev ? { ...prev } : prev);
@@ -11520,7 +11532,7 @@ export default function SettingsPage() {
                             const ok = await ownerRemoveVip(ownerVipSel);
                             setOwnerVipMsg(ok
                               ? 'VIP removed completely (frame, color and VIP header).'
-                              : 'Removed on this device only. The server did not accept the removal, so VIP may come back until the server route clears it.');
+                              : 'Removed on this device only. The server did not accept the removal, so VIP may come back until the server route clears it.' + ownerClearInfoSuffix(ok));
                             setOwnerVipTick(t => t + 1);
                           } finally { setOwnerVipBusy(false); }
                         }}
@@ -11676,7 +11688,7 @@ export default function SettingsPage() {
                             const ok = await ownerRemoveBusiness(ownerBizSel);
                             setOwnerBizMsg(ok
                               ? 'Business removed completely (banner and account).'
-                              : 'Removed on this device only. The server still lists this user as Business, so it may come back until the server route clears it.');
+                              : 'Removed on this device only. The server still lists this user as Business, so it may come back until the server route clears it.' + ownerClearInfoSuffix(ok));
                             setOwnerBizTick(t => t + 1);
                           } finally { setOwnerBizBusy(false); }
                         }}

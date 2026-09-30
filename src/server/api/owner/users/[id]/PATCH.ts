@@ -6,12 +6,15 @@
  *  - username            → rename username
  *  - newPassword         → force-reset password (no old password required)
  *  - nameColor / usernameColor / color → change display colour
+ *  - vip / isVip / vipActive → grant (true) or remove (false) VIP in vip_status
+ *  - business / isBusiness / businessApproved → grant (true) or remove (false) Business in business_directory
  */
 import type { Request, Response } from 'express';
 import { db } from '../../../../db/client.js';
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 import { getAuth } from '../../../../../lib/auth/auth.js';
 import bcrypt from 'bcryptjs';
+import { vipStatus, businessDirectory } from '@/server/db/schema';
 
 const OWNER_EMAILS = new Set(['alsoor@mail.com', 'stooorna@mail.com']);
 const PRIVILEGED_USERNAMES = new Set(['q8', 'stooorna']);
@@ -39,6 +42,11 @@ export default async function handler(req: Request, res: Response) {
       nameColor?: string;
       usernameColor?: string;
       color?: string;
+      vip?: boolean; isVip?: boolean; vipActive?: boolean;
+      vipColor?: string | null; vipExpiresAt?: number | null;
+      business?: boolean; isBusiness?: boolean; businessApproved?: boolean;
+      businessProjectName?: string | null;
+      accountType?: string;
     };
 
     // ── Ban / Unban ──────────────────────────────────────────────────────────
@@ -91,6 +99,69 @@ export default async function handler(req: Request, res: Response) {
         ALTER TABLE user ADD COLUMN IF NOT EXISTS name_color VARCHAR(20) DEFAULT NULL
       `).catch(() => {});
       await db.execute(sql`UPDATE user SET name_color = ${colour} WHERE id = ${id}`);
+    }
+
+    // ── VIP grant / removal (same vip_status table the /api/vip routes use) ───
+    const vipFlag = body.vip ?? body.isVip ?? body.vipActive;
+    if (vipFlag !== undefined && vipFlag !== null) {
+      const existing = await db.select().from(vipStatus).where(eq(vipStatus.userId, id)).limit(1);
+      if (vipFlag === false) {
+        // Remove: switch off and clear expiry + features. Row and renameUsed flag are kept.
+        if (existing.length > 0) {
+          await db.update(vipStatus)
+            .set({ active: false, expiresAt: null, eightMics: false, roomMusic: false } as Record<string, unknown>)
+            .where(eq(vipStatus.userId, id));
+        }
+      } else {
+        const FAR = new Date('2099-12-31T00:00:00Z').getTime();
+        const validColors = ['blue', 'gold', 'red', 'green', 'gray', 'pink'];
+        const wantedColor = String(body.vipColor ?? body.color ?? '');
+        const patch: Record<string, unknown> = {
+          active: true,
+          since: new Date(),
+          expiresAt: new Date(Number(body.vipExpiresAt) || FAR),
+        };
+        if (validColors.includes(wantedColor)) patch.color = wantedColor;
+        if (existing.length > 0) {
+          await db.update(vipStatus).set(patch).where(eq(vipStatus.userId, id));
+        } else {
+          const [uRows] = await db.execute(sql`SELECT username FROM user WHERE id = ${id} LIMIT 1`) as unknown as [any[], unknown];
+          await db.insert(vipStatus).values({ userId: id, username: uRows?.[0]?.username ?? null, ...patch } as any);
+        }
+      }
+    }
+
+    // ── Business grant / removal (same business_directory table as /api/business/directory) ──
+    const bizFlag = body.business ?? body.isBusiness ?? body.businessApproved;
+    if (bizFlag !== undefined && bizFlag !== null) {
+      if (bizFlag === false) {
+        await db.delete(businessDirectory).where(eq(businessDirectory.userId, id));
+      } else {
+        const FAR = new Date('2099-12-31T00:00:00Z');
+        const [uRows] = await db.execute(sql`SELECT username, email FROM user WHERE id = ${id} LIMIT 1`) as unknown as [any[], unknown];
+        const u = uRows?.[0] ?? {};
+        const existing = await db.select().from(businessDirectory).where(eq(businessDirectory.userId, id)).limit(1);
+        const patch: Record<string, unknown> = { active: true, since: new Date(), expiresAt: FAR };
+        if (body.businessProjectName) patch.projectName = String(body.businessProjectName);
+        if (existing.length > 0) {
+          await db.update(businessDirectory).set(patch).where(eq(businessDirectory.userId, id));
+        } else {
+          await db.insert(businessDirectory).values({
+            userId: id,
+            username: u.username ?? null,
+            email: u.email ?? null,
+            projectName: (patch.projectName as string | undefined) ?? u.username ?? null,
+            active: true,
+            since: patch.since as Date,
+            expiresAt: FAR,
+          } as any);
+        }
+      }
+    }
+
+    // ── Account type (best effort: ignored if the column does not exist) ─────
+    if (body.accountType === 'user' || body.accountType === 'business') {
+      await db.execute(sql`UPDATE user SET account_type = ${body.accountType} WHERE id = ${id}`).catch(() => {});
     }
 
     res.json({ ok: true });

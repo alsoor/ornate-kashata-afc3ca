@@ -1,6 +1,6 @@
 /**
- * GET /api/users/:id/followers — قائمة متابعين مستخدم (تحتاج تسجيل دخول)
- * ترجع: { followers: [...], count }
+ * GET /api/users/:id/followers - list of a user's followers (login required)
+ * Returns: { followers: [...], count }
  */
 import type { Request, Response } from 'express';
 import { db } from '../../../../db/client.js';
@@ -24,22 +24,22 @@ export default async function handler(req: Request, res: Response) {
     const target = rowsOf(await db.execute(sql`SELECT id FROM user WHERE id = ${targetId} LIMIT 1`));
     if (target.length === 0) return res.status(404).json({ error: 'User not found' });
 
-    // ── الخصوصية: صاحب الحساب دايماً يشوف قائمته، غيره حسب الإعدادات ──
+    // -- Privacy: the account owner always sees their own list; others depend on settings --
     if (viewerId !== targetId) {
       let isPrivate = false;
       try {
         const p = rowsOf(await db.execute(sql`SELECT is_private FROM user_privacy WHERE user_id = ${targetId}`));
         isPrivate = p.length > 0 && Boolean(p[0].is_private);
-      } catch { /* الجدول/العمود غير موجود → نعتبره عام */ }
+      } catch { /* table/column missing -> treat as public */ }
 
-      // مفتاح "إخفاء قائمة المتابعين" (إن كان محفوظاً في السيرفر)
+      // "hide followers list" switch (if stored on the server)
       let hidden = false;
       try {
         const h = rowsOf(await db.execute(sql`SELECT followers_visible FROM user_privacy WHERE user_id = ${targetId}`));
         if (h.length > 0 && h[0].followers_visible !== null && h[0].followers_visible !== undefined) {
           hidden = !Boolean(h[0].followers_visible);
         }
-      } catch { /* العمود غير موجود بعد */ }
+      } catch { /* column does not exist yet */ }
 
       if (hidden) return res.status(403).json({ error: 'Followers list is hidden', hidden: true });
 
@@ -51,7 +51,7 @@ export default async function handler(req: Request, res: Response) {
       }
     }
 
-    // ── قائمة المتابعين ──
+    // -- list --
     let ids: any[] = [];
     try {
       ids = rowsOf(await db.execute(
