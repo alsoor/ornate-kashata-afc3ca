@@ -15,8 +15,9 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import UserAvatar from '@/components/UserAvatar';
 import {
-  Layers, LocateFixed, MapPin, X, ExternalLink, Navigation, Copy, Share2,
+  Layers, LocateFixed, MapPin, ArrowLeft, CornerUpRight,
   Coffee, ShoppingCart, Utensils, Fuel, Pill, GraduationCap, Landmark, Building2, Store,
 } from 'lucide-react';
 
@@ -571,23 +572,36 @@ export function LocationPickerSheet({
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * 7) نافذة عرض موقع مُرسل (عند الضغط على Map داخل الشات)
+ * 7) صفحة عرض الموقع داخل التطبيق (مثل تيليجرام: Location + Open in Maps + Directions)
+ *    الضغط على Open in Maps أو Directions يطلعك على Google Maps خارج التطبيق.
  * ──────────────────────────────────────────────────────────────────────────── */
+const fmtDist = (m: number) => (m < 1000 ? `${Math.max(1, Math.round(m))} m away` : `${(m / 1000).toFixed(1)} km away`);
+const openExternal = (u: string) => {
+  try {
+    const w = window.open(u, '_blank', 'noopener,noreferrer');
+    if (!w) window.location.href = u;
+  } catch { try { window.location.href = u; } catch { /* */ } }
+};
+
 export function LocationViewSheet({
-  lat, lng, label, onClose,
-}: { lat: number; lng: number; label?: string; onClose: () => void }) {
+  lat, lng, label, senderName, senderAvatar, onClose,
+}: {
+  lat: number; lng: number; label?: string;
+  senderName?: string | null; senderAvatar?: string | null;
+  onClose: () => void;
+}) {
   const [view, setView] = useState<View>({ lat, lng, z: 17 });
   const [satellite, setSatellite] = useState(false);
-  const [toast, setToast] = useState('');
-  const [address, setAddress] = useState('');
   const [me, setMe] = useState<{ lat: number; lng: number; acc: number } | null>(null);
+  const [shown, setShown] = useState(false);
+  const pinPt = { lat, lng };
 
+  useEffect(() => { const t = requestAnimationFrame(() => setShown(true)); return () => cancelAnimationFrame(t); }, []);
   useEffect(() => {
-    const ac = new AbortController();
-    reverseGeocode(lat, lng, ac.signal).then(a => { if (!ac.signal.aborted) setAddress(a); }).catch(() => { /* */ });
-    return () => ac.abort();
-  }, [lat, lng]);
-
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) return;
     const id = navigator.geolocation.watchPosition(
@@ -598,96 +612,113 @@ export function LocationViewSheet({
     return () => { try { navigator.geolocation.clearWatch(id); } catch { /* */ } };
   }, []);
 
-  const flash = (m: string) => { setToast(m); window.setTimeout(() => setToast(''), 1600); };
-  const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
   const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-  const open = (u: string) => { try { window.open(u, '_blank', 'noopener,noreferrer'); } catch { /* */ } };
-  const copy = async () => {
-    const t = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-    try { await navigator.clipboard.writeText(t); flash('Copied'); } catch { flash(t); }
-  };
-  const share = async () => {
-    try {
-      if (typeof navigator.share === 'function') { await navigator.share({ title: label || 'Location', text: `📍 ${label || 'Location'}`, url: mapsUrl }); return; }
-    } catch (err: any) { if (err && (err.name === 'AbortError' || err.name === 'NotAllowedError')) return; }
-    copy();
-  };
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  const name = senderName || 'Location';
+  const sub = me ? fmtDist(distM(me, pinPt)) : (label || formatCoords(lat, lng));
 
-  const items: { key: string; icon: React.ReactNode; bg: string; title: string; sub: string; run: () => void }[] = [
-    { key: 'open', icon: <ExternalLink size={19} color="#fff" strokeWidth={2.3} />, bg: BLUE, title: 'Open in Google Maps', sub: label || address || formatCoords(lat, lng), run: () => open(mapsUrl) },
-    { key: 'dir', icon: <Navigation size={19} color="#fff" strokeWidth={2.3} />, bg: '#22c55e', title: 'Get directions', sub: me ? `${(distM(me, { lat, lng }) / 1000).toFixed(1)} km away` : 'Route from your location', run: () => open(dirUrl) },
-    { key: 'copy', icon: <Copy size={19} color="#fff" strokeWidth={2.3} />, bg: '#f4b942', title: 'Copy coordinates', sub: formatCoords(lat, lng), run: copy },
-    { key: 'share', icon: <Share2 size={19} color="#fff" strokeWidth={2.3} />, bg: '#8b5cf6', title: 'Share', sub: 'Send outside the app', run: share },
-  ];
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={stop} onPointerDown={stop} onTouchStart={stop} onTouchMove={stop} onTouchEnd={stop} onMouseDown={stop}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 140000, background: '#fff', direction: 'ltr',
+        display: 'flex', flexDirection: 'column',
+        transform: shown ? 'translateX(0)' : 'translateX(100%)', transition: 'transform .26s cubic-bezier(.2,.8,.2,1)',
+      }}
+    >
+      {/* شريط العنوان */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: 'calc(10px + env(safe-area-inset-top, 0px)) 14px 10px', background: '#fff', flexShrink: 0 }}>
+        <button type="button" aria-label="Back" onClick={onClose} style={{ border: 'none', background: 'none', padding: 6, cursor: 'pointer', color: '#111', display: 'flex' }}>
+          <ArrowLeft size={24} strokeWidth={2.2} />
+        </button>
+        <div style={{ fontWeight: 600, fontSize: '1.08rem', color: '#111' }}>Location</div>
+      </div>
 
-  return (
-    <SheetShell onClose={onClose}>
-      <div style={{ position: 'relative', height: '52%', minHeight: 250, flexShrink: 0 }}>
+      {/* الخريطة */}
+      <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         <TgMap
           view={view}
           setView={setView}
           satellite={satellite}
           markers={[...(me ? [{ lat: me.lat, lng: me.lng, kind: 'me' as const, acc: me.acc }] : []), { lat, lng, kind: 'pin' as const }]}
         />
-        <MapRoundBtn label="Map type" onClick={() => setSatellite(s => !s)} style={{ top: 14, right: 12, zIndex: 5 }}>
+        <button
+          type="button"
+          onPointerDown={stop}
+          onClick={e => { e.stopPropagation(); openExternal(mapsUrl); }}
+          style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 5, padding: '9px 22px', borderRadius: 999, border: 'none', background: '#fff', color: BLUE, fontWeight: 700, fontSize: '0.88rem', boxShadow: '0 1px 8px rgba(0,0,0,0.28)', cursor: 'pointer' }}
+        >
+          Open in Maps
+        </button>
+        <MapRoundBtn label="Map type" onClick={() => setSatellite(v => !v)} style={{ top: 14, right: 12, zIndex: 5 }}>
           <Layers size={20} strokeWidth={2} />
         </MapRoundBtn>
-        <MapRoundBtn label="Back to pin" onClick={() => setView({ lat, lng, z: Math.max(view.z, 16) })} style={{ bottom: 14, right: 12, zIndex: 5, color: BLUE }}>
+        <MapRoundBtn
+          label="My location"
+          onClick={() => {
+            if (me) setView(v => ({ lat: me.lat, lng: me.lng, z: Math.max(v.z, 16) }));
+            else setView(v => ({ lat, lng, z: Math.max(v.z, 16) }));
+          }}
+          style={{ bottom: 14, right: 12, zIndex: 5, color: BLUE }}
+        >
           <LocateFixed size={20} strokeWidth={2.2} />
         </MapRoundBtn>
-        <MapRoundBtn label="Close" onClick={onClose} style={{ top: 14, left: 12, zIndex: 5 }}>
-          <X size={20} strokeWidth={2.4} />
-        </MapRoundBtn>
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 10px calc(14px + env(safe-area-inset-bottom, 0px))', overscrollBehavior: 'contain' }}>
-        <div style={rowCard}>
-          {items.map((it, i) => (
-            <button key={it.key} type="button" style={{ ...rowBtn, borderTop: i ? '1px solid #f0f1f3' : 'none' }} onClick={it.run}>
-              <Circle bg={it.bg}>{it.icon}</Circle>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.93rem', color: i === 0 ? BLUE : '#111' }}>{it.title}</div>
-                <div style={{ color: '#7d8590', fontSize: '0.78rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.sub}</div>
-              </div>
-            </button>
-          ))}
+
+      {/* اللوحة السفلية: المُرسل + المسافة + Directions */}
+      <div style={{ background: '#fff', flexShrink: 0, padding: '14px 14px calc(14px + env(safe-area-inset-bottom, 0px))' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+          <UserAvatar name={name} avatarUrl={senderAvatar || null} size={44} style={{ flexShrink: 0, border: 'none' }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontStyle: 'italic', fontSize: '1rem', color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
+            <div style={{ color: '#7d8590', fontSize: '0.84rem', fontWeight: 600 }}>{sub}</div>
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={() => openExternal(dirUrl)}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '14px 0', borderRadius: 14, border: 'none', background: '#1e9bf0', color: '#fff', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}
+        >
+          <CornerUpRight size={20} strokeWidth={2.4} />
+          Directions
+        </button>
       </div>
-      {toast ? (
-        <div style={{ position: 'absolute', left: '50%', bottom: 'calc(24px + env(safe-area-inset-bottom, 0px))', transform: 'translateX(-50%)', background: 'rgba(17,17,17,0.9)', color: '#fff', padding: '8px 16px', borderRadius: 999, fontSize: '0.8rem', fontWeight: 700, zIndex: 9 }}>
-          {toast}
-        </div>
-      ) : null}
-    </SheetShell>
+    </div>,
+    document.body,
   );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * 8) كرت الموقع داخل الشات (نفس الصورة: Map | Location + الإحداثيات | دبوس أحمر)
+ * 8) كرت الموقع داخل الشات: مربع يعرض جزء من الخريطة + دبوس + الوقت
+ *    (بدون stopPropagation على اللمس → الضغط المطوّل يوصل لطبقة الحذف في المحفوظات)
  * ──────────────────────────────────────────────────────────────────────────── */
 export function LocationChatCard({
-  lat, lng, label, onOpen, maxWidth = 300,
-}: { lat: number; lng: number; label?: string; onOpen: () => void; maxWidth?: number }) {
+  lat, lng, onOpen, time, size = 230,
+}: { lat: number; lng: number; label?: string; onOpen: () => void; time?: string; size?: number }) {
+  const [view, setView] = useState<View>({ lat, lng, z: 16 });
+  useEffect(() => { setView({ lat, lng, z: 16 }); }, [lat, lng]);
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={e => { e.stopPropagation(); onOpen(); }}
-      onPointerDown={e => e.stopPropagation()}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
       style={{
-        marginTop: 6, display: 'flex', alignItems: 'center', gap: 12, direction: 'ltr',
-        width: '100%', maxWidth, boxSizing: 'border-box', padding: '12px 14px',
-        background: '#fff', border: '1px solid #ececf0', borderRadius: 18,
-        boxShadow: '0 4px 16px rgba(20,30,50,0.08)', cursor: 'pointer',
-        WebkitTapHighlightColor: 'transparent', userSelect: 'none',
-      }}
+        position: 'relative', marginTop: 6, width: `min(100%, ${size}px)`, aspectRatio: '1 / 1',
+        borderRadius: 18, overflow: 'hidden', cursor: 'pointer', direction: 'ltr',
+        background: '#e8e4dc', boxShadow: '0 2px 10px rgba(20,30,50,0.16)',
+        WebkitTapHighlightColor: 'transparent', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+      } as React.CSSProperties}
     >
-      <span style={{ color: '#06b6c8', fontWeight: 800, fontSize: '0.86rem', flexShrink: 0 }}>Map</span>
-      <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
-        <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label || 'Location'}</div>
-        <div style={{ marginTop: 2, fontWeight: 700, fontSize: '0.78rem', color: 'rgba(0,0,0,0.5)' }}>{formatCoords(lat, lng)}</div>
-      </div>
-      <MapPin size={22} color="#ef4444" strokeWidth={2.2} style={{ flexShrink: 0 }} />
+      <TgMap view={view} setView={setView} satellite={false} markers={[{ lat, lng, kind: 'pin' }]} interactive={false} />
+      {time ? (
+        <div style={{ position: 'absolute', right: 8, bottom: 8, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,0,0,0.42)', color: '#fff', fontSize: '0.68rem', fontWeight: 700, pointerEvents: 'none' }}>
+          {time}
+        </div>
+      ) : null}
     </div>
   );
 }

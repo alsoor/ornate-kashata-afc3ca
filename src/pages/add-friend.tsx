@@ -14428,24 +14428,25 @@ function SavedMessagesScreen({
                       <LocationChatCard
                         lat={m.lat}
                         lng={m.lng}
-                        label={/^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(String(m.text || '').trim()) ? '' : String(m.text || '')}
-                        maxWidth={9999}
+                        time={new Date(m.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                         onOpen={() => setLocView({ lat: m.lat as number, lng: m.lng as number, label: /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(String(m.text || '').trim()) ? '' : String(m.text || '') })}
                       />
                     ) : (
                       <p style={{ margin: 0, fontWeight: 800, fontSize: '0.88rem', color: '#111' }}>{m.text || 'Location'}</p>
                     )
                   )}
+                  {m.kind === 'location' && m.lat != null && m.lng != null ? null : (
                   <p style={{ margin: '6px 0 0', fontSize: '0.68rem', color: 'rgba(0,0,0,0.35)', fontWeight: 600, textAlign: 'left', direction: 'ltr' }}>
                     {new Date(m.createdAt).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
                   </p>
+                  )}
                 </div>
               </SavedMsgDeleteFx>
             ))}
           </div>
 
           {locPickerOpen ? <LocationPickerSheet onClose={() => setLocPickerOpen(false)} onSend={sendPickedLocation} /> : null}
-          {locView ? <LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} onClose={() => setLocView(null)} /> : null}
+          {locView ? <LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} senderName={userName || userUsername} senderAvatar={userAvatar} onClose={() => setLocView(null)} /> : null}
 
           {/* Full-screen media: first tap opened it; second tap anywhere closes */}
           {mediaView ? (
@@ -16591,7 +16592,7 @@ function PublicLiveCommentsPanel({
   const [plusOpen, setPlusOpen] = useState(false);   // "+" bubble that holds Photos / Voice / Emoji / Video AI
   // ── Location (Telegram-style picker + viewer) ──
   const [locPickerOpen, setLocPickerOpen] = useState(false);
-  const [locView, setLocView] = useState<{ lat: number; lng: number; label: string } | null>(null);
+  const [locView, setLocView] = useState<{ lat: number; lng: number; label: string; name?: string | null; avatar?: string | null } | null>(null);
   const [savedOpen, setSavedOpen] = useState(() => {
     try { return sessionStorage.getItem('stooorna_saved_open') === '1'; } catch { return false; }
   });
@@ -17564,8 +17565,8 @@ function PublicLiveCommentsPanel({
                   <LocationChatCard
                     lat={loc.lat}
                     lng={loc.lng}
-                    label={loc.label}
-                    onOpen={() => setLocView({ lat: loc.lat, lng: loc.lng, label: loc.label })}
+                    time={new Date(c.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                    onOpen={() => setLocView({ lat: loc.lat, lng: loc.lng, label: loc.label, name: displayName(c), avatar: c.avatarUrl })}
                   />
                 ) : null}
                 {bigEmoji ? (
@@ -18173,7 +18174,7 @@ function PublicLiveCommentsPanel({
       />
     ) : null}
     {locPickerOpen ? <LocationPickerSheet onClose={() => setLocPickerOpen(false)} onSend={sendLocation} /> : null}
-    {locView ? <LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} onClose={() => setLocView(null)} /> : null}
+    {locView ? <LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} senderName={(locView as any).name} senderAvatar={(locView as any).avatar} onClose={() => setLocView(null)} /> : null}
     <SavedMessagesScreen
       open={savedOpen}
       onClose={() => {
