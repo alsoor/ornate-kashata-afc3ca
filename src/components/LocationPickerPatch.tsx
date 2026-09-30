@@ -227,7 +227,7 @@ function TgMap({
       onPointerCancel={onUp}
       onWheel={onWheel}
       onDoubleClick={onDbl}
-      style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: satellite ? '#0b1a2b' : '#e8e4dc', touchAction: 'none', cursor: interactive ? 'grab' : 'default' }}
+      style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: satellite ? '#0b1a2b' : '#e8e4dc', touchAction: interactive ? 'none' : 'pan-y', pointerEvents: interactive ? 'auto' : 'none', cursor: interactive ? 'grab' : 'default' }}
     >
       {tiles.map(t => (
         <img
@@ -710,7 +710,7 @@ export function LocationChatCard({
         position: 'relative', marginTop: 6, width: `min(100%, ${size}px)`, aspectRatio: '1 / 1',
         borderRadius: 18, overflow: 'hidden', cursor: 'pointer', direction: 'ltr',
         background: '#e8e4dc', boxShadow: '0 2px 10px rgba(20,30,50,0.16)',
-        WebkitTapHighlightColor: 'transparent', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+        WebkitTapHighlightColor: 'transparent', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'pan-y',
       } as React.CSSProperties}
     >
       <TgMap view={view} setView={setView} satellite={false} markers={[{ lat, lng, kind: 'pin' }]} interactive={false} />

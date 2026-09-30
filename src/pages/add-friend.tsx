@@ -13968,6 +13968,7 @@ function SavedMsgDeleteFx({ enabled, onDelete, onShare, children }: {
           display: 'block', position: 'relative', width: '100%',
           visibility: bursting ? 'hidden' : 'visible',
           userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+          touchAction: 'pan-y',
         } as React.CSSProperties}
       >
         {children}
@@ -14236,6 +14237,7 @@ function SavedMessagesScreen({
             display: 'flex', flexDirection: 'column',
             color: '#111',
             pointerEvents: 'auto',
+            overscrollBehavior: 'contain',
           }}
         >
           {/* Top-center pill: profile circle + Saved Messages — tap closes → back to public chat */}
@@ -14295,14 +14297,25 @@ function SavedMessagesScreen({
             </button>
           </div>
 
+          {/* التمرير: يسمح بالسحب العمودي فوق أي رسالة/صورة/خريطة (يتغلب على أي touch-action عام) */}
+          <style>{`
+            .sm-scroll, .sm-scroll * { touch-action: pan-y !important; }
+            .sm-scroll { overscroll-behavior-y: contain; }
+          `}</style>
           <div
             ref={listRef}
+            className="sm-scroll"
+            onTouchStart={e => e.stopPropagation()}
+            onTouchMove={e => e.stopPropagation()}
             style={{
               flex: 1,
+              minHeight: 0,
               overflowY: 'auto',
               overflowX: 'hidden',
               padding: '8px 14px 12px',
               WebkitOverflowScrolling: 'touch',
+              overscrollBehaviorY: 'contain',
+              touchAction: 'pan-y',
             }}
           >
             {items.length === 0 ? (
