@@ -14214,8 +14214,7 @@ function SavedMessagesScreen({
     onClose();
   };
 
-  if (!open) return null;
-
+  // لا نرجع null هنا: AnimatePresence لازم يبقى مركّب علشان انميشن النزول (exit) يشتغل عند الإغلاق.
   return createPortal(
     <AnimatePresence>
       {open ? (
@@ -14223,7 +14222,7 @@ function SavedMessagesScreen({
           key="saved-messages-screen"
           initial={{ y: '100%', opacity: 0.6 }}
           animate={{ y: 0, opacity: 1 }}
-          exit={{ y: '100%', opacity: 0.4 }}
+          exit={{ y: '100%', opacity: 0.4, transition: { type: 'tween', duration: 0.28, ease: [0.4, 0, 0.9, 0.6] } }}
           transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.85 }}
           onClick={e => e.stopPropagation()}
           onPointerDown={e => e.stopPropagation()}
@@ -16604,6 +16603,23 @@ function PublicLiveCommentsPanel({
   const [pendingVoice, setPendingVoice] = useState<{ url: string; duration: number } | null>(null);
   const [recording, setRecording] = useState(false);
   const [chatLift, setChatLift] = useState(0);
+  // true أثناء انميشن نزول الشات العام (يبقى مفتوح ~280ms ثم يتسكّر فعلياً)
+  const [chatClosing, setChatClosing] = useState(false);
+  const chatCloseTimerRef = useRef<number | null>(null);
+  useEffect(() => () => { if (chatCloseTimerRef.current) window.clearTimeout(chatCloseTimerRef.current); }, []);
+  /** الدائرة الحمراء (السهمين): يفتح الشات بانميشن صعود من تحت، ويسكّره بانميشن نزول. */
+  const toggleChatLift = () => {
+    if (chatCloseTimerRef.current) { window.clearTimeout(chatCloseTimerRef.current); chatCloseTimerRef.current = null; }
+    if (chatLift === 0) { setChatClosing(false); setChatLift(1); return; }
+    if (chatClosing) return;
+    setChatClosing(true);
+    chatCloseTimerRef.current = window.setTimeout(() => {
+      chatCloseTimerRef.current = null;
+      setChatLift(0);
+      setChatClosing(false);
+    }, 280);
+  };
+  const chatUiLifted = chatLift === 1 && !chatClosing;
   const [kbInset, setKbInset] = useState(0);
   const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string; activity?: string }>>([]);
   const [tplOpen, setTplOpen] = useState(false);
@@ -17464,7 +17480,9 @@ function PublicLiveCommentsPanel({
           padding: chatLift === 1 ? '60px 12px 6px' : '4px 12px 6px',
           background: '#ffffff',
           touchAction: 'pan-y',
-          pointerEvents: 'auto',
+          pointerEvents: chatClosing ? 'none' : 'auto',
+          willChange: chatLift === 1 ? 'transform' : undefined,
+          animation: chatLift === 1 ? (chatClosing ? 'stooornaChatFall .28s cubic-bezier(.4,0,.9,.6) both' : 'stooornaChatRise .34s cubic-bezier(.22,1,.36,1) both') : undefined,
         }}
       >
         <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
@@ -17689,9 +17707,12 @@ function PublicLiveCommentsPanel({
       </div>
 
       <div style={{
-        pointerEvents: 'auto',
-        borderTop: chatLift === 0 ? ('1px solid ' + CLR_NAV_BORDER) : '1px solid #ececec',
-        background: chatLift === 0 ? '#060e0e' : '#fff',
+        pointerEvents: chatClosing ? 'none' : 'auto',
+        position: 'relative',
+        zIndex: 2,
+        transition: 'background-color .28s ease, border-color .28s ease',
+        borderTop: !chatUiLifted ? ('1px solid ' + CLR_NAV_BORDER) : '1px solid #ececec',
+        background: !chatUiLifted ? '#060e0e' : '#fff',
         paddingBottom: kbInset > 0 ? kbInset + 6 : 'max(8px, env(safe-area-inset-bottom))',
         flexShrink: 0,
       }}>
@@ -17707,6 +17728,10 @@ function PublicLiveCommentsPanel({
             100% { transform: translateY(0) scale(1); opacity: 1; }
           }
           .stooorna-big-emoji { animation: stooornaBigEmojiDrop .55s cubic-bezier(.22,1,.36,1) both; }
+          @keyframes stooornaChatRise { from { transform: translateY(100%); opacity: .6; } to { transform: translateY(0); opacity: 1; } }
+          @keyframes stooornaChatFall { from { transform: translateY(0); opacity: 1; } to { transform: translateY(100%); opacity: .4; } }
+          @keyframes stooornaChatBarRise { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+          @keyframes stooornaChatBarFall { from { transform: translateY(0); opacity: 1; } to { transform: translateY(30px); opacity: 0; } }
         `}</style>
         <div style={{
           display: chatLift === 0 ? 'none' : 'flex',
@@ -17715,6 +17740,7 @@ function PublicLiveCommentsPanel({
           padding: '8px 10px 6px',
           overflowX: 'auto',
           gap: 4,
+          animation: chatLift === 1 ? (chatClosing ? 'stooornaChatBarFall .22s ease-in both' : 'stooornaChatBarRise .34s cubic-bezier(.22,1,.36,1) both') : undefined,
         }}>
           {LIVE_EMOJI_BAR.map(em => (
             <button
@@ -18049,7 +18075,7 @@ function PublicLiveCommentsPanel({
                 pushComment(text, pendingImage, pendingVoice);
                 return;
               }
-              setChatLift(v => v === 0 ? 1 : 0);
+              toggleChatLift();
             }}
             aria-label={(text.trim() || pendingImage || pendingVoice) ? 'إرسال' : 'ارتفاع الشات'}
             style={{
