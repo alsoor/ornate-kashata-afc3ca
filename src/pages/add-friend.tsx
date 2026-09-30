@@ -16549,6 +16549,277 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
   );
 }
 
+/** ── Stacked public media feed ─────────────────────────────────────────────────────────────────
+ *  true  = every photo/video is shown COMPLETE, full width, one under the other (scroll down), buttons on the side
+ *          (avatar · like · comments · favorite). No second page opens when tapping a photo/video.
+ *  false = the old 2-column tile grid + full-screen viewer (code below is kept untouched). */
+const LIVE_MEDIA_STACKED = true;
+
+function liveMediaFavsKey(uid: string): string { return `stooorna_live_media_favs_${uid}`; }
+function loadLiveMediaFavs(uid: string): string[] {
+  try {
+    const a = JSON.parse(localStorage.getItem(liveMediaFavsKey(uid)) || '[]');
+    return Array.isArray(a) ? a.map(String) : [];
+  } catch { return []; }
+}
+function saveLiveMediaFavs(uid: string, ids: string[]) {
+  try { localStorage.setItem(liveMediaFavsKey(uid), JSON.stringify(ids.slice(-500))); } catch { /* */ }
+}
+
+/** One full-width item of the stacked public media feed.
+ *  Video: autoplays when it is on screen, pauses when it leaves; tap = pause/play (first tap unmutes if the browser forced muted autoplay).
+ *  Photo: shown complete (object-fit: contain). Side buttons: profile · like · comments · favorite. */
+function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onComments, onFav, onOpenProfile }: {
+  c: PublicLiveComment;
+  liked: boolean;
+  fav: boolean;
+  name: string;
+  commentCount: number;
+  onLike: () => void;
+  onComments: () => void;
+  onFav: () => void;
+  onOpenProfile: () => void;
+}) {
+  const vref = useRef<HTMLVideoElement | null>(null);
+  const [paused, setPaused] = useState(false);
+  const [mutedForced, setMutedForced] = useState(false);
+  const [prog, setProg] = useState(0);
+  const isVideo = c.text !== LIVE_PHOTO_CAPTION;
+
+  useEffect(() => {
+    const v = vref.current;
+    if (!v || !isVideo) return;
+    const onT = () => setProg(v.duration > 0 ? v.currentTime / v.duration : 0);
+    const onPlay = () => setPaused(false);
+    const onPause = () => setPaused(true);
+    v.addEventListener('timeupdate', onT);
+    v.addEventListener('play', onPlay);
+    v.addEventListener('pause', onPause);
+    const start = () => {
+      v.muted = false;
+      v.play().catch(() => { v.muted = true; setMutedForced(true); v.play().catch(() => { /* autoplay blocked */ }); });
+    };
+    let io: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== 'undefined') {
+      io = new IntersectionObserver(entries => {
+        entries.forEach(en => { if (en.isIntersecting) start(); else v.pause(); });
+      }, { threshold: 0.6 });
+      io.observe(v);
+    } else { start(); }
+    return () => {
+      if (io) io.disconnect();
+      v.removeEventListener('timeupdate', onT);
+      v.removeEventListener('play', onPlay);
+      v.removeEventListener('pause', onPause);
+    };
+  }, [c.imageUrl, isVideo]);
+
+  const onTap = () => {
+    const v = vref.current;
+    if (!v) return;
+    if (mutedForced && v.muted) { v.muted = false; setMutedForced(false); if (v.paused) void v.play().catch(() => { /* */ }); return; }
+    if (v.paused) void v.play().catch(() => { /* */ }); else v.pause();
+  };
+
+  const sideBtn: React.CSSProperties = {
+    background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', flexDirection: 'column',
+    alignItems: 'center', gap: 3, color: '#fff', WebkitTapHighlightColor: 'transparent',
+  };
+  const cnt: React.CSSProperties = { fontSize: '0.78rem', fontWeight: 800, textShadow: '0 1px 3px rgba(0,0,0,0.75)', lineHeight: 1 };
+  const icoShadow = 'drop-shadow(0 1px 3px rgba(0,0,0,0.65))';
+  return (
+    <div style={{ position: 'relative', height: '100%', scrollSnapAlign: 'start', scrollSnapStop: 'always', background: '#000', overflow: 'hidden', borderBottom: '1px solid rgba(255,255,255,0.08)', direction: 'ltr' }}>
+      <div
+        onClick={isVideo ? onTap : undefined}
+        style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isVideo ? 'pointer' : 'default' }}
+      >
+        {isVideo ? (
+          <video ref={vref} src={c.imageUrl || ''} loop playsInline preload="metadata" disablePictureInPicture style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }} />
+        ) : (
+          <img src={c.imageUrl || ''} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+        )}
+        {isVideo && paused ? (
+          <div style={{ position: 'absolute', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 64, height: 64, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', pointerEvents: 'none' }}>
+            <Play size={30} color="#fff" fill="#fff" />
+          </div>
+        ) : null}
+        {isVideo && mutedForced ? (
+          <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', background: 'rgba(0,0,0,0.5)', borderRadius: 999, padding: 6, pointerEvents: 'none' }}>
+            <VolumeX size={16} color="#fff" />
+          </div>
+        ) : null}
+      </div>
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 96, background: 'linear-gradient(transparent, rgba(0,0,0,0.55))', pointerEvents: 'none' }} />
+      <p style={{ position: 'absolute', left: 12, bottom: 14, right: 84, margin: 0, color: '#fff', fontWeight: 800, fontSize: '0.92rem', textShadow: '0 1px 3px rgba(0,0,0,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{name}</p>
+      <div style={{ position: 'absolute', right: 8, bottom: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
+        <button
+          type="button"
+          aria-label="Open profile"
+          onClick={e => { e.stopPropagation(); onOpenProfile(); }}
+          style={{ background: 'none', border: '2px solid #fff', borderRadius: '50%', padding: 0, cursor: c.userId ? 'pointer' : 'default', display: 'flex' }}
+        >
+          <UserAvatar name={c.name || c.username || '?'} avatarUrl={c.avatarUrl} size={44} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
+        </button>
+        <button type="button" aria-label="Like" onClick={e => { e.stopPropagation(); onLike(); }} style={sideBtn}>
+          <Heart size={34} strokeWidth={2} color={liked ? '#ef4444' : '#fff'} fill={liked ? '#ef4444' : 'rgba(255,255,255,0.0)'} style={{ filter: icoShadow }} />
+          <span style={cnt}>{c.likes.length > 0 ? c.likes.length : ''}</span>
+        </button>
+        <button type="button" aria-label="Comments" onClick={e => { e.stopPropagation(); onComments(); }} style={sideBtn}>
+          <MessageCircle size={32} strokeWidth={2} color="#fff" fill="rgba(255,255,255,0.92)" style={{ filter: icoShadow }} />
+          <span style={cnt}>{commentCount > 0 ? commentCount : ''}</span>
+        </button>
+        <button type="button" aria-label="Favorite" onClick={e => { e.stopPropagation(); onFav(); }} style={sideBtn}>
+          <Bookmark size={32} strokeWidth={2} color={fav ? '#facc15' : '#fff'} fill={fav ? '#facc15' : 'rgba(255,255,255,0.92)'} style={{ filter: icoShadow }} />
+        </button>
+      </div>
+      {isVideo ? (
+        <div style={{ position: 'absolute', left: 0, bottom: 0, height: 3, width: `${Math.round(prog * 1000) / 10}%`, background: '#fff', opacity: 0.85, pointerEvents: 'none' }} />
+      ) : null}
+    </div>
+  );
+}
+
+/** Comments of ONE public photo/video: white sheet that opens from the bottom upward (same look as the public chat).
+ *  Composer = text + emoji + send, nothing else. Comments are live-chat rows "↩<postId>\u200b<body>" (same storage as before). */
+function LiveMediaCommentsSheet({ post, comments, myId, myAvatar, nameOf, onLikeComment, onSend, onClose }: {
+  post: PublicLiveComment;
+  comments: PublicLiveComment[];
+  myId: string;
+  myAvatar: string | null;
+  nameOf: (c: PublicLiveComment) => string;
+  onLikeComment: (id: string) => void;
+  onSend: (text: string) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [vp, setVp] = useState<{ top: number; height: number } | null>(null);
+  const [, setTick] = useState(0);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const thread = comments
+    .map(x => ({ x, p: parseMediaComment(x.text) }))
+    .filter(r => r.p && r.p.parentId === post.id) as { x: PublicLiveComment; p: { parentId: string; body: string } }[];
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight + 500;
+  }, [thread.length]);
+  useEffect(() => { const id = window.setInterval(() => setTick(v => v + 1), 30000); return () => window.clearInterval(id); }, []);
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return;
+    const apply = () => setVp({ top: Math.round(vv.offsetTop), height: Math.round(vv.height) });
+    apply();
+    vv.addEventListener('resize', apply);
+    vv.addEventListener('scroll', apply);
+    return () => { vv.removeEventListener('resize', apply); vv.removeEventListener('scroll', apply); };
+  }, []);
+
+  const close = () => {
+    if (closing) return;
+    setClosing(true);
+    try { inputRef.current?.blur(); } catch { /* */ }
+    window.setTimeout(onClose, 260);
+  };
+  const send = () => {
+    const t = draft.trim();
+    if (!t || !myId) return;
+    onSend(t);
+    setDraft('');
+    setEmojiOpen(false);
+  };
+  const reply = (c: PublicLiveComment) => {
+    setDraft(d => `${nameOf(c)} ${d.replace(/^@\S+\s*/, '')}`);
+    window.setTimeout(() => inputRef.current?.focus(), 30);
+  };
+  if (typeof document === 'undefined') return null;
+
+  const kbBottom = vp ? Math.max(0, Math.round(window.innerHeight - vp.top - vp.height)) : 0;
+  const visH = vp ? vp.height : window.innerHeight;
+  const kb = focused && kbBottom > 100 ? kbBottom : 0;
+  const sheetH = Math.round(visH * (focused ? 0.86 : 0.68));
+  return createPortal(
+    <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', inset: 0, zIndex: 11000, pointerEvents: 'auto' }}>
+      <style>{`
+        @keyframes stooornaMediaSheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        @keyframes stooornaMediaSheetDown { from { transform: translateY(0); } to { transform: translateY(100%); } }
+      `}</style>
+      <div onClick={close} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.38)' }} />
+      <div
+        style={{
+          position: 'absolute', left: 0, right: 0, bottom: kb, height: sheetH, background: '#ffffff', color: '#111',
+          borderRadius: '22px 22px 0 0', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 30px rgba(0,0,0,0.35)',
+          paddingBottom: kb ? 0 : 'env(safe-area-inset-bottom, 0px)',
+          animation: closing ? 'stooornaMediaSheetDown .26s cubic-bezier(.4,0,.9,.6) both' : 'stooornaMediaSheetUp .32s cubic-bezier(.22,1,.36,1) both',
+        }}
+      >
+        <button type="button" aria-label="Close comments" onMouseDown={e => e.preventDefault()} onClick={close} style={{ background: 'none', border: 'none', padding: '8px 0 6px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <span style={{ width: 46, height: 5, borderRadius: 999, background: '#d1d5db' }} />
+          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#6b7280' }}>{thread.length > 0 ? `${thread.length.toLocaleString('ar-EG')} تعليق` : 'التعليقات'}</span>
+        </button>
+        <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', padding: '0 14px', direction: 'rtl', borderTop: '1px solid #f0f0f0' }}>
+          {thread.length === 0 ? (
+            <p style={{ margin: '28px 0', textAlign: 'center', color: '#9ca3af', fontSize: '0.86rem', fontWeight: 600 }}>كن أول من يعلّق</p>
+          ) : thread.map(({ x, p }) => {
+            const lk = myId ? x.likes.includes(myId) : false;
+            return (
+              <div key={x.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 0' }}>
+                <div style={{ flexShrink: 0, display: 'flex' }}>
+                  <UserAvatar name={x.name || x.username || '?'} avatarUrl={x.avatarUrl} size={36} style={{ border: 'none' }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.84rem', color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' }}>{nameOf(x)}</span>
+                    <span style={{ fontSize: '0.72rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>{liveMediaAgo(x.createdAt)}</span>
+                  </div>
+                  <p style={{ margin: '3px 0 0', fontSize: '0.94rem', color: '#111', wordBreak: 'break-word', whiteSpace: 'pre-wrap', textAlign: 'start' }}>{p.body}</p>
+                  <button type="button" onClick={() => reply(x)} style={{ background: 'none', border: 'none', padding: '5px 0 0', cursor: 'pointer', color: '#6b7280', fontSize: '0.78rem', fontWeight: 700 }}>رد</button>
+                </div>
+                <button type="button" aria-label="Like comment" onClick={() => onLikeComment(x.id)} style={{ background: 'none', border: 'none', padding: '2px 4px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, color: lk ? '#ef4444' : '#6b7280' }}>
+                  <Heart size={20} strokeWidth={2.2} color={lk ? '#ef4444' : '#6b7280'} fill={lk ? '#ef4444' : 'none'} />
+                  {x.likes.length > 0 ? <span style={{ fontSize: '0.74rem', fontWeight: 800 }}>{x.likes.length}</span> : null}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        {emojiOpen ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, minmax(0, 1fr))', gap: 2, padding: '6px 10px', borderTop: '1px solid #eee', maxHeight: 132, overflowY: 'auto', flexShrink: 0, direction: 'ltr' }}>
+            {LIVE_EMOJI_PICKER.map(em => (
+              <button key={em} type="button" onMouseDown={e => e.preventDefault()} onClick={() => setDraft(d => (d + em).slice(0, 400))} style={{ background: 'none', border: 'none', fontSize: '1.45rem', padding: 4, cursor: 'pointer', lineHeight: 1 }}>{em}</button>
+            ))}
+          </div>
+        ) : null}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px 10px', borderTop: '1px solid #eee', flexShrink: 0, direction: 'ltr', background: '#fff' }}>
+          <UserAvatar name="me" avatarUrl={myAvatar} size={34} style={{ flexShrink: 0, border: 'none' }} />
+          <div style={{ flex: '1 1 0%', minWidth: 0, display: 'flex', alignItems: 'center', border: '1px solid #d4d4d4', borderRadius: 999, padding: '4px 8px 4px 12px', minHeight: 38, background: '#fff' }}>
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={e => setDraft(e.target.value.slice(0, 400))}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); send(); } }}
+              placeholder="Comment…"
+              style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: '#111', fontSize: '0.95rem', padding: 0 }}
+            />
+            <button type="button" aria-label="Emoji" onMouseDown={e => e.preventDefault()} onClick={() => setEmojiOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', padding: 4, color: emojiOpen ? CLR_PRIMARY : '#6b7280' }}>
+              <Smile size={22} strokeWidth={2} />
+            </button>
+          </div>
+          <button type="button" aria-label="Send" onMouseDown={e => e.preventDefault()} onClick={send} disabled={!draft.trim()} style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: draft.trim() ? CLR_PRIMARY : '#e5e7eb', color: draft.trim() ? '#03181b' : '#9ca3af', cursor: draft.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Send size={18} />
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 type LiveChatRowItem = { kind: 'msg'; c: PublicLiveComment };
 
 /** Every comment is a normal row (the old Titanic/WW2 template grid was removed). */
@@ -16669,6 +16940,17 @@ function PublicLiveCommentsPanel({
   const liveSigRef = useRef('');
   const liveBusyRef = useRef(false);
   const myId = String(user?.id || '');
+  // stacked public media feed: which post's comments sheet is open + my favorites (kept on this device)
+  const [commentsMediaId, setCommentsMediaId] = useState<string | null>(null);
+  const [mediaFavIds, setMediaFavIds] = useState<string[]>(() => loadLiveMediaFavs(String(user?.id || '')));
+  useEffect(() => { setMediaFavIds(loadLiveMediaFavs(myId)); }, [myId]);
+  const toggleMediaFav = (id: string) => {
+    setMediaFavIds(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      saveLiveMediaFavs(myId, next);
+      return next;
+    });
+  };
   const myName = user?.name ?? null;
   const myUsername = (user as any)?.username ?? null;
   const myAvatar = (user as any)?.avatarUrl || (user as any)?.image || null;
@@ -17319,6 +17601,24 @@ function PublicLiveCommentsPanel({
   const mediaPosts = comments.filter(isLiveMediaPost).slice().reverse();
   const commentCountOf = (id: string) => comments.reduce((n, x) => (parseMediaComment(x.text)?.parentId === id ? n + 1 : n), 0);
   const openMedia = openMediaId ? (mediaPosts.find(m => m.id === openMediaId) || null) : null;
+  const commentsMedia = commentsMediaId ? (mediaPosts.find(m => m.id === commentsMediaId) || null) : null;
+  const mediaCommentsSheet = commentsMedia ? (
+    <LiveMediaCommentsSheet
+      key={commentsMedia.id}
+      post={commentsMedia}
+      comments={comments}
+      myId={myId}
+      myAvatar={myAvatar}
+      nameOf={displayName}
+      onLikeComment={id => toggleLike(id)}
+      onSend={body => {
+        const keep = text; // pushComment clears the chat draft — restore it
+        pushComment(`↩${commentsMedia.id}\u200b${body}`);
+        setText(keep);
+      }}
+      onClose={() => setCommentsMediaId(null)}
+    />
+  ) : null;
   const roundLocalNow = roundLocalGet(myId);
   const roundSeen = (id: string) => roundLocalNow.seen.includes(id) || comments.some(x => x.userId === myId && parseRoundSeen(x.text) === id);
   const roundSeenCount = (id: string) => new Set(comments.filter(x => parseRoundSeen(x.text) === id).map(x => x.userId)).size;
@@ -17376,6 +17676,7 @@ function PublicLiveCommentsPanel({
     <>
     <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />
     {mediaViewer}
+    {mediaCommentsSheet}
     {onceViewer}
     {roundToast ? (
       <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)', zIndex: 100003, padding: '8px 14px', borderRadius: 999, background: 'rgba(17,17,17,0.92)', color: '#fff', fontSize: '0.78rem', fontWeight: 700, pointerEvents: 'none' }}>
@@ -17457,9 +17758,24 @@ function PublicLiveCommentsPanel({
             style={{
               position: 'absolute', left: 0, right: 0, bottom: 0, top: LIVE_VIDEO_GALLERY_TOP,
               overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
-              touchAction: 'pan-y', pointerEvents: 'auto', padding: '0 10px 10px',
+              touchAction: 'pan-y', pointerEvents: 'auto', padding: LIVE_MEDIA_STACKED ? 0 : '0 10px 10px',
+              scrollSnapType: LIVE_MEDIA_STACKED ? 'y mandatory' : undefined,
             }}
           >
+            {LIVE_MEDIA_STACKED ? mediaPosts.map(vc => (
+              <LiveMediaFeedItem
+                key={vc.id}
+                c={vc}
+                liked={myId ? vc.likes.includes(myId) : false}
+                fav={mediaFavIds.includes(vc.id)}
+                name={displayName(vc)}
+                commentCount={commentCountOf(vc.id)}
+                onLike={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleLike(vc.id); }}
+                onComments={() => { if (Date.now() - composerGuardRef.current < 700) return; setCommentsMediaId(vc.id); }}
+                onFav={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleMediaFav(vc.id); }}
+                onOpenProfile={() => { if (Date.now() - composerGuardRef.current < 700) return; openProfileOf(vc); }}
+              />
+            )) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, direction: 'ltr' }}>
               {mediaPosts.map(vc => (
                 <LiveMediaTile
@@ -17474,6 +17790,7 @@ function PublicLiveCommentsPanel({
                 />
               ))}
             </div>
+            )}
           </div>
         ) : null}
       </div>
