@@ -7359,37 +7359,6 @@ export default function SettingsPage() {
                         </div>
                       </div>
 
-                      {/* Public live voice mic — left side, same row as music */}
-                      <motion.button
-                        type="button"
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => {
-                          if (!user) return;
-                          setShowPublicVoice(true);
-                        }}
-                        aria-label="Public live voice"
-                        title="Public live voice"
-                        style={{
-                          position: 'absolute',
-                          left: 14,
-                          bottom: 18,
-                          zIndex: 5,
-                          width: 32,
-                          height: 32,
-                          borderRadius: '50%',
-                          background: 'rgba(239,68,68,0.12)',
-                          border: '1px solid rgba(239,68,68,0.45)',
-                          color: '#ef4444',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          boxShadow: '0 0 10px rgba(239,68,68,0.25)',
-                        }}
-                      >
-                        <Mic size={15} strokeWidth={2.3} />
-                      </motion.button>
-
                       {/* Music button — right side of profile card */}
                       <motion.button
                         type="button"

@@ -76,6 +76,7 @@ import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 import { hydrateVipDirectory } from '@/lib/vipPatch';
 
 import { LiveVipDock } from '@/components/LiveVipDock';
+import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
 import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film } from 'lucide-react';
@@ -15830,6 +15831,31 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
   );
 }
 
+// ── حالة غرفة Public LIVE (الصوت العام): هل في أحد داخلها؟ وهل في أحد يتكلم بالمايك؟ ──
+// نفس القناة اللي يستخدمها PublicVoiceLive ('stooorna-public-voice').
+const PUBLIC_VOICE_ROOM_ID = 'stooorna-public-voice';
+function usePublicVoiceRoomStatus(enabled: boolean): { present: boolean; count: number; talking: boolean } {
+  const [st, setSt] = useState({ present: false, count: 0, talking: false });
+  useEffect(() => {
+    if (!enabled) return;
+    let stop = false;
+    const pull = async () => {
+      try {
+        const r = await fetch(`/api/room?id=${encodeURIComponent(PUBLIC_VOICE_ROOM_ID)}`, { credentials: 'include' });
+        if (!r.ok || stop) return;
+        const d = await r.json();
+        const members = (Array.isArray(d?.members) ? d.members : Array.isArray(d?.users) ? d.users : []) as any[];
+        const talking = members.some(m => !!(m?.talking || m?.floor));
+        if (!stop) setSt({ present: members.length > 0, count: members.length, talking });
+      } catch { /* ignore */ }
+    };
+    void pull();
+    const id = window.setInterval(pull, 2500);
+    return () => { stop = true; window.clearInterval(id); };
+  }, [enabled]);
+  return enabled ? st : { present: false, count: 0, talking: false };
+}
+
 export default function AddFriendPage() {
   const navigate = useNavigate();
   const routeLocation = useLocation();
@@ -18699,6 +18725,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [, setProfilePlusOpen] = useState(false);
   // ── Dock bubble: tapping Call / LIVE / Settings opens a speech-bubble panel above the dock, with a tail pointing at the tapped icon ──
   const [dockBubble, setDockBubble] = useState<null | { kind: 'call' | 'live' | 'settings'; x: number }>(null);
+  const [showPublicVoice, setShowPublicVoice] = useState(false);
+  const publicVoiceStatus = usePublicVoiceRoomStatus(dockBubble?.kind === 'live');
   const [dockFriends, setDockFriends] = useState<Friend[]>([]);
   const [dockFriendsLoading, setDockFriendsLoading] = useState(false);
   const openDockBubble = (kind: 'call' | 'live' | 'settings', el: HTMLElement | null) => {
@@ -21408,6 +21436,59 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 >
                   <Video size={20} strokeWidth={2.2} color="#ef4444" /> Video Live
                 </button>
+                {/* ── Public LIVE: مايك كبير — ضغطة وحدة تفتح اللايف العام. برتقالي + ذبذبات لو في أحد داخل الغرفة أو يتكلم ── */}
+                {(() => {
+                  const hot = publicVoiceStatus.present || publicVoiceStatus.talking;
+                  const c = hot ? '#f97316' : '#ef4444';
+                  const rgb = hot ? '249,115,22' : '239,68,68';
+                  return (
+                    <div style={{ marginTop: 'auto', paddingTop: 18, paddingBottom: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                      <style>{`
+                        @keyframes stooornaPubMicShake {
+                          0%,100% { transform: translateX(0) rotate(0deg) scale(1); }
+                          15% { transform: translateX(-1.5px) rotate(-7deg) scale(1.06); }
+                          30% { transform: translateX(1.5px) rotate(7deg) scale(1.1); }
+                          45% { transform: translateX(-1px) rotate(-5deg) scale(1.06); }
+                          60% { transform: translateX(1px) rotate(5deg) scale(1.1); }
+                          80% { transform: translateX(0) rotate(0deg) scale(1.03); }
+                        }
+                        @keyframes stooornaPubMicRing {
+                          0% { transform: scale(0.85); opacity: 0.65; }
+                          100% { transform: scale(1.75); opacity: 0; }
+                        }
+                      `}</style>
+                      <button
+                        type="button"
+                        aria-label="Public LIVE"
+                        title="Public LIVE"
+                        onClick={() => {
+                          if (!user?.id) return;
+                          closeBubble();
+                          setProfilePlusOpen(false);
+                          setShowPublicVoice(true);
+                        }}
+                        style={{
+                          position: 'relative', width: 64, height: 64, borderRadius: '50%', cursor: 'pointer',
+                          background: `rgba(${rgb},0.14)`, border: `1.5px solid rgba(${rgb},0.6)`, color: c,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: `0 0 ${hot ? 20 : 12}px rgba(${rgb},${hot ? 0.5 : 0.3})`,
+                          transition: 'background 0.25s, border-color 0.25s, color 0.25s, box-shadow 0.25s',
+                        }}
+                      >
+                        {hot && (
+                          <>
+                            <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: `2px solid rgba(${rgb},0.7)`, animation: 'stooornaPubMicRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
+                            <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: `2px solid rgba(${rgb},0.55)`, animation: 'stooornaPubMicRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
+                          </>
+                        )}
+                        <span style={{ display: 'flex', animation: hot ? 'stooornaPubMicShake 0.7s ease-in-out infinite' : 'none' }}>
+                          <Mic size={28} strokeWidth={2.3} />
+                        </span>
+                      </button>
+                      <span style={{ color: hot ? '#fdba74' : '#fca5a5', fontWeight: 800, fontSize: '0.8rem', letterSpacing: '0.02em' }}>Public LIVE</span>
+                    </div>
+                  );
+                })()}
               </>
             );
           })()}
@@ -28137,6 +28218,19 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showPublicVoice && user?.id && (
+        <>
+          <LiveVipDock hostId={String(user.id)} currentUserId={user.id} />
+          <PublicVoiceLive
+            userId={String(user.id)}
+            userName={(user as any)?.name || (user as any)?.username || 'Me'}
+            userUsername={(user as any)?.username || null}
+            userAvatar={(user as any)?.avatarUrl || (user as any)?.image || null}
+            onClose={() => setShowPublicVoice(false)}
+          />
+        </>
+      )}
 
       {/* ── Guest guard modal — يظهر عند محاولة الزائر التفاعل ── */}
       {typeof window !== 'undefined' && window.location.pathname.includes('/live') && (
