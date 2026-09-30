@@ -14656,7 +14656,7 @@ function loadPublicLiveComments(): PublicLiveComment[] {
     const raw = JSON.parse(localStorage.getItem(PUBLIC_LIVE_COMMENTS_KEY) || '[]');
     if (!Array.isArray(raw)) return [];
     return raw
-      .filter((x: any) => x && x.id && (x.text || x.voiceUrl) && (Number(x.createdAt) || Date.now()) >= liveChatCycleStart())
+      .filter((x: any) => x && x.id && (x.text || x.voiceUrl || x.imageUrl) && (Number(x.createdAt) || Date.now()) >= liveChatCycleStart())
       .map((x: any) => ({
         id: String(x.id),
         userId: String(x.userId || ''),
@@ -15042,7 +15042,19 @@ function stooornaHoldForFilePicker() {
     window.setTimeout(release, 10 * 60 * 1000);
   } catch { /* */ }
 }
-const isLiveMediaPost = (c: { imageUrl?: string | null; text: string }) => !!c.imageUrl && (c.text === LIVE_VIDEO_CAPTION || c.text === LIVE_PHOTO_CAPTION);
+const isLiveMediaPost = (c: { imageUrl?: string | null; text: string }) => {
+  const url = String(c.imageUrl || '');
+  if (!url) return false;
+  // Local-only URLs never appear for other users — wait until upload finishes
+  if (/^(blob:|data:)/i.test(url)) return false;
+  const t = String(c.text || '');
+  // Round videos / view-once stay in their own UI, not the public grid
+  if (t.includes('○​RV') || t.startsWith('○​RV')) return false;
+  // Nested comments under a media post viewer: "↩<id>\u200b<body>"
+  if (/^↩[^\u200b\s]+\u200b/.test(t)) return false;
+  // Any public image/video URL is a LIVE gallery tile — visible outside chat for every user
+  return true;
+};
 /** A comment on a public video/photo is a normal live-chat row whose text is "↩<postId>\u200b<comment>" (no server change needed).
  *  It is hidden from the main chat list and shown only inside that post's viewer. */
 const MEDIA_CMT_RE = /^↩([^\u200b\s]+)\u200b([\s\S]*)$/;
@@ -15230,6 +15242,141 @@ async function uploadLiveRoundVideo(blob: Blob, userId: string): Promise<{ url: 
   }
   return { url: null, err: lastErr };
 }
+
+
+/** Upload a photo/video for the public live chat so EVERY user sees the same URL (not blob:/data:). */
+async function uploadLiveChatMedia(blob: Blob, userId: string, kind: 'image' | 'video' = 'image'): Promise<{ url: string | null; err: string }> {
+  const rawType = String(blob.type || '').trim().toLowerCase();
+  const isVid = kind === 'video' || rawType.startsWith('video/');
+  const looksMp4 = /mp4|m4v|quicktime/i.test(rawType);
+  const looksWebm = /webm/i.test(rawType);
+  const looksPng = /png/i.test(rawType);
+  const looksWebp = /webp/i.test(rawType);
+  const looksGif = /gif/i.test(rawType);
+  const ext = isVid
+    ? (looksMp4 && !looksWebm ? 'mp4' : 'webm')
+    : (looksPng ? 'png' : looksWebp ? 'webp' : looksGif ? 'gif' : 'jpg');
+  const contentType = isVid
+    ? (rawType.startsWith('video/') ? rawType.split(';')[0] : (ext === 'mp4' ? 'video/mp4' : 'video/webm'))
+    : (rawType.startsWith('image/') ? rawType.split(';')[0] : (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg'));
+  const fileName = `live-chat-${kind}-${Date.now()}.${ext}`;
+  const file = blob instanceof File ? blob : new File([blob], fileName, { type: contentType });
+  let lastErr = '';
+  const isValid = (u: unknown): u is string => {
+    if (!u || typeof u !== 'string') return false;
+    const s = u.trim();
+    if (!s || s === 'null' || s === 'undefined') return false;
+    if (/^(https?:\/\/|\/)/i.test(s)) return true;
+    return /^[a-z0-9_\-./]+\.(jpe?g|png|gif|webp|mp4|webm|mov|m4v)(\?|$)/i.test(s);
+  };
+  const toAbs = (u: string): string => {
+    const s = String(u).trim();
+    if (/^(https?:)/i.test(s)) return s;
+    try { return resolveMediaUrl(s) || s; } catch { return s.startsWith('/') ? s : `/${s.replace(/^\/+/, '')}`; }
+  };
+  const usable = (u: string): string | null => {
+    if (!u || mediaAiIsBrokenHostUrl(u) || /airo-assets/i.test(u)) return null;
+    // Never treat local-only URLs as public
+    if (/^(blob:|data:)/i.test(u)) return null;
+    return u;
+  };
+  const urlFrom = (ct: string, loc: string | null, rawText: string): string | null => {
+    if (isValid(loc)) return usable(toAbs(loc!));
+    const raw = String(rawText || '');
+    if (ct.includes('json') || /^\s*[{[]/.test(raw)) {
+      try {
+        const d = JSON.parse(raw) as any;
+        for (const u of [d?.url, d?.mediaUrl, d?.fileUrl, d?.path, d?.publicUrl, d?.src, d?.data?.url, d?.data?.mediaUrl, d?.result?.url, d?.file?.url, d?.media?.url, d?.location, d?.href]) {
+          if (typeof u === 'string' && u.trim().length > 2) {
+            const a = usable(toAbs(u));
+            if (a) return a;
+          }
+        }
+      } catch { /* */ }
+      return null;
+    }
+    const first = raw.trim().split(/\s/)[0];
+    return isValid(first) ? usable(toAbs(first)) : null;
+  };
+  const post = (endpoint: string, body: FormData, timeoutMs: number) =>
+    new Promise<string | null>(resolve => {
+      const x = new XMLHttpRequest();
+      let settled = false;
+      const done = (v: string | null, why?: string) => {
+        if (settled) return;
+        settled = true;
+        if (why) lastErr = why;
+        resolve(v);
+      };
+      try {
+        x.open('POST', endpoint);
+        x.withCredentials = true;
+        x.timeout = timeoutMs;
+        x.onload = () => {
+          if (x.status < 200 || x.status >= 300) { done(null, `${endpoint} ${x.status}`); return; }
+          done(urlFrom(x.getResponseHeader('content-type') || '', x.getResponseHeader('location'), x.responseText));
+        };
+        x.onerror = () => done(null, `${endpoint} network`);
+        x.ontimeout = () => done(null, `${endpoint} timeout`);
+        x.send(body);
+      } catch (e: any) { done(null, String(e?.message || e)); }
+    });
+  const formWith = (field: string, extra: Record<string, string> = {}) => {
+    const fd = new FormData();
+    fd.append(field, file, fileName);
+    fd.append('userId', userId);
+    fd.append('kind', kind);
+    fd.append('type', kind);
+    fd.append('mediaType', kind);
+    Object.entries(extra).forEach(([k, v]) => fd.append(k, v));
+    return fd;
+  };
+  const endpoints: Array<{ ep: string; field: string; ms: number }> = [
+    { ep: '/api/live-chat/media', field: 'file', ms: 28000 },
+    { ep: '/api/upload', field: 'file', ms: 28000 },
+    { ep: '/api/files/upload', field: 'file', ms: 20000 },
+    { ep: '/api/posts/upload', field: 'file', ms: 20000 },
+    { ep: VIDEO_SWAP_ENDPOINT, field: 'file', ms: 28000 },
+  ];
+  for (const a of endpoints) {
+    const hit = await post(a.ep, formWith(a.field), a.ms);
+    if (hit) return { url: hit, err: '' };
+  }
+  try {
+    const extra = await Promise.race([
+      uploadPostMedia(file, { kind: isVid ? 'video' : 'image', fileName }),
+      new Promise<null>(res => window.setTimeout(() => res(null), 20000)),
+    ]) as { ok?: boolean; url?: unknown } | null;
+    if (extra && extra.ok && isValid(extra.url)) {
+      const a = usable(toAbs(String(extra.url)));
+      if (a) return { url: a, err: '' };
+    }
+  } catch { /* */ }
+  return { url: null, err: lastErr || 'upload failed' };
+}
+
+async function blobFromLocalUrl(url: string): Promise<Blob | null> {
+  try {
+    if (url.startsWith('data:')) {
+      const r = await fetch(url);
+      return await r.blob();
+    }
+    if (url.startsWith('blob:')) {
+      const r = await fetch(url);
+      return await r.blob();
+    }
+  } catch { /* */ }
+  return null;
+}
+
+const isLiveChatVideoUrl = (u?: string | null) => {
+  const s = String(u || '');
+  if (!s) return false;
+  if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(s)) return true;
+  if (/^data:video\//i.test(s)) return true;
+  if (/[?&](type|mime)=video/i.test(s)) return true;
+  return false;
+};
 
 /** Telegram-style "dust" delete: the element is wiped left→right while its pixels break into particles and blow away. */
 function liveDustDelete(el: HTMLElement, done: () => void) {
@@ -16512,6 +16659,7 @@ function PublicLiveCommentsPanel({
   const [profilePeer, setProfilePeer] = useState<PublicLiveComment | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const pendingImageFileRef = useRef<File | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
   const liveSigRef = useRef('');
   const liveBusyRef = useRef(false);
@@ -16662,7 +16810,7 @@ function PublicLiveCommentsPanel({
         }
         if (blocked) cleaned.push(makeLiveChatBotNotice('text'));
         next = cleaned;
-        const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}`).join('|');
+        const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}:${x.imageUrl || ''}:${x.voiceUrl || ''}`).join('|');
         if (sig === liveSigRef.current) return;
         liveSigRef.current = sig;
         savePublicLiveComments(next);
@@ -16712,13 +16860,22 @@ function PublicLiveCommentsPanel({
       void postLiveChatToServer(notice);
       return;
     }
+    const fileHint = pendingImageFileRef.current;
+    const looksVideo = !!(imageUrl && (
+      isLiveChatVideoUrl(imageUrl)
+      || (fileHint && String(fileHint.type || '').startsWith('video/'))
+    ));
+    // Public gallery markers so the post appears OUTSIDE chat for every user after upload
+    const mediaText = imageUrl
+      ? (trimmed || (looksVideo ? LIVE_VIDEO_CAPTION : LIVE_PHOTO_CAPTION))
+      : (trimmed || (voice?.url ? '🎤' : ''));
     const row: PublicLiveComment = {
       id: `plc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       userId: myId,
       name: myName,
       username: myUsername,
       avatarUrl: myAvatar,
-      text: trimmed || (voice?.url ? '🎤' : (imageUrl ? '📷' : '')),
+      text: mediaText,
       imageUrl: imageUrl || null,
       voiceUrl: voice?.url || null,
       voiceDuration: voice?.duration ?? null,
@@ -16745,13 +16902,37 @@ function PublicLiveCommentsPanel({
             const d = await r.json() as any;
             const url = String(d.url || d.voiceUrl || '');
             if (url) {
-              send = { ...row, voiceUrl: url };
+              send = { ...send, voiceUrl: url };
               const list = loadPublicLiveComments().map(x => x.id === row.id ? send : x);
               savePublicLiveComments(list);
               setComments(list);
             }
           }
         } catch { /* keep data url */ }
+      }
+      // Public LIVE media: blob:/data: only works on this device — upload so every user sees the same photo/video.
+      const img = send.imageUrl || '';
+      if (img && (/^(blob:|data:)/i.test(img))) {
+        try {
+          let blob: Blob | null = pendingImageFileRef.current;
+          pendingImageFileRef.current = null;
+          if (!blob) blob = await blobFromLocalUrl(img);
+          if (blob && blob.size > 0) {
+            const kind: 'image' | 'video' = (blob.type.startsWith('video/') || isLiveChatVideoUrl(img)) ? 'video' : 'image';
+            const up = await uploadLiveChatMedia(blob, myId, kind);
+            if (up.url) {
+              const finalText = (send.text && send.text !== '📷' && send.text !== '🎬')
+                ? send.text
+                : (kind === 'video' ? LIVE_VIDEO_CAPTION : LIVE_PHOTO_CAPTION);
+              send = { ...send, imageUrl: up.url, text: finalText };
+              const list = loadPublicLiveComments().map(x => x.id === row.id ? send : x);
+              savePublicLiveComments(list);
+              setComments(list);
+              // Land on the public outer gallery so the new tile is visible LIVE for this device too
+              try { setChatLift(0); } catch { /* */ }
+            }
+          }
+        } catch { /* keep local preview; other users may not see until retry */ }
       }
       await postLiveChatToServer(send);
     })();
@@ -17134,7 +17315,52 @@ function PublicLiveCommentsPanel({
         }}
       >
         <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-        {comments.length === 0 && (
+        {chatLift === 1 && mediaPosts.length > 0 ? (
+          <div
+            style={{
+              flexShrink: 0,
+              margin: '0 0 10px',
+              paddingBottom: 8,
+              borderBottom: '1px solid #ececec',
+              overflowX: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              direction: 'ltr',
+            }}
+          >
+            <p style={{ margin: '0 0 8px', fontSize: '0.72rem', fontWeight: 800, color: '#6b7280', letterSpacing: '0.02em' }}>
+              LIVE · Photos & Videos
+            </p>
+            <div style={{ display: 'flex', gap: 8, paddingBottom: 4 }}>
+              {mediaPosts.map(vc => (
+                <button
+                  key={vc.id}
+                  type="button"
+                  onClick={() => {
+                    if (Date.now() - composerGuardRef.current < 700) return;
+                    setOpenMediaId(vc.id);
+                  }}
+                  style={{
+                    flex: '0 0 auto', width: 88, height: 110, borderRadius: 12, overflow: 'hidden',
+                    border: '1px solid #e5e7eb', padding: 0, background: '#111', cursor: 'pointer',
+                    position: 'relative',
+                  }}
+                >
+                  {isLiveChatVideoUrl(vc.imageUrl) || vc.text === LIVE_VIDEO_CAPTION ? (
+                    <video src={vc.imageUrl || ''} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+                  ) : (
+                    <img src={vc.imageUrl || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+                  )}
+                  {(isLiveChatVideoUrl(vc.imageUrl) || vc.text === LIVE_VIDEO_CAPTION) ? (
+                    <span style={{ position: 'absolute', left: 6, bottom: 6, width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Play size={11} color="#fff" fill="#fff" />
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {comments.length === 0 && mediaPosts.length === 0 && (
           <p style={{ margin: '28px 0 0', textAlign: 'center', color: '#9ca3af', fontSize: '0.86rem', fontWeight: 600 }}>
             كن أول من يكتب تعليقاً مباشراً
           </p>
@@ -17250,7 +17476,17 @@ function PublicLiveCommentsPanel({
                   />
                 ) : null}
                 {c.imageUrl && !round ? (
-                  <img src={c.imageUrl} alt="" style={{ marginTop: 6, maxWidth: 180, maxHeight: 160, borderRadius: 10, display: 'block', objectFit: 'cover' }} />
+                  isLiveChatVideoUrl(c.imageUrl) ? (
+                    <video
+                      src={c.imageUrl}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      style={{ marginTop: 6, maxWidth: 220, maxHeight: 200, borderRadius: 10, display: 'block', background: '#000' }}
+                    />
+                  ) : (
+                    <img src={c.imageUrl} alt="" style={{ marginTop: 6, maxWidth: 180, maxHeight: 160, borderRadius: 10, display: 'block', objectFit: 'cover' }} />
+                  )
                 ) : null}
                 <p style={{ margin: '4px 0 0', fontSize: '0.68rem', color: '#9ca3af', fontWeight: 600 }}>
                   {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -17541,12 +17777,13 @@ function PublicLiveCommentsPanel({
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               hidden
               onChange={e => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
                 if (!file) return;
+                pendingImageFileRef.current = file;
                 const url = URL.createObjectURL(file);
                 setPendingImage(url);
               }}
