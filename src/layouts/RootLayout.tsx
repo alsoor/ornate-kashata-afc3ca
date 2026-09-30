@@ -5268,6 +5268,42 @@ export default function RootLayout({
     };
   }, [session?.user?.id, subscribe]);
 
+  // حذف تلقائي لمحادثات الدعم المنتهية: بعد 10 دقائق من "تم إنهاء المهمة" تُفرَّغ المحادثة
+  // بالكامل (عند الدعم وعند المستخدم) حتى لو نافذة الدعم مقفولة — RootLayout شغّال دايماً.
+  useEffect(() => {
+    const PREFIX = 'stooorna_support_thread_';
+    const sweep = () => {
+      try {
+        const now = Date.now();
+        for (const k of Object.keys(localStorage)) {
+          if (!k.startsWith(PREFIX)) continue;
+          const peerId = k.slice(PREFIX.length);
+          let data: any = null;
+          try { data = JSON.parse(localStorage.getItem(k) || 'null'); } catch { continue; }
+          if (!data?.completedAt || !data?.expiresAt || now <= data.expiresAt) continue;
+          localStorage.removeItem(k);
+          try {
+            const tickets = JSON.parse(localStorage.getItem('stooorna_support_tickets') || '[]');
+            if (Array.isArray(tickets)) {
+              localStorage.setItem('stooorna_support_tickets', JSON.stringify(tickets.filter((t: any) => t?.fromUserId !== peerId)));
+            }
+          } catch { /* */ }
+          try {
+            const ids = new Set<string>(JSON.parse(localStorage.getItem('stooorna_deleted_support_threads') || '[]'));
+            ids.add(peerId);
+            localStorage.setItem('stooorna_deleted_support_threads', JSON.stringify([...ids]));
+          } catch { /* */ }
+          try { localStorage.setItem(`stooorna_support_wiped_${peerId}`, String(now)); } catch { /* */ }
+          window.dispatchEvent(new CustomEvent('stooorna:support-thread', { detail: { peerId, cleared: true, targetUserId: peerId } }));
+          fetch(`/api/support/thread?userId=${encodeURIComponent(peerId)}`, { method: 'DELETE', credentials: 'include' }).catch(() => { /* */ });
+        }
+      } catch { /* */ }
+    };
+    sweep();
+    const id = window.setInterval(sweep, 5000);
+    return () => window.clearInterval(id);
+  }, []);
+
   // Keep public VIP + Business badges in sync for every viewer (mounted once
   // for the whole app here in RootLayout).
   useEffect(() => {

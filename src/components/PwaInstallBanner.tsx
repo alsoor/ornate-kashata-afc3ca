@@ -14,6 +14,10 @@ const PERMS_DONE_KEY = 'stooorna_pwa_perms_done';
 const BANNER_HIDDEN_KEY = 'stooorna_pwa_banner_hidden';
 
 let deferredPrompt: BIPEvent | null = null;
+// لو الحدث انلقط بدري من سكربت في index.html (window.__stooornaBIP) نستخدمه
+if (typeof window !== 'undefined' && (window as any).__stooornaBIP) {
+  deferredPrompt = (window as any).__stooornaBIP as BIPEvent;
+}
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
@@ -70,7 +74,11 @@ function isStandalone(): boolean {
 
 function isAndroid(): boolean {
   try {
-    return /android/i.test(navigator.userAgent);
+    if (/android/i.test(navigator.userAgent)) return true;
+    // وضع "موقع سطح المكتب" في كروم يخفي كلمة Android من الـ UA
+    const uaPlatform = (navigator as any).userAgentData?.platform;
+    if (uaPlatform && /android/i.test(String(uaPlatform))) return true;
+    return navigator.maxTouchPoints > 1 && /linux/i.test(navigator.userAgent) && !/cros/i.test(navigator.userAgent);
   } catch {
     return false;
   }
@@ -111,6 +119,8 @@ export default function PwaInstallBanner({
   onEnablePush?: () => Promise<void> | void;
 }) {
   const [canInstall, setCanInstall] = useState(false);
+  const [nativeReady, setNativeReady] = useState(false); // true لما كروم يعطينا نافذة التثبيت الأصلية
+  const [showHelp, setShowHelp] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [showPerms, setShowPerms] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -120,7 +130,12 @@ export default function PwaInstallBanner({
     if (ANDROID_ONLY && !isAndroid()) return;
     try { if (sessionStorage.getItem(BANNER_HIDDEN_KEY) === '1') setHidden(true); } catch { /* */ }
 
-    const sync = () => setCanInstall(!!deferredPrompt && !isStandalone());
+    // الشريط يظهر دايماً على أندرويد (خارج التطبيق المثبّت)، حتى لو كروم ما أطلق beforeinstallprompt بعد.
+    // لو النافذة الأصلية جاهزة → تثبيت بضغطة، وإلا نعرض خطوات التثبيت اليدوي.
+    const sync = () => {
+      setCanInstall(!isStandalone());
+      setNativeReady(!!deferredPrompt);
+    };
     listeners.add(sync);
     sync();
 
@@ -143,7 +158,7 @@ export default function PwaInstallBanner({
   const install = useCallback(async () => {
     // ضغطة وحدة = تثبيت مباشر (نافذة تثبيت المتصفح الأصلية)
     const p = deferredPrompt;
-    if (!p) return;
+    if (!p) { setShowHelp((v) => !v); return; } // ما في نافذة أصلية → اعرض خطوات التثبيت اليدوي
     try {
       await p.prompt();
       const { outcome } = await p.userChoice;
@@ -223,6 +238,20 @@ export default function PwaInstallBanner({
               <X size={16} />
             </button>
           </div>
+          {showHelp && !nativeReady && (
+            <div
+              dir="rtl"
+              style={{
+                pointerEvents: 'auto', maxWidth: 460, margin: '8px auto 0', padding: '10px 12px',
+                borderRadius: 14, boxSizing: 'border-box', border: '1px solid rgba(0,188,212,0.3)',
+                background: '#071416', color: 'rgba(215,238,238,0.92)', fontSize: 12.5, lineHeight: 1.7,
+              }}
+            >
+              افتح قائمة المتصفح ⋮ ثم اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».
+              <br />
+              لو فاتح الموقع من داخل تطبيق (تلجرام / انستقرام / سناب) افتحه من Chrome أولاً.
+            </div>
+          )}
         </div>
       )}
 

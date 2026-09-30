@@ -2016,7 +2016,12 @@ function loadSupportThread(peerId: string): StoredSupportThread | null {
     const data = JSON.parse(raw) as StoredSupportThread;
     if (!data || !Array.isArray(data.messages)) return null;
     if (data.expiresAt && Date.now() > data.expiresAt) {
-      localStorage.removeItem(supportChatKey(peerId));
+      if (data.completedAt) {
+        // المحادثة انتهت مهمتها وعدّت 10 دقائق → حذف كامل (محلي + سيرفر + إشعار الواجهات)
+        clearSupportThread(peerId);
+      } else {
+        localStorage.removeItem(supportChatKey(peerId));
+      }
       return null;
     }
     return data;
@@ -2029,13 +2034,15 @@ function saveSupportThread(peerId: string, messages: StoredSupportThread['messag
   try {
     const prev = loadSupportThread(peerId);
     const now = Date.now();
+    const completedAt = opts?.completedAt ?? prev?.completedAt;
     let expiresAt = prev?.expiresAt && prev.expiresAt > now ? prev.expiresAt : now + SUPPORT_CHAT_TTL_MS;
-    if (opts?.resetTtl) expiresAt = now + SUPPORT_CHAT_TTL_MS;
-    if (opts?.completedAt) expiresAt = opts.completedAt + SUPPORT_CHAT_TTL_MS;
+    if (opts?.resetTtl && !completedAt) expiresAt = now + SUPPORT_CHAT_TTL_MS;
+    // بعد "تم إنهاء المهمة" العدّاد ثابت: وقت الإنهاء + 10 دقائق ولا يُصفَّر بأي رسالة
+    if (completedAt) expiresAt = completedAt + SUPPORT_CHAT_TTL_MS;
     const payload: StoredSupportThread = {
       messages,
       expiresAt,
-      completedAt: opts?.completedAt ?? prev?.completedAt,
+      completedAt,
     };
     localStorage.setItem(supportChatKey(peerId), JSON.stringify(payload));
     window.dispatchEvent(new CustomEvent('stooorna:support-thread', { detail: { peerId, ...payload } }));
@@ -2054,9 +2061,36 @@ function markThreadDeleted(peerId: string) {
   } catch { /* ignore */ }
 }
 
+/** آخر وقت تم فيه تفريغ محادثة الدعم — أي رسالة أقدم منه لا تظهر مرة ثانية حتى لو السيرفر لسا يرجّعها */
+function supportWipedKey(peerId: string) {
+  return `stooorna_support_wiped_${peerId}`;
+}
+function getSupportWipedAt(peerId: string): number {
+  try { return Number(localStorage.getItem(supportWipedKey(peerId)) || 0) || 0; } catch { return 0; }
+}
+function toMs(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') { const n = Date.parse(v); return Number.isNaN(n) ? 0 : n; }
+  return 0;
+}
+/** رسالة الشكر التي تُرسل عند الضغط على "تم" (نستخدمها عند المستخدم لمعرفة وقت الإنهاء) */
+function isSupportDoneText(text?: string | null): boolean {
+  return !!text && text.includes('سوف يتم حذف المحادثه بعد عشرة دقائق');
+}
+/** هل انتهت مدة الحفظ لهذه المحادثة؟ (قراءة مباشرة بدون حذف) */
+function peekSupportThreadExpired(peerId: string): boolean {
+  try {
+    const raw = localStorage.getItem(supportChatKey(peerId));
+    if (!raw) return false;
+    const d = JSON.parse(raw) as StoredSupportThread;
+    return !!(d?.expiresAt && Date.now() > d.expiresAt);
+  } catch { return false; }
+}
+
 function clearSupportThread(peerId: string) {
   try {
     localStorage.removeItem(supportChatKey(peerId));
+    localStorage.setItem(supportWipedKey(peerId), String(Date.now()));
     // also drop matching local tickets
     const tickets = readLocalSupportTickets().filter(
       t => t.fromUserId !== peerId,
@@ -2064,7 +2098,7 @@ function clearSupportThread(peerId: string) {
     localStorage.setItem('stooorna_support_tickets', JSON.stringify(tickets));
     // remember this thread was deleted so inbox fetch won't re-show it
     markThreadDeleted(peerId);
-    window.dispatchEvent(new CustomEvent('stooorna:support-thread', { detail: { peerId, cleared: true } }));
+    window.dispatchEvent(new CustomEvent('stooorna:support-thread', { detail: { peerId, cleared: true, targetUserId: peerId } }));
   } catch { /* ignore */ }
   // Delete from DB (owner-only endpoint — silently ignored for non-owners)
   fetch(`/api/support/thread?userId=${encodeURIComponent(peerId)}`, {
@@ -2399,22 +2433,36 @@ function SupportChatOverlay({
   useEffect(() => {
     if (!open || !currentUser?.id) return;
     const id = setInterval(() => {
-      const stored = loadSupportThread(currentUser.id!);
-      if (!stored) {
-        // already cleared
-        return;
-      }
-      if (stored.expiresAt && Date.now() > stored.expiresAt) {
+      if (peekSupportThreadExpired(currentUser.id!)) {
         clearSupportThread(currentUser.id!);
         setMessages([]);
         setLang(null);
         setAiPhase('pick_lang');
         aiPhaseRef.current = 'pick_lang';
         setUserMsgCount(0);
+        lastSupportIdRef.current = null;
       }
     }, 2000);
     return () => clearInterval(id);
   }, [open, currentUser?.id]);
+
+  // تفريغ فوري عند المستخدم لما تنحذف المحادثة (من أي مكان: مؤقّت عام أو حدث تفريغ)
+  useEffect(() => {
+    const uid = currentUser?.id;
+    if (!uid) return;
+    const onCleared = (e: Event) => {
+      const d = (e as CustomEvent).detail as { peerId?: string; cleared?: boolean } | undefined;
+      if (!d?.cleared || String(d.peerId) !== String(uid)) return;
+      setMessages([]);
+      setLang(null);
+      setAiPhase('pick_lang');
+      aiPhaseRef.current = 'pick_lang';
+      setUserMsgCount(0);
+      lastSupportIdRef.current = null;
+    };
+    window.addEventListener('stooorna:support-thread', onCleared);
+    return () => window.removeEventListener('stooorna:support-thread', onCleared);
+  }, [currentUser?.id]);
 
   async function selectLang(chosen: 'ar' | 'en') {
     setLang(chosen);
@@ -2548,8 +2596,23 @@ function SupportChatOverlay({
         if (!r.ok || cancelled) return;
         const d = await r.json();
         const list: Array<{ id: string; from: string; text: string; at?: number }> = Array.isArray(d) ? d : (d.messages || []);
-        const supportOnes = list.filter(m => m.from === 'support' || m.from === 'agent' || m.from === 'stooorna');
+        const myUid = currentUser?.id || 'anon';
+        const wipedAtU = getSupportWipedAt(myUid);
+        const supportOnes = list
+          .filter(m => m.from === 'support' || m.from === 'agent' || m.from === 'stooorna')
+          .filter(m => !wipedAtU || !m.at || toMs(m.at) > wipedAtU);
         if (!supportOnes.length) return;
+        // الدعم ضغط "تم": نثبّت وقت الإنهاء ونحذف عند المستخدم تلقائياً بعد 10 دقائق
+        const doneMsg = [...supportOnes].reverse().find(m => isSupportDoneText(m.text));
+        if (doneMsg && currentUser?.id) {
+          const doneAt = toMs(doneMsg.at) || Date.now();
+          if (Date.now() - doneAt >= SUPPORT_CHAT_TTL_MS) {
+            clearSupportThread(currentUser.id);
+            return;
+          }
+          const st = loadSupportThread(currentUser.id);
+          if (st && !st.completedAt) saveSupportThread(currentUser.id, st.messages, { completedAt: doneAt });
+        }
         const latest = supportOnes[supportOnes.length - 1];
         if (latest.id && latest.id !== lastSupportIdRef.current) {
           lastSupportIdRef.current = latest.id;
@@ -3412,10 +3475,14 @@ function OwnerSupportThread({
           mediaUrl: m.mediaUrl,
           mediaType: m.mediaType,
         }));
+        // رسائل أقدم من آخر تفريغ لا نعيدها (حتى لو السيرفر لسا يرجّعها)
+        const wipedAt = getSupportWipedAt(peer.id);
+        const fresh = wipedAt ? mapped.filter(m => m.at > wipedAt) : mapped;
+        if (!fresh.length) return;
         setMessages(prev => {
           // merge by id, prefer longer history
           const byId = new Map<string, Msg>();
-          [...prev, ...mapped].forEach(m => byId.set(m.id, m));
+          [...prev, ...fresh].forEach(m => byId.set(m.id, m));
           return Array.from(byId.values()).sort((a, b) => a.at - b.at);
         });
       } catch { /* silent */ }
@@ -6143,7 +6210,7 @@ export default function SettingsPage() {
         for (const t of localTickets) {
           const key = t.fromUserId || t.fromUsername || t.id;
           if (!key) continue;
-          if (deletedIds.has(key)) continue; // skip deleted threads
+          if (deletedIds.has(key) && toMs(t.at) <= getSupportWipedAt(key)) continue; // skip deleted threads (unless newer message)
           const existing = byUser.get(key);
           if (existing) {
             existing.lastMessage = t.text || existing.lastMessage;
@@ -6165,7 +6232,7 @@ export default function SettingsPage() {
         list = Array.from(byUser.values());
       }
 
-      setSupportInbox(list.filter(p => !getDeletedThreadIds().has(p.id)));
+      setSupportInbox(list.filter(p => !getDeletedThreadIds().has(p.id) || toMs(p.lastAt) > getSupportWipedAt(p.id)));
       setSupportUnreadTotal(list.reduce((s, x) => s + (x.unread || 0), 0));
     } catch { /* silent */ } finally {
       setSupportInboxLoading(false);
@@ -10237,6 +10304,46 @@ export default function SettingsPage() {
                     </motion.button>
                   </div>
                 )}
+
+                <motion.button whileTap={{ scale: 0.98 }} type="button" disabled={scSaving}
+                  onClick={async () => {
+                    const label = supportCtrlUser.username ? `@${supportCtrlUser.username}` : supportCtrlUser.email;
+                    if (!window.confirm(`إزالة خاصية VIP من ${label}؟ (الإطار + اللون + الهيدر)`)) return;
+                    setScSaving(true); setScMsg('');
+                    const ok = await ownerRemoveVip(supportCtrlUser);
+                    setScSaving(false);
+                    setScMsg(ok ? 'تم إزالة خاصية VIP' : 'فشلت الإزالة من السيرفر — حاول مرة ثانية');
+                    setSupportCtrlUser(prev => prev ? { ...prev } : prev);
+                  }}
+                  style={{
+                    padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                    background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.4)',
+                    color: '#eab308', fontWeight: 700, fontSize: '0.85rem',
+                    opacity: scSaving ? 0.6 : 1,
+                  }}>
+                  👑 إزالة خاصية VIP{ownerVipActive(supportCtrlUser.id) ? ' (مفعّل)' : ''}
+                </motion.button>
+
+                <motion.button whileTap={{ scale: 0.98 }} type="button" disabled={scSaving}
+                  onClick={async () => {
+                    const label = supportCtrlUser.username ? `@${supportCtrlUser.username}` : supportCtrlUser.email;
+                    if (!window.confirm(`إزالة خاصية Business من ${label}؟`)) return;
+                    setScSaving(true); setScMsg('');
+                    const ok = await ownerRemoveBusiness(supportCtrlUser);
+                    setScSaving(false);
+                    setScMsg(ok ? 'تم إزالة خاصية Business' : 'فشلت الإزالة من السيرفر — حاول مرة ثانية');
+                    const cid = supportCtrlUser.id;
+                    setAllUsers(prev => prev.map(x => (x.id === cid && String(x.accountType || '').toLowerCase() === 'business') ? { ...x, accountType: 'user' } : x));
+                    setSupportCtrlUser(prev => prev ? { ...prev } : prev);
+                  }}
+                  style={{
+                    padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                    background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.35)',
+                    color: '#facc15', fontWeight: 700, fontSize: '0.85rem',
+                    opacity: scSaving ? 0.6 : 1,
+                  }}>
+                  💼 إزالة خاصية Business{isPublicBusinessAccount(supportCtrlUser) ? ' (مفعّل)' : ''}
+                </motion.button>
 
                 <motion.button whileTap={{ scale: 0.98 }} type="button" disabled={scSaving}
                   onClick={async () => {
