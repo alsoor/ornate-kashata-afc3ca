@@ -14004,11 +14004,17 @@ function SavedMessagesScreen({
   const [items, setItems] = useState<SavedMsg[]>(() => (userId ? loadSavedMessages(userId) : []));
   const [text, setText] = useState('');
   const [plusOpen, setPlusOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState('');
   const listRef = useRef<HTMLDivElement | null>(null);
   const photoRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLInputElement | null>(null);
   const fileRefSm = useRef<HTMLInputElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const openRef = useRef(open);
+  openRef.current = open;
+  // Keep a hard lock while the system picker is up so parent remounts cannot "kick" us out.
+  const pickingRef = useRef(false);
 
   useEffect(() => {
     if (!open || !userId) return;
@@ -14022,6 +14028,24 @@ function SavedMessagesScreen({
     }, 80);
     return () => window.clearTimeout(t);
   }, [open, items.length]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(''), 2200);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
+  // If the parent briefly unmounts/remounts after gallery, re-assert open flag from sessionStorage.
+  useEffect(() => {
+    if (!open) return;
+    try { sessionStorage.setItem('stooorna_saved_open', '1'); } catch { /* */ }
+    return () => {
+      // only clear when explicitly closed (onClose sets open=false first)
+      if (!openRef.current) {
+        try { sessionStorage.setItem('stooorna_saved_open', '0'); } catch { /* */ }
+      }
+    };
+  }, [open]);
 
   const persist = (next: SavedMsg[]) => {
     setItems(next);
@@ -14050,48 +14074,67 @@ function SavedMessagesScreen({
     setText('');
   };
 
-  const readFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string') resolve(reader.result);
-      else reject(new Error('read failed'));
-    };
-    reader.onerror = () => reject(reader.error || new Error('read failed'));
-    reader.readAsDataURL(file);
-  });
+  /** Prefer blob: for large media (avoids OOM / tab crash). Persist dataURL only when small enough for localStorage. */
+  const ingestFile = async (file: File, kind: 'image' | 'video' | 'file') => {
+    if (!userId || !file) return;
+    setBusy(true);
+    try {
+      const MAX_DATA_URL = 3.5 * 1024 * 1024; // ~3.5MB safe for localStorage
+      let mediaUrl: string;
+      if (file.size <= MAX_DATA_URL) {
+        mediaUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            if (typeof reader.result === 'string') resolve(reader.result);
+            else reject(new Error('read failed'));
+          };
+          reader.onerror = () => reject(reader.error || new Error('read failed'));
+          reader.readAsDataURL(file);
+        });
+      } else {
+        // Large video/file: keep a blob URL for this session (still shows in the list).
+        mediaUrl = URL.createObjectURL(file);
+        setToast('ملف كبير — محفوظ لهذه الجلسة');
+      }
+      pushItem({
+        kind,
+        mediaUrl,
+        fileName: file.name,
+        fileSize: file.size,
+        text: kind === 'file' ? file.name : null,
+      });
+    } catch (err) {
+      setToast('تعذر إرفاق الملف');
+    } finally {
+      setBusy(false);
+      pickingRef.current = false;
+    }
+  };
 
   const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file) return;
-    try {
-      const url = await readFileAsDataUrl(file);
-      pushItem({ kind: 'image', mediaUrl: url, fileName: file.name, fileSize: file.size });
-    } catch { /* */ }
+    if (!file) { pickingRef.current = false; return; }
+    await ingestFile(file, 'image');
   };
   const onPickVideo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file) return;
-    try {
-      const url = await readFileAsDataUrl(file);
-      pushItem({ kind: 'video', mediaUrl: url, fileName: file.name, fileSize: file.size });
-    } catch { /* */ }
+    if (!file) { pickingRef.current = false; return; }
+    await ingestFile(file, 'video');
   };
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file) return;
-    try {
-      const url = await readFileAsDataUrl(file);
-      pushItem({ kind: 'file', mediaUrl: url, fileName: file.name, fileSize: file.size, text: file.name });
-    } catch { /* */ }
+    if (!file) { pickingRef.current = false; return; }
+    await ingestFile(file, 'file');
   };
   const addLocation = () => {
     if (!navigator.geolocation) {
       pushItem({ kind: 'location', text: 'Location unavailable', lat: null, lng: null });
       return;
     }
+    setBusy(true);
     navigator.geolocation.getCurrentPosition(
       pos => {
         pushItem({
@@ -14100,10 +14143,30 @@ function SavedMessagesScreen({
           lng: pos.coords.longitude,
           text: `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`,
         });
+        setBusy(false);
       },
-      () => pushItem({ kind: 'location', text: 'Location denied', lat: null, lng: null }),
+      () => {
+        pushItem({ kind: 'location', text: 'Location denied', lat: null, lng: null });
+        setBusy(false);
+      },
       { enableHighAccuracy: true, timeout: 12000 },
     );
+  };
+
+  const openPicker = (ref: React.RefObject<HTMLInputElement | null>) => {
+    pickingRef.current = true;
+    try { stooornaHoldForFilePicker(); } catch { /* */ }
+    // Ensure session flag stays on while picker is open
+    try { sessionStorage.setItem('stooorna_saved_open', '1'); } catch { /* */ }
+    window.setTimeout(() => {
+      try { ref.current?.click(); } catch { /* */ }
+    }, 30);
+  };
+
+  const handleClose = () => {
+    if (pickingRef.current || busy) return; // never kick out mid-pick
+    try { sessionStorage.setItem('stooorna_saved_open', '0'); } catch { /* */ }
+    onClose();
   };
 
   if (!open) return null;
@@ -14117,6 +14180,8 @@ function SavedMessagesScreen({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: '100%', opacity: 0.4 }}
           transition={{ type: 'spring', stiffness: 380, damping: 36, mass: 0.85 }}
+          onClick={e => e.stopPropagation()}
+          onPointerDown={e => e.stopPropagation()}
           style={{
             position: 'fixed', inset: 0, zIndex: 120050,
             background: 'linear-gradient(180deg, #f4f6f8 0%, #eef1f4 40%, #e8ecf0 100%)',
@@ -14125,7 +14190,7 @@ function SavedMessagesScreen({
             pointerEvents: 'auto',
           }}
         >
-          {/* Top-center pill: profile circle + Saved Messages */}
+          {/* Top-center pill: profile circle + Saved Messages — tap closes → back to public chat */}
           <div
             style={{
               flexShrink: 0,
@@ -14141,7 +14206,7 @@ function SavedMessagesScreen({
           >
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               aria-label="Close Saved Messages"
               title="Close"
               style={{
@@ -14226,7 +14291,7 @@ function SavedMessagesScreen({
                     <img src={m.mediaUrl} alt="" style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 10, display: 'block' }} />
                   )}
                   {m.kind === 'video' && m.mediaUrl && (
-                    <video src={m.mediaUrl} controls playsInline style={{ width: '100%', maxHeight: 280, borderRadius: 10, background: '#000', display: 'block' }} />
+                    <video src={m.mediaUrl} controls playsInline preload="metadata" style={{ width: '100%', maxHeight: 280, borderRadius: 10, background: '#000', display: 'block' }} />
                   )}
                   {m.kind === 'file' && (
                     <a
@@ -14274,6 +14339,16 @@ function SavedMessagesScreen({
             ))}
           </div>
 
+          {toast ? (
+            <div style={{
+              position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)',
+              zIndex: 6, padding: '8px 14px', borderRadius: 999,
+              background: 'rgba(17,17,17,0.92)', color: '#fff', fontSize: '0.78rem', fontWeight: 700,
+              pointerEvents: 'none', whiteSpace: 'nowrap',
+            }}>{toast}</div>
+          ) : null}
+
           <div
             style={{
               flexShrink: 0,
@@ -14304,20 +14379,22 @@ function SavedMessagesScreen({
                 }}
               >
                 {([
-                  { key: 'video', label: 'Video', icon: <Video size={18} strokeWidth={2.2} />, run: () => videoRef.current?.click() },
-                  { key: 'photo', label: 'Photo', icon: <ImageIcon size={18} strokeWidth={2.2} />, run: () => photoRef.current?.click() },
-                  { key: 'file', label: 'File', icon: <FileText size={18} strokeWidth={2.2} />, run: () => fileRefSm.current?.click() },
+                  { key: 'video', label: 'Video', icon: <Video size={18} strokeWidth={2.2} />, run: () => openPicker(videoRef) },
+                  { key: 'photo', label: 'Photo', icon: <ImageIcon size={18} strokeWidth={2.2} />, run: () => openPicker(photoRef) },
+                  { key: 'file', label: 'File', icon: <FileText size={18} strokeWidth={2.2} />, run: () => openPicker(fileRefSm) },
                   { key: 'location', label: 'Location', icon: <MapPin size={18} strokeWidth={2.2} />, run: () => addLocation() },
                 ] as { key: string; label: string; icon: React.ReactNode; run: () => void }[]).map(it => (
                   <button
                     key={it.key}
                     type="button"
+                    disabled={busy}
                     onClick={() => { setPlusOpen(false); it.run(); }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '10px 14px', borderRadius: 12, border: 'none',
                       background: '#f7f7f8', color: '#111', fontWeight: 700, fontSize: '0.86rem',
-                      cursor: 'pointer', minWidth: 140, textAlign: 'left',
+                      cursor: busy ? 'wait' : 'pointer', minWidth: 140, textAlign: 'left',
+                      opacity: busy ? 0.6 : 1,
                     }}
                   >
                     <span style={{ width: 28, height: 28, borderRadius: 8, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0b3a82' }}>
@@ -14333,6 +14410,7 @@ function SavedMessagesScreen({
                 type="button"
                 aria-label="Attach"
                 onClick={() => setPlusOpen(v => !v)}
+                disabled={busy}
                 style={{
                   width: 36, height: 36, borderRadius: '50%', border: '1px solid #d4d4d4',
                   background: plusOpen ? '#111' : '#f7f7f8', color: plusOpen ? '#fff' : '#111',
@@ -14365,7 +14443,7 @@ function SavedMessagesScreen({
                 <button
                   type="button"
                   onClick={sendText}
-                  disabled={!text.trim()}
+                  disabled={!text.trim() || busy}
                   style={{
                     width: 32, height: 32, borderRadius: '50%', border: 'none', flexShrink: 0,
                     background: text.trim() ? '#ef4444' : 'transparent',
@@ -16229,7 +16307,12 @@ function PublicLiveCommentsPanel({
   const [, setEmojiOpen] = useState(false);
   const [composerDock, setComposerDock] = useState<'none' | 'emoji' | 'gallery' | 'voice'>('none');
   const [plusOpen, setPlusOpen] = useState(false);   // "+" bubble that holds Photos / Voice / Emoji / Video AI
-  const [savedOpen, setSavedOpen] = useState(false);
+  const [savedOpen, setSavedOpen] = useState(() => {
+    try { return sessionStorage.getItem('stooorna_saved_open') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem('stooorna_saved_open', savedOpen ? '1' : '0'); } catch { /* */ }
+  }, [savedOpen]);
   const [emojiCat, setEmojiCat] = useState(0);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingVoice, setPendingVoice] = useState<{ url: string; duration: number } | null>(null);
@@ -16753,12 +16836,25 @@ function PublicLiveCommentsPanel({
   };
   if (headerOpen) {
     // Header forced open (e.g. after the system gallery closes): keep the Templates page alive instead of kicking the user out.
-    return (tplOpen || mediaViewer) ? (
+    // Also keep Saved Messages mounted — otherwise opening the system gallery for Video/Photo/File unmounts it and "kicks" the user out.
+    return (
       <>
-        {tplOpen ? <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} /> : null}
-        {mediaViewer}
+        {(tplOpen || mediaViewer) ? (
+          <>
+            {tplOpen ? <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} /> : null}
+            {mediaViewer}
+          </>
+        ) : null}
+        <SavedMessagesScreen
+          open={savedOpen}
+          onClose={() => setSavedOpen(false)}
+          userId={myId}
+          userName={myName}
+          userUsername={myUsername}
+          userAvatar={myAvatar}
+        />
       </>
-    ) : null;
+    );
   }
 
   return createPortal(
