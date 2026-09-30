@@ -16553,7 +16553,12 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
  *  true  = every photo/video is shown COMPLETE, full width, one under the other (scroll down), buttons on the side
  *          (avatar · like · comments · favorite). No second page opens when tapping a photo/video.
  *  false = the old 2-column tile grid + full-screen viewer (code below is kept untouched). */
-const LIVE_MEDIA_STACKED = true;
+const LIVE_MEDIA_STACKED = false;          // true = stacked feed directly inside the page (previous version, code kept)
+/** true = small 2-column tiles; tapping a tile opens the big full-screen stacked feed (swipe up/down) starting at that tile.
+ *  false = tapping a tile opens the old single-item viewer. */
+const LIVE_MEDIA_TAP_OPENS_FEED = true;
+/** false = the Location option is removed from the PUBLIC chat "+" menu (Saved Messages keeps its own Location option). */
+const LIVE_CHAT_LOCATION_ENABLED = false;
 
 function liveMediaFavsKey(uid: string): string { return `stooorna_live_media_favs_${uid}`; }
 function loadLiveMediaFavs(uid: string): string[] {
@@ -16820,6 +16825,64 @@ function LiveMediaCommentsSheet({ post, comments, myId, myAvatar, nameOf, onLike
   );
 }
 
+/** Full-screen stacked feed opened by tapping a tile of the small grid: every photo/video complete, one under the other,
+ *  swipe up/down to move between them, side buttons (profile · like · comments · favorite). X closes it. */
+function LiveMediaFeedOverlay({ posts, startId, favIds, nameOf, likedBy, commentCountOf, onLike, onComments, onFav, onOpenProfile, onClose }: {
+  posts: PublicLiveComment[];
+  startId: string;
+  favIds: string[];
+  nameOf: (c: PublicLiveComment) => string;
+  likedBy: (c: PublicLiveComment) => boolean;
+  commentCountOf: (id: string) => number;
+  onLike: (id: string) => void;
+  onComments: (id: string) => void;
+  onFav: (id: string) => void;
+  onOpenProfile: (c: PublicLiveComment) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const idx = Math.max(0, posts.findIndex(p => p.id === startId));
+    el.scrollTop = idx * el.clientHeight;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', inset: 0, zIndex: 10900, background: '#000', pointerEvents: 'auto' }}>
+      <div
+        ref={ref}
+        style={{ position: 'absolute', inset: 0, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', scrollSnapType: 'y mandatory', touchAction: 'pan-y' }}
+      >
+        {posts.map(vc => (
+          <LiveMediaFeedItem
+            key={vc.id}
+            c={vc}
+            liked={likedBy(vc)}
+            fav={favIds.includes(vc.id)}
+            name={nameOf(vc)}
+            commentCount={commentCountOf(vc.id)}
+            onLike={() => onLike(vc.id)}
+            onComments={() => onComments(vc.id)}
+            onFav={() => onFav(vc.id)}
+            onOpenProfile={() => onOpenProfile(vc)}
+          />
+        ))}
+      </div>
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', right: 12, zIndex: 3, width: 38, height: 38, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <X size={20} />
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
 type LiveChatRowItem = { kind: 'msg'; c: PublicLiveComment };
 
 /** Every comment is a normal row (the old Titanic/WW2 template grid was removed). */
@@ -16942,6 +17005,7 @@ function PublicLiveCommentsPanel({
   const myId = String(user?.id || '');
   // stacked public media feed: which post's comments sheet is open + my favorites (kept on this device)
   const [commentsMediaId, setCommentsMediaId] = useState<string | null>(null);
+  const [feedStartId, setFeedStartId] = useState<string | null>(null); // big stacked feed opened from the small grid
   const [mediaFavIds, setMediaFavIds] = useState<string[]>(() => loadLiveMediaFavs(String(user?.id || '')));
   useEffect(() => { setMediaFavIds(loadLiveMediaFavs(myId)); }, [myId]);
   const toggleMediaFav = (id: string) => {
@@ -17655,6 +17719,21 @@ function PublicLiveCommentsPanel({
       onOpenProfile={() => openProfileOf(openMedia)}
     />
   ) : null;
+  const mediaFeedOverlay = (feedStartId && mediaPosts.length > 0) ? (
+    <LiveMediaFeedOverlay
+      posts={mediaPosts}
+      startId={feedStartId}
+      favIds={mediaFavIds}
+      nameOf={displayName}
+      likedBy={vc => (myId ? vc.likes.includes(myId) : false)}
+      commentCountOf={commentCountOf}
+      onLike={id => toggleLike(id)}
+      onComments={id => setCommentsMediaId(id)}
+      onFav={id => toggleMediaFav(id)}
+      onOpenProfile={vc => openProfileOf(vc)}
+      onClose={() => setFeedStartId(null)}
+    />
+  ) : null;
   const studioPost = (caption: string, url: string) => {
     pushComment(caption, url);
     setTplOpen(false);
@@ -17664,10 +17743,12 @@ function PublicLiveCommentsPanel({
   // keep Templates/media alive and skip the chat portal. If Saved Messages is open, fall through
   // so the public chat stays mounted underneath — closing Saved Messages returns to live chat, not "outside".
   if (headerOpen && !savedOpen) {
-    return (tplOpen || mediaViewer) ? (
+    return (tplOpen || mediaViewer || mediaFeedOverlay || mediaCommentsSheet) ? (
       <>
         {tplOpen ? <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} /> : null}
         {mediaViewer}
+        {mediaFeedOverlay}
+        {mediaCommentsSheet}
       </>
     ) : null;
   }
@@ -17676,6 +17757,7 @@ function PublicLiveCommentsPanel({
     <>
     <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />
     {mediaViewer}
+    {mediaFeedOverlay}
     {mediaCommentsSheet}
     {onceViewer}
     {roundToast ? (
@@ -17785,7 +17867,7 @@ function PublicLiveCommentsPanel({
                   name={displayName(vc)}
                   commentCount={commentCountOf(vc.id)}
                   onLike={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleLike(vc.id); }}
-                  onOpen={() => { if (Date.now() - composerGuardRef.current < 700) return; setOpenMediaId(vc.id); }}
+                  onOpen={() => { if (Date.now() - composerGuardRef.current < 700) return; if (LIVE_MEDIA_TAP_OPENS_FEED) setFeedStartId(vc.id); else setOpenMediaId(vc.id); }}
                   onOpenProfile={() => { if (Date.now() - composerGuardRef.current < 700) return; openProfileOf(vc); }}
                 />
               ))}
@@ -18364,7 +18446,7 @@ function PublicLiveCommentsPanel({
                       key: 'video-ai', label: 'Video AI', icon: <Film size={20} strokeWidth={2} />,
                       run: () => { setComposerDock('none'); setEmojiOpen(false); setTplOpen(true); },
                     },
-                  ] as { key: string; label: string; icon: React.ReactNode; run: () => void }[]).map(it => (
+                  ] as { key: string; label: string; icon: React.ReactNode; run: () => void }[]).filter(it => LIVE_CHAT_LOCATION_ENABLED || it.key !== 'location').map(it => (
                     <button
                       key={it.key}
                       type="button"
