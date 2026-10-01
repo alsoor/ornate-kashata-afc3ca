@@ -19,6 +19,10 @@ import type { GiftDefinition } from '@/lib/types';
 // ── إعدادات ─────────────────────────────────────────────────────────────
 const PAYMENT_DEMO_MODE = true;
 
+// الهدايا: true = صاحب البث فقط يرسل، ويضغط على متحدث (ياخذ المايك) ويعطيه هدية. false = أي مستخدم يقدر يعطي المتحدثين.
+// لا أحد يقدر يعطي نفسه هدية في الحالتين.
+const HOST_ONLY_GIFTS = true;
+
 // مواضع النقطتين (فوق نقاط LiveVipDock الموجودة). عدّل الأرقام إذا ما انطبقت.
 const YELLOW_DOT_RIGHT = 74; // px من اليمين (نفس القيمة للبث الصوتي والمرئي)
 const BLUE_DOT_RIGHT = 38;   // px من اليمين
@@ -218,9 +222,15 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
   const tapRef = useRef<{ id: string; n: number } | null>(null);
   const tapTimerRef = useRef<number>(0);
   const busyRef = useRef(false);
-  const queueRef = useRef<GiftDefinition[]>([]);
+  const queueRef = useRef<{ gift: GiftDefinition; toUserId?: string }[]>([]);
+  const [giftTarget, setGiftTarget] = useState<{ userId: string; name: string } | null>(null);
+  const giftTargetRef = useRef<{ userId: string; name: string } | null>(null);
+  const tagRestoreRef = useRef<(() => void) | null>(null);
   const playKeyRef = useRef(0);
   const playingRef = useRef(false);
+  // بث الهدايا لباقي الحضور: مفتاح هذا الجهاز + غرفة الهدايا (نفس hostId = نفس الغرفة بالبث الصوتي والمرئي)
+  const clientKeyRef = useRef(`gk_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`);
+  const giftRoom = `gifts-${String(hostId || 'public').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48) || 'public'}`;
 
   const [cardNum, setCardNum] = useState('');
   const [cardExp, setCardExp] = useState('');
@@ -259,14 +269,41 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
       .catch(() => { /* ignore */ });
   }, [uid]);
 
+  // استقبال هدايا باقي الحضور: كل ثانية ونص نسأل السيرفر عن هدايا جديدة بالغرفة ونشغّلها عندي بنفس الحدث المحلي
+  useEffect(() => {
+    let stop = false;
+    let since: number | null = null;
+    let timer = 0;
+    const tick = async () => {
+      if (stop) return;
+      if (!document.hidden) {
+        try {
+          const url = `/api/live-gifts?room=${encodeURIComponent(giftRoom)}` + (since === null ? '' : `&since=${since}`);
+          const r = await fetch(url, { credentials: 'include', cache: 'no-store' });
+          if (r.ok) {
+            const d = await r.json() as { events?: { at: number; giftId: string; fromId?: string; toUserId?: string; fromKey?: string; count?: number }[]; now?: number };
+            if (typeof d.now === 'number') since = d.now;
+            for (const ev of d.events || []) {
+              if (ev.fromKey === clientKeyRef.current) continue; // هديتي أنا تشتغل محلياً أصلاً
+              window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: ev.giftId, fromId: ev.fromId, toUserId: ev.toUserId, hostId, count: ev.count || 1, remote: true } }));
+            }
+          }
+        } catch { /* ignore */ }
+      }
+      if (!stop) timer = window.setTimeout(tick, 1200);
+    };
+    void tick();
+    return () => { stop = true; window.clearTimeout(timer); };
+  }, [giftRoom]);
+
   // تشغيل أنميشن هدية (يستقبل الحدث المحلي، وأي بث مستقبلي لباقي الحضور يرسل نفس الحدث)
   useEffect(() => {
     const onPlay = (e: Event) => {
-      const d = (e as CustomEvent).detail as { giftId?: string; count?: number } | undefined;
+      const d = (e as CustomEvent).detail as { giftId?: string; count?: number; toUserId?: string } | undefined;
       const g = GIFTS.find(x => x.id === d?.giftId);
       if (!g) return;
       const n = Math.max(1, Math.min(COMBO_MAX, Math.floor(Number(d?.count) || 1)));
-      for (let i = 0; i < n; i++) queueRef.current.push(g);
+      for (let i = 0; i < n; i++) queueRef.current.push({ gift: g, toUserId: d?.toUserId ? String(d.toUserId) : undefined });
       // إذا ما في هدية شغالة الحين، ابدأ أول واحدة
       if (!playingRef.current) startNext();
     };
@@ -278,7 +315,53 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
   function startNext() {
     const next = queueRef.current.shift();
     playingRef.current = !!next;
-    setPlaying(next ? { gift: next, key: ++playKeyRef.current } : null);
+    applyGiftTarget(next?.toUserId);
+    setPlaying(next ? { gift: next.gift, key: ++playKeyRef.current } : null);
+  }
+
+  // يوجّه الأنميشن (التاج/الشبح) على صورة المتحدث المستلم بدل صاحب البث: يعلّم صورته بـ data-gift-host مؤقتاً
+  function restoreGiftTarget() { tagRestoreRef.current?.(); tagRestoreRef.current = null; }
+  function applyGiftTarget(toUserId?: string) {
+    restoreGiftTarget();
+    if (!toUserId) return;
+    try {
+      const el = document.querySelector<HTMLElement>(`[data-gift-user="${toUserId.replace(/["\\]/g, '')}"]`);
+      if (!el) return;
+      const others = Array.from(document.querySelectorAll<HTMLElement>('[data-gift-host]')).filter(x => x !== el);
+      others.forEach(x => x.removeAttribute('data-gift-host'));
+      el.setAttribute('data-gift-host', '1');
+      tagRestoreRef.current = () => {
+        el.removeAttribute('data-gift-host');
+        others.forEach(x => x.setAttribute('data-gift-host', '1'));
+      };
+    } catch { /* ignore */ }
+  }
+  useEffect(() => () => restoreGiftTarget(), []);
+
+  // اختيار المستلم: صاحب البث يضغط على متحدث بصفحة البث → يجي الحدث هنا ويفتح مربع الهدايا
+  useEffect(() => {
+    const onTarget = (e: Event) => {
+      const d = (e as CustomEvent).detail as { userId?: string; name?: string } | undefined;
+      const toId = String(d?.userId || '');
+      if (!toId) return;
+      if (toId === uid) { flashGiftMsg('ما تقدر تعطي نفسك هدية'); return; }
+      if (HOST_ONLY_GIFTS && !(hostId && uid === String(hostId))) return;
+      const t = { userId: toId, name: String(d?.name || 'User') };
+      giftTargetRef.current = t;
+      setGiftTarget(t);
+      setCoinsOpen(false);
+      setGiftsOpen(true);
+    };
+    window.addEventListener('stooorna:gift-target', onTarget);
+    return () => window.removeEventListener('stooorna:gift-target', onTarget);
+  }, [uid, hostId]);
+
+  // المستلم الفعلي: المتحدث اللي اختاره صاحب البث. (لو HOST_ONLY_GIFTS = false والمرسل مشاهد: الهدية لصاحب البث)
+  function resolveGiftTarget(): { userId: string; name: string } | null {
+    const t = giftTargetRef.current;
+    if (t) return t;
+    if (!HOST_ONLY_GIFTS && hostId && String(hostId) !== uid) return { userId: String(hostId), name: 'Host' };
+    return null;
   }
 
   // لما تخلص الهدية: شغّل اللي بعدها (نفس الهدية مرة ثانية) لين يخلص العدد
@@ -300,6 +383,9 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
     setTap(null);
     const gift = GIFTS.find(g => g.id === t.id);
     if (!gift) return;
+    const target = resolveGiftTarget();
+    if (!target) { flashGiftMsg(HOST_ONLY_GIFTS ? 'اضغط على صورة متحدث واختر إرسال هدية' : 'تعذر تحديد المستلم'); return; }
+    if (target.userId === uid) { flashGiftMsg('ما تقدر تعطي نفسك هدية'); return; }
     busyRef.current = true;
     let bal = readBalance(uid);
     let sent = 0;
@@ -315,8 +401,17 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
     busyRef.current = false;
     if (sent === 0) return;
     setGiftsOpen(false);
-    // تشغيل الأنميشن عندي (بعدد المرات). للبث لباقي الحضور: أرسل نفس الحدث عندهم (قناة Agora أو WebSocket) مع count.
-    window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: gift.id, fromId: uid, hostId, count: sent } }));
+    // تشغيل الأنميشن عندي (بعدد المرات). الإرسال لباقي الحضور يتم تحت عبر /api/live-gifts.
+    window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: gift.id, fromId: uid, hostId, toUserId: target.userId, count: sent } }));
+    giftTargetRef.current = null;
+    setGiftTarget(null);
+    // بث الهدية لكل من في البث (يشوفونها عندهم بنفس الأنميشن)
+    void fetch('/api/live-gifts', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room: giftRoom, giftId: gift.id, count: sent, fromId: uid, toUserId: target.userId, fromKey: clientKeyRef.current, id: `lg_${clientKeyRef.current}_${Date.now()}` }),
+    }).catch(() => { /* ignore */ });
   }
 
   // كل نقرة على الهدية تزيد العداد 1 2 3 ... وبعد ما يوقف النقر تنرسل
@@ -401,7 +496,11 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
   return (
     <>
       {dot(yellowRight, '#facc15', 'Coins', () => { setGiftsOpen(false); setCoinsOpen(true); })}
-      {dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', () => { setCoinsOpen(false); setGiftsOpen(true); })}
+      {(!HOST_ONLY_GIFTS || (hostId && uid === String(hostId))) && dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', () => {
+        setCoinsOpen(false);
+        if (!resolveGiftTarget()) { flashGiftMsg('اضغط على صورة متحدث واختر إرسال هدية'); return; }
+        setGiftsOpen(true);
+      })}
 
       {/* مربع شحن Coins */}
       <Sheet open={coinsOpen} onClose={() => setCoinsOpen(false)} title="Coins" balance={balance}>
@@ -532,7 +631,7 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
       </Sheet>
 
       {/* مربع الهدايا: 6 مربعات فيها + للمستقبل */}
-      <Sheet open={giftsOpen} onClose={() => setGiftsOpen(false)} title="Gifts" balance={balance}>
+      <Sheet open={giftsOpen} onClose={() => { setGiftsOpen(false); giftTargetRef.current = null; setGiftTarget(null); }} title={giftTarget ? `Gifts → ${giftTarget.name}` : 'Gifts'} balance={balance}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
           {[0, 1, 2, 3, 4, 5].map(i => {
             const gift = GIFTS[i];

@@ -659,6 +659,45 @@ app.post("/api/room/signal", (req, res) => {
   res.json({ ok: true, at });
 });
 
+// ── Live gifts: بث الهدايا لكل من في البث (ذاكرة السيرفر، نفس أسلوب live-chat / room-signal) ──
+const liveGiftMem = () => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveGifts?: Map<string, Array<{ at: number; id: string; giftId: string; fromId: string; toUserId: string; fromKey: string; count: number }>> };
+  if (!g.__stooornaLiveGifts) g.__stooornaLiveGifts = new Map();
+  return g.__stooornaLiveGifts;
+};
+app.get("/api/live-gifts", (req, res) => {
+  const room = String(req.query.room || req.query.channel || "").slice(0, 80);
+  const now = Date.now();
+  res.setHeader("Cache-Control", "no-store");
+  // أول طلب بدون since: يرجّع الوقت الحالي فقط (ما نعيد هدايا قديمة لمن يدخل البث)
+  if (req.query.since === undefined || req.query.since === "") return res.json({ ok: true, events: [], now });
+  const since = Number(req.query.since) || 0;
+  const events = (liveGiftMem().get(room) || []).filter((e) => e.at > since && now - e.at < 60000).slice(-30);
+  const last = events.length ? events[events.length - 1].at : since;
+  res.json({ ok: true, events, now: Math.max(last, since) });
+});
+app.post("/api/live-gifts", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const room = String(body.room || body.channel || "").slice(0, 80);
+  const giftId = String(body.giftId || "").slice(0, 40);
+  if (!room || !giftId) return res.status(400).json({ error: "room and giftId required" });
+  const count = Math.max(1, Math.min(10, Math.floor(Number(body.count) || 1)));
+  const fromId = String(body.fromId || "").slice(0, 80);
+  const toUserId = String(body.toUserId || "").slice(0, 80);
+  // ممنوع يعطي نفسه هدية
+  if (fromId && toUserId && fromId === toUserId) return res.status(400).json({ error: "cannot gift yourself" });
+  const mem = liveGiftMem();
+  const now = Date.now();
+  const prev = mem.get(room) || [];
+  // at يزيد دائماً (حتى لو وصل طلبين بنفس الملي ثانية) عشان المؤشر since ما يضيّع هدية
+  const lastAt = prev.length ? prev[prev.length - 1].at : 0;
+  const at = Math.max(now, lastAt + 1);
+  const list = prev.filter((e) => now - e.at < 60000);
+  list.push({ at, id: String(body.id || `lg_${at}`).slice(0, 60), giftId, fromId, toUserId, fromKey: String(body.fromKey || "").slice(0, 60), count });
+  mem.set(room, list.slice(-120));
+  res.json({ ok: true, at });
+});
+
 app.get("/api/me/ban-status", me_ban_status_get_36);
 app.post("/api/me/update-ip", me_update_ip_post_37);
 app.get("/api/messages", messages_get_38);

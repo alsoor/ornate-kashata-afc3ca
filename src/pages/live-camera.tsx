@@ -1588,9 +1588,15 @@ export default function LiveCameraPage() {
     };
   }, [joined, channelName, myId, applyIncomingSignal]);
 
+  const [speakerMenu, setSpeakerMenu] = useState<Member | null>(null);
   const onMemberTap = (m: Member) => {
     if (m.isMe) return;
+    // Host: متحدث (ياخذ المايك) → قائمة (هدية / تجميد). غير المتحدث → تجميد مباشرة مثل قبل
     if (amHost) {
+      if (m.userId && m.userId !== myId && (speakerUidsRef.current.has(m.uid) || speakingUids.has(m.uid))) {
+        setSpeakerMenu(m);
+        return;
+      }
       toggleHostFreeze(m.uid, m.isMe);
       return;
     }
@@ -2003,7 +2009,7 @@ export default function LiveCameraPage() {
                       cursor: m.isMe ? 'default' : 'pointer',
                     }}
                   >
-                    <div style={{ position: 'relative', width: 40, height: 40 }}>
+                    <div data-gift-user={m.userId || undefined} style={{ position: 'relative', width: 40, height: 40 }}>
                       <UserAvatar
                         name={m.name}
                         avatarUrl={m.avatarUrl}
@@ -2803,6 +2809,48 @@ export default function LiveCameraPage() {
         )}
       </AnimatePresence>
       <LiveVipDock hostId={hostId} currentUserId={myId} />
+      {/* قائمة المتحدث (صاحب البث فقط): إرسال هدية أو تجميد/فك تجميد المايك */}
+      {speakerMenu && amHost && (
+        <div
+          onClick={() => setSpeakerMenu(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 8800, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 420, background: '#101818', borderRadius: '18px 18px 0 0', padding: '16px 16px max(env(safe-area-inset-bottom,0px),16px)', border: '1px solid rgba(0,188,212,0.25)', display: 'flex', flexDirection: 'column', gap: 10 }}
+          >
+            <p style={{ margin: 0, textAlign: 'center', color: '#dff6f6', fontWeight: 800, fontSize: '0.9rem' }}>
+              {speakerMenu.username ? `@${speakerMenu.username}` : speakerMenu.name}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                const m = speakerMenu;
+                setSpeakerMenu(null);
+                if (!m.userId || m.isMe || m.userId === myId) return;
+                window.dispatchEvent(new CustomEvent('stooorna:gift-target', { detail: { userId: m.userId, name: m.name, username: m.username, avatarUrl: m.avatarUrl } }));
+              }}
+              style={{ padding: '13px 10px', borderRadius: 14, border: 'none', cursor: 'pointer', background: '#8b12ff', color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}
+            >
+              🎁 إرسال هدية
+            </button>
+            <button
+              type="button"
+              onClick={() => { const m = speakerMenu; setSpeakerMenu(null); toggleHostFreeze(m.uid, m.isMe); }}
+              style={{ padding: '13px 10px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.35)', cursor: 'pointer', background: 'rgba(0,188,212,0.1)', color: '#dff6f6', fontWeight: 800, fontSize: '0.9rem' }}
+            >
+              {frozenUids.has(speakerMenu.uid) ? 'فك تجميد المايك' : 'تجميد المايك'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSpeakerMenu(null)}
+              style={{ padding: '11px 10px', borderRadius: 14, border: 'none', cursor: 'pointer', background: 'transparent', color: 'rgba(200,230,230,0.7)', fontWeight: 700, fontSize: '0.85rem' }}
+            >
+              إلغاء
+            </button>
+          </div>
+        </div>
+      )}
       <LiveCoinsDock hostId={hostId} currentUserId={myId} />
     </div>
   );
