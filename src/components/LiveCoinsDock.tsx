@@ -11,8 +11,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, CreditCard, Lock } from 'lucide-react';
-import { GIFTS } from '@/lib/gifts';
-import type { GiftDefinition } from '@/lib/gifts/types';
+import { GIFTS } from '@/lib/index';
+import type { GiftDefinition } from '@/lib/types';
 
 // ── إعدادات ─────────────────────────────────────────────────────────────
 const PAYMENT_DEMO_MODE = true;

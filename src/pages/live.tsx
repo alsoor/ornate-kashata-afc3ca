@@ -1466,6 +1466,7 @@ export default function LivePage() {
               type="button"
               onClick={openHostPosts}
               aria-label="منشورات المضيف"
+              data-gift-host="1"
               style={{
                 padding: 0,
                 border: 'none',
@@ -2015,6 +2016,7 @@ export default function LivePage() {
                     }
                   }}
                   placeholder="Message…"
+                  data-gift-walk="1"
                   style={{
                     flex: 1,
                     borderRadius: 12,

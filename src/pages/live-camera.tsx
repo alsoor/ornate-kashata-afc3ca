@@ -1741,6 +1741,7 @@ export default function LiveCameraPage() {
                   type="button"
                   onClick={openHostPosts}
                   aria-label="Host posts"
+                  data-gift-host="1"
                   style={{
                     padding: 0,
                     border: 'none',
@@ -2291,6 +2292,7 @@ export default function LiveCameraPage() {
                     }
                   }}
                   placeholder="Message…"
+                  data-gift-walk="1"
                   style={{
                     flex: 1,
                     borderRadius: 12,
