@@ -2,10 +2,18 @@
  * هدية القلب (Heart) — 25 Coins
  *
  * - Preview  : قلب أحمر ينبض داخل مربع الهدايا.
- * - Animation: قلب صغير ينتفخ لنص الشاشة (مع صوت نفخ) ثم ينفجر ويتفتت لقلوب صغيرة تملأ الشاشة
- *              (مع صوت انفجار). المدة الكلية 6 ثواني.
+ * - Animation: قلب (بالونة) ينتفخ بنفَس شخص ينفخ بالونة (صوت نفخ/شهيق/صرير مطاط) ثم ينفجر بفرقعة
+ *              وصوت امرأة يقول "I love you"، وتتناثر قلوب كثيرة في كل الشاشة.
+ *              القلوب تسقط بفيزياء حقيقية (جاذبية + ارتداد) وتصطدم بأزرار البث السفلية
+ *              (أي button / رابط / input في أسفل الصفحة) ثم تنزلق وتسقط وتختفي.
  *
- * هذا الملف مستقل بالكامل: غيّر الأرقام تحت (السعر/المدد/عدد القطع) أو الصوت من دالة playHeartSound.
+ * هذا الملف مستقل بالكامل: غيّر الأرقام تحت (السعر/المدد/عدد القطع/الجاذبية) أو الصوت من دالة playHeartSound.
+ *
+ * أصوات حقيقية (اختياري — الأفضل للواقعية):
+ *   ضع ملفاتك في public/sounds ثم اكتب مسارها في BLOW_URL و VOICE_URL تحت.
+ *   إذا تركتها فاضية: النفخ يُولَّد بالكود، وصوت المرأة يُنطق بصوت نسائي من الجهاز (speechSynthesis).
+ *
+ * لإجبار عنصر معيّن أن تصطدم به القلوب أضف عليه: data-gift-obstacle
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
@@ -14,17 +22,33 @@ import { getAudioCtx, noiseBuffer } from '@/lib/gifts/audio';
 
 // ── إعدادات الهدية ──────────────────────────────────────────────────────
 const PRICE = 25;
-const TOTAL_MS = 6000;      // مدة الأنميشن الكلية
-const INFLATE_S = 3.0;      // مدة النفخ قبل الانفجار
-const FRAGMENTS = 70;       // عدد القلوب الصغيرة بعد الانفجار
+const TOTAL_MS = 7500;      // مدة الأنميشن الكلية
+const INFLATE_S = 3.4;      // مدة النفخ قبل الانفجار
+const FRAGMENTS = 110;      // عدد القلوب الصغيرة بعد الانفجار
+const RAIN = 36;            // قلوب إضافية تنزل من أعلى الشاشة بعد الانفجار
 const SPARKS = 36;          // عدد الشرارات الصغيرة
-// أوقات "نفخات" القلب بالثواني (تتسارع) — الصوت والحركة يتزامنون عليها
-const PUMPS = [0.2, 0.62, 1.0, 1.32, 1.6, 1.85, 2.07, 2.27, 2.45, 2.6, 2.73, 2.85, 2.94];
+const GRAVITY = 1700;       // الجاذبية (px/s² لشاشة ارتفاعها 700px)
+const BOUNCE = 0.5;         // قوة الارتداد عند الاصطدام بالأزرار (0..1)
+
+// الصوت
+const VOICE_TEXT = 'I love you';
+const VOICE_URL = '';       // مثال: '/sounds/i-love-you.mp3'  (صوت امرأة حقيقي مسجّل)
+const BLOW_URL = '';        // مثال: '/sounds/balloon-blow.mp3' (نفخ بالونة حقيقي)
+
+// أنفاس النفخ: t = وقت بداية النفخة بالثواني، d = مدتها. الصوت والحركة يتزامنون عليها.
+const PUMPS: { t: number; d: number }[] = [
+  { t: 0.10, d: 0.44 },
+  { t: 0.74, d: 0.42 },
+  { t: 1.34, d: 0.40 },
+  { t: 1.92, d: 0.38 },
+  { t: 2.48, d: 0.36 },
+  { t: 3.02, d: 0.34 },
+];
 
 const HEART_PATH =
   'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z';
 
-function GlossyHeart({ size }: { size: number }) {
+function GlossyHeart({ size, knot = false }: { size: number; knot?: boolean }) {
   const gid = React.useId().replace(/:/g, '');
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', overflow: 'visible', filter: 'drop-shadow(0 0 10px rgba(255,45,85,0.65))' }}>
@@ -35,126 +59,297 @@ function GlossyHeart({ size }: { size: number }) {
           <stop offset="100%" stopColor="#b3002a" />
         </radialGradient>
       </defs>
+      {/* عقدة البالونة */}
+      {knot && <path d="M12 20.6 L10.3 23.2 L13.7 23.2 Z" fill="#b3002a" />}
       <path d={HEART_PATH} fill={`url(#hg${gid})`} />
       <ellipse cx="8" cy="7.2" rx="2.4" ry="1.4" transform="rotate(-35 8 7.2)" fill="rgba(255,255,255,0.55)" />
     </svg>
   );
 }
 
-function FlatHeart({ size, color }: { size: number; color: string }) {
+// ── الصوت ──────────────────────────────────────────────────────────────
+
+const FEMALE_RE = /female|woman|samantha|victoria|karen|moira|tessa|zira|susan|hazel|aria|jenny|ava|allison|serena|fiona|nicky|google us english|google uk english female/i;
+const MALE_RE = /\bmale\b|david|mark|daniel|alex|fred|george|james|guy|ravi|rishi|arthur|oliver/i;
+
+function pickWomanVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  const en = voices.filter(v => /^en/i.test(v.lang));
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block' }}>
-      <path d={HEART_PATH} fill={color} />
-    </svg>
+    en.find(v => FEMALE_RE.test(v.name) && !MALE_RE.test(v.name)) ||
+    en.find(v => !MALE_RE.test(v.name)) ||
+    null
   );
 }
 
-// ── الصوت: نفخ (هواء + نبضات متسارعة) ثم انفجار (دفعة + طقطقة) ─────────────
+// صوت امرأة تقول I love you
+function speakILoveYou(audios: HTMLAudioElement[]) {
+  if (VOICE_URL) {
+    try {
+      const a = new Audio(VOICE_URL);
+      a.volume = 1;
+      audios.push(a);
+      void a.play().catch(() => { /* ignore */ });
+    } catch { /* ignore */ }
+    return;
+  }
+  try {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    const u = new SpeechSynthesisUtterance(VOICE_TEXT);
+    u.lang = 'en-US';
+    u.rate = 0.88;
+    u.pitch = 1.3; // نبرة أنثوية
+    u.volume = 1;
+    const v = pickWomanVoice(synth.getVoices());
+    if (v) { u.voice = v; u.lang = v.lang; }
+    synth.cancel();
+    synth.speak(u);
+  } catch { /* ignore */ }
+}
+
+// نفخ بالونة حقيقي (نفَس + شهيق + صرير مطاط) ثم فرقعة + صوت المرأة
 function playHeartSound(): () => void {
   const ctx = getAudioCtx();
-  if (!ctx) return () => {};
-  const t0 = ctx.currentTime + 0.02;
-  const tb = t0 + INFLATE_S;
   const sources: AudioScheduledSourceNode[] = [];
+  const timers: number[] = [];
+  const audios: HTMLAudioElement[] = [];
+  let master: GainNode | null = null;
 
-  const master = ctx.createGain();
-  master.gain.value = 0.9;
-  const comp = ctx.createDynamicsCompressor();
-  master.connect(comp);
-  comp.connect(ctx.destination);
+  // تجهيز أصوات الجهاز مبكراً (تتحمل بشكل متأخر في بعض المتصفحات)
+  try {
+    if (!VOICE_URL && window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+      const prime = new SpeechSynthesisUtterance(' ');
+      prime.volume = 0;
+      window.speechSynthesis.speak(prime);
+    }
+  } catch { /* ignore */ }
 
-  // هواء النفخ: ضجيج يمر بفلتر يرتفع تردده
-  const air = ctx.createBufferSource();
-  air.buffer = noiseBuffer(ctx, INFLATE_S + 0.3);
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.Q.value = 1.4;
-  bp.frequency.setValueAtTime(300, t0);
-  bp.frequency.exponentialRampToValueAtTime(2400, tb);
-  const ag = ctx.createGain();
-  ag.gain.setValueAtTime(0.0001, t0);
-  ag.gain.exponentialRampToValueAtTime(0.24, tb - 0.05);
-  ag.gain.linearRampToValueAtTime(0.0001, tb + 0.12);
-  air.connect(bp); bp.connect(ag); ag.connect(master);
-  air.start(t0); air.stop(tb + 0.3);
-  sources.push(air);
-
-  // نبضات النفخ (تتسارع)
-  PUMPS.forEach((p, i) => {
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = 'sine';
-    const t = t0 + p;
-    o.frequency.setValueAtTime(130 + i * 16, t);
-    o.frequency.exponentialRampToValueAtTime(55, t + 0.14);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.32, t + 0.015);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-    o.connect(g); g.connect(master);
-    o.start(t); o.stop(t + 0.2);
-    sources.push(o);
-  });
-
-  // الانفجار: دفعة ضجيج + ضربة عميقة + فرقعة
-  const boom = ctx.createBufferSource();
-  boom.buffer = noiseBuffer(ctx, 1.3);
-  const lp = ctx.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.setValueAtTime(7000, tb);
-  lp.frequency.exponentialRampToValueAtTime(160, tb + 1.0);
-  const bg = ctx.createGain();
-  bg.gain.setValueAtTime(0.95, tb);
-  bg.gain.exponentialRampToValueAtTime(0.0001, tb + 1.15);
-  boom.connect(lp); lp.connect(bg); bg.connect(master);
-  boom.start(tb); boom.stop(tb + 1.3);
-  sources.push(boom);
-
-  const thump = ctx.createOscillator();
-  const tg = ctx.createGain();
-  thump.type = 'sine';
-  thump.frequency.setValueAtTime(150, tb);
-  thump.frequency.exponentialRampToValueAtTime(30, tb + 0.6);
-  tg.gain.setValueAtTime(1.0, tb);
-  tg.gain.exponentialRampToValueAtTime(0.0001, tb + 0.7);
-  thump.connect(tg); tg.connect(master);
-  thump.start(tb); thump.stop(tb + 0.75);
-  sources.push(thump);
-
-  const pop = ctx.createOscillator();
-  const pg = ctx.createGain();
-  pop.type = 'triangle';
-  pop.frequency.setValueAtTime(950, tb);
-  pop.frequency.exponentialRampToValueAtTime(180, tb + 0.16);
-  pg.gain.setValueAtTime(0.45, tb);
-  pg.gain.exponentialRampToValueAtTime(0.0001, tb + 0.2);
-  pop.connect(pg); pg.connect(master);
-  pop.start(tb); pop.stop(tb + 0.25);
-  sources.push(pop);
-
-  // طقطقة القطع المتفتتة
-  for (let i = 0; i < 16; i++) {
-    const t = tb + 0.06 + Math.random() * 0.95;
-    const n = ctx.createBufferSource();
-    n.buffer = noiseBuffer(ctx, 0.05);
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 2500 + Math.random() * 2500;
-    const cg = ctx.createGain();
-    cg.gain.setValueAtTime(0.0001, t);
-    cg.gain.exponentialRampToValueAtTime(0.22, t + 0.004);
-    cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
-    n.connect(hp); hp.connect(cg); cg.connect(master);
-    n.start(t); n.stop(t + 0.06);
-    sources.push(n);
+  if (BLOW_URL) {
+    try {
+      const a = new Audio(BLOW_URL);
+      a.volume = 1;
+      audios.push(a);
+      void a.play().catch(() => { /* ignore */ });
+    } catch { /* ignore */ }
   }
 
+  if (ctx) {
+    const t0 = ctx.currentTime + 0.02;
+    const tb = t0 + INFLATE_S;
+
+    master = ctx.createGain();
+    master.gain.value = 0.9;
+    const comp = ctx.createDynamicsCompressor();
+    master.connect(comp);
+    comp.connect(ctx.destination);
+    const out = master;
+
+    const noise = (dur: number) => {
+      const s = ctx.createBufferSource();
+      s.buffer = noiseBuffer(ctx, dur);
+      sources.push(s);
+      return s;
+    };
+
+    if (!BLOW_URL) {
+      PUMPS.forEach((b, i) => {
+        const t = t0 + b.t;
+        const te = t + b.d;
+        const k = i / (PUMPS.length - 1);
+
+        // 1) الزفير: هواء ينفخه الفم داخل البالونة
+        const n = noise(b.d + 0.1);
+        const hp = ctx.createBiquadFilter();
+        hp.type = 'highpass';
+        hp.frequency.value = 380;
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.Q.value = 0.8;
+        bp.frequency.setValueAtTime(850 + k * 500, t);
+        bp.frequency.linearRampToValueAtTime(1100 + k * 700, te);
+        const g = ctx.createGain();
+        const peak = 0.2 + k * 0.08;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(peak, t + 0.07);
+        g.gain.setValueAtTime(peak, te - 0.1);
+        g.gain.exponentialRampToValueAtTime(0.0001, te);
+        // اضطراب خفيف في الهواء
+        const lfo = ctx.createOscillator();
+        lfo.frequency.value = 9 + Math.random() * 6;
+        const lg = ctx.createGain();
+        lg.gain.value = 0.05;
+        lfo.connect(lg); lg.connect(g.gain);
+        n.connect(hp); hp.connect(bp); bp.connect(g); g.connect(out);
+        n.start(t); n.stop(te + 0.1);
+        lfo.start(t); lfo.stop(te + 0.1);
+        sources.push(lfo);
+
+        // 2) "بف" الشفاه عند بداية النفخة
+        const lip = ctx.createOscillator();
+        const lipG = ctx.createGain();
+        lip.type = 'sine';
+        lip.frequency.setValueAtTime(140, t);
+        lip.frequency.exponentialRampToValueAtTime(60, t + 0.07);
+        lipG.gain.setValueAtTime(0.0001, t);
+        lipG.gain.exponentialRampToValueAtTime(0.16, t + 0.01);
+        lipG.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+        lip.connect(lipG); lipG.connect(out);
+        lip.start(t); lip.stop(t + 0.1);
+        sources.push(lip);
+
+        // 3) صرير المطاط وهو يتمدد (يزيد مع امتلاء البالونة)
+        if (i >= 1) {
+          const sq = ctx.createOscillator();
+          sq.type = 'sawtooth';
+          const f0 = 700 + i * 120;
+          sq.frequency.setValueAtTime(f0, t + 0.05);
+          sq.frequency.linearRampToValueAtTime(f0 + 350 + i * 40, te);
+          const vib = ctx.createOscillator();
+          vib.frequency.value = 28 + Math.random() * 10;
+          const vibG = ctx.createGain();
+          vibG.gain.value = 35;
+          vib.connect(vibG); vibG.connect(sq.frequency);
+          const sbp = ctx.createBiquadFilter();
+          sbp.type = 'bandpass';
+          sbp.Q.value = 7;
+          sbp.frequency.value = 1700 + i * 150;
+          const sg = ctx.createGain();
+          const sp = 0.02 + k * 0.03;
+          sg.gain.setValueAtTime(0.0001, t + 0.05);
+          sg.gain.linearRampToValueAtTime(sp, t + 0.18);
+          sg.gain.exponentialRampToValueAtTime(0.0001, te);
+          sq.connect(sbp); sbp.connect(sg); sg.connect(out);
+          sq.start(t + 0.05); sq.stop(te + 0.02);
+          vib.start(t + 0.05); vib.stop(te + 0.02);
+          sources.push(sq, vib);
+        }
+
+        // 4) الشهيق بين النفخات
+        if (i < PUMPS.length - 1) {
+          const ti = te + 0.02;
+          const di = PUMPS[i + 1].t - b.t - b.d - 0.04;
+          if (di > 0.05) {
+            const inh = noise(di + 0.05);
+            const ibp = ctx.createBiquadFilter();
+            ibp.type = 'bandpass';
+            ibp.Q.value = 0.6;
+            ibp.frequency.setValueAtTime(900, ti);
+            ibp.frequency.linearRampToValueAtTime(1500, ti + di);
+            const ig = ctx.createGain();
+            ig.gain.setValueAtTime(0.0001, ti);
+            ig.gain.linearRampToValueAtTime(0.07, ti + di * 0.5);
+            ig.gain.linearRampToValueAtTime(0.0001, ti + di);
+            inh.connect(ibp); ibp.connect(ig); ig.connect(out);
+            inh.start(ti); inh.stop(ti + di + 0.05);
+          }
+        }
+      });
+
+      // توتر المطاط قبل الانفجار: صرير متقطع
+      const tn = noise(0.9);
+      const tbp = ctx.createBiquadFilter();
+      tbp.type = 'bandpass';
+      tbp.Q.value = 6;
+      tbp.frequency.setValueAtTime(2800, tb - 0.8);
+      tbp.frequency.linearRampToValueAtTime(4200, tb);
+      const tg = ctx.createGain();
+      tg.gain.setValueAtTime(0.03, tb - 0.8);
+      const tl = ctx.createOscillator();
+      tl.type = 'square';
+      tl.frequency.value = 22;
+      const tlg = ctx.createGain();
+      tlg.gain.value = 0.03;
+      tl.connect(tlg); tlg.connect(tg.gain);
+      tn.connect(tbp); tbp.connect(tg); tg.connect(out);
+      tg.gain.setValueAtTime(0.0001, tb - 0.001);
+      tn.start(tb - 0.8); tn.stop(tb);
+      tl.start(tb - 0.8); tl.stop(tb);
+      sources.push(tl);
+    }
+
+    // الانفجار: طقة بالونة حادة + ضربة هواء قصيرة
+    const crack = noise(0.2);
+    const chp = ctx.createBiquadFilter();
+    chp.type = 'highpass';
+    chp.frequency.value = 900;
+    const cg = ctx.createGain();
+    cg.gain.setValueAtTime(1.0, tb);
+    cg.gain.exponentialRampToValueAtTime(0.0001, tb + 0.12);
+    crack.connect(chp); chp.connect(cg); cg.connect(out);
+    crack.start(tb); crack.stop(tb + 0.2);
+
+    const boom = noise(0.5);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(3500, tb);
+    lp.frequency.exponentialRampToValueAtTime(200, tb + 0.4);
+    const bg = ctx.createGain();
+    bg.gain.setValueAtTime(0.55, tb);
+    bg.gain.exponentialRampToValueAtTime(0.0001, tb + 0.4);
+    boom.connect(lp); lp.connect(bg); bg.connect(out);
+    boom.start(tb); boom.stop(tb + 0.5);
+
+    const thump = ctx.createOscillator();
+    const thg = ctx.createGain();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(170, tb);
+    thump.frequency.exponentialRampToValueAtTime(40, tb + 0.35);
+    thg.gain.setValueAtTime(0.8, tb);
+    thg.gain.exponentialRampToValueAtTime(0.0001, tb + 0.4);
+    thump.connect(thg); thg.connect(out);
+    thump.start(tb); thump.stop(tb + 0.45);
+    sources.push(thump);
+
+    // طقطقة قطع القلب المتفتتة
+    for (let i = 0; i < 12; i++) {
+      const t = tb + 0.08 + Math.random() * 0.9;
+      const n = noise(0.05);
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 2500 + Math.random() * 2500;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.14, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+      n.connect(hp); hp.connect(g); g.connect(out);
+      n.start(t); n.stop(t + 0.06);
+    }
+  }
+
+  // صوت المرأة "I love you" مع لحظة الانفجار
+  timers.push(window.setTimeout(() => speakILoveYou(audios), (INFLATE_S + 0.12) * 1000));
+
   return () => {
-    try {
-      master.gain.cancelScheduledValues(ctx.currentTime);
-      master.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
-      sources.forEach(s => { try { s.stop(ctx.currentTime + 0.1); } catch { /* ignore */ } });
-    } catch { /* ignore */ }
+    timers.forEach(t => window.clearTimeout(t));
+    try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+    audios.forEach(a => { try { a.pause(); } catch { /* ignore */ } });
+    if (ctx && master) {
+      try {
+        master.gain.cancelScheduledValues(ctx.currentTime);
+        master.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
+        sources.forEach(s => { try { s.stop(ctx.currentTime + 0.1); } catch { /* ignore */ } });
+      } catch { /* ignore */ }
+    }
   };
+}
+
+// نقرة خفيفة عند ارتطام قلب بزر
+function playTick(vol: number) {
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  try {
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(600 + Math.random() * 500, t);
+    o.frequency.exponentialRampToValueAtTime(260, t + 0.05);
+    g.gain.setValueAtTime(Math.min(0.07, vol), t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t); o.stop(t + 0.07);
+  } catch { /* ignore */ }
 }
 
 // ── الشكل داخل مربع الهدايا: قلب ينبض ─────────────────────────────────────
@@ -171,54 +366,272 @@ function HeartPreview({ size = 72 }: { size?: number }) {
   );
 }
 
-// ── أنميشن ملء الشاشة: ينتفخ → ينفجر → قلوب صغيرة تملأ الشاشة ──────────────
+// ── الفيزياء: قلوب تسقط وتصطدم بأزرار البث ─────────────────────────────────
 const FRAG_COLORS = ['#ff2d55', '#ff5c7a', '#e11d48', '#ff8fa3', '#ffd1dc', '#ff3b6b'];
 
+interface Obstacle { x: number; y: number; w: number; h: number; r: number }
+
+// يجمع الأزرار الظاهرة في النصف السفلي من الشاشة (أزرار البث) لتصطدم بها القلوب
+function collectObstacles(W: number, H: number): Obstacle[] {
+  const out: Obstacle[] = [];
+  try {
+    const nodes = document.querySelectorAll<HTMLElement>(
+      'button, [role="button"], a[href], input, textarea, select, [data-gift-obstacle]',
+    );
+    nodes.forEach(el => {
+      if (el.closest('[data-gift-overlay]')) return;
+      const cs = getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) < 0.05) return;
+
+      // زر شفاف بدون إطار (مثل النقاط الملوّنة): نصطدم بالشكل الظاهر داخله لا بمنطقة اللمس
+      const transparent = cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent';
+      const noBorder = !parseFloat(cs.borderTopWidth) || cs.borderTopStyle === 'none';
+      const box: Element = transparent && noBorder && el.firstElementChild ? el.firstElementChild : el;
+      const rect = box.getBoundingClientRect();
+      if (rect.width < 8 || rect.height < 8) return;
+      if (rect.height > 160 || rect.width > W * 0.98) return;
+      if (rect.bottom < H * 0.5 || rect.top > H || rect.right < 0 || rect.left > W) return;
+
+      const bcs = box === el ? cs : getComputedStyle(box);
+      const raw = bcs.borderTopLeftRadius || '0';
+      const m = Math.min(rect.width, rect.height);
+      const val = parseFloat(raw) || 0;
+      const rad = raw.includes('%') ? (val / 100) * m : val;
+      out.push({ x: rect.left, y: rect.top, w: rect.width, h: rect.height, r: Math.min(rad, rect.width / 2, rect.height / 2) });
+    });
+  } catch { /* ignore */ }
+  return out;
+}
+
+interface Piece {
+  x: number; y: number; vx: number; vy: number;
+  size: number; rad: number; rot: number; vr: number;
+  color: string; delay: number; e: number;
+  active: boolean; dead: boolean; fadeAt: number | null;
+}
+interface Spark { x: number; y: number; vx: number; vy: number; size: number; delay: number }
+
+function BurstLayer({ W, H, seconds }: { W: number; H: number; seconds: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv) return;
+    const c = cv.getContext('2d');
+    if (!c) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(W * dpr);
+    cv.height = Math.round(H * dpr);
+
+    const heart = new Path2D(HEART_PATH);
+    const k = Math.max(W, H) / 700;
+    const g = GRAVITY * (H / 700);
+    const cx = W / 2;
+    const cy = H / 2;
+    const hs = Math.min(W * 0.85, H * 0.55);
+
+    const pieces: Piece[] = [];
+    for (let i = 0; i < FRAGMENTS; i++) {
+      const size = 16 + Math.random() * 32;
+      const ang = Math.random() * Math.PI * 2;
+      const sp = (200 + Math.random() * 900) * k;
+      pieces.push({
+        x: cx + (Math.random() - 0.5) * hs * 0.5,
+        y: cy + (Math.random() - 0.5) * hs * 0.5,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp - 220 * k,
+        size, rad: size * 0.42,
+        rot: Math.random() * Math.PI * 2,
+        vr: (Math.random() - 0.5) * 9,
+        color: FRAG_COLORS[i % FRAG_COLORS.length],
+        delay: Math.random() * 0.12,
+        e: BOUNCE * (0.75 + Math.random() * 0.5),
+        active: false, dead: false, fadeAt: null,
+      });
+    }
+    // قلوب تنزل من فوق الشاشة لتملأها وتسقط على الأزرار
+    for (let i = 0; i < RAIN; i++) {
+      const size = 18 + Math.random() * 24;
+      pieces.push({
+        x: Math.random() * W, y: -size,
+        vx: (Math.random() - 0.5) * 90 * k,
+        vy: (80 + Math.random() * 220) * k,
+        size, rad: size * 0.42,
+        rot: Math.random() * Math.PI * 2,
+        vr: (Math.random() - 0.5) * 6,
+        color: FRAG_COLORS[(i + 2) % FRAG_COLORS.length],
+        delay: 0.15 + Math.random() * 1.5,
+        e: BOUNCE * (0.75 + Math.random() * 0.5),
+        active: false, dead: false, fadeAt: null,
+      });
+    }
+
+    const sparks: Spark[] = Array.from({ length: SPARKS }, () => {
+      const ang = Math.random() * Math.PI * 2;
+      const sp = (250 + Math.random() * 800) * k;
+      return {
+        x: cx, y: cy,
+        vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+        size: 2 + Math.random() * 3.5,
+        delay: Math.random() * 0.15,
+      };
+    });
+
+    let obstacles = collectObstacles(W, H);
+    let lastScan = performance.now();
+    let lastTick = 0;
+    let raf = 0;
+    const start = performance.now();
+    let last = start;
+
+    const loop = (now: number) => {
+      const t = (now - start) / 1000;
+      const dt = Math.min(0.033, (now - last) / 1000);
+      last = now;
+      if (now - lastScan > 300) { obstacles = collectObstacles(W, H); lastScan = now; }
+
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      c.clearRect(0, 0, W, H);
+
+      const steps = 3;
+      const h = dt / steps;
+      const drag = Math.exp(-0.7 * h);
+      const endFade = t > seconds - 0.45 ? Math.max(0, (seconds - t) / 0.45) : 1;
+
+      for (const p of pieces) {
+        if (p.dead) continue;
+        if (!p.active) {
+          if (t < p.delay) continue;
+          p.active = true;
+        }
+
+        for (let s = 0; s < steps; s++) {
+          p.vy += g * h;
+          p.vx *= drag; p.vy *= drag;
+          p.x += p.vx * h;
+          p.y += p.vy * h;
+          p.rot += p.vr * h;
+
+          if (p.y + p.rad > H * 0.4) {
+            for (const o of obstacles) {
+              const ix0 = o.x + o.r, ix1 = o.x + o.w - o.r;
+              const iy0 = o.y + o.r, iy1 = o.y + o.h - o.r;
+              const qx = Math.min(Math.max(p.x, ix0), ix1);
+              const qy = Math.min(Math.max(p.y, iy0), iy1);
+              const dx = p.x - qx, dy = p.y - qy;
+              const R = p.rad + o.r;
+              const d2 = dx * dx + dy * dy;
+              if (d2 >= R * R) continue;
+
+              let nx = 0, ny = -1;
+              const d = Math.sqrt(d2);
+              if (d > 1e-4) {
+                nx = dx / d; ny = dy / d;
+                p.x = qx + nx * R; p.y = qy + ny * R;
+              } else {
+                p.y = o.y - p.rad; // وصل لداخل الزر: ندفعه لفوق
+              }
+              const vn = p.vx * nx + p.vy * ny;
+              if (vn < 0) {
+                p.vx -= (1 + p.e) * vn * nx;
+                p.vy -= (1 + p.e) * vn * ny;
+                const tx = -ny, ty = nx;
+                const vt = p.vx * tx + p.vy * ty;
+                p.vx -= vt * 0.12 * tx;
+                p.vy -= vt * 0.12 * ty;
+                p.vx += (Math.random() - 0.5) * 160; // دفعة جانبية تخليه ينزلق ويسقط
+                p.vr = p.vr * 0.5 + (vt / Math.max(8, p.rad)) * 0.4;
+                if (p.fadeAt === null) p.fadeAt = t + 0.7 + Math.random() * 0.7;
+                const impact = -vn;
+                if (impact > 180 && now - lastTick > 45) {
+                  lastTick = now;
+                  playTick(impact / 9000);
+                }
+              }
+            }
+          }
+        }
+
+        if (p.y - p.rad > H + 20) { p.dead = true; continue; }
+
+        let alpha = endFade;
+        if (p.fadeAt !== null && t > p.fadeAt) {
+          alpha *= 1 - (t - p.fadeAt) / 0.35;
+          if (alpha <= 0) { p.dead = true; continue; }
+        }
+
+        const sc = p.size / 24;
+        c.save();
+        c.globalAlpha = Math.max(0, alpha);
+        c.translate(p.x, p.y);
+        c.rotate(p.rot);
+        c.scale(sc, sc);
+        c.translate(-12, -11.5);
+        c.fillStyle = p.color;
+        c.fill(heart);
+        c.fillStyle = 'rgba(255,255,255,0.35)';
+        c.beginPath();
+        c.ellipse(8, 7.2, 2.2, 1.2, -0.6, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      }
+
+      // الشرارات
+      const sd = Math.exp(-2.2 * dt);
+      for (const s of sparks) {
+        if (t < s.delay) continue;
+        s.vx *= sd; s.vy *= sd;
+        s.x += s.vx * dt; s.y += s.vy * dt;
+        const life = (t - s.delay) / 1.4;
+        if (life >= 1) continue;
+        c.globalAlpha = (1 - life) * endFade;
+        c.fillStyle = '#ffd1dc';
+        c.shadowColor = '#ff5c7a';
+        c.shadowBlur = 8;
+        c.beginPath();
+        c.arc(s.x, s.y, s.size * (1 - life * 0.6), 0, Math.PI * 2);
+        c.fill();
+        c.shadowBlur = 0;
+      }
+      c.globalAlpha = 1;
+
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [W, H, seconds]);
+
+  return <canvas ref={ref} style={{ position: 'absolute', inset: 0, width: W, height: H, pointerEvents: 'none' }} />;
+}
+
+// ── أنميشن ملء الشاشة: ينتفخ كبالونة → ينفجر → قلوب تتناثر وتسقط على الأزرار ──
 function HeartAnimation({ onDone }: { onDone: () => void }) {
   const [phase, setPhase] = useState<'inflate' | 'burst'>('inflate');
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
 
-  const W = typeof window !== 'undefined' ? window.innerWidth : 360;
-  const H = typeof window !== 'undefined' ? window.innerHeight : 640;
+  const [{ W, H }] = useState(() => ({
+    W: typeof window !== 'undefined' ? window.innerWidth : 360,
+    H: typeof window !== 'undefined' ? window.innerHeight : 640,
+  }));
   const heartSize = Math.round(Math.min(W * 0.85, H * 0.55));
 
-  // مفاتيح الحركة: كل نفخة ترفع الحجم قليلاً مع ارتداد خفيف
+  // مفاتيح الحركة: القلب يكبر أثناء كل نفخة ويستقر قليلاً أثناء الشهيق
   const { times, scales, rotates } = useMemo(() => {
     const ts: number[] = [0];
     const ss: number[] = [0.05];
     const rs: number[] = [0];
     const n = PUMPS.length;
-    PUMPS.forEach((p, i) => {
+    let prev = 0.05;
+    PUMPS.forEach((b, i) => {
       const s = 0.05 + 0.95 * Math.pow((i + 1) / n, 0.9);
-      ts.push(p / INFLATE_S); ss.push(s * 1.07); rs.push(i % 2 ? -4 : 4);
-      ts.push((p + 0.09) / INFLATE_S); ss.push(s); rs.push(0);
+      ts.push(b.t / INFLATE_S); ss.push(prev); rs.push(0);
+      ts.push((b.t + b.d) / INFLATE_S); ss.push(s * 1.05); rs.push(i % 2 ? -3 : 3);
+      prev = s;
     });
-    ts.push(1); ss.push(1.2); rs.push(0);
+    ts.push(1); ss.push(1.18); rs.push(0);
     return { times: ts, scales: ss, rotates: rs };
   }, []);
-
-  const frags = useMemo(() => Array.from({ length: FRAGMENTS }, (_, i) => {
-    const dx = (Math.random() - 0.5) * W * 1.15;
-    const dy = (Math.random() - 0.5) * H * 1.1;
-    return {
-      key: i,
-      size: 14 + Math.random() * 34,
-      color: FRAG_COLORS[i % FRAG_COLORS.length],
-      dx, dy,
-      fall: 40 + Math.random() * 120,
-      rot: (Math.random() - 0.5) * 540,
-      delay: Math.random() * 0.12,
-    };
-  }), [W, H]);
-
-  const sparks = useMemo(() => Array.from({ length: SPARKS }, (_, i) => ({
-    key: i,
-    size: 4 + Math.random() * 7,
-    dx: (Math.random() - 0.5) * W * 1.2,
-    dy: (Math.random() - 0.5) * H * 1.2,
-    delay: Math.random() * 0.15,
-  })), [W, H]);
 
   useEffect(() => {
     const stopSound = playHeartSound();
@@ -234,7 +647,11 @@ function HeartAnimation({ onDone }: { onDone: () => void }) {
   const burstSeconds = (TOTAL_MS / 1000) - INFLATE_S;
 
   return (
-    <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 9400, pointerEvents: 'none', overflow: 'hidden' }}>
+    <div
+      aria-hidden="true"
+      data-gift-overlay="1"
+      style={{ position: 'fixed', inset: 0, zIndex: 9400, pointerEvents: 'none', overflow: 'hidden' }}
+    >
       {/* تعتيم خفيف يبرز القلوب */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -248,69 +665,41 @@ function HeartAnimation({ onDone }: { onDone: () => void }) {
           <motion.div
             initial={{ scale: 0.05 }}
             animate={{ scale: scales, rotate: rotates }}
-            transition={{ duration: INFLATE_S, times, ease: 'easeOut' }}
+            transition={{ duration: INFLATE_S, times, ease: 'easeInOut' }}
             style={{ willChange: 'transform' }}
           >
-            <GlossyHeart size={heartSize} />
+            <GlossyHeart size={heartSize} knot />
           </motion.div>
         </div>
       )}
 
       {phase === 'burst' && (
-        <div style={{ position: 'absolute', left: '50%', top: '50%', width: 0, height: 0 }}>
-          {/* وميض + موجة الانفجار */}
-          <motion.div
-            initial={{ opacity: 0.95, scale: 0.15 }}
-            animate={{ opacity: 0, scale: 3 }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
-            style={{
-              position: 'absolute', left: '-45vmin', top: '-45vmin', width: '90vmin', height: '90vmin', borderRadius: '50%',
-              background: 'radial-gradient(circle, #ffffff 0%, #ff7a95 30%, rgba(255,45,85,0) 70%)',
-            }}
-          />
-          <motion.div
-            initial={{ opacity: 0.85, scale: 0.2 }}
-            animate={{ opacity: 0, scale: 3.6 }}
-            transition={{ duration: 0.85, ease: 'easeOut' }}
-            style={{
-              position: 'absolute', left: '-30vmin', top: '-30vmin', width: '60vmin', height: '60vmin', borderRadius: '50%',
-              border: '4px solid rgba(255,140,165,0.9)',
-            }}
-          />
-
-          {/* القلوب الصغيرة */}
-          {frags.map(f => (
+        <>
+          <div style={{ position: 'absolute', left: '50%', top: '50%', width: 0, height: 0 }}>
+            {/* وميض + موجة الانفجار */}
             <motion.div
-              key={f.key}
-              initial={{ x: 0, y: 0, scale: 0.2, opacity: 1, rotate: 0 }}
-              animate={{
-                x: [0, f.dx, f.dx * 1.04],
-                y: [0, f.dy, f.dy + f.fall],
-                scale: [0.2, 1, 0.85],
-                opacity: [1, 1, 0],
-                rotate: [0, f.rot * 0.6, f.rot],
-              }}
-              transition={{ duration: burstSeconds - f.delay - 0.05, delay: f.delay, times: [0, 0.3, 1], ease: 'easeOut' }}
-              style={{ position: 'absolute', left: -f.size / 2, top: -f.size / 2, willChange: 'transform, opacity' }}
-            >
-              <FlatHeart size={f.size} color={f.color} />
-            </motion.div>
-          ))}
-
-          {/* شرارات */}
-          {sparks.map(s => (
-            <motion.span
-              key={s.key}
-              initial={{ x: 0, y: 0, scale: 1, opacity: 1 }}
-              animate={{ x: s.dx, y: s.dy, scale: 0.2, opacity: 0 }}
-              transition={{ duration: 1.6, delay: s.delay, ease: 'easeOut' }}
+              initial={{ opacity: 0.95, scale: 0.15 }}
+              animate={{ opacity: 0, scale: 3 }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
               style={{
-                position: 'absolute', left: -s.size / 2, top: -s.size / 2, width: s.size, height: s.size, borderRadius: '50%',
-                background: '#ffd1dc', boxShadow: '0 0 8px #ff5c7a',
+                position: 'absolute', left: '-45vmin', top: '-45vmin', width: '90vmin', height: '90vmin', borderRadius: '50%',
+                background: 'radial-gradient(circle, #ffffff 0%, #ff7a95 30%, rgba(255,45,85,0) 70%)',
               }}
             />
-          ))}
-        </div>
+            <motion.div
+              initial={{ opacity: 0.85, scale: 0.2 }}
+              animate={{ opacity: 0, scale: 3.6 }}
+              transition={{ duration: 0.85, ease: 'easeOut' }}
+              style={{
+                position: 'absolute', left: '-30vmin', top: '-30vmin', width: '60vmin', height: '60vmin', borderRadius: '50%',
+                border: '4px solid rgba(255,140,165,0.9)',
+              }}
+            />
+          </div>
+
+          {/* القلوب والشرارات: محرك فيزياء (جاذبية + اصطدام بالأزرار) */}
+          <BurstLayer W={W} H={H} seconds={burstSeconds} />
+        </>
       )}
     </div>
   );
