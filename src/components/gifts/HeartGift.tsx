@@ -1,638 +1,826 @@
 /**
- * هدية القلب (Heart) — 25 Coins
+ * هدية القلب (Zombie / مقبرة) — 500 Coins — مدتها 20 ثانية
  *
- * - Preview  : داخل مربع الهدايا (قبل النقر) أنميشن متكرر: قلب بشري واقعي ينتفخ بنفخات ثم ينفجر بقلوب واقعية صغيرة.
- * - Animation: قلب بشري واقعي (تشريحي: بطينان + أذينان + أورطي + شرايين وأوردة) ينتفخ بنفَس شخص ينفخ بالونة
- *              (صوت نفخ/شهيق/صرير مطاط) ثم ينفجر بفرقعة وصوت امرأة يقول "I love you"،
- *              وتتناثر قلوب واقعية صغيرة (بنفس الأحجام) في كل الشاشة.
- *              القلوب تسقط بفيزياء حقيقية (جاذبية + ارتداد) وتصطدم بأزرار البث السفلية
- *              (أي button / رابط / input في أسفل الصفحة) ثم تنزلق وتسقط وتختفي.
+ * استُبدلت أنميشن القلب القديم بأنميشن مقبرة ليلية:
+ * - Preview  : داخل مربع الهدايا: مقبرة صغيرة مع قبر يتوهج وزومبي يخرج قليلاً.
+ * - Animation (20 ثانية):
+ *     0–2s     : البث يظلم ليلاً + أصوات صراصير وذئاب
+ *     2–5s     : توابيت وقشور أرض تظهر، شقوق تتوهج
+ *     5–9s     : ثلاثة زومبي يخرجون من تحت الأرض
+ *                يمين ويسار: يزحفان
+ *                الوسط: يخرج ثم يسحب قلباً نابضاً من صدره ويرميه لصاحب البث (أو يأخذ صورة المستخدم المرفوعة)
+ *     عند الهدية لمتحدث (رفع الصورة): الزومبي الوسط يأخذ الصورة مع الإطار ويدخلها في جسده وهو يضحك ثم تختفي
  *
- * هذا الملف مستقل: غيّر الأرقام تحت (السعر/المدد/عدد القطع/الجاذبية).
- * الأصوات في ملف منفصل: src/lib/heartSounds.ts (playHeartSound / playHeartTick) بجانب audio.ts.
- * شكل القلب الواقعي مرسوم SVG داخل هذا الملف (دالة heartInner) وتُنسخ منه صور القطع الصغيرة تلقائياً.
- *
- * أصوات حقيقية (اختياري — الأفضل للواقعية):
- *   ضع ملفاتك في public/sounds ثم اكتب مسارها في BLOW_URL و VOICE_URL تحت.
- *   إذا تركتها فاضية: النفخ يُولَّد بالكود، وصوت المرأة يُنطق بصوت نسائي من الجهاز (speechSynthesis).
- *
- * لإجبار عنصر معيّن أن تصطدم به القلوب أضف عليه: data-gift-obstacle
+ * ملف مستقل. الأصوات مولَّدة بـ Web Audio داخل الملف (بدون ملفات خارجية).
+ * يستخدم نفس آلية data-gift-host / data-gift-lift / __stooornaGiftLift مثل البركان.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import type { GiftDefinition } from '../../lib/types';
-import { playHeartSound, playHeartTick } from '../../lib/heartSounds';
 
 // ── إعدادات الهدية ──────────────────────────────────────────────────────
-const PRICE = 25;
-const TOTAL_MS = 7500;      // مدة الأنميشن الكلية
-const INFLATE_S = 3.4;      // مدة النفخ قبل الانفجار
-const FRAGMENTS = 110;      // عدد القلوب الصغيرة بعد الانفجار
-const RAIN = 36;            // قلوب إضافية تنزل من أعلى الشاشة بعد الانفجار
-const SPARKS = 36;          // عدد الشرارات الصغيرة
-const GRAVITY = 1700;       // الجاذبية (px/s² لشاشة ارتفاعها 700px)
-const BOUNCE = 0.5;         // قوة الارتداد عند الاصطدام بالأزرار (0..1)
+const PRICE = 500;
+const TOTAL_MS = 20000;
+const TOTAL_S = TOTAL_MS / 1000;
 
-// الصوت
-const VOICE_TEXT = 'I love you';
-const VOICE_URL = '';       // مثال: '/sounds/i-love-you.mp3'  (صوت امرأة حقيقي مسجّل)
-const BLOW_URL = '';        // مثال: '/sounds/balloon-blow.mp3' (نفخ بالونة حقيقي)
+const DARK_IN = 1.8;
+const DARK_MAX = 0.88;
+const GRAVES_AT = 2.2;
+const ZOMBIE_AT = 5.0;
+const HEART_PULL = 9.5;
+const HEART_THROW = 11.2;
+const HEART_ARRIVE = 13.0;
+const LAUGH_AT = 11.5;
+const FADE_OUT_AT = 17.5;
+const LIGHT_BACK = 18.2;
 
-// أنفاس النفخ: t = وقت بداية النفخة بالثواني، d = مدتها. الصوت والحركة يتزامنون عليها.
-const PUMPS: { t: number; d: number }[] = [
-  { t: 0.10, d: 0.44 },
-  { t: 0.74, d: 0.42 },
-  { t: 1.34, d: 0.40 },
-  { t: 1.92, d: 0.38 },
-  { t: 2.48, d: 0.36 },
-  { t: 3.02, d: 0.34 },
-];
+const MAX_FX = 900;
 
-// ── القلب الواقعي (SVG تشريحي) ────────────────────────────────────────────
-// مصدر واحد للرسم: يُستخدم للقلب الكبير والمعاينة، ومنه تُولَّد صور القلوب الصغيرة المتساقطة (canvas).
-const HEART_VB = { x: -4, y: -2, w: 108, h: 126 };
-const HEART_ASPECT = HEART_VB.h / HEART_VB.w;
+// ── أدوات ──────────────────────────────────────────────────────────────
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+const smooth = (x: number) => { const u = clamp01(x); return u * u * (3 - 2 * u); };
+const easeOut = (x: number) => 1 - Math.pow(1 - clamp01(x), 3);
+const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
+const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
-interface HeartPalette {
-  dark: string; mid: string; light: string; hi: string;
-  fat: string; fatDark: string;
-  aorta: string; aortaDark: string;
-  vein: string; veinDark: string;
-  vessel: string; atriumLight: string; atriumDark: string;
-}
-
-// 3 درجات لون (عادي / داكن / فاتح) لتنوّع القلوب المتساقطة
-const HEART_PALETTES: HeartPalette[] = [
-  { dark: '#4a0512', mid: '#b1112b', light: '#e53a52', hi: '#ff9aa8', fat: '#f4cf72', fatDark: '#c8962c', aorta: '#d9444f', aortaDark: '#8a1226', vein: '#6277c0', veinDark: '#2f3d84', vessel: '#7d0a1d', atriumLight: '#c9253d', atriumDark: '#6d0a1e' },
-  { dark: '#35030d', mid: '#8f0d22', light: '#c42a42', hi: '#f5808f', fat: '#e9c066', fatDark: '#b3841f', aorta: '#bd333f', aortaDark: '#6e0d1e', vein: '#5468b0', veinDark: '#26336f', vessel: '#650818', atriumLight: '#a81e34', atriumDark: '#560818' },
-  { dark: '#6a0a1c', mid: '#d3203c', light: '#f2566c', hi: '#ffb3bd', fat: '#f8d98a', fatDark: '#d3a43d', aorta: '#ec5a65', aortaDark: '#a41c32', vein: '#7a8fd4', veinDark: '#3d4c98', vessel: '#8f1126', atriumLight: '#df3a52', atriumDark: '#8a1028' },
-];
-const HEART_VARIANTS = HEART_PALETTES.length;
-
-function heartInner(p: string, pal: HeartPalette, knot: boolean): string {
-  const id = (n: string) => `${p}${n}`;
-  return `
-<defs>
-  <radialGradient id="${id('b')}" cx="38%" cy="30%" r="85%">
-    <stop offset="0%" stop-color="${pal.light}"/>
-    <stop offset="50%" stop-color="${pal.mid}"/>
-    <stop offset="100%" stop-color="${pal.dark}"/>
-  </radialGradient>
-  <linearGradient id="${id('a')}" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0%" stop-color="${pal.aortaDark}"/>
-    <stop offset="45%" stop-color="${pal.aorta}"/>
-    <stop offset="100%" stop-color="${pal.aortaDark}"/>
-  </linearGradient>
-  <linearGradient id="${id('v')}" x1="0" y1="0" x2="1" y2="0">
-    <stop offset="0%" stop-color="${pal.veinDark}"/>
-    <stop offset="50%" stop-color="${pal.vein}"/>
-    <stop offset="100%" stop-color="${pal.veinDark}"/>
-  </linearGradient>
-  <radialGradient id="${id('at')}" cx="40%" cy="30%" r="80%">
-    <stop offset="0%" stop-color="${pal.atriumLight}"/>
-    <stop offset="100%" stop-color="${pal.atriumDark}"/>
-  </radialGradient>
-</defs>
-<g stroke-linecap="round" stroke-linejoin="round" fill="none">
-  <!-- aorta branches -->
-  <path d="M52 22 L49 6" stroke="${pal.aortaDark}" stroke-width="6.4"/>
-  <path d="M52 22 L49 6" stroke="${pal.aorta}" stroke-width="4.2"/>
-  <path d="M61 14 L61 2" stroke="${pal.aortaDark}" stroke-width="6.4"/>
-  <path d="M61 14 L61 2" stroke="${pal.aorta}" stroke-width="4.2"/>
-  <path d="M69 16 L74 5" stroke="${pal.aortaDark}" stroke-width="6.4"/>
-  <path d="M69 16 L74 5" stroke="${pal.aorta}" stroke-width="4.2"/>
-  <!-- aortic arch -->
-  <path d="M47 52 C44 30 50 15 63 15 C75 15 81 27 80 46" stroke="${pal.aortaDark}" stroke-width="14.5"/>
-  <path d="M47 52 C44 30 50 15 63 15 C75 15 81 27 80 46" stroke="url(#${id('a')})" stroke-width="12"/>
-  <path d="M49 40 C48 28 53 19 62 18.5" stroke="${pal.hi}" stroke-opacity=".5" stroke-width="2.2"/>
-  <!-- vena cava superior -->
-  <path d="M29 56 C26 40 27 25 33 13" stroke="${pal.veinDark}" stroke-width="11.5"/>
-  <path d="M29 56 C26 40 27 25 33 13" stroke="url(#${id('v')})" stroke-width="9"/>
-  <path d="M30.5 46 C29 36 30 27 33.5 19" stroke="#b9c6ff" stroke-opacity=".45" stroke-width="1.8"/>
-</g>
-<!-- right atrium -->
-<path d="M19 52 C8 60 9 80 24 90 C34 88 40 74 40 58 C40 47 29 42 19 52 Z" fill="url(#${id('at')})"/>
-<path d="M17 62 C14 70 16 79 22 85" fill="none" stroke="${pal.hi}" stroke-opacity=".35" stroke-width="2.2" stroke-linecap="round"/>
-<!-- ventricles -->
-<path d="M26 47 C15 58 17 82 35 101 C42 109 52 115 58 112 C65 108 79 88 83 68 C86 51 78 41 66 40 C55 36 36 36 26 47 Z" fill="url(#${id('b')})"/>
-<!-- muscle fibres -->
-<g fill="none" stroke="${pal.dark}" stroke-opacity=".22" stroke-width="1.3" stroke-linecap="round">
-  <path d="M30 56 C42 62 54 74 62 100"/>
-  <path d="M26 66 C38 72 48 84 54 106"/>
-  <path d="M60 50 C72 58 78 70 72 86"/>
-  <path d="M66 44 C78 52 82 62 80 72"/>
-  <path d="M38 50 C50 54 60 64 68 80"/>
-</g>
-<!-- left auricle -->
-<path d="M67 44 C78 38 91 46 88 58 C86 65 76 64 70 57 Z" fill="url(#${id('at')})"/>
-<!-- pulmonary trunk -->
-<g fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M59 56 C57 41 63 33 74 30" stroke="${pal.veinDark}" stroke-width="11.5"/>
-  <path d="M59 56 C57 41 63 33 74 30" stroke="url(#${id('v')})" stroke-width="9"/>
-  <path d="M74 30 C80 27 87 27 92 31" stroke="${pal.veinDark}" stroke-width="8"/>
-  <path d="M74 30 C80 27 87 27 92 31" stroke="${pal.vein}" stroke-width="5.8"/>
-  <path d="M60 46 C60 40 63 36 68 34" stroke="#b9c6ff" stroke-opacity=".4" stroke-width="1.8"/>
-</g>
-<!-- grooves with fat + coronary vessels -->
-<g fill="none" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M49 44 C46 62 51 88 58 110" stroke="${pal.fatDark}" stroke-opacity=".85" stroke-width="4"/>
-  <path d="M49 44 C46 62 51 88 58 110" stroke="${pal.fat}" stroke-width="2.6"/>
-  <path d="M49 44 C46 62 51 88 58 110" stroke="${pal.vessel}" stroke-width="1.3"/>
-  <path d="M46 48 C36 54 27 62 25 74 C24 82 27 88 32 91" stroke="${pal.fatDark}" stroke-opacity=".85" stroke-width="3.8"/>
-  <path d="M46 48 C36 54 27 62 25 74 C24 82 27 88 32 91" stroke="${pal.fat}" stroke-width="2.4"/>
-  <path d="M46 48 C36 54 27 62 25 74 C24 82 27 88 32 91" stroke="${pal.vessel}" stroke-width="1.2"/>
-  <path d="M52 46 C64 46 75 53 80 66" stroke="${pal.fatDark}" stroke-opacity=".85" stroke-width="3.6"/>
-  <path d="M52 46 C64 46 75 53 80 66" stroke="${pal.fat}" stroke-width="2.2"/>
-  <path d="M52 46 C64 46 75 53 80 66" stroke="${pal.vessel}" stroke-width="1.1"/>
-  <!-- small branches -->
-  <path d="M50 62 C58 62 66 66 70 74" stroke="${pal.vessel}" stroke-width="1.2" stroke-opacity=".9"/>
-  <path d="M51 78 C58 80 64 86 66 94" stroke="${pal.vessel}" stroke-width="1.1" stroke-opacity=".9"/>
-  <path d="M48 66 C42 68 36 74 34 82" stroke="${pal.vessel}" stroke-width="1.1" stroke-opacity=".9"/>
-  <path d="M30 70 C38 70 44 74 47 80" stroke="${pal.vessel}" stroke-width="1.1" stroke-opacity=".9"/>
-  <path d="M74 56 C74 64 72 72 66 78" stroke="${pal.vessel}" stroke-width="1.1" stroke-opacity=".9"/>
-</g>
-<!-- fat blobs near the top groove -->
-<g fill="${pal.fat}" fill-opacity=".8">
-  <ellipse cx="45" cy="50" rx="4" ry="2.6" transform="rotate(-30 45 50)"/>
-  <ellipse cx="56" cy="47" rx="3.6" ry="2.2" transform="rotate(20 56 47)"/>
-  <ellipse cx="33" cy="60" rx="2.6" ry="1.8" transform="rotate(-50 33 60)"/>
-  <ellipse cx="74" cy="56" rx="2.6" ry="1.8" transform="rotate(50 74 56)"/>
-</g>
-<!-- glossy highlights -->
-<ellipse cx="33" cy="64" rx="3.6" ry="9" transform="rotate(-20 33 64)" fill="#fff" fill-opacity=".30"/>
-<ellipse cx="72" cy="62" rx="2.2" ry="6" transform="rotate(18 72 62)" fill="#fff" fill-opacity=".18"/>
-${knot ? `<path d="M58 111 C55 114 53.5 116.5 54 118.5 L62.5 118.5 C62.5 116 61 114 58 111 Z" fill="${pal.dark}"/>` : ''}
-`;
-}
-
-function heartSvgString(prefix: string, variant: number, knot: boolean, w: number): string {
-  const pal = HEART_PALETTES[variant % HEART_VARIANTS];
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${HEART_VB.x} ${HEART_VB.y} ${HEART_VB.w} ${HEART_VB.h}" width="${w}" height="${Math.round(w * HEART_ASPECT)}">${heartInner(prefix, pal, knot)}</svg>`;
-}
-
-// صور جاهزة للقلوب الصغيرة (تُرسم مرة واحدة ثم تُنسخ بسرعة داخل الـ canvas)
-const SPRITE_W = 128;
-const SPRITE_H = Math.round(SPRITE_W * HEART_ASPECT);
-const spriteCache: (HTMLCanvasElement | null)[] = [];
-const spriteLoading: boolean[] = [];
-
-function loadHeartSprite(v: number) {
-  if (typeof document === 'undefined' || spriteCache[v] || spriteLoading[v]) return;
-  spriteLoading[v] = true;
+// ── أصوات (Web Audio) ──────────────────────────────────────────────────
+let sharedCtx: AudioContext | null = null;
+function getCtx(): AudioContext | null {
   try {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const cv = document.createElement('canvas');
-        cv.width = SPRITE_W;
-        cv.height = SPRITE_H;
-        const cx = cv.getContext('2d');
-        if (!cx) return;
-        cx.imageSmoothingQuality = 'high';
-        cx.drawImage(img, 0, 0, SPRITE_W, SPRITE_H);
-        spriteCache[v] = cv;
-      } catch { /* ignore */ }
-    };
-    img.onerror = () => { spriteLoading[v] = false; };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(heartSvgString(`s${v}`, v, false, SPRITE_W));
-  } catch { spriteLoading[v] = false; }
-}
-function preloadHeartSprites() {
-  for (let v = 0; v < HEART_VARIANTS; v++) loadHeartSprite(v);
-}
-function getHeartSprite(v: number): HTMLCanvasElement | null {
-  const c = spriteCache[v % HEART_VARIANTS];
-  if (!c) loadHeartSprite(v % HEART_VARIANTS);
-  return c || null;
+    if (!sharedCtx) sharedCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (sharedCtx.state === 'suspended') sharedCtx.resume();
+    return sharedCtx;
+  } catch { return null; }
 }
 
-// size = عرض القلب بالبكسل (الارتفاع يتبع النسبة)
-function RealisticHeart({ size, knot = false, variant = 0, glow = true }: { size: number; knot?: boolean; variant?: number; glow?: boolean }) {
-  const gid = React.useId().replace(/:/g, '');
-  const html = useMemo(
-    () => heartInner(`hg${gid}`, HEART_PALETTES[variant % HEART_VARIANTS], knot),
-    [gid, variant, knot],
-  );
-  return (
-    <svg
-      width={size}
-      height={size * HEART_ASPECT}
-      viewBox={`${HEART_VB.x} ${HEART_VB.y} ${HEART_VB.w} ${HEART_VB.h}`}
-      style={{ display: 'block', overflow: 'visible', filter: glow ? 'drop-shadow(0 0 10px rgba(255,45,85,0.65))' : undefined }}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
-  );
+function playTone(freq: number, dur: number, type: OscillatorType, gain: number, when = 0) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const t0 = ctx.currentTime + when;
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t0);
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(gain, t0 + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(t0); o.stop(t0 + dur + 0.05);
 }
 
-// ── الشكل داخل مربع الهدايا (قبل النقر): قلب واقعي ينتفخ بنفخات ثم ينفجر بقلوب صغيرة، وتتكرر الحركة ──
-const PREVIEW_LOOP_S = 3.6;
-const PREVIEW_MINIS = 7;
+function playNoise(dur: number, gain: number, when = 0, filterFreq = 800) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const t0 = ctx.currentTime + when;
+  const len = Math.floor(ctx.sampleRate * dur);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.4));
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const g = ctx.createGain();
+  const f = ctx.createBiquadFilter();
+  f.type = 'bandpass';
+  f.frequency.value = filterFreq;
+  g.gain.setValueAtTime(gain, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.connect(f); f.connect(g); g.connect(ctx.destination);
+  src.start(t0);
+}
 
+function playCrickets(durationS: number) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const t0 = ctx.currentTime;
+  for (let i = 0; i < 18; i++) {
+    const t = t0 + rnd(0.2, durationS - 0.5);
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(rnd(2800, 4200), t);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.035, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t); o.stop(t + 0.12);
+  }
+}
+
+function playWolfHowl(when = 0) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const t0 = ctx.currentTime + when;
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(180, t0);
+  o.frequency.linearRampToValueAtTime(320, t0 + 0.8);
+  o.frequency.linearRampToValueAtTime(140, t0 + 2.2);
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(0.12, t0 + 0.15);
+  g.gain.linearRampToValueAtTime(0.08, t0 + 1.2);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.6);
+  const f = ctx.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.value = 900;
+  o.connect(f); f.connect(g); g.connect(ctx.destination);
+  o.start(t0); o.stop(t0 + 2.8);
+}
+
+function playZombieGroan(when = 0) {
+  playNoise(0.7, 0.18, when, 220);
+  playTone(80, 0.6, 'sawtooth', 0.08, when);
+  playTone(55, 0.5, 'triangle', 0.06, when + 0.1);
+}
+
+function playLaugh(when = 0) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const t0 = ctx.currentTime + when;
+  for (let i = 0; i < 5; i++) {
+    const t = t0 + i * 0.18;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(140 + i * 18, t);
+    o.frequency.linearRampToValueAtTime(90 + i * 10, t + 0.12);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.11, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t); o.stop(t + 0.16);
+  }
+}
+
+function playHeartbeat(when = 0, times = 4) {
+  for (let i = 0; i < times; i++) {
+    playTone(55, 0.12, 'sine', 0.14, when + i * 0.55);
+    playTone(40, 0.18, 'sine', 0.1, when + i * 0.55 + 0.12);
+  }
+}
+
+function playDirtRumble(when = 0) {
+  playNoise(1.4, 0.22, when, 90);
+  playTone(35, 1.2, 'triangle', 0.07, when);
+}
+
+// ── Preview ─────────────────────────────────────────────────────────────
 function HeartPreview({ size = 72 }: { size?: number }) {
-  // القلب: ينتفخ على 4 نفخات ثم "بوب" ويختفي لحظة قبل أن يبدأ من جديد
-  const T = [0, 0.1, 0.17, 0.27, 0.34, 0.44, 0.51, 0.6, 0.65, 0.655, 0.8, 0.92, 1];
-  const SC = [0.4, 0.58, 0.54, 0.74, 0.7, 0.9, 0.86, 1.04, 1.16, 0, 0, 0.2, 0.4];
-  const OP = [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1];
-  const mini = size * 0.2;
-
-  useEffect(() => { preloadHeartSprites(); }, []);
-
   return (
-    <div
-      aria-hidden="true"
-      style={{ position: 'relative', width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    <motion.div
+      style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      animate={{ y: [0, -2, 0] }}
+      transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
     >
-      <motion.div
-        animate={{ scale: SC, opacity: OP }}
-        transition={{ duration: PREVIEW_LOOP_S, repeat: Infinity, ease: 'easeInOut', times: T }}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', willChange: 'transform' }}
-      >
-        <RealisticHeart size={size * 0.72} knot />
-      </motion.div>
-
-      {/* وميض الانفجار */}
-      <motion.div
-        animate={{ scale: [0.2, 0.2, 1.1], opacity: [0, 0.6, 0] }}
-        transition={{ duration: PREVIEW_LOOP_S, repeat: Infinity, ease: 'easeOut', times: [0, 0.65, 0.78] }}
-        style={{
-          position: 'absolute', left: '50%', top: '50%', width: size * 0.9, height: size * 0.9, marginLeft: -size * 0.45, marginTop: -size * 0.45,
-          borderRadius: '50%', background: 'radial-gradient(circle, #ffffff 0%, #ff7a95 35%, rgba(255,45,85,0) 70%)', pointerEvents: 'none',
-        }}
-      />
-
-      {/* قلوب واقعية صغيرة تتناثر عند الانفجار */}
-      {Array.from({ length: PREVIEW_MINIS }, (_, i) => {
-        const ang = (i / PREVIEW_MINIS) * Math.PI * 2 + 0.4;
-        const dist = size * (0.38 + (i % 3) * 0.06);
-        const tx = Math.cos(ang) * dist;
-        const ty = Math.sin(ang) * dist;
-        return (
-          <motion.div
-            key={i}
-            animate={{
-              x: [0, 0, 0, tx, tx * 1.08, tx * 1.08],
-              y: [0, 0, 0, ty, ty * 1.08 + size * 0.1, ty * 1.08 + size * 0.1],
-              scale: [0, 0, 0.9, 0.9, 0.6, 0],
-              opacity: [0, 0, 1, 1, 0, 0],
-              rotate: [0, 0, 0, (i % 2 ? 1 : -1) * 25, (i % 2 ? 1 : -1) * 40, 0],
-            }}
-            transition={{ duration: PREVIEW_LOOP_S, repeat: Infinity, ease: 'easeOut', times: [0, 0.65, 0.66, 0.78, 0.94, 1] }}
-            style={{ position: 'absolute', left: '50%', top: '50%', marginLeft: -mini / 2, marginTop: -(mini * HEART_ASPECT) / 2, pointerEvents: 'none' }}
-          >
-            <RealisticHeart size={mini} variant={i} glow={false} />
-          </motion.div>
-        );
-      })}
-    </div>
+      <svg viewBox="0 0 80 80" width={size * 0.92} height={size * 0.92}>
+        <defs>
+          <radialGradient id="zg-moon" cx="50%" cy="40%" r="50%">
+            <stop offset="0%" stopColor="#e8f0ff" />
+            <stop offset="100%" stopColor="#6a7a9a" />
+          </radialGradient>
+          <linearGradient id="zg-dirt" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3a2a1a" />
+            <stop offset="100%" stopColor="#1a1208" />
+          </linearGradient>
+        </defs>
+        {/* قمر */}
+        <circle cx="62" cy="14" r="9" fill="url(#zg-moon)" opacity="0.9" />
+        {/* أرض */}
+        <path d="M0 58 Q20 52 40 58 T80 58 L80 80 L0 80 Z" fill="url(#zg-dirt)" />
+        {/* قبر */}
+        <rect x="28" y="38" width="24" height="22" rx="2" fill="#4a4a55" />
+        <rect x="26" y="34" width="28" height="6" rx="1" fill="#5a5a68" />
+        <text x="40" y="52" textAnchor="middle" fill="#2a2a30" fontSize="10" fontWeight="bold">RIP</text>
+        {/* يد زومبي تطلع */}
+        <g transform="translate(40 62)">
+          <path d="M-4 0 L-3 -10 L0 -14 L3 -10 L4 0" fill="#5a8a4a" stroke="#2a4a2a" strokeWidth="0.8" />
+          <circle cx="-2" cy="-8" r="1.2" fill="#3a5a2a" />
+          <circle cx="2" cy="-8" r="1.2" fill="#3a5a2a" />
+        </g>
+        {/* صليب صغير */}
+        <path d="M12 48 L12 58 M9 51 L15 51" stroke="#6a5a4a" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    </motion.div>
   );
 }
 
-// ── الفيزياء: قلوب تسقط وتصطدم بأزرار البث ─────────────────────────────────
-interface Obstacle { x: number; y: number; w: number; h: number; r: number }
+// ── Animation helpers ───────────────────────────────────────────────────
+interface Lift {
+  sx: number; sy: number; sr: number; ex: number; ey: number; R: number;
+  img: HTMLImageElement | null; letter: string; name: string;
+  restore: () => void; done?: boolean;
+}
+interface LiftInfo { userId: string; name?: string; avatarUrl?: string | null; }
+interface Host { x: number; y: number; w: number; h: number; top: number; lift?: Lift; }
 
-// يجمع الأزرار الظاهرة في النصف السفلي من الشاشة (أزرار البث) لتصطدم بها القلوب
-function collectObstacles(W: number, H: number): Obstacle[] {
-  const out: Obstacle[] = [];
+function findHost(W: number): Host {
   try {
-    const nodes = document.querySelectorAll<HTMLElement>(
-      'button, [role="button"], a[href], input, textarea, select, [data-gift-obstacle]',
-    );
-    nodes.forEach(el => {
-      if (el.closest('[data-gift-overlay]')) return;
-      const cs = getComputedStyle(el);
-      if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) < 0.05) return;
-
-      // زر شفاف بدون إطار (مثل النقاط الملوّنة): نصطدم بالشكل الظاهر داخله لا بمنطقة اللمس
-      const transparent = cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent';
-      const noBorder = !parseFloat(cs.borderTopWidth) || cs.borderTopStyle === 'none';
-      const box: Element = transparent && noBorder && el.firstElementChild ? el.firstElementChild : el;
-      const rect = box.getBoundingClientRect();
-      if (rect.width < 8 || rect.height < 8) return;
-      if (rect.height > 160 || rect.width > W * 0.98) return;
-      if (rect.bottom < H * 0.5 || rect.top > H || rect.right < 0 || rect.left > W) return;
-
-      const bcs = box === el ? cs : getComputedStyle(box);
-      const raw = bcs.borderTopLeftRadius || '0';
-      const m = Math.min(rect.width, rect.height);
-      const val = parseFloat(raw) || 0;
-      const rad = raw.includes('%') ? (val / 100) * m : val;
-      out.push({ x: rect.left, y: rect.top, w: rect.width, h: rect.height, r: Math.min(rad, rect.width / 2, rect.height / 2) });
-    });
+    const el = document.querySelector<HTMLElement>('[data-gift-host]');
+    if (el) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0)
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, top: r.top };
+    }
   } catch { /* ignore */ }
-  return out;
+  return { x: W * 0.5, y: 56, w: 48, h: 48, top: 32 };
 }
 
-interface Piece {
-  x: number; y: number; vx: number; vy: number;
-  size: number; rad: number; rot: number; vr: number;
-  v: number; delay: number; e: number;
-  active: boolean; dead: boolean; fadeAt: number | null;
+function getLiftInfo(): LiftInfo | null {
+  try {
+    const d = (window as unknown as { __stooornaGiftLift?: LiftInfo }).__stooornaGiftLift;
+    return d && d.userId ? d : null;
+  } catch { return null; }
 }
-interface Spark { x: number; y: number; vx: number; vy: number; size: number; delay: number }
 
-function BurstLayer({ W, H, seconds }: { W: number; H: number; seconds: number }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const cv = ref.current;
-    if (!cv) return;
-    const c = cv.getContext('2d');
-    if (!c) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    cv.width = Math.round(W * dpr);
-    cv.height = Math.round(H * dpr);
-
-    preloadHeartSprites();
-    c.imageSmoothingQuality = 'high';
-    const k = Math.max(W, H) / 700;
-    const g = GRAVITY * (H / 700);
-    const cx = W / 2;
-    const cy = H / 2;
-    const hs = Math.min(W * 0.85, H * 0.55);
-
-    const pieces: Piece[] = [];
-    for (let i = 0; i < FRAGMENTS; i++) {
-      const size = 16 + Math.random() * 32;
-      const ang = Math.random() * Math.PI * 2;
-      const sp = (200 + Math.random() * 900) * k;
-      pieces.push({
-        x: cx + (Math.random() - 0.5) * hs * 0.5,
-        y: cy + (Math.random() - 0.5) * hs * 0.5,
-        vx: Math.cos(ang) * sp,
-        vy: Math.sin(ang) * sp - 220 * k,
-        size, rad: size * 0.42,
-        rot: Math.random() * Math.PI * 2,
-        vr: (Math.random() - 0.5) * 9,
-        v: i % HEART_VARIANTS,
-        delay: Math.random() * 0.12,
-        e: BOUNCE * (0.75 + Math.random() * 0.5),
-        active: false, dead: false, fadeAt: null,
-      });
-    }
-    // قلوب تنزل من فوق الشاشة لتملأها وتسقط على الأزرار
-    for (let i = 0; i < RAIN; i++) {
-      const size = 18 + Math.random() * 24;
-      pieces.push({
-        x: Math.random() * W, y: -size,
-        vx: (Math.random() - 0.5) * 90 * k,
-        vy: (80 + Math.random() * 220) * k,
-        size, rad: size * 0.42,
-        rot: Math.random() * Math.PI * 2,
-        vr: (Math.random() - 0.5) * 6,
-        v: (i + 1) % HEART_VARIANTS,
-        delay: 0.15 + Math.random() * 1.5,
-        e: BOUNCE * (0.75 + Math.random() * 0.5),
-        active: false, dead: false, fadeAt: null,
-      });
-    }
-
-    const sparks: Spark[] = Array.from({ length: SPARKS }, () => {
-      const ang = Math.random() * Math.PI * 2;
-      const sp = (250 + Math.random() * 800) * k;
-      return {
-        x: cx, y: cy,
-        vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
-        size: 2 + Math.random() * 3.5,
-        delay: Math.random() * 0.15,
-      };
-    });
-
-    let obstacles = collectObstacles(W, H);
-    let lastScan = performance.now();
-    let lastTick = 0;
-    let raf = 0;
-    const start = performance.now();
-    let last = start;
-
-    const loop = (now: number) => {
-      const t = (now - start) / 1000;
-      const dt = Math.min(0.033, (now - last) / 1000);
-      last = now;
-      if (now - lastScan > 300) { obstacles = collectObstacles(W, H); lastScan = now; }
-
-      c.setTransform(dpr, 0, 0, dpr, 0, 0);
-      c.clearRect(0, 0, W, H);
-
-      const steps = 3;
-      const h = dt / steps;
-      const drag = Math.exp(-0.7 * h);
-      const endFade = t > seconds - 0.45 ? Math.max(0, (seconds - t) / 0.45) : 1;
-
-      for (const p of pieces) {
-        if (p.dead) continue;
-        if (!p.active) {
-          if (t < p.delay) continue;
-          p.active = true;
-        }
-
-        for (let s = 0; s < steps; s++) {
-          p.vy += g * h;
-          p.vx *= drag; p.vy *= drag;
-          p.x += p.vx * h;
-          p.y += p.vy * h;
-          p.rot += p.vr * h;
-
-          if (p.y + p.rad > H * 0.4) {
-            for (const o of obstacles) {
-              const ix0 = o.x + o.r, ix1 = o.x + o.w - o.r;
-              const iy0 = o.y + o.r, iy1 = o.y + o.h - o.r;
-              const qx = Math.min(Math.max(p.x, ix0), ix1);
-              const qy = Math.min(Math.max(p.y, iy0), iy1);
-              const dx = p.x - qx, dy = p.y - qy;
-              const R = p.rad + o.r;
-              const d2 = dx * dx + dy * dy;
-              if (d2 >= R * R) continue;
-
-              let nx = 0, ny = -1;
-              const d = Math.sqrt(d2);
-              if (d > 1e-4) {
-                nx = dx / d; ny = dy / d;
-                p.x = qx + nx * R; p.y = qy + ny * R;
-              } else {
-                p.y = o.y - p.rad; // وصل لداخل الزر: ندفعه لفوق
-              }
-              const vn = p.vx * nx + p.vy * ny;
-              if (vn < 0) {
-                p.vx -= (1 + p.e) * vn * nx;
-                p.vy -= (1 + p.e) * vn * ny;
-                const tx = -ny, ty = nx;
-                const vt = p.vx * tx + p.vy * ty;
-                p.vx -= vt * 0.12 * tx;
-                p.vy -= vt * 0.12 * ty;
-                p.vx += (Math.random() - 0.5) * 160; // دفعة جانبية تخليه ينزلق ويسقط
-                p.vr = p.vr * 0.5 + (vt / Math.max(8, p.rad)) * 0.4;
-                if (p.fadeAt === null) p.fadeAt = t + 0.7 + Math.random() * 0.7;
-                const impact = -vn;
-                if (impact > 180 && now - lastTick > 45) {
-                  lastTick = now;
-                  playHeartTick(impact / 9000);
-                }
-              }
-            }
-          }
-        }
-
-        if (p.y - p.rad > H + 20) { p.dead = true; continue; }
-
-        let alpha = endFade;
-        if (p.fadeAt !== null && t > p.fadeAt) {
-          alpha *= 1 - (t - p.fadeAt) / 0.35;
-          if (alpha <= 0) { p.dead = true; continue; }
-        }
-
-        // قلب واقعي صغير (صورة جاهزة من الرسم التشريحي)
-        const sprite = getHeartSprite(p.v);
-        if (sprite) {
-          const pw = p.size;
-          const ph = p.size * HEART_ASPECT;
-          c.save();
-          c.globalAlpha = Math.max(0, alpha);
-          c.translate(p.x, p.y);
-          c.rotate(p.rot);
-          c.drawImage(sprite, -pw / 2, -ph * 0.5, pw, ph);
-          c.restore();
-        }
-      }
-
-      // الشرارات
-      const sd = Math.exp(-2.2 * dt);
-      for (const s of sparks) {
-        if (t < s.delay) continue;
-        s.vx *= sd; s.vy *= sd;
-        s.x += s.vx * dt; s.y += s.vy * dt;
-        const life = (t - s.delay) / 1.4;
-        if (life >= 1) continue;
-        c.globalAlpha = (1 - life) * endFade;
-        c.fillStyle = '#ffd1dc';
-        c.shadowColor = '#ff5c7a';
-        c.shadowBlur = 8;
-        c.beginPath();
-        c.arc(s.x, s.y, s.size * (1 - life * 0.6), 0, Math.PI * 2);
-        c.fill();
-        c.shadowBlur = 0;
-      }
-      c.globalAlpha = 1;
-
-      raf = requestAnimationFrame(loop);
+function findLift(W: number, H: number, pre: HTMLImageElement | null): Host | null {
+  try {
+    const info = getLiftInfo();
+    if (!info) return null;
+    const R = Math.max(40, Math.min(64, W * 0.16));
+    const ex = W * 0.5;
+    const ey = H * 0.44;
+    let el: HTMLElement | null = null;
+    try { el = document.querySelector<HTMLElement>(`[data-gift-user="${String(info.userId).replace(/["\\]/g, '')}"]`); } catch { /* ignore */ }
+    const r = el ? el.getBoundingClientRect() : null;
+    const hasEl = !!(el && r && r.width > 0 && r.height > 0);
+    const sx = hasEl ? r!.left + r!.width / 2 : W - 52;
+    const sy = hasEl ? r!.top + r!.height / 2 : H * 0.55;
+    const sr = hasEl ? r!.width / 2 : 20;
+    const elImg = el ? el.querySelector('img') : null;
+    const useImg = pre && pre.complete && pre.naturalWidth > 0 ? pre : (elImg && elImg.complete && elImg.naturalWidth > 0 ? elImg : pre);
+    const nm = String(info.name || (el?.textContent || '') || '?').trim();
+    const prevOp = hasEl ? el!.style.opacity : '';
+    if (hasEl) el!.style.opacity = '0.12';
+    return {
+      x: ex, y: ey, w: R * 2, h: R * 2, top: ey - R,
+      lift: {
+        sx, sy, sr, ex, ey, R,
+        img: useImg || null,
+        letter: (nm.charAt(0) || '?').toUpperCase(),
+        name: nm,
+        restore: () => { try { if (hasEl) el!.style.opacity = prevOp; } catch { /* ignore */ } },
+      },
     };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [W, H, seconds]);
-
-  return <canvas ref={ref} style={{ position: 'absolute', inset: 0, width: W, height: H, pointerEvents: 'none' }} />;
+  } catch { return null; }
 }
 
-// ── أنميشن ملء الشاشة: ينتفخ كبالونة → ينفجر → قلوب تتناثر وتسقط على الأزرار ──
+// جزيئات تراب / دخان
+interface Pt {
+  x: number; y: number; vx: number; vy: number;
+  size: number; life: number; age: number; kind: 0 | 1 | 2; // 0 تراب، 1 شرارة، 2 دم
+}
+
 function HeartAnimation({ onDone }: { onDone: () => void }) {
-  const [phase, setPhase] = useState<'inflate' | 'burst'>('inflate');
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
-
+  const cvRef = useRef<HTMLCanvasElement>(null);
   const [{ W, H }] = useState(() => ({
     W: typeof window !== 'undefined' ? window.innerWidth : 360,
     H: typeof window !== 'undefined' ? window.innerHeight : 640,
   }));
-  const heartSize = Math.round(Math.min(W * 0.78, H * 0.5)); // عرض القلب الواقعي
-
-  // مفاتيح الحركة: القلب يكبر أثناء كل نفخة ويستقر قليلاً أثناء الشهيق
-  const { times, scales, rotates } = useMemo(() => {
-    const ts: number[] = [0];
-    const ss: number[] = [0.05];
-    const rs: number[] = [0];
-    const n = PUMPS.length;
-    let prev = 0.05;
-    PUMPS.forEach((b, i) => {
-      const s = 0.05 + 0.95 * Math.pow((i + 1) / n, 0.9);
-      ts.push(b.t / INFLATE_S); ss.push(prev); rs.push(0);
-      ts.push((b.t + b.d) / INFLATE_S); ss.push(s * 1.05); rs.push(i % 2 ? -3 : 3);
-      prev = s;
-    });
-    ts.push(1); ss.push(1.18); rs.push(0);
-    return { times: ts, scales: ss, rotates: rs };
-  }, []);
 
   useEffect(() => {
-    preloadHeartSprites();
-    const stopSound = playHeartSound({
-      inflateS: INFLATE_S,
-      pumps: PUMPS,
-      voiceText: VOICE_TEXT,
-      voiceUrl: VOICE_URL,
-      blowUrl: BLOW_URL,
-    });
-    const t1 = window.setTimeout(() => setPhase('burst'), INFLATE_S * 1000);
-    const t2 = window.setTimeout(() => doneRef.current(), TOTAL_MS);
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      stopSound();
-    };
-  }, []);
+    const cv = cvRef.current;
+    if (!cv) return;
+    const c = cv.getContext('2d');
+    if (!c) return;
 
-  const burstSeconds = (TOTAL_MS / 1000) - INFLATE_S;
+    let raf = 0;
+    let start = 0;
+    let finished = false;
+    const pts: Pt[] = [];
+    let host: Host | null = null;
+    let liftPre: HTMLImageElement | null = null;
+    let soundsStarted = false;
+    let heartThrown = false;
+    let laughPlayed = false;
+    let zombiesEmerged = false;
+
+    // تحميل صورة المستلم مسبقاً
+    const liftInfo0 = getLiftInfo();
+    if (liftInfo0?.avatarUrl) {
+      try {
+        liftPre = new Image();
+        liftPre.crossOrigin = 'anonymous';
+        liftPre.src = String(liftInfo0.avatarUrl);
+      } catch { liftPre = null; }
+    }
+
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      cv.width = Math.floor(window.innerWidth * dpr);
+      cv.height = Math.floor(window.innerHeight * dpr);
+      cv.style.width = window.innerWidth + 'px';
+      cv.style.height = window.innerHeight + 'px';
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const spawn = (kind: Pt['kind'], x: number, y: number, vx: number, vy: number, size: number, life: number) => {
+      if (pts.length > MAX_FX) return;
+      pts.push({ x, y, vx, vy, size, life, age: 0, kind });
+    };
+
+    const k = Math.min(W, H) / 400;
+
+    // مواقع الزومبي الثلاثة
+    const zMidX = W * 0.5;
+    const zLeftX = W * 0.22;
+    const zRightX = W * 0.78;
+    const groundY = H * 0.72;
+
+    const drawGrave = (x: number, y: number, sc: number, alpha: number) => {
+      c.save();
+      c.globalAlpha = alpha;
+      c.translate(x, y);
+      c.scale(sc, sc);
+      // قاعدة
+      c.fillStyle = '#2a2a32';
+      c.fillRect(-18, -4, 36, 8);
+      // شاهد
+      c.fillStyle = '#3a3a45';
+      c.beginPath();
+      c.moveTo(-14, -4);
+      c.lineTo(-14, -38);
+      c.quadraticCurveTo(-14, -48, 0, -48);
+      c.quadraticCurveTo(14, -48, 14, -38);
+      c.lineTo(14, -4);
+      c.closePath();
+      c.fill();
+      c.strokeStyle = '#1a1a22';
+      c.lineWidth = 1.5;
+      c.stroke();
+      // RIP
+      c.fillStyle = '#1a1a20';
+      c.font = 'bold 9px sans-serif';
+      c.textAlign = 'center';
+      c.fillText('RIP', 0, -28);
+      c.restore();
+    };
+
+    const drawZombie = (
+      x: number, y: number, sc: number, alpha: number,
+      pose: 'crawl' | 'stand' | 'pull' | 'throw' | 'eat',
+      t: number, side: -1 | 0 | 1
+    ) => {
+      c.save();
+      c.globalAlpha = alpha;
+      c.translate(x, y);
+      c.scale(sc * (side === -1 ? -1 : 1), sc);
+
+      const bodyGreen = '#4a7a3a';
+      const bodyDark = '#2a4a22';
+      const cloth = '#3a2a1a';
+
+      if (pose === 'crawl') {
+        // جسم يزحف
+        const bob = Math.sin(t * 6 + side * 2) * 3;
+        c.fillStyle = bodyGreen;
+        c.beginPath();
+        c.ellipse(0, bob, 22, 12, 0, 0, Math.PI * 2);
+        c.fill();
+        // رأس
+        c.beginPath();
+        c.arc(18, bob - 8, 11, 0, Math.PI * 2);
+        c.fill();
+        // عين
+        c.fillStyle = '#c0ff40';
+        c.beginPath();
+        c.arc(22, bob - 10, 3, 0, Math.PI * 2);
+        c.fill();
+        c.fillStyle = '#111';
+        c.beginPath();
+        c.arc(23, bob - 10, 1.5, 0, Math.PI * 2);
+        c.fill();
+        // ذراع أمامية
+        c.strokeStyle = bodyDark;
+        c.lineWidth = 5;
+        c.lineCap = 'round';
+        c.beginPath();
+        c.moveTo(8, bob + 2);
+        c.lineTo(28 + Math.sin(t * 5) * 4, bob + 6);
+        c.stroke();
+        // رجل
+        c.beginPath();
+        c.moveTo(-10, bob + 4);
+        c.lineTo(-22, bob + 10 + Math.sin(t * 5 + 1) * 3);
+        c.stroke();
+      } else {
+        // واقف / يسحب قلب / يرمي / يأكل صورة
+        const sway = Math.sin(t * 2.2) * 2;
+        // أرجل
+        c.fillStyle = cloth;
+        c.fillRect(-10 + sway * 0.3, 18, 8, 22);
+        c.fillRect(2 + sway * 0.3, 18, 8, 22);
+        // جسم
+        c.fillStyle = bodyGreen;
+        c.beginPath();
+        c.ellipse(sway, 2, 16, 20, 0, 0, Math.PI * 2);
+        c.fill();
+        // رأس
+        c.beginPath();
+        c.arc(sway, -22, 14, 0, Math.PI * 2);
+        c.fill();
+        // شعر متسخ
+        c.fillStyle = bodyDark;
+        c.beginPath();
+        c.arc(sway - 4, -28, 6, 0, Math.PI * 2);
+        c.arc(sway + 5, -30, 5, 0, Math.PI * 2);
+        c.fill();
+        // عيون متوهجة
+        c.fillStyle = '#c0ff40';
+        c.shadowColor = '#80ff20';
+        c.shadowBlur = 8;
+        c.beginPath();
+        c.arc(sway - 5, -24, 3.5, 0, Math.PI * 2);
+        c.arc(sway + 5, -24, 3.5, 0, Math.PI * 2);
+        c.fill();
+        c.shadowBlur = 0;
+        c.fillStyle = '#111';
+        c.beginPath();
+        c.arc(sway - 4, -24, 1.6, 0, Math.PI * 2);
+        c.arc(sway + 6, -24, 1.6, 0, Math.PI * 2);
+        c.fill();
+        // فم
+        c.strokeStyle = '#1a2a12';
+        c.lineWidth = 2;
+        c.beginPath();
+        if (pose === 'eat' || pose === 'throw') {
+          c.arc(sway, -16, 5, 0.2, Math.PI - 0.2);
+        } else {
+          c.moveTo(sway - 5, -15);
+          c.lineTo(sway + 5, -15);
+        }
+        c.stroke();
+
+        // أذرع حسب الوضعية
+        c.strokeStyle = bodyDark;
+        c.lineWidth = 6;
+        c.lineCap = 'round';
+        if (pose === 'pull') {
+          // يسحب من الصدر
+          c.beginPath();
+          c.moveTo(sway - 12, 0);
+          c.lineTo(sway - 4, 8);
+          c.stroke();
+          c.beginPath();
+          c.moveTo(sway + 12, 0);
+          c.lineTo(sway + 4, 8);
+          c.stroke();
+        } else if (pose === 'throw') {
+          c.beginPath();
+          c.moveTo(sway - 10, -2);
+          c.lineTo(sway - 28, -30);
+          c.stroke();
+          c.beginPath();
+          c.moveTo(sway + 10, 2);
+          c.lineTo(sway + 18, 12);
+          c.stroke();
+        } else if (pose === 'eat') {
+          // يمسك الصورة ويضعها في الصدر
+          c.beginPath();
+          c.moveTo(sway - 12, -4);
+          c.lineTo(sway - 2, 6);
+          c.stroke();
+          c.beginPath();
+          c.moveTo(sway + 12, -4);
+          c.lineTo(sway + 2, 6);
+          c.stroke();
+        } else {
+          // stand — أذرع متدلية مع حركة خفيفة
+          c.beginPath();
+          c.moveTo(sway - 14, -2);
+          c.lineTo(sway - 18 + Math.sin(t * 3) * 3, 16);
+          c.stroke();
+          c.beginPath();
+          c.moveTo(sway + 14, -2);
+          c.lineTo(sway + 18 + Math.sin(t * 3 + 1) * 3, 16);
+          c.stroke();
+        }
+      }
+      c.restore();
+    };
+
+    const drawBeatingHeart = (x: number, y: number, sc: number, alpha: number, beat: number) => {
+      const pulse = 1 + Math.sin(beat * Math.PI * 2) * 0.12;
+      c.save();
+      c.globalAlpha = alpha;
+      c.translate(x, y);
+      c.scale(sc * pulse, sc * pulse);
+      c.fillStyle = '#c01030';
+      c.shadowColor = '#ff2040';
+      c.shadowBlur = 12;
+      c.beginPath();
+      c.moveTo(0, 6);
+      c.bezierCurveTo(-14, -4, -14, -16, 0, -10);
+      c.bezierCurveTo(14, -16, 14, -4, 0, 6);
+      c.fill();
+      c.shadowBlur = 0;
+      // لمعان
+      c.fillStyle = 'rgba(255,180,180,0.45)';
+      c.beginPath();
+      c.ellipse(-3, -6, 3, 4, -0.4, 0, Math.PI * 2);
+      c.fill();
+      c.restore();
+    };
+
+    const loop = (now: number) => {
+      if (!start) start = now;
+      const t = (now - start) / 1000;
+      if (t >= TOTAL_S && !finished) {
+        finished = true;
+        if (host?.lift && !host.lift.done) host.lift.restore();
+        doneRef.current();
+        return;
+      }
+
+      const endFade = t > FADE_OUT_AT ? 1 - smooth((t - FADE_OUT_AT) / (TOTAL_S - FADE_OUT_AT)) : 1;
+      const dark = clamp01(t / DARK_IN) * DARK_MAX * (t > LIGHT_BACK ? 1 - smooth((t - LIGHT_BACK) / (TOTAL_S - LIGHT_BACK)) : 1);
+
+      // أصوات
+      if (!soundsStarted && t > 0.15) {
+        soundsStarted = true;
+        playCrickets(16);
+        playWolfHowl(0.8);
+        playWolfHowl(4.5);
+        playDirtRumble(GRAVES_AT);
+        playZombieGroan(ZOMBIE_AT + 0.3);
+        playZombieGroan(ZOMBIE_AT + 1.1);
+        playHeartbeat(HEART_PULL, 5);
+      }
+      if (t >= LAUGH_AT && !laughPlayed && getLiftInfo()) {
+        laughPlayed = true;
+        playLaugh(0);
+      }
+
+      // خلفية مظلمة
+      c.clearRect(0, 0, W, H);
+      c.fillStyle = `rgba(4, 6, 14, ${dark * endFade})`;
+      c.fillRect(0, 0, W, H);
+
+      // قمر خافت
+      if (dark > 0.2) {
+        c.save();
+        c.globalAlpha = 0.35 * dark * endFade;
+        const moonX = W * 0.78, moonY = H * 0.12;
+        const gr = c.createRadialGradient(moonX, moonY, 0, moonX, moonY, 40 * k);
+        gr.addColorStop(0, '#d0e0ff');
+        gr.addColorStop(1, 'transparent');
+        c.fillStyle = gr;
+        c.beginPath();
+        c.arc(moonX, moonY, 40 * k, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      }
+
+      // قبور
+      if (t >= GRAVES_AT) {
+        const gA = easeOut((t - GRAVES_AT) / 1.4) * endFade;
+        drawGrave(W * 0.18, groundY - 10 * k, 1.1 * k, gA * 0.95);
+        drawGrave(W * 0.5, groundY - 6 * k, 1.35 * k, gA);
+        drawGrave(W * 0.82, groundY - 10 * k, 1.1 * k, gA * 0.95);
+        // صلبان
+        c.save();
+        c.globalAlpha = gA * 0.7;
+        c.strokeStyle = '#5a4a3a';
+        c.lineWidth = 2.5 * k;
+        c.lineCap = 'round';
+        [[0.32, 0.68], [0.68, 0.66]].forEach(([px, py]) => {
+          const cx = W * px, cy = H * py;
+          c.beginPath();
+          c.moveTo(cx, cy - 18 * k);
+          c.lineTo(cx, cy + 8 * k);
+          c.moveTo(cx - 8 * k, cy - 8 * k);
+          c.lineTo(cx + 8 * k, cy - 8 * k);
+          c.stroke();
+        });
+        c.restore();
+
+        // شقوق أرض
+        if (t < ZOMBIE_AT + 2) {
+          c.save();
+          c.globalAlpha = gA * 0.6;
+          c.strokeStyle = '#2a1a0a';
+          c.lineWidth = 2 * k;
+          for (let i = 0; i < 5; i++) {
+            const gx = W * (0.15 + i * 0.18);
+            c.beginPath();
+            c.moveTo(gx, groundY);
+            c.lineTo(gx + rnd(-20, 20) * k, groundY + 30 * k);
+            c.stroke();
+          }
+          c.restore();
+        }
+      }
+
+      // جزيئات تراب عند الخروج
+      if (t >= ZOMBIE_AT - 0.5 && t < ZOMBIE_AT + 2.5 && pts.length < 200) {
+        for (let i = 0; i < 3; i++) {
+          const zx = [zLeftX, zMidX, zRightX][i % 3];
+          spawn(0, zx + rnd(-20, 20) * k, groundY, rnd(-40, 40) * k, -rnd(60, 180) * k, rnd(2, 6) * k, rnd(0.6, 1.4));
+        }
+      }
+
+      // تحديث ورسم الجزيئات
+      for (let i = pts.length - 1; i >= 0; i--) {
+        const p = pts[i];
+        p.age += 1 / 60;
+        p.x += p.vx / 60;
+        p.y += p.vy / 60;
+        p.vy += 280 / 60;
+        if (p.age >= p.life) { pts.splice(i, 1); continue; }
+        const a = (1 - p.age / p.life) * endFade;
+        c.globalAlpha = a;
+        if (p.kind === 0) c.fillStyle = '#5a3a1a';
+        else if (p.kind === 1) c.fillStyle = '#c0ff40';
+        else c.fillStyle = '#a01020';
+        c.beginPath();
+        c.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        c.fill();
+      }
+      c.globalAlpha = 1;
+
+      // الزومبي
+      if (t >= ZOMBIE_AT) {
+        if (!zombiesEmerged) {
+          zombiesEmerged = true;
+          playZombieGroan(0);
+        }
+        const emerge = easeOut((t - ZOMBIE_AT) / 1.8);
+        const zAlpha = emerge * endFade;
+
+        // يسار يزحف
+        const crawlProg = clamp01((t - ZOMBIE_AT) / 3.5);
+        const leftX = lerp(zLeftX, zLeftX + 30 * k, crawlProg);
+        const leftY = groundY - 8 * k * emerge;
+        drawZombie(leftX, leftY, 1.15 * k, zAlpha, 'crawl', t, -1);
+
+        // يمين يزحف
+        const rightX = lerp(zRightX, zRightX - 30 * k, crawlProg);
+        drawZombie(rightX, leftY, 1.15 * k, zAlpha, 'crawl', t, 1);
+
+        // الوسط
+        const midY = groundY - 55 * k * emerge;
+        const isLift = !!getLiftInfo();
+        let midPose: 'crawl' | 'stand' | 'pull' | 'throw' | 'eat' = 'stand';
+        if (t < HEART_PULL) midPose = emerge < 0.9 ? 'crawl' : 'stand';
+        else if (isLift) midPose = t < LAUGH_AT + 1.5 ? 'eat' : 'stand';
+        else if (t < HEART_THROW) midPose = 'pull';
+        else midPose = 'throw';
+
+        drawZombie(zMidX, midY, 1.4 * k, zAlpha, midPose, t, 0);
+
+        // قلب نابض أو صورة المستخدم
+        if (!isLift && t >= HEART_PULL && t < HEART_ARRIVE + 1.5) {
+          let hx = zMidX, hy = midY - 10 * k;
+          if (t >= HEART_THROW) {
+            if (!heartThrown) {
+              heartThrown = true;
+              // تحديد هدف الرمي (صاحب البث)
+              if (!host) host = findHost(W);
+              playHeartbeat(0, 2);
+            }
+            if (!host) host = findHost(W);
+            const prog = easeOut((t - HEART_THROW) / (HEART_ARRIVE - HEART_THROW));
+            hx = lerp(zMidX, host.x, prog);
+            hy = lerp(midY - 10 * k, host.y, prog) - Math.sin(prog * Math.PI) * 80 * k;
+          }
+          const beat = (t - HEART_PULL) * 1.8;
+          drawBeatingHeart(hx, hy, 1.1 * k, zAlpha * (t > HEART_ARRIVE ? 1 - smooth((t - HEART_ARRIVE) / 1.2) : 1), beat);
+        }
+
+        // عند الرفع: صورة المستخدم ترتفع ثم الزومبي يأخذها
+        if (isLift) {
+          if (!host) {
+            const lf = findLift(W, H, liftPre);
+            if (lf) host = lf;
+          }
+          if (host?.lift) {
+            const L = host.lift;
+            // صعود الصورة
+            const up = easeOut(clamp01((t - (ZOMBIE_AT + 1.5)) / 1.8));
+            // بعد الضحك يدخلها في الجسد ثم تختفي
+            const absorb = t >= LAUGH_AT + 0.8 ? smooth((t - (LAUGH_AT + 0.8)) / 1.6) : 0;
+            const e2 = up * (1 - absorb);
+            if (absorb >= 1 && !L.done) { L.done = true; L.restore(); }
+
+            if (e2 > 0.01) {
+              const ax = lerp(L.sx, L.ex, e2);
+              const ay = lerp(L.sy, L.ey, e2) + Math.sin(t * 2.4) * 4 * k * e2;
+              const ar = lerp(L.sr, L.R, e2);
+
+              // توهج أخضر زومبي حول الصورة
+              c.save();
+              c.globalCompositeOperation = 'lighter';
+              c.globalAlpha = 0.35 * e2 * endFade;
+              const glow = c.createRadialGradient(ax, ay, 0, ax, ay, ar * 2.2);
+              glow.addColorStop(0, 'rgba(120,255,40,0.5)');
+              glow.addColorStop(1, 'transparent');
+              c.fillStyle = glow;
+              c.beginPath();
+              c.arc(ax, ay, ar * 2.2, 0, Math.PI * 2);
+              c.fill();
+              c.restore();
+
+              // رسم الصورة
+              c.save();
+              c.globalAlpha = clamp01(e2 * 3) * endFade;
+              c.beginPath();
+              c.arc(ax, ay, ar, 0, Math.PI * 2);
+              c.closePath();
+              c.save();
+              c.clip();
+              let drawn = false;
+              if (!L.img && liftPre && liftPre.complete && liftPre.naturalWidth > 0) L.img = liftPre;
+              if (L.img && L.img.complete && L.img.naturalWidth > 0) {
+                try {
+                  const sw = L.img.naturalWidth, sh = L.img.naturalHeight, ss = Math.min(sw, sh);
+                  c.drawImage(L.img, (sw - ss) / 2, (sh - ss) / 2, ss, ss, ax - ar, ay - ar, ar * 2, ar * 2);
+                  drawn = true;
+                } catch { /* ignore */ }
+              }
+              if (!drawn) {
+                c.fillStyle = '#1a2a1a';
+                c.fillRect(ax - ar, ay - ar, ar * 2, ar * 2);
+                c.fillStyle = '#80ff40';
+                c.font = `800 ${Math.round(ar * 1.0)}px sans-serif`;
+                c.textAlign = 'center';
+                c.textBaseline = 'middle';
+                c.fillText(L.letter, ax, ay + ar * 0.04);
+              }
+              c.restore();
+
+              // إطار أخضر
+              c.beginPath();
+              c.arc(ax, ay, ar, 0, Math.PI * 2);
+              c.lineWidth = Math.max(2.5, ar * 0.08);
+              c.strokeStyle = 'rgba(140,255,60,0.95)';
+              c.shadowColor = 'rgba(80,200,20,0.9)';
+              c.shadowBlur = 12 * e2;
+              c.stroke();
+              c.restore();
+
+              // اسم
+              if (e2 > 0.45) {
+                c.save();
+                c.globalAlpha = clamp01((e2 - 0.45) * 2) * endFade;
+                c.font = `800 ${Math.round(Math.max(12, ar * 0.28))}px sans-serif`;
+                c.textAlign = 'center';
+                c.textBaseline = 'top';
+                c.shadowColor = 'rgba(0,0,0,0.9)';
+                c.shadowBlur = 6;
+                c.fillStyle = '#d0ffb0';
+                c.fillText(L.name.length > 18 ? L.name.slice(0, 17) + '…' : L.name, ax, ay + ar + 8 * k);
+                c.restore();
+              }
+              c.globalAlpha = 1;
+            }
+
+            // بعد الامتصاص: شرارات خضراء من صدر الزومبي
+            if (absorb > 0.3 && absorb < 1) {
+              for (let i = 0; i < 2; i++) {
+                spawn(1, zMidX + rnd(-15, 15) * k, midY + rnd(-5, 15) * k, rnd(-50, 50) * k, -rnd(20, 80) * k, rnd(2, 5) * k, rnd(0.4, 0.9));
+              }
+            }
+          }
+        }
+      }
+
+      // ضباب خفيف في الأسفل
+      if (dark > 0.3) {
+        c.save();
+        c.globalAlpha = 0.15 * dark * endFade;
+        const fog = c.createLinearGradient(0, H * 0.55, 0, H);
+        fog.addColorStop(0, 'transparent');
+        fog.addColorStop(1, '#1a2a1a');
+        c.fillStyle = fog;
+        c.fillRect(0, H * 0.55, W, H * 0.45);
+        c.restore();
+      }
+
+      raf = requestAnimationFrame(loop);
+    };
+
+    raf = requestAnimationFrame(loop);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+      if (host?.lift && !host.lift.done) host.lift.restore();
+    };
+  }, [W, H]);
 
   return (
-    <div
-      aria-hidden="true"
-      data-gift-overlay="1"
-      style={{ position: 'fixed', inset: 0, zIndex: 9400, pointerEvents: 'none', overflow: 'hidden' }}
-    >
-      {/* تعتيم خفيف يبرز القلوب */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: [0, 1, 1, 0] }}
-        transition={{ duration: TOTAL_MS / 1000, times: [0, 0.1, 0.85, 1], ease: 'linear' }}
-        style={{ position: 'absolute', inset: 0, background: 'rgba(24,0,10,0.38)' }}
-      />
-
-      {phase === 'inflate' && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <motion.div
-            initial={{ scale: 0.05 }}
-            animate={{ scale: scales, rotate: rotates }}
-            transition={{ duration: INFLATE_S, times, ease: 'easeInOut' }}
-            style={{ willChange: 'transform' }}
-          >
-            <RealisticHeart size={heartSize} knot />
-          </motion.div>
-        </div>
-      )}
-
-      {phase === 'burst' && (
-        <>
-          <div style={{ position: 'absolute', left: '50%', top: '50%', width: 0, height: 0 }}>
-            {/* وميض + موجة الانفجار */}
-            <motion.div
-              initial={{ opacity: 0.95, scale: 0.15 }}
-              animate={{ opacity: 0, scale: 3 }}
-              transition={{ duration: 0.6, ease: 'easeOut' }}
-              style={{
-                position: 'absolute', left: '-45vmin', top: '-45vmin', width: '90vmin', height: '90vmin', borderRadius: '50%',
-                background: 'radial-gradient(circle, #ffffff 0%, #ff7a95 30%, rgba(255,45,85,0) 70%)',
-              }}
-            />
-            <motion.div
-              initial={{ opacity: 0.85, scale: 0.2 }}
-              animate={{ opacity: 0, scale: 3.6 }}
-              transition={{ duration: 0.85, ease: 'easeOut' }}
-              style={{
-                position: 'absolute', left: '-30vmin', top: '-30vmin', width: '60vmin', height: '60vmin', borderRadius: '50%',
-                border: '4px solid rgba(255,140,165,0.9)',
-              }}
-            />
-          </div>
-
-          {/* القلوب والشرارات: محرك فيزياء (جاذبية + اصطدام بالأزرار) */}
-          <BurstLayer W={W} H={H} seconds={burstSeconds} />
-        </>
-      )}
+    <div style={{ position: 'fixed', inset: 0, zIndex: 99999, pointerEvents: 'none' }}>
+      <canvas ref={cvRef} style={{ position: 'absolute', left: 0, top: 0, display: 'block' }} />
     </div>
   );
 }
 
 export const HeartGift: GiftDefinition = {
   id: 'heart',
-  name: 'Heart',
+  name: 'Zombie',
   price: PRICE,
   durationMs: TOTAL_MS,
   Preview: HeartPreview,

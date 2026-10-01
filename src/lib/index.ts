@@ -1,6 +1,11 @@
 /**
  * سجل الهدايا — ترتيب المصفوفة = ترتيب المربعات في نافذة الهدايا.
  * لإضافة هدية: أنشئ ملفها في components/gifts (انسخ HeartGift.tsx) ثم أضفها هنا.
+ *
+ * الحالي:
+ *  1) Heart  → Zombie / مقبرة (500 Coins, 20s)
+ *  2) Volcano → بركان (1,000 Coins, 20s)
+ *  3) Storm  → مطر/عاصفة (مع رفع صورة المستخدم + برق على الإطار)
  */
 import type { GiftDefinition } from './types';
 import { HeartGift } from '../components/gifts/HeartGift';
