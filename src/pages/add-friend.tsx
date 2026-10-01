@@ -17192,23 +17192,6 @@ function PublicLiveCommentsPanel({
       setChatClosing(false);
     }, 280);
   };
-  // دائرة التطبيق بالأسفل: دخول/خروج صفحة الشات العام
-  useEffect(() => {
-    const onNav = (e: Event) => {
-      const d = (e as CustomEvent).detail as { open?: boolean } | undefined;
-      if (!d) return;
-      if (chatCloseTimerRef.current) { window.clearTimeout(chatCloseTimerRef.current); chatCloseTimerRef.current = null; }
-      if (d.open) {
-        setChatClosing(false);
-        setChatLift(1);
-      } else {
-        setChatClosing(false);
-        setChatLift(0);
-      }
-    };
-    window.addEventListener('stooorna:live-chat-nav', onNav);
-    return () => window.removeEventListener('stooorna:live-chat-nav', onNav);
-  }, []);
   const chatUiLifted = chatLift === 1 && !chatClosing;
   const [kbInset, setKbInset] = useState(0);
   const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string; activity?: string }>>([]);
@@ -18391,11 +18374,10 @@ function PublicLiveCommentsPanel({
         <div style={{
           display: chatLift === 0 ? 'none' : 'flex',
           alignItems: 'center',
-          justifyContent: 'flex-start',
-          padding: '6px 8px 4px',
-          paddingRight: 58,
+          justifyContent: 'space-between',
+          padding: '8px 10px 6px',
           overflowX: 'auto',
-          gap: 2,
+          gap: 4,
           animation: chatLift === 1 ? (chatClosing ? 'stooornaChatBarFall .22s ease-in both' : 'stooornaChatBarRise .34s cubic-bezier(.22,1,.36,1) both') : undefined,
         }}>
           {LIVE_EMOJI_BAR.map(em => (
@@ -18496,10 +18478,8 @@ function PublicLiveCommentsPanel({
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 5,
-          padding: '4px 8px 10px',
-          // مساحة لدائرة التطبيق الثابتة يمين أسفل صفحة الشات
-          paddingRight: headerOpen ? 8 : 58,
+          gap: 8,
+          padding: '4px 12px 10px',
           boxSizing: 'border-box',
           width: '100%',
           maxWidth: '100%',
@@ -25396,22 +25376,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     whileTap={{ scale: 0.88 }}
                     onClick={() => {
                       setDockBubble(null);
-                      if (headerOpen) {
-                        // دخول صفحة الشات: إنزال الهيدر + رفع الشات العام
-                        toggleHeaderOpen();
-                        try {
-                          window.dispatchEvent(new CustomEvent('stooorna:live-chat-nav', { detail: { open: true } }));
-                        } catch { /* */ }
-                      } else {
-                        // رجوع للرئيسية: إغلاق الشات ثم رفع الهيدر
-                        try {
-                          window.dispatchEvent(new CustomEvent('stooorna:live-chat-nav', { detail: { open: false } }));
-                        } catch { /* */ }
-                        toggleHeaderOpen();
-                      }
+                      if (headerOpen) toggleHeaderOpen();
                     }}
-                    aria-label={headerOpen ? 'Open live chat' : 'Back to home'}
-                    title={headerOpen ? 'Chat' : 'Home'}
+                    aria-label="Open chat and posts"
+                    title="Open"
                     style={{
                       width: 54, height: 54, padding: 0, margin: '0 6px 0 0', flexShrink: 0,
                       border: 'none', background: 'transparent', cursor: 'pointer',
@@ -25436,46 +25404,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 )}
           </div>
           </BottomHeaderPortal>
-        )}
-
-        {/* دائرة التطبيق ثابتة أسفل يمين صفحة الشات — نقر للرجوع للرئيسية */}
-        {!guestMode && !isFriendManagement && !visitorProfileOpen && !headerOpen && pageTab === 'profile' && (
-          <motion.button
-            type="button"
-            whileTap={{ scale: 0.88 }}
-            onClick={() => {
-              setDockBubble(null);
-              try {
-                window.dispatchEvent(new CustomEvent('stooorna:live-chat-nav', { detail: { open: false } }));
-              } catch { /* */ }
-              if (!headerOpen) toggleHeaderOpen();
-            }}
-            aria-label="Back to home"
-            title="Home"
-            style={{
-              position: 'fixed',
-              right: 10,
-              bottom: 'max(10px, env(safe-area-inset-bottom, 0px))',
-              zIndex: 10090,
-              width: 52, height: 52, padding: 0,
-              border: 'none', background: 'transparent', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              WebkitTapHighlightColor: 'transparent',
-            }}
-          >
-            <span aria-hidden="true" style={{ width: 46, height: 46, borderRadius: '50%', overflow: 'hidden', display: 'block', flexShrink: 0, background: 'transparent', clipPath: 'circle(50% at 50% 50%)', boxShadow: '0 4px 16px rgba(0,0,0,0.35)' }}>
-              <span style={{ display: 'block', width: '100%', height: '100%', transform: 'scale(1.4)' }}>
-                <motion.img
-                  src="/icons/icon-192.png"
-                  alt=""
-                  draggable={false}
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 16, repeat: Infinity, ease: 'linear' }}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', borderRadius: '50%', pointerEvents: 'none', userSelect: 'none' }}
-                />
-              </span>
-            </span>
-          </motion.button>
         )}
 
         {/* ── Content ── */}
