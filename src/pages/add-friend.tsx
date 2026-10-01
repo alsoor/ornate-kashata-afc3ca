@@ -25146,7 +25146,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 <button
                   type="button"
                   onClick={() => startLive('/live-camera')}
-                  style={{ ...primaryBtn, justifyContent: 'flex-start', gap: 12, padding: '16px 16px', fontSize: '1rem', background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.35)', color: '#ffeceb' }}
+                  style={{ ...primaryBtn, justifyContent: 'flex-start', gap: 12, padding: '16px 16px', fontSize: '1rem', background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.35)', color: '#ffeceb', marginTop: 14 }}
                 >
                   <Video size={20} strokeWidth={2.2} color="#ef4444" /> Video Live
                 </button>
