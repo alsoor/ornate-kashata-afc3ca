@@ -31886,12 +31886,31 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 type="file"
                 accept="image/*,video/*"
                 hidden
-                onChange={e => {
+                onChange={async e => {
                   const file = e.target.files?.[0];
                   e.target.value = '';
                   if (!file || !user || !userShareChatPeer) return;
-                  const url = URL.createObjectURL(file);
                   const type = file.type.startsWith('video') ? 'video' as const : 'image' as const;
+                  let url = URL.createObjectURL(file);
+                  // Prefer durable server URL so media survives refresh / reinstall
+                  try {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    fd.append('type', type);
+                    let r = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd });
+                    if (!r.ok) {
+                      r = await fetch('/api/files/upload', { method: 'POST', credentials: 'include', body: fd });
+                    }
+                    if (r.ok) {
+                      const d = await r.json().catch(() => ({} as any));
+                      const permanent = d?.url || d?.mediaUrl || d?.path || d?.href;
+                      if (permanent && typeof permanent === 'string' && !permanent.startsWith('blob:')) {
+                        url = permanent.startsWith('http') || permanent.startsWith('/')
+                          ? permanent
+                          : `/airo-assets/${permanent.replace(/^\/+/, '')}`;
+                      }
+                    }
+                  } catch { /* keep blob preview if upload fails */ }
                   pushShareThreadMsg(user.id, userShareChatPeer.id, userShareChatPeer.post?.id ?? 'share', { fromId: user.id, type, body: url });
                   setShareMiniMsgs(loadShareThread(user.id, userShareChatPeer.id, userShareChatPeer.post?.id ?? 'share'));
                 }}

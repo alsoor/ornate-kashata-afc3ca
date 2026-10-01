@@ -3847,6 +3847,71 @@ function OwnerSupportThread({
 }
 
 // ─── Auth screen (shown when not logged in) ───────────────────────────────────
+
+/** Full world dial codes for phone OTP signup / login */
+const COUNTRY_DIAL_CODES: { code: string; dial: string; name: string; nameAr: string }[] = [
+  { code: 'KW', dial: '+965', name: 'Kuwait', nameAr: 'الكويت' },
+  { code: 'SA', dial: '+966', name: 'Saudi Arabia', nameAr: 'السعودية' },
+  { code: 'AE', dial: '+971', name: 'UAE', nameAr: 'الإمارات' },
+  { code: 'BH', dial: '+973', name: 'Bahrain', nameAr: 'البحرين' },
+  { code: 'QA', dial: '+974', name: 'Qatar', nameAr: 'قطر' },
+  { code: 'OM', dial: '+968', name: 'Oman', nameAr: 'عُمان' },
+  { code: 'EG', dial: '+20', name: 'Egypt', nameAr: 'مصر' },
+  { code: 'JO', dial: '+962', name: 'Jordan', nameAr: 'الأردن' },
+  { code: 'IQ', dial: '+964', name: 'Iraq', nameAr: 'العراق' },
+  { code: 'LB', dial: '+961', name: 'Lebanon', nameAr: 'لبنان' },
+  { code: 'SY', dial: '+963', name: 'Syria', nameAr: 'سوريا' },
+  { code: 'PS', dial: '+970', name: 'Palestine', nameAr: 'فلسطين' },
+  { code: 'YE', dial: '+967', name: 'Yemen', nameAr: 'اليمن' },
+  { code: 'TR', dial: '+90', name: 'Turkey', nameAr: 'تركيا' },
+  { code: 'IR', dial: '+98', name: 'Iran', nameAr: 'إيران' },
+  { code: 'US', dial: '+1', name: 'United States', nameAr: 'الولايات المتحدة' },
+  { code: 'CA', dial: '+1', name: 'Canada', nameAr: 'كندا' },
+  { code: 'GB', dial: '+44', name: 'United Kingdom', nameAr: 'بريطانيا' },
+  { code: 'FR', dial: '+33', name: 'France', nameAr: 'فرنسا' },
+  { code: 'DE', dial: '+49', name: 'Germany', nameAr: 'ألمانيا' },
+  { code: 'IT', dial: '+39', name: 'Italy', nameAr: 'إيطاليا' },
+  { code: 'ES', dial: '+34', name: 'Spain', nameAr: 'إسبانيا' },
+  { code: 'NL', dial: '+31', name: 'Netherlands', nameAr: 'هولندا' },
+  { code: 'BE', dial: '+32', name: 'Belgium', nameAr: 'بلجيكا' },
+  { code: 'CH', dial: '+41', name: 'Switzerland', nameAr: 'سويسرا' },
+  { code: 'AT', dial: '+43', name: 'Austria', nameAr: 'النمسا' },
+  { code: 'SE', dial: '+46', name: 'Sweden', nameAr: 'السويد' },
+  { code: 'NO', dial: '+47', name: 'Norway', nameAr: 'النرويج' },
+  { code: 'DK', dial: '+45', name: 'Denmark', nameAr: 'الدنمارك' },
+  { code: 'FI', dial: '+358', name: 'Finland', nameAr: 'فنلندا' },
+  { code: 'PL', dial: '+48', name: 'Poland', nameAr: 'بولندا' },
+  { code: 'RU', dial: '+7', name: 'Russia', nameAr: 'روسيا' },
+  { code: 'UA', dial: '+380', name: 'Ukraine', nameAr: 'أوكرانيا' },
+  { code: 'IN', dial: '+91', name: 'India', nameAr: 'الهند' },
+  { code: 'PK', dial: '+92', name: 'Pakistan', nameAr: 'باكستان' },
+  { code: 'BD', dial: '+880', name: 'Bangladesh', nameAr: 'بنغلاديش' },
+  { code: 'CN', dial: '+86', name: 'China', nameAr: 'الصين' },
+  { code: 'JP', dial: '+81', name: 'Japan', nameAr: 'اليابان' },
+  { code: 'KR', dial: '+82', name: 'South Korea', nameAr: 'كوريا الجنوبية' },
+  { code: 'ID', dial: '+62', name: 'Indonesia', nameAr: 'إندونيسيا' },
+  { code: 'MY', dial: '+60', name: 'Malaysia', nameAr: 'ماليزيا' },
+  { code: 'SG', dial: '+65', name: 'Singapore', nameAr: 'سنغافورة' },
+  { code: 'TH', dial: '+66', name: 'Thailand', nameAr: 'تايلاند' },
+  { code: 'VN', dial: '+84', name: 'Vietnam', nameAr: 'فيتنام' },
+  { code: 'PH', dial: '+63', name: 'Philippines', nameAr: 'الفلبين' },
+  { code: 'AU', dial: '+61', name: 'Australia', nameAr: 'أستراليا' },
+  { code: 'NZ', dial: '+64', name: 'New Zealand', nameAr: 'نيوزيلندا' },
+  { code: 'BR', dial: '+55', name: 'Brazil', nameAr: 'البرازيل' },
+  { code: 'MX', dial: '+52', name: 'Mexico', nameAr: 'المكسيك' },
+  { code: 'AR', dial: '+54', name: 'Argentina', nameAr: 'الأرجنتين' },
+  { code: 'ZA', dial: '+27', name: 'South Africa', nameAr: 'جنوب أفريقيا' },
+  { code: 'NG', dial: '+234', name: 'Nigeria', nameAr: 'نيجيريا' },
+  { code: 'KE', dial: '+254', name: 'Kenya', nameAr: 'كينيا' },
+  { code: 'MA', dial: '+212', name: 'Morocco', nameAr: 'المغرب' },
+  { code: 'DZ', dial: '+213', name: 'Algeria', nameAr: 'الجزائر' },
+  { code: 'TN', dial: '+216', name: 'Tunisia', nameAr: 'تونس' },
+  { code: 'LY', dial: '+218', name: 'Libya', nameAr: 'ليبيا' },
+  { code: 'SD', dial: '+249', name: 'Sudan', nameAr: 'السودان' },
+  { code: 'SO', dial: '+252', name: 'Somalia', nameAr: 'الصومال' },
+  { code: 'ET', dial: '+251', name: 'Ethiopia', nameAr: 'إثيوبيا' },
+];
+
 function AuthScreen({ T }: { T: Record<string, string> }) {
   type AuthMode = 'login' | 'register';
   type AccountKind = 'personal' | 'company';
@@ -3882,6 +3947,16 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   const [username, setUsername] = useState('');
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const [email, setEmail] = useState('');
+  /** login/register contact channel: email or phone (+ OTP) */
+  const [contactMethod, setContactMethod] = useState<'email' | 'phone'>('email');
+  const [phoneLocal, setPhoneLocal] = useState('');
+  const [dialCode, setDialCode] = useState('+965');
+  const [countryQuery, setCountryQuery] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpHint, setOtpHint] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -4073,7 +4148,22 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
     e.preventDefault();
     setError('');
 
-    const rawId = email.trim().replace(/^@/, '');
+    if (!otpVerified) {
+      setError(authLang === 'en'
+        ? 'Please verify the OTP code first (email or mobile)'
+        : 'يرجى التحقق من رمز OTP أولاً (إيميل أو موبايل)');
+      return;
+    }
+
+    let rawId = email.trim().replace(/^@/, '');
+    if (contactMethod === 'phone') {
+      const full = `${dialCode}${phoneLocal.replace(/^0+/, '')}`;
+      rawId = full;
+      try {
+        const d = phoneDigitsOnly(full);
+        if (d) localStorage.setItem(`stooorna_phone_auth_${d}`, phoneToAuthEmail(full));
+      } catch { /* */ }
+    }
     if (!rawId || !password) {
       setError(L.enterEmailPw);
       return;
@@ -4087,7 +4177,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
       return;
     }
     const em = resolved;
-    const usedPhone = isPhoneIdentifier(rawId);
+    const usedPhone = contactMethod === 'phone' || isPhoneIdentifier(rawId);
     if (!em || !password) {
       setError(L.enterEmailPw);
       return;
@@ -5011,28 +5101,239 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           </>
         )}
 
-        {/* Email or mobile */}
-        <div style={{ position: 'relative' }}>
-          <Mail size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          <input
-            type="text"
-            inputMode="email"
-            autoComplete="username"
-            placeholder={authLang === 'en' ? 'Email or mobile number' : 'البريد الإلكتروني أو رقم الموبايل'}
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            required
-            style={fieldCss()}
-            dir="ltr"
-          />
+        {/* Contact method: Email OR Phone (+ OTP) */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
+          <button
+            type="button"
+            onClick={() => { setContactMethod('email'); setOtpSent(false); setOtpVerified(false); setOtpCode(''); setOtpHint(''); }}
+            style={{
+              flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer', fontWeight: 800, fontSize: 13,
+              border: `1.5px solid ${contactMethod === 'email' ? T.primary : T.surfaceBorder}`,
+              background: contactMethod === 'email' ? 'rgba(0,188,212,0.14)' : T.surface,
+              color: contactMethod === 'email' ? T.primary : T.text,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Mail size={15} /> {authLang === 'en' ? 'Email' : 'إيميل'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setContactMethod('phone'); setOtpSent(false); setOtpVerified(false); setOtpCode(''); setOtpHint(''); }}
+            style={{
+              flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer', fontWeight: 800, fontSize: 13,
+              border: `1.5px solid ${contactMethod === 'phone' ? T.primary : T.surfaceBorder}`,
+              background: contactMethod === 'phone' ? 'rgba(0,188,212,0.14)' : T.surface,
+              color: contactMethod === 'phone' ? T.primary : T.text,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            <Phone size={15} /> {authLang === 'en' ? 'Mobile' : 'رقم موبايل'}
+          </button>
         </div>
-        {isRegister && !isCompany && (
-          <p style={{ margin: '-8px 0 0', fontSize: 11, color: T.textDim, textAlign: 'center' }}>
-            {authLang === 'en'
-              ? 'Create account with email or mobile · sign in the same way'
-              : 'إنشاء الحساب بالبريد أو الموبايل · وتسجيل الدخول بنفس الطريقة'}
-          </p>
+
+        {contactMethod === 'email' ? (
+          <div style={{ position: 'relative' }}>
+            <Mail size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              placeholder={authLang === 'en' ? 'Email address' : 'البريد الإلكتروني'}
+              value={email}
+              onChange={e => { setEmail(e.target.value); setOtpSent(false); setOtpVerified(false); }}
+              required
+              style={fieldCss()}
+              dir="ltr"
+            />
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ position: 'relative' }}>
+              <Search size={14} color={T.primaryDim} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                value={countryQuery}
+                onChange={e => setCountryQuery(e.target.value)}
+                placeholder={authLang === 'en' ? 'Search country…' : 'ابحث عن الدولة…'}
+                style={{ ...fieldCss(), paddingLeft: 36, fontSize: 13 }}
+              />
+            </div>
+            <select
+              value={dialCode}
+              onChange={e => setDialCode(e.target.value)}
+              style={{
+                ...fieldCss(),
+                paddingLeft: 12,
+                appearance: 'auto' as any,
+                cursor: 'pointer',
+                direction: 'ltr',
+              }}
+              dir="ltr"
+            >
+              {COUNTRY_DIAL_CODES
+                .filter(c => {
+                  const q = countryQuery.trim().toLowerCase();
+                  if (!q) return true;
+                  return c.name.toLowerCase().includes(q) || c.nameAr.includes(countryQuery.trim()) || c.dial.includes(q) || c.code.toLowerCase().includes(q);
+                })
+                .map(c => (
+                  <option key={`${c.code}-${c.dial}`} value={c.dial}>
+                    {authLang === 'en' ? c.name : c.nameAr} ({c.dial})
+                  </option>
+                ))}
+            </select>
+            <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
+              <span style={{
+                flexShrink: 0, minWidth: 64, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: 12, border: `1px solid ${T.surfaceBorder}`, background: T.surface,
+                color: T.primary, fontWeight: 800, fontSize: 13, direction: 'ltr',
+              }}>{dialCode}</span>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <Phone size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel-national"
+                  placeholder={authLang === 'en' ? 'Mobile number' : 'رقم الموبايل'}
+                  value={phoneLocal}
+                  onChange={e => {
+                    setPhoneLocal(e.target.value.replace(/[^\d]/g, '').slice(0, 15));
+                    setOtpSent(false);
+                    setOtpVerified(false);
+                  }}
+                  required
+                  style={{ ...fieldCss(), paddingLeft: 40 }}
+                  dir="ltr"
+                />
+              </div>
+            </div>
+          </div>
         )}
+
+        {/* OTP send / verify */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              disabled={otpBusy || (contactMethod === 'email' ? !email.trim() : !phoneLocal.trim())}
+              onClick={async () => {
+                setOtpBusy(true);
+                setOtpHint('');
+                setError('');
+                try {
+                  const target = contactMethod === 'email'
+                    ? email.trim().toLowerCase()
+                    : `${dialCode}${phoneLocal.replace(/^0+/, '')}`;
+                  const r = await fetch('/api/auth/otp/send', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel: contactMethod, target }),
+                  });
+                  const d = await r.json().catch(() => ({}));
+                  if (!r.ok) {
+                    setError(authLang === 'en' ? 'Could not send code' : 'تعذر إرسال رمز التحقق');
+                    return;
+                  }
+                  setOtpSent(true);
+                  setOtpVerified(false);
+                  if (d.devCode) {
+                    setOtpHint(authLang === 'en'
+                      ? `Dev code: ${d.devCode} (configure SMS/email provider for production)`
+                      : `رمز تجريبي: ${d.devCode} (اربط مزوّد SMS/إيميل للإنتاج)`);
+                    setOtpCode(String(d.devCode));
+                  } else {
+                    setOtpHint(authLang === 'en'
+                      ? (contactMethod === 'email' ? 'Code sent to your email' : 'Code sent by SMS')
+                      : (contactMethod === 'email' ? 'تم إرسال الرمز إلى بريدك' : 'تم إرسال الرمز عبر رسالة نصية'));
+                  }
+                } catch {
+                  setError(authLang === 'en' ? 'Network error' : 'خطأ في الشبكة');
+                } finally {
+                  setOtpBusy(false);
+                }
+              }}
+              style={{
+                flex: 1, padding: 11, borderRadius: 12, border: `1px solid ${T.primary}`,
+                background: 'rgba(0,188,212,0.12)', color: T.primary, fontWeight: 800, fontSize: 13,
+                cursor: otpBusy ? 'default' : 'pointer', opacity: otpBusy ? 0.7 : 1,
+              }}
+            >
+              {otpBusy ? '…' : (otpSent
+                ? (authLang === 'en' ? 'Resend code' : 'إعادة إرسال الرمز')
+                : (authLang === 'en' ? 'Send OTP' : 'إرسال رمز التحقق'))}
+            </button>
+          </div>
+          {otpSent && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder={authLang === 'en' ? '6-digit code' : 'رمز من 6 أرقام'}
+                value={otpCode}
+                onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                style={{ ...fieldCss(), flex: 1, letterSpacing: '0.2em', fontWeight: 800, textAlign: 'center', direction: 'ltr' }}
+                dir="ltr"
+              />
+              <button
+                type="button"
+                disabled={otpBusy || otpCode.length < 4}
+                onClick={async () => {
+                  setOtpBusy(true);
+                  setError('');
+                  try {
+                    const target = contactMethod === 'email'
+                      ? email.trim().toLowerCase()
+                      : `${dialCode}${phoneLocal.replace(/^0+/, '')}`;
+                    const r = await fetch('/api/auth/otp/verify', {
+                      method: 'POST',
+                      credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ channel: contactMethod, target, code: otpCode }),
+                    });
+                    const d = await r.json().catch(() => ({}));
+                    if (!r.ok || !d.verified) {
+                      setOtpVerified(false);
+                      setError(authLang === 'en' ? 'Invalid or expired code' : 'رمز غير صالح أو منتهي');
+                      return;
+                    }
+                    setOtpVerified(true);
+                    setOtpHint(authLang === 'en' ? 'Verified ✓' : 'تم التحقق ✓');
+                    if (contactMethod === 'phone') {
+                      // synthetic email so existing signUp.email path still works
+                      const digits = `${dialCode}${phoneLocal.replace(/^0+/, '')}`.replace(/\D/g, '');
+                      setEmail(`phone_${digits}@phone.stooorna.local`);
+                    }
+                  } catch {
+                    setError(authLang === 'en' ? 'Network error' : 'خطأ في الشبكة');
+                  } finally {
+                    setOtpBusy(false);
+                  }
+                }}
+                style={{
+                  padding: '11px 14px', borderRadius: 12, border: 'none',
+                  background: otpVerified ? '#22c55e' : T.primary,
+                  color: '#041018', fontWeight: 900, fontSize: 13,
+                  cursor: otpBusy ? 'default' : 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                {otpVerified ? '✓' : (authLang === 'en' ? 'Verify' : 'تحقق')}
+              </button>
+            </div>
+          )}
+          {otpHint ? (
+            <p style={{ margin: 0, fontSize: 11, color: otpVerified ? '#22c55e' : T.primaryDim, textAlign: 'center', fontWeight: 700 }}>
+              {otpHint}
+            </p>
+          ) : null}
+          <p style={{ margin: 0, fontSize: 11, color: T.textDim, textAlign: 'center' }}>
+            {authLang === 'en'
+              ? 'Choose email or mobile · verify with OTP before continuing'
+              : 'اختر إيميل أو رقم موبايل · ثم فعّل برمز OTP قبل المتابعة'}
+          </p>
+        </div>
+
 
         {/* Confirm email — company register only */}
         {isRegister && isCompany && (

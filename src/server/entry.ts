@@ -1,7 +1,7 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, extname, join } from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdirSync, existsSync } from "node:fs";
 // Static import so the SSR bundler doesn't see a mixed static/dynamic
 // import of this module (it's imported statically elsewhere, e.g. in
 // api/room/join/POST.ts). closeConnection is optional at runtime, so the
@@ -335,7 +335,28 @@ app.use(express.urlencoded({ extended: true }));
 // broken image (black screen). express.static also handles video Range requests.
 // On Railway, mount a Volume at this path (or set ASSETS_DIR) so files survive redeploys.
 const ASSETS_DIR = process.env.ASSETS_DIR || '/shared-storage/public/assets';
-app.use('/airo-assets', express.static(ASSETS_DIR, { maxAge: '7d', fallthrough: true }));
+// Ensure the assets directory exists so uploads don't fail on first boot
+// (Railway: mount a persistent Volume at ASSETS_DIR so files survive redeploys).
+try {
+  if (!existsSync(ASSETS_DIR)) mkdirSync(ASSETS_DIR, { recursive: true });
+} catch (e) {
+  console.error('[startup] Could not create ASSETS_DIR', ASSETS_DIR, e);
+}
+const staticOpts = { maxAge: '30d', fallthrough: true as const, etag: true, lastModified: true };
+app.use('/airo-assets', express.static(ASSETS_DIR, staticOpts));
+// Common alternate prefixes used by older clients / partial uploads
+app.use('/assets', express.static(ASSETS_DIR, staticOpts));
+app.use('/uploads', express.static(ASSETS_DIR, staticOpts));
+app.use('/media', express.static(ASSETS_DIR, staticOpts));
+// Health probe so ops can verify volume is writable
+app.get('/api/assets/health', (_req, res) => {
+  try {
+    const ok = existsSync(ASSETS_DIR);
+    res.json({ ok, dir: ASSETS_DIR, writable: ok });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
 
 // ── AI video merge (live-chat film icon): POST/GET /api/video-swap — needs FAL_KEY ──
 registerVideoSwap(app, ASSETS_DIR);
@@ -869,6 +890,146 @@ app.get("/api/business/directory", business_directory_get_168);
 app.post("/api/business", business_directory_post_169);
 app.post("/api/business/directory", business_directory_post_169);
 // </api-registrations>
+
+
+// ── OTP (email / phone) ─────────────────────────────────────────────────────
+// Demo-safe store: codes live in memory + optional console log.
+// Production: set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM (SMS)
+// and SMTP_* or RESEND_API_KEY for email. Without them, OTP is returned in
+// JSON as `devCode` so the UI can still complete signup/login in staging.
+type OtpRec = { code: string; at: number; attempts: number; channel: 'email' | 'phone' };
+const otpStore: Map<string, OtpRec> = (() => {
+  const g = globalThis as typeof globalThis & { __stooornaOtp?: Map<string, OtpRec> };
+  if (!g.__stooornaOtp) g.__stooornaOtp = new Map();
+  return g.__stooornaOtp;
+})();
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+function normalizeOtpTarget(raw: string, channel: 'email' | 'phone'): string {
+  const s = String(raw || '').trim();
+  if (channel === 'email') return s.toLowerCase();
+  // keep digits and leading +
+  const digits = s.replace(/[^\d+]/g, '');
+  return digits.startsWith('+') ? digits : `+${digits.replace(/^\+/, '')}`;
+}
+function genOtpCode(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+app.post('/api/auth/otp/send', express.json(), async (req, res) => {
+  try {
+    const channel = (String(req.body?.channel || '').toLowerCase() === 'phone' ? 'phone' : 'email') as 'email' | 'phone';
+    const target = normalizeOtpTarget(String(req.body?.target || req.body?.email || req.body?.phone || ''), channel);
+    if (!target || target.length < 5) {
+      res.status(400).json({ error: 'invalid_target' });
+      return;
+    }
+    if (channel === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) {
+      res.status(400).json({ error: 'invalid_email' });
+      return;
+    }
+    if (channel === 'phone' && !/^\+[1-9]\d{7,14}$/.test(target)) {
+      res.status(400).json({ error: 'invalid_phone' });
+      return;
+    }
+    const code = genOtpCode();
+    otpStore.set(`${channel}:${target}`, { code, at: Date.now(), attempts: 0, channel });
+    console.log(`[otp] send ${channel} → ${target} code=${code}`);
+
+    // Optional Twilio SMS
+    let delivered = false;
+    if (channel === 'phone' && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM) {
+      try {
+        const sid = process.env.TWILIO_ACCOUNT_SID;
+        const token = process.env.TWILIO_AUTH_TOKEN;
+        const from = process.env.TWILIO_FROM;
+        const auth = Buffer.from(`${sid}:${token}`).toString('base64');
+        const body = new URLSearchParams({ To: target, From: from, Body: `Stooorna code: ${code}` });
+        const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+          method: 'POST',
+          headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+          body,
+        });
+        delivered = r.ok;
+        if (!r.ok) console.error('[otp] twilio', await r.text());
+      } catch (e) {
+        console.error('[otp] twilio failed', e);
+      }
+    }
+    // Optional Resend email
+    if (channel === 'email' && process.env.RESEND_API_KEY) {
+      try {
+        const r = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: process.env.RESEND_FROM || 'Stooorna <noreply@stooorna.com>',
+            to: [target],
+            subject: 'Stooorna verification code',
+            text: `Your Stooorna code is ${code}. Valid for 10 minutes.`,
+          }),
+        });
+        delivered = r.ok;
+        if (!r.ok) console.error('[otp] resend', await r.text());
+      } catch (e) {
+        console.error('[otp] resend failed', e);
+      }
+    }
+
+    const payload: Record<string, unknown> = {
+      ok: true,
+      channel,
+      target,
+      delivered,
+      expiresInSec: Math.floor(OTP_TTL_MS / 1000),
+    };
+    // Expose code only when no real provider is configured (dev / staging)
+    if (!delivered) payload.devCode = code;
+    res.json(payload);
+  } catch (e) {
+    console.error('[otp] send error', e);
+    res.status(500).json({ error: 'otp_send_failed' });
+  }
+});
+app.post('/api/auth/otp/verify', express.json(), (req, res) => {
+  try {
+    const channel = (String(req.body?.channel || '').toLowerCase() === 'phone' ? 'phone' : 'email') as 'email' | 'phone';
+    const target = normalizeOtpTarget(String(req.body?.target || req.body?.email || req.body?.phone || ''), channel);
+    const code = String(req.body?.code || '').trim();
+    if (!target || !code) {
+      res.status(400).json({ error: 'missing_fields' });
+      return;
+    }
+    const key = `${channel}:${target}`;
+    const rec = otpStore.get(key);
+    if (!rec) {
+      res.status(400).json({ error: 'no_code' });
+      return;
+    }
+    if (Date.now() - rec.at > OTP_TTL_MS) {
+      otpStore.delete(key);
+      res.status(400).json({ error: 'expired' });
+      return;
+    }
+    if (rec.attempts >= OTP_MAX_ATTEMPTS) {
+      otpStore.delete(key);
+      res.status(429).json({ error: 'too_many_attempts' });
+      return;
+    }
+    rec.attempts += 1;
+    if (rec.code !== code) {
+      res.status(400).json({ error: 'invalid_code', attemptsLeft: OTP_MAX_ATTEMPTS - rec.attempts });
+      return;
+    }
+    otpStore.delete(key);
+    res.json({ ok: true, channel, target, verified: true });
+  } catch (e) {
+    console.error('[otp] verify error', e);
+    res.status(500).json({ error: 'otp_verify_failed' });
+  }
+});
 
 // VAPID key generation endpoint (owner only — run once)
 app.get("/api/push/generate-vapid", (_req, res) => {
