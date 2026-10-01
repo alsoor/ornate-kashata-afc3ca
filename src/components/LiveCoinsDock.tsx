@@ -16,9 +16,10 @@ import { X, Plus, CreditCard, Lock } from 'lucide-react';
 const PAYMENT_DEMO_MODE = true;
 
 // مواضع النقطتين (فوق نقاط LiveVipDock الموجودة). عدّل الأرقام إذا ما انطبقت.
-const YELLOW_DOT_RIGHT = 97; // px من اليمين
+const YELLOW_DOT_RIGHT = 74; // px من اليمين (نفس القيمة للبث الصوتي والمرئي)
 const BLUE_DOT_RIGHT = 38;   // px من اليمين
 const DOTS_BOTTOM_OFFSET = 33; // px فوق حد الشريط السفلي
+const DOT_SIZE = 11; // حجم النقطتين (الصفراء والزرقاء نفس الحجم)
 
 const PACKS: { id: string; coins: number; usd: number }[] = [
   { id: 'p50', coins: 50, usd: 0.5 },
@@ -247,7 +248,7 @@ export function LiveCoinsDock({ currentUserId, yellowRight = YELLOW_DOT_RIGHT }:
         display: 'flex', alignItems: 'center', justifyContent: 'center', WebkitTapHighlightColor: 'transparent',
       }}
     >
-      <span style={{ width: 11, height: 11, borderRadius: '50%', background: color, boxShadow: `0 0 8px ${color}` }} />
+      <span style={{ width: DOT_SIZE, height: DOT_SIZE, borderRadius: '50%', background: color, boxShadow: `0 0 8px ${color}` }} />
     </button>
   );
 
