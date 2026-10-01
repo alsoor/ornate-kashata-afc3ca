@@ -4,13 +4,15 @@
  *  - النقطة الصفراء  → مربع شحن Coins (6 باقات) ثم مربع الدفع بالفيزا
  *  - النقطة الزرقاء  → مربع الهدايا (6 مربعات فيها "+" للمستقبل)
  *  - الرصيد يظهر بزاوية المربعين، ويزيد بعد نجاح الدفع
+ *  - Custom: المستخدم يكتب عدد Coins بنفسه والسعر USD يتحسب بالضبط (بالسنت، بدون كسور عشرية)
+ *  - الهدية: كل نقرة تزيد العداد 1 2 3 ... وبعد توقف النقر تنرسل الهدية بعدد المرات وتنخصم بعدد المرات
  *
  * مهم: PAYMENT_DEMO_MODE = true يعني الدفع تجريبي (ما يخصم أي مبلغ).
  * قبل الإطلاق الفعلي اربطه ببوابة دفع (processVisaPayment) وخله false.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Plus, CreditCard, Lock } from 'lucide-react';
+import { X, Plus, CreditCard, Lock, Pencil } from 'lucide-react';
 import { GIFTS } from '@/lib/index';
 import type { GiftDefinition } from '@/lib/types';
 
@@ -31,6 +33,17 @@ const PACKS: { id: string; coins: number; usd: number }[] = [
   { id: 'p7000', coins: 7000, usd: 80 },
   { id: 'p10000', coins: 10000, usd: 100 },
 ];
+
+// ── Custom: عدد Coins حر ────────────────────────────────────────────────
+// السعر يتحسب بالسنت (أعداد صحيحة) عشان ما يصير أي خلل بالكسور: USD = coins × CUSTOM_CENTS_PER_COIN ÷ 100
+const CUSTOM_ID = 'custom';
+const CUSTOM_CENTS_PER_COIN = 1;   // 1 Coin = USD 0.01  (نفس سعر باقة 50 و 500 و 10,000)
+const CUSTOM_MIN_COINS = 50;       // أقل عدد (USD 0.50)
+const CUSTOM_MAX_COINS = 100000;   // أكثر عدد (USD 1,000.00)
+
+// ── تكرار الهدية: كل نقرة تزيد العداد، وبعد هذي المدة بدون نقر تنرسل ──────
+const COMBO_WINDOW_MS = 1200;
+const COMBO_MAX = 10;              // أقصى عدد مرات بالنقرات المتتالية
 
 const fmtCoins = (n: number) => n.toLocaleString('en-US');
 const fmtUsd = (n: number) => `USD ${n.toFixed(2)}`;
@@ -64,7 +77,7 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ packId: pack.id, coins: pack.coins, amountUsd: pack.usd, method: 'visa' }),
+      body: JSON.stringify({ packId: pack.id, coins: pack.coins, amountUsd: pack.usd, amountCents: Math.round(pack.usd * 100), method: 'visa' }),
     });
     if (!r.ok) return { ok: false, error: 'Payment failed' };
     const d = await r.json().catch(() => ({})) as { balance?: number };
@@ -198,13 +211,33 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
   const [paidToast, setPaidToast] = useState(false);
   const [playing, setPlaying] = useState<{ gift: GiftDefinition; key: number } | null>(null);
   const [giftMsg, setGiftMsg] = useState('');
+  const [customText, setCustomText] = useState('');
+  const [tap, setTap] = useState<{ id: string; n: number } | null>(null);
+
+  // تكرار الهدية + طابور التشغيل
+  const tapRef = useRef<{ id: string; n: number } | null>(null);
+  const tapTimerRef = useRef<number>(0);
+  const busyRef = useRef(false);
+  const queueRef = useRef<GiftDefinition[]>([]);
+  const playKeyRef = useRef(0);
+  const playingRef = useRef(false);
 
   const [cardNum, setCardNum] = useState('');
   const [cardExp, setCardExp] = useState('');
   const [cardCvc, setCardCvc] = useState('');
   const [cardName, setCardName] = useState('');
 
-  const pack = useMemo(() => PACKS.find(p => p.id === packId) || PACKS[0], [packId]);
+  const isCustom = packId === CUSTOM_ID;
+  const customCoins = Number(customText) || 0;
+  const customValid = customCoins >= CUSTOM_MIN_COINS && customCoins <= CUSTOM_MAX_COINS;
+  const pack = useMemo(() => {
+    if (packId === CUSTOM_ID) {
+      const cents = customCoins * CUSTOM_CENTS_PER_COIN;   // أعداد صحيحة بالسنت
+      return { id: CUSTOM_ID, coins: customCoins, usd: cents / 100 };
+    }
+    return PACKS.find(p => p.id === packId) || PACKS[0];
+  }, [packId, customCoins]);
+  const canBuy = !isCustom || customValid;
 
   useEffect(() => { setBalance(readBalance(uid)); }, [uid]);
   useEffect(() => {
@@ -229,35 +262,87 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
   // تشغيل أنميشن هدية (يستقبل الحدث المحلي، وأي بث مستقبلي لباقي الحضور يرسل نفس الحدث)
   useEffect(() => {
     const onPlay = (e: Event) => {
-      const d = (e as CustomEvent).detail as { giftId?: string } | undefined;
+      const d = (e as CustomEvent).detail as { giftId?: string; count?: number } | undefined;
       const g = GIFTS.find(x => x.id === d?.giftId);
-      if (g) setPlaying({ gift: g, key: Date.now() });
+      if (!g) return;
+      const n = Math.max(1, Math.min(COMBO_MAX, Math.floor(Number(d?.count) || 1)));
+      for (let i = 0; i < n; i++) queueRef.current.push(g);
+      // إذا ما في هدية شغالة الحين، ابدأ أول واحدة
+      if (!playingRef.current) startNext();
     };
     window.addEventListener('stooorna:gift-play', onPlay);
     return () => window.removeEventListener('stooorna:gift-play', onPlay);
   }, []);
+
+  // يشغّل الهدية اللي بعدها بالطابور؛ إذا خلص الطابور يقفل
+  function startNext() {
+    const next = queueRef.current.shift();
+    playingRef.current = !!next;
+    setPlaying(next ? { gift: next, key: ++playKeyRef.current } : null);
+  }
+
+  // لما تخلص الهدية: شغّل اللي بعدها (نفس الهدية مرة ثانية) لين يخلص العدد
+  function onGiftDone() { startNext(); }
+
+  useEffect(() => () => window.clearTimeout(tapTimerRef.current), []);
 
   function flashGiftMsg(msg: string) {
     setGiftMsg(msg);
     window.setTimeout(() => setGiftMsg(''), 2400);
   }
 
-  async function sendGift(gift: GiftDefinition) {
-    const bal = readBalance(uid);
-    if (bal < gift.price) {
-      setGiftsOpen(false);
-      setCoinsOpen(true);
-      flashGiftMsg('رصيدك غير كافٍ — اشحن Coins');
-      return;
+  // إرسال الهدية بعد ما يخلص النقر: يخصم السعر بعدد النقرات (كل مرة طلب خصم مثل قبل) ثم يشغّلها بنفس العدد
+  async function commitTap() {
+    const t = tapRef.current;
+    window.clearTimeout(tapTimerRef.current);
+    if (!t) return;
+    tapRef.current = null;
+    setTap(null);
+    const gift = GIFTS.find(g => g.id === t.id);
+    if (!gift) return;
+    busyRef.current = true;
+    let bal = readBalance(uid);
+    let sent = 0;
+    for (let i = 0; i < t.n; i++) {
+      if (bal < gift.price) break;
+      const res = await spendCoinsForGift(gift, hostId);
+      if (!res.ok) { flashGiftMsg(res.error || 'تعذر إرسال الهدية'); break; }
+      bal = typeof res.balance === 'number' ? res.balance : bal - gift.price;
+      writeBalance(uid, bal);
+      setBalance(bal);
+      sent++;
     }
-    const res = await spendCoinsForGift(gift, hostId);
-    if (!res.ok) { flashGiftMsg(res.error || 'تعذر إرسال الهدية'); return; }
-    const next = typeof res.balance === 'number' ? res.balance : bal - gift.price;
-    writeBalance(uid, next);
-    setBalance(next);
+    busyRef.current = false;
+    if (sent === 0) return;
     setGiftsOpen(false);
-    // تشغيل الأنميشن عندي. للبث لباقي الحضور: أرسل نفس الحدث عندهم (قناة Agora أو WebSocket).
-    window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: gift.id, fromId: uid, hostId } }));
+    // تشغيل الأنميشن عندي (بعدد المرات). للبث لباقي الحضور: أرسل نفس الحدث عندهم (قناة Agora أو WebSocket) مع count.
+    window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: gift.id, fromId: uid, hostId, count: sent } }));
+  }
+
+  // كل نقرة على الهدية تزيد العداد 1 2 3 ... وبعد ما يوقف النقر تنرسل
+  async function tapGift(gift: GiftDefinition) {
+    if (busyRef.current) return;
+    // نقر على هدية ثانية وفي هدية معلّقة: أرسل المعلّقة أول
+    if (tapRef.current && tapRef.current.id !== gift.id) await commitTap();
+    const cur = tapRef.current && tapRef.current.id === gift.id ? tapRef.current.n : 0;
+    const nextN = cur + 1;
+    const bal = readBalance(uid);
+    if (bal < gift.price * nextN) {
+      if (cur === 0) {
+        setGiftsOpen(false);
+        setCoinsOpen(true);
+        flashGiftMsg('رصيدك غير كافٍ — اشحن Coins');
+        return;
+      }
+      flashGiftMsg(`رصيدك يكفي ${cur} فقط`);
+    } else if (nextN > COMBO_MAX) {
+      flashGiftMsg(`الحد الأقصى ${COMBO_MAX} مرات`);
+    } else {
+      tapRef.current = { id: gift.id, n: nextN };
+      setTap({ id: gift.id, n: nextN });
+    }
+    window.clearTimeout(tapTimerRef.current);
+    if (tapRef.current) tapTimerRef.current = window.setTimeout(() => { void commitTap(); }, COMBO_WINDOW_MS);
   }
 
   function resetCard() { setCardNum(''); setCardExp(''); setCardCvc(''); setCardName(''); setPayError(''); }
@@ -334,14 +419,58 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
               </button>
             );
           })}
+          {/* Custom: يكتب عدد Coins اللي يبيه والسعر يطلع بالضبط */}
+          <div
+            role="button" tabIndex={0} onClick={() => setPackId(CUSTOM_ID)}
+            onKeyDown={e => { if (e.key === 'Enter') setPackId(CUSTOM_ID); }}
+            style={{
+              ...CARD, gridColumn: '1 / -1', minHeight: 60, flexDirection: 'row', justifyContent: 'space-between',
+              padding: '10px 14px', gap: 10, border: isCustom ? '1.5px solid #8b12ff' : '1.5px solid transparent',
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: 16 }}>
+              <Pencil size={18} /> Custom
+            </span>
+            {isCustom ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, direction: 'ltr' }}>
+                <CoinIcon size={20} />
+                <input
+                  autoFocus value={customText} inputMode="numeric" placeholder="Coins" aria-label="Custom coins"
+                  onClick={e => e.stopPropagation()}
+                  onChange={e => setCustomText(e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 6))}
+                  style={{
+                    width: 96, boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, textAlign: 'right',
+                    border: '1px solid rgba(255,255,255,0.18)', background: '#1c1c1c', color: '#fff',
+                    fontSize: 16, fontWeight: 800, outline: 'none',
+                  }}
+                />
+                <span style={{ minWidth: 92, textAlign: 'right', color: customValid ? '#fff' : 'rgba(255,255,255,0.4)', fontWeight: 800, fontSize: 14 }}>
+                  {customValid ? fmtUsd(pack.usd) : 'USD —'}
+                </span>
+              </span>
+            ) : (
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 700, fontSize: 12.5 }}>اكتب أي عدد تبيه</span>
+            )}
+          </div>
         </div>
-        <button type="button" onClick={() => { resetCard(); setPayOpen(true); }}
+        {isCustom ? (
+          <p style={{
+            margin: '8px 2px 0', textAlign: 'center', fontSize: 12, fontWeight: 700,
+            color: customText && !customValid ? '#f87171' : 'rgba(255,255,255,0.45)',
+          }}>
+            {fmtCoins(CUSTOM_MIN_COINS)} – {fmtCoins(CUSTOM_MAX_COINS)} Coins · 1 Coin = {fmtUsd(CUSTOM_CENTS_PER_COIN / 100)}
+          </p>
+        ) : null}
+        <button type="button" disabled={!canBuy} onClick={() => { if (!canBuy) return; resetCard(); setPayOpen(true); }}
           style={{
-            width: '100%', marginTop: 14, padding: '14px 10px', borderRadius: 14, border: 'none', cursor: 'pointer',
+            width: '100%', marginTop: 14, padding: '14px 10px', borderRadius: 14, border: 'none',
+            cursor: canBuy ? 'pointer' : 'default', opacity: canBuy ? 1 : 0.5,
             background: '#8b12ff', color: '#fff', fontWeight: 800, fontSize: 16,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>
-          Get <CoinIcon size={20} /> {fmtCoins(pack.coins)} ({fmtUsd(pack.usd)})
+          {canBuy
+            ? <>Get <CoinIcon size={20} /> {fmtCoins(pack.coins)} ({fmtUsd(pack.usd)})</>
+            : <>Enter Coins amount</>}
         </button>
       </Sheet>
 
@@ -414,21 +543,46 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
                 </div>
               );
             }
+            const count = tap && tap.id === gift.id ? tap.n : 0;
             return (
               <button key={gift.id} type="button" aria-label={`${gift.name} — ${gift.price} Coins`}
-                onClick={() => void sendGift(gift)}
-                style={{ ...CARD, padding: '8px 4px 6px', gap: 4, border: '1.5px solid rgba(255,45,85,0.35)' }}>
-                <gift.Preview size={70} />
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(255,255,255,0.8)', fontWeight: 800, fontSize: 12.5 }}>
+                onClick={() => void tapGift(gift)}
+                style={{
+                  ...CARD, position: 'relative', justifyContent: 'flex-start', padding: '8px 4px 10px', gap: 6,
+                  touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent',
+                  border: count ? '1.5px solid #8b12ff' : '1.5px solid rgba(255,45,85,0.35)',
+                }}>
+                {/* منطقة ثابتة للصورة: كل الهدايا نفس الارتفاع عشان الأسعار تكون بنفس المستوى */}
+                <span style={{ height: 86, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <gift.Preview size={70} />
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(255,255,255,0.8)', fontWeight: 800, fontSize: 12.5, lineHeight: '16px' }}>
                   <CoinIcon size={14} /> {fmtCoins(gift.price)}
                 </span>
+                <AnimatePresence>
+                  {count > 0 && (
+                    <motion.span
+                      key={count}
+                      initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0 }}
+                      transition={{ type: 'spring', stiffness: 520, damping: 22 }}
+                      style={{
+                        position: 'absolute', top: 6, right: 6, minWidth: 26, height: 26, padding: '0 6px', boxSizing: 'border-box',
+                        borderRadius: 13, background: '#8b12ff', color: '#fff', fontWeight: 900, fontSize: 15,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 2px 10px rgba(139,18,255,0.6)', pointerEvents: 'none',
+                      }}
+                    >
+                      {count}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
               </button>
             );
           })}
         </div>
       </Sheet>
 
-      {playing ? <playing.gift.Animation key={playing.key} onDone={() => setPlaying(null)} /> : null}
+      {playing ? <playing.gift.Animation key={playing.key} onDone={onGiftDone} /> : null}
 
       <AnimatePresence>
         {giftMsg ? (
