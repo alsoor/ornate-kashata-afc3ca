@@ -4,10 +4,12 @@
  */
 import type { GiftDefinition } from './types';
 import { HeartGift } from '@/components/gifts/HeartGift';
+import { WitchGift } from '@/components/gifts/WitchGift';
 
 export const GIFTS: GiftDefinition[] = [
   HeartGift,
-  // المربعات الخمسة الباقية: أضف هداياك هنا لاحقاً
+  WitchGift,
+  // المربعات الأربعة الباقية: أضف هداياك هنا لاحقاً
 ];
 
 export type { GiftDefinition };
