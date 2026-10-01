@@ -614,6 +614,15 @@ export default function LivePage() {
           hostAvatar: hostAvatar,
         });
       } catch { /* ignore */ }
+      // إشعار فوري لصفحة القصة/الرئيسية: اختفاء دائرة ومربع البث قبل إكمال leave
+      try {
+        const activeHost = hostId || myId || '';
+        if (activeHost) {
+          localStorage.removeItem(`stooorna_live_active_${activeHost}`);
+          localStorage.removeItem('stooorna_live_active_current');
+          window.dispatchEvent(new CustomEvent('stooorna:live-active', { detail: { hostId: activeHost, active: false, kind: 'voice' } }));
+        }
+      } catch { /* ignore */ }
       try {
         await fetch('/api/room/leave', {
           method: 'POST',

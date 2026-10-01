@@ -217,27 +217,50 @@ function camChannelForHost(hostId: string): string {
 
 // ── مخزن مشترك لحالة البث: دائرة الهيدر + مستطيل الرئيسية يقرؤون منه نفس القرار،
 // فيختفون مع بعض بنفس اللحظة بالضبط عند انتهاء البث (بعد مهلة تأكيد متواصلة). ──
-const LIVE_SHARED_GRACE_MS = 45_000; // شبكة أمان فقط؛ الإنهاء الفعلي السريع (٣ ثواني) يتم بدليل مؤكد من داخل القناة
+const LIVE_SHARED_GRACE_MS = 45_000; // شبكة أمان فقط؛ الإنهاء الفعلي السريع يتم بدليل مؤكد من داخل القناة أو حدث إغلاق
+/** بعد إغلاق صريح من صاحب البث: امنع أي إعادة إظهار من /api/room أو localStorage أو معاينة Agora
+ *  (المستمعون قد يبقون في القناة ثوانٍ بعد خروج الهوست فيُعاد اكتشاف البث بالخطأ). */
+const LIVE_SHARED_FORCED_MS = 120_000;
 const liveShared = {
   seen: new Map<string, { kind: 'voice' | 'camera'; at: number }>(),
   held: new Map<string, 'voice' | 'camera'>(),
   roomEmpty: new Map<string, boolean>(), // آخر فحص من السيرفر: true = فاضي ومؤكد
+  /** إنهاء صريح من صاحب البث (حدث active:false) — نمنع إعادة الإظهار من localStorage/الغرفة لفترة */
+  forcedEnd: new Map<string, number>(),
   listeners: new Set<() => void>(),
   version: 0,
   paused: false,
   timer: 0 as any,
 };
 function liveSharedEmit() { liveShared.version++; liveShared.listeners.forEach(l => l()); }
+function liveSharedIsForcedEnded(id: string): boolean {
+  const fe = liveShared.forcedEnd.get(String(id));
+  return !!(fe && Date.now() - fe < LIVE_SHARED_FORCED_MS);
+}
 function liveSharedMark(id: string, kind: 'voice' | 'camera') {
+  // لا نُعيد تفعيل بث أُنهي صراحةً (يمنع الوميض وإعادة ظهور المربع/الدائرة بعد الإغلاق)
+  if (liveSharedIsForcedEnded(id)) return;
   const prev = liveShared.held.get(id);
   liveShared.seen.set(id, { kind, at: Date.now() });
   if (prev !== kind) { liveShared.held.set(id, kind); liveSharedEmit(); }
 }
-// إنهاء صريح: نستخدمه فقط لما يتأكد فعلاً أن صاحب البث طلع من القناة (دليلين متطابقين)
-function liveSharedEnd(id: string) {
-  liveShared.seen.delete(id);
-  if (liveShared.held.delete(id)) liveSharedEmit();
+// إنهاء صريح: صاحب البث أغلق، أو تأكدنا أن القناة فاضية
+function liveSharedEnd(id: string, opts?: { forced?: boolean }) {
+  const sid = String(id);
+  if (opts?.forced) liveShared.forcedEnd.set(sid, Date.now());
+  liveShared.seen.delete(sid);
+  liveShared.roomEmpty.set(sid, true);
+  // امسح أي بقايا localStorage فوراً حتى لا يُعيد checkLocal تفعيل البث
+  if (opts?.forced && typeof localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem(`stooorna_live_active_${sid}`);
+      localStorage.removeItem(`stooorna_livecam_active_${sid}`);
+    } catch { /* ignore */ }
+  }
+  if (liveShared.held.delete(sid)) liveSharedEmit();
+  else liveSharedEmit();
 }
+
 function liveSharedIsHeld(id: string): boolean { return liveShared.held.has(id); }
 function liveSharedKind(id: string): 'voice' | 'camera' | null { return liveShared.held.get(id) ?? null; }
 // bonusMs: مهلة إضافية بعد الرجوع من صفحة البث، عشان اتصال المعاينة يلحق يثبّت أن البث لسا شغّال
@@ -283,18 +306,28 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
 
     const apply = (v: 'voice' | 'camera' | null) => {
       if (cancelled) return;
+      // إغلاق صريح من صاحب البث → لا تُعد الإظهار أبداً خلال نافذة الحماية
+      if (liveSharedIsForcedEnded(String(hostId))) {
+        if (!sticky) setKind(null);
+        return;
+      }
       if (!sticky) { setKind(v); return; }
       // وضع sticky: نسجّل الحضور فقط، والاختفاء يقرره المخزن المشترك (مع المستطيل بنفس اللحظة)
       if (v) liveSharedMark(String(hostId), v);
     };
 
     const checkLocal = (): 'voice' | 'camera' | null => {
+      if (liveSharedIsForcedEnded(String(hostId))) return null;
       if (readLocalCamLiveActive(hostId)) return 'camera';
       if (readLocalLiveActive(hostId)) return 'voice';
       return null;
     };
 
     const checkRoom = async () => {
+      if (liveSharedIsForcedEnded(String(hostId))) {
+        apply(null);
+        return;
+      }
       const local = checkLocal();
       if (local) apply(local);
       try {
@@ -331,7 +364,9 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
       if (!d || !d.hostId) return;
       if (String(d.hostId) !== String(hostId)) return;
       if (!d.active) {
-        void checkRoom();
+        // إغلاق صريح من صاحب البث → اختفاء فوري من الدائرة/المربع خلال ~٢ث
+        liveSharedEnd(String(hostId), { forced: true });
+        if (!cancelled) setKind(null);
         return;
       }
       if (d.kind === 'camera' || (e.type || '').includes('livecam')) apply('camera');
@@ -342,6 +377,12 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
 
     const onStorage = (e: StorageEvent) => {
       if (e.key === `stooorna_live_active_${hostId}` || e.key === `stooorna_livecam_active_${hostId}`) {
+        // حذف المفتاح = إغلاق
+        if (e.newValue == null || e.newValue === '') {
+          liveSharedEnd(String(hostId), { forced: true });
+          if (!cancelled) setKind(null);
+          return;
+        }
         void checkRoom();
       }
     };
@@ -18950,6 +18991,9 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
     };
     // null = البث منتهي (تأكدنا)، 'unknown' = فشل الفحص (نحتفظ بالحالة السابقة)، وإلا بث شغّال
     const probe = async (h: HomeLiveHost): Promise<{ kind: 'voice' | 'camera'; members: GlobeVoiceMember[] } | null | 'unknown'> => {
+      // إنهاء صريح حديث → لا نُظهر البث حتى لو بقي شيء في الكاش
+      const fe = liveShared.forcedEnd.get(h.id);
+      if (fe && Date.now() - fe < 2500) return null;
       const cam = await getMembers(camChannelForHost(h.id));
       if (cam && cam.length > 0) return { kind: 'camera', members: cam };
       const voice = await getMembers(liveChannelForHost(h.id));
@@ -18977,6 +19021,12 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
         for (const { h, r } of res) {
           const prevE = prevById.get(h.id);
           let hold: HomeLiveEntry | null = null;
+          // صاحب البث أغلق صراحةً → اختفاء فوري للمربع؛ لا تُعد الإضافة من بقايا الأعضاء في الغرفة
+          if (liveSharedIsForcedEnded(h.id)) {
+            liveShared.roomEmpty.set(h.id, true);
+            sinceRef.current.delete(h.id);
+            continue;
+          }
           liveShared.roomEmpty.set(h.id, r === null);
           if (r && r !== 'unknown') {
             liveSharedMark(h.id, r.kind);
@@ -19009,7 +19059,28 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       void tick();
     }, 1000);
-    const onEvt = () => { void tick(); };
+    const onEvt = (e?: Event) => {
+      try {
+        const d = e ? (e as CustomEvent).detail as { hostId?: string; active?: boolean } | undefined : undefined;
+        if (d && d.hostId && d.active === false) {
+          const hid = String(d.hostId);
+          liveSharedEnd(hid, { forced: true });
+          // اختفاء فوري للمربع من الواجهة دون انتظار دورة الفحص
+          sinceRef.current.delete(hid);
+          setEntries(prev => {
+            const next = prev.filter(x => x.id !== hid);
+            homeLiveCache.entries = next;
+            return next.length === prev.length ? prev : next;
+          });
+          const conn = connsRef.current.get(hid);
+          if (conn) {
+            connsRef.current.delete(hid);
+            void conn.stop();
+          }
+        }
+      } catch { /* ignore */ }
+      void tick();
+    };
     window.addEventListener('stooorna:live-active', onEvt);
     window.addEventListener('stooorna:livecam-active', onEvt);
     window.addEventListener('storage', onEvt);
@@ -19092,6 +19163,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
         let absentSince = 0;
         const markIfHostPresent = () => {
           if (stopped) return;
+          if (liveSharedIsForcedEnded(hostId)) return;
           const users = c.remoteUsers || [];
           const present = hostUid != null ? users.some(u => u.uid === hostUid) : users.length > 0;
           if (present) {
@@ -19100,11 +19172,13 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
             liveSharedMark(hostId, kind);
             return;
           }
-          // الإنهاء السريع (٣ ثواني): فقط إذا شفنا الهوست داخل القناة قبل، واتصالنا سليم، وهو غاب ٣ ثواني متواصلة،
-          // والسيرفر أيضاً يؤكد إن الغرفة فاضية. غير كذا البث يبقى مثبّت ولا يختفي.
+          // الإنهاء السريع (~٢ ثانية): صاحب البث غاب من قناة Agora بعد أن كان موجوداً =
+          // البث انتهى فعلياً (حتى لو بقي مستمعون في الغرفة بعد خروجه).
           if (seenHostOnce && (c as any).connectionState === 'CONNECTED') {
             if (!absentSince) absentSince = Date.now();
-            if (Date.now() - absentSince >= 3000 && liveShared.roomEmpty.get(hostId) === true) liveSharedEnd(hostId);
+            if (Date.now() - absentSince >= 2000) {
+              liveSharedEnd(hostId, { forced: true });
+            }
           }
         };
         markIfHostPresent();

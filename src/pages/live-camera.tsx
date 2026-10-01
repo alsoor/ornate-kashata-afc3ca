@@ -656,6 +656,15 @@ export default function LiveCameraPage() {
           hostAvatar: hostAvatar,
         });
       } catch { /* ignore */ }
+      // إشعار فوري لصفحة القصة/الرئيسية: اختفاء دائرة ومربع البث قبل إكمال leave
+      try {
+        const activeHost = hostId || myId || '';
+        if (activeHost) {
+          localStorage.removeItem(`stooorna_livecam_active_${activeHost}`);
+          localStorage.removeItem('stooorna_livecam_active_current');
+          window.dispatchEvent(new CustomEvent('stooorna:livecam-active', { detail: { hostId: activeHost, active: false, kind: 'camera' } }));
+        }
+      } catch { /* ignore */ }
       try {
         await fetch('/api/room/leave', {
           method: 'POST',
