@@ -661,7 +661,7 @@ app.post("/api/room/signal", (req, res) => {
 
 // ── Live gifts: بث الهدايا لكل من في البث (ذاكرة السيرفر، نفس أسلوب live-chat / room-signal) ──
 const liveGiftMem = () => {
-  const g = globalThis as typeof globalThis & { __stooornaLiveGifts?: Map<string, Array<{ at: number; id: string; giftId: string; fromId: string; toUserId: string; fromKey: string; count: number }>> };
+  const g = globalThis as typeof globalThis & { __stooornaLiveGifts?: Map<string, Array<{ at: number; id: string; giftId: string; fromId: string; toUserId: string; toName: string; toAvatar: string; fromKey: string; count: number }>> };
   if (!g.__stooornaLiveGifts) g.__stooornaLiveGifts = new Map();
   return g.__stooornaLiveGifts;
 };
@@ -700,6 +700,9 @@ app.post("/api/live-gifts", (req, res) => {
   const count = Math.max(1, Math.min(10, Math.floor(Number(body.count) || 1)));
   const fromId = String(body.fromId || "").slice(0, 80);
   const toUserId = String(body.toUserId || "").slice(0, 80);
+  const toName = String(body.toName || "").slice(0, 60);
+  const toAvatarRaw = String(body.toAvatar || "").slice(0, 600);
+  const toAvatar = /^(https?:\/\/|\/)/.test(toAvatarRaw) ? toAvatarRaw : "";
   // ممنوع يعطي نفسه هدية
   if (fromId && toUserId && fromId === toUserId) return res.status(400).json({ error: "cannot gift yourself" });
   const mem = liveGiftMem();
@@ -709,7 +712,7 @@ app.post("/api/live-gifts", (req, res) => {
   const lastAt = prev.length ? prev[prev.length - 1].at : 0;
   const at = Math.max(now, lastAt + 1);
   const list = prev.filter((e) => now - e.at < 60000);
-  list.push({ at, id: String(body.id || `lg_${at}`).slice(0, 60), giftId, fromId, toUserId, fromKey: String(body.fromKey || "").slice(0, 60), count });
+  list.push({ at, id: String(body.id || `lg_${at}`).slice(0, 60), giftId, fromId, toUserId, toName, toAvatar, fromKey: String(body.fromKey || "").slice(0, 60), count });
   mem.set(room, list.slice(-120));
   // ترتيب الداعمين: يزيد مجموع المرسل (السعر × العدد)
   const price = Math.max(0, Math.min(100000, Math.floor(Number(body.price) || 0)));

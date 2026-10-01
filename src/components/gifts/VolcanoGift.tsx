@@ -232,7 +232,8 @@ interface Smoke { x: number; y: number; vx: number; vy: number; size: number; gr
 interface Ash { x: number; y: number; vx: number; vy: number; size: number; age: number; life: number; }
 interface Streak { x: number; y: number; len: number; vx: number; a: number; w: number; ph: number; }
 interface Hot { el: Element; x: number; y: number; w: number; h: number; rad: number; heat: number; }
-interface Lift { sx: number; sy: number; sr: number; ex: number; ey: number; R: number; img: HTMLImageElement | null; letter: string; restore: () => void; done?: boolean; }
+interface Lift { sx: number; sy: number; sr: number; ex: number; ey: number; R: number; img: HTMLImageElement | null; letter: string; name: string; restore: () => void; done?: boolean; }
+interface LiftInfo { userId: string; name?: string; avatarUrl?: string | null; }
 interface Host { x: number; y: number; w: number; h: number; top: number; lift?: Lift; }
 interface Ring { x: number; y: number; born: number; dur: number; maxR: number; w: number; }
 
@@ -247,27 +248,41 @@ function findHost(W: number): Host {
   return { x: W * 0.5, y: 56, w: 48, h: 48, top: 32 };
 }
 
-// وضع الرفع: الهدية لمتحدث (مو لصاحب البث) → صورته تصعد لفوق والشبح يلبسه التاج
-function findLift(W: number, H: number): Host | null {
+// وضع الرفع: الهدية لمتحدث (مو لصاحب البث) → صورته تصعد لمنتصف البث والشبح يلبسه التاج
+// معلومات المستلم يحطها LiveCoinsDock في window.__stooornaGiftLift (تشتغل حتى لو صورته مو ظاهرة بالقائمة الجانبية)
+function getLiftInfo(): LiftInfo | null {
   try {
-    const el = document.querySelector<HTMLElement>('[data-gift-host][data-gift-lift]');
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
-    if (r.width <= 0 || r.height <= 0) return null;
-    const R = Math.max(32, Math.min(54, W * 0.13));
+    const d = (window as unknown as { __stooornaGiftLift?: LiftInfo }).__stooornaGiftLift;
+    return d && d.userId ? d : null;
+  } catch { return null; }
+}
+function findLift(W: number, H: number, pre: HTMLImageElement | null): Host | null {
+  try {
+    const info = getLiftInfo();
+    if (!info) return null;
+    const R = Math.max(40, Math.min(64, W * 0.16));
     const ex = W * 0.5;
-    const ey = Math.max(H * 0.27, R + 78);
-    const im = el.querySelector('img');
-    const letter = ((el.textContent || '').trim().charAt(0) || '?').toUpperCase();
-    const prevOp = el.style.opacity;
-    el.style.opacity = '0.12';
+    const ey = H * 0.44;                       // منتصف البث
+    let el: HTMLElement | null = null;
+    try { el = document.querySelector<HTMLElement>(`[data-gift-user="${String(info.userId).replace(/["\\]/g, '')}"]`); } catch { /* ignore */ }
+    const r = el ? el.getBoundingClientRect() : null;
+    const hasEl = !!(el && r && r.width > 0 && r.height > 0);
+    const sx = hasEl ? r!.left + r!.width / 2 : W - 52;     // نقطة البداية: مكان صورته بالقائمة، وإلا من يمين الشاشة
+    const sy = hasEl ? r!.top + r!.height / 2 : H * 0.55;
+    const sr = hasEl ? r!.width / 2 : 20;
+    const elImg = el ? el.querySelector('img') : null;
+    const useImg = pre && pre.complete && pre.naturalWidth > 0 ? pre : (elImg && elImg.complete && elImg.naturalWidth > 0 ? elImg : pre);
+    const nm = String(info.name || (el?.textContent || '') || '?').trim();
+    const prevOp = hasEl ? el!.style.opacity : '';
+    if (hasEl) el!.style.opacity = '0.12';
     return {
       x: ex, y: ey, w: R * 2, h: R * 2, top: ey - R,
       lift: {
-        sx: r.left + r.width / 2, sy: r.top + r.height / 2, sr: r.width / 2, ex, ey, R,
-        img: im && im.complete && im.naturalWidth > 0 ? im : null,
-        letter,
-        restore: () => { try { el.style.opacity = prevOp; } catch { /* ignore */ } },
+        sx, sy, sr, ex, ey, R,
+        img: useImg || null,
+        letter: (nm.charAt(0) || '?').toUpperCase(),
+        name: nm,
+        restore: () => { try { if (hasEl) el!.style.opacity = prevOp; } catch { /* ignore */ } },
       },
     };
   } catch { return null; }
@@ -294,6 +309,13 @@ function VolcanoAnimation({ onDone }: { onDone: () => void }) {
     cv.height = Math.round(H * dpr);
 
     const k = Math.max(0.75, H / 700);
+
+    // تحميل صورة المستلم مسبقاً (لو الهدية لمتحدث)
+    let liftPre: HTMLImageElement | null = null;
+    const liftInfo0 = getLiftInfo();
+    if (liftInfo0 && liftInfo0.avatarUrl) {
+      try { liftPre = new Image(); liftPre.src = String(liftInfo0.avatarUrl); } catch { liftPre = null; }
+    }
 
     // ── السبرايتات (توهج جاهز بدل بناء gradient لكل جسيمة) ──
     const FIRE = FIRE_RGB.map(rgb => makeSprite(rgb, 0.3));
@@ -1032,7 +1054,7 @@ function VolcanoAnimation({ onDone }: { onDone: () => void }) {
 
       // ═══ الشبح + التاج ═══
       if (!host && t >= GHOST_AT - 1.3) {
-        const lf = findLift(W, H);
+        const lf = findLift(W, H, liftPre);
         if (lf) host = lf;
         else if (t >= GHOST_AT - 0.3) host = findHost(W);
       }
@@ -1075,7 +1097,8 @@ function VolcanoAnimation({ onDone }: { onDone: () => void }) {
           c.save();
           c.clip();
           let drawn = false;
-          if (L.img) {
+          if (!L.img && liftPre && liftPre.complete && liftPre.naturalWidth > 0) L.img = liftPre;
+          if (L.img && L.img.complete && L.img.naturalWidth > 0) {
             try {
               const sw = L.img.naturalWidth, sh = L.img.naturalHeight, ss = Math.min(sw, sh);
               c.drawImage(L.img, (sw - ss) / 2, (sh - ss) / 2, ss, ss, ax - ar, ay - ar, ar * 2, ar * 2);
@@ -1100,6 +1123,19 @@ function VolcanoAnimation({ onDone }: { onDone: () => void }) {
           c.shadowBlur = 14 * e2;
           c.stroke();
           c.restore();
+          // اسم المستلم تحت الصورة
+          if (e2 > 0.5) {
+            c.save();
+            c.globalAlpha = clamp01((e2 - 0.5) * 2) * endFade;
+            c.font = `800 ${Math.round(Math.max(12, ar * 0.3))}px sans-serif`;
+            c.textAlign = 'center';
+            c.textBaseline = 'top';
+            c.shadowColor = 'rgba(0,0,0,0.9)';
+            c.shadowBlur = 6;
+            c.fillStyle = '#fff4d6';
+            c.fillText(L.name.length > 18 ? L.name.slice(0, 17) + '…' : L.name, ax, ay + ar + 8 * k);
+            c.restore();
+          }
           c.globalAlpha = 1;
         }
       }
