@@ -4,14 +4,15 @@
  */
 import type { GiftDefinition } from './types';
 import { HeartGift } from '../components/gifts/HeartGift';
-import { WitchGift } from '../components/gifts/WitchGift';
+// import { WitchGift } from '../components/gifts/WitchGift'; // هدية الساحرة: استُبدلت بالبركان (الملف باقي، شيل // ورجّعها بالمصفوفة لو تبي)
 import { StormGift } from '../components/gifts/StormGift';
+import { VolcanoGift } from '../components/gifts/VolcanoGift';
 
 export const GIFTS: GiftDefinition[] = [
   HeartGift,
-  WitchGift,
+  VolcanoGift, // مكان الساحرة
   StormGift,
-  // remaining two squares: add more gifts here later
+  // remaining three squares: add more gifts here later
 ];
 
 export type { GiftDefinition };
