@@ -53,7 +53,6 @@ const STRIKES: Strike[] = [
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const smooth = (x: number) => { const u = clamp01(x); return u * u * (3 - 2 * u); };
 const easeOut = (x: number) => 1 - Math.pow(1 - clamp01(x), 3);
-const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
 
 // ── Styles (cloud blobs, preview animation) ─────────────────────────────────
 const CSS = `
@@ -269,64 +268,6 @@ function StormAnimation({ onDone }: { onDone: () => void }) {
     // lightning bolts (geometry made once per strike, when it first shows)
     const bolts: (Bolt | null)[] = STRIKES.map(() => null);
 
-    // ── رفع صورة المستخدم (لما صاحب البث يهدي المطر لمتحدث) ──
-    // نفس آلية البركان: __stooornaGiftLift + data-gift-user
-    interface LiftInfo { userId: string; name?: string; avatarUrl?: string | null; }
-    interface LiftState {
-      sx: number; sy: number; sr: number; ex: number; ey: number; R: number;
-      img: HTMLImageElement | null; letter: string; name: string;
-      restore: () => void; done?: boolean;
-    }
-    function getLiftInfo(): LiftInfo | null {
-      try {
-        const d = (window as unknown as { __stooornaGiftLift?: LiftInfo }).__stooornaGiftLift;
-        return d && d.userId ? d : null;
-      } catch { return null; }
-    }
-    let lift: LiftState | null = null;
-    let liftPre: HTMLImageElement | null = null;
-    const liftInfo0 = getLiftInfo();
-    if (liftInfo0?.avatarUrl) {
-      try {
-        liftPre = new Image();
-        liftPre.crossOrigin = 'anonymous';
-        liftPre.src = String(liftInfo0.avatarUrl);
-      } catch { liftPre = null; }
-    }
-    const initLift = () => {
-      if (lift || !liftInfo0) return;
-      try {
-        const info = liftInfo0;
-        const R = Math.max(40, Math.min(64, W * 0.16));
-        const ex = W * 0.5;
-        const ey = H * 0.42;
-        let el: HTMLElement | null = null;
-        try { el = document.querySelector<HTMLElement>(`[data-gift-user="${String(info.userId).replace(/["\\]/g, '')}"]`); } catch { /* ignore */ }
-        const r = el ? el.getBoundingClientRect() : null;
-        const hasEl = !!(el && r && r.width > 0 && r.height > 0);
-        const sx = hasEl ? r!.left + r!.width / 2 : W - 52;
-        const sy = hasEl ? r!.top + r!.height / 2 : H * 0.55;
-        const sr = hasEl ? r!.width / 2 : 20;
-        const elImg = el ? el.querySelector('img') : null;
-        const useImg = liftPre && liftPre.complete && liftPre.naturalWidth > 0 ? liftPre : (elImg && elImg.complete && elImg.naturalWidth > 0 ? elImg : liftPre);
-        const nm = String(info.name || (el?.textContent || '') || '?').trim();
-        const prevOp = hasEl ? el!.style.opacity : '';
-        if (hasEl) el!.style.opacity = '0.12';
-        lift = {
-          sx, sy, sr, ex, ey, R,
-          img: useImg || null,
-          letter: (nm.charAt(0) || '?').toUpperCase(),
-          name: nm,
-          restore: () => { try { if (hasEl) el!.style.opacity = prevOp; } catch { /* ignore */ } },
-        };
-      } catch { /* ignore */ }
-    };
-    // ضربات برق على إطار الصورة المرفوعة (مرتان)
-    const LIFT_STRIKES = [
-      { t: 4.2, dur: 0.28 },
-      { t: 6.8, dur: 0.32 },
-    ];
-
     // icons and buttons of the live room: the rain lands and splashes on them
     let rects: UiRect[] = [];
     const collectRects = () => {
@@ -440,146 +381,6 @@ function StormAnimation({ onDone }: { onDone: () => void }) {
         if (f > 0.15) drawBolt(bolts[i] as Bolt, Math.min(1, f * 1.15), st.big);
       }
 
-      // ── صورة المستخدم المرفوعة + ضربات برق على إطارها ──
-      if (liftInfo0) {
-        if (!lift) initLift();
-        if (lift) {
-          const L = lift;
-          const up = easeOut(clamp01((t - 1.2) / 1.6));
-          const down = smooth(clamp01((t - (TOTAL_S - 2.2)) / 1.4));
-          const e2 = up * (1 - down);
-          if (down >= 1 && !L.done) { L.done = true; L.restore(); }
-          if (e2 > 0.008) {
-            const ax = lerp(L.sx, L.ex, e2);
-            const ay = lerp(L.sy, L.ey, e2) + Math.sin(t * 2.5) * 3 * e2;
-            const ar = lerp(L.sr, L.R, e2);
-
-            // توهج خفيف
-            c.save();
-            c.globalCompositeOperation = 'lighter';
-            c.globalAlpha = 0.3 * e2;
-            const gl = c.createRadialGradient(ax, ay, 0, ax, ay, ar * 2.4);
-            gl.addColorStop(0, 'rgba(180,200,255,0.55)');
-            gl.addColorStop(1, 'transparent');
-            c.fillStyle = gl;
-            c.beginPath();
-            c.arc(ax, ay, ar * 2.4, 0, Math.PI * 2);
-            c.fill();
-            c.restore();
-
-            // الصورة
-            c.save();
-            c.globalAlpha = Math.min(1, e2 * 3);
-            c.beginPath();
-            c.arc(ax, ay, ar, 0, Math.PI * 2);
-            c.closePath();
-            c.save();
-            c.clip();
-            let drawn = false;
-            if (!L.img && liftPre && liftPre.complete && liftPre.naturalWidth > 0) L.img = liftPre;
-            if (L.img && L.img.complete && L.img.naturalWidth > 0) {
-              try {
-                const sw = L.img.naturalWidth, sh = L.img.naturalHeight, ss = Math.min(sw, sh);
-                c.drawImage(L.img, (sw - ss) / 2, (sh - ss) / 2, ss, ss, ax - ar, ay - ar, ar * 2, ar * 2);
-                drawn = true;
-              } catch { /* ignore */ }
-            }
-            if (!drawn) {
-              c.fillStyle = '#0a1520';
-              c.fillRect(ax - ar, ay - ar, ar * 2, ar * 2);
-              c.fillStyle = '#8ab4ff';
-              c.font = `800 ${Math.round(ar)}px sans-serif`;
-              c.textAlign = 'center';
-              c.textBaseline = 'middle';
-              c.fillText(L.letter, ax, ay + ar * 0.04);
-            }
-            c.restore();
-
-            // إطار عادي
-            c.beginPath();
-            c.arc(ax, ay, ar, 0, Math.PI * 2);
-            c.lineWidth = Math.max(2.5, ar * 0.08);
-            c.strokeStyle = 'rgba(180,200,255,0.9)';
-            c.shadowColor = 'rgba(120,160,255,0.7)';
-            c.shadowBlur = 10 * e2;
-            c.stroke();
-            c.restore();
-
-            // اسم
-            if (e2 > 0.45) {
-              c.save();
-              c.globalAlpha = Math.min(1, (e2 - 0.45) * 2);
-              c.font = `800 ${Math.round(Math.max(12, ar * 0.28))}px sans-serif`;
-              c.textAlign = 'center';
-              c.textBaseline = 'top';
-              c.shadowColor = 'rgba(0,0,0,0.9)';
-              c.shadowBlur = 6;
-              c.fillStyle = '#e0ecff';
-              c.fillText(L.name.length > 18 ? L.name.slice(0, 17) + '…' : L.name, ax, ay + ar + 8);
-              c.restore();
-            }
-
-            // ضربات برق على الإطار (مرتان) — وميض قوي على الإطار
-            for (const ls of LIFT_STRIKES) {
-              const age = t - ls.t;
-              if (age < 0 || age > ls.dur) continue;
-              const flash = age < 0.06 ? age / 0.06 : (age < 0.12 ? 1 : 1 - (age - 0.12) / (ls.dur - 0.12));
-              if (flash <= 0.01) continue;
-              // وميض السماء حول الصورة
-              c.save();
-              c.globalCompositeOperation = 'lighter';
-              c.globalAlpha = flash * 0.85;
-              const boltG = c.createRadialGradient(ax, ay, 0, ax, ay, ar * 3.5);
-              boltG.addColorStop(0, 'rgba(255,255,255,0.95)');
-              boltG.addColorStop(0.35, 'rgba(180,210,255,0.55)');
-              boltG.addColorStop(1, 'transparent');
-              c.fillStyle = boltG;
-              c.beginPath();
-              c.arc(ax, ay, ar * 3.5, 0, Math.PI * 2);
-              c.fill();
-              c.restore();
-
-              // إطار متوهج بالبرق
-              c.save();
-              c.globalAlpha = flash;
-              c.beginPath();
-              c.arc(ax, ay, ar, 0, Math.PI * 2);
-              c.lineWidth = Math.max(4, ar * 0.14);
-              c.strokeStyle = 'rgba(255,255,255,1)';
-              c.shadowColor = 'rgba(160,200,255,1)';
-              c.shadowBlur = 28;
-              c.stroke();
-              // حلقة ثانية
-              c.beginPath();
-              c.arc(ax, ay, ar + 6, 0, Math.PI * 2);
-              c.lineWidth = 2;
-              c.strokeStyle = `rgba(200,220,255,${0.7 * flash})`;
-              c.shadowBlur = 16;
-              c.stroke();
-              c.restore();
-
-              // شرارات برق صغيرة حول الإطار
-              c.save();
-              c.globalAlpha = flash * 0.9;
-              c.strokeStyle = '#ffffff';
-              c.lineWidth = 1.8;
-              c.lineCap = 'round';
-              for (let k = 0; k < 6; k++) {
-                const ang = (k / 6) * Math.PI * 2 + t * 3;
-                const r0 = ar + 4;
-                const r1 = ar + 14 + Math.random() * 10;
-                c.beginPath();
-                c.moveTo(ax + Math.cos(ang) * r0, ay + Math.sin(ang) * r0);
-                c.lineTo(ax + Math.cos(ang + 0.15) * r1, ay + Math.sin(ang + 0.15) * r1);
-                c.stroke();
-              }
-              c.restore();
-            }
-            c.globalAlpha = 1;
-          }
-        }
-      }
-
       // rain
       const rainI = smooth((t - RAIN_FROM) / (RAIN_FULL - RAIN_FROM)) * clamp01((TOTAL_S - 0.4 - t) / RAIN_FADE_S);
       spawnAcc += rainI * W * RAIN_DENSITY * dt;
@@ -650,7 +451,6 @@ function StormAnimation({ onDone }: { onDone: () => void }) {
       window.clearInterval(rectTimer);
       window.removeEventListener('resize', resize);
       stopSound();
-      if (lift && !lift.done) lift.restore();
     };
   }, []);
 

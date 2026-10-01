@@ -1341,6 +1341,44 @@ export async function pushCompanyStatusToServer(co: CompanyRegistration, status:
 }
 
 
+/** رقم جوال → بريد اصطناعي لـ better-auth (تسجيل/دخول بالموبايل) */
+export function phoneDigitsOnly(raw: string): string {
+  return String(raw || '').replace(/\D/g, '');
+}
+export function isPhoneIdentifier(raw: string): boolean {
+  const t = String(raw || '').trim();
+  if (!t || t.includes('@')) return false;
+  const d = phoneDigitsOnly(t);
+  return d.length >= 8 && d.length <= 15;
+}
+export function phoneToAuthEmail(raw: string): string {
+  const d = phoneDigitsOnly(raw);
+  return `${d}@phone.stooorna.local`;
+}
+/** يحفظ ربط رقم الجوال بالحساب محلياً (للاسترجاع عند الدخول) */
+export function rememberPhoneAuth(phone: string, email: string) {
+  try {
+    const d = phoneDigitsOnly(phone);
+    if (!d) return;
+    localStorage.setItem(`stooorna_phone_auth_${d}`, email.toLowerCase());
+    localStorage.setItem(`stooorna_email_phone_${email.toLowerCase()}`, d);
+  } catch { /* */ }
+}
+export function resolveAuthEmailFromIdentifier(raw: string): string | null {
+  const t = String(raw || '').trim().replace(/^@/, '');
+  if (!t) return null;
+  if (t.includes('@')) return t.toLowerCase();
+  if (isPhoneIdentifier(t)) {
+    const d = phoneDigitsOnly(t);
+    try {
+      const mapped = localStorage.getItem(`stooorna_phone_auth_${d}`);
+      if (mapped) return mapped;
+    } catch { /* */ }
+    return phoneToAuthEmail(t);
+  }
+  return null;
+}
+
 /** يقبل الإيميل فقط — لا تحويل من يوزرنيم */
 /** After Approve: create the auth user so the company can sign in immediately. */
 export async function provisionCompanyAuthAccount(co: CompanyRegistration): Promise<boolean> {
@@ -4040,12 +4078,16 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
       setError(L.enterEmailPw);
       return;
     }
-    // الدخول والتسجيل بالإيميل فقط
-    if (!rawId.includes('@')) {
-      setError(authLang === 'en' ? 'Enter a valid email address' : 'أدخل بريداً إلكترونياً صالحاً');
+    // الدخول والتسجيل: بريد إلكتروني أو رقم موبايل
+    const resolved = resolveAuthEmailFromIdentifier(rawId);
+    if (!resolved) {
+      setError(authLang === 'en'
+        ? 'Enter a valid email or mobile number'
+        : 'أدخل بريداً إلكترونياً أو رقم موبايل صالحاً');
       return;
     }
-    const em = rawId.toLowerCase();
+    const em = resolved;
+    const usedPhone = isPhoneIdentifier(rawId);
     if (!em || !password) {
       setError(L.enterEmailPw);
       return;
@@ -4328,12 +4370,15 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           }
         }
 
-        // ── دخول أفراد عادي ──
+        // ── دخول أفراد عادي (بريد أو موبايل) ──
         const res = await signIn.email({ email: em, password });
         if ((res as { error?: { message?: string } })?.error) {
           setError((res as { error?: { message?: string } }).error?.message || 'فشل تسجيل الدخول');
         } else if (accountKind === 'personal') {
           try { setSessionAccountKind('personal'); } catch { /* */ }
+          if (usedPhone) {
+            try { rememberPhoneAuth(rawId, em); } catch { /* */ }
+          }
           // تحقق إضافي من السيرفر: إن كان الحساب شركة أخرج وأظهر تنبيهاً
           try {
             const me = await fetch('/api/users/me', { credentials: 'include' });
@@ -4377,6 +4422,9 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         } as any);
         if (!(res as { error?: { message?: string } })?.error) {
           try { setSessionAccountKind('personal'); } catch { /* */ }
+          if (usedPhone) {
+            try { rememberPhoneAuth(rawId, em); } catch { /* */ }
+          }
         }
         if ((res as { error?: { message?: string } })?.error) {
           const msg = (res as { error?: { message?: string } }).error?.message || 'فشل إنشاء الحساب';
@@ -4391,6 +4439,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           try {
             localStorage.setItem('stooorna_pending_username', uname);
             localStorage.setItem(`stooorna_username_${em}`, uname);
+            if (usedPhone) rememberPhoneAuth(rawId, em);
           } catch { /* ignore */ }
           try {
             await signIn.email({ email: em, password });
@@ -4962,12 +5011,28 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           </>
         )}
 
-        {/* Email */}
+        {/* Email or mobile */}
         <div style={{ position: 'relative' }}>
           <Mail size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          <input type="email" autoComplete="email" placeholder={L.email} value={email} onChange={e => setEmail(e.target.value)} required
-            style={fieldCss()} dir="ltr" />
+          <input
+            type="text"
+            inputMode="email"
+            autoComplete="username"
+            placeholder={authLang === 'en' ? 'Email or mobile number' : 'البريد الإلكتروني أو رقم الموبايل'}
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+            style={fieldCss()}
+            dir="ltr"
+          />
         </div>
+        {isRegister && !isCompany && (
+          <p style={{ margin: '-8px 0 0', fontSize: 11, color: T.textDim, textAlign: 'center' }}>
+            {authLang === 'en'
+              ? 'Create account with email or mobile · sign in the same way'
+              : 'إنشاء الحساب بالبريد أو الموبايل · وتسجيل الدخول بنفس الطريقة'}
+          </p>
+        )}
 
         {/* Confirm email — company register only */}
         {isRegister && isCompany && (

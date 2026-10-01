@@ -1744,9 +1744,11 @@ export default function LivePage() {
           >
             <AnimatePresence initial={false}>
               {members.filter(m => {
+                  // صاحب البث: لا يظهر في الشريط الجانبي عند التحدث — فقط الإطار الأخضر على أيقونته العلوية
+                  if (m.isHost) return false;
                   const talking = speakingUids.has(m.uid) && !(m.isMe && (micFrozenByHost || !micOn));
                   const micActive = m.isMe ? (micOn && !micFrozenByHost) : !frozenUids.has(m.uid);
-                  // Side rail: only active speakers (not silent viewers)
+                  // Side rail: only active speakers (not silent viewers) — غير صاحب البث
                   return talking || (m.isMe && micActive && speakingUids.has(m.uid));
                 }).map(m => {
                                 // Green only while speaking, yellow when silent
@@ -2076,7 +2078,7 @@ export default function LivePage() {
       )}
 
 
-      {/* All viewers / members — opens from top Users icon */}
+      {/* All viewers / members — opens from TOP (near viewers icon) */}
       {membersSheetOpen && (
         <div
           onClick={() => setMembersSheetOpen(false)}
@@ -2086,7 +2088,7 @@ export default function LivePage() {
             zIndex: 55,
             background: 'rgba(0,0,0,0.5)',
             display: 'flex',
-            alignItems: 'flex-end',
+            alignItems: 'flex-start',
           }}
         >
           <div
@@ -2094,12 +2096,15 @@ export default function LivePage() {
             style={{
               width: '100%',
               maxHeight: '70vh',
+              marginTop: 'max(env(safe-area-inset-top, 0px), 8px)',
               background: 'rgba(6,16,18,0.98)',
-              borderRadius: '18px 18px 0 0',
+              borderRadius: '0 0 18px 18px',
               border: '1px solid rgba(0,188,212,0.25)',
+              borderTop: 'none',
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
             }}
           >
             <div style={{
