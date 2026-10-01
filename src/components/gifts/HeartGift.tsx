@@ -17,8 +17,8 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import type { GiftDefinition } from '@/lib/gifts/types';
-import { getAudioCtx, noiseBuffer } from '@/lib/gifts/audio';
+import type { GiftDefinition } from '../../lib/types';
+import { getAudioCtx, noiseBuffer } from '../../lib/audio';
 
 // ── إعدادات الهدية ──────────────────────────────────────────────────────
 const PRICE = 25;

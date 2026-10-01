@@ -6,7 +6,7 @@
  * - Animation: ساحرة تدخل وتمشي على بوكس الرسائل (مع صوت الحذاء مع كل خطوة)، تتوقف وتنظر للأعلى لصاحب البث،
  *              ترفع يدها وتبوسه (صوت بوسة ناعم)، ثم تخرج من فمها بوسات كثيرة تتناثر في البث وتسقط وتختفي.
  *
- * ملف مستقل: الأصوات في lib/gifts/witchSounds.ts. غيّر الأرقام تحت (السعر/المدد/التوقيتات/عدد البوسات).
+ * ملف مستقل: الأصوات في src/lib/witchSounds.ts. غيّر الأرقام تحت (السعر/المدد/التوقيتات/عدد البوسات).
  *
  * ربط الأنميشن بالواجهة (اختياري — يعمل تلقائياً بدونها):
  *   data-gift-walk : ضعه على بوكس الرسائل لو تبي الساحرة تمشي عليه بالتحديد.
@@ -16,8 +16,8 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import type { GiftDefinition } from '@/lib/gifts/types';
-import { playWitchSound } from '@/lib/gifts/witchSounds';
+import type { GiftDefinition } from '../../lib/types';
+import { playWitchSound } from '../../lib/witchSounds';
 
 // ── إعدادات الهدية ──────────────────────────────────────────────────────
 const PRICE = 250;

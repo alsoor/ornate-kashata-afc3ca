@@ -1,6 +1,6 @@
 /**
  * أصوات هدية الساحرة (Web Audio — بدون ملفات صوت).
- * المسار: lib/gifts/witchSounds.ts
+ * المسار: src/lib/witchSounds.ts (بجانب audio.ts)
  *
  *  - footstep : صوت حذاء/كعب وهي تمشي على بوكس الرسائل
  *  - smooch   : صوت بوسة ناعمة (شفط خفيف + فرقعة + نَفَس)
