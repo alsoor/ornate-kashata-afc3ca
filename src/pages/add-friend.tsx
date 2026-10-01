@@ -312,8 +312,15 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
         return;
       }
       if (!sticky) { setKind(v); return; }
-      // وضع sticky: نسجّل الحضور فقط، والاختفاء يقرره المخزن المشترك (مع المستطيل بنفس اللحظة)
+      // وضع sticky: نسجّل الحضور فقط؛ عند التأكد من الإغلاق ننهي المخزن المشترك فوراً
       if (v) liveSharedMark(String(hostId), v);
+      else {
+        // غرفة فارغة مؤكدة وكان البث ظاهراً → اختفاء فوري (forced يمنع الوميض من بقايا الأعضاء)
+        if (liveSharedIsHeld(String(hostId))) {
+          liveSharedEnd(String(hostId), { forced: true });
+        }
+        if (!cancelled) setKind(null);
+      }
     };
 
     const checkLocal = (): 'voice' | 'camera' | null => {
@@ -323,41 +330,78 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
       return null;
     };
 
+    /** هل صاحب البث ضمن أعضاء الغرفة؟ إن وُجد أعضاء بدونه فالبث منتهٍ عملياً. */
+    const hostInMembers = (members: unknown[] | undefined): boolean => {
+      if (!Array.isArray(members) || !hostId) return false;
+      const hid = String(hostId);
+      return members.some((m: any) => {
+        const uid = String(m?.userId ?? m?.id ?? m?.uid ?? '');
+        return uid === hid;
+      });
+    };
+
     const checkRoom = async () => {
       if (liveSharedIsForcedEnded(String(hostId))) {
         apply(null);
         return;
       }
-      const local = checkLocal();
-      if (local) apply(local);
+      let camMembers: unknown[] | null = null;
+      let voiceMembers: unknown[] | null = null;
+      let camOk = false;
+      let voiceOk = false;
       try {
         const rCam = await fetch(`/api/room?id=${encodeURIComponent(camChannel)}`, { credentials: 'include' });
         if (rCam.ok) {
+          camOk = true;
           const data = await rCam.json() as { members?: unknown[] };
-          const n = Array.isArray(data.members) ? data.members.length : 0;
-          if (n > 0) {
+          camMembers = Array.isArray(data.members) ? data.members : [];
+          if (camMembers.length > 0 && hostInMembers(camMembers)) {
             apply('camera');
+            return;
+          }
+          // أعضاء بدون صاحب البث = البث أُغلق (المستمعون باقون فقط)
+          if (camMembers.length > 0 && !hostInMembers(camMembers) && liveSharedIsHeld(String(hostId))) {
+            apply(null);
             return;
           }
         }
       } catch { /* ignore */ }
       try {
         const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
-        if (!r.ok) {
-          apply(checkLocal());
-          return;
+        if (r.ok) {
+          voiceOk = true;
+          const data = await r.json() as { members?: unknown[] };
+          voiceMembers = Array.isArray(data.members) ? data.members : [];
+          if (voiceMembers.length > 0 && hostInMembers(voiceMembers)) {
+            apply('voice');
+            return;
+          }
+          if (voiceMembers.length > 0 && !hostInMembers(voiceMembers) && liveSharedIsHeld(String(hostId))) {
+            apply(null);
+            return;
+          }
         }
-        const data = await r.json() as { members?: unknown[] };
-        const n = Array.isArray(data.members) ? data.members.length : 0;
-        if (n > 0) apply('voice');
-        else apply(checkLocal());
-      } catch {
+      } catch { /* ignore */ }
+
+      const local = checkLocal();
+      if (local) {
+        apply(local);
+        return;
+      }
+      // تأكدنا أن الغرفتين فارغتين (استجابة ناجحة + 0 أعضاء) → إنهاء فوري
+      if (camOk && voiceOk && (camMembers?.length ?? 0) === 0 && (voiceMembers?.length ?? 0) === 0) {
+        apply(null);
+        return;
+      }
+      // فشل أحد الفحوصات: لا نُنهي ولا نُفعّل — نترك الحالة السابقة
+      if (!camOk && !voiceOk) {
         apply(checkLocal());
       }
     };
 
     checkRoom();
-    const interval = window.setInterval(checkRoom, sticky ? 1000 : 2500);
+    // تحديث حالة البث كل ثانية — خفيف: فقط فحص /api/room، بدون إعادة تحميل الصفحة
+    const interval = window.setInterval(checkRoom, 1000);
 
     const onEvt = (e: Event) => {
       const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean; kind?: string } | undefined;
@@ -18990,17 +19034,25 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
       } catch { return null; }
     };
     // null = البث منتهي (تأكدنا)، 'unknown' = فشل الفحص (نحتفظ بالحالة السابقة)، وإلا بث شغّال
+    const hostInList = (members: GlobeVoiceMember[], hostId: string) => {
+      const hid = String(hostId);
+      return members.some(m => String(m.userId || '') === hid);
+    };
     const probe = async (h: HomeLiveHost): Promise<{ kind: 'voice' | 'camera'; members: GlobeVoiceMember[] } | null | 'unknown'> => {
-      // إنهاء صريح حديث → لا نُظهر البث حتى لو بقي شيء في الكاش
-      const fe = liveShared.forcedEnd.get(h.id);
-      if (fe && Date.now() - fe < 2500) return null;
+      // إنهاء صريح → لا نُظهر البث حتى لو بقي شيء في الكاش/الغرفة
+      if (liveSharedIsForcedEnded(h.id)) return null;
       const cam = await getMembers(camChannelForHost(h.id));
-      if (cam && cam.length > 0) return { kind: 'camera', members: cam };
+      // صاحب البث موجود في غرفة الكاميرا = بث مرئي شغّال
+      if (cam && cam.length > 0 && hostInList(cam, h.id)) return { kind: 'camera', members: cam };
+      // أعضاء بدون صاحب البث = البث أُغلق
+      if (cam && cam.length > 0 && !hostInList(cam, h.id)) return null;
       const voice = await getMembers(liveChannelForHost(h.id));
-      if (voice && voice.length > 0) return { kind: 'voice', members: voice };
+      if (voice && voice.length > 0 && hostInList(voice, h.id)) return { kind: 'voice', members: voice };
+      if (voice && voice.length > 0 && !hostInList(voice, h.id)) return null;
       if (readLocalCamLiveActive(h.id)) return { kind: 'camera', members: [] };
       if (readLocalLiveActive(h.id)) return { kind: 'voice', members: [] };
       if (cam === null || voice === null) return 'unknown';
+      // غرفتان فارغتان مؤكدتان = البث منتهٍ
       return null;
     };
     const tick = async () => {
@@ -19027,13 +19079,27 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
             sinceRef.current.delete(h.id);
             continue;
           }
-          liveShared.roomEmpty.set(h.id, r === null);
+          // غرفة فارغة مؤكدة أو صاحب البث غادر → إنهاء فوري للمربع والدائرة
+          if (r === null) {
+            if (liveSharedIsHeld(h.id) || prevE) {
+              liveSharedEnd(h.id, { forced: true });
+            }
+            liveShared.roomEmpty.set(h.id, true);
+            sinceRef.current.delete(h.id);
+            const conn = connsRef.current.get(h.id);
+            if (conn) {
+              connsRef.current.delete(h.id);
+              void conn.stop();
+            }
+            continue;
+          }
+          liveShared.roomEmpty.set(h.id, false);
           if (r && r !== 'unknown') {
             liveSharedMark(h.id, r.kind);
             if (!sinceRef.current.has(h.id)) sinceRef.current.set(h.id, now);
             hold = { ...h, kind: r.kind, members: r.members, since: sinceRef.current.get(h.id)! };
           } else if (prevE && liveSharedIsHeld(h.id)) {
-            // غياب/فشل فحص: نُبقي البطاقة، والمخزن المشترك هو اللي يقرر متى ينتهي البث
+            // فشل فحص مؤقت (unknown): نُبقي البطاقة حتى يتأكد الفحص التالي
             hold = prevE;
           }
           if (!hold) continue;
