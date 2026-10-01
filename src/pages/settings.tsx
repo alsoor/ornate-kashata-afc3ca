@@ -1367,15 +1367,8 @@ export function rememberPhoneAuth(phone: string, email: string) {
 export function resolveAuthEmailFromIdentifier(raw: string): string | null {
   const t = String(raw || '').trim().replace(/^@/, '');
   if (!t) return null;
-  if (t.includes('@')) return t.toLowerCase();
-  if (isPhoneIdentifier(t)) {
-    const d = phoneDigitsOnly(t);
-    try {
-      const mapped = localStorage.getItem(`stooorna_phone_auth_${d}`);
-      if (mapped) return mapped;
-    } catch { /* */ }
-    return phoneToAuthEmail(t);
-  }
+  // Email only — mobile login/signup disabled
+  if (t.includes('@') && !isPhoneIdentifier(t)) return t.toLowerCase();
   return null;
 }
 
@@ -4078,16 +4071,22 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
       setError(L.enterEmailPw);
       return;
     }
-    // الدخول والتسجيل: بريد إلكتروني أو رقم موبايل
-    const resolved = resolveAuthEmailFromIdentifier(rawId);
-    if (!resolved) {
+    // الدخول والتسجيل: البريد الإلكتروني فقط — لا موبايل
+    if (!rawId.includes('@') || isPhoneIdentifier(rawId)) {
       setError(authLang === 'en'
-        ? 'Enter a valid email or mobile number'
-        : 'أدخل بريداً إلكترونياً أو رقم موبايل صالحاً');
+        ? 'Enter a valid email address'
+        : 'أدخل بريداً إلكترونياً صالحاً');
+      return;
+    }
+    const resolved = resolveAuthEmailFromIdentifier(rawId);
+    if (!resolved || !resolved.includes('@') || isPhoneIdentifier(rawId)) {
+      setError(authLang === 'en'
+        ? 'Enter a valid email address'
+        : 'أدخل بريداً إلكترونياً صالحاً');
       return;
     }
     const em = resolved;
-    const usedPhone = isPhoneIdentifier(rawId);
+    const usedPhone = false; // mobile login/signup disabled
     if (!em || !password) {
       setError(L.enterEmailPw);
       return;
@@ -5011,14 +5010,14 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           </>
         )}
 
-        {/* Email or mobile */}
+        {/* Email only — no mobile login/signup */}
         <div style={{ position: 'relative' }}>
           <Mail size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
           <input
-            type="text"
+            type="email"
             inputMode="email"
-            autoComplete="username"
-            placeholder={authLang === 'en' ? 'Email or mobile number' : 'البريد الإلكتروني أو رقم الموبايل'}
+            autoComplete="email"
+            placeholder={authLang === 'en' ? 'Email' : 'البريد الإلكتروني'}
             value={email}
             onChange={e => setEmail(e.target.value)}
             required
@@ -5029,8 +5028,8 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         {isRegister && !isCompany && (
           <p style={{ margin: '-8px 0 0', fontSize: 11, color: T.textDim, textAlign: 'center' }}>
             {authLang === 'en'
-              ? 'Create account with email or mobile · sign in the same way'
-              : 'إنشاء الحساب بالبريد أو الموبايل · وتسجيل الدخول بنفس الطريقة'}
+              ? 'Create account with email · sign in the same way'
+              : 'إنشاء الحساب بالبريد الإلكتروني · وتسجيل الدخول بنفس الطريقة'}
           </p>
         )}
 
