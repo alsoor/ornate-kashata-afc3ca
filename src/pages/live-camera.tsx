@@ -61,7 +61,7 @@ import {
 } from '@/lib/liveRoomStage';
 import { getVipMaxSpeakers, isVip } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
-import { LiveCoinsDock } from '@/components/LiveCoinsDock';
+import { LiveCoinsDock, SupportCrown, useSupportLeaders } from '@/components/LiveCoinsDock';
 import { VipAvatarFrame, VipBadge } from '@/components/VipBadge';
 
 const AGORA_APP_ID = '149ef04e839c4132a08efb49d717c436';
@@ -1589,15 +1589,37 @@ export default function LiveCameraPage() {
   }, [joined, channelName, myId, applyIncomingSignal]);
 
   const [speakerMenu, setSpeakerMenu] = useState<Member | null>(null);
+  const supportLeaders = useSupportLeaders();
+
+  // من معه المايك (صاحب البث أعطاه) — فقط هؤلاء ينعطون دعم من المشاهدين/صاحب البث
+  const isMicHolder = (m: Member) =>
+    !!m.userId && !m.isHost && !m.isMe && (speakerUidsRef.current.has(m.uid) || speakingUids.has(m.uid));
+
+  // نرسل للـ Dock قائمة من معهم المايك (عشان يمنع أي دعم لغيرهم)
+  useEffect(() => {
+    const publish = () => {
+      const ids = members.filter(m => !!m.userId && !m.isHost && (speakerUidsRef.current.has(m.uid) || speakingUids.has(m.uid))).map(m => String(m.userId));
+      window.dispatchEvent(new CustomEvent('stooorna:live-speakers', { detail: { userIds: ids } }));
+    };
+    publish();
+    const iv = window.setInterval(publish, 2000);
+    return () => window.clearInterval(iv);
+  }, [members, speakingUids, frozenUids]);
+
   const onMemberTap = (m: Member) => {
     if (m.isMe) return;
-    // Host: متحدث (ياخذ المايك) → قائمة (هدية / تجميد). غير المتحدث → تجميد مباشرة مثل قبل
+    // صاحب البث: متحدث (ياخذ المايك) → قائمة (دعم / تجميد). غير المتحدث → تجميد مباشرة مثل قبل
     if (amHost) {
-      if (m.userId && m.userId !== myId && (speakerUidsRef.current.has(m.uid) || speakingUids.has(m.uid))) {
+      if (isMicHolder(m) && m.userId !== myId) {
         setSpeakerMenu(m);
         return;
       }
       toggleHostFreeze(m.uid, m.isMe);
+      return;
+    }
+    // المشاهد: متحدث → قائمة (دعم / كتم محلي). غيره → كتم محلي فقط مثل قبل
+    if (isMicHolder(m)) {
+      setSpeakerMenu(m);
       return;
     }
     toggleUserListenMute(m.uid, m.isMe);
@@ -2385,16 +2407,31 @@ export default function LiveCameraPage() {
                   No one else is here yet
                 </p>
               )}
-              {members.map(m => {
+              {(() => {
+                // ترتيب الداعمين: الأعلى دعماً أول (المراكز 1-3 لهم تاج، الباقي يظهر دعمهم فقط)
+                const supMap = new Map<string, { coins: number; rank: number }>();
+                supportLeaders.forEach((l, i) => supMap.set(String(l.userId), { coins: l.coins, rank: i + 1 }));
+                const supOf = (m: Member) => (m.userId ? supMap.get(String(m.userId)) : undefined);
+                const ordered = [...members].sort((a, b) => {
+                  if (!!a.isHost !== !!b.isHost) return a.isHost ? -1 : 1;
+                  const sa = supOf(a), sb = supOf(b);
+                  if (sa && sb) return sa.rank - sb.rank;
+                  if (sa) return -1;
+                  if (sb) return 1;
+                  return 0;
+                });
+                return ordered;
+              })().map(m => {
                 const talking = speakingUids.has(m.uid) && !(m.isMe && (micFrozenByHost || !micOn));
                 const hostFrozen = frozenUids.has(m.uid);
                 const label = m.username ? `@${m.username}` : m.name;
+                const sup = m.userId ? (() => { const i = supportLeaders.findIndex(l => String(l.userId) === String(m.userId)); return i >= 0 ? { coins: supportLeaders[i].coins, rank: i + 1 } : null; })() : null;
                 return (
                   <button
                     key={m.uid}
                     type="button"
                     onClick={() => {
-                      if (amHost && !m.isMe) {
+                      if (!m.isMe && (amHost || isMicHolder(m))) {
                         onMemberTap(m);
                       }
                     }}
@@ -2403,16 +2440,17 @@ export default function LiveCameraPage() {
                       display: 'flex',
                       alignItems: 'center',
                       gap: 12,
-                      padding: '10px 8px',
+                      padding: '14px 8px 10px',
                       border: 'none',
                       borderBottom: '1px solid rgba(0,188,212,0.08)',
                       background: 'transparent',
-                      cursor: amHost && !m.isMe ? 'pointer' : 'default',
+                      cursor: !m.isMe && (amHost || isMicHolder(m)) ? 'pointer' : 'default',
                       textAlign: 'left',
                       color: '#e8f6f6',
                     }}
                   >
                     <div style={{ position: 'relative', width: 44, height: 44, flexShrink: 0 }}>
+                      {sup && sup.rank <= 3 ? <SupportCrown rank={sup.rank as 1 | 2 | 3} /> : null}
                       <div style={{
                         width: 44, height: 44, borderRadius: '50%', overflow: 'hidden',
                         border: `2px solid ${hostFrozen ? '#ef4444' : talking ? '#22c55e' : 'rgba(0,188,212,0.35)'}`,
@@ -2438,6 +2476,16 @@ export default function LiveCameraPage() {
                         {m.name}{m.isMe ? ' (you)' : ''}{m.isHost ? ' · Host' : ''}
                       </p>
                       <p style={{ margin: 0, color: 'rgba(150,200,200,0.55)', fontSize: '0.72rem' }}>{label}</p>
+                      {sup ? (
+                        <p style={{ margin: '2px 0 0', fontSize: '0.7rem', fontWeight: 800, color: '#facc15' }}>
+                          {sup.rank <= 3 ? (
+                            <span style={{ color: sup.rank === 1 ? '#22c55e' : sup.rank === 2 ? '#f8fafc' : '#ef4444', marginRight: 6 }}>
+                              #{sup.rank}
+                            </span>
+                          ) : null}
+                          🪙 {sup.coins.toLocaleString('en-US')}
+                        </p>
+                      ) : null}
                     </div>
                     <span style={{
                       fontSize: '0.68rem', fontWeight: 800,
@@ -2809,8 +2857,8 @@ export default function LiveCameraPage() {
         )}
       </AnimatePresence>
       <LiveVipDock hostId={hostId} currentUserId={myId} />
-      {/* قائمة المتحدث (صاحب البث فقط): إرسال هدية أو تجميد/فك تجميد المايك */}
-      {speakerMenu && amHost && (
+      {/* قائمة المتحدث: دعم (هدية) + تجميد المايك لصاحب البث / كتم محلي للمشاهد */}
+      {speakerMenu && (
         <div
           onClick={() => setSpeakerMenu(null)}
           style={{ position: 'fixed', inset: 0, zIndex: 8800, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
@@ -2832,14 +2880,16 @@ export default function LiveCameraPage() {
               }}
               style={{ padding: '13px 10px', borderRadius: 14, border: 'none', cursor: 'pointer', background: '#8b12ff', color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}
             >
-              🎁 إرسال هدية
+              🎁 {amHost ? 'إرسال هدية' : 'دعم'}
             </button>
             <button
               type="button"
-              onClick={() => { const m = speakerMenu; setSpeakerMenu(null); toggleHostFreeze(m.uid, m.isMe); }}
+              onClick={() => { const m = speakerMenu; setSpeakerMenu(null); if (amHost) toggleHostFreeze(m.uid, m.isMe); else toggleUserListenMute(m.uid, m.isMe); }}
               style={{ padding: '13px 10px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.35)', cursor: 'pointer', background: 'rgba(0,188,212,0.1)', color: '#dff6f6', fontWeight: 800, fontSize: '0.9rem' }}
             >
-              {frozenUids.has(speakerMenu.uid) ? 'فك تجميد المايك' : 'تجميد المايك'}
+              {amHost
+                ? (frozenUids.has(speakerMenu.uid) ? 'فك تجميد المايك' : 'تجميد المايك')
+                : (mutedUids.has(speakerMenu.uid) ? 'إلغاء الكتم' : 'كتم الصوت (عندي فقط)')}
             </button>
             <button
               type="button"
@@ -2851,7 +2901,7 @@ export default function LiveCameraPage() {
           </div>
         </div>
       )}
-      <LiveCoinsDock hostId={hostId} currentUserId={myId} />
+      <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} />
     </div>
   );
 }

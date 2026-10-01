@@ -665,16 +665,32 @@ const liveGiftMem = () => {
   if (!g.__stooornaLiveGifts) g.__stooornaLiveGifts = new Map();
   return g.__stooornaLiveGifts;
 };
+// ── ترتيب الداعمين لكل بث (ذاكرة السيرفر): مجموع الـ Coins لكل مستخدم، يصفّر بعد 12 ساعة بدون دعم ──
+const liveSupportMem = () => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveSupport?: Map<string, { at: number; map: Map<string, { name: string; coins: number; firstAt: number }> }> };
+  if (!g.__stooornaLiveSupport) g.__stooornaLiveSupport = new Map();
+  return g.__stooornaLiveSupport;
+};
+const supportLeaders = (room: string) => {
+  const rec = liveSupportMem().get(room);
+  if (!rec) return [];
+  if (Date.now() - rec.at > 12 * 3600 * 1000) { liveSupportMem().delete(room); return []; }
+  return [...rec.map.entries()]
+    .map(([userId, v]) => ({ userId, name: v.name, coins: v.coins, firstAt: v.firstAt }))
+    .sort((a, b) => b.coins - a.coins || a.firstAt - b.firstAt)
+    .slice(0, 50)
+    .map(({ firstAt: _f, ...r }) => r);
+};
 app.get("/api/live-gifts", (req, res) => {
   const room = String(req.query.room || req.query.channel || "").slice(0, 80);
   const now = Date.now();
   res.setHeader("Cache-Control", "no-store");
   // أول طلب بدون since: يرجّع الوقت الحالي فقط (ما نعيد هدايا قديمة لمن يدخل البث)
-  if (req.query.since === undefined || req.query.since === "") return res.json({ ok: true, events: [], now });
+  if (req.query.since === undefined || req.query.since === "") return res.json({ ok: true, events: [], now, leaders: supportLeaders(room) });
   const since = Number(req.query.since) || 0;
   const events = (liveGiftMem().get(room) || []).filter((e) => e.at > since && now - e.at < 60000).slice(-30);
   const last = events.length ? events[events.length - 1].at : since;
-  res.json({ ok: true, events, now: Math.max(last, since) });
+  res.json({ ok: true, events, now: Math.max(last, since), leaders: supportLeaders(room) });
 });
 app.post("/api/live-gifts", (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
@@ -695,6 +711,19 @@ app.post("/api/live-gifts", (req, res) => {
   const list = prev.filter((e) => now - e.at < 60000);
   list.push({ at, id: String(body.id || `lg_${at}`).slice(0, 60), giftId, fromId, toUserId, fromKey: String(body.fromKey || "").slice(0, 60), count });
   mem.set(room, list.slice(-120));
+  // ترتيب الداعمين: يزيد مجموع المرسل (السعر × العدد)
+  const price = Math.max(0, Math.min(100000, Math.floor(Number(body.price) || 0)));
+  if (fromId && price > 0) {
+    const sup = liveSupportMem();
+    const rec = sup.get(room) || { at: now, map: new Map() };
+    const cur = rec.map.get(fromId) || { name: "", coins: 0, firstAt: now };
+    const nm = String(body.fromName || "").slice(0, 60);
+    cur.coins += price * count;
+    if (nm) cur.name = nm;
+    rec.map.set(fromId, cur);
+    rec.at = now;
+    sup.set(room, rec);
+  }
   res.json({ ok: true, at });
 });
 

@@ -17,6 +17,7 @@
  *
  * ربط الأنميشن بالواجهة (يعمل تلقائياً بدونها):
  *   data-gift-host : على صورة/بروفايل صاحب البث → التاج ينزل على رأسه. (الافتراضي: أعلى منتصف الشاشة)
+ *   data-gift-lift : (يضعه LiveCoinsDock تلقائياً) لما صاحب البث يعطي متحدث: صورة المتحدث تصعد للأعلى والشبح يلبسه التاج
  *   data-gift-walk : (غير مستخدم هنا، محفوظ للتوافق مع بقية الهدايا)
  *   data-gift-hot  : (اختياري) ضعه على أي عنصر تبي النار تنزل عليه غير الأزرار والـ inputs.
  *   الجمرات تنزل تلقائياً على: button, [role=button], a[href], input, textarea, select
@@ -231,7 +232,8 @@ interface Smoke { x: number; y: number; vx: number; vy: number; size: number; gr
 interface Ash { x: number; y: number; vx: number; vy: number; size: number; age: number; life: number; }
 interface Streak { x: number; y: number; len: number; vx: number; a: number; w: number; ph: number; }
 interface Hot { el: Element; x: number; y: number; w: number; h: number; rad: number; heat: number; }
-interface Host { x: number; y: number; w: number; h: number; top: number; }
+interface Lift { sx: number; sy: number; sr: number; ex: number; ey: number; R: number; img: HTMLImageElement | null; letter: string; restore: () => void; done?: boolean; }
+interface Host { x: number; y: number; w: number; h: number; top: number; lift?: Lift; }
 interface Ring { x: number; y: number; born: number; dur: number; maxR: number; w: number; }
 
 function findHost(W: number): Host {
@@ -243,6 +245,32 @@ function findHost(W: number): Host {
     }
   } catch { /* ignore */ }
   return { x: W * 0.5, y: 56, w: 48, h: 48, top: 32 };
+}
+
+// وضع الرفع: الهدية لمتحدث (مو لصاحب البث) → صورته تصعد لفوق والشبح يلبسه التاج
+function findLift(W: number, H: number): Host | null {
+  try {
+    const el = document.querySelector<HTMLElement>('[data-gift-host][data-gift-lift]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return null;
+    const R = Math.max(32, Math.min(54, W * 0.13));
+    const ex = W * 0.5;
+    const ey = Math.max(H * 0.27, R + 78);
+    const im = el.querySelector('img');
+    const letter = ((el.textContent || '').trim().charAt(0) || '?').toUpperCase();
+    const prevOp = el.style.opacity;
+    el.style.opacity = '0.12';
+    return {
+      x: ex, y: ey, w: R * 2, h: R * 2, top: ey - R,
+      lift: {
+        sx: r.left + r.width / 2, sy: r.top + r.height / 2, sr: r.width / 2, ex, ey, R,
+        img: im && im.complete && im.naturalWidth > 0 ? im : null,
+        letter,
+        restore: () => { try { el.style.opacity = prevOp; } catch { /* ignore */ } },
+      },
+    };
+  } catch { return null; }
 }
 
 function VolcanoAnimation({ onDone }: { onDone: () => void }) {
@@ -1003,7 +1031,11 @@ function VolcanoAnimation({ onDone }: { onDone: () => void }) {
       c.globalAlpha = 1;
 
       // ═══ الشبح + التاج ═══
-      if (t >= GHOST_AT - 0.3 && !host) host = findHost(W);
+      if (!host && t >= GHOST_AT - 1.3) {
+        const lf = findLift(W, H);
+        if (lf) host = lf;
+        else if (t >= GHOST_AT - 0.3) host = findHost(W);
+      }
       if (host && !gp) {
         const dir = host.x < W * 0.5 ? 1 : -1;
         const hoverX = Math.min(Math.max(host.x + dir * (host.w / 2 + 38 * gsc), 40 * gsc), W - 40 * gsc);
@@ -1018,6 +1050,58 @@ function VolcanoAnimation({ onDone }: { onDone: () => void }) {
           headY,
           headW,
         };
+      }
+
+      // ── صورة المتحدث تصعد للأعلى (هدية صاحب البث للمتحدث) ──
+      if (host && host.lift) {
+        const L = host.lift;
+        const up = easeOut((t - (GHOST_AT - 1.0)) / 1.5);
+        const down = smooth((t - (CROWN_OFF + CROWN_FADE)) / 0.9);
+        const e2 = up * (1 - down);
+        if (down >= 1 && !L.done) { L.done = true; L.restore(); }
+        if (e2 > 0.004) {
+          const ax = lerp(L.sx, L.ex, e2);
+          const ay = lerp(L.sy, L.ey, e2) + Math.sin(t * 2.6) * 3 * k * e2;
+          const ar = lerp(L.sr, L.R, e2);
+          c.save();
+          c.globalCompositeOperation = 'lighter';
+          blob(FIRE[3], ax, ay, ar * 2.4, 0.38 * e2 * endFade);
+          c.restore();
+          c.save();
+          c.globalAlpha = clamp01(e2 * 3) * endFade;
+          c.beginPath();
+          c.arc(ax, ay, ar, 0, Math.PI * 2);
+          c.closePath();
+          c.save();
+          c.clip();
+          let drawn = false;
+          if (L.img) {
+            try {
+              const sw = L.img.naturalWidth, sh = L.img.naturalHeight, ss = Math.min(sw, sh);
+              c.drawImage(L.img, (sw - ss) / 2, (sh - ss) / 2, ss, ss, ax - ar, ay - ar, ar * 2, ar * 2);
+              drawn = true;
+            } catch { /* ignore */ }
+          }
+          if (!drawn) {
+            c.fillStyle = '#12363a';
+            c.fillRect(ax - ar, ay - ar, ar * 2, ar * 2);
+            c.fillStyle = '#00BCD4';
+            c.font = `800 ${Math.round(ar * 1.0)}px sans-serif`;
+            c.textAlign = 'center';
+            c.textBaseline = 'middle';
+            c.fillText(L.letter, ax, ay + ar * 0.04);
+          }
+          c.restore();
+          c.beginPath();
+          c.arc(ax, ay, ar, 0, Math.PI * 2);
+          c.lineWidth = Math.max(2, ar * 0.07);
+          c.strokeStyle = 'rgba(255,190,70,0.95)';
+          c.shadowColor = 'rgba(255,120,20,0.9)';
+          c.shadowBlur = 14 * e2;
+          c.stroke();
+          c.restore();
+          c.globalAlpha = 1;
+        }
       }
 
       if (gp && t >= GHOST_AT && t < CROWN_ON + 1.1) {
@@ -1189,6 +1273,7 @@ function VolcanoAnimation({ onDone }: { onDone: () => void }) {
       cancelAnimationFrame(raf);
       window.clearTimeout(tDone);
       stopSound();
+      if (host && host.lift && !host.lift.done) { host.lift.done = true; host.lift.restore(); }
     };
   }, [W, H]);
 

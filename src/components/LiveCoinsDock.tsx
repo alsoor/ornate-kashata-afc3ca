@@ -19,9 +19,10 @@ import type { GiftDefinition } from '@/lib/types';
 // ── إعدادات ─────────────────────────────────────────────────────────────
 const PAYMENT_DEMO_MODE = true;
 
-// الهدايا: true = صاحب البث فقط يرسل، ويضغط على متحدث (ياخذ المايك) ويعطيه هدية. false = أي مستخدم يقدر يعطي المتحدثين.
-// لا أحد يقدر يعطي نفسه هدية في الحالتين.
-const HOST_ONLY_GIFTS = true;
+// قواعد الهدايا:
+//  - المشاهد: يدعم صاحب البث، أو أي متحدث أعطاه صاحب البث المايك.
+//  - صاحب البث: يدعم فقط من أخذ المايك (ما يقدر ينزل دعم عشوائي).
+//  - المشاهد العادي (بدون مايك) ما ينعطي هدية من أي أحد. ولا أحد يعطي نفسه.
 
 // مواضع النقطتين (فوق نقاط LiveVipDock الموجودة). عدّل الأرقام إذا ما انطبقت.
 const YELLOW_DOT_RIGHT = 74; // px من اليمين (نفس القيمة للبث الصوتي والمرئي)
@@ -203,7 +204,37 @@ const CARD: React.CSSProperties = {
 };
 
 // ── المكوّن الرئيسي ─────────────────────────────────────────────────────
-export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_RIGHT }: { hostId?: string; currentUserId?: string; yellowRight?: number }) {
+export type SupportLeader = { userId: string; name: string; coins: number };
+
+/** قائمة الداعمين (مرتبة: الأعلى دعماً أول). المراكز 1-3 فقط لهم تاج. */
+export function useSupportLeaders(): SupportLeader[] {
+  const [list, setList] = useState<SupportLeader[]>([]);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent).detail as { leaders?: SupportLeader[] } | undefined;
+      setList(Array.isArray(d?.leaders) ? d!.leaders! : []);
+    };
+    window.addEventListener('stooorna:support-leaders', on);
+    return () => window.removeEventListener('stooorna:support-leaders', on);
+  }, []);
+  return list;
+}
+
+/** تاج المركز: 1 أخضر، 2 أبيض، 3 أحمر (يوضع داخل عنصر position:relative فوق الصورة) */
+export function SupportCrown({ rank }: { rank: 1 | 2 | 3 }) {
+  const col = rank === 1 ? '#22c55e' : rank === 2 ? '#f8fafc' : '#ef4444';
+  return (
+    <svg
+      aria-hidden="true" width="26" height="18" viewBox="0 0 26 18"
+      style={{ position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)', filter: `drop-shadow(0 0 4px ${col})`, pointerEvents: 'none' }}
+    >
+      <path d="M2 15 L1 4 L8 9 L13 1 L18 9 L25 4 L24 15 Z" fill={col} stroke="rgba(0,0,0,0.5)" strokeWidth="1" strokeLinejoin="round" />
+      <rect x="2" y="14" width="22" height="3.2" rx="1.2" fill={col} stroke="rgba(0,0,0,0.5)" strokeWidth="1" />
+    </svg>
+  );
+}
+
+export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRight = YELLOW_DOT_RIGHT }: { hostId?: string; currentUserId?: string; currentUserName?: string; yellowRight?: number }) {
   const uid = String(currentUserId || '');
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [coinsOpen, setCoinsOpen] = useState(false);
@@ -226,6 +257,10 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
   const [giftTarget, setGiftTarget] = useState<{ userId: string; name: string } | null>(null);
   const giftTargetRef = useRef<{ userId: string; name: string } | null>(null);
   const tagRestoreRef = useRef<(() => void) | null>(null);
+  const speakerIdsRef = useRef<Set<string>>(new Set());   // userIds اللي معهم المايك (تجي من صفحة البث)
+  const hostIdRef = useRef(String(hostId || ''));
+  hostIdRef.current = String(hostId || '');
+  const leadersKeyRef = useRef('');
   const playKeyRef = useRef(0);
   const playingRef = useRef(false);
   // بث الهدايا لباقي الحضور: مفتاح هذا الجهاز + غرفة الهدايا (نفس hostId = نفس الغرفة بالبث الصوتي والمرئي)
@@ -281,8 +316,15 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
           const url = `/api/live-gifts?room=${encodeURIComponent(giftRoom)}` + (since === null ? '' : `&since=${since}`);
           const r = await fetch(url, { credentials: 'include', cache: 'no-store' });
           if (r.ok) {
-            const d = await r.json() as { events?: { at: number; giftId: string; fromId?: string; toUserId?: string; fromKey?: string; count?: number }[]; now?: number };
+            const d = await r.json() as { events?: { at: number; giftId: string; fromId?: string; toUserId?: string; fromKey?: string; count?: number }[]; now?: number; leaders?: SupportLeader[] };
             if (typeof d.now === 'number') since = d.now;
+            if (Array.isArray(d.leaders)) {
+              const key = JSON.stringify(d.leaders);
+              if (key !== leadersKeyRef.current) {
+                leadersKeyRef.current = key;
+                window.dispatchEvent(new CustomEvent('stooorna:support-leaders', { detail: { leaders: d.leaders } }));
+              }
+            }
             for (const ev of d.events || []) {
               if (ev.fromKey === clientKeyRef.current) continue; // هديتي أنا تشتغل محلياً أصلاً
               window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: ev.giftId, fromId: ev.fromId, toUserId: ev.toUserId, hostId, count: ev.count || 1, remote: true } }));
@@ -323,29 +365,49 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
   function restoreGiftTarget() { tagRestoreRef.current?.(); tagRestoreRef.current = null; }
   function applyGiftTarget(toUserId?: string) {
     restoreGiftTarget();
-    if (!toUserId) return;
+    if (!toUserId || toUserId === hostIdRef.current) return;   // الهدية لصاحب البث: الأنميشن الأصلي على صورته
     try {
       const el = document.querySelector<HTMLElement>(`[data-gift-user="${toUserId.replace(/["\\]/g, '')}"]`);
       if (!el) return;
       const others = Array.from(document.querySelectorAll<HTMLElement>('[data-gift-host]')).filter(x => x !== el);
       others.forEach(x => x.removeAttribute('data-gift-host'));
       el.setAttribute('data-gift-host', '1');
+      el.setAttribute('data-gift-lift', '1');   // هدية البركان: صورة المتحدث تصعد للأعلى والشبح يلبسه التاج
       tagRestoreRef.current = () => {
         el.removeAttribute('data-gift-host');
+        el.removeAttribute('data-gift-lift');
         others.forEach(x => x.setAttribute('data-gift-host', '1'));
       };
     } catch { /* ignore */ }
   }
   useEffect(() => () => restoreGiftTarget(), []);
 
-  // اختيار المستلم: صاحب البث يضغط على متحدث بصفحة البث → يجي الحدث هنا ويفتح مربع الهدايا
+  // قائمة اللي معهم المايك (تنرسل من صفحة البث)
+  useEffect(() => {
+    const onSp = (e: Event) => {
+      const ids = ((e as CustomEvent).detail as { userIds?: string[] } | undefined)?.userIds;
+      speakerIdsRef.current = new Set(Array.isArray(ids) ? ids.map(String) : []);
+    };
+    window.addEventListener('stooorna:live-speakers', onSp);
+    return () => window.removeEventListener('stooorna:live-speakers', onSp);
+  }, []);
+
+  // مين يقدر ينعطي هدية: صاحب البث (من المشاهدين فقط) أو من معه المايك. لا أحد يعطي نفسه.
+  function canGiftTo(toId: string): boolean {
+    if (!toId || toId === uid) return false;
+    const isHostUser = !!(hostId && uid === String(hostId));
+    if (speakerIdsRef.current.has(toId)) return true;
+    return !isHostUser && !!hostId && toId === String(hostId);
+  }
+
+  // اختيار المستلم: يضغط على متحدث بصفحة البث → يجي الحدث هنا ويفتح مربع الهدايا
   useEffect(() => {
     const onTarget = (e: Event) => {
       const d = (e as CustomEvent).detail as { userId?: string; name?: string } | undefined;
       const toId = String(d?.userId || '');
       if (!toId) return;
       if (toId === uid) { flashGiftMsg('ما تقدر تعطي نفسك هدية'); return; }
-      if (HOST_ONLY_GIFTS && !(hostId && uid === String(hostId))) return;
+      if (!canGiftTo(toId)) { flashGiftMsg('الدعم لصاحب البث أو لمن أخذ المايك فقط'); return; }
       const t = { userId: toId, name: String(d?.name || 'User') };
       giftTargetRef.current = t;
       setGiftTarget(t);
@@ -356,11 +418,11 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
     return () => window.removeEventListener('stooorna:gift-target', onTarget);
   }, [uid, hostId]);
 
-  // المستلم الفعلي: المتحدث اللي اختاره صاحب البث. (لو HOST_ONLY_GIFTS = false والمرسل مشاهد: الهدية لصاحب البث)
+  // المستلم الفعلي: اللي اختاره المستخدم. المشاهد بدون اختيار: الهدية لصاحب البث. صاحب البث بدون اختيار: ما فيه مستلم.
   function resolveGiftTarget(): { userId: string; name: string } | null {
     const t = giftTargetRef.current;
     if (t) return t;
-    if (!HOST_ONLY_GIFTS && hostId && String(hostId) !== uid) return { userId: String(hostId), name: 'Host' };
+    if (hostId && String(hostId) !== uid) return { userId: String(hostId), name: 'Host' };
     return null;
   }
 
@@ -384,8 +446,9 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
     const gift = GIFTS.find(g => g.id === t.id);
     if (!gift) return;
     const target = resolveGiftTarget();
-    if (!target) { flashGiftMsg(HOST_ONLY_GIFTS ? 'اضغط على صورة متحدث واختر إرسال هدية' : 'تعذر تحديد المستلم'); return; }
+    if (!target) { flashGiftMsg('اضغط على صورة متحدث واختر إرسال هدية'); return; }
     if (target.userId === uid) { flashGiftMsg('ما تقدر تعطي نفسك هدية'); return; }
+    if (!canGiftTo(target.userId)) { flashGiftMsg('الدعم لصاحب البث أو لمن أخذ المايك فقط'); return; }
     busyRef.current = true;
     let bal = readBalance(uid);
     let sent = 0;
@@ -410,7 +473,7 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room: giftRoom, giftId: gift.id, count: sent, fromId: uid, toUserId: target.userId, fromKey: clientKeyRef.current, id: `lg_${clientKeyRef.current}_${Date.now()}` }),
+      body: JSON.stringify({ room: giftRoom, giftId: gift.id, count: sent, price: gift.price, fromId: uid, fromName: String(currentUserName || ''), toUserId: target.userId, fromKey: clientKeyRef.current, id: `lg_${clientKeyRef.current}_${Date.now()}` }),
     }).catch(() => { /* ignore */ });
   }
 
@@ -496,7 +559,7 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
   return (
     <>
       {dot(yellowRight, '#facc15', 'Coins', () => { setGiftsOpen(false); setCoinsOpen(true); })}
-      {(!HOST_ONLY_GIFTS || (hostId && uid === String(hostId))) && dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', () => {
+      {dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', () => {
         setCoinsOpen(false);
         if (!resolveGiftTarget()) { flashGiftMsg('اضغط على صورة متحدث واختر إرسال هدية'); return; }
         setGiftsOpen(true);
@@ -631,7 +694,7 @@ export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_
       </Sheet>
 
       {/* مربع الهدايا: 6 مربعات فيها + للمستقبل */}
-      <Sheet open={giftsOpen} onClose={() => { setGiftsOpen(false); giftTargetRef.current = null; setGiftTarget(null); }} title={giftTarget ? `Gifts → ${giftTarget.name}` : 'Gifts'} balance={balance}>
+      <Sheet open={giftsOpen} onClose={() => { setGiftsOpen(false); giftTargetRef.current = null; setGiftTarget(null); }} title={giftTarget ? `Gifts → ${giftTarget.name}` : (hostId && uid !== String(hostId) ? 'Gifts → Host' : 'Gifts')} balance={balance}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
           {[0, 1, 2, 3, 4, 5].map(i => {
             const gift = GIFTS[i];
