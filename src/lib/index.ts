@@ -6,13 +6,11 @@ import type { GiftDefinition } from './types';
 import { HeartGift } from '../components/gifts/HeartGift';
 import { WitchGift } from '../components/gifts/WitchGift';
 import { StormGift } from '../components/gifts/StormGift';
-import { HorseGift } from '../components/gifts/HorseGift';
 
 export const GIFTS: GiftDefinition[] = [
   HeartGift,
   WitchGift,
   StormGift,
-  HorseGift,
   // remaining two squares: add more gifts here later
 ];
 

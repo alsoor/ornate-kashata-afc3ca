@@ -1,13 +1,16 @@
 /**
  * هدية القلب (Heart) — 25 Coins
  *
- * - Preview  : قلب أحمر ينبض داخل مربع الهدايا.
- * - Animation: قلب (بالونة) ينتفخ بنفَس شخص ينفخ بالونة (صوت نفخ/شهيق/صرير مطاط) ثم ينفجر بفرقعة
- *              وصوت امرأة يقول "I love you"، وتتناثر قلوب كثيرة في كل الشاشة.
+ * - Preview  : داخل مربع الهدايا (قبل النقر) أنميشن متكرر: قلب بشري واقعي ينتفخ بنفخات ثم ينفجر بقلوب واقعية صغيرة.
+ * - Animation: قلب بشري واقعي (تشريحي: بطينان + أذينان + أورطي + شرايين وأوردة) ينتفخ بنفَس شخص ينفخ بالونة
+ *              (صوت نفخ/شهيق/صرير مطاط) ثم ينفجر بفرقعة وصوت امرأة يقول "I love you"،
+ *              وتتناثر قلوب واقعية صغيرة (بنفس الأحجام) في كل الشاشة.
  *              القلوب تسقط بفيزياء حقيقية (جاذبية + ارتداد) وتصطدم بأزرار البث السفلية
  *              (أي button / رابط / input في أسفل الصفحة) ثم تنزلق وتسقط وتختفي.
  *
- * هذا الملف مستقل بالكامل: غيّر الأرقام تحت (السعر/المدد/عدد القطع/الجاذبية) أو الصوت من دالة playHeartSound.
+ * هذا الملف مستقل: غيّر الأرقام تحت (السعر/المدد/عدد القطع/الجاذبية).
+ * الأصوات في ملف منفصل: src/lib/heartSounds.ts (playHeartSound / playHeartTick) بجانب audio.ts.
+ * شكل القلب الواقعي مرسوم SVG داخل هذا الملف (دالة heartInner) وتُنسخ منه صور القطع الصغيرة تلقائياً.
  *
  * أصوات حقيقية (اختياري — الأفضل للواقعية):
  *   ضع ملفاتك في public/sounds ثم اكتب مسارها في BLOW_URL و VOICE_URL تحت.
@@ -18,7 +21,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import type { GiftDefinition } from '../../lib/types';
-import { getAudioCtx, noiseBuffer } from '../../lib/audio';
+import { playHeartSound, playHeartTick } from '../../lib/heartSounds';
 
 // ── إعدادات الهدية ──────────────────────────────────────────────────────
 const PRICE = 25;
@@ -45,330 +48,246 @@ const PUMPS: { t: number; d: number }[] = [
   { t: 3.02, d: 0.34 },
 ];
 
-const HEART_PATH =
-  'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z';
+// ── القلب الواقعي (SVG تشريحي) ────────────────────────────────────────────
+// مصدر واحد للرسم: يُستخدم للقلب الكبير والمعاينة، ومنه تُولَّد صور القلوب الصغيرة المتساقطة (canvas).
+const HEART_VB = { x: -4, y: -2, w: 108, h: 126 };
+const HEART_ASPECT = HEART_VB.h / HEART_VB.w;
 
-function GlossyHeart({ size, knot = false }: { size: number; knot?: boolean }) {
-  const gid = React.useId().replace(/:/g, '');
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', overflow: 'visible', filter: 'drop-shadow(0 0 10px rgba(255,45,85,0.65))' }}>
-      <defs>
-        <radialGradient id={`hg${gid}`} cx="35%" cy="28%" r="80%">
-          <stop offset="0%" stopColor="#ff8aa0" />
-          <stop offset="45%" stopColor="#ff2d55" />
-          <stop offset="100%" stopColor="#b3002a" />
-        </radialGradient>
-      </defs>
-      {/* عقدة البالونة */}
-      {knot && <path d="M12 20.6 L10.3 23.2 L13.7 23.2 Z" fill="#b3002a" />}
-      <path d={HEART_PATH} fill={`url(#hg${gid})`} />
-      <ellipse cx="8" cy="7.2" rx="2.4" ry="1.4" transform="rotate(-35 8 7.2)" fill="rgba(255,255,255,0.55)" />
-    </svg>
-  );
+interface HeartPalette {
+  dark: string; mid: string; light: string; hi: string;
+  fat: string; fatDark: string;
+  aorta: string; aortaDark: string;
+  vein: string; veinDark: string;
+  vessel: string; atriumLight: string; atriumDark: string;
 }
 
-// ── الصوت ──────────────────────────────────────────────────────────────
+// 3 درجات لون (عادي / داكن / فاتح) لتنوّع القلوب المتساقطة
+const HEART_PALETTES: HeartPalette[] = [
+  { dark: '#4a0512', mid: '#b1112b', light: '#e53a52', hi: '#ff9aa8', fat: '#f4cf72', fatDark: '#c8962c', aorta: '#d9444f', aortaDark: '#8a1226', vein: '#6277c0', veinDark: '#2f3d84', vessel: '#7d0a1d', atriumLight: '#c9253d', atriumDark: '#6d0a1e' },
+  { dark: '#35030d', mid: '#8f0d22', light: '#c42a42', hi: '#f5808f', fat: '#e9c066', fatDark: '#b3841f', aorta: '#bd333f', aortaDark: '#6e0d1e', vein: '#5468b0', veinDark: '#26336f', vessel: '#650818', atriumLight: '#a81e34', atriumDark: '#560818' },
+  { dark: '#6a0a1c', mid: '#d3203c', light: '#f2566c', hi: '#ffb3bd', fat: '#f8d98a', fatDark: '#d3a43d', aorta: '#ec5a65', aortaDark: '#a41c32', vein: '#7a8fd4', veinDark: '#3d4c98', vessel: '#8f1126', atriumLight: '#df3a52', atriumDark: '#8a1028' },
+];
+const HEART_VARIANTS = HEART_PALETTES.length;
 
-const FEMALE_RE = /female|woman|samantha|victoria|karen|moira|tessa|zira|susan|hazel|aria|jenny|ava|allison|serena|fiona|nicky|google us english|google uk english female/i;
-const MALE_RE = /\bmale\b|david|mark|daniel|alex|fred|george|james|guy|ravi|rishi|arthur|oliver/i;
-
-function pickWomanVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
-  const en = voices.filter(v => /^en/i.test(v.lang));
-  return (
-    en.find(v => FEMALE_RE.test(v.name) && !MALE_RE.test(v.name)) ||
-    en.find(v => !MALE_RE.test(v.name)) ||
-    null
-  );
+function heartInner(p: string, pal: HeartPalette, knot: boolean): string {
+  const id = (n: string) => `${p}${n}`;
+  return `
+<defs>
+  <radialGradient id="${id('b')}" cx="38%" cy="30%" r="85%">
+    <stop offset="0%" stop-color="${pal.light}"/>
+    <stop offset="50%" stop-color="${pal.mid}"/>
+    <stop offset="100%" stop-color="${pal.dark}"/>
+  </radialGradient>
+  <linearGradient id="${id('a')}" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="${pal.aortaDark}"/>
+    <stop offset="45%" stop-color="${pal.aorta}"/>
+    <stop offset="100%" stop-color="${pal.aortaDark}"/>
+  </linearGradient>
+  <linearGradient id="${id('v')}" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="${pal.veinDark}"/>
+    <stop offset="50%" stop-color="${pal.vein}"/>
+    <stop offset="100%" stop-color="${pal.veinDark}"/>
+  </linearGradient>
+  <radialGradient id="${id('at')}" cx="40%" cy="30%" r="80%">
+    <stop offset="0%" stop-color="${pal.atriumLight}"/>
+    <stop offset="100%" stop-color="${pal.atriumDark}"/>
+  </radialGradient>
+</defs>
+<g stroke-linecap="round" stroke-linejoin="round" fill="none">
+  <!-- aorta branches -->
+  <path d="M52 22 L49 6" stroke="${pal.aortaDark}" stroke-width="6.4"/>
+  <path d="M52 22 L49 6" stroke="${pal.aorta}" stroke-width="4.2"/>
+  <path d="M61 14 L61 2" stroke="${pal.aortaDark}" stroke-width="6.4"/>
+  <path d="M61 14 L61 2" stroke="${pal.aorta}" stroke-width="4.2"/>
+  <path d="M69 16 L74 5" stroke="${pal.aortaDark}" stroke-width="6.4"/>
+  <path d="M69 16 L74 5" stroke="${pal.aorta}" stroke-width="4.2"/>
+  <!-- aortic arch -->
+  <path d="M47 52 C44 30 50 15 63 15 C75 15 81 27 80 46" stroke="${pal.aortaDark}" stroke-width="14.5"/>
+  <path d="M47 52 C44 30 50 15 63 15 C75 15 81 27 80 46" stroke="url(#${id('a')})" stroke-width="12"/>
+  <path d="M49 40 C48 28 53 19 62 18.5" stroke="${pal.hi}" stroke-opacity=".5" stroke-width="2.2"/>
+  <!-- vena cava superior -->
+  <path d="M29 56 C26 40 27 25 33 13" stroke="${pal.veinDark}" stroke-width="11.5"/>
+  <path d="M29 56 C26 40 27 25 33 13" stroke="url(#${id('v')})" stroke-width="9"/>
+  <path d="M30.5 46 C29 36 30 27 33.5 19" stroke="#b9c6ff" stroke-opacity=".45" stroke-width="1.8"/>
+</g>
+<!-- right atrium -->
+<path d="M19 52 C8 60 9 80 24 90 C34 88 40 74 40 58 C40 47 29 42 19 52 Z" fill="url(#${id('at')})"/>
+<path d="M17 62 C14 70 16 79 22 85" fill="none" stroke="${pal.hi}" stroke-opacity=".35" stroke-width="2.2" stroke-linecap="round"/>
+<!-- ventricles -->
+<path d="M26 47 C15 58 17 82 35 101 C42 109 52 115 58 112 C65 108 79 88 83 68 C86 51 78 41 66 40 C55 36 36 36 26 47 Z" fill="url(#${id('b')})"/>
+<!-- muscle fibres -->
+<g fill="none" stroke="${pal.dark}" stroke-opacity=".22" stroke-width="1.3" stroke-linecap="round">
+  <path d="M30 56 C42 62 54 74 62 100"/>
+  <path d="M26 66 C38 72 48 84 54 106"/>
+  <path d="M60 50 C72 58 78 70 72 86"/>
+  <path d="M66 44 C78 52 82 62 80 72"/>
+  <path d="M38 50 C50 54 60 64 68 80"/>
+</g>
+<!-- left auricle -->
+<path d="M67 44 C78 38 91 46 88 58 C86 65 76 64 70 57 Z" fill="url(#${id('at')})"/>
+<!-- pulmonary trunk -->
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M59 56 C57 41 63 33 74 30" stroke="${pal.veinDark}" stroke-width="11.5"/>
+  <path d="M59 56 C57 41 63 33 74 30" stroke="url(#${id('v')})" stroke-width="9"/>
+  <path d="M74 30 C80 27 87 27 92 31" stroke="${pal.veinDark}" stroke-width="8"/>
+  <path d="M74 30 C80 27 87 27 92 31" stroke="${pal.vein}" stroke-width="5.8"/>
+  <path d="M60 46 C60 40 63 36 68 34" stroke="#b9c6ff" stroke-opacity=".4" stroke-width="1.8"/>
+</g>
+<!-- grooves with fat + coronary vessels -->
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M49 44 C46 62 51 88 58 110" stroke="${pal.fatDark}" stroke-opacity=".85" stroke-width="4"/>
+  <path d="M49 44 C46 62 51 88 58 110" stroke="${pal.fat}" stroke-width="2.6"/>
+  <path d="M49 44 C46 62 51 88 58 110" stroke="${pal.vessel}" stroke-width="1.3"/>
+  <path d="M46 48 C36 54 27 62 25 74 C24 82 27 88 32 91" stroke="${pal.fatDark}" stroke-opacity=".85" stroke-width="3.8"/>
+  <path d="M46 48 C36 54 27 62 25 74 C24 82 27 88 32 91" stroke="${pal.fat}" stroke-width="2.4"/>
+  <path d="M46 48 C36 54 27 62 25 74 C24 82 27 88 32 91" stroke="${pal.vessel}" stroke-width="1.2"/>
+  <path d="M52 46 C64 46 75 53 80 66" stroke="${pal.fatDark}" stroke-opacity=".85" stroke-width="3.6"/>
+  <path d="M52 46 C64 46 75 53 80 66" stroke="${pal.fat}" stroke-width="2.2"/>
+  <path d="M52 46 C64 46 75 53 80 66" stroke="${pal.vessel}" stroke-width="1.1"/>
+  <!-- small branches -->
+  <path d="M50 62 C58 62 66 66 70 74" stroke="${pal.vessel}" stroke-width="1.2" stroke-opacity=".9"/>
+  <path d="M51 78 C58 80 64 86 66 94" stroke="${pal.vessel}" stroke-width="1.1" stroke-opacity=".9"/>
+  <path d="M48 66 C42 68 36 74 34 82" stroke="${pal.vessel}" stroke-width="1.1" stroke-opacity=".9"/>
+  <path d="M30 70 C38 70 44 74 47 80" stroke="${pal.vessel}" stroke-width="1.1" stroke-opacity=".9"/>
+  <path d="M74 56 C74 64 72 72 66 78" stroke="${pal.vessel}" stroke-width="1.1" stroke-opacity=".9"/>
+</g>
+<!-- fat blobs near the top groove -->
+<g fill="${pal.fat}" fill-opacity=".8">
+  <ellipse cx="45" cy="50" rx="4" ry="2.6" transform="rotate(-30 45 50)"/>
+  <ellipse cx="56" cy="47" rx="3.6" ry="2.2" transform="rotate(20 56 47)"/>
+  <ellipse cx="33" cy="60" rx="2.6" ry="1.8" transform="rotate(-50 33 60)"/>
+  <ellipse cx="74" cy="56" rx="2.6" ry="1.8" transform="rotate(50 74 56)"/>
+</g>
+<!-- glossy highlights -->
+<ellipse cx="33" cy="64" rx="3.6" ry="9" transform="rotate(-20 33 64)" fill="#fff" fill-opacity=".30"/>
+<ellipse cx="72" cy="62" rx="2.2" ry="6" transform="rotate(18 72 62)" fill="#fff" fill-opacity=".18"/>
+${knot ? `<path d="M58 111 C55 114 53.5 116.5 54 118.5 L62.5 118.5 C62.5 116 61 114 58 111 Z" fill="${pal.dark}"/>` : ''}
+`;
 }
 
-// صوت امرأة تقول I love you
-function speakILoveYou(audios: HTMLAudioElement[]) {
-  if (VOICE_URL) {
-    try {
-      const a = new Audio(VOICE_URL);
-      a.volume = 1;
-      audios.push(a);
-      void a.play().catch(() => { /* ignore */ });
-    } catch { /* ignore */ }
-    return;
-  }
+function heartSvgString(prefix: string, variant: number, knot: boolean, w: number): string {
+  const pal = HEART_PALETTES[variant % HEART_VARIANTS];
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${HEART_VB.x} ${HEART_VB.y} ${HEART_VB.w} ${HEART_VB.h}" width="${w}" height="${Math.round(w * HEART_ASPECT)}">${heartInner(prefix, pal, knot)}</svg>`;
+}
+
+// صور جاهزة للقلوب الصغيرة (تُرسم مرة واحدة ثم تُنسخ بسرعة داخل الـ canvas)
+const SPRITE_W = 128;
+const SPRITE_H = Math.round(SPRITE_W * HEART_ASPECT);
+const spriteCache: (HTMLCanvasElement | null)[] = [];
+const spriteLoading: boolean[] = [];
+
+function loadHeartSprite(v: number) {
+  if (typeof document === 'undefined' || spriteCache[v] || spriteLoading[v]) return;
+  spriteLoading[v] = true;
   try {
-    const synth = window.speechSynthesis;
-    if (!synth) return;
-    const u = new SpeechSynthesisUtterance(VOICE_TEXT);
-    u.lang = 'en-US';
-    u.rate = 0.88;
-    u.pitch = 1.3; // نبرة أنثوية
-    u.volume = 1;
-    const v = pickWomanVoice(synth.getVoices());
-    if (v) { u.voice = v; u.lang = v.lang; }
-    synth.cancel();
-    synth.speak(u);
-  } catch { /* ignore */ }
-}
-
-// نفخ بالونة حقيقي (نفَس + شهيق + صرير مطاط) ثم فرقعة + صوت المرأة
-function playHeartSound(): () => void {
-  const ctx = getAudioCtx();
-  const sources: AudioScheduledSourceNode[] = [];
-  const timers: number[] = [];
-  const audios: HTMLAudioElement[] = [];
-  let master: GainNode | null = null;
-
-  // تجهيز أصوات الجهاز مبكراً (تتحمل بشكل متأخر في بعض المتصفحات)
-  try {
-    if (!VOICE_URL && window.speechSynthesis) {
-      window.speechSynthesis.getVoices();
-      const prime = new SpeechSynthesisUtterance(' ');
-      prime.volume = 0;
-      window.speechSynthesis.speak(prime);
-    }
-  } catch { /* ignore */ }
-
-  if (BLOW_URL) {
-    try {
-      const a = new Audio(BLOW_URL);
-      a.volume = 1;
-      audios.push(a);
-      void a.play().catch(() => { /* ignore */ });
-    } catch { /* ignore */ }
-  }
-
-  if (ctx) {
-    const t0 = ctx.currentTime + 0.02;
-    const tb = t0 + INFLATE_S;
-
-    master = ctx.createGain();
-    master.gain.value = 0.9;
-    const comp = ctx.createDynamicsCompressor();
-    master.connect(comp);
-    comp.connect(ctx.destination);
-    const out = master;
-
-    const noise = (dur: number) => {
-      const s = ctx.createBufferSource();
-      s.buffer = noiseBuffer(ctx, dur);
-      sources.push(s);
-      return s;
-    };
-
-    if (!BLOW_URL) {
-      PUMPS.forEach((b, i) => {
-        const t = t0 + b.t;
-        const te = t + b.d;
-        const k = i / (PUMPS.length - 1);
-
-        // 1) الزفير: هواء ينفخه الفم داخل البالونة
-        const n = noise(b.d + 0.1);
-        const hp = ctx.createBiquadFilter();
-        hp.type = 'highpass';
-        hp.frequency.value = 380;
-        const bp = ctx.createBiquadFilter();
-        bp.type = 'bandpass';
-        bp.Q.value = 0.8;
-        bp.frequency.setValueAtTime(850 + k * 500, t);
-        bp.frequency.linearRampToValueAtTime(1100 + k * 700, te);
-        const g = ctx.createGain();
-        const peak = 0.2 + k * 0.08;
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.linearRampToValueAtTime(peak, t + 0.07);
-        g.gain.setValueAtTime(peak, te - 0.1);
-        g.gain.exponentialRampToValueAtTime(0.0001, te);
-        // اضطراب خفيف في الهواء
-        const lfo = ctx.createOscillator();
-        lfo.frequency.value = 9 + Math.random() * 6;
-        const lg = ctx.createGain();
-        lg.gain.value = 0.05;
-        lfo.connect(lg); lg.connect(g.gain);
-        n.connect(hp); hp.connect(bp); bp.connect(g); g.connect(out);
-        n.start(t); n.stop(te + 0.1);
-        lfo.start(t); lfo.stop(te + 0.1);
-        sources.push(lfo);
-
-        // 2) "بف" الشفاه عند بداية النفخة
-        const lip = ctx.createOscillator();
-        const lipG = ctx.createGain();
-        lip.type = 'sine';
-        lip.frequency.setValueAtTime(140, t);
-        lip.frequency.exponentialRampToValueAtTime(60, t + 0.07);
-        lipG.gain.setValueAtTime(0.0001, t);
-        lipG.gain.exponentialRampToValueAtTime(0.16, t + 0.01);
-        lipG.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
-        lip.connect(lipG); lipG.connect(out);
-        lip.start(t); lip.stop(t + 0.1);
-        sources.push(lip);
-
-        // 3) صرير المطاط وهو يتمدد (يزيد مع امتلاء البالونة)
-        if (i >= 1) {
-          const sq = ctx.createOscillator();
-          sq.type = 'sawtooth';
-          const f0 = 700 + i * 120;
-          sq.frequency.setValueAtTime(f0, t + 0.05);
-          sq.frequency.linearRampToValueAtTime(f0 + 350 + i * 40, te);
-          const vib = ctx.createOscillator();
-          vib.frequency.value = 28 + Math.random() * 10;
-          const vibG = ctx.createGain();
-          vibG.gain.value = 35;
-          vib.connect(vibG); vibG.connect(sq.frequency);
-          const sbp = ctx.createBiquadFilter();
-          sbp.type = 'bandpass';
-          sbp.Q.value = 7;
-          sbp.frequency.value = 1700 + i * 150;
-          const sg = ctx.createGain();
-          const sp = 0.02 + k * 0.03;
-          sg.gain.setValueAtTime(0.0001, t + 0.05);
-          sg.gain.linearRampToValueAtTime(sp, t + 0.18);
-          sg.gain.exponentialRampToValueAtTime(0.0001, te);
-          sq.connect(sbp); sbp.connect(sg); sg.connect(out);
-          sq.start(t + 0.05); sq.stop(te + 0.02);
-          vib.start(t + 0.05); vib.stop(te + 0.02);
-          sources.push(sq, vib);
-        }
-
-        // 4) الشهيق بين النفخات
-        if (i < PUMPS.length - 1) {
-          const ti = te + 0.02;
-          const di = PUMPS[i + 1].t - b.t - b.d - 0.04;
-          if (di > 0.05) {
-            const inh = noise(di + 0.05);
-            const ibp = ctx.createBiquadFilter();
-            ibp.type = 'bandpass';
-            ibp.Q.value = 0.6;
-            ibp.frequency.setValueAtTime(900, ti);
-            ibp.frequency.linearRampToValueAtTime(1500, ti + di);
-            const ig = ctx.createGain();
-            ig.gain.setValueAtTime(0.0001, ti);
-            ig.gain.linearRampToValueAtTime(0.07, ti + di * 0.5);
-            ig.gain.linearRampToValueAtTime(0.0001, ti + di);
-            inh.connect(ibp); ibp.connect(ig); ig.connect(out);
-            inh.start(ti); inh.stop(ti + di + 0.05);
-          }
-        }
-      });
-
-      // توتر المطاط قبل الانفجار: صرير متقطع
-      const tn = noise(0.9);
-      const tbp = ctx.createBiquadFilter();
-      tbp.type = 'bandpass';
-      tbp.Q.value = 6;
-      tbp.frequency.setValueAtTime(2800, tb - 0.8);
-      tbp.frequency.linearRampToValueAtTime(4200, tb);
-      const tg = ctx.createGain();
-      tg.gain.setValueAtTime(0.03, tb - 0.8);
-      const tl = ctx.createOscillator();
-      tl.type = 'square';
-      tl.frequency.value = 22;
-      const tlg = ctx.createGain();
-      tlg.gain.value = 0.03;
-      tl.connect(tlg); tlg.connect(tg.gain);
-      tn.connect(tbp); tbp.connect(tg); tg.connect(out);
-      tg.gain.setValueAtTime(0.0001, tb - 0.001);
-      tn.start(tb - 0.8); tn.stop(tb);
-      tl.start(tb - 0.8); tl.stop(tb);
-      sources.push(tl);
-    }
-
-    // الانفجار: طقة بالونة حادة + ضربة هواء قصيرة
-    const crack = noise(0.2);
-    const chp = ctx.createBiquadFilter();
-    chp.type = 'highpass';
-    chp.frequency.value = 900;
-    const cg = ctx.createGain();
-    cg.gain.setValueAtTime(1.0, tb);
-    cg.gain.exponentialRampToValueAtTime(0.0001, tb + 0.12);
-    crack.connect(chp); chp.connect(cg); cg.connect(out);
-    crack.start(tb); crack.stop(tb + 0.2);
-
-    const boom = noise(0.5);
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(3500, tb);
-    lp.frequency.exponentialRampToValueAtTime(200, tb + 0.4);
-    const bg = ctx.createGain();
-    bg.gain.setValueAtTime(0.55, tb);
-    bg.gain.exponentialRampToValueAtTime(0.0001, tb + 0.4);
-    boom.connect(lp); lp.connect(bg); bg.connect(out);
-    boom.start(tb); boom.stop(tb + 0.5);
-
-    const thump = ctx.createOscillator();
-    const thg = ctx.createGain();
-    thump.type = 'sine';
-    thump.frequency.setValueAtTime(170, tb);
-    thump.frequency.exponentialRampToValueAtTime(40, tb + 0.35);
-    thg.gain.setValueAtTime(0.8, tb);
-    thg.gain.exponentialRampToValueAtTime(0.0001, tb + 0.4);
-    thump.connect(thg); thg.connect(out);
-    thump.start(tb); thump.stop(tb + 0.45);
-    sources.push(thump);
-
-    // طقطقة قطع القلب المتفتتة
-    for (let i = 0; i < 12; i++) {
-      const t = tb + 0.08 + Math.random() * 0.9;
-      const n = noise(0.05);
-      const hp = ctx.createBiquadFilter();
-      hp.type = 'highpass';
-      hp.frequency.value = 2500 + Math.random() * 2500;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.14, t + 0.004);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
-      n.connect(hp); hp.connect(g); g.connect(out);
-      n.start(t); n.stop(t + 0.06);
-    }
-  }
-
-  // صوت المرأة "I love you" مع لحظة الانفجار
-  timers.push(window.setTimeout(() => speakILoveYou(audios), (INFLATE_S + 0.12) * 1000));
-
-  return () => {
-    timers.forEach(t => window.clearTimeout(t));
-    try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
-    audios.forEach(a => { try { a.pause(); } catch { /* ignore */ } });
-    if (ctx && master) {
+    const img = new Image();
+    img.onload = () => {
       try {
-        master.gain.cancelScheduledValues(ctx.currentTime);
-        master.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
-        sources.forEach(s => { try { s.stop(ctx.currentTime + 0.1); } catch { /* ignore */ } });
+        const cv = document.createElement('canvas');
+        cv.width = SPRITE_W;
+        cv.height = SPRITE_H;
+        const cx = cv.getContext('2d');
+        if (!cx) return;
+        cx.imageSmoothingQuality = 'high';
+        cx.drawImage(img, 0, 0, SPRITE_W, SPRITE_H);
+        spriteCache[v] = cv;
       } catch { /* ignore */ }
-    }
-  };
+    };
+    img.onerror = () => { spriteLoading[v] = false; };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(heartSvgString(`s${v}`, v, false, SPRITE_W));
+  } catch { spriteLoading[v] = false; }
+}
+function preloadHeartSprites() {
+  for (let v = 0; v < HEART_VARIANTS; v++) loadHeartSprite(v);
+}
+function getHeartSprite(v: number): HTMLCanvasElement | null {
+  const c = spriteCache[v % HEART_VARIANTS];
+  if (!c) loadHeartSprite(v % HEART_VARIANTS);
+  return c || null;
 }
 
-// نقرة خفيفة عند ارتطام قلب بزر
-function playTick(vol: number) {
-  const ctx = getAudioCtx();
-  if (!ctx) return;
-  try {
-    const t = ctx.currentTime;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = 'triangle';
-    o.frequency.setValueAtTime(600 + Math.random() * 500, t);
-    o.frequency.exponentialRampToValueAtTime(260, t + 0.05);
-    g.gain.setValueAtTime(Math.min(0.07, vol), t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
-    o.connect(g); g.connect(ctx.destination);
-    o.start(t); o.stop(t + 0.07);
-  } catch { /* ignore */ }
-}
-
-// ── الشكل داخل مربع الهدايا: قلب ينبض ─────────────────────────────────────
-function HeartPreview({ size = 72 }: { size?: number }) {
+// size = عرض القلب بالبكسل (الارتفاع يتبع النسبة)
+function RealisticHeart({ size, knot = false, variant = 0, glow = true }: { size: number; knot?: boolean; variant?: number; glow?: boolean }) {
+  const gid = React.useId().replace(/:/g, '');
+  const html = useMemo(
+    () => heartInner(`hg${gid}`, HEART_PALETTES[variant % HEART_VARIANTS], knot),
+    [gid, variant, knot],
+  );
   return (
-    <motion.div
+    <svg
+      width={size}
+      height={size * HEART_ASPECT}
+      viewBox={`${HEART_VB.x} ${HEART_VB.y} ${HEART_VB.w} ${HEART_VB.h}`}
+      style={{ display: 'block', overflow: 'visible', filter: glow ? 'drop-shadow(0 0 10px rgba(255,45,85,0.65))' : undefined }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
+// ── الشكل داخل مربع الهدايا (قبل النقر): قلب واقعي ينتفخ بنفخات ثم ينفجر بقلوب صغيرة، وتتكرر الحركة ──
+const PREVIEW_LOOP_S = 3.6;
+const PREVIEW_MINIS = 7;
+
+function HeartPreview({ size = 72 }: { size?: number }) {
+  // القلب: ينتفخ على 4 نفخات ثم "بوب" ويختفي لحظة قبل أن يبدأ من جديد
+  const T = [0, 0.1, 0.17, 0.27, 0.34, 0.44, 0.51, 0.6, 0.65, 0.655, 0.8, 0.92, 1];
+  const SC = [0.4, 0.58, 0.54, 0.74, 0.7, 0.9, 0.86, 1.04, 1.16, 0, 0, 0.2, 0.4];
+  const OP = [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1];
+  const mini = size * 0.2;
+
+  useEffect(() => { preloadHeartSprites(); }, []);
+
+  return (
+    <div
       aria-hidden="true"
-      animate={{ scale: [1, 1.16, 1, 1.1, 1] }}
-      transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut', times: [0, 0.18, 0.36, 0.5, 1] }}
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      style={{ position: 'relative', width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
     >
-      <GlossyHeart size={size} />
-    </motion.div>
+      <motion.div
+        animate={{ scale: SC, opacity: OP }}
+        transition={{ duration: PREVIEW_LOOP_S, repeat: Infinity, ease: 'easeInOut', times: T }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', willChange: 'transform' }}
+      >
+        <RealisticHeart size={size * 0.72} knot />
+      </motion.div>
+
+      {/* وميض الانفجار */}
+      <motion.div
+        animate={{ scale: [0.2, 0.2, 1.1], opacity: [0, 0.6, 0] }}
+        transition={{ duration: PREVIEW_LOOP_S, repeat: Infinity, ease: 'easeOut', times: [0, 0.65, 0.78] }}
+        style={{
+          position: 'absolute', left: '50%', top: '50%', width: size * 0.9, height: size * 0.9, marginLeft: -size * 0.45, marginTop: -size * 0.45,
+          borderRadius: '50%', background: 'radial-gradient(circle, #ffffff 0%, #ff7a95 35%, rgba(255,45,85,0) 70%)', pointerEvents: 'none',
+        }}
+      />
+
+      {/* قلوب واقعية صغيرة تتناثر عند الانفجار */}
+      {Array.from({ length: PREVIEW_MINIS }, (_, i) => {
+        const ang = (i / PREVIEW_MINIS) * Math.PI * 2 + 0.4;
+        const dist = size * (0.38 + (i % 3) * 0.06);
+        const tx = Math.cos(ang) * dist;
+        const ty = Math.sin(ang) * dist;
+        return (
+          <motion.div
+            key={i}
+            animate={{
+              x: [0, 0, 0, tx, tx * 1.08, tx * 1.08],
+              y: [0, 0, 0, ty, ty * 1.08 + size * 0.1, ty * 1.08 + size * 0.1],
+              scale: [0, 0, 0.9, 0.9, 0.6, 0],
+              opacity: [0, 0, 1, 1, 0, 0],
+              rotate: [0, 0, 0, (i % 2 ? 1 : -1) * 25, (i % 2 ? 1 : -1) * 40, 0],
+            }}
+            transition={{ duration: PREVIEW_LOOP_S, repeat: Infinity, ease: 'easeOut', times: [0, 0.65, 0.66, 0.78, 0.94, 1] }}
+            style={{ position: 'absolute', left: '50%', top: '50%', marginLeft: -mini / 2, marginTop: -(mini * HEART_ASPECT) / 2, pointerEvents: 'none' }}
+          >
+            <RealisticHeart size={mini} variant={i} glow={false} />
+          </motion.div>
+        );
+      })}
+    </div>
   );
 }
 
 // ── الفيزياء: قلوب تسقط وتصطدم بأزرار البث ─────────────────────────────────
-const FRAG_COLORS = ['#ff2d55', '#ff5c7a', '#e11d48', '#ff8fa3', '#ffd1dc', '#ff3b6b'];
-
 interface Obstacle { x: number; y: number; w: number; h: number; r: number }
 
 // يجمع الأزرار الظاهرة في النصف السفلي من الشاشة (أزرار البث) لتصطدم بها القلوب
@@ -406,7 +325,7 @@ function collectObstacles(W: number, H: number): Obstacle[] {
 interface Piece {
   x: number; y: number; vx: number; vy: number;
   size: number; rad: number; rot: number; vr: number;
-  color: string; delay: number; e: number;
+  v: number; delay: number; e: number;
   active: boolean; dead: boolean; fadeAt: number | null;
 }
 interface Spark { x: number; y: number; vx: number; vy: number; size: number; delay: number }
@@ -423,7 +342,8 @@ function BurstLayer({ W, H, seconds }: { W: number; H: number; seconds: number }
     cv.width = Math.round(W * dpr);
     cv.height = Math.round(H * dpr);
 
-    const heart = new Path2D(HEART_PATH);
+    preloadHeartSprites();
+    c.imageSmoothingQuality = 'high';
     const k = Math.max(W, H) / 700;
     const g = GRAVITY * (H / 700);
     const cx = W / 2;
@@ -443,7 +363,7 @@ function BurstLayer({ W, H, seconds }: { W: number; H: number; seconds: number }
         size, rad: size * 0.42,
         rot: Math.random() * Math.PI * 2,
         vr: (Math.random() - 0.5) * 9,
-        color: FRAG_COLORS[i % FRAG_COLORS.length],
+        v: i % HEART_VARIANTS,
         delay: Math.random() * 0.12,
         e: BOUNCE * (0.75 + Math.random() * 0.5),
         active: false, dead: false, fadeAt: null,
@@ -459,7 +379,7 @@ function BurstLayer({ W, H, seconds }: { W: number; H: number; seconds: number }
         size, rad: size * 0.42,
         rot: Math.random() * Math.PI * 2,
         vr: (Math.random() - 0.5) * 6,
-        color: FRAG_COLORS[(i + 2) % FRAG_COLORS.length],
+        v: (i + 1) % HEART_VARIANTS,
         delay: 0.15 + Math.random() * 1.5,
         e: BOUNCE * (0.75 + Math.random() * 0.5),
         active: false, dead: false, fadeAt: null,
@@ -545,7 +465,7 @@ function BurstLayer({ W, H, seconds }: { W: number; H: number; seconds: number }
                 const impact = -vn;
                 if (impact > 180 && now - lastTick > 45) {
                   lastTick = now;
-                  playTick(impact / 9000);
+                  playHeartTick(impact / 9000);
                 }
               }
             }
@@ -560,20 +480,18 @@ function BurstLayer({ W, H, seconds }: { W: number; H: number; seconds: number }
           if (alpha <= 0) { p.dead = true; continue; }
         }
 
-        const sc = p.size / 24;
-        c.save();
-        c.globalAlpha = Math.max(0, alpha);
-        c.translate(p.x, p.y);
-        c.rotate(p.rot);
-        c.scale(sc, sc);
-        c.translate(-12, -11.5);
-        c.fillStyle = p.color;
-        c.fill(heart);
-        c.fillStyle = 'rgba(255,255,255,0.35)';
-        c.beginPath();
-        c.ellipse(8, 7.2, 2.2, 1.2, -0.6, 0, Math.PI * 2);
-        c.fill();
-        c.restore();
+        // قلب واقعي صغير (صورة جاهزة من الرسم التشريحي)
+        const sprite = getHeartSprite(p.v);
+        if (sprite) {
+          const pw = p.size;
+          const ph = p.size * HEART_ASPECT;
+          c.save();
+          c.globalAlpha = Math.max(0, alpha);
+          c.translate(p.x, p.y);
+          c.rotate(p.rot);
+          c.drawImage(sprite, -pw / 2, -ph * 0.5, pw, ph);
+          c.restore();
+        }
       }
 
       // الشرارات
@@ -614,7 +532,7 @@ function HeartAnimation({ onDone }: { onDone: () => void }) {
     W: typeof window !== 'undefined' ? window.innerWidth : 360,
     H: typeof window !== 'undefined' ? window.innerHeight : 640,
   }));
-  const heartSize = Math.round(Math.min(W * 0.85, H * 0.55));
+  const heartSize = Math.round(Math.min(W * 0.78, H * 0.5)); // عرض القلب الواقعي
 
   // مفاتيح الحركة: القلب يكبر أثناء كل نفخة ويستقر قليلاً أثناء الشهيق
   const { times, scales, rotates } = useMemo(() => {
@@ -634,7 +552,14 @@ function HeartAnimation({ onDone }: { onDone: () => void }) {
   }, []);
 
   useEffect(() => {
-    const stopSound = playHeartSound();
+    preloadHeartSprites();
+    const stopSound = playHeartSound({
+      inflateS: INFLATE_S,
+      pumps: PUMPS,
+      voiceText: VOICE_TEXT,
+      voiceUrl: VOICE_URL,
+      blowUrl: BLOW_URL,
+    });
     const t1 = window.setTimeout(() => setPhase('burst'), INFLATE_S * 1000);
     const t2 = window.setTimeout(() => doneRef.current(), TOTAL_MS);
     return () => {
@@ -668,7 +593,7 @@ function HeartAnimation({ onDone }: { onDone: () => void }) {
             transition={{ duration: INFLATE_S, times, ease: 'easeInOut' }}
             style={{ willChange: 'transform' }}
           >
-            <GlossyHeart size={heartSize} knot />
+            <RealisticHeart size={heartSize} knot />
           </motion.div>
         </div>
       )}
