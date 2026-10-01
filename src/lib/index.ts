@@ -16,6 +16,10 @@
  *  2) Balloons → بالونات ودببة صغيرة (150 Coins, 9s) — المربع الثاني بالصف العلوي
  *              (للمضيف: بالونات تتصاعد ودببة تتساقط على البالونات والأزرار —
  *               لمستخدم: بالونة بحبلها تسحب إطار صورته لمنتصف البث ثم بالونة ثانية تاخذه للأعلى)
+ *  3) StarryPiano → سماء نجوم + عازفة بيانو + بلورات مضيئة على الأزرار (400 Coins, 15s) — المربع الثالث بالصف العلوي
+ *              (للمضيف: هالة نجوم وموجات تهتز حول صورته مع الموسيقى —
+ *               لمستخدم: إطار صورته يصعد لمنتصف البث ويهتز مع صوت البيانو)
+ *              الأصوات: src/lib/starryPianoSounds.ts
  */
 import type { GiftDefinition } from './types';
 // import { HeartGift } from '../components/gifts/HeartGift'; // هدية القلب: استُبدلت بالزومبي (الملف باقي، شيل // ورجّعها بالمصفوفة لو تبي)
@@ -26,6 +30,7 @@ import { StormGift } from '../components/gifts/StormGift';
 import { VolcanoGift } from '../components/gifts/VolcanoGift';
 import { RoseGift } from '../components/gifts/RoseGift';
 import { BalloonGift } from '../components/gifts/BalloonGift';
+import { StarryPianoGift } from '../components/gifts/StarryPianoGift';
 
 export const GIFTS: GiftDefinition[] = [
   GardenGift,  // مكان الزومبي (كان مكان القلب)
@@ -34,10 +39,11 @@ export const GIFTS: GiftDefinition[] = [
   // remaining three squares: add more gifts here later
 ];
 
-// الصف العلوي (3 مربعات صغيرة): الأول = الوردة، الثاني = البالونات، الثالث + للمستقبل
+// الصف العلوي (3 مربعات صغيرة): الأول = الوردة، الثاني = البالونات، الثالث = البيانو والنجوم
 export const TOP_GIFTS: GiftDefinition[] = [
   RoseGift,
   BalloonGift,
+  StarryPianoGift,
 ];
 
 // كل الهدايا (للبحث بالـ id عند الإرسال والتشغيل)
