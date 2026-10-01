@@ -701,6 +701,14 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
 
       {/* مربع الهدايا: 6 مربعات فيها + للمستقبل */}
       <Sheet open={giftsOpen} onClose={() => { setGiftsOpen(false); giftTargetRef.current = null; setGiftTarget(null); }} title={giftTarget ? `Gifts → ${giftTarget.name}` : (hostId && uid !== String(hostId) ? 'Gifts → Host' : 'Gifts')} balance={balance}>
+        {/* صف علوي: 3 مربعات صغيرة فيها + (مكان هدايا مستقبلية) — بين هيد الرصيد وبقية الهدايا */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 10 }}>
+          {[0, 1, 2].map(i => (
+            <div key={`top-${i}`} style={{ ...CARD, cursor: 'default', minHeight: 56, height: 56, padding: '6px' }}>
+              <Plus size={22} color="rgba(255,255,255,0.55)" strokeWidth={2.4} />
+            </div>
+          ))}
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
           {[0, 1, 2, 3, 4, 5].map(i => {
             const gift = GIFTS[i];
