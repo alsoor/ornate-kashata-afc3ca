@@ -11,6 +11,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, CreditCard, Lock } from 'lucide-react';
+import { GIFTS } from '@/lib/gifts';
+import type { GiftDefinition } from '@/lib/gifts/types';
 
 // ── إعدادات ─────────────────────────────────────────────────────────────
 const PAYMENT_DEMO_MODE = true;
@@ -65,6 +67,24 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
       body: JSON.stringify({ packId: pack.id, coins: pack.coins, amountUsd: pack.usd, method: 'visa' }),
     });
     if (!r.ok) return { ok: false, error: 'Payment failed' };
+    const d = await r.json().catch(() => ({})) as { balance?: number };
+    return { ok: true, balance: typeof d.balance === 'number' ? d.balance : undefined };
+  } catch {
+    return { ok: false, error: 'Network error' };
+  }
+}
+
+// خصم سعر الهدية. في الوضع التجريبي محلي فقط؛ للإنتاج اربطه بسيرفرك (يخصم ويرجّع الرصيد الجديد).
+async function spendCoinsForGift(gift: GiftDefinition, hostId?: string): Promise<{ ok: boolean; balance?: number; error?: string }> {
+  if (PAYMENT_DEMO_MODE) return { ok: true };
+  try {
+    const r = await fetch('/api/gifts/send', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ giftId: gift.id, price: gift.price, hostId }),
+    });
+    if (!r.ok) return { ok: false, error: 'تعذر إرسال الهدية' };
     const d = await r.json().catch(() => ({})) as { balance?: number };
     return { ok: true, balance: typeof d.balance === 'number' ? d.balance : undefined };
   } catch {
@@ -166,7 +186,7 @@ const CARD: React.CSSProperties = {
 };
 
 // ── المكوّن الرئيسي ─────────────────────────────────────────────────────
-export function LiveCoinsDock({ currentUserId, yellowRight = YELLOW_DOT_RIGHT }: { hostId?: string; currentUserId?: string; yellowRight?: number }) {
+export function LiveCoinsDock({ hostId, currentUserId, yellowRight = YELLOW_DOT_RIGHT }: { hostId?: string; currentUserId?: string; yellowRight?: number }) {
   const uid = String(currentUserId || '');
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [coinsOpen, setCoinsOpen] = useState(false);
@@ -176,6 +196,8 @@ export function LiveCoinsDock({ currentUserId, yellowRight = YELLOW_DOT_RIGHT }:
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState('');
   const [paidToast, setPaidToast] = useState(false);
+  const [playing, setPlaying] = useState<{ gift: GiftDefinition; key: number } | null>(null);
+  const [giftMsg, setGiftMsg] = useState('');
 
   const [cardNum, setCardNum] = useState('');
   const [cardExp, setCardExp] = useState('');
@@ -203,6 +225,40 @@ export function LiveCoinsDock({ currentUserId, yellowRight = YELLOW_DOT_RIGHT }:
       })
       .catch(() => { /* ignore */ });
   }, [uid]);
+
+  // تشغيل أنميشن هدية (يستقبل الحدث المحلي، وأي بث مستقبلي لباقي الحضور يرسل نفس الحدث)
+  useEffect(() => {
+    const onPlay = (e: Event) => {
+      const d = (e as CustomEvent).detail as { giftId?: string } | undefined;
+      const g = GIFTS.find(x => x.id === d?.giftId);
+      if (g) setPlaying({ gift: g, key: Date.now() });
+    };
+    window.addEventListener('stooorna:gift-play', onPlay);
+    return () => window.removeEventListener('stooorna:gift-play', onPlay);
+  }, []);
+
+  function flashGiftMsg(msg: string) {
+    setGiftMsg(msg);
+    window.setTimeout(() => setGiftMsg(''), 2400);
+  }
+
+  async function sendGift(gift: GiftDefinition) {
+    const bal = readBalance(uid);
+    if (bal < gift.price) {
+      setGiftsOpen(false);
+      setCoinsOpen(true);
+      flashGiftMsg('رصيدك غير كافٍ — اشحن Coins');
+      return;
+    }
+    const res = await spendCoinsForGift(gift, hostId);
+    if (!res.ok) { flashGiftMsg(res.error || 'تعذر إرسال الهدية'); return; }
+    const next = typeof res.balance === 'number' ? res.balance : bal - gift.price;
+    writeBalance(uid, next);
+    setBalance(next);
+    setGiftsOpen(false);
+    // تشغيل الأنميشن عندي. للبث لباقي الحضور: أرسل نفس الحدث عندهم (قناة Agora أو WebSocket).
+    window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: gift.id, fromId: uid, hostId } }));
+  }
 
   function resetCard() { setCardNum(''); setCardExp(''); setCardCvc(''); setCardName(''); setPayError(''); }
 
@@ -349,13 +405,46 @@ export function LiveCoinsDock({ currentUserId, yellowRight = YELLOW_DOT_RIGHT }:
       {/* مربع الهدايا: 6 مربعات فيها + للمستقبل */}
       <Sheet open={giftsOpen} onClose={() => setGiftsOpen(false)} title="Gifts" balance={balance}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-          {[0, 1, 2, 3, 4, 5].map(i => (
-            <div key={i} style={{ ...CARD, cursor: 'default' }}>
-              <Plus size={30} color="rgba(255,255,255,0.55)" strokeWidth={2.4} />
-            </div>
-          ))}
+          {[0, 1, 2, 3, 4, 5].map(i => {
+            const gift = GIFTS[i];
+            if (!gift) {
+              return (
+                <div key={i} style={{ ...CARD, cursor: 'default' }}>
+                  <Plus size={30} color="rgba(255,255,255,0.55)" strokeWidth={2.4} />
+                </div>
+              );
+            }
+            return (
+              <button key={gift.id} type="button" aria-label={`${gift.name} — ${gift.price} Coins`}
+                onClick={() => void sendGift(gift)}
+                style={{ ...CARD, padding: '8px 4px 6px', gap: 4, border: '1.5px solid rgba(255,45,85,0.35)' }}>
+                <gift.Preview size={70} />
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(255,255,255,0.8)', fontWeight: 800, fontSize: 12.5 }}>
+                  <CoinIcon size={14} /> {fmtCoins(gift.price)}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </Sheet>
+
+      {playing ? <playing.gift.Animation key={playing.key} onDone={() => setPlaying(null)} /> : null}
+
+      <AnimatePresence>
+        {giftMsg ? (
+          <motion.div
+            key="gift-msg"
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 90, zIndex: 9300,
+              background: '#dc2626', color: '#fff', padding: '10px 16px', borderRadius: 999, fontWeight: 800, fontSize: 14,
+              boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+            }}
+          >
+            {giftMsg}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <AnimatePresence>
         {paidToast && (
