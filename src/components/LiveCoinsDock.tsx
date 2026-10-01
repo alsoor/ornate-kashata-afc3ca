@@ -13,7 +13,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, CreditCard, Lock, Pencil } from 'lucide-react';
-import { GIFTS } from '@/lib/index';
+import { GIFTS, TOP_GIFTS, ALL_GIFTS } from '@/lib/index';
 import type { GiftDefinition } from '@/lib/types';
 
 // ── إعدادات ─────────────────────────────────────────────────────────────
@@ -342,7 +342,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
   useEffect(() => {
     const onPlay = (e: Event) => {
       const d = (e as CustomEvent).detail as { giftId?: string; count?: number; toUserId?: string; toName?: string; toAvatar?: string | null } | undefined;
-      const g = GIFTS.find(x => x.id === d?.giftId);
+      const g = ALL_GIFTS.find(x => x.id === d?.giftId);
       if (!g) return;
       const n = Math.max(1, Math.min(COMBO_MAX, Math.floor(Number(d?.count) || 1)));
       for (let i = 0; i < n; i++) queueRef.current.push({ gift: g, toUserId: d?.toUserId ? String(d.toUserId) : undefined, toName: d?.toName, toAvatar: d?.toAvatar ?? null });
@@ -449,7 +449,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     if (!t) return;
     tapRef.current = null;
     setTap(null);
-    const gift = GIFTS.find(g => g.id === t.id);
+    const gift = ALL_GIFTS.find(g => g.id === t.id);
     if (!gift) return;
     const target = resolveGiftTarget();
     if (!target) { flashGiftMsg('اضغط على صورة متحدث واختر إرسال هدية'); return; }
@@ -703,11 +703,48 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
       <Sheet open={giftsOpen} onClose={() => { setGiftsOpen(false); giftTargetRef.current = null; setGiftTarget(null); }} title={giftTarget ? `Gifts → ${giftTarget.name}` : (hostId && uid !== String(hostId) ? 'Gifts → Host' : 'Gifts')} balance={balance}>
         {/* صف علوي: 3 مربعات صغيرة فيها + (مكان هدايا مستقبلية) — بين هيد الرصيد وبقية الهدايا */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 10 }}>
-          {[0, 1, 2].map(i => (
-            <div key={`top-${i}`} style={{ ...CARD, cursor: 'default', minHeight: 56, height: 56, padding: '6px' }}>
-              <Plus size={22} color="rgba(255,255,255,0.55)" strokeWidth={2.4} />
-            </div>
-          ))}
+          {[0, 1, 2].map(i => {
+            const gift = TOP_GIFTS[i];
+            if (!gift) {
+              return (
+                <div key={`top-${i}`} style={{ ...CARD, cursor: 'default', minHeight: 56, height: 56, padding: '6px' }}>
+                  <Plus size={22} color="rgba(255,255,255,0.55)" strokeWidth={2.4} />
+                </div>
+              );
+            }
+            const count = tap && tap.id === gift.id ? tap.n : 0;
+            return (
+              <button key={gift.id} type="button" aria-label={`${gift.name} — ${gift.price} Coins`}
+                onClick={() => void tapGift(gift)}
+                style={{
+                  ...CARD, position: 'relative', flexDirection: 'row', gap: 6, minHeight: 56, height: 56, padding: '4px 6px',
+                  touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent',
+                  border: count ? '1.5px solid #8b12ff' : '1.5px solid rgba(255,45,85,0.35)',
+                }}>
+                <gift.Preview size={40} />
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(255,255,255,0.8)', fontWeight: 800, fontSize: 12.5, lineHeight: '16px' }}>
+                  <CoinIcon size={14} /> {fmtCoins(gift.price)}
+                </span>
+                <AnimatePresence>
+                  {count > 0 && (
+                    <motion.span
+                      key={count}
+                      initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ opacity: 0 }}
+                      transition={{ type: 'spring', stiffness: 520, damping: 22 }}
+                      style={{
+                        position: 'absolute', top: 3, right: 4, minWidth: 22, height: 22, padding: '0 5px', boxSizing: 'border-box',
+                        borderRadius: 11, background: '#8b12ff', color: '#fff', fontWeight: 900, fontSize: 13,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 2px 10px rgba(139,18,255,0.6)', pointerEvents: 'none',
+                      }}
+                    >
+                      {count}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </button>
+            );
+          })}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
           {[0, 1, 2, 3, 4, 5].map(i => {
