@@ -5,6 +5,7 @@
  *  - footstep : صوت حذاء/كعب وهي تمشي على بوكس الرسائل
  *  - smooch   : صوت بوسة ناعمة (شفط خفيف + فرقعة + نَفَس)
  *  - chime    : رنّة سحرية صغيرة تلمع مع البوسة
+ *  - thump / squeak : وقع قفزات الأرنب وهو يركض + زقزقة صغيرة لما يقعد فوق رأسها
  *  - playWitchSound(plan) : يجدول كل الأصوات حسب توقيت الأنميشن ويرجع دالة إيقاف
  *
  * لتغيير صوت البوسة بصوت حقيقي مسجّل: مرّر kissUrl في الخطة (يُضبط من WitchGift.tsx → KISS_URL).
@@ -26,6 +27,10 @@ export interface WitchSoundPlan {
   burstCount: number;
   /** ملف صوت بوسة حقيقي (اختياري) */
   kissUrl?: string;
+  /** أوقات وقع قفزات الأرنب بالثواني (اختياري) */
+  hopTimes?: number[];
+  /** وقت نزول الأرنب فوق رأسها (زقزقة صغيرة) (اختياري) */
+  landAt?: number;
 }
 
 export function playWitchSound(plan: WitchSoundPlan): () => void {
@@ -229,6 +234,46 @@ export function playWitchSound(plan: WitchSoundPlan): () => void {
     n.start(t); n.stop(t + dur + 0.1);
   };
 
+  // ── وقع قفزة الأرنب (دقّة ناعمة) ───────────────────────────────────────
+  const thump = (t: number, vol: number) => {
+    const o = osc('sine');
+    const g = ctx.createGain();
+    o.frequency.setValueAtTime(190, t);
+    o.frequency.exponentialRampToValueAtTime(70, t + 0.06);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.16 * vol, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    o.connect(g); g.connect(m);
+    o.start(t); o.stop(t + 0.1);
+
+    const n = noise(0.04);
+    const nf = ctx.createBiquadFilter();
+    nf.type = 'bandpass';
+    nf.frequency.value = 1400;
+    nf.Q.value = 1;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.05 * vol, t);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
+    n.connect(nf); nf.connect(ng); ng.connect(m);
+    n.start(t); n.stop(t + 0.04);
+  };
+
+  // ── زقزقة الأرنب الفرحانة ──────────────────────────────────────────────
+  const squeak = (t: number, vol: number) => {
+    [0, 0.11].forEach((d, i) => {
+      const o = osc('sine');
+      const g = ctx.createGain();
+      const ts = t + d;
+      o.frequency.setValueAtTime(900 + i * 250, ts);
+      o.frequency.exponentialRampToValueAtTime(1700 + i * 300, ts + 0.08);
+      g.gain.setValueAtTime(0.0001, ts);
+      g.gain.linearRampToValueAtTime(0.1 * vol, ts + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, ts + 0.1);
+      o.connect(g); g.connect(m);
+      o.start(ts); o.stop(ts + 0.12);
+    });
+  };
+
   // الجدولة
   plan.stepTimes.forEach((s, i) => footstep(t0 + s, i));
 
@@ -243,6 +288,12 @@ export function playWitchSound(plan: WitchSoundPlan): () => void {
     const t = t0 + plan.burstAt + (i / plan.burstCount) * plan.burstSpan + Math.random() * 0.05;
     smooch(t, 0.28 + Math.random() * 0.3, 0.9 + Math.random() * 0.5);
     if (i % 5 === 2) chime(t + 0.05, 0.4);
+  }
+
+  if (plan.hopTimes) plan.hopTimes.forEach((s, i) => thump(t0 + s, 0.55 + (i % 2) * 0.15));
+  if (plan.landAt !== undefined) {
+    thump(t0 + plan.landAt, 0.8);
+    squeak(t0 + plan.landAt + 0.05, 1);
   }
 
   return cleanup;

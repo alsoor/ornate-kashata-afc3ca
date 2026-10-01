@@ -5,6 +5,9 @@
  *              تطفو، ترمش، قبعتها تتمايل، نجوم تلمع حولها، وبوسة صغيرة تطلع من فمها بين فترة وفترة.
  * - Animation: ساحرة تدخل وتمشي على بوكس الرسائل (مع صوت الحذاء مع كل خطوة)، تتوقف وتنظر للأعلى لصاحب البث،
  *              ترفع يدها وتبوسه (صوت بوسة ناعم)، ثم تخرج من فمها بوسات كثيرة تتناثر في البث وتسقط وتختفي.
+ *              + أرنب أبيض يركض وراها وهي تمشي (مع صوت قفزاته)، وأول ما توقف تبوس يتسلق عليها
+ *                ويقعد فوق رأسها (على القبعة) ويبتسم بسعادة.
+ *              + الساحرة أكبر وأطول (FIG_H_RATIO / FIG_H_MIN / FIG_H_MAX تحت).
  *
  * ملف مستقل: الأصوات في src/lib/witchSounds.ts. غيّر الأرقام تحت (السعر/المدد/التوقيتات/عدد البوسات).
  *
@@ -39,7 +42,32 @@ const KISSES = 70;           // عدد البوسات المتناثرة
 const GRAVITY = 1300;        // جاذبية سقوط البوسات (px/s² لشاشة ارتفاعها 700px)
 const KISS_URL = '';         // مثال: '/sounds/kiss.mp3' (بوسة حقيقية مسجلة بدل المولَّدة)
 
+// حجم الساحرة في الأنميشن (نسبة من ارتفاع الشاشة + حدّ أدنى وأعلى بالبكسل)
+const FIG_H_RATIO = 0.42;
+const FIG_H_MIN = 240;
+const FIG_H_MAX = 400;
+
+// ── الأرنب ──
+const RB_HOP = 0.34;         // مدة قفزة الأرنب الواحدة وهو يركض
+const CLIMB_AT = 3.5;        // يبدأ الأرنب يتسلق على الساحرة
+const LAND_AT = 4.3;         // يستقر فوق رأسها ويبتسم
+const RB_SCALE = 1.15;       // حجم الأرنب
+const RB_CATCH_X = -6;       // مكان وقوفه جنب الساحرة قبل التسلق (إحداثيات الساحرة)
+const RB_PERCH = { x: 19, y: 31 }; // مكان جلوسه على قبعتها (إحداثيات الرأس)
+const RB_PATH = [            // طريق التسلق على الساحرة (إحداثيات الساحرة)
+  { x: RB_CATCH_X, y: 210 },
+  { x: 2, y: 172 },
+  { x: 8, y: 128 },
+  { x: 12, y: 84 },
+];
+
 const STEP_TIMES = Array.from({ length: WALK_STEPS }, (_, i) => 0.21 + i * STEP_S);
+
+// أوقات وقع قفزات الأرنب (للصوت): ركض ثم تسلق
+const RB_HOP_TIMES = [
+  ...Array.from({ length: Math.floor(CLIMB_AT / RB_HOP) - 1 }, (_, i) => (i + 2) * RB_HOP),
+  ...Array.from({ length: 4 }, (_, i) => CLIMB_AT + 0.12 + i * 0.17),
+];
 
 const HEART_PATH =
   'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z';
@@ -340,6 +368,87 @@ function WitchFigure({ uid, svgRef, width, height }: {
   );
 }
 
+// ── الأرنب (مرسوم في SVG مستقل، يُحرَّك بالإحداثيات من الإطار) ───────────────
+// الأصل (0,0) = منتصف أقدامه على الأرض، ويواجه اليمين.
+function RabbitFigure({ svgRef, width, height }: {
+  svgRef: React.RefObject<SVGSVGElement | null>; width: number; height: number;
+}) {
+  const fur = '#fbf8ff';
+  const furDark = '#f1e8ff';
+  const line = '#d9c9f3';
+  const eyeStyle: React.CSSProperties = { transformBox: 'fill-box', transformOrigin: '50% 50%' };
+  return (
+    <svg
+      ref={svgRef}
+      width={width} height={height}
+      style={{
+        position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none',
+        filter: 'drop-shadow(0 0 6px rgba(240,171,252,0.65))',
+      }}
+    >
+      <g data-rb="root" transform="translate(-9999 0)">
+        {/* الذيل */}
+        <circle cx="-13.5" cy="-10.5" r="4.2" fill="#fff" stroke={line} strokeWidth="0.5" />
+
+        {/* الرجل الخلفية */}
+        <g data-rb="hind">
+          <ellipse cx="-6" cy="-7" rx="6" ry="5.6" fill={furDark} stroke={line} strokeWidth="0.5" />
+          <ellipse cx="-2.5" cy="-1.3" rx="5.2" ry="1.9" fill={fur} stroke={line} strokeWidth="0.5" />
+        </g>
+
+        {/* الجسم */}
+        <ellipse cx="-1" cy="-10" rx="12" ry="8" fill={fur} stroke={line} strokeWidth="0.5" />
+
+        {/* الرجل الأمامية */}
+        <g data-rb="front">
+          <ellipse cx="7" cy="-4.2" rx="2.3" ry="5" fill={furDark} stroke={line} strokeWidth="0.5" />
+          <ellipse cx="8.2" cy="-0.9" rx="3" ry="1.5" fill={fur} stroke={line} strokeWidth="0.5" />
+        </g>
+
+        {/* الأذنان */}
+        <g data-rb="earB">
+          <ellipse cx="13" cy="-31.5" rx="2.8" ry="9" fill={furDark} stroke={line} strokeWidth="0.5" />
+          <ellipse cx="13" cy="-31.5" rx="1.3" ry="6.2" fill="#fbcfe8" />
+        </g>
+        <g data-rb="earA">
+          <ellipse cx="7" cy="-31.5" rx="2.8" ry="9" fill="#fff" stroke={line} strokeWidth="0.5" />
+          <ellipse cx="7" cy="-31.5" rx="1.3" ry="6.2" fill="#fbcfe8" />
+        </g>
+
+        {/* الرأس */}
+        <circle cx="10" cy="-18" r="7.2" fill="#fff" stroke={line} strokeWidth="0.5" />
+
+        {/* خد */}
+        <circle cx="14.6" cy="-15.4" r="2.1" fill="#fb7185" opacity="0.5" />
+
+        {/* العين: عادية + سعيدة (^) */}
+        <g data-rb="eye" style={eyeStyle}>
+          <ellipse cx="12.6" cy="-19.2" rx="1.5" ry="1.9" fill="#1e1b4b" />
+          <circle cx="13.1" cy="-19.9" r="0.55" fill="#fff" />
+        </g>
+        <path
+          data-rb="eyeHappy"
+          d="M10.9 -19.2 Q12.6 -21.8 14.3 -19.2"
+          stroke="#1e1b4b" strokeWidth="1.1" fill="none" strokeLinecap="round"
+          style={{ display: 'none' }}
+        />
+
+        {/* أنف وشوارب */}
+        <ellipse cx="17" cy="-17" rx="1.3" ry="1" fill="#f472b6" />
+        <path d="M16.2 -16 L21 -17.4 M16.2 -15.6 L21 -14.6" stroke={line} strokeWidth="0.4" fill="none" strokeLinecap="round" />
+
+        {/* الفم: عادي + ابتسامة كبيرة */}
+        <path data-rb="mouthRun" d="M15.4 -14.6 Q16.2 -13.7 17 -14.6" stroke="#be123c" strokeWidth="0.6" fill="none" strokeLinecap="round" />
+        <g data-rb="mouthSmile" style={{ display: 'none' }}>
+          <path d="M12.4 -15 Q15 -9.8 17.4 -15 Z" fill="#be123c" />
+          <ellipse cx="15" cy="-12.1" rx="1.6" ry="0.9" fill="#fb7185" />
+          <rect x="14.2" y="-15" width="1.6" height="1.6" rx="0.3" fill="#fff" />
+        </g>
+      </g>
+    </svg>
+  );
+}
+
 // ── إيجاد بوكس الرسائل (الذي تمشي عليه الساحرة) ────────────────────────────
 function findWalkBox(W: number, H: number): { left: number; top: number; width: number } {
   const pick = (sel: string): DOMRect[] => {
@@ -404,12 +513,13 @@ function WitchAnimation({ onDone }: { onDone: () => void }) {
   const figRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
+  const rbRef = useRef<SVGSVGElement>(null);
 
   const [{ W, H }] = useState(() => ({
     W: typeof window !== 'undefined' ? window.innerWidth : 360,
     H: typeof window !== 'undefined' ? window.innerHeight : 640,
   }));
-  const figH = Math.round(Math.min(Math.max(H * 0.26, 140), 210));
+  const figH = Math.round(Math.min(Math.max(H * FIG_H_RATIO, FIG_H_MIN), FIG_H_MAX));
   const sc = figH / FIG_VB.h;
   const figW = Math.round(FIG_VB.w * sc);
 
@@ -417,7 +527,8 @@ function WitchAnimation({ onDone }: { onDone: () => void }) {
     const fig = figRef.current;
     const svg = svgRef.current;
     const cv = cvRef.current;
-    if (!fig || !svg || !cv) return;
+    const rbSvg = rbRef.current;
+    if (!fig || !svg || !cv || !rbSvg) return;
     const c = cv.getContext('2d');
     if (!c) return;
 
@@ -430,6 +541,9 @@ function WitchAnimation({ onDone }: { onDone: () => void }) {
     const eyeL = q('eyeL'), eyeR = q('eyeR'), brows = q('brows'), smile = q('lipsSmile'), kiss = q('lipsKiss');
     const irises = Array.from(svg.querySelectorAll<SVGElement>('[data-r="iris"]'));
     const setT = (el: Element | null, v: string) => { if (el) el.setAttribute('transform', v); };
+    const qr = (n: string) => rbSvg.querySelector<SVGElement>(`[data-rb="${n}"]`);
+    const rbRoot = qr('root'), rbHind = qr('hind'), rbFront = qr('front'), rbEarA = qr('earA'), rbEarB = qr('earB');
+    const rbEye = qr('eye'), rbEyeHappy = qr('eyeHappy'), rbMouthRun = qr('mouthRun'), rbMouthSmile = qr('mouthSmile');
 
     const lipsP = new Path2D(LIPS_PATH);
     const lineP = new Path2D(LIPS_LINE);
@@ -543,6 +657,7 @@ function WitchAnimation({ onDone }: { onDone: () => void }) {
     const flyCtl = { x: 0, y: 0 };
     let emitted = 0;
     let burstMouth: { x: number; y: number } | null = null;
+    let landed = false; // الأرنب وصل فوق رأسها
 
     const stopSound = playWitchSound({
       stepTimes: STEP_TIMES,
@@ -552,6 +667,8 @@ function WitchAnimation({ onDone }: { onDone: () => void }) {
       burstSpan: BURST_S,
       burstCount: 14,
       kissUrl: KISS_URL || undefined,
+      hopTimes: RB_HOP_TIMES,
+      landAt: LAND_AT,
     });
 
     let raf = 0;
@@ -588,7 +705,9 @@ function WitchAnimation({ onDone }: { onDone: () => void }) {
 
       // ── الرأس والعيون ──
       const u = smooth((t - LOOK_AT) / 0.5) * (1 - smooth((t - LOOK_END) / 0.5));
-      setT(head, `translate(0 ${-1.2 * u}) rotate(${sgn * (7 * u + 1.5 * amp * Math.sin(phase))} 50 84)`);
+      const headAng = sgn * (7 * u + 1.5 * amp * Math.sin(phase));
+      const headDy = -1.2 * u;
+      setT(head, `translate(0 ${headDy}) rotate(${headAng} 50 84)`);
       irises.forEach(el => el.setAttribute('transform', `translate(0 ${-1.5 * u})`));
       setT(brows, `translate(0 ${-1.2 * u})`);
 
@@ -596,6 +715,92 @@ function WitchAnimation({ onDone }: { onDone: () => void }) {
       const wink = t > KISS_AT - 0.05 && t < KISS_AT + 0.25 ? Math.sin((Math.PI * (t - KISS_AT + 0.05)) / 0.3) : 0;
       eyeL?.style.setProperty('transform', `scaleY(${1 - 0.92 * bl})`);
       eyeR?.style.setProperty('transform', `scaleY(${1 - 0.92 * Math.max(bl, wink)})`);
+
+      // ── الأرنب: يركض وراها، ثم يتسلقها ويقعد فوق رأسها ويبتسم ──
+      if (rbRoot) {
+        const fx = x;
+        const fy = topY + bob - hop;
+        const toS = (X: number, Y: number) => ({ x: fx + X * sc, y: fy + (Y - FIG_VB.y) * sc });
+        const hr = (headAng * Math.PI) / 180;
+        const hc = Math.cos(hr), hs = Math.sin(hr);
+        // مكان جلوسه على القبعة (يتبع حركة الرأس)
+        const perch = toS(
+          50 + (RB_PERCH.x - 50) * hc - (RB_PERCH.y - 84) * hs,
+          84 + (RB_PERCH.x - 50) * hs + (RB_PERCH.y - 84) * hc + headDy,
+        );
+        const r = (t / RB_HOP) % 1;
+        const arc = Math.sin(Math.PI * r);
+        let px = 0, py = 0, rot = 0, hindA = 0, frontA = 0, earAA = 0, earBA = 0;
+
+        if (t < CLIMB_AT) {
+          // يركض وراها ثم يقترب منها
+          const close = smooth((t - 2.5) / (CLIMB_AT - 2.5));
+          const lx = (-30 + 4 * Math.sin(t * 4.1)) * (1 - close) + RB_CATCH_X * close;
+          px = fx + lx * sc;
+          py = feetY + 1 - 11 * sc * arc;
+          rot = -8 * Math.cos(Math.PI * r);
+          hindA = 28 * Math.cos(Math.PI * r);
+          frontA = -35 * arc;
+          earAA = -30 - 8 * Math.sin(2 * Math.PI * r);
+          earBA = -22 - 8 * Math.sin(2 * Math.PI * r + 0.8);
+        } else if (t < LAND_AT) {
+          // يتسلق عليها ثم يقفز فوق رأسها
+          const cu = (t - CLIMB_AT) / (LAND_AT - CLIMB_AT);
+          const s = smooth(cu) * RB_PATH.length;
+          const i = Math.min(RB_PATH.length - 1, Math.floor(s));
+          const f = s - i;
+          const leap = i === RB_PATH.length - 1;
+          const a0 = toS(RB_PATH[i].x, RB_PATH[i].y);
+          const b0 = leap ? perch : toS(RB_PATH[i + 1].x, RB_PATH[i + 1].y);
+          px = a0.x + (b0.x - a0.x) * f;
+          py = a0.y + (b0.y - a0.y) * f;
+          const climbRot = -62 * smooth(cu * 8);
+          if (leap) {
+            py -= 10 * sc * Math.sin(Math.PI * f);
+            rot = climbRot * (1 - smooth(f)) + headAng * smooth(f);
+            earAA = -8; earBA = 4;
+          } else {
+            rot = climbRot + 7 * Math.sin(t * 20);
+            earAA = -40; earBA = -34;
+          }
+          hindA = 32 * Math.sin(t * 22);
+          frontA = -32 * Math.sin(t * 22 + 2);
+        } else {
+          // جالس فوق رأسها يبتسم ويتمايل
+          const happy = Math.sin(Math.PI * clamp01((t - KISS_AT - 0.1) / 0.35)); // قفزة فرح مع البوسة
+          const land = Math.exp(-(t - LAND_AT) * 7);
+          px = perch.x;
+          py = perch.y - 5 * sc * happy - 0.5 * sc * Math.abs(Math.sin(t * 5));
+          rot = headAng + 1.5 * Math.sin(t * 3);
+          hindA = -16;
+          frontA = 0;
+          earAA = -4 + 6 * Math.sin(t * 4.5) - 25 * land;
+          earBA = 5 + 6 * Math.sin(t * 4.5 + 1) - 20 * land;
+        }
+
+        rbRoot.setAttribute('transform', `translate(${px} ${py}) rotate(${rot}) scale(${RB_SCALE * sc})`);
+        setT(rbHind, `rotate(${hindA} -6 -8)`);
+        setT(rbFront, `rotate(${frontA} 6 -8)`);
+        setT(rbEarA, `rotate(${earAA} 7 -23)`);
+        setT(rbEarB, `rotate(${earBA} 13 -23)`);
+
+        // الوجه: ابتسامة وعيون سعيدة بعد ما يجلس فوق رأسها
+        const smiling = t >= LAND_AT - 0.05;
+        if (rbMouthRun) rbMouthRun.style.display = smiling ? 'none' : '';
+        if (rbMouthSmile) rbMouthSmile.style.display = smiling ? '' : 'none';
+        if (rbEye) {
+          rbEye.style.display = smiling ? 'none' : '';
+          rbEye.style.setProperty('transform', `scaleY(${t % 2.1 < 0.09 ? 0.1 : 1})`);
+        }
+        if (rbEyeHappy) rbEyeHappy.style.display = smiling ? '' : 'none';
+        rbSvg.style.opacity = String(endFade);
+
+        // لمعة صغيرة لحظة نزوله على القبعة
+        if (!landed && t >= LAND_AT) {
+          landed = true;
+          for (let i = 0; i < 12; i++) spawnSpark(px, py - 16 * sc, t, 320);
+        }
+      }
 
       // ── الشفاه ──
       const showKiss = t >= PUCKER_AT && t < LIPS_END;
@@ -693,6 +898,7 @@ function WitchAnimation({ onDone }: { onDone: () => void }) {
       >
         <WitchFigure uid={uid} svgRef={svgRef} width={figW} height={figH} />
       </div>
+      <RabbitFigure svgRef={rbRef} width={W} height={H} />
       <canvas ref={cvRef} style={{ position: 'absolute', inset: 0, width: W, height: H, pointerEvents: 'none' }} />
     </div>
   );
