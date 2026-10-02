@@ -10278,8 +10278,10 @@ export default function SettingsPage() {
                     <span style={{ color: 'rgba(180,150,150,0.65)', flexShrink: 0 }}>{k}</span>
                     <span style={{ textAlign: 'right', wordBreak: 'break-all', fontWeight: 600 }}>{v as string}</span>
                   </div>
+                ))}
+              </div>
 
-                {/* Owner: grant 8 speakers (VIP mic cap) — User Control only */}
+              {/* Owner: grant 8 speakers (VIP mic cap) — User Control only */}
                 <div style={{
                   marginTop: 12, padding: '12px 12px', borderRadius: 12,
                   background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)',
@@ -10318,9 +10320,6 @@ export default function SettingsPage() {
                     {getVipFeats(supportCtrlUser.id).eightMics ? 'الحالة: 1/8 متحدثين' : 'الحالة: 1/4 متحدثين'}
                   </p>
                 </div>
-
-                ))}
-              </div>
 
               {scMsg && (
                 <p style={{
