@@ -1035,6 +1035,42 @@ app.post("/api/gifts/grant", (req, res) => {
   res.json(out);
 });
 
+
+/** باتش الدعم: خصم مؤكد من رصيد المرسل مرة واحدة لكل dedupeKey. */
+app.post("/api/support/spend", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const userId = String(body.userId || "").slice(0, 80);
+  const price = Math.max(0, Math.floor(Number(body.price) || 0));
+  const count = Math.max(1, Math.min(50, Math.floor(Number(body.count) || 1)));
+  const cost = price * count;
+  if (!userId || cost <= 0) return res.status(400).json({ ok: false, error: "invalid spend" });
+  const mem = giftProfitMem();
+  const logical = `support_${userId}_${String(body.dedupeKey || `${body.giftId}_${body.toUserId}_${cost}`).slice(0, 140)}`;
+  if (!mem.done.has(logical)) {
+    mem.done.add(logical);
+    const cur = mem.balances.get(userId) || 0;
+    mem.balances.set(userId, Math.max(0, cur - cost));
+    giftProfitTouch();
+  }
+  res.json({ ok: true, balance: mem.balances.get(userId) || 0, deducted: cost });
+});
+
+app.post("/api/support/convert", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const userId = String(body.userId || "").slice(0, 80);
+  let amount = Math.max(0, Math.floor(Number(body.amount) || 0));
+  if (!userId) return res.status(400).json({ ok: false, error: "userId required" });
+  const mem = giftProfitMem();
+  const earn = mem.earnings.get(userId) || 0;
+  if (amount <= 0) amount = earn;
+  if (amount <= 0) return res.status(400).json({ ok: false, error: "no earnings" });
+  if (amount > earn) amount = earn;
+  mem.earnings.set(userId, earn - amount);
+  mem.balances.set(userId, (mem.balances.get(userId) || 0) + amount);
+  giftProfitTouch();
+  res.json({ ok: true, converted: amount, earnings: mem.earnings.get(userId) || 0, balance: mem.balances.get(userId) || 0 });
+});
+
 app.post("/api/live-gifts", (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
   const room = String(body.room || body.channel || "").slice(0, 80);
@@ -1069,7 +1105,7 @@ app.post("/api/live-gifts", (req, res) => {
     sup.set(room, rec);
   }
   // خصم رصيد المرسل مرة واحدة. العميل الجديد يرسل alreadyDeducted حتى ما ينخصم مرتين.
-  if (fromId && price > 0 && body.alreadyDeducted !== true && body.alreadyDeducted !== "true") {
+  if (fromId && price > 0 && body.supportPatch !== true && body.supportPatch !== "true" && body.alreadyDeducted !== true && body.alreadyDeducted !== "true") {
     const spendKey = `spend_${fromId}_${String(body.dedupeKey || eventId).slice(0, 120)}_${Date.now()}`;
     const pmemSpend = giftProfitMem();
     const logical = `spendlogic_${fromId}_${String(body.dedupeKey || `${giftId}_${count}_${price}_${toUserId}`).slice(0, 140)}`;
