@@ -16,14 +16,14 @@
  *              الأصوات: src/lib/castleSounds.ts
  *     (هدية الصقر FalconGift: استُبدلت بالقلعة، الملف وملف أصواته falconSounds.ts باقيين — شيل // ورجّعها بالمصفوفة لو تبي)
  *  5) Dragon → تنين ضخم (6,000 Coins, 16s) — أُلغيت (الملف DragonGift.tsx وملف أصواته باقيين — شيل // ورجّعها بالمصفوفة لو تبي)
- *  6) DragonFire → تنين ناري (10,000 Coins, ~22s / ~27s) — المربع الأخير بالشبكة (المربع اللي عليه الدائرة الصفراء) — فهرس 4 داخل GIFTS لكن يُعرض آخر مربع عبر MAIN_GIFT_ORDER بـ LiveCoinsDock
- *     (هدية الذئب Wolf: أُلغيت بالكامل وحُذف ملفها WolfGift.tsx وملف أصواته wolfSounds.ts — مربعها صار "+")
- *              (البث يتحول لظلام وسماء حمراء ومؤثرات نار، ثم يدخل مشهد التنين بصرخته الأصلية من ملف الفيديو
- *               مدمجاً مع المؤثرات بدون ما يبان إنه فيديو (فيديو عادي public/gifts/dragon-roar.mp4، بدون GIF) — الصوت يشتغل تلقائياً —
+ *  6) InfernoDragon → تنين جهنمي (10,000 Coins, ~22s / ~27s) — المربع الأخير بالشبكة (المربع اللي عليه الدائرة الصفراء) — فهرس 4 داخل GIFTS لكن يُعرض آخر مربع عبر MAIN_GIFT_ORDER بـ LiveCoinsDock
+ *              (يستبدل هدية DragonFire القديمة اللي حُذفت ملفاتها وأُعيد بناؤها بالكامل)
+ *              (البث يتحول لظلام وسماء حمراء ومؤثرات نار، ثم يدخل فيديو التنين 1080p بألوانه الكاملة (public/gifts/inferno-dragon.mp4) —
+ *               الموسيقى وزئير التنين (الصوت الأصلي كاملاً) يشتغلون تلقائياً مع بدء الفيديو —
  *               للمضيف (لما المستخدم يدعمه): هالة نار على صورته أثناء نفث التنين —
  *               لمستخدم (لما المضيف يعطيه): بعد نهاية الفيديو إطار صورته يرتفع لمنتصف الشاشة بحلقة نار)
  *              مربع الهدية قبل النقر: تنين صغير متحرك ينفث نار وجمرات
- *              المشهد: فيديو public/gifts/dragon-roar.mp4 (صامت) — الصوت الأصلي والأصوات المساندة: src/lib/dragonFireSounds.ts
+ *              الملفات: components/gifts/InfernoDragonGift.tsx + lib/infernoDragonSounds.ts (الصوت مضمّن) + public/gifts/inferno-dragon.mp4
  *
  * الصف العلوي (المربعات الصغيرة) — TOP_GIFTS:
  *  1) Rose   → وردة حمراء صغيرة (25 Coins, 6s) — المربع الأول يسار الصف العلوي
@@ -46,7 +46,7 @@ import { VolcanoGift } from '../components/gifts/VolcanoGift';
 // import { FalconGift } from '../components/gifts/FalconGift'; // هدية الصقر: استُبدلت بالقلعة (الملف باقي، شيل // ورجّعها بالمصفوفة لو تبي)
 import { CastleGift } from '../components/gifts/CastleGift';
 // import { DragonGift } from '../components/gifts/DragonGift'; // هدية التنين: أُلغيت (الملف باقي — شيل // ورجّعها بالمصفوفة لو تبي)
-import { DragonFireGift } from '../components/gifts/DragonFireGift';
+import { InfernoDragonGift } from '../components/gifts/InfernoDragonGift';
 import { RoseGift } from '../components/gifts/RoseGift';
 import { BalloonGift } from '../components/gifts/BalloonGift';
 import { StarryPianoGift } from '../components/gifts/StarryPianoGift';
@@ -57,7 +57,7 @@ export const GIFTS: GiftDefinition[] = [
   StormGift,
   CastleGift,  // الصف الثالث — المربع الأول (3,500 Coins) — مكان الصقر
   // DragonGift,  // التنين (6,000 Coins, 16s) — أُلغيت
-  DragonFireGift, // تنين ناري (10,000 Coins) — فهرس 4 داخل المصفوفة، ويُعرض بآخر مربع (MAIN_GIFT_ORDER بـ LiveCoinsDock)
+  InfernoDragonGift, // تنين جهنمي (10,000 Coins) — فهرس 4 داخل المصفوفة، ويُعرض بآخر مربع (MAIN_GIFT_ORDER بـ LiveCoinsDock)
   // لا يوجد مربع فاضي بعد الآن: لإضافة هدايا جديدة وسّع الشبكة بـ LiveCoinsDock (MAIN_GIFT_ORDER)
 ];
 
