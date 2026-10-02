@@ -6713,6 +6713,9 @@ export default function SettingsPage() {
   // Owner: all users + highlights
   const isOwner = isPrivilegedUser(user as { email?: string | null; username?: string | null; name?: string | null } | null);
   const [ownerSupportEarn, setOwnerSupportEarn] = useState(0);
+  const [ownerControlOn, setOwnerControlOn] = useState(() => {
+    try { return localStorage.getItem('stooorna_owner_control_on') !== '0'; } catch { return true; }
+  });
   useEffect(() => {
     if (!isOwner) return;
     const uid = String(
@@ -6741,6 +6744,13 @@ export default function SettingsPage() {
     };
   }, [isOwner, user]);
 
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('stooorna_owner_dock_only') !== '1') return;
+    } catch { return; }
+    loadOwnerData();
+    startTransition(() => setShowSupportUsers(true));
+  }, [isOwner]);
 
   // Non-owners never stay on the Company tab
   useEffect(() => {
@@ -7969,7 +7979,42 @@ export default function SettingsPage() {
                   </div>
                   )}
 
-
+                  {isOwner && (
+                  <div style={{
+                    background: T.surface,
+                    border: '1px solid rgba(234,179,8,0.45)',
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    marginTop: 10,
+                    display: 'flex', alignItems: 'center', gap: 12,
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, color: '#eab308', fontWeight: 800, fontSize: '0.92rem' }}>Control Owner</p>
+                      <p style={{ margin: '4px 0 0', color: 'rgba(200,220,220,0.62)', fontSize: '0.72rem', lineHeight: 1.4 }}>
+                        أيقونة التطبيق الصفراء تبقى ظاهرة في كل مكان حتى البث. أطفئ المفتاح لإخفائها.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Control Owner"
+                      onClick={() => {
+                        const next = !ownerControlOn;
+                        setOwnerControlOn(next);
+                        try { localStorage.setItem('stooorna_owner_control_on', next ? '1' : '0'); } catch { /* */ }
+                        try { window.dispatchEvent(new CustomEvent('stooorna:owner-control', { detail: { on: next } })); } catch { /* */ }
+                      }}
+                      style={{
+                        width: 52, height: 30, borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0,
+                        background: ownerControlOn ? '#eab308' : '#3f3f46', position: 'relative',
+                      }}
+                    >
+                      <span style={{
+                        position: 'absolute', top: 3, width: 24, height: 24, borderRadius: '50%', background: '#fff',
+                        left: ownerControlOn ? 25 : 3, transition: 'left 0.18s ease',
+                      }} />
+                    </button>
+                  </div>
+                  )}
 
                   {/* ── Bio ── */}
                   <div style={{
@@ -9995,7 +10040,7 @@ export default function SettingsPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             style={{
-              position: 'fixed', inset: 0, zIndex: 10370,
+              position: (typeof window !== 'undefined' && sessionStorage.getItem('stooorna_owner_dock_only') === '1') ? 'absolute' : 'fixed', inset: 0, zIndex: 10370,
               background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(10px)',
               display: 'flex', flexDirection: 'column',
             }}
@@ -10009,7 +10054,13 @@ export default function SettingsPage() {
             }}>
               <button
                 type="button"
-                onClick={() => { startTransition(() => setShowSupportUsers(false)); setSupportUsersSearch(''); setSupportUsersTab('users'); }}
+                onClick={() => {
+                  const dock = sessionStorage.getItem('stooorna_owner_dock_only') === '1';
+                  startTransition(() => setShowSupportUsers(false));
+                  setSupportUsersSearch('');
+                  setSupportUsersTab('users');
+                  if (dock) window.dispatchEvent(new CustomEvent('stooorna:close-owner-dock'));
+                }}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }}
                 aria-label="Close"
               >
@@ -10252,7 +10303,7 @@ export default function SettingsPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             style={{
-              position: 'fixed', inset: 0, zIndex: 10380,
+              position: (typeof window !== 'undefined' && sessionStorage.getItem('stooorna_owner_dock_only') === '1') ? 'absolute' : 'fixed', inset: 0, zIndex: 10380,
               background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
               display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
             }}
