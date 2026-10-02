@@ -185,7 +185,7 @@ function readLocalLiveActive(hostId: string): boolean {
     if (!raw) return false;
     const data = JSON.parse(raw) as { active?: boolean; at?: number };
     if (!data?.active) return false;
-    if (data.at && Date.now() - data.at > 45_000) return false;
+    if (data.at && Date.now() - data.at > 120_000) return false;
     return true;
   } catch {
     return false;
@@ -198,7 +198,7 @@ function readLocalCamLiveActive(hostId: string): boolean {
     if (!raw) return false;
     const data = JSON.parse(raw) as { active?: boolean; at?: number };
     if (!data?.active) return false;
-    if (data.at && Date.now() - data.at > 45_000) return false;
+    if (data.at && Date.now() - data.at > 120_000) return false;
     return true;
   } catch {
     return false;
@@ -349,6 +349,22 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
       let voiceMembers: unknown[] | null = null;
       let camOk = false;
       let voiceOk = false;
+      // Server live-presence (host heartbeat) — survives app leave/reopen for viewers
+      try {
+        const rp = await fetch(`/api/live-presence?hostId=${encodeURIComponent(String(hostId))}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (rp.ok) {
+          const pd = await rp.json() as { active?: boolean; kind?: string };
+          if (pd?.active) {
+            const k = pd.kind === 'camera' ? 'camera' as const : 'voice' as const;
+            apply(k);
+            return;
+          }
+        }
+      } catch { /* ignore */ }
+
       try {
         const rCam = await fetch(`/api/room?id=${encodeURIComponent(camChannel)}`, { credentials: 'include' });
         if (rCam.ok) {

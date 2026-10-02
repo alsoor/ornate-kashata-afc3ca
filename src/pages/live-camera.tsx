@@ -1238,6 +1238,45 @@ export default function LiveCameraPage() {
     return () => window.clearInterval(id);
   }, [joined, amHost, hostId, channelName, hostName, hostUsername, hostAvatar, myName, myUsername, myAvatar]);
 
+  
+  // ── Public live presence (story ring / feed) — server heartbeat every 8s ──
+  useEffect(() => {
+    if (!joined) return;
+    const activeHost = String(hostId || myId || '');
+    if (!activeHost) return;
+    const amPublisher = typeof amHost !== 'undefined' ? amHost : true;
+    if (!amPublisher && typeof isHostRoom !== 'undefined' && isHostRoom) return;
+    const post = (active: boolean) => {
+      try {
+        void fetch('/api/live-presence', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hostId: activeHost,
+            kind: 'camera',
+            active,
+            channel: typeof channelName !== 'undefined' ? channelName : undefined,
+            hostName: typeof hostName !== 'undefined' ? hostName : undefined,
+            hostUsername: typeof hostUsername !== 'undefined' ? hostUsername : undefined,
+            hostAvatar: typeof hostAvatar !== 'undefined' ? hostAvatar : undefined,
+          }),
+          keepalive: true,
+        }).catch(() => {});
+      } catch { /* */ }
+    };
+    post(true);
+    const id = window.setInterval(() => post(true), 8000);
+    const onVis = () => { if (document.visibilityState === 'visible') post(true); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+      post(false);
+    };
+  }, [joined, hostId, myId]);
+
+
   const toggleMic = async () => {
     if (!micRef.current || !joined) return;
     if (micFrozenRef.current || micFrozenByHost) {

@@ -692,6 +692,71 @@ app.post("/api/room/signal", (req, res) => {
   res.json({ ok: true, at });
 });
 
+
+// ── Live presence (public story ring + feed): host heartbeats while live ──
+// Survives viewers leaving/reopening the app; cleared only when host stops or TTL expires.
+type LivePresenceRow = {
+  hostId: string;
+  kind: 'voice' | 'camera';
+  channel?: string;
+  hostName?: string;
+  hostUsername?: string;
+  hostAvatar?: string | null;
+  at: number;
+};
+const LIVE_PRESENCE_TTL_MS = 90_000;
+const livePresenceMem = () => {
+  const g = globalThis as typeof globalThis & { __stooornaLivePresence?: Map<string, LivePresenceRow> };
+  if (!g.__stooornaLivePresence) g.__stooornaLivePresence = new Map();
+  return g.__stooornaLivePresence;
+};
+const livePresencePurge = () => {
+  const mem = livePresenceMem();
+  const now = Date.now();
+  for (const [k, v] of mem.entries()) {
+    if (now - v.at > LIVE_PRESENCE_TTL_MS) mem.delete(k);
+  }
+};
+app.get("/api/live-presence", (req, res) => {
+  livePresencePurge();
+  const mem = livePresenceMem();
+  res.setHeader("Cache-Control", "no-store");
+  const hostId = String(req.query.hostId || req.query.userId || "").trim();
+  if (hostId) {
+    const row = mem.get(hostId) || mem.get(hostId.toLowerCase());
+    if (!row) return res.json({ ok: true, active: false, hostId });
+    return res.json({ ok: true, active: true, ...row });
+  }
+  const list = [...mem.values()].map((r) => ({ ...r, active: true }));
+  res.json({ ok: true, lives: list });
+});
+app.post("/api/live-presence", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const hostId = String(body.hostId || body.userId || "").trim();
+  if (!hostId) return res.status(400).json({ error: "hostId required" });
+  const active = body.active !== false && body.active !== 0 && body.active !== "false";
+  const mem = livePresenceMem();
+  if (!active) {
+    mem.delete(hostId);
+    mem.delete(hostId.toLowerCase());
+    return res.json({ ok: true, active: false, hostId });
+  }
+  const kind = String(body.kind || "voice") === "camera" ? "camera" : "voice";
+  const row: LivePresenceRow = {
+    hostId,
+    kind,
+    channel: body.channel != null ? String(body.channel).slice(0, 80) : undefined,
+    hostName: body.hostName != null ? String(body.hostName).slice(0, 80) : undefined,
+    hostUsername: body.hostUsername != null ? String(body.hostUsername).slice(0, 80) : undefined,
+    hostAvatar: body.hostAvatar != null ? String(body.hostAvatar).slice(0, 400) : null,
+    at: Date.now(),
+  };
+  mem.set(hostId, row);
+  // also index lowercase for lookups
+  if (hostId.toLowerCase() !== hostId) mem.set(hostId.toLowerCase(), row);
+  res.json({ ok: true, active: true, hostId, kind });
+});
+
 // ── Live gifts: بث الهدايا لكل من في البث (ذاكرة السيرفر، نفس أسلوب live-chat / room-signal) ──
 const liveGiftMem = () => {
   const g = globalThis as typeof globalThis & { __stooornaLiveGifts?: Map<string, Array<{ at: number; id: string; giftId: string; fromId: string; toUserId: string; toName: string; toAvatar: string; fromKey: string; count: number }>> };
