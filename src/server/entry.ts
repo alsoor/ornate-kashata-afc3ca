@@ -1,7 +1,7 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, extname, join } from "node:path";
-import { readFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 // Static import so the SSR bundler doesn't see a mixed static/dynamic
 // import of this module (it's imported statically elsewhere, e.g. in
 // api/room/join/POST.ts). closeConnection is optional at runtime, so the
@@ -713,20 +713,75 @@ app.get("/api/live-gifts", (req, res) => {
   const last = events.length ? events[events.length - 1].at : since;
   res.json({ ok: true, events, now: Math.max(last, since), leaders: supportLeaders(room) });
 });
-// ── Gift profit ledger (50/50): recipient earnings + app profits ──
-const giftProfitMem = () => {
-  const g = globalThis as typeof globalThis & {
-    __stooornaGiftProfits?: {
-      appCoins: number;
-      earnings: Map<string, number>;
-      done: Set<string>;
+// ── Gift profit ledger (50/50) — file-backed so same account syncs across devices ──
+type GiftProfitState = {
+  appCoins: number;
+  earnings: Map<string, number>;
+  balances: Map<string, number>; // gift spend Coins (after deposit / convert)
+  done: Set<string>;
+};
+const GIFT_PROFIT_FILE = () => join(ASSETS_DIR, "stooorna-gift-profits.json");
+const loadGiftProfitDisk = (): { appCoins: number; earnings: Record<string, number>; balances: Record<string, number>; done: string[] } => {
+  try {
+    const p = GIFT_PROFIT_FILE();
+    if (!existsSync(p)) return { appCoins: 0, earnings: {}, balances: {}, done: [] };
+    const raw = JSON.parse(readFileSync(p, "utf-8"));
+    return {
+      appCoins: Math.max(0, Math.floor(Number(raw?.appCoins) || 0)),
+      earnings: raw?.earnings && typeof raw.earnings === "object" ? raw.earnings : {},
+      balances: raw?.balances && typeof raw.balances === "object" ? raw.balances : {},
+      done: Array.isArray(raw?.done) ? raw.done.map(String).slice(-3000) : [],
     };
-  };
+  } catch {
+    return { appCoins: 0, earnings: {}, balances: {}, done: [] };
+  }
+};
+const saveGiftProfitDisk = (mem: GiftProfitState) => {
+  try {
+    if (!existsSync(ASSETS_DIR)) mkdirSync(ASSETS_DIR, { recursive: true });
+    const payload = {
+      appCoins: mem.appCoins,
+      earnings: Object.fromEntries(mem.earnings.entries()),
+      balances: Object.fromEntries(mem.balances.entries()),
+      done: [...mem.done].slice(-3000),
+      updatedAt: Date.now(),
+    };
+    writeFileSync(GIFT_PROFIT_FILE(), JSON.stringify(payload), "utf-8");
+  } catch (e) {
+    console.error("[gift-profits] save failed", e);
+  }
+};
+const giftProfitMem = (): GiftProfitState => {
+  const g = globalThis as typeof globalThis & { __stooornaGiftProfits?: GiftProfitState };
   if (!g.__stooornaGiftProfits) {
-    g.__stooornaGiftProfits = { appCoins: 0, earnings: new Map(), done: new Set() };
+    const disk = loadGiftProfitDisk();
+    g.__stooornaGiftProfits = {
+      appCoins: disk.appCoins,
+      earnings: new Map(Object.entries(disk.earnings).map(([k, v]) => [k, Math.max(0, Math.floor(Number(v) || 0))])),
+      balances: new Map(Object.entries(disk.balances).map(([k, v]) => [k, Math.max(0, Math.floor(Number(v) || 0))])),
+      done: new Set(disk.done),
+    };
   }
   return g.__stooornaGiftProfits;
 };
+const giftProfitTouch = () => saveGiftProfitDisk(giftProfitMem());
+
+/** Normalize recipient id so owner earnings land on one key across devices. */
+const OWNER_IDS = new Set(["stooorna", "stooorna@mail.com"]);
+const creditRecipientEarnings = (toUserId: string, amount: number) => {
+  if (!(amount > 0) || !toUserId) return;
+  const mem = giftProfitMem();
+  const id = String(toUserId).trim();
+  mem.earnings.set(id, (mem.earnings.get(id) || 0) + amount);
+  const low = id.toLowerCase();
+  // Mirror owner aliases so login with username OR email still sees support
+  if (OWNER_IDS.has(low) || low.includes("stooorna")) {
+    for (const alias of ["stooorna", "Stooorna"]) {
+      if (alias !== id) mem.earnings.set(alias, (mem.earnings.get(alias) || 0) + amount);
+    }
+  }
+};
+
 
 app.get("/api/gifts/profits", (_req, res) => {
   const mem = giftProfitMem();
@@ -738,8 +793,20 @@ app.get("/api/gifts/earnings", (req, res) => {
   const userId = String(req.query.userId || "").slice(0, 80);
   const mem = giftProfitMem();
   res.setHeader("Cache-Control", "no-store");
-  const coins = userId ? (mem.earnings.get(userId) || 0) : 0;
-  res.json({ ok: true, userId, coins });
+  let coins = 0;
+  let balance = 0;
+  if (userId) {
+    const candidates = [userId];
+    const low = userId.toLowerCase();
+    if (OWNER_IDS.has(low) || low.includes("stooorna")) {
+      candidates.push("stooorna", "Stooorna", "stooorna@mail.com");
+    }
+    for (const c of candidates) {
+      coins = Math.max(coins, mem.earnings.get(c) || 0);
+      balance = Math.max(balance, mem.balances.get(c) || 0);
+    }
+  }
+  res.json({ ok: true, userId, coins, balance, usd: coins / 100 });
 });
 
 app.post("/api/gifts/profit-split", (req, res) => {
@@ -766,7 +833,8 @@ app.post("/api/gifts/profit-split", (req, res) => {
   const toApp = Math.floor(total / 2);
   const toRecipient = total - toApp;
   mem.appCoins += toApp;
-  mem.earnings.set(toUserId, (mem.earnings.get(toUserId) || 0) + toRecipient);
+  creditRecipientEarnings(toUserId, toRecipient);
+  giftProfitTouch();
   res.json({
     ok: true,
     applied: true,
@@ -774,6 +842,49 @@ app.post("/api/gifts/profit-split", (req, res) => {
     toRecipient,
     appCoins: mem.appCoins,
     recipientCoins: mem.earnings.get(toUserId) || 0,
+  });
+});
+
+/** Convert support earnings → spendable gift Coins (server source of truth for all devices). */
+app.post("/api/gifts/convert-earnings", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const userId = String(body.userId || "").slice(0, 80);
+  let amount = Math.max(0, Math.floor(Number(body.amount) || 0));
+  if (!userId) return res.status(400).json({ error: "userId required" });
+  const mem = giftProfitMem();
+  const earn = mem.earnings.get(userId) || 0;
+  if (amount <= 0) amount = earn;
+  if (amount <= 0) return res.status(400).json({ error: "no earnings" });
+  if (amount > earn) amount = earn;
+  mem.earnings.set(userId, earn - amount);
+  mem.balances.set(userId, (mem.balances.get(userId) || 0) + amount);
+  giftProfitTouch();
+  res.json({
+    ok: true,
+    converted: amount,
+    earnings: mem.earnings.get(userId) || 0,
+    balance: mem.balances.get(userId) || 0,
+  });
+});
+
+/** Sync / set spendable gift balance (deposit demo or after local top-up). */
+app.post("/api/gifts/balance", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const userId = String(body.userId || "").slice(0, 80);
+  if (!userId) return res.status(400).json({ error: "userId required" });
+  const mem = giftProfitMem();
+  if (body.balance != null) {
+    const b = Math.max(0, Math.floor(Number(body.balance) || 0));
+    mem.balances.set(userId, b);
+  } else if (body.add != null) {
+    const add = Math.floor(Number(body.add) || 0);
+    mem.balances.set(userId, Math.max(0, (mem.balances.get(userId) || 0) + add));
+  }
+  giftProfitTouch();
+  res.json({
+    ok: true,
+    balance: mem.balances.get(userId) || 0,
+    earnings: mem.earnings.get(userId) || 0,
   });
 });
 
@@ -820,7 +931,8 @@ app.post("/api/live-gifts", (req, res) => {
       const toApp = Math.floor(total / 2);
       const toRecipient = total - toApp;
       pmem.appCoins += toApp;
-      pmem.earnings.set(toUserId, (pmem.earnings.get(toUserId) || 0) + toRecipient);
+      creditRecipientEarnings(toUserId, toRecipient);
+      giftProfitTouch();
     }
   }
   res.json({ ok: true, at });

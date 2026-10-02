@@ -1,10 +1,10 @@
 /**
- * giftProfitSplit — 50/50 split of live gift support coins.
+ * giftProfitSplit — 50/50 support split + cross-device sync via server ledger.
  *
- * - 50% → recipient earnings (Wallet Balance)
- * - 50% → app Profits (owner @Stooorna → Profits)
- *
- * Local storage + server ledger (/api/gifts/*) so owner sees Profits on any device.
+ * Server file: ASSETS_DIR/stooorna-gift-profits.json
+ * - earnings[userId] = support received (shown in Wallet Balance)
+ * - balances[userId] = spendable gift Coins
+ * - appCoins = owner Profits
  */
 
 export const OWNER_USERNAME = 'stooorna';
@@ -105,26 +105,7 @@ function halves(totalCoins: number): { toRecipient: number; toApp: number } {
   return { toRecipient, toApp };
 }
 
-/** Pull server app profits into local cache (owner Profits panel). */
-export async function syncAppProfitsFromServer(): Promise<AppProfitsSnapshot> {
-  try {
-    const r = await fetch('/api/gifts/profits', { credentials: 'include', cache: 'no-store' });
-    if (r.ok) {
-      const d = (await r.json()) as { coins?: number };
-      if (typeof d.coins === 'number' && d.coins >= 0) {
-        const local = readAppProfitsCoins();
-        const next = Math.max(local, Math.floor(d.coins));
-        writeAppProfitsCoins(next);
-        return { coins: next, usd: (next * PROFIT_CENTS_PER_COIN) / 100 };
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-  return getAppProfitsSnapshot();
-}
-
-/** Pull server earnings for a user into local cache. */
+/** Sync earnings + spendable balance from server (same account on any device). */
 export async function syncEarningsFromServer(userId: string): Promise<number> {
   const uid = String(userId || '');
   if (!uid) return 0;
@@ -134,13 +115,18 @@ export async function syncEarningsFromServer(userId: string): Promise<number> {
       cache: 'no-store',
     });
     if (r.ok) {
-      const d = (await r.json()) as { coins?: number };
+      const d = (await r.json()) as { coins?: number; balance?: number };
       if (typeof d.coins === 'number' && d.coins >= 0) {
-        const local = readUserEarnings(uid);
-        const next = Math.max(local, Math.floor(d.coins));
-        writeUserEarnings(uid, next);
-        return next;
+        // Server is source of truth across devices
+        writeUserEarnings(uid, Math.floor(d.coins));
       }
+      if (typeof d.balance === 'number' && d.balance >= 0) {
+        const localBal = readUserGiftBalance(uid);
+        // Take the higher so demo deposits on this device are not wiped if server is lower
+        // but if server is higher (convert on other device), use server
+        writeUserGiftBalance(uid, Math.max(localBal, Math.floor(d.balance)));
+      }
+      return readUserEarnings(uid);
     }
   } catch {
     /* ignore */
@@ -148,9 +134,22 @@ export async function syncEarningsFromServer(userId: string): Promise<number> {
   return readUserEarnings(uid);
 }
 
-/**
- * Full 50/50 once per dedupeKey (local + server).
- */
+export async function syncAppProfitsFromServer(): Promise<AppProfitsSnapshot> {
+  try {
+    const r = await fetch('/api/gifts/profits', { credentials: 'include', cache: 'no-store' });
+    if (r.ok) {
+      const d = (await r.json()) as { coins?: number };
+      if (typeof d.coins === 'number' && d.coins >= 0) {
+        writeAppProfitsCoins(Math.floor(d.coins));
+        return getAppProfitsSnapshot();
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return getAppProfitsSnapshot();
+}
+
 export function applyGiftProfitSplitOnce(
   toUserId: string,
   totalCoins: number,
@@ -222,7 +221,7 @@ export function applyRecipientProfitShare(toUserId: string, totalCoins: number):
   return toRecipient;
 }
 
-/** Convert support earnings → gift Coins balance. */
+/** Convert support earnings → gift Coins (server + local). */
 export function convertEarningsToGiftBalance(
   userId: string,
   coins?: number,
@@ -247,7 +246,65 @@ export function convertEarningsToGiftBalance(
   writeUserGiftBalance(uid, nextBal);
   writeUserEarnings(uid, nextEarn);
 
+  // Persist on server so other devices see the same numbers
+  try {
+    void fetch('/api/gifts/convert-earnings', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: uid, amount }),
+    }).then(async (r) => {
+      if (!r.ok) return;
+      const d = (await r.json().catch(() => null)) as { earnings?: number; balance?: number } | null;
+      if (d && typeof d.earnings === 'number') writeUserEarnings(uid, d.earnings);
+      if (d && typeof d.balance === 'number') writeUserGiftBalance(uid, d.balance);
+    });
+  } catch {
+    /* ignore */
+  }
+
   return { ok: true, balance: nextBal, earnings: nextEarn, converted: amount };
+}
+
+/** Async convert that waits for server (preferred for Wallet UI). */
+export async function convertEarningsToGiftBalanceAsync(
+  userId: string,
+  coins?: number,
+): Promise<{
+  ok: boolean;
+  balance?: number;
+  earnings?: number;
+  converted?: number;
+  error?: string;
+}> {
+  const uid = String(userId || '');
+  if (!uid) return { ok: false, error: 'يجب تسجيل الدخول' };
+  const localEarn = readUserEarnings(uid);
+  const amount = coins == null ? localEarn : Math.max(0, Math.floor(Number(coins) || 0));
+  if (amount <= 0) return { ok: false, error: 'لا توجد أرباح للتحويل' };
+
+  try {
+    const r = await fetch('/api/gifts/convert-earnings', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: uid, amount }),
+    });
+    if (r.ok) {
+      const d = (await r.json()) as { converted?: number; earnings?: number; balance?: number };
+      if (typeof d.earnings === 'number') writeUserEarnings(uid, d.earnings);
+      if (typeof d.balance === 'number') writeUserGiftBalance(uid, d.balance);
+      return {
+        ok: true,
+        converted: d.converted ?? amount,
+        earnings: typeof d.earnings === 'number' ? d.earnings : readUserEarnings(uid),
+        balance: typeof d.balance === 'number' ? d.balance : readUserGiftBalance(uid),
+      };
+    }
+  } catch {
+    /* fall through to local */
+  }
+  return convertEarningsToGiftBalance(uid, amount);
 }
 
 export function isOwnerIdentity(user?: {

@@ -11,7 +11,7 @@ import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
 import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, hydrateVipDirectory, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown, ownerGrantEightMics, getVipFeats } from '@/lib/vipPatch';
-import { getAppProfitsSnapshot, syncAppProfitsFromServer, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
+import { getAppProfitsSnapshot, syncAppProfitsFromServer, syncEarningsFromServer, readUserEarnings, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
 // VIP frame cancelled — avatar renders without frame
 // import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
@@ -6424,22 +6424,28 @@ export default function SettingsPage() {
   const [vipOn, setVipOn] = useState(false);
   const [appProfits, setAppProfits] = useState(() => getAppProfitsSnapshot());
   useEffect(() => {
-    const sync = () => setAppProfits(getAppProfitsSnapshot());
-    window.addEventListener('stooorna:app-profits', sync);
-    window.addEventListener('storage', sync);
-    const id = window.setInterval(sync, 4000);
-    // Server ledger so owner sees Profits from gifts on any device
-    void syncAppProfitsFromServer().then((s) => setAppProfits(s));
-    const id2 = window.setInterval(() => {
+    const syncLocal = () => setAppProfits(getAppProfitsSnapshot());
+    const syncServer = () => {
       void syncAppProfitsFromServer().then((s) => setAppProfits(s));
-    }, 6000);
+    };
+    window.addEventListener('stooorna:app-profits', syncLocal);
+    window.addEventListener('storage', syncLocal);
+    // Immediate + interval + when tab becomes visible (other phone sent gifts)
+    syncServer();
+    const id = window.setInterval(syncServer, 4000);
+    const onVis = () => { if (document.visibilityState === 'visible') syncServer(); };
+    const onFocus = () => syncServer();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
     return () => {
-      window.removeEventListener('stooorna:app-profits', sync);
-      window.removeEventListener('storage', sync);
+      window.removeEventListener('stooorna:app-profits', syncLocal);
+      window.removeEventListener('storage', syncLocal);
       window.clearInterval(id);
-      window.clearInterval(id2);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onFocus);
     };
   }, []);
+
   const [vipPayOpen, setVipPayOpen] = useState(false);
   const [vipColor, setVipColor] = useState<'blue' | 'gold' | 'red' | 'green' | 'gray'>('gold');
   const [vipNewUser, setVipNewUser] = useState('');
@@ -6665,6 +6671,35 @@ export default function SettingsPage() {
 
   // Owner: all users + highlights
   const isOwner = isPrivilegedUser(user as { email?: string | null; username?: string | null; name?: string | null } | null);
+  const [ownerSupportEarn, setOwnerSupportEarn] = useState(0);
+  useEffect(() => {
+    if (!isOwner) return;
+    const uid = String(
+      (user as { id?: string; username?: string } | null)?.id
+      || (user as { username?: string } | null)?.username
+      || 'stooorna',
+    );
+    const pull = () => {
+      void syncEarningsFromServer(uid).then((n) => {
+        const v = Math.max(
+          n,
+          readUserEarnings(uid),
+          readUserEarnings('stooorna'),
+          readUserEarnings('Stooorna'),
+        );
+        setOwnerSupportEarn(v);
+      });
+    };
+    pull();
+    const id = window.setInterval(pull, 5000);
+    const onVis = () => { if (document.visibilityState === 'visible') pull(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [isOwner, user]);
+
 
   // Non-owners never stay on the Company tab
   useEffect(() => {
@@ -7872,6 +7907,11 @@ export default function SettingsPage() {
                       Coins · {Number(appProfits.coins || 0).toLocaleString('en-US')}
                       <span style={{ color: 'rgba(150,180,180,0.5)', marginLeft: 8 }}>(إيرادات التطبيق من الدعم 50%)</span>
                     </p>
+                    {ownerSupportEarn > 0 ? (
+                      <p style={{ margin: '0 0 10px', color: 'rgba(255,255,255,0.55)', fontSize: '0.78rem', fontWeight: 700 }}>
+                        دعم شخصي وصلك: {ownerSupportEarn.toLocaleString('en-US')} Coins
+                      </p>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => {
