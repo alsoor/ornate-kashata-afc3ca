@@ -16,6 +16,11 @@
  *              الأصوات: src/lib/castleSounds.ts
  *     (هدية الصقر FalconGift: استُبدلت بالقلعة، الملف وملف أصواته falconSounds.ts باقيين — شيل // ورجّعها بالمصفوفة لو تبي)
  *  5) Dragon → تنين ضخم (6,000 Coins, 16s) — أُلغيت (الملف DragonGift.tsx وملف أصواته باقيين — شيل // ورجّعها بالمصفوفة لو تبي)
+ *  6) Wolf   → ذئب العاصفة (6,000 Coins, ~24s) — الهدية الثامنة: الصف الثاني — المربع الثاني (أول مربع + بعد هدية المطر)
+ *              (البث يتحول لظلام وسماء نجوم وبرق، ثم يدخل الذئب بصرخته الأصلية من ملف الفيديو بدون ما يبان إنه فيديو —
+ *               للمضيف: هالة قمر وشرارات ذهبية على صورته —
+ *               لمستخدم: بعد نهاية الفيديو إطار صورته يرتفع لمنتصف الشاشة)
+ *              الفيديو: public/gifts/wolf-howl.mp4 — الأصوات المساندة: src/lib/wolfSounds.ts
  *
  * الصف العلوي (المربعات الصغيرة) — TOP_GIFTS:
  *  1) Rose   → وردة حمراء صغيرة (25 Coins, 6s) — المربع الأول يسار الصف العلوي
@@ -38,6 +43,7 @@ import { VolcanoGift } from '../components/gifts/VolcanoGift';
 // import { FalconGift } from '../components/gifts/FalconGift'; // هدية الصقر: استُبدلت بالقلعة (الملف باقي، شيل // ورجّعها بالمصفوفة لو تبي)
 import { CastleGift } from '../components/gifts/CastleGift';
 // import { DragonGift } from '../components/gifts/DragonGift'; // هدية التنين: أُلغيت (الملف باقي — شيل // ورجّعها بالمصفوفة لو تبي)
+import { WolfGift } from '../components/gifts/WolfGift';
 import { RoseGift } from '../components/gifts/RoseGift';
 import { BalloonGift } from '../components/gifts/BalloonGift';
 import { StarryPianoGift } from '../components/gifts/StarryPianoGift';
@@ -48,6 +54,7 @@ export const GIFTS: GiftDefinition[] = [
   StormGift,
   CastleGift,  // الصف الثالث — المربع الأول (3,500 Coins) — مكان الصقر
   // DragonGift,  // التنين (6,000 Coins, 16s) — أُلغيت
+  WolfGift,    // الهدية الثامنة — ذئب (6,000 Coins, ~24s) — فهرس 4 = الصف الثاني، المربع الثاني (مكان أول +)
   // remaining square: add more gifts here later
 ];
 
