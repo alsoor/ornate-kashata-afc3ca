@@ -15,6 +15,9 @@
  *               لمستخدم: نفس المشهد، وبالنهاية إطار صورته يصعد للأعلى وتطير البلورة وتحوم فوق إطاره)
  *              الأصوات: src/lib/castleSounds.ts
  *     (هدية الصقر FalconGift: استُبدلت بالقلعة، الملف وملف أصواته falconSounds.ts باقيين — شيل // ورجّعها بالمصفوفة لو تبي)
+ *  5) Lion   → أسد ثلاثي الأبعاد (2,000 Coins, ~5.2s)
+ *              ركض من الخلفية → وقوف → زئير مع هزة شاشة + Haptic + غبار تحت الأقدام → اختفاء
+ *              الأصوات: src/lib/lionSounds.ts
  *
  * الصف العلوي (المربعات الصغيرة) — TOP_GIFTS:
  *  1) Rose   → وردة حمراء صغيرة (25 Coins, 6s) — المربع الأول يسار الصف العلوي
@@ -36,6 +39,7 @@ import { StormGift } from '../components/gifts/StormGift';
 import { VolcanoGift } from '../components/gifts/VolcanoGift';
 // import { FalconGift } from '../components/gifts/FalconGift'; // هدية الصقر: استُبدلت بالقلعة (الملف باقي، شيل // ورجّعها بالمصفوفة لو تبي)
 import { CastleGift } from '../components/gifts/CastleGift';
+import { LionGift } from '../components/gifts/LionGift';
 import { RoseGift } from '../components/gifts/RoseGift';
 import { BalloonGift } from '../components/gifts/BalloonGift';
 import { StarryPianoGift } from '../components/gifts/StarryPianoGift';
@@ -45,7 +49,8 @@ export const GIFTS: GiftDefinition[] = [
   VolcanoGift, // مكان الساحرة
   StormGift,
   CastleGift,  // الصف الثالث — المربع الأول (3,500 Coins) — مكان الصقر
-  // remaining two squares: add more gifts here later
+  LionGift,    // الهدية الخامسة — أسد (2,000 Coins, ~5.2s)
+  // remaining one square: add more gifts here later
 ];
 
 // الصف العلوي (3 مربعات صغيرة): الأول = الوردة، الثاني = البالونات، الثالث = البيانو والنجوم
