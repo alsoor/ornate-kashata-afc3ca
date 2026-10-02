@@ -689,7 +689,8 @@ app.post("/api/room/signal", (req, res) => {
   const list = mem.get(roomId) || [];
   list.push({ at, payload: { ...payload, at } });
   mem.set(roomId, list.slice(-160));
-  res.json({ ok: true, at });
+  const pmemOut = giftProfitMem();
+  res.json({ ok: true, at, balance: fromId ? (pmemOut.balances.get(fromId) || 0) : undefined });
 });
 
 
@@ -796,21 +797,23 @@ type GiftProfitState = {
   earnings: Map<string, number>;
   balances: Map<string, number>; // gift spend Coins (after deposit / convert)
   done: Set<string>;
+  grants: Array<{ id: string; userId: string; coins: number; at: number; text: string }>;
 };
 const GIFT_PROFIT_FILE = () => join(ASSETS_DIR, "stooorna-gift-profits.json");
-const loadGiftProfitDisk = (): { appCoins: number; earnings: Record<string, number>; balances: Record<string, number>; done: string[] } => {
+const loadGiftProfitDisk = (): { appCoins: number; earnings: Record<string, number>; balances: Record<string, number>; done: string[]; grants: Array<{ id: string; userId: string; coins: number; at: number; text: string }> } => {
   try {
     const p = GIFT_PROFIT_FILE();
-    if (!existsSync(p)) return { appCoins: 0, earnings: {}, balances: {}, done: [] };
+    if (!existsSync(p)) return { appCoins: 0, earnings: {}, balances: {}, done: [], grants: [] };
     const raw = JSON.parse(readFileSync(p, "utf-8"));
     return {
       appCoins: Math.max(0, Math.floor(Number(raw?.appCoins) || 0)),
       earnings: raw?.earnings && typeof raw.earnings === "object" ? raw.earnings : {},
       balances: raw?.balances && typeof raw.balances === "object" ? raw.balances : {},
       done: Array.isArray(raw?.done) ? raw.done.map(String).slice(-3000) : [],
+      grants: Array.isArray(raw?.grants) ? raw.grants.slice(-500) : [],
     };
   } catch {
-    return { appCoins: 0, earnings: {}, balances: {}, done: [] };
+    return { appCoins: 0, earnings: {}, balances: {}, done: [], grants: [] };
   }
 };
 const saveGiftProfitDisk = (mem: GiftProfitState) => {
@@ -821,6 +824,7 @@ const saveGiftProfitDisk = (mem: GiftProfitState) => {
       earnings: Object.fromEntries(mem.earnings.entries()),
       balances: Object.fromEntries(mem.balances.entries()),
       done: [...mem.done].slice(-3000),
+      grants: (mem.grants || []).slice(-500),
       updatedAt: Date.now(),
     };
     writeFileSync(GIFT_PROFIT_FILE(), JSON.stringify(payload), "utf-8");
@@ -837,6 +841,7 @@ const giftProfitMem = (): GiftProfitState => {
       earnings: new Map(Object.entries(disk.earnings).map(([k, v]) => [k, Math.max(0, Math.floor(Number(v) || 0))])),
       balances: new Map(Object.entries(disk.balances).map(([k, v]) => [k, Math.max(0, Math.floor(Number(v) || 0))])),
       done: new Set(disk.done),
+      grants: Array.isArray(disk.grants) ? disk.grants : [],
     };
   }
   return g.__stooornaGiftProfits;
@@ -950,9 +955,19 @@ app.post("/api/gifts/balance", (req, res) => {
   const userId = String(body.userId || "").slice(0, 80);
   if (!userId) return res.status(400).json({ error: "userId required" });
   const mem = giftProfitMem();
-  if (body.balance != null) {
+  if (body.delta != null) {
+    const delta = Math.floor(Number(body.delta) || 0);
+    mem.balances.set(userId, Math.max(0, (mem.balances.get(userId) || 0) + delta));
+  } else if (body.balance != null) {
     const b = Math.max(0, Math.floor(Number(body.balance) || 0));
-    mem.balances.set(userId, b);
+    const cur = mem.balances.get(userId) || 0;
+    // لا تُرجع رصيداً أعلى بعد خصم دعم حديث (يمنع بقاء الـ 10,000)
+    const spentRecently = [...mem.done].some((k) => k.startsWith(`spend_${userId}_`) && Date.now() - Number(k.split("_").pop()) < 45000);
+    if (spentRecently && b > cur) {
+      /* keep deducted balance */
+    } else {
+      mem.balances.set(userId, b);
+    }
   } else if (body.add != null) {
     const add = Math.floor(Number(body.add) || 0);
     mem.balances.set(userId, Math.max(0, (mem.balances.get(userId) || 0) + add));
@@ -963,6 +978,61 @@ app.post("/api/gifts/balance", (req, res) => {
     balance: mem.balances.get(userId) || 0,
     earnings: mem.earnings.get(userId) || 0,
   });
+});
+
+app.get("/api/gifts/balance", (req, res) => {
+  const userId = String(req.query.userId || "").slice(0, 80);
+  const mem = giftProfitMem();
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ ok: true, userId, balance: userId ? (mem.balances.get(userId) || 0) : 0, earnings: userId ? (mem.earnings.get(userId) || 0) : 0 });
+});
+
+function pushOwnerGrant(userId: string, coins: number, grantId?: string) {
+  const uid = String(userId || "").slice(0, 80);
+  const n = Math.floor(Number(coins) || 0);
+  if (!uid || n < 1 || n > 1_000_000) return { ok: false as const, error: "coins must be 1..1000000" };
+  const mem = giftProfitMem();
+  const id = String(grantId || `own_${Date.now().toString(36)}`).slice(0, 80);
+  if ((mem.grants || []).some((g) => g.id === id)) {
+    return { ok: true as const, id, balance: mem.balances.get(uid) || 0, duplicate: true };
+  }
+  mem.balances.set(uid, (mem.balances.get(uid) || 0) + n);
+  mem.grants = mem.grants || [];
+  mem.grants.push({ id, userId: uid, coins: n, at: Date.now(), text: "تم اعطاؤك دعم من التطبيق" });
+  mem.grants = mem.grants.slice(-500);
+  giftProfitTouch();
+  return { ok: true as const, id, balance: mem.balances.get(uid) || 0, coins: n, text: "تم اعطاؤك دعم من التطبيق" };
+}
+function listOwnerGrants(userId: string) {
+  const uid = String(userId || "").slice(0, 80);
+  const mem = giftProfitMem();
+  return (mem.grants || []).filter((g) => !uid || g.userId === uid).slice(-50);
+}
+app.post("/api/owner/grant-coins", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const out = pushOwnerGrant(String(body.userId || ""), Number(body.coins), body.grantId ? String(body.grantId) : undefined);
+  if (!out.ok) return res.status(400).json(out);
+  res.json(out);
+});
+app.get("/api/owner/grant-coins", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ ok: true, grants: listOwnerGrants(String(req.query.userId || "")) });
+});
+app.post("/api/coins/grant", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const out = pushOwnerGrant(String(body.userId || ""), Number(body.coins), body.grantId ? String(body.grantId) : undefined);
+  if (!out.ok) return res.status(400).json(out);
+  res.json(out);
+});
+app.get("/api/coins/grants", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ ok: true, grants: listOwnerGrants(String(req.query.userId || "")) });
+});
+app.post("/api/gifts/grant", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const out = pushOwnerGrant(String(body.userId || ""), Number(body.coins), body.grantId ? String(body.grantId) : undefined);
+  if (!out.ok) return res.status(400).json(out);
+  res.json(out);
 });
 
 app.post("/api/live-gifts", (req, res) => {
@@ -997,6 +1067,20 @@ app.post("/api/live-gifts", (req, res) => {
     rec.map.set(fromId, cur);
     rec.at = now;
     sup.set(room, rec);
+  }
+  // خصم رصيد المرسل مرة واحدة. العميل الجديد يرسل alreadyDeducted حتى ما ينخصم مرتين.
+  if (fromId && price > 0 && body.alreadyDeducted !== true && body.alreadyDeducted !== "true") {
+    const spendKey = `spend_${fromId}_${String(body.dedupeKey || eventId).slice(0, 120)}_${Date.now()}`;
+    const pmemSpend = giftProfitMem();
+    const logical = `spendlogic_${fromId}_${String(body.dedupeKey || `${giftId}_${count}_${price}_${toUserId}`).slice(0, 140)}`;
+    if (!pmemSpend.done.has(logical)) {
+      pmemSpend.done.add(logical);
+      pmemSpend.done.add(spendKey);
+      const cost = price * count;
+      const cur = pmemSpend.balances.get(fromId) || 0;
+      pmemSpend.balances.set(fromId, Math.max(0, cur - cost));
+      giftProfitTouch();
+    }
   }
   // 50/50 server-side so owner Profits + recipient earnings sync across devices
   if (toUserId && price > 0) {
