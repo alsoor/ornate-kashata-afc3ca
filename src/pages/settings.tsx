@@ -6748,8 +6748,9 @@ export default function SettingsPage() {
     try {
       if (sessionStorage.getItem('stooorna_owner_dock_only') !== '1') return;
     } catch { return; }
-    loadOwnerData();
-    startTransition(() => setShowSupportUsers(true));
+    startTransition(() => setTab('companies'));
+    try { loadOwnerData(); } catch { /* */ }
+    try { refreshOwnerCompanies(); } catch { /* */ }
   }, [isOwner]);
 
   // Non-owners never stay on the Company tab
@@ -7326,7 +7327,7 @@ export default function SettingsPage() {
             {((isSupportOwnerAccount(
               user as { email?: string | null; username?: string | null; name?: string | null },
               profileUsername,
-            ) ? (['account', 'live', 'companies'] as Tab[]) : (['account', 'live'] as Tab[]))).map(t => <button key={t} type="button" onClick={() => startTransition(() => setTab(t))} style={{
+            ) ? (['account', 'live', 'companies'] as Tab[]) : (['account', 'live'] as Tab[]))).filter(t => sessionStorage.getItem('stooorna_owner_dock_only') === '1' ? t === 'companies' : true).map(t => <button key={t} type="button" onClick={() => startTransition(() => setTab(t))} style={{
           flex: 1,
           padding: '8px 0',
           borderRadius: 8,
