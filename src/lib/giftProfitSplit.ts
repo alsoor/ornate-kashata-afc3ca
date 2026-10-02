@@ -2,15 +2,11 @@
  * giftProfitSplit — 50/50 split of live gift support coins.
  *
  * When a gift is sent in account voice/camera live:
- *   - 50% → recipient's earnings (settings Balance / support received)
+ *   - 50% → recipient's earnings (Wallet Balance / support received)
  *   - 50% → app Profits (owner @Stooorna settings → Profits)
  *
- * Call sites (avoid double-count across devices):
- *   - Sender device: applyAppProfitShare(total)  // always
- *   - Recipient device: applyRecipientProfitShare(toUserId, total)  // when they receive the gift event
- *   - Same device (sender === viewing as recipient): applyGiftProfitSplit once
- *
- * Odd coins: recipient gets ceil(half), app gets floor(half).
+ * applyGiftProfitSplitOnce: full split with localStorage dedupe so it never runs twice
+ * for the same gift event (avoids 100% to recipient).
  */
 
 export const OWNER_USERNAME = 'stooorna';
@@ -18,6 +14,7 @@ export const OWNER_EMAIL = 'stooorna@mail.com';
 
 const APP_PROFITS_KEY = 'stooorna_app_profits';
 const APP_PROFITS_COINS_KEY = 'stooorna_app_profits_coins';
+const SPLIT_DONE_PREFIX = 'stooorna_gift_split_done_';
 /** 1 Coin = USD 0.01 (same rate as LiveCoinsDock) */
 export const PROFIT_CENTS_PER_COIN = 1;
 
@@ -44,17 +41,37 @@ function writeNum(key: string, n: number) {
 }
 
 const earningsKey = (uid: string) => `stooorna_coins_earnings_${uid || 'guest'}`;
+const balanceKey = (uid: string) => `stooorna_coins_balance_${uid || 'guest'}`;
 
 export function readUserEarnings(uid: string): number {
   return readNum(earningsKey(uid));
 }
 
 export function writeUserEarnings(uid: string, n: number) {
-  writeNum(earningsKey(uid), n);
+  const v = Math.max(0, Math.floor(n));
+  writeNum(earningsKey(uid), v);
   try {
     window.dispatchEvent(
       new CustomEvent('stooorna:coins-earnings', {
-        detail: { userId: uid, earnings: Math.max(0, Math.floor(n)) },
+        detail: { userId: uid, earnings: v },
+      }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readUserGiftBalance(uid: string): number {
+  return readNum(balanceKey(uid));
+}
+
+export function writeUserGiftBalance(uid: string, n: number) {
+  const v = Math.max(0, Math.floor(n));
+  writeNum(balanceKey(uid), v);
+  try {
+    window.dispatchEvent(
+      new CustomEvent('stooorna:coins-balance', {
+        detail: { userId: uid, balance: v },
       }),
     );
   } catch {
@@ -67,8 +84,6 @@ export function readAppProfitsCoins(): number {
 }
 
 export function readAppProfitsUsd(): number {
-  const stored = readNum(APP_PROFITS_KEY);
-  if (stored > 0) return stored / 100;
   return (readAppProfitsCoins() * PROFIT_CENTS_PER_COIN) / 100;
 }
 
@@ -80,6 +95,7 @@ export function getAppProfitsSnapshot(): AppProfitsSnapshot {
 function writeAppProfitsCoins(n: number) {
   const v = Math.max(0, Math.floor(n));
   writeNum(APP_PROFITS_COINS_KEY, v);
+  // also store cents for older readers
   writeNum(APP_PROFITS_KEY, v * PROFIT_CENTS_PER_COIN);
   try {
     window.dispatchEvent(
@@ -104,51 +120,38 @@ function halves(totalCoins: number): { toRecipient: number; toApp: number } {
   return { toRecipient, toApp };
 }
 
-/** App share only (call on sender device). */
-export function applyAppProfitShare(totalCoins: number): number {
-  const { toApp } = halves(totalCoins);
-  if (toApp > 0) addAppProfitsCoins(toApp);
-  try {
-    void fetch('/api/gifts/profit-split', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'app', total: totalCoins, toApp }),
-    });
-  } catch {
-    /* ignore */
+/**
+ * Full 50/50 once per dedupeKey (gift event id).
+ * Returns amounts applied, or zeros if already done / invalid.
+ */
+export function applyGiftProfitSplitOnce(
+  toUserId: string,
+  totalCoins: number,
+  dedupeKey: string,
+): { toRecipient: number; toApp: number; applied: boolean } {
+  const total = Math.max(0, Math.floor(Number(totalCoins) || 0));
+  const key = String(dedupeKey || '').slice(0, 180);
+  if (!toUserId || total <= 0 || !key) {
+    return { toRecipient: 0, toApp: 0, applied: false };
   }
-  return toApp;
-}
 
-/** Recipient share only (call on recipient device). */
-export function applyRecipientProfitShare(toUserId: string, totalCoins: number): number {
-  const { toRecipient } = halves(totalCoins);
-  if (!toUserId || toRecipient <= 0) return 0;
-  writeUserEarnings(toUserId, readUserEarnings(toUserId) + toRecipient);
   try {
-    void fetch('/api/gifts/profit-split', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kind: 'recipient', toUserId, total: totalCoins, toRecipient }),
-    });
+    if (localStorage.getItem(SPLIT_DONE_PREFIX + key) === '1') {
+      return { toRecipient: 0, toApp: 0, applied: false };
+    }
+    localStorage.setItem(SPLIT_DONE_PREFIX + key, '1');
   } catch {
-    /* ignore */
+    /* continue even if storage fails */
   }
-  return toRecipient;
-}
 
-/** Full 50/50 on one device (sender is also recipient, or single-device demo). */
-export function applyGiftProfitSplit(toUserId: string, totalCoins: number): {
-  toRecipient: number;
-  toApp: number;
-} {
-  const h = halves(totalCoins);
-  if (toUserId && h.toRecipient > 0) {
+  const h = halves(total);
+  if (h.toRecipient > 0) {
     writeUserEarnings(toUserId, readUserEarnings(toUserId) + h.toRecipient);
   }
-  if (h.toApp > 0) addAppProfitsCoins(h.toApp);
+  if (h.toApp > 0) {
+    addAppProfitsCoins(h.toApp);
+  }
+
   try {
     void fetch('/api/gifts/profit-split', {
       method: 'POST',
@@ -157,55 +160,63 @@ export function applyGiftProfitSplit(toUserId: string, totalCoins: number): {
       body: JSON.stringify({
         kind: 'full',
         toUserId,
-        total: totalCoins,
+        total,
         toRecipient: h.toRecipient,
         toApp: h.toApp,
+        dedupeKey: key,
       }),
     });
   } catch {
     /* ignore */
   }
-  return h;
+
+  return { ...h, applied: true };
 }
 
-/** Convert recipient earnings coins back into gift spend balance (same user). */
-export function convertEarningsToGiftBalance(userId: string, coins: number): {
+/** @deprecated use applyGiftProfitSplitOnce */
+export function applyGiftProfitSplit(toUserId: string, totalCoins: number) {
+  const r = applyGiftProfitSplitOnce(toUserId, totalCoins, `legacy_${toUserId}_${totalCoins}_${Date.now()}`);
+  return { toRecipient: r.toRecipient, toApp: r.toApp };
+}
+
+export function applyAppProfitShare(totalCoins: number): number {
+  const { toApp } = halves(totalCoins);
+  if (toApp > 0) addAppProfitsCoins(toApp);
+  return toApp;
+}
+
+export function applyRecipientProfitShare(toUserId: string, totalCoins: number): number {
+  const { toRecipient } = halves(totalCoins);
+  if (!toUserId || toRecipient <= 0) return 0;
+  writeUserEarnings(toUserId, readUserEarnings(toUserId) + toRecipient);
+  return toRecipient;
+}
+
+/**
+ * Convert support earnings → gift Coins balance (so user can gift again).
+ */
+export function convertEarningsToGiftBalance(userId: string, coins?: number): {
   ok: boolean;
   balance?: number;
   earnings?: number;
+  converted?: number;
   error?: string;
 } {
   const uid = String(userId || '');
-  const amount = Math.max(0, Math.floor(Number(coins) || 0));
-  if (!uid || amount <= 0) return { ok: false, error: 'Invalid amount' };
+  if (!uid) return { ok: false, error: 'يجب تسجيل الدخول' };
 
   const earn = readUserEarnings(uid);
-  if (amount > earn) return { ok: false, error: 'Insufficient earnings' };
+  const amount = coins == null ? earn : Math.max(0, Math.floor(Number(coins) || 0));
+  if (amount <= 0) return { ok: false, error: 'لا توجد أرباح للتحويل' };
+  if (amount > earn) return { ok: false, error: 'الرصيد غير كافٍ' };
 
-  const balKey = `stooorna_coins_balance_${uid || 'guest'}`;
-  let bal = 0;
-  try {
-    bal = Number(localStorage.getItem(balKey) || 0);
-    if (!Number.isFinite(bal) || bal < 0) bal = 0;
-  } catch {
-    bal = 0;
-  }
-  const nextBal = Math.floor(bal) + amount;
+  const bal = readUserGiftBalance(uid);
+  const nextBal = bal + amount;
   const nextEarn = earn - amount;
-  try {
-    localStorage.setItem(balKey, String(nextBal));
-  } catch {
-    /* ignore */
-  }
+  writeUserGiftBalance(uid, nextBal);
   writeUserEarnings(uid, nextEarn);
-  try {
-    window.dispatchEvent(
-      new CustomEvent('stooorna:coins-balance', { detail: { userId: uid, balance: nextBal } }),
-    );
-  } catch {
-    /* ignore */
-  }
-  return { ok: true, balance: nextBal, earnings: nextEarn };
+
+  return { ok: true, balance: nextBal, earnings: nextEarn, converted: amount };
 }
 
 export function isOwnerIdentity(user?: {
