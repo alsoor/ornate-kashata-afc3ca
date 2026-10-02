@@ -50,14 +50,23 @@ export default function OwnerControlDock() {
       posRef.current = { x, y };
       setPos(posRef.current);
     };
-    const up = () => {
+    const swallowClick = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const up = (e: PointerEvent) => {
       const d = drag.current;
       if (!d) return;
       drag.current = null;
+      e.preventDefault();
+      e.stopPropagation();
       try { localStorage.setItem('stooorna_owner_control_pos', JSON.stringify(posRef.current)); } catch { /* */ }
       if (!d.moved) {
+        // النقرة التالية كانت توصل لزر الكاميرا/مكتبة الصور. نبلعها ثم نفتح COMPANY.
+        window.addEventListener('click', swallowClick, true);
+        window.setTimeout(() => window.removeEventListener('click', swallowClick, true), 700);
         try { sessionStorage.setItem('stooorna_owner_dock_only', '1'); } catch { /* */ }
-        setOpen(true);
+        window.setTimeout(() => setOpen(true), 80);
       }
     };
     window.addEventListener('storage', sync);
@@ -93,6 +102,7 @@ export default function OwnerControlDock() {
           e.stopPropagation();
           drag.current = { x: e.clientX, y: e.clientY, px: posRef.current.x, py: posRef.current.y, moved: false };
         }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
         style={{
           position: 'fixed', left: pos.x, top: pos.y, zIndex: 14040,
           width: SIZE, height: SIZE, borderRadius: 10, padding: 0, cursor: 'grab',
