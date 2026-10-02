@@ -79,7 +79,7 @@ import { LiveVipDock } from '@/components/LiveVipDock';
 import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -3079,15 +3079,15 @@ function HeaderStoryCircle({
       >
         <div style={{
           position: 'absolute', inset: 0, borderRadius: '50%',
-          background: liveActive ? '#ef4444' : storyRingColor(items, '#facc15', '#0ea5e9'),
+          background: liveActive ? '#facc15' : storyRingColor(items, '#a855f7', '#0ea5e9'),
           padding: 3, boxSizing: 'border-box',
-          boxShadow: liveActive ? '0 0 10px rgba(239,68,68,0.55)' : (hasUnseen ? '0 0 8px rgba(250,204,21,0.45)' : 'none'),
+          boxShadow: liveActive ? '0 0 10px rgba(250,204,21,0.6)' : (hasUnseen ? '0 0 8px rgba(168,85,247,0.55)' : 'none'),
         }}>
           {liveActive ? (
             <motion.div
               animate={{ opacity: [1, 0.45, 1] }}
               transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-              style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid #ef4444' }}
+              style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid #facc15' }}
             />
           ) : (!hasUnseen && hasStory && (
             <div
@@ -18959,6 +18959,44 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
   const liveVisibleList = showCards ? entries.filter(e => !dismissed.has(e.id) && liveSharedIsHeld(e.id)) : [];
   const liveCount = liveVisibleList.length;
   const liveScrollMode = liveCount >= HOME_LIVE_SCROLL_MIN;
+  // ── Active broadcast: only ONE home live plays sound at a time (the one showing the side arrows).
+  //    Scrolling the list moves the arrows (and the sound) to the broadcast now at the top. ──
+  const liveListRef = useRef<HTMLDivElement | null>(null);
+  const [activeLiveState, setActiveLiveState] = useState('');
+  const livePinnedRef = useRef('');
+  const liveIdsKey = liveVisibleList.map(x => x.id).join('|');
+  const activeLiveId = liveVisibleList.some(x => x.id === activeLiveState) ? activeLiveState : (liveVisibleList[0]?.id ?? '');
+  const activeLiveRef = useRef('');
+  activeLiveRef.current = activeLiveId;
+  const recomputeActiveLive = () => {
+    const box = liveListRef.current;
+    const ids = liveIdsKey ? liveIdsKey.split('|') : [];
+    if (!box || ids.length === 0) return;
+    if (livePinnedRef.current && ids.includes(livePinnedRef.current)) { setActiveLiveState(livePinnedRef.current); return; }
+    const br = box.getBoundingClientRect();
+    const atBottom = box.scrollTop > 4 && box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
+    let pick = '';
+    if (atBottom) pick = ids[ids.length - 1];
+    else {
+      let bestVis = -1; let bestId = '';
+      for (const id of ids) {
+        const el = cardElsRef.current.get(id);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        const vis = Math.max(0, Math.min(r.bottom, br.bottom) - Math.max(r.top, br.top));
+        if (!pick && r.height > 0 && vis >= r.height * 0.6) pick = id;
+        if (vis > bestVis) { bestVis = vis; bestId = id; }
+      }
+      if (!pick) pick = bestId;
+    }
+    if (pick) setActiveLiveState(prev => (prev === pick ? prev : pick));
+  };
+  useEffect(() => {
+    recomputeActiveLive();
+    const t = window.setTimeout(recomputeActiveLive, 450);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveIdsKey]);
   // fewer broadcasts than the threshold (or leaving the page) -> bring header back
   useEffect(() => {
     if (!liveScrollMode && liveScrollHiddenRef.current) {
@@ -19166,7 +19204,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
     let presenceTimer = 0;
     const channel = kind === 'camera' ? camChannelForHost(hostId) : liveChannelForHost(hostId);
     const audioTracks = new Set<any>();
-    let muted = mutedRef.current.has(hostId);
+    let muted = mutedRef.current.has(hostId) || activeLiveRef.current !== hostId;
     (async () => {
       try {
         const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
@@ -19302,8 +19340,9 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
 
   // كتم/فك كتم صوت البث بالرئيسية (سماعة البطاقة)
   useEffect(() => {
-    connsRef.current.forEach((c, id) => c.setMuted(mutedIds.has(id)));
-  }, [mutedIds]);
+    // only the active broadcast (the one with the side arrows) is audible
+    connsRef.current.forEach((c, id) => c.setMuted(mutedIds.has(id) || id !== activeLiveId));
+  }, [mutedIds, activeLiveId, audioKey]);
 
   useEffect(() => {
     const conns = connsRef.current;
@@ -19344,6 +19383,8 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
   const visible = liveVisibleList;
   const topPx = anchorTop || 120;
   const handleLiveListScroll = (ev: React.UIEvent<HTMLDivElement>) => {
+    livePinnedRef.current = '';
+    recomputeActiveLive();
     if (!liveScrollMode) return;
     const cur = ev.currentTarget.scrollTop;
     const delta = cur - liveScrollLastTopRef.current;
@@ -19363,12 +19404,13 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
   return createPortal(
     <>
       <motion.div
+        ref={liveListRef}
         animate={{ y: lifted ? -(typeof window !== 'undefined' ? window.innerHeight : 800) : 0, opacity: lifted ? 0 : 1 }}
         transition={{ type: 'spring', stiffness: 260, damping: 32, mass: 0.9 }}
         style={{
           position: 'fixed', left: 0, right: 0, top: topPx, zIndex: 16,
           display: 'flex', flexDirection: 'column', gap: 10,
-          padding: visible.length ? '8px 12px' : 0,
+          padding: visible.length ? '8px 26px' : 0,
           maxHeight: `calc(100dvh - ${topPx}px - ${collapsed ? 12 : 104}px)`,
           overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none',
           WebkitOverflowScrolling: 'touch', touchAction: 'pan-y',
@@ -19381,15 +19423,36 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
           {visible.map(e => {
             const listeners = e.members;
             const name = e.name || e.username || 'Host';
+            const isActiveLive = e.id === activeLiveId;
+            const soundOff = mutedIds.has(e.id) || !isActiveLive;
             return (
               <motion.div
                 key={e.id}
-                ref={(el: HTMLDivElement | null) => { if (el) cardElsRef.current.set(e.id, el); else cardElsRef.current.delete(e.id); }}
                 layout
                 initial={{ opacity: 0, y: -46, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -30, scale: 0.96 }}
                 transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                style={{ position: 'relative', width: '100%', flexShrink: 0 }}
+              >
+              {isActiveLive && (
+                <>
+                  <motion.span
+                    aria-hidden
+                    animate={{ x: [0, 3, 0], opacity: [0.75, 1, 0.75] }}
+                    transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{ position: 'absolute', left: -24, top: '50%', marginTop: -13, width: 22, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22d3ee', filter: 'drop-shadow(0 0 5px rgba(34,211,238,0.8))', pointerEvents: 'none', zIndex: 3 }}
+                  ><ChevronRight size={24} strokeWidth={3.2} /></motion.span>
+                  <motion.span
+                    aria-hidden
+                    animate={{ x: [0, -3, 0], opacity: [0.75, 1, 0.75] }}
+                    transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{ position: 'absolute', right: -24, top: '50%', marginTop: -13, width: 22, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22d3ee', filter: 'drop-shadow(0 0 5px rgba(34,211,238,0.8))', pointerEvents: 'none', zIndex: 3 }}
+                  ><ChevronLeft size={24} strokeWidth={3.2} /></motion.span>
+                </>
+              )}
+              <div
+                ref={(el: HTMLDivElement | null) => { if (el) cardElsRef.current.set(e.id, el); else cardElsRef.current.delete(e.id); }}
                 onClick={() => enterLive(e)}
                 role="button"
                 aria-label={e.kind === 'camera' ? `Video Live — ${name}` : `Voice Live — ${name}`}
@@ -19429,15 +19492,22 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
                   </span>
                   <button
                     type="button"
-                    aria-label={mutedIds.has(e.id) ? 'Unmute live audio' : 'Mute live audio'}
+                    aria-label={soundOff ? 'Unmute live audio' : 'Mute live audio'}
                     onClick={ev => {
                       ev.stopPropagation();
+                      if (!isActiveLive) {
+                        // make this broadcast the audible one (moves the side arrows here)
+                        livePinnedRef.current = e.id;
+                        setActiveLiveState(e.id);
+                        setMutedIds(prev => { if (!prev.has(e.id)) return prev; const n = new Set(prev); n.delete(e.id); return n; });
+                        return;
+                      }
                       setMutedIds(prev => { const n = new Set(prev); if (n.has(e.id)) n.delete(e.id); else n.add(e.id); return n; });
                     }}
-                    style={{ position: 'relative', width: 42, height: 42, borderRadius: '50%', border: '1px solid rgba(239,68,68,0.55)', background: mutedIds.has(e.id) ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.16)', boxShadow: mutedIds.has(e.id) ? 'none' : '0 0 12px rgba(239,68,68,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                    style={{ position: 'relative', width: 42, height: 42, borderRadius: '50%', border: '1px solid rgba(239,68,68,0.55)', background: soundOff ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.16)', boxShadow: soundOff ? 'none' : '0 0 12px rgba(239,68,68,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
                   >
-                    <Headphones size={19} strokeWidth={2.2} color="#ef4444" style={{ opacity: mutedIds.has(e.id) ? 0.55 : 1 }} />
-                    {mutedIds.has(e.id) && (
+                    <Headphones size={19} strokeWidth={2.2} color="#ef4444" style={{ opacity: soundOff ? 0.55 : 1 }} />
+                    {soundOff && (
                       <span style={{ position: 'absolute', width: 26, height: 2.5, borderRadius: 2, background: '#ef4444', transform: 'rotate(-45deg)' }} />
                     )}
                   </button>
@@ -19462,6 +19532,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
                     </div>
                   )}
                 </div>
+              </div>
               </motion.div>
             );
           })}
@@ -31205,9 +31276,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         >
                           <div style={{
                             position: 'absolute', inset: 0, borderRadius: '50%',
-                            background: storyRingColor(storyG.items, '#facc15', '#0ea5e9'),
+                            background: storyRingColor(storyG.items, '#a855f7', '#0ea5e9'),
                             padding: 2.5, boxSizing: 'border-box',
-                            boxShadow: hasUnseen ? '0 0 8px rgba(250,204,21,0.45)' : 'none',
+                            boxShadow: hasUnseen ? '0 0 8px rgba(168,85,247,0.55)' : 'none',
                           }}>
                             <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
                               {(storyG.avatarUrl || c.avatarUrl) ? (
