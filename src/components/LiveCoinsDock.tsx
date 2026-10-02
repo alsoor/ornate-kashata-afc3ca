@@ -7,12 +7,14 @@
  *  - Custom: المستخدم يكتب عدد Coins بنفسه والسعر USD يتحسب بالضبط (بالسنت، بدون كسور عشرية)
  *  - الهدية: كل نقرة تزيد العداد 1 2 3 ... وبعد توقف النقر تنرسل الهدية بعدد المرات وتنخصم بعدد المرات
  *
+ *  - WalletSheet (مصدّر): صفحة الرصيد من زر $ في الإعدادات — Balance (أرباح الدعم + Withdrawal إلى PayPal) | Deposit (+ شحن مخصّص بالفيزا يزيد رصيد الهدايا مباشرة)
+ *
  * مهم: PAYMENT_DEMO_MODE = true يعني الدفع تجريبي (ما يخصم أي مبلغ).
  * قبل الإطلاق الفعلي اربطه ببوابة دفع (processVisaPayment) وخله false.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Plus, CreditCard, Lock, Pencil } from 'lucide-react';
+import { X, Plus, CreditCard, Lock, Pencil, ExternalLink } from 'lucide-react';
 import { GIFTS, TOP_GIFTS, ALL_GIFTS } from '@/lib/index';
 import type { GiftDefinition } from '@/lib/types';
 
@@ -96,6 +98,29 @@ function writeBalance(uid: string, n: number) {
     window.dispatchEvent(new CustomEvent('stooorna:coins-balance', { detail: { userId: uid, balance: n } }));
   } catch { /* ignore */ }
 }
+
+// ── أرباح الدعم (المبلغ اللي وصلك من الهدايا) + السحب ─────────────────────
+const earningsKey = (uid: string) => `stooorna_coins_earnings_${uid || 'guest'}`;
+export function readEarnings(uid: string): number {
+  try {
+    const n = Number(localStorage.getItem(earningsKey(uid)) || 0);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  } catch {
+    return 0;
+  }
+}
+function writeEarnings(uid: string, n: number) {
+  try {
+    localStorage.setItem(earningsKey(uid), String(Math.max(0, Math.floor(n))));
+    window.dispatchEvent(new CustomEvent('stooorna:coins-earnings', { detail: { userId: uid, earnings: n } }));
+  } catch { /* ignore */ }
+}
+function addEarnings(uid: string, coins: number) {
+  if (!uid || !(coins > 0)) return;
+  writeEarnings(uid, readEarnings(uid) + coins);
+}
+const WITHDRAW_CENTS_PER_COIN = 1;   // قيمة Coin وحدة عند عرض الأرباح بالدولار (1 Coin = USD 0.01) — عدّلها إذا تبي نسبة ثانية
+const PAYPAL_URL = 'https://www.paypal.com/myaccount/transfer/homepage';
 
 // ── الدفع ───────────────────────────────────────────────────────────────
 // نقطة الربط ببوابة الدفع. لا ترسل بيانات البطاقة الخام لسيرفرك؛ استخدم توكن من البوابة.
@@ -287,6 +312,9 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
   const speakerIdsRef = useRef<Set<string>>(new Set());   // userIds اللي معهم المايك (تجي من صفحة البث)
   const hostIdRef = useRef(String(hostId || ''));
   hostIdRef.current = String(hostId || '');
+  const uidRef = useRef(uid);
+  uidRef.current = uid;
+  const creditedRef = useRef<Set<string>>(new Set());   // يمنع احتساب نفس الهدية مرتين
   const leadersKeyRef = useRef('');
   const playKeyRef = useRef(0);
   const playingRef = useRef(false);
@@ -340,6 +368,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
       if (stop) return;
       if (!document.hidden) {
         try {
+          const firstPoll = since === null;
           const url = `/api/live-gifts?room=${encodeURIComponent(giftRoom)}` + (since === null ? '' : `&since=${since}`);
           const r = await fetch(url, { credentials: 'include', cache: 'no-store' });
           if (r.ok) {
@@ -353,6 +382,14 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
               }
             }
             for (const ev of d.events || []) {
+              // أرباح الدعم: الهدية موجّهة لي (من شخص ثاني) → تنضاف لرصيد Balance في المحفظة. أول استعلام (تاريخ قديم) ما ينحسب.
+              if (!firstPoll && ev.fromKey !== clientKeyRef.current && ev.toUserId && uidRef.current && String(ev.toUserId) === uidRef.current) {
+                const ck = `${ev.at}_${ev.giftId}_${ev.fromKey || ev.fromId || ''}`;
+                if (!creditedRef.current.has(ck)) {
+                  creditedRef.current.add(ck);
+                  addEarnings(uidRef.current, (GIFT_PRICE_BY_ID.get(ev.giftId) ?? 0) * Math.max(1, Number(ev.count) || 1));
+                }
+              }
               if (ev.fromKey === clientKeyRef.current) continue; // هديتي أنا تشتغل محلياً أصلاً
               window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: ev.giftId, fromId: ev.fromId, toUserId: ev.toUserId, toName: ev.toName, toAvatar: ev.toAvatar, hostId, count: ev.count || 1, remote: true } }));
             }
@@ -857,6 +894,249 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
             ✓ تم الشحن +{fmtCoins(pack.coins)}
           </motion.div>
         )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+
+// ── صفحة الرصيد (Wallet): Balance | Deposit ─────────────────────────────
+// تنفتح من زر $ في الإعدادات. الشحن هنا يزيد نفس رصيد الهدايا (stooorna_coins_balance_*) فيظهر فوراً في مربع الهدايا داخل البث.
+function parseCents(t: string): number {
+  const m = /^(\d{1,4})(?:\.(\d{1,2}))?$/.exec(t.trim());
+  if (!m) return 0;
+  return Number(m[1]) * 100 + Number((m[2] || '').padEnd(2, '0'));
+}
+
+export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose: () => void; userId?: string }) {
+  const uid = String(userId || '');
+  const [balance, setBalance] = useState<number>(() => readBalance(uid));
+  const [earnings, setEarnings] = useState<number>(() => readEarnings(uid));
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [amountText, setAmountText] = useState('');
+  const [cardNum, setCardNum] = useState('');
+  const [cardExp, setCardExp] = useState('');
+  const [cardCvc, setCardCvc] = useState('');
+  const [cardName, setCardName] = useState('');
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState('');
+  const [toast, setToast] = useState('');
+
+  useEffect(() => { setBalance(readBalance(uid)); setEarnings(readEarnings(uid)); }, [uid, open]);
+  useEffect(() => {
+    const on = () => { setBalance(readBalance(uid)); setEarnings(readEarnings(uid)); };
+    window.addEventListener('stooorna:coins-balance', on);
+    window.addEventListener('stooorna:coins-earnings', on);
+    window.addEventListener('storage', on);
+    return () => {
+      window.removeEventListener('stooorna:coins-balance', on);
+      window.removeEventListener('stooorna:coins-earnings', on);
+      window.removeEventListener('storage', on);
+    };
+  }, [uid]);
+  useEffect(() => {
+    if (!open || PAYMENT_DEMO_MODE || !uid) return;
+    fetch('/api/coins/balance', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then((d: { balance?: number } | null) => {
+        if (d && typeof d.balance === 'number') { writeBalance(uid, d.balance); setBalance(d.balance); }
+      })
+      .catch(() => { /* ignore */ });
+    fetch('/api/coins/earnings', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then((d: { earnings?: number } | null) => {
+        if (d && typeof d.earnings === 'number') { writeEarnings(uid, d.earnings); setEarnings(d.earnings); }
+      })
+      .catch(() => { /* ignore */ });
+  }, [open, uid]);
+
+  const cents = parseCents(amountText);
+  const coins = Math.floor(cents / CUSTOM_CENTS_PER_COIN);
+  const amountValid = coins >= CUSTOM_MIN_COINS && coins <= CUSTOM_MAX_COINS;
+  const earningsUsd = (earnings * WITHDRAW_CENTS_PER_COIN) / 100;
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', boxSizing: 'border-box', padding: '12px 12px', borderRadius: 10,
+    border: '1px solid rgba(255,255,255,0.14)', background: '#1c1c1c', color: '#fff', fontSize: 15, outline: 'none',
+  };
+
+  function openDeposit() {
+    setAmountText(''); setCardNum(''); setCardExp(''); setCardCvc(''); setCardName(''); setPayError('');
+    setDepositOpen(true);
+  }
+
+  function validate(): string {
+    if (!amountValid) return `المبلغ من ${fmtUsd(CUSTOM_MIN_COINS * CUSTOM_CENTS_PER_COIN / 100)} إلى ${fmtUsd(CUSTOM_MAX_COINS * CUSTOM_CENTS_PER_COIN / 100)}`;
+    const digits = cardNum.replace(/\s/g, '');
+    if (digits.length !== 16 || !digits.startsWith('4') || !luhnOk(digits)) return 'رقم فيزا غير صحيح';
+    const m = /^(\d{2})\/(\d{2})$/.exec(cardExp);
+    if (!m) return 'تاريخ الانتهاء غير صحيح';
+    const mm = Number(m[1]); const yy = 2000 + Number(m[2]);
+    if (mm < 1 || mm > 12) return 'تاريخ الانتهاء غير صحيح';
+    const now = new Date();
+    if (yy < now.getFullYear() || (yy === now.getFullYear() && mm < now.getMonth() + 1)) return 'البطاقة منتهية';
+    if (!/^\d{3}$/.test(cardCvc)) return 'CVC غير صحيح';
+    if (cardName.trim().length < 2) return 'اكتب اسم حامل البطاقة';
+    return '';
+  }
+
+  async function pay() {
+    if (paying) return;
+    const err = validate();
+    if (err) { setPayError(err); return; }
+    setPayError('');
+    setPaying(true);
+    const res = await processVisaPayment({ id: CUSTOM_ID, coins, usd: cents / 100 });
+    setPaying(false);
+    if (!res.ok) { setPayError(res.error || 'فشل الدفع'); return; }
+    const next = typeof res.balance === 'number' ? res.balance : readBalance(uid) + coins;
+    writeBalance(uid, next);          // نفس رصيد مربع الهدايا داخل البث
+    setBalance(next);
+    setAmountText(''); setCardNum(''); setCardExp(''); setCardCvc(''); setCardName('');
+    setDepositOpen(false);
+    setToast(`✓ تم الشحن +${fmtCoins(coins)}`);
+    window.setTimeout(() => setToast(''), 2200);
+  }
+
+  function withdraw() {
+    try { window.open(PAYPAL_URL, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
+  }
+
+  const half: React.CSSProperties = {
+    flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '14px 10px', display: 'flex', flexDirection: 'column',
+    alignItems: 'center', gap: 10,
+  };
+  const label: React.CSSProperties = { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase' };
+
+  return (
+    <>
+      <Sheet open={open} onClose={() => { if (!depositOpen) onClose(); }} title="Wallet" balance={balance} z={10000}>
+        {/* مربع من قسمين: Balance | Deposit */}
+        <div style={{ display: 'flex', alignItems: 'stretch', background: '#1c1c1c', borderRadius: 16, border: '1px solid rgba(255,255,255,0.1)', direction: 'ltr' }}>
+          <div style={half}>
+            <span style={label}>Balance</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <CoinIcon size={22} />
+              <span style={{ color: '#fff', fontWeight: 900, fontSize: 22 }}>{fmtCoins(earnings)}</span>
+            </div>
+            <span style={{ color: '#4ade80', fontWeight: 800, fontSize: 13 }}>{fmtUsd(earningsUsd)}</span>
+            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10.5, textAlign: 'center' }}>وصلك من الدعم</span>
+          </div>
+          <div style={{ width: 1, background: 'rgba(255,255,255,0.1)', margin: '10px 0' }} />
+          <div style={half}>
+            <span style={label}>Deposit</span>
+            <button type="button" onClick={openDeposit} aria-label="Deposit"
+              style={{
+                width: 64, height: 64, borderRadius: '50%', cursor: 'pointer', marginTop: 4,
+                background: 'rgba(139,18,255,0.18)', border: '1.5px solid #8b12ff', color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                boxShadow: '0 0 14px rgba(139,18,255,0.35)',
+              }}>
+              <Plus size={32} strokeWidth={2.6} />
+            </button>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'rgba(255,255,255,0.7)', fontWeight: 800, fontSize: 12.5 }}>
+              <CoinIcon size={14} /> {fmtCoins(balance)}
+            </span>
+          </div>
+        </div>
+
+        {/* Withdrawal تحت Balance → PayPal */}
+        <button type="button" onClick={withdraw}
+          style={{
+            width: '100%', marginTop: 12, padding: '13px 10px', borderRadius: 14, cursor: 'pointer',
+            background: 'rgba(250,204,21,0.12)', border: '1.5px solid rgba(250,204,21,0.55)', color: '#facc15',
+            fontWeight: 800, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
+          Withdrawal <ExternalLink size={16} />
+        </button>
+      </Sheet>
+
+      {/* Deposit: مبلغ مخصّص (بدون باقات) + بيانات VISA → يزيد رصيد الهدايا مباشرة */}
+      <Sheet open={depositOpen} onClose={() => { if (!paying) setDepositOpen(false); }} title="Visa" balance={balance} z={10100}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, direction: 'ltr' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <span style={{ position: 'absolute', left: 12, top: 12, color: 'rgba(255,255,255,0.55)', fontWeight: 800, fontSize: 15 }}>USD</span>
+              <input
+                value={amountText} inputMode="decimal" placeholder="0.00" aria-label="Amount" autoFocus
+                onChange={e => {
+                  let v = e.target.value.replace(/[^\d.]/g, '');
+                  const i = v.indexOf('.');
+                  if (i >= 0) v = v.slice(0, i + 1) + v.slice(i + 1).replace(/\./g, '').slice(0, 2);
+                  setAmountText(v.slice(0, 7));
+                }}
+                style={{ ...inputStyle, paddingLeft: 52, fontSize: 18, fontWeight: 800 }}
+              />
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 90, justifyContent: 'flex-end', color: amountValid ? '#fff' : 'rgba(255,255,255,0.35)', fontWeight: 800, fontSize: 14 }}>
+              <CoinIcon size={18} /> {amountValid ? fmtCoins(coins) : '—'}
+            </span>
+          </div>
+          <div style={{ position: 'relative' }}>
+            <input
+              value={cardNum} inputMode="numeric" autoComplete="cc-number" placeholder="Card number"
+              onChange={e => {
+                const d = e.target.value.replace(/\D/g, '').slice(0, 16);
+                setCardNum(d.replace(/(.{4})/g, '$1 ').trim());
+              }}
+              style={{ ...inputStyle, paddingRight: 44 }}
+            />
+            <CreditCard size={18} color="rgba(255,255,255,0.45)" style={{ position: 'absolute', right: 12, top: 14 }} />
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input
+              value={cardExp} inputMode="numeric" autoComplete="cc-exp" placeholder="MM/YY"
+              onChange={e => {
+                const d = e.target.value.replace(/\D/g, '').slice(0, 4);
+                setCardExp(d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d);
+              }}
+              style={inputStyle}
+            />
+            <input
+              value={cardCvc} inputMode="numeric" autoComplete="cc-csc" placeholder="CVC" type="password"
+              onChange={e => setCardCvc(e.target.value.replace(/\D/g, '').slice(0, 3))}
+              style={inputStyle}
+            />
+          </div>
+          <input
+            value={cardName} autoComplete="cc-name" placeholder="Name on card"
+            onChange={e => setCardName(e.target.value)} style={inputStyle}
+          />
+        </div>
+        <p style={{ margin: '8px 2px 0', textAlign: 'center', fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.45)' }}>
+          {fmtUsd(CUSTOM_MIN_COINS * CUSTOM_CENTS_PER_COIN / 100)} – {fmtUsd(CUSTOM_MAX_COINS * CUSTOM_CENTS_PER_COIN / 100)} · 1 Coin = {fmtUsd(CUSTOM_CENTS_PER_COIN / 100)}
+        </p>
+        {payError ? <p style={{ margin: '10px 0 0', color: '#f87171', fontSize: 13, fontWeight: 700, textAlign: 'center' }}>{payError}</p> : null}
+        <button type="button" disabled={paying} onClick={() => void pay()}
+          style={{
+            width: '100%', marginTop: 14, padding: '14px 10px', borderRadius: 14, border: 'none',
+            cursor: paying ? 'default' : 'pointer', opacity: paying ? 0.7 : 1,
+            background: '#8b12ff', color: '#fff', fontWeight: 800, fontSize: 16,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
+          <Lock size={16} /> {paying ? 'Processing…' : amountValid ? `Pay ${fmtUsd(cents / 100)}` : 'Pay'}
+        </button>
+        {PAYMENT_DEMO_MODE ? (
+          <p style={{ margin: '10px 0 0', color: 'rgba(255,255,255,0.4)', fontSize: 11, textAlign: 'center' }}>
+            وضع تجريبي — لا يتم خصم أي مبلغ من البطاقة
+          </p>
+        ) : null}
+      </Sheet>
+
+      <AnimatePresence>
+        {toast ? (
+          <motion.div
+            key="wallet-toast"
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 90, zIndex: 10300,
+              background: '#16a34a', color: '#fff', padding: '10px 16px', borderRadius: 999, fontWeight: 800, fontSize: 14,
+              boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+            }}
+          >
+            {toast}
+          </motion.div>
+        ) : null}
       </AnimatePresence>
     </>
   );

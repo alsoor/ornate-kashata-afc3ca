@@ -1648,18 +1648,18 @@ export default function LivePage() {
               color: '#111',
               fontSize: '0.7rem',
               fontWeight: 800,
-              width: 46,
-              height: 46,
+              width: isHostRoom ? 36 : 46,
+              height: isHostRoom ? 36 : 46,
               padding: 0,
               borderRadius: '50%',
               background: 'radial-gradient(circle at 30% 30%, #ffe08a, #eab308)',
               border: '1.5px solid rgba(234,179,8,0.85)',
-              boxShadow: '0 0 12px rgba(234,179,8,0.5)',
+              boxShadow: isHostRoom ? '0 0 8px rgba(234,179,8,0.5)' : '0 0 12px rgba(234,179,8,0.5)',
               cursor: 'pointer',
             }}
             title="Mic requests"
           >
-            <Hand size={16} color="#111" />
+            <Hand size={isHostRoom ? 17 : 16} color="#111" />
             {amHost && micRequests.length > 0 && (
               <span
                 style={{

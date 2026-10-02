@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, Briefcase, Menu, ChevronDown, AlertTriangle, FileText } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, Briefcase, Menu, ChevronDown, AlertTriangle, FileText, DollarSign } from 'lucide-react';
 import { useSession, signOut, signIn, signUp } from '@/lib/auth/auth-client';
 import { usePresenceQuery } from '@/hooks/usePresence';
 import LiveLocationMap from '@/components/LiveLocationMap';
@@ -13,6 +13,7 @@ import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
 import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, hydrateVipDirectory, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown } from '@/lib/vipPatch';
 import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
+import { WalletSheet } from '@/components/LiveCoinsDock';
 import StoryModerationManager from '@/components/StoryModerationManager';
 import { ClearUserStoriesDialog } from '@/components/StoryModeration';
 import { SharePageView } from '@/pages/share';
@@ -5472,6 +5473,7 @@ export default function SettingsPage() {
 
   // ── Music player (profile button) ──
   const [musicModalOpen, setMusicModalOpen] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
   const [musicCurrentTrack, setMusicCurrentTrack] = useState<SettingsMusicTrack | null>(null);
   const [musicIsPlaying, setMusicIsPlaying] = useState(false);
   const musicAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -7559,6 +7561,36 @@ export default function SettingsPage() {
                         }}
                       >
                         <Music size={14} strokeWidth={2.2} />
+                      </motion.button>
+
+                      {/* Wallet ($) button — left side of profile card, same size as Music */}
+                      <motion.button
+                        type="button"
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => setWalletOpen(true)}
+                        aria-label="Wallet"
+                        title="Wallet"
+                        style={{
+                          position: 'absolute',
+                          left: 14,
+                          bottom: 18,
+                          zIndex: 5,
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          background: walletOpen ? 'rgba(250,204,21,0.22)' : 'rgba(250,204,21,0.1)',
+                          border: `1px solid ${walletOpen ? 'rgba(250,204,21,0.65)' : 'rgba(250,204,21,0.35)'}`,
+                          color: '#facc15',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: walletOpen
+                            ? '0 0 10px rgba(250,204,21,0.4)'
+                            : '0 1px 6px rgba(0,0,0,0.2)',
+                        }}
+                      >
+                        <DollarSign size={15} strokeWidth={2.6} />
                       </motion.button>
                     </div>
                   </div>
@@ -12712,6 +12744,11 @@ export default function SettingsPage() {
           userAvatar={avatarUrl || (user as any)?.avatarUrl || (user as any)?.image || null}
           onClose={() => setShowPublicVoice(false)}
         />
+      )}
+
+      {/* ── Wallet (Balance | Deposit) — from profile $ button ── */}
+      {user?.id && (
+        <WalletSheet open={walletOpen} onClose={() => setWalletOpen(false)} userId={user.id} />
       )}
 
       {/* ── Music modal — from profile Music button ── */}
