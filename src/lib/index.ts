@@ -15,12 +15,7 @@
  *               لمستخدم: نفس المشهد، وبالنهاية إطار صورته يصعد للأعلى وتطير البلورة وتحوم فوق إطاره)
  *              الأصوات: src/lib/castleSounds.ts
  *     (هدية الصقر FalconGift: استُبدلت بالقلعة، الملف وملف أصواته falconSounds.ts باقيين — شيل // ورجّعها بالمصفوفة لو تبي)
- *  5) Dragon → تنين ضخم (6,000 Coins, 16s) — الصف الثاني، المربع الأوسط (أول مربع فارغ بعد الأربع هدايا)
- *              (للمضيف: البث يغرق بالسواد ويدخل تنين ضخم بجناحين وفوقه امرأة بشعر أحمر، يزأر ثم ينفخ نار من فمه
- *               تحرق البث بالكامل وتشعل الأزرار —
- *               لمستخدم: نفس المشهد، وبالنهاية التنين يلتفت ويرش النار من فمه على إطار صورته (اللي صعد لمنتصف البث)
- *               فيتفحّم ويحترق بالكامل ويتحول رماد)
- *              الأصوات والموسيقى: src/lib/dragonSounds.ts (فيه خانة DRAGON_MUSIC_URL لموسيقاك)
+ *  5) Dragon → تنين ضخم (6,000 Coins, 16s) — أُلغيت (الملف DragonGift.tsx وملف أصواته باقيين — شيل // ورجّعها بالمصفوفة لو تبي)
  *
  * الصف العلوي (المربعات الصغيرة) — TOP_GIFTS:
  *  1) Rose   → وردة حمراء صغيرة (25 Coins, 6s) — المربع الأول يسار الصف العلوي
@@ -42,7 +37,7 @@ import { StormGift } from '../components/gifts/StormGift';
 import { VolcanoGift } from '../components/gifts/VolcanoGift';
 // import { FalconGift } from '../components/gifts/FalconGift'; // هدية الصقر: استُبدلت بالقلعة (الملف باقي، شيل // ورجّعها بالمصفوفة لو تبي)
 import { CastleGift } from '../components/gifts/CastleGift';
-import { DragonGift } from '../components/gifts/DragonGift';
+// import { DragonGift } from '../components/gifts/DragonGift'; // هدية التنين: أُلغيت (الملف باقي — شيل // ورجّعها بالمصفوفة لو تبي)
 import { RoseGift } from '../components/gifts/RoseGift';
 import { BalloonGift } from '../components/gifts/BalloonGift';
 import { StarryPianoGift } from '../components/gifts/StarryPianoGift';
@@ -52,7 +47,7 @@ export const GIFTS: GiftDefinition[] = [
   VolcanoGift, // مكان الساحرة
   StormGift,
   CastleGift,  // الصف الثالث — المربع الأول (3,500 Coins) — مكان الصقر
-  DragonGift,  // التنين (6,000 Coins, 16s) — الصف الثاني، المربع الأوسط
+  // DragonGift,  // التنين (6,000 Coins, 16s) — أُلغيت
   // remaining square: add more gifts here later
 ];
 
