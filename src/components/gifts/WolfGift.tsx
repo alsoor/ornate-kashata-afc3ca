@@ -1,23 +1,22 @@
 /**
- * هدية الذئب (Wolf) — 6,000 Coins — مدتها ~24 ثانية
+ * هدية الذئب (Wolf) — 6,000 Coins — مدتها ~19.5 ثانية
  *
  * - Preview  : داخل مربع الهدايا ذئب أسود يعوي للقمر قبل النقر: رأسه يرتفع ويهبط، موجات صوت تخرج من فمه،
  *              نجوم تلمع، القمر يتوهج، برق خفيف يومض، وضباب يمر عند الأرض.
  * - Animation: (الأرقام بالثواني)
  *     0.0 – 1.8  : البث يغرق بالظلام + رياح ليل + نجوم تظهر واحدة واحدة + قمر ومجرّات خافتة + شهب
  *     1.6 – 2.8  : نبض قلب منخفض (توتر) وضباب يزحف من الأرض
- *     3.0        : الذئب يدخل من الضباب (ملف الفيديو يشتغل بصوته الأصلي كما هو — الصرخة تطلع واضحة)
- *     3.0 – 19.7 : رعد وبرق بالسماء + ذرات نور باردة وغبار نجوم ينزل على أزرار البث (تتوهج بالجليد)
- *     13.4 – 18  : موجات صدمة باردة مع كل صرخة + اهتزاز خفيف للشاشة
+ *     3.0        : يدخل مشهد الذئب (GIF مدمج بآخر src/lib/wolfSounds.ts) ممزوج بالسماء والظلام بدون ما يبان إنه ملف — وصوته الأصلي (الزئير) يشتغل لحظة ظهور أول فريم
+ *     3.0 – 15.2 : رعد وبرق بالسماء + ذرات نور باردة وغبار نجوم ينزل على أزرار البث (تتوهج بالجليد)
+ *     9.5 – 15.2 : موجات صدمة باردة مع كل زئير + اهتزاز خفيف للشاشة
  *     بعد نهاية الفيديو : الذئب يذوب بالضباب، الإضاءة ترجع طبيعية
  *                  • لو الهدية من صاحب البث إلى مستخدم: إطار صورة المستخدم يرتفع لمنتصف الشاشة
  *                  • لو الهدية لصاحب البث: هالة قمر وشرارات ذهبية على صورته
  *
- * إخفاء أن الذئب فيديو: الفيديو ما يظهر نهائياً كمستطيل؛ نقرأ كل إطار ونفصل الذئب الأسود عن سماء الفيديو
- * (قناع حسب العتمة + أكبر كتلة متصلة + سد الفجوات للعيون والأنياب)، ونرسمه فقط فوق سماء/ضباب/برق من رسمنا.
- * صوت الفيديو يشتغل كما هو من عنصر الفيديو نفسه.
+ * إخفاء أن الذئب ملف: المشهد GIF مدمج بآخر src/lib/wolfSounds.ts (WOLF_GIF_B64) ويُعرض بوضع screen فوق سماء الظلام (السواد يصير شفاف)،
+ * بحواف متلاشية وبدون أي واجهة؛ والصوت الأصلي (زئير الذئب) مدمج معه كـ MP3 (WOLF_ROAR_MP3_B64) ويشتغل لحظة ظهور أول فريم.
  *
- * ⚠️ لازم تحط ملف الفيديو في:  public/gifts/wolf-howl.mp4   (أو غيّر WOLF_VIDEO_SRC تحت)
+ * ما عاد نحتاج ملف الفيديو public/gifts/wolf-howl.mp4. لتغيير المشهد: حوّل الفيديو الجديد لـ GIF (بدون تكرار) وMP3 وبدّل النصين بآخر wolfSounds.ts، وعدّل VIDEO_LEN والتوقيتات تحت.
  *
  * ملف مستقل: الأصوات المساندة في src/lib/wolfSounds.ts. غيّر الأرقام تحت (السعر/المدد/التوقيتات).
  *
@@ -29,25 +28,29 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import type { GiftDefinition } from '../../lib/types';
-import { createWolfSound } from '../../lib/wolfSounds';
+import { createWolfSound, getWolfGifBlob } from '../../lib/wolfSounds';
 
 // ── إعدادات الهدية ──────────────────────────────────────────────────────
 const PRICE = 6000;
-const TOTAL_MS = 24500;               // مدة الهدية الكلية التقريبية (التوقيت الفعلي يتبع طول الفيديو)
-const WOLF_VIDEO_SRC = '/gifts/wolf-howl.mp4';   // مسار الفيديو (داخل public)
+const TOTAL_MS = 19500;               // مدة الهدية الكلية التقريبية (التوقيت الفعلي يتبع لحظة ظهور الـ GIF)
+// المشهد: GIF مدمج بآخر src/lib/wolfSounds.ts (WOLF_GIF_B64) + صوته الأصلي (WOLF_ROAR_MP3_B64) — ما عاد نحتاج public/gifts/wolf-howl.mp4
 
 const DARK_IN = 1.8;                  // مدة الغرق بالظلام
 const DARK_MAX = 0.93;                // قوة الظلام (1 = أسود كامل)
 const VIDEO_AT = 3.0;                 // دخول الذئب
-const VIDEO_LEN = 16.75;              // طول الفيديو الافتراضي (يُقرأ من الفيديو نفسه إذا توفر)
+const VIDEO_LEN = 12.2;               // مدة الـ GIF (122 فريم × 0.1 ث) — يشتغل مرة وحدة بدون تكرار
 const WAIT_MAX = 4.0;                 // أقصى انتظار لتحميل الفيديو قبل الاستمرار بدونه
 const POST_UP = 1.8;                  // مدة صعود إطار المستخدم لمنتصف الشاشة بعد نهاية الفيديو
 const POST_DOWN_AT = 3.5;             // بداية اختفاء الإطار
 const POST_END = 4.3;                 // نهاية الهدية بعد نهاية الفيديو
-const HOWL_RINGS = [10.4, 12.0, 13.6, 15.2];       // (بالثواني داخل الفيديو) موجات الصرخة
-const LIGHTNING_REL = [1.4, 4.2, 7.0, 9.6, 12.4, 14.8]; // (نسبة لبداية الفيديو) برق السماء
+const HOWL_RINGS = [6.5, 8.0, 11.5];         // (بالثواني داخل الـ GIF) موجات الزئير (حسب صوت المشهد)
+const LIGHTNING_REL = [1.0, 3.6, 6.2, 8.6, 10.6]; // (نسبة لبداية الـ GIF) برق السماء
 const INTRO_SPARKLES = [0.7, 1.1, 1.5, 1.9, 2.2, 2.5, 2.8];
 const INTRO_HEARTBEATS = [1.6, 2.4];
+const HOWL_FROM = 6.0;                // بداية/نهاية اهتزاز الشاشة وتوهج الزئير (داخل الـ GIF)
+const HOWL_TO = 12.0;
+const VIDEO_FADE_IN = 0.9;            // ظهور/اختفاء الـ GIF بمزج
+const VIDEO_FADE_OUT = 0.8;
 
 const MAX_FX = 900;                   // حد أقصى للجسيمات (للأداء على الجوال)
 const HOT_SEL = 'button, [role="button"], a[href], input, textarea, select, [data-gift-host], [data-gift-walk], [data-gift-hot]';
@@ -77,110 +80,6 @@ function makeSprite(rgb: string, soft = 0.3): HTMLCanvasElement {
   }
   return s;
 }
-
-// <MASK> ═════════════════════════════════════════════════════════════════
-//  فصل الذئب عن سماء الفيديو (يعمل على نسخة صغيرة من الإطار — خفيف على الجوال)
-// ═══════════════════════════════════════════════════════════════════════
-const MASK_THRESH = 52;   // الأقل من هذه العتمة = جسم الذئب (السماء أفتح بكثير)
-const MASK_CLOSE_R = 2;   // سد الفجوات الصغيرة (عيون/أنياب)
-
-interface MaskWork {
-  bin: Uint8Array; tmp: Uint8Array; lab: Uint16Array; stack: Int32Array; sizes: Uint32Array; soft: Uint8Array;
-}
-function makeMaskWork(w: number, h: number): MaskWork {
-  return {
-    bin: new Uint8Array(w * h), tmp: new Uint8Array(w * h), lab: new Uint16Array(w * h),
-    stack: new Int32Array(w * h), sizes: new Uint32Array(4096), soft: new Uint8Array(w * h),
-  };
-}
-// تمدد/انكماش (نافذة مربعة r) — خارج الحدود: التمدد يعتبرها 0 والانكماش يعتبرها 1 (عشان الحواف ما تأكل)
-function morph(src: Uint8Array, dst: Uint8Array, tmp: Uint8Array, w: number, h: number, r: number, dilate: boolean) {
-  const edge = dilate ? 0 : 1;
-  for (let y = 0; y < h; y++) {
-    const row = y * w;
-    for (let x = 0; x < w; x++) {
-      let v = dilate ? 0 : 1;
-      for (let dx = -r; dx <= r; dx++) {
-        const xx = x + dx;
-        const s = xx < 0 || xx >= w ? edge : src[row + xx];
-        if (dilate ? s > v : s < v) v = s;
-      }
-      tmp[row + x] = v;
-    }
-  }
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let v = dilate ? 0 : 1;
-      for (let dy = -r; dy <= r; dy++) {
-        const yy = y + dy;
-        const s = yy < 0 || yy >= h ? edge : tmp[yy * w + x];
-        if (dilate ? s > v : s < v) v = s;
-      }
-      dst[y * w + x] = v;
-    }
-  }
-}
-/** rgba: بيانات الإطار المصغّر — out: RGBA بقناة ألفا فقط (الذئب = 255) */
-function buildWolfMask(rgba: Uint8ClampedArray, w: number, h: number, ws: MaskWork, out: Uint8ClampedArray) {
-  const n = w * h;
-  const { bin, tmp, lab, stack, sizes, soft } = ws;
-  for (let i = 0; i < n; i++) {
-    const p = i * 4;
-    bin[i] = ((rgba[p] * 77 + rgba[p + 1] * 150 + rgba[p + 2] * 29) >> 8) < MASK_THRESH ? 1 : 0;
-  }
-  morph(bin, bin, tmp, w, h, MASK_CLOSE_R, true);    // closing = تمدد ثم انكماش
-  morph(bin, bin, tmp, w, h, MASK_CLOSE_R, false);
-
-  // أكبر كتلة متصلة (جسم الذئب) — نتجاهل بقع الغيوم الداكنة المنفصلة
-  lab.fill(0);
-  let nl = 0;
-  let best = 0;
-  let bestSize = 0;
-  for (let i = 0; i < n; i++) {
-    if (!bin[i] || lab[i]) continue;
-    if (nl >= 4094) break;
-    nl++;
-    let sp = 0;
-    let size = 0;
-    stack[sp++] = i;
-    lab[i] = nl;
-    while (sp > 0) {
-      const j = stack[--sp];
-      size++;
-      const x = j % w;
-      if (x > 0 && bin[j - 1] && !lab[j - 1]) { lab[j - 1] = nl; stack[sp++] = j - 1; }
-      if (x < w - 1 && bin[j + 1] && !lab[j + 1]) { lab[j + 1] = nl; stack[sp++] = j + 1; }
-      if (j >= w && bin[j - w] && !lab[j - w]) { lab[j - w] = nl; stack[sp++] = j - w; }
-      if (j < n - w && bin[j + w] && !lab[j + w]) { lab[j + w] = nl; stack[sp++] = j + w; }
-    }
-    sizes[nl] = size;
-    if (size > bestSize) { bestSize = size; best = nl; }
-  }
-  for (let i = 0; i < n; i++) soft[i] = best && lab[i] === best ? 255 : 0;
-
-  // تنعيم الحواف [1 2 1] أفقي ثم عمودي
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      const a = x > 0 ? soft[i - 1] : soft[i];
-      const b = x < w - 1 ? soft[i + 1] : soft[i];
-      tmp[i] = (a + 2 * soft[i] + b) >> 2;
-    }
-  }
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      const a = y > 0 ? tmp[i - w] : tmp[i];
-      const b = y < h - 1 ? tmp[i + w] : tmp[i];
-      const o = i * 4;
-      out[o] = 0;
-      out[o + 1] = 0;
-      out[o + 2] = 0;
-      out[o + 3] = (a + 2 * tmp[i] + b) >> 2;
-    }
-  }
-}
-// </MASK> ════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Preview — ذئب يعوي للقمر داخل مربع الهدايا
@@ -220,8 +119,8 @@ function WolfPreview({ size = 72 }: { size?: number }) {
   const h = Math.round(size * 1.3);
   const w = Math.round((h * 100) / 112);
   const ref = (n: string) => `url(#${n}${uid})`;
-  // مزامنة الفيديو المسبق مع أول عرض للمربع (يجهّز الفيديو بالكاش قبل ما ينقر المستخدم)
-  useEffect(() => { warmWolfVideo(); }, []);
+  // تجهيز الـ GIF مسبقاً مع أول عرض للمربع (يجهّزه قبل ما ينقر المستخدم)
+  useEffect(() => { warmWolfGif(); }, []);
   return (
     <motion.div
       aria-hidden="true"
@@ -287,54 +186,15 @@ function WolfPreview({ size = 72 }: { size?: number }) {
   );
 }
 
-// ── فيديو مشترك يُفتح (unlock) من أول لمسة بالتطبيق، عشان يشتغل أوتوماتك بصوته بدون أي منع من المتصفح ──
-let sharedVideo: HTMLVideoElement | null = null;
-let primed = false;
-function getWolfVideo(): HTMLVideoElement {
-  if (!sharedVideo) {
-    const v = document.createElement('video');
-    v.setAttribute('playsinline', '');
-    v.setAttribute('webkit-playsinline', '');
-    v.preload = 'auto';
-    v.muted = true;
-    v.src = WOLF_VIDEO_SRC;
-    v.style.cssText = 'position:absolute;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
-    sharedVideo = v;
-  }
-  return sharedVideo;
-}
-function primeWolfVideo() {
-  if (primed) return;
-  primed = true;
-  try {
-    const v = getWolfVideo();
-    v.muted = true;
-    const p = v.play();
-    const reset = () => { try { v.pause(); v.currentTime = 0; } catch { /* ignore */ } };
-    if (p && typeof p.then === 'function') p.then(reset).catch(() => { primed = false; });
-    else reset();
-  } catch { primed = false; }
-}
-let warmed = false;
-function warmWolfVideo() {
-  if (warmed || typeof window === 'undefined') return;
-  warmed = true;
-  try { getWolfVideo().load(); } catch { /* ignore */ }
-  // أول لمسة بأي مكان بالتطبيق تجهّز الفيديو والصوت — بعدها الهدية تشتغل تلقائياً بدون منع
-  const unlock = () => {
-    primeWolfVideo();
-    if (primed) {
-      window.removeEventListener('pointerdown', unlock, true);
-      window.removeEventListener('touchend', unlock, true);
-      window.removeEventListener('click', unlock, true);
-    }
-  };
-  window.addEventListener('pointerdown', unlock, true);
-  window.addEventListener('touchend', unlock, true);
-  window.addEventListener('click', unlock, true);
+// ── الـ GIF المدمج (مع صوته الأصلي) من src/lib/wolfSounds.ts — يتحول لـ Blob من لحظة ظهور مربع الهدية عشان يشتغل فوراً عند الإرسال ──
+let warmedGif = false;
+function warmWolfGif() {
+  if (warmedGif || typeof window === 'undefined') return;
+  warmedGif = true;
+  try { getWolfGifBlob(); } catch { /* ignore */ }
 }
 // يشتغل من تحميل الملف نفسه (قبل ما يفتح المستخدم نافذة الهدايا)
-if (typeof window !== 'undefined') warmWolfVideo();
+if (typeof window !== 'undefined') warmWolfGif();
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Animation — أنميشن ملء الشاشة (Canvas + الفيديو مفصول عن خلفيته)
@@ -407,19 +267,18 @@ function WolfAnimation({ onDone }: { onDone: () => void }) {
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
   const cvRef = useRef<HTMLCanvasElement>(null);
-  const holdRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   const [{ W, H }] = useState(() => ({
     W: typeof window !== 'undefined' ? window.innerWidth : 360,
     H: typeof window !== 'undefined' ? window.innerHeight : 640,
   }));
+  const wide = W / H > 0.8;   // شاشة عريضة (تابلت/كمبيوتر): الـ GIF يُعرض بـ contain مع تلاشي الحواف
 
   useEffect(() => {
     const cv = cvRef.current;
-    const hold = holdRef.current;
-    if (!cv || !hold) return;
-    const vid = getWolfVideo();
-    try { hold.appendChild(vid); } catch { /* ignore */ }
+    const img = imgRef.current;
+    if (!cv || !img) return;
     const c = cv.getContext('2d');
     if (!c) return;
 
@@ -428,107 +287,32 @@ function WolfAnimation({ onDone }: { onDone: () => void }) {
     cv.height = Math.round(H * dpr);
     const k = Math.max(0.75, H / 700);
 
-    // ── الفيديو (يُحمّل من الآن، ويشتغل بصوته الأصلي عند VIDEO_AT) ──
-    vid.setAttribute('playsinline', '');
-    vid.setAttribute('webkit-playsinline', '');
-    vid.preload = 'auto';
-    vid.muted = false;
-    vid.volume = 1;
-    if (vid.getAttribute('src') !== WOLF_VIDEO_SRC) vid.src = WOLF_VIDEO_SRC;
+    // ── الـ GIF المدمج (بدون فيديو): يبدأ عند VIDEO_AT، والصوت الأصلي يبدأ لحظة ظهور أول فريم ──
+    let vCalled = false;
     let started = false;
     let vFailed = false;
     let vEnded = false;
-    const onVidErr = () => { vFailed = true; };
-    const onVidEnd = () => { vEnded = true; };
-    vid.addEventListener('error', onVidErr);
-    vid.addEventListener('ended', onVidEnd);
-    try { vid.load(); } catch { /* ignore */ }
-
-    const startVideo = () => {
+    let gifT0 = 0;                 // ساعة الهدية اللي ظهر فيها أول فريم
+    let gifUrl: string | null = null;
+    const onGifLoad = () => {
+      if (started || vFailed) return;
       started = true;
-      try { vid.currentTime = 0; } catch { /* ignore */ }
-      const p = vid.play();
-      if (p && typeof p.catch === 'function') {
-        p.catch(() => {
-          // المتصفح منع الصوت التلقائي: نشغّل صامت ونرجّع الصوت عند أول لمسة
-          vid.muted = true;
-          vid.play().catch(() => { vFailed = true; });
-          const unmute = () => { try { vid.muted = false; } catch { /* ignore */ } };
-          window.addEventListener('pointerdown', unmute, { once: true });
-          window.addEventListener('touchstart', unmute, { once: true });
-        });
-      }
+      gifT0 = (performance.now() - start) / 1000;
+      sound.startRoar();
+      sound.duck(true);
     };
-
-    // ── فصل الذئب عن سماء الفيديو ──
-    const WV_W = 540, WV_H = 960;
-    const MW = 144, MH = 256;
-    const wolfCv = document.createElement('canvas');
-    wolfCv.width = WV_W;
-    wolfCv.height = WV_H;
-    const wc = wolfCv.getContext('2d');
-    const lowCv = document.createElement('canvas');
-    lowCv.width = MW;
-    lowCv.height = MH;
-    const lc = lowCv.getContext('2d', { willReadFrequently: true });
-    const maskCv = document.createElement('canvas');
-    maskCv.width = MW;
-    maskCv.height = MH;
-    const mc = maskCv.getContext('2d');
-    const maskImg = mc ? mc.createImageData(MW, MH) : null;
-    const work = makeMaskWork(MW, MH);
-    const canFilter = !!wc && 'filter' in wc;
-    let noMask = false;       // لو القراءة ممنوعة (فيديو من دومين ثاني بدون CORS) نستعمل قناع بيضاوي ناعم
-    let lastVT = -1;
-    let haveFrame = false;
-
-    const updateWolf = () => {
-      if (!wc || !lc || !mc || !maskImg) return;
-      let ok = !noMask;
-      if (ok) {
-        try {
-          lc.drawImage(vid, 0, 0, MW, MH);
-          const id = lc.getImageData(0, 0, MW, MH);
-          buildWolfMask(id.data, MW, MH, work, maskImg.data);
-          mc.putImageData(maskImg, 0, 0);
-        } catch { ok = false; noMask = true; }
-      }
-      wc.globalCompositeOperation = 'source-over';
-      wc.globalAlpha = 1;
-      wc.clearRect(0, 0, WV_W, WV_H);
-      try { wc.drawImage(vid, 0, 0, WV_W, WV_H); } catch { return; }
-      wc.globalCompositeOperation = 'destination-in';
-      if (ok) {
-        wc.imageSmoothingEnabled = true;
-        wc.imageSmoothingQuality = 'high';
-        if (canFilter) wc.filter = 'blur(2px)';
-        wc.drawImage(maskCv, 0, 0, WV_W, WV_H);
-        if (canFilter) wc.filter = 'none';
-      } else {
-        wc.save();
-        wc.translate(WV_W / 2, WV_H * 0.64);
-        wc.scale(1, 1.15);
-        const rg = wc.createRadialGradient(0, 0, 0, 0, 0, WV_W * 0.5);
-        rg.addColorStop(0, 'rgba(0,0,0,1)');
-        rg.addColorStop(0.7, 'rgba(0,0,0,0.9)');
-        rg.addColorStop(1, 'rgba(0,0,0,0)');
-        wc.fillStyle = rg;
-        wc.fillRect(-WV_W, -WV_H, WV_W * 2, WV_H * 2);
-        wc.restore();
-      }
-      // لون بارد داكن يطابق المشهد
-      wc.globalCompositeOperation = 'source-atop';
-      wc.fillStyle = 'rgba(4,8,26,0.28)';
-      wc.fillRect(0, 0, WV_W, WV_H);
-      // الأرض بالأسفل تذوب بالضباب
-      wc.globalCompositeOperation = 'destination-out';
-      const bg = wc.createLinearGradient(0, WV_H * 0.8, 0, WV_H * 0.98);
-      bg.addColorStop(0, 'rgba(0,0,0,0)');
-      bg.addColorStop(1, 'rgba(0,0,0,1)');
-      wc.fillStyle = bg;
-      wc.fillRect(0, WV_H * 0.8, WV_W, WV_H * 0.2);
-      wc.globalCompositeOperation = 'source-over';
-      haveFrame = true;
+    const onGifErr = () => { if (!started) vFailed = true; };
+    img.addEventListener('load', onGifLoad);
+    img.addEventListener('error', onGifErr);
+    // رابط Blob جديد كل مرة عشان يبدأ من أول فريم (opacity صغيرة مو صفر عشان المتصفح يرسمه ويحرّك الفريمات)
+    const startVideo = () => {
+      const blob = getWolfGifBlob();
+      if (!blob) { vFailed = true; return; }
+      try {
+        img.style.opacity = '0.004';
+        gifUrl = URL.createObjectURL(blob);
+        img.src = gifUrl;
+      } catch { vFailed = true; }
     };
 
     // تحميل صورة المستلم مسبقاً (لو الهدية لمتحدث)
@@ -655,30 +439,27 @@ function WolfAnimation({ onDone }: { onDone: () => void }) {
       if (emaDt > 0.036) q = Math.max(0.45, q - 0.015);
       else if (emaDt < 0.024) q = Math.min(1, q + 0.008);
 
-      // ── الفيديو: بدء / متابعة / نهاية ──
-      if (!started && !vFailed && t >= VIDEO_AT && (vid.readyState >= 3 || t >= VIDEO_AT + WAIT_MAX)) {
-        if (vid.readyState >= 1 || t < VIDEO_AT + WAIT_MAX) startVideo();
-        else vFailed = true;
-        sound.duck(true);
-      }
-      if (!started && !vFailed && t >= VIDEO_AT + WAIT_MAX + 4) vFailed = true;   // ما حمّل نهائياً: نكمل بالمؤثرات فقط
-      const vdur = isFinite(vid.duration) && vid.duration > 0 ? vid.duration : VIDEO_LEN;
-      const vt = started && !vFailed ? vid.currentTime : -1;
+      // ── الـ GIF: بدء / متابعة / نهاية (الـ GIF ما له حدث ended: نحسب الوقت بأنفسنا من لحظة ظهور أول فريم) ──
+      if (!vCalled && !vFailed && t >= VIDEO_AT) { vCalled = true; startVideo(); }
+      if (vCalled && !started && !vFailed && t > VIDEO_AT + WAIT_MAX + 4) vFailed = true;   // ما حمّل نهائياً: نكمل بالمؤثرات فقط
+      const vdur = VIDEO_LEN;
+      if (started && !vEnded && t - gifT0 >= vdur) vEnded = true;
+      const vt = started && !vFailed ? (vEnded ? vdur : Math.min(vdur, t - gifT0)) : -1;
       if (endT < 0) {
         if (vFailed && t >= VIDEO_AT) { endT = t + 4; sound.duck(false); }
-        else if (started && (vEnded || vid.ended || (vt >= vdur - 0.04 && vid.paused))) { endT = t; sound.duck(false); }
+        else if (started && vEnded) { endT = t; sound.duck(false); }
       }
       const postT = endT >= 0 ? t - endT : -1;
       if (postT >= POST_END) { finish(); return; }
       const endFade = postT >= 0 ? clamp01((POST_END - postT) / 0.5) : 1;
       cv.style.opacity = String(endFade);
 
-      if (started && !vFailed && vid.readyState >= 2 && vt !== lastVT && endT < 0) {
-        lastVT = vt;
-        updateWolf();
-      } else if (started && !vFailed && !haveFrame && vid.readyState >= 2) {
-        updateWolf();
-      }
+      // الـ GIF يظهر بمزج (opacity على نفس العنصر عشان ما ينكسر المزج)
+      const gifO = started && !vFailed
+        ? smooth(vt / VIDEO_FADE_IN) * (1 - smooth((vt - (vdur - VIDEO_FADE_OUT)) / VIDEO_FADE_OUT))
+        : 0;
+      const live = vCalled && !vEnded;    // من لحظة التشغيل لين النهاية نخليها ≥ 0.004 عشان المتصفح ما يوقف تحريك الفريمات
+      img.style.opacity = vFailed ? '0' : String(Math.max(live ? 0.004 : 0, gifO * endFade));
 
       // ── عوامل المشهد ──
       const lightBack = postT >= 0 ? smooth((postT - 0.8) / 2.8) : 0;
@@ -686,8 +467,8 @@ function WolfAnimation({ onDone }: { onDone: () => void }) {
       const skyA = smooth((t - 0.3) / 1.8) * (1 - lightBack);
       const mistA = smooth((t - 1.2) / 2) * (1 - smooth((postT - 0.6) / 2.4));
       const wolfFade = postT >= 0 ? smooth((postT - 0.2) / 1.4) : 0;
-      const wolfA = (vt >= 0 && haveFrame ? smooth(vt / 1.0) : 0) * (1 - wolfFade);
-      const howl = vt >= 10.2 && vt <= 16.4 ? smooth((vt - 10.2) / 0.6) * (1 - smooth((vt - 15.8) / 0.6)) : 0;
+      const wolfA = gifO * (1 - wolfFade);
+      const howl = vt >= HOWL_FROM && vt <= HOWL_TO ? smooth((vt - HOWL_FROM) / 0.6) * (1 - smooth((vt - (HOWL_TO - 0.6)) / 0.6)) : 0;
 
       // ── أحداث ──
       while (sparkIdx < INTRO_SPARKLES.length && t >= INTRO_SPARKLES[sparkIdx]) { sparkIdx++; sound.sparkle(); }
@@ -880,15 +661,6 @@ function WolfAnimation({ onDone }: { onDone: () => void }) {
         blob(ICE[3], W * 0.5, H * 0.46, H * 0.5, (0.1 + 0.16 * howl * (0.8 + 0.2 * Math.sin(t * 14))) * wolfA);
         c.globalAlpha = 1;
         c.globalCompositeOperation = 'source-over';
-      }
-
-      // ── الذئب (إطارات الفيديو بعد فصلها عن سمائها) ──
-      if (wolfA > 0.003 && haveFrame) {
-        const sc = Math.max(W / WV_W, H / WV_H);
-        const dw = WV_W * sc, dh = WV_H * sc;
-        c.globalAlpha = wolfA * endFade;
-        c.drawImage(wolfCv, (W - dw) / 2, H - dh, dw, dh);
-        c.globalAlpha = 1;
       }
 
       // الضباب (يخفي قاعدة الذئب ويطلّعه من الأرض)
@@ -1132,16 +904,28 @@ function WolfAnimation({ onDone }: { onDone: () => void }) {
       window.clearTimeout(tSafe);
       sound.stop();
       try {
-        vid.removeEventListener('error', onVidErr);
-        vid.removeEventListener('ended', onVidEnd);
-        vid.pause();
-        vid.muted = true;
-        vid.currentTime = 0;
-        if (vid.parentNode) vid.parentNode.removeChild(vid);
+        img.removeEventListener('load', onGifLoad);
+        img.removeEventListener('error', onGifErr);
+        img.removeAttribute('src');
       } catch { /* ignore */ }
+      if (gifUrl) { try { URL.revokeObjectURL(gifUrl); } catch { /* ignore */ } gifUrl = null; }
       if (host && host.lift && !host.lift.done) { host.lift.done = true; host.lift.restore(); }
     };
   }, [W, H]);
+
+  const gifStyle: React.CSSProperties = {
+    position: 'absolute', inset: 0, width: '100%', height: '100%',
+    objectFit: wide ? 'contain' : 'cover',
+    opacity: 0, pointerEvents: 'none', background: 'transparent', userSelect: 'none',
+    mixBlendMode: 'screen',
+    filter: 'saturate(1.1) contrast(1.05)',
+    WebkitMaskImage: wide
+      ? 'linear-gradient(90deg, transparent 0, #000 22%, #000 78%, transparent 100%)'
+      : 'linear-gradient(180deg, transparent 0, #000 8%, #000 90%, transparent 100%)',
+    maskImage: wide
+      ? 'linear-gradient(90deg, transparent 0, #000 22%, #000 78%, transparent 100%)'
+      : 'linear-gradient(180deg, transparent 0, #000 8%, #000 90%, transparent 100%)',
+  };
 
   return (
     <div
@@ -1149,9 +933,12 @@ function WolfAnimation({ onDone }: { onDone: () => void }) {
       data-gift-overlay="1"
       style={{ position: 'fixed', inset: 0, zIndex: 9400, pointerEvents: 'none', overflow: 'hidden' }}
     >
-      <canvas ref={cvRef} style={{ position: 'absolute', inset: 0, width: W, height: H, pointerEvents: 'none' }} />
-      {/* عنصر الفيديو (المشترك) يندرج هنا مخفي تماماً — مصدر للإطارات والصوت الأصلي فقط */}
-      <div ref={holdRef} style={{ position: 'absolute', left: 0, top: 0, width: 2, height: 2, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', inset: 0, isolation: 'isolate' }}>
+        <canvas ref={cvRef} style={{ position: 'absolute', inset: 0, width: W, height: H, pointerEvents: 'none' }} />
+        {/* الـ GIF يندمج بوضع screen فوق السماء والظلام: السواد يصير شفاف والذئب والضباب يتوهجون فوقها (بدون حواف ولا واجهة فيديو).
+            opacity و mix-blend-mode على نفس العنصر — لا تضع wrapper بـ opacity/filter حوله وإلا ينكسر المزج */}
+        <img ref={imgRef} alt="" draggable={false} style={gifStyle} />
+      </div>
     </div>
   );
 }
