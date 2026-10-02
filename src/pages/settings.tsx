@@ -6744,14 +6744,21 @@ export default function SettingsPage() {
     };
   }, [isOwner, user]);
 
-  useEffect(() => {
+  const [ownerDockOnly] = useState(() => {
     try {
-      if (sessionStorage.getItem('stooorna_owner_dock_only') !== '1') return;
-    } catch { return; }
+      if (sessionStorage.getItem('stooorna_owner_dock_only') === '1') {
+        sessionStorage.removeItem('stooorna_owner_dock_only');
+        return true;
+      }
+    } catch { /* */ }
+    return false;
+  });
+  useEffect(() => {
+    if (!ownerDockOnly) return;
     startTransition(() => setTab('companies'));
     try { loadOwnerData(); } catch { /* */ }
     try { refreshOwnerCompanies(); } catch { /* */ }
-  }, [isOwner]);
+  }, [isOwner, ownerDockOnly]);
 
   // Non-owners never stay on the Company tab
   useEffect(() => {
@@ -7327,7 +7334,7 @@ export default function SettingsPage() {
             {((isSupportOwnerAccount(
               user as { email?: string | null; username?: string | null; name?: string | null },
               profileUsername,
-            ) ? (['account', 'live', 'companies'] as Tab[]) : (['account', 'live'] as Tab[]))).filter(t => sessionStorage.getItem('stooorna_owner_dock_only') === '1' ? t === 'companies' : true).map(t => <button key={t} type="button" onClick={() => startTransition(() => setTab(t))} style={{
+            ) ? (['account', 'live', 'companies'] as Tab[]) : (['account', 'live'] as Tab[]))).filter(t => ownerDockOnly ? t === 'companies' : true).map(t => <button key={t} type="button" onClick={() => startTransition(() => setTab(t))} style={{
           flex: 1,
           padding: '8px 0',
           borderRadius: 8,
@@ -10041,7 +10048,7 @@ export default function SettingsPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             style={{
-              position: (typeof window !== 'undefined' && sessionStorage.getItem('stooorna_owner_dock_only') === '1') ? 'absolute' : 'fixed', inset: 0, zIndex: 10370,
+              position: ownerDockOnly ? 'absolute' : 'fixed', inset: 0, zIndex: 10370,
               background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(10px)',
               display: 'flex', flexDirection: 'column',
             }}
@@ -10056,7 +10063,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => {
-                  const dock = sessionStorage.getItem('stooorna_owner_dock_only') === '1';
+                  const dock = ownerDockOnly;
                   startTransition(() => setShowSupportUsers(false));
                   setSupportUsersSearch('');
                   setSupportUsersTab('users');
@@ -10304,7 +10311,7 @@ export default function SettingsPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             style={{
-              position: (typeof window !== 'undefined' && sessionStorage.getItem('stooorna_owner_dock_only') === '1') ? 'absolute' : 'fixed', inset: 0, zIndex: 10380,
+              position: ownerDockOnly ? 'absolute' : 'fixed', inset: 0, zIndex: 10380,
               background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
               display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
             }}
