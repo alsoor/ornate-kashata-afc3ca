@@ -9,10 +9,12 @@
  *     (هدية الزومبي ZombieGift: استُبدلت بالحديقة، الملف باقي — شيل // ورجّعها بالمصفوفة لو تبي)
  *  2) Volcano → بركان (1,000 Coins, 20s)
  *  3) Storm  → مطر/عاصفة (مع رفع صورة المستخدم + برق على الإطار)
- *  4) Falcon → صقر وغابة (3,500 Coins, 20s) — المربع الأول بالصف الثالث
- *              (للمضيف: البث يتحول لغابة بنعيق غربان وصقر يحوم وينقض على زر الإرسال ويصرخ ثم يختفي —
- *               لمستخدم: نفس الطيران ثم يقف فوق إطار صورته ويطلق صرخة صقر قوية)
- *              الأصوات: src/lib/falconSounds.ts
+ *  4) Castle → قلعة ملكية (3,500 Coins, 20s) — المربع الأول بالصف الثالث — تستبدل هدية الصقر
+ *              (للمضيف: البث يتحول لقلعة كبيرة بأبراجها وأعلامها، بوابتها تنفتح وتنفرد منها سجادة حمراء
+ *               وبمنتصفها بلورة لامعة مع صوت دخول ملكي (بوق + طبول) وألعاب نارية وقصاصات ذهبية —
+ *               لمستخدم: نفس المشهد، وبالنهاية إطار صورته يصعد للأعلى وتطير البلورة وتحوم فوق إطاره)
+ *              الأصوات: src/lib/castleSounds.ts
+ *     (هدية الصقر FalconGift: استُبدلت بالقلعة، الملف وملف أصواته falconSounds.ts باقيين — شيل // ورجّعها بالمصفوفة لو تبي)
  *
  * الصف العلوي (المربعات الصغيرة) — TOP_GIFTS:
  *  1) Rose   → وردة حمراء صغيرة (25 Coins, 6s) — المربع الأول يسار الصف العلوي
@@ -32,7 +34,8 @@ import { GardenGift } from '../components/gifts/GardenGift';
 // import { WitchGift } from '../components/gifts/WitchGift'; // هدية الساحرة: استُبدلت بالبركان (الملف باقي، شيل // ورجّعها بالمصفوفة لو تبي)
 import { StormGift } from '../components/gifts/StormGift';
 import { VolcanoGift } from '../components/gifts/VolcanoGift';
-import { FalconGift } from '../components/gifts/FalconGift';
+// import { FalconGift } from '../components/gifts/FalconGift'; // هدية الصقر: استُبدلت بالقلعة (الملف باقي، شيل // ورجّعها بالمصفوفة لو تبي)
+import { CastleGift } from '../components/gifts/CastleGift';
 import { RoseGift } from '../components/gifts/RoseGift';
 import { BalloonGift } from '../components/gifts/BalloonGift';
 import { StarryPianoGift } from '../components/gifts/StarryPianoGift';
@@ -41,7 +44,7 @@ export const GIFTS: GiftDefinition[] = [
   GardenGift,  // مكان الزومبي (كان مكان القلب)
   VolcanoGift, // مكان الساحرة
   StormGift,
-  FalconGift,  // الصف الثالث — المربع الأول (3,500 Coins)
+  CastleGift,  // الصف الثالث — المربع الأول (3,500 Coins) — مكان الصقر
   // remaining two squares: add more gifts here later
 ];
 
