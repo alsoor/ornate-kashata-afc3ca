@@ -21,6 +21,13 @@
  *               للمضيف: هالة قمر وشرارات ذهبية على صورته —
  *               لمستخدم: بعد نهاية الفيديو إطار صورته يرتفع لمنتصف الشاشة)
  *              الفيديو: public/gifts/wolf-howl.mp4 — الأصوات المساندة: src/lib/wolfSounds.ts
+ *  7) DragonFire → تنين ناري (10,000 Coins, ~22s / ~27s) — الهدية التاسعة: المربع الأخير بالشبكة (فهرس 5 — المربع اللي عليه الدائرة الصفراء)
+ *              (البث يتحول لظلام وسماء حمراء ومؤثرات نار، ثم يدخل مشهد التنين بصرخته الأصلية من ملف الفيديو
+ *               مدمجاً مع المؤثرات بدون ما يبان إنه فيديو — الصوت يشتغل تلقائياً —
+ *               للمضيف (لما المستخدم يدعمه): هالة نار على صورته أثناء نفث التنين —
+ *               لمستخدم (لما المضيف يعطيه): بعد نهاية الفيديو إطار صورته يرتفع لمنتصف الشاشة بحلقة نار)
+ *              مربع الهدية قبل النقر: تنين صغير متحرك ينفث نار وجمرات
+ *              الفيديو: public/gifts/dragon-roar.mp4 — الأصوات المساندة: src/lib/dragonFireSounds.ts
  *
  * الصف العلوي (المربعات الصغيرة) — TOP_GIFTS:
  *  1) Rose   → وردة حمراء صغيرة (25 Coins, 6s) — المربع الأول يسار الصف العلوي
@@ -44,6 +51,7 @@ import { VolcanoGift } from '../components/gifts/VolcanoGift';
 import { CastleGift } from '../components/gifts/CastleGift';
 // import { DragonGift } from '../components/gifts/DragonGift'; // هدية التنين: أُلغيت (الملف باقي — شيل // ورجّعها بالمصفوفة لو تبي)
 import { WolfGift } from '../components/gifts/WolfGift';
+import { DragonFireGift } from '../components/gifts/DragonFireGift';
 import { RoseGift } from '../components/gifts/RoseGift';
 import { BalloonGift } from '../components/gifts/BalloonGift';
 import { StarryPianoGift } from '../components/gifts/StarryPianoGift';
@@ -55,7 +63,8 @@ export const GIFTS: GiftDefinition[] = [
   CastleGift,  // الصف الثالث — المربع الأول (3,500 Coins) — مكان الصقر
   // DragonGift,  // التنين (6,000 Coins, 16s) — أُلغيت
   WolfGift,    // الهدية الثامنة — ذئب (6,000 Coins, ~24s) — فهرس 4 = الصف الثاني، المربع الثاني (مكان أول +)
-  // remaining square: add more gifts here later
+  DragonFireGift, // الهدية التاسعة — تنين ناري (10,000 Coins) — فهرس 5 = المربع الأخير (مكان الـ + الثاني)
+  // لا يوجد مربع فاضي بعد الآن: لإضافة هدايا جديدة وسّع الشبكة بـ LiveCoinsDock (MAIN_GIFT_ORDER)
 ];
 
 // الصف العلوي (3 مربعات صغيرة): الأول = الوردة، الثاني = البالونات، الثالث = البيانو والنجوم
