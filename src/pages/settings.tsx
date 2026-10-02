@@ -10,8 +10,10 @@ import LiveLocationMap from '@/components/LiveLocationMap';
 import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
-import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, hydrateVipDirectory, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown } from '@/lib/vipPatch';
-import { VipAvatarFrame } from '@/components/VipBadge';
+import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, hydrateVipDirectory, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown, ownerGrantEightMics, getVipFeats } from '@/lib/vipPatch';
+import { getAppProfitsSnapshot, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
+// VIP frame cancelled — avatar renders without frame
+// import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { WalletSheet } from '@/components/LiveCoinsDock';
 import StoryModerationManager from '@/components/StoryModerationManager';
@@ -6420,6 +6422,18 @@ export default function SettingsPage() {
   const [bizCardExp, setBizCardExp] = useState('');
   const [bizCardCvv, setBizCardCvv] = useState('');
   const [vipOn, setVipOn] = useState(false);
+  const [appProfits, setAppProfits] = useState(() => getAppProfitsSnapshot());
+  useEffect(() => {
+    const sync = () => setAppProfits(getAppProfitsSnapshot());
+    window.addEventListener('stooorna:app-profits', sync);
+    window.addEventListener('storage', sync);
+    const id = window.setInterval(sync, 4000);
+    return () => {
+      window.removeEventListener('stooorna:app-profits', sync);
+      window.removeEventListener('storage', sync);
+      window.clearInterval(id);
+    };
+  }, []);
   const [vipPayOpen, setVipPayOpen] = useState(false);
   const [vipColor, setVipColor] = useState<'blue' | 'gold' | 'red' | 'green' | 'gray'>('gold');
   const [vipNewUser, setVipNewUser] = useState('');
@@ -7369,8 +7383,7 @@ export default function SettingsPage() {
                       <div className="relative" style={{
                     flexShrink: 0
                   }}>
-                        <HideVipHeaderTag>
-                        <VipAvatarFrame userId={user?.id} size={80}>
+                        <>
                         <motion.button whileTap={{
                       scale: 0.92
                     }} onClick={() => avatarInputRef.current?.click()} style={{
@@ -7420,8 +7433,7 @@ export default function SettingsPage() {
                         }} />}
                           </div>
                         </motion.button>
-                        </VipAvatarFrame>
-                        </HideVipHeaderTag>
+                        </>
                         {/* camera badge — zIndex matches the online dot below so it renders above the VIP ring instead of behind it */}
                         <div style={{
                       position: 'absolute',
@@ -7827,6 +7839,50 @@ export default function SettingsPage() {
                         </motion.p>}
                     </AnimatePresence>
                   </div>
+                  {/* ── Profits (Owner @Stooorna only) ── */}
+                  {isOwner && (
+                  <div style={{
+                background: T.surface,
+                border: '1px solid rgba(234,179,8,0.35)',
+                borderRadius: 14,
+                padding: '14px 16px',
+                marginTop: 10,
+              }}>
+                    <p style={{
+                    color: '#eab308',
+                    fontSize: '0.62rem',
+                    letterSpacing: '0.2em',
+                    textTransform: 'uppercase',
+                    fontWeight: 700,
+                    margin: '0 0 10px',
+                  }}>Profits</p>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
+                      <span style={{ color: '#fff', fontWeight: 900, fontSize: '1.45rem' }}>
+                        {Number(appProfits.usd || 0).toFixed(2)}
+                      </span>
+                      <span style={{ color: 'rgba(200,220,220,0.55)', fontSize: '0.75rem', fontWeight: 700 }}>USD</span>
+                    </div>
+                    <p style={{ margin: '0 0 12px', color: 'rgba(200,220,220,0.7)', fontSize: '0.78rem' }}>
+                      Coins · {Number(appProfits.coins || 0).toLocaleString('en-US')}
+                      <span style={{ color: 'rgba(150,180,180,0.5)', marginLeft: 8 }}>(إيرادات التطبيق من الدعم 50%)</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try { window.open(PAYPAL_WITHDRAW_URL, '_blank', 'noopener,noreferrer'); } catch { /* */ }
+                      }}
+                      style={{
+                        width: '100%', padding: '12px 10px', borderRadius: 12, cursor: 'pointer',
+                        background: 'rgba(250,204,21,0.12)', border: '1.5px solid rgba(250,204,21,0.5)',
+                        color: '#facc15', fontWeight: 800, fontSize: '0.88rem',
+                      }}
+                    >
+                      Withdrawal · PayPal
+                    </button>
+                  </div>
+                  )}
+
+
 
                   {/* ── Bio ── */}
                   <div style={{
@@ -10222,6 +10278,47 @@ export default function SettingsPage() {
                     <span style={{ color: 'rgba(180,150,150,0.65)', flexShrink: 0 }}>{k}</span>
                     <span style={{ textAlign: 'right', wordBreak: 'break-all', fontWeight: 600 }}>{v as string}</span>
                   </div>
+
+                {/* Owner: grant 8 speakers (VIP mic cap) — User Control only */}
+                <div style={{
+                  marginTop: 12, padding: '12px 12px', borderRadius: 12,
+                  background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, color: '#eab308', fontWeight: 800, fontSize: '0.82rem' }}>مميزات VIP · عدد المتحدثين</p>
+                      <p style={{ margin: '4px 0 0', color: 'rgba(200,220,220,0.65)', fontSize: '0.7rem', lineHeight: 1.4 }}>
+                        تفعيل 8 متحدثين في البث الصوتي والمرئي للحساب (بدلاً من 4)
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const uid = supportCtrlUser.id;
+                        if (!uid) return;
+                        const cur = getVipFeats(uid).eightMics;
+                        ownerGrantEightMics(uid, !cur);
+                        setScMsg(!cur ? 'تم تفعيل 8 متحدثين' : 'تم إلغاء 8 متحدثين');
+                      }}
+                      style={{
+                        width: 48, height: 28, borderRadius: 999, border: 'none', flexShrink: 0,
+                        background: getVipFeats(supportCtrlUser.id).eightMics ? '#eab308' : '#4b5563',
+                        position: 'relative', cursor: 'pointer',
+                      }}
+                    >
+                      <span style={{
+                        position: 'absolute', top: 4,
+                        width: 20, height: 20, borderRadius: '50%', background: '#fff',
+                        left: getVipFeats(supportCtrlUser.id).eightMics ? 24 : 4,
+                        transition: 'left 0.15s ease',
+                      }} />
+                    </button>
+                  </div>
+                  <p style={{ margin: '8px 0 0', color: getVipFeats(supportCtrlUser.id).eightMics ? '#86efac' : 'rgba(150,180,180,0.55)', fontSize: '0.72rem', fontWeight: 700 }}>
+                    {getVipFeats(supportCtrlUser.id).eightMics ? 'الحالة: 1/8 متحدثين' : 'الحالة: 1/4 متحدثين'}
+                  </p>
+                </div>
+
                 ))}
               </div>
 

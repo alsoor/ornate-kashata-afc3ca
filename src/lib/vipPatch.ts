@@ -165,7 +165,27 @@ export function getVipPublicState(userId?: string | null): VipPublicState | null
 }
 
 export function getVipMaxSpeakers(hostId?: string | null): number {
+  // Owner can grant eightMics alone (User Control) without full VIP frame
+  if (!hostId) return 4;
+  const feats = getVipFeats(hostId);
+  if (feats.eightMics) return 8;
   return isVip(hostId) ? 8 : 4;
+}
+
+/** Owner grant: enable/disable 8 speakers on account live (voice + camera). */
+export function ownerGrantEightMics(userId: string, enabled: boolean) {
+  if (!userId) return;
+  setVipFeat(userId, 'eightMics', !!enabled);
+  // Ensure public directory reflects mic cap without requiring paid VIP frame
+  try {
+    const dir = readJson<Record<string, any>>('stooorna_vip_public_dir', {});
+    const row = dir[userId] || { active: false, color: 'gold', feats: { eightMics: false, roomMusic: false } };
+    row.feats = { ...(row.feats || {}), eightMics: !!enabled };
+    dir[userId] = row;
+    writeJson('stooorna_vip_public_dir', dir);
+    emitVip({ userId, eightMics: !!enabled, source: 'owner-grant' });
+  } catch { /* ignore */ }
+  void postVip({ action: 'owner-grant-eight-mics', userId, enabled: !!enabled });
 }
 
 async function postVip(body: Record<string, unknown>) {
