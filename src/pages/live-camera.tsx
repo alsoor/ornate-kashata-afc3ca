@@ -2529,7 +2529,7 @@ export default function LiveCameraPage() {
             zIndex: 56,
             background: 'rgba(0,0,0,0.5)',
             display: 'flex',
-            alignItems: 'flex-end',
+            alignItems: 'flex-start',
           }}
         >
           <div
@@ -2538,11 +2538,12 @@ export default function LiveCameraPage() {
               width: '100%',
               maxHeight: '70vh',
               background: 'rgba(6,16,18,0.98)',
-              borderRadius: '18px 18px 0 0',
+              borderRadius: '0 0 18px 18px',
               border: '1px solid rgba(250,204,21,0.3)',
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
+              paddingTop: 'max(8px, env(safe-area-inset-top, 0px))',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 10px', borderBottom: '1px solid rgba(250,204,21,0.15)' }}>
