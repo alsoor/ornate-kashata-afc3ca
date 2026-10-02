@@ -30,6 +30,10 @@ const NOOP: WolfSound = {
   sparkle: () => {}, rise: () => {}, stop: () => {},
 };
 
+// مستوى صوت المؤثرات (أقل بكثير من صوت الفيديو عشان صرخة الذئب تطلع واضحة)
+const MASTER_NORMAL = 0.32;   // قبل دخول الذئب وبعد نهاية الفيديو
+const MASTER_DUCKED = 0.07;   // أثناء تشغيل الفيديو (المؤثرات بالكاد مسموعة تحت الصرخة)
+
 export function createWolfSound(): WolfSound {
   let ctx: AudioContext;
   try {
@@ -48,7 +52,7 @@ export function createWolfSound(): WolfSound {
   comp.ratio.value = 6;
   master.connect(comp);
   comp.connect(ctx.destination);
-  master.gain.setTargetAtTime(0.5, ctx.currentTime, 0.6);
+  master.gain.setTargetAtTime(MASTER_NORMAL, ctx.currentTime, 0.6);
 
   // ── ضجيج أبيض مشترك ──
   const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
@@ -129,8 +133,9 @@ export function createWolfSound(): WolfSound {
     duck(on) {
       if (stopped) return;
       const t = now();
-      windG.gain.setTargetAtTime(on ? 0.1 : 0.33, t, 0.5);
-      droneG.gain.setTargetAtTime(on ? 0.12 : 0.2, t, 0.6);
+      master.gain.setTargetAtTime(on ? MASTER_DUCKED : MASTER_NORMAL, t, 0.35);
+      windG.gain.setTargetAtTime(on ? 0.05 : 0.33, t, 0.5);
+      droneG.gain.setTargetAtTime(on ? 0.04 : 0.2, t, 0.6);
     },
 
     thunder(strength = 0.6) {

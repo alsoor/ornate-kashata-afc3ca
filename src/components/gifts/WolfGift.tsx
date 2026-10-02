@@ -699,14 +699,14 @@ function WolfAnimation({ onDone }: { onDone: () => void }) {
         makeBolt(bx, -10, bx + rnd(-0.25, 0.25) * W, H * rnd(0.42, 0.6), H * 0.12, 5, segs);
         bolt = { segs, born: t };
         flash2 = Math.max(flash2, 0.55);
-        sound.thunder(0.5);
+        sound.thunder(0.18);
       }
       if (started && vt >= 0 && ringIdx < HOWL_RINGS.length && vt >= HOWL_RINGS[ringIdx]) {
         ringIdx++;
         rings.push({ x: W * 0.5, y: H * 0.34, born: t, dur: 1.5, maxR: Math.max(W, H * 0.6), w: 5 });
         rings.push({ x: W * 0.5, y: H * 0.34, born: t + 0.18, dur: 1.7, maxR: Math.max(W, H * 0.6) * 1.2, w: 3 });
         flash2 = Math.max(flash2, 0.3);
-        sound.boom(0.7);
+        sound.boom(0.12);
         for (let i = 0; i < 26; i++) {
           const a = rnd(0, Math.PI * 2);
           const sp = rnd(120, 460) * k;
