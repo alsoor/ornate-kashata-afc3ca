@@ -19,6 +19,33 @@ import type { GiftDefinition } from '@/lib/types';
 // ── إعدادات ─────────────────────────────────────────────────────────────
 const PAYMENT_DEMO_MODE = true;
 
+// ترتيب عرض شبكة الهدايا الرئيسية (فهرس داخل GIFTS):
+// 0 حديقة، 1 بركان، 2 مطر، 3 قلعة  →  عرض: حديقة | قلعة | بركان | مطر | + | +
+const MAIN_GIFT_ORDER = [0, 3, 1, 2, 4, 5];
+
+// أسعار مخصّصة حسب فهرس GIFTS (لا تغيّر تعريف الهدية في lib — فقط العرض والخصم هنا)
+// 1 بركان → 1500 | 2 مطر → 3500 | 3 قلعة → 1000
+const GIFT_PRICE_BY_INDEX: Record<number, number> = {
+  1: 1500,
+  2: 3500,
+  3: 1000,
+};
+
+/** خريطة id → سعر فعّال (تُبنى مرة من GIFTS + التجاوزات أعلاه) */
+const GIFT_PRICE_BY_ID: Map<string, number> = (() => {
+  const m = new Map<string, number>();
+  GIFTS.forEach((g, i) => {
+    if (!g?.id) return;
+    const override = GIFT_PRICE_BY_INDEX[i];
+    m.set(g.id, override != null ? override : g.price);
+  });
+  return m;
+})();
+
+function giftPrice(gift: GiftDefinition): number {
+  return GIFT_PRICE_BY_ID.get(gift.id) ?? gift.price;
+}
+
 // قواعد الهدايا:
 //  - المشاهد: يدعم صاحب البث، أو أي متحدث أعطاه صاحب البث المايك.
 //  - صاحب البث: يدعم فقط من أخذ المايك (ما يقدر ينزل دعم عشوائي).
@@ -451,6 +478,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     setTap(null);
     const gift = ALL_GIFTS.find(g => g.id === t.id);
     if (!gift) return;
+    const price = giftPrice(gift);
     const target = resolveGiftTarget();
     if (!target) { flashGiftMsg('اضغط على صورة متحدث واختر إرسال هدية'); return; }
     if (target.userId === uid) { flashGiftMsg('ما تقدر تعطي نفسك هدية'); return; }
@@ -459,10 +487,10 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     let bal = readBalance(uid);
     let sent = 0;
     for (let i = 0; i < t.n; i++) {
-      if (bal < gift.price) break;
-      const res = await spendCoinsForGift(gift, hostId);
+      if (bal < price) break;
+      const res = await spendCoinsForGift({ ...gift, price }, hostId);
       if (!res.ok) { flashGiftMsg(res.error || 'تعذر إرسال الهدية'); break; }
-      bal = typeof res.balance === 'number' ? res.balance : bal - gift.price;
+      bal = typeof res.balance === 'number' ? res.balance : bal - price;
       writeBalance(uid, bal);
       setBalance(bal);
       sent++;
@@ -479,7 +507,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room: giftRoom, giftId: gift.id, count: sent, price: gift.price, fromId: uid, fromName: String(currentUserName || ''), toUserId: target.userId, toName: target.name, toAvatar: target.avatarUrl ?? null, fromKey: clientKeyRef.current, id: `lg_${clientKeyRef.current}_${Date.now()}` }),
+      body: JSON.stringify({ room: giftRoom, giftId: gift.id, count: sent, price, fromId: uid, fromName: String(currentUserName || ''), toUserId: target.userId, toName: target.name, toAvatar: target.avatarUrl ?? null, fromKey: clientKeyRef.current, id: `lg_${clientKeyRef.current}_${Date.now()}` }),
     }).catch(() => { /* ignore */ });
   }
 
@@ -491,7 +519,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     const cur = tapRef.current && tapRef.current.id === gift.id ? tapRef.current.n : 0;
     const nextN = cur + 1;
     const bal = readBalance(uid);
-    if (bal < gift.price * nextN) {
+    const price = giftPrice(gift);
+    if (bal < price * nextN) {
       if (cur === 0) {
         setGiftsOpen(false);
         setCoinsOpen(true);
@@ -747,7 +776,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
           })}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-          {[0, 1, 2, 3, 4, 5].map(i => {
+          {/* ترتيب: حديقة | قلعة(1000) مكان البركان | بركان(1500) | مطر(3500) مكان القلعة | + | + */}
+          {MAIN_GIFT_ORDER.map(i => {
             const gift = GIFTS[i];
             if (!gift) {
               return (
@@ -756,9 +786,10 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
                 </div>
               );
             }
+            const price = giftPrice(gift);
             const count = tap && tap.id === gift.id ? tap.n : 0;
             return (
-              <button key={gift.id} type="button" aria-label={`${gift.name} — ${gift.price} Coins`}
+              <button key={gift.id} type="button" aria-label={`${gift.name} — ${price} Coins`}
                 onClick={() => void tapGift(gift)}
                 style={{
                   ...CARD, position: 'relative', justifyContent: 'flex-start', padding: '8px 4px 10px', gap: 6,
@@ -770,7 +801,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
                   <gift.Preview size={70} />
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(255,255,255,0.8)', fontWeight: 800, fontSize: 12.5, lineHeight: '16px' }}>
-                  <CoinIcon size={14} /> {fmtCoins(gift.price)}
+                  <CoinIcon size={14} /> {fmtCoins(price)}
                 </span>
                 <AnimatePresence>
                   {count > 0 && (
