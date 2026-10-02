@@ -17,6 +17,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, CreditCard, Lock, Pencil, ExternalLink, Gift as GiftIcon, DollarSign } from 'lucide-react';
 import { GIFTS, TOP_GIFTS, ALL_GIFTS } from '@/lib/index';
 import type { GiftDefinition } from '@/lib/types';
+import {
+  applyGiftProfitSplitOnce,
+  convertEarningsToGiftBalance,
+  syncAppProfitsFromServer,
+  syncEarningsFromServer,
+  readUserEarnings,
+  PAYPAL_WITHDRAW_URL,
+} from '@/lib/giftProfitSplit';
 
 // ── إعدادات ─────────────────────────────────────────────────────────────
 const PAYMENT_DEMO_MODE = true;
@@ -120,6 +128,27 @@ function addEarnings(uid: string, coins: number) {
   if (!uid || !(coins > 0)) return;
   writeEarnings(uid, readEarnings(uid) + coins);
 }
+
+/**
+ * إذا رصيد Coins المشحون غير كافٍ، نأخذ من أرباح الدعم (earnings) بمقدار العجز فقط
+ * ونحوّله إلى رصيد هدايا — بدون ما نلمس باقي الأرباح.
+ * يرجع الرصيد الجديد بعد الاستبدال (أو نفس الرصيد إذا ما في أرباح).
+ */
+function topUpBalanceFromEarnings(uid: string, need: number): { balance: number; converted: number } {
+  const needN = Math.max(0, Math.floor(Number(need) || 0));
+  let bal = readBalance(uid);
+  if (needN <= 0 || bal >= needN) return { balance: bal, converted: 0 };
+  const deficit = needN - bal;
+  const earn = readEarnings(uid);
+  if (earn <= 0) return { balance: bal, converted: 0 };
+  const take = Math.min(deficit, earn);
+  if (take <= 0) return { balance: bal, converted: 0 };
+  writeEarnings(uid, earn - take);
+  bal = bal + take;
+  writeBalance(uid, bal);
+  return { balance: bal, converted: take };
+}
+
 const WITHDRAW_CENTS_PER_COIN = 1;   // قيمة Coin وحدة عند عرض الأرباح بالدولار (1 Coin = USD 0.01) — عدّلها إذا تبي نسبة ثانية
 const PAYPAL_URL = 'https://www.paypal.com/myaccount/transfer/homepage';
 
@@ -360,6 +389,19 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
       .catch(() => { /* ignore */ });
   }, [uid]);
 
+  // مزامنة أرباح الدعم من السيرفر (50% للمستلم)
+  useEffect(() => {
+    if (!uid) return;
+    void syncEarningsFromServer(uid).then((n) => {
+      // also mirror into local earnings helper used by Wallet
+      try {
+        if (n > readEarnings(uid)) writeEarnings(uid, n);
+      } catch { /* */ }
+    });
+    const id = window.setInterval(() => { void syncEarningsFromServer(uid); }, 8000);
+    return () => window.clearInterval(id);
+  }, [uid]);
+
   // استقبال هدايا باقي الحضور: كل ثانية ونص نسأل السيرفر عن هدايا جديدة بالغرفة ونشغّلها عندي بنفس الحدث المحلي
   useEffect(() => {
     let stop = false;
@@ -373,7 +415,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
           const url = `/api/live-gifts?room=${encodeURIComponent(giftRoom)}` + (since === null ? '' : `&since=${since}`);
           const r = await fetch(url, { credentials: 'include', cache: 'no-store' });
           if (r.ok) {
-            const d = await r.json() as { events?: { at: number; giftId: string; fromId?: string; toUserId?: string; toName?: string; toAvatar?: string | null; fromKey?: string; count?: number }[]; now?: number; leaders?: SupportLeader[] };
+            const d = await r.json() as { events?: { at: number; giftId: string; fromId?: string; toUserId?: string; toName?: string; toAvatar?: string | null; fromKey?: string; count?: number; price?: number }[]; now?: number; leaders?: SupportLeader[] };
             if (typeof d.now === 'number') since = d.now;
             if (Array.isArray(d.leaders)) {
               const key = JSON.stringify(d.leaders);
@@ -384,11 +426,16 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
             }
             for (const ev of d.events || []) {
               // أرباح الدعم: الهدية موجّهة لي (من شخص ثاني) → تنضاف لرصيد Balance في المحفظة. أول استعلام (تاريخ قديم) ما ينحسب.
-              if (!firstPoll && ev.fromKey !== clientKeyRef.current && ev.toUserId && uidRef.current && String(ev.toUserId) === uidRef.current) {
-                const ck = `${ev.at}_${ev.giftId}_${ev.fromKey || ev.fromId || ''}`;
-                if (!creditedRef.current.has(ck)) {
-                  creditedRef.current.add(ck);
-                  addEarnings(uidRef.current, (GIFT_PRICE_BY_ID.get(ev.giftId) ?? 0) * Math.max(1, Number(ev.count) || 1));
+              // 50/50 once — same stable key as sender (no 100% double-credit on one device)
+              if (!firstPoll && ev.toUserId && ev.fromKey !== clientKeyRef.current) {
+                const count = Math.max(1, Number(ev.count) || 1);
+                const unit = (GIFT_PRICE_BY_ID.get(ev.giftId) ?? 0) || Math.max(0, Number(ev.price) || 0);
+                const total = unit * count;
+                const toId = String(ev.toUserId || '');
+                const fromId = String(ev.fromId || '');
+                const ckStable = `split_${fromId}_${toId}_${ev.giftId}_${count}_${unit}`;
+                if (total > 0 && toId) {
+                  applyGiftProfitSplitOnce(toId, total, ckStable);
                 }
               }
               if (ev.fromKey === clientKeyRef.current) continue; // هديتي أنا تشتغل محلياً أصلاً
@@ -522,10 +569,23 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     if (target.userId === uid) { flashGiftMsg('ما تقدر تعطي نفسك هدية'); return; }
     if (!canGiftTo(target.userId)) { flashGiftMsg('الدعم لصاحب البث أو لمن أخذ المايك فقط'); return; }
     busyRef.current = true;
-    let bal = readBalance(uid);
+    // استبدال تلقائي من أرباح الدعم بمقدار العجز فقط (على قد الهدايا المطلوبة)
+    const needTotal = price * t.n;
+    const top = topUpBalanceFromEarnings(uid, needTotal);
+    let bal = top.balance;
+    if (top.converted > 0) {
+      setBalance(bal);
+      flashGiftMsg(`✓ استبدال ${fmtCoins(top.converted)} من أرباح الدعم → Coins`);
+    }
     let sent = 0;
     for (let i = 0; i < t.n; i++) {
-      if (bal < price) break;
+      if (bal < price) {
+        // محاولة أخيرة: استبدال مرة واحدة لهديه واحدة
+        const one = topUpBalanceFromEarnings(uid, price);
+        bal = one.balance;
+        if (one.converted > 0) setBalance(bal);
+        if (bal < price) break;
+      }
       const res = await spendCoinsForGift({ ...gift, price }, hostId);
       if (!res.ok) { flashGiftMsg(res.error || 'تعذر إرسال الهدية'); break; }
       bal = typeof res.balance === 'number' ? res.balance : bal - price;
@@ -538,14 +598,33 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     setGiftsOpen(false);
     // تشغيل الأنميشن عندي (بعدد المرات). الإرسال لباقي الحضور يتم تحت عبر /api/live-gifts.
     window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: gift.id, fromId: uid, hostId, toUserId: target.userId, toName: target.name, toAvatar: target.avatarUrl ?? null, count: sent } }));
+    // 50/50 once (same stable key as remote pollers): half recipient, half app Profits
+    const total = price * sent;
+    const ckStable = `split_${uid}_${target.userId}_${gift.id}_${sent}_${price}`;
+    try {
+      applyGiftProfitSplitOnce(String(target.userId), total, ckStable);
+    } catch { /* ignore */ }
     giftTargetRef.current = null;
     setGiftTarget(null);
-    // بث الهدية لكل من في البث (يشوفونها عندهم بنفس الأنميشن)
+    // بث الهدية + تسجيل 50/50 على السيرفر (نفس dedupeKey)
     void fetch('/api/live-gifts', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room: giftRoom, giftId: gift.id, count: sent, price, fromId: uid, fromName: String(currentUserName || ''), toUserId: target.userId, toName: target.name, toAvatar: target.avatarUrl ?? null, fromKey: clientKeyRef.current, id: `lg_${clientKeyRef.current}_${Date.now()}` }),
+      body: JSON.stringify({
+        room: giftRoom,
+        giftId: gift.id,
+        count: sent,
+        price,
+        fromId: uid,
+        fromName: String(currentUserName || ''),
+        toUserId: target.userId,
+        toName: target.name,
+        toAvatar: target.avatarUrl ?? null,
+        fromKey: clientKeyRef.current,
+        id: `lg_${clientKeyRef.current}_${Date.now()}`,
+        dedupeKey: ckStable,
+      }),
     }).catch(() => { /* ignore */ });
   }
 
@@ -556,16 +635,38 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     if (tapRef.current && tapRef.current.id !== gift.id) await commitTap();
     const cur = tapRef.current && tapRef.current.id === gift.id ? tapRef.current.n : 0;
     const nextN = cur + 1;
-    const bal = readBalance(uid);
+    let bal = readBalance(uid);
     const price = giftPrice(gift);
     if (bal < price * nextN) {
-      if (cur === 0) {
-        setGiftsOpen(false);
-        setCoinsOpen(true);
-        flashGiftMsg('رصيدك غير كافٍ — اشحن Coins');
-        return;
+      // جرّب استبدال العجز من أرباح الدعم (على قد المطلوب فقط)
+      const top = topUpBalanceFromEarnings(uid, price * nextN);
+      bal = top.balance;
+      if (top.converted > 0) {
+        setBalance(bal);
+        flashGiftMsg(`✓ استبدال ${fmtCoins(top.converted)} من الدعم → Coins`);
       }
-      flashGiftMsg(`رصيدك يكفي ${cur} فقط`);
+      if (bal < price * nextN) {
+        if (cur === 0) {
+          const earnLeft = readEarnings(uid);
+          setGiftsOpen(false);
+          setCoinsOpen(true);
+          flashGiftMsg(
+            earnLeft > 0
+              ? `رصيدك + أرباح الدعم لا يكفيان — اشحن Coins (أرباحك ${fmtCoins(earnLeft)})`
+              : 'رصيدك غير كافٍ — اشحن Coins',
+          );
+          return;
+        }
+        flashGiftMsg(`رصيدك يكفي ${cur} فقط`);
+      } else {
+        // بعد الاستبدال صار الرصيد يكفي — كمّل العداد
+        if (nextN > COMBO_MAX) {
+          flashGiftMsg(`الحد الأقصى ${COMBO_MAX} مرات`);
+        } else {
+          tapRef.current = { id: gift.id, n: nextN };
+          setTap({ id: gift.id, n: nextN });
+        }
+      }
     } else if (nextN > COMBO_MAX) {
       flashGiftMsg(`الحد الأقصى ${COMBO_MAX} مرات`);
     } else {
@@ -774,6 +875,42 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
 
       {/* مربع الهدايا: 6 مربعات فيها + للمستقبل */}
       <Sheet open={giftsOpen} onClose={() => { setGiftsOpen(false); giftTargetRef.current = null; setGiftTarget(null); }} title={giftTarget ? `Gifts → ${giftTarget.name}` : (hostId && uid !== String(hostId) ? 'Gifts → Host' : 'Gifts')} balance={balance}>
+        {uid && readEarnings(uid) > 0 ? (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            marginBottom: 12, padding: '10px 12px', borderRadius: 12,
+            background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.35)',
+          }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, color: '#facc15', fontWeight: 800, fontSize: 12 }}>أرباح الدعم · قابلة للاستبدال</p>
+              <p style={{ margin: '2px 0 0', color: 'rgba(255,255,255,0.75)', fontWeight: 700, fontSize: 13 }}>
+                {fmtCoins(readEarnings(uid))} Coins
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const earn = readEarnings(uid);
+                if (earn <= 0) return;
+                const res = convertEarningsToGiftBalance(uid, earn);
+                if (res.ok) {
+                  setBalance(res.balance ?? readBalance(uid));
+                  try { writeEarnings(uid, res.earnings ?? 0); } catch { /* */ }
+                  flashGiftMsg(`✓ تم استبدال ${fmtCoins(res.converted ?? earn)} إلى Coins`);
+                } else {
+                  flashGiftMsg(res.error || 'تعذر الاستبدال');
+                }
+              }}
+              style={{
+                flexShrink: 0, padding: '8px 12px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                background: '#eab308', color: '#111', fontWeight: 900, fontSize: 12,
+              }}
+            >
+              استبدال الكل
+            </button>
+          </div>
+        ) : null}
+
         {/* صف علوي: 3 مربعات صغيرة فيها + (مكان هدايا مستقبلية) — بين هيد الرصيد وبقية الهدايا */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 10 }}>
           {[0, 1, 2].map(i => {
@@ -929,7 +1066,18 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
   const [payError, setPayError] = useState('');
   const [toast, setToast] = useState('');
 
-  useEffect(() => { setBalance(readBalance(uid)); setEarnings(readEarnings(uid)); }, [uid, open]);
+  useEffect(() => {
+    setBalance(readBalance(uid));
+    setEarnings(readEarnings(uid));
+    if (open && uid) {
+      void syncEarningsFromServer(uid).then((n) => {
+        if (n > 0) {
+          try { writeEarnings(uid, Math.max(n, readEarnings(uid))); } catch { /* */ }
+          setEarnings(Math.max(n, readEarnings(uid)));
+        }
+      });
+    }
+  }, [uid, open]);
   useEffect(() => {
     const on = () => { setBalance(readBalance(uid)); setEarnings(readEarnings(uid)); };
     window.addEventListener('stooorna:coins-balance', on);
@@ -1006,7 +1154,37 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
   }
 
   function withdraw() {
-    try { window.open(PAYPAL_URL, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
+    try { window.open(PAYPAL_WITHDRAW_URL || PAYPAL_URL, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
+  }
+
+  function convertToGiftBalance() {
+    if (!uid) {
+      setToast('يجب تسجيل الدخول');
+      window.setTimeout(() => setToast(''), 2200);
+      return;
+    }
+    // Re-read from storage in case state is stale
+    const liveEarn = readEarnings(uid);
+    if (liveEarn <= 0) {
+      setToast('لا توجد أرباح للتحويل');
+      window.setTimeout(() => setToast(''), 2200);
+      return;
+    }
+    const res = convertEarningsToGiftBalance(uid, liveEarn);
+    if (!res.ok) {
+      setToast(res.error || 'تعذر التحويل');
+      window.setTimeout(() => setToast(''), 2200);
+      return;
+    }
+    const nextEarn = typeof res.earnings === 'number' ? res.earnings : 0;
+    const nextBal = typeof res.balance === 'number' ? res.balance : readBalance(uid);
+    setEarnings(nextEarn);
+    setBalance(nextBal);
+    // Keep localStorage keys in sync with LiveCoinsDock helpers
+    try { writeEarnings(uid, nextEarn); } catch { /* */ }
+    try { writeBalance(uid, nextBal); } catch { /* */ }
+    setToast(`✓ تم تحويل ${fmtCoins(res.converted ?? liveEarn)} إلى Coins`);
+    window.setTimeout(() => setToast(''), 2200);
   }
 
   const half: React.CSSProperties = {
@@ -1054,8 +1232,20 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
             background: 'rgba(250,204,21,0.12)', border: '1.5px solid rgba(250,204,21,0.55)', color: '#facc15',
             fontWeight: 800, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}>
-          Withdrawal <ExternalLink size={16} />
+          Withdrawal · PayPal <ExternalLink size={16} />
         </button>
+        <button type="button" onClick={convertToGiftBalance}
+          style={{
+            width: '100%', marginTop: 10, padding: '13px 10px', borderRadius: 14,
+            cursor: 'pointer', opacity: earnings > 0 ? 1 : 0.75,
+            background: 'rgba(0,188,212,0.12)', border: '1.5px solid rgba(0,188,212,0.45)', color: '#00BCD4',
+            fontWeight: 800, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
+          استبدال العملات → رصيد الهدايا
+        </button>
+        <p style={{ margin: '8px 4px 0', color: 'rgba(255,255,255,0.4)', fontSize: 11, textAlign: 'center', lineHeight: 1.4 }}>
+          حوّل أرباح الدعم إلى رصيد هدايا لتتمكن من الدعم مرة أخرى، أو اسحب إلى PayPal
+        </p>
       </Sheet>
 
       {/* Deposit: مبلغ مخصّص (بدون باقات) + بيانات VISA → يزيد رصيد الهدايا مباشرة */}
