@@ -11,7 +11,7 @@ import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
 import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, hydrateVipDirectory, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown, ownerGrantEightMics, getVipFeats } from '@/lib/vipPatch';
-import { getAppProfitsSnapshot, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
+import { getAppProfitsSnapshot, syncAppProfitsFromServer, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
 // VIP frame cancelled — avatar renders without frame
 // import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
@@ -6428,10 +6428,16 @@ export default function SettingsPage() {
     window.addEventListener('stooorna:app-profits', sync);
     window.addEventListener('storage', sync);
     const id = window.setInterval(sync, 4000);
+    // Server ledger so owner sees Profits from gifts on any device
+    void syncAppProfitsFromServer().then((s) => setAppProfits(s));
+    const id2 = window.setInterval(() => {
+      void syncAppProfitsFromServer().then((s) => setAppProfits(s));
+    }, 6000);
     return () => {
       window.removeEventListener('stooorna:app-profits', sync);
       window.removeEventListener('storage', sync);
       window.clearInterval(id);
+      window.clearInterval(id2);
     };
   }, []);
   const [vipPayOpen, setVipPayOpen] = useState(false);

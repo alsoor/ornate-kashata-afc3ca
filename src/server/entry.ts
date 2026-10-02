@@ -713,6 +713,70 @@ app.get("/api/live-gifts", (req, res) => {
   const last = events.length ? events[events.length - 1].at : since;
   res.json({ ok: true, events, now: Math.max(last, since), leaders: supportLeaders(room) });
 });
+// ── Gift profit ledger (50/50): recipient earnings + app profits ──
+const giftProfitMem = () => {
+  const g = globalThis as typeof globalThis & {
+    __stooornaGiftProfits?: {
+      appCoins: number;
+      earnings: Map<string, number>;
+      done: Set<string>;
+    };
+  };
+  if (!g.__stooornaGiftProfits) {
+    g.__stooornaGiftProfits = { appCoins: 0, earnings: new Map(), done: new Set() };
+  }
+  return g.__stooornaGiftProfits;
+};
+
+app.get("/api/gifts/profits", (_req, res) => {
+  const mem = giftProfitMem();
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ ok: true, coins: mem.appCoins, usd: mem.appCoins / 100 });
+});
+
+app.get("/api/gifts/earnings", (req, res) => {
+  const userId = String(req.query.userId || "").slice(0, 80);
+  const mem = giftProfitMem();
+  res.setHeader("Cache-Control", "no-store");
+  const coins = userId ? (mem.earnings.get(userId) || 0) : 0;
+  res.json({ ok: true, userId, coins });
+});
+
+app.post("/api/gifts/profit-split", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const toUserId = String(body.toUserId || "").slice(0, 80);
+  const total = Math.max(0, Math.floor(Number(body.total) || 0));
+  const dedupeKey = String(body.dedupeKey || body.id || "").slice(0, 180);
+  if (!toUserId || total <= 0) return res.status(400).json({ error: "toUserId and total required" });
+  const mem = giftProfitMem();
+  const key = dedupeKey || `manual_${toUserId}_${total}_${Date.now()}`;
+  if (mem.done.has(key)) {
+    return res.json({
+      ok: true,
+      applied: false,
+      appCoins: mem.appCoins,
+      recipientCoins: mem.earnings.get(toUserId) || 0,
+    });
+  }
+  mem.done.add(key);
+  if (mem.done.size > 5000) {
+    const arr = [...mem.done];
+    mem.done = new Set(arr.slice(-2500));
+  }
+  const toApp = Math.floor(total / 2);
+  const toRecipient = total - toApp;
+  mem.appCoins += toApp;
+  mem.earnings.set(toUserId, (mem.earnings.get(toUserId) || 0) + toRecipient);
+  res.json({
+    ok: true,
+    applied: true,
+    toApp,
+    toRecipient,
+    appCoins: mem.appCoins,
+    recipientCoins: mem.earnings.get(toUserId) || 0,
+  });
+});
+
 app.post("/api/live-gifts", (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
   const room = String(body.room || body.channel || "").slice(0, 80);
@@ -722,18 +786,16 @@ app.post("/api/live-gifts", (req, res) => {
   const fromId = String(body.fromId || "").slice(0, 80);
   const toUserId = String(body.toUserId || "").slice(0, 80);
   const toName = String(body.toName || "").slice(0, 60);
-  const toAvatarRaw = String(body.toAvatar || "").slice(0, 600);
-  const toAvatar = /^(https?:\/\/|\/)/.test(toAvatarRaw) ? toAvatarRaw : "";
-  // ممنوع يعطي نفسه هدية
+  const toAvatar = String(body.toAvatar || "").slice(0, 300);
   if (fromId && toUserId && fromId === toUserId) return res.status(400).json({ error: "cannot gift yourself" });
-  const mem = liveGiftMem();
   const now = Date.now();
+  const mem = liveGiftMem();
   const prev = mem.get(room) || [];
-  // at يزيد دائماً (حتى لو وصل طلبين بنفس الملي ثانية) عشان المؤشر since ما يضيّع هدية
   const lastAt = prev.length ? prev[prev.length - 1].at : 0;
   const at = Math.max(now, lastAt + 1);
   const list = prev.filter((e) => now - e.at < 60000);
-  list.push({ at, id: String(body.id || `lg_${at}`).slice(0, 60), giftId, fromId, toUserId, toName, toAvatar, fromKey: String(body.fromKey || "").slice(0, 60), count });
+  const eventId = String(body.id || `lg_${at}`).slice(0, 60);
+  list.push({ at, id: eventId, giftId, fromId, toUserId, toName, toAvatar, fromKey: String(body.fromKey || "").slice(0, 60), count });
   mem.set(room, list.slice(-120));
   // ترتيب الداعمين: يزيد مجموع المرسل (السعر × العدد)
   const price = Math.max(0, Math.min(100000, Math.floor(Number(body.price) || 0)));
@@ -748,8 +810,22 @@ app.post("/api/live-gifts", (req, res) => {
     rec.at = now;
     sup.set(room, rec);
   }
+  // 50/50 server-side so owner Profits + recipient earnings sync across devices
+  if (toUserId && price > 0) {
+    const total = price * count;
+    const pmem = giftProfitMem();
+    const dkey = String(body.dedupeKey || `split_${fromId}_${toUserId}_${giftId}_${count}_${price}`).slice(0, 180);
+    if (!pmem.done.has(dkey)) {
+      pmem.done.add(dkey);
+      const toApp = Math.floor(total / 2);
+      const toRecipient = total - toApp;
+      pmem.appCoins += toApp;
+      pmem.earnings.set(toUserId, (pmem.earnings.get(toUserId) || 0) + toRecipient);
+    }
+  }
   res.json({ ok: true, at });
 });
+
 
 app.get("/api/me/ban-status", me_ban_status_get_36);
 app.post("/api/me/update-ip", me_update_ip_post_37);

@@ -1,12 +1,10 @@
 /**
  * giftProfitSplit — 50/50 split of live gift support coins.
  *
- * When a gift is sent in account voice/camera live:
- *   - 50% → recipient's earnings (Wallet Balance / support received)
- *   - 50% → app Profits (owner @Stooorna settings → Profits)
+ * - 50% → recipient earnings (Wallet Balance)
+ * - 50% → app Profits (owner @Stooorna → Profits)
  *
- * applyGiftProfitSplitOnce: full split with localStorage dedupe so it never runs twice
- * for the same gift event (avoids 100% to recipient).
+ * Local storage + server ledger (/api/gifts/*) so owner sees Profits on any device.
  */
 
 export const OWNER_USERNAME = 'stooorna';
@@ -15,13 +13,9 @@ export const OWNER_EMAIL = 'stooorna@mail.com';
 const APP_PROFITS_KEY = 'stooorna_app_profits';
 const APP_PROFITS_COINS_KEY = 'stooorna_app_profits_coins';
 const SPLIT_DONE_PREFIX = 'stooorna_gift_split_done_';
-/** 1 Coin = USD 0.01 (same rate as LiveCoinsDock) */
 export const PROFIT_CENTS_PER_COIN = 1;
 
-export type AppProfitsSnapshot = {
-  coins: number;
-  usd: number;
-};
+export type AppProfitsSnapshot = { coins: number; usd: number };
 
 function readNum(key: string): number {
   try {
@@ -52,9 +46,7 @@ export function writeUserEarnings(uid: string, n: number) {
   writeNum(earningsKey(uid), v);
   try {
     window.dispatchEvent(
-      new CustomEvent('stooorna:coins-earnings', {
-        detail: { userId: uid, earnings: v },
-      }),
+      new CustomEvent('stooorna:coins-earnings', { detail: { userId: uid, earnings: v } }),
     );
   } catch {
     /* ignore */
@@ -70,9 +62,7 @@ export function writeUserGiftBalance(uid: string, n: number) {
   writeNum(balanceKey(uid), v);
   try {
     window.dispatchEvent(
-      new CustomEvent('stooorna:coins-balance', {
-        detail: { userId: uid, balance: v },
-      }),
+      new CustomEvent('stooorna:coins-balance', { detail: { userId: uid, balance: v } }),
     );
   } catch {
     /* ignore */
@@ -83,10 +73,6 @@ export function readAppProfitsCoins(): number {
   return readNum(APP_PROFITS_COINS_KEY);
 }
 
-export function readAppProfitsUsd(): number {
-  return (readAppProfitsCoins() * PROFIT_CENTS_PER_COIN) / 100;
-}
-
 export function getAppProfitsSnapshot(): AppProfitsSnapshot {
   const coins = readAppProfitsCoins();
   return { coins, usd: (coins * PROFIT_CENTS_PER_COIN) / 100 };
@@ -95,7 +81,6 @@ export function getAppProfitsSnapshot(): AppProfitsSnapshot {
 function writeAppProfitsCoins(n: number) {
   const v = Math.max(0, Math.floor(n));
   writeNum(APP_PROFITS_COINS_KEY, v);
-  // also store cents for older readers
   writeNum(APP_PROFITS_KEY, v * PROFIT_CENTS_PER_COIN);
   try {
     window.dispatchEvent(
@@ -120,9 +105,51 @@ function halves(totalCoins: number): { toRecipient: number; toApp: number } {
   return { toRecipient, toApp };
 }
 
+/** Pull server app profits into local cache (owner Profits panel). */
+export async function syncAppProfitsFromServer(): Promise<AppProfitsSnapshot> {
+  try {
+    const r = await fetch('/api/gifts/profits', { credentials: 'include', cache: 'no-store' });
+    if (r.ok) {
+      const d = (await r.json()) as { coins?: number };
+      if (typeof d.coins === 'number' && d.coins >= 0) {
+        const local = readAppProfitsCoins();
+        const next = Math.max(local, Math.floor(d.coins));
+        writeAppProfitsCoins(next);
+        return { coins: next, usd: (next * PROFIT_CENTS_PER_COIN) / 100 };
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return getAppProfitsSnapshot();
+}
+
+/** Pull server earnings for a user into local cache. */
+export async function syncEarningsFromServer(userId: string): Promise<number> {
+  const uid = String(userId || '');
+  if (!uid) return 0;
+  try {
+    const r = await fetch(`/api/gifts/earnings?userId=${encodeURIComponent(uid)}`, {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (r.ok) {
+      const d = (await r.json()) as { coins?: number };
+      if (typeof d.coins === 'number' && d.coins >= 0) {
+        const local = readUserEarnings(uid);
+        const next = Math.max(local, Math.floor(d.coins));
+        writeUserEarnings(uid, next);
+        return next;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return readUserEarnings(uid);
+}
+
 /**
- * Full 50/50 once per dedupeKey (gift event id).
- * Returns amounts applied, or zeros if already done / invalid.
+ * Full 50/50 once per dedupeKey (local + server).
  */
 export function applyGiftProfitSplitOnce(
   toUserId: string,
@@ -141,7 +168,7 @@ export function applyGiftProfitSplitOnce(
     }
     localStorage.setItem(SPLIT_DONE_PREFIX + key, '1');
   } catch {
-    /* continue even if storage fails */
+    /* continue */
   }
 
   const h = halves(total);
@@ -173,9 +200,12 @@ export function applyGiftProfitSplitOnce(
   return { ...h, applied: true };
 }
 
-/** @deprecated use applyGiftProfitSplitOnce */
 export function applyGiftProfitSplit(toUserId: string, totalCoins: number) {
-  const r = applyGiftProfitSplitOnce(toUserId, totalCoins, `legacy_${toUserId}_${totalCoins}_${Date.now()}`);
+  const r = applyGiftProfitSplitOnce(
+    toUserId,
+    totalCoins,
+    `legacy_${toUserId}_${totalCoins}_${Date.now()}`,
+  );
   return { toRecipient: r.toRecipient, toApp: r.toApp };
 }
 
@@ -192,10 +222,11 @@ export function applyRecipientProfitShare(toUserId: string, totalCoins: number):
   return toRecipient;
 }
 
-/**
- * Convert support earnings → gift Coins balance (so user can gift again).
- */
-export function convertEarningsToGiftBalance(userId: string, coins?: number): {
+/** Convert support earnings → gift Coins balance. */
+export function convertEarningsToGiftBalance(
+  userId: string,
+  coins?: number,
+): {
   ok: boolean;
   balance?: number;
   earnings?: number;
