@@ -26,7 +26,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import type { GiftDefinition } from '../../lib/types';
-import { playDragonFireSound, preloadDragonFireSound } from '../../lib/dragonFireSounds';
+import { playDragonFireSound } from '../../lib/dragonFireSounds';
 
 // ── إعدادات الهدية ──────────────────────────────────────────────────────
 const PRICE = 10000;
@@ -104,7 +104,6 @@ function getGifBlob(): Blob | null {
 }
 function preloadDragonVideo() {
   if (typeof document === 'undefined') return;
-  preloadDragonFireSound();   // فك ترميز الصوت مسبقاً
   getGifBlob();
 }
 
