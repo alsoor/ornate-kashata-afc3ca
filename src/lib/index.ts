@@ -16,18 +16,14 @@
  *              الأصوات: src/lib/castleSounds.ts
  *     (هدية الصقر FalconGift: استُبدلت بالقلعة، الملف وملف أصواته falconSounds.ts باقيين — شيل // ورجّعها بالمصفوفة لو تبي)
  *  5) Dragon → تنين ضخم (6,000 Coins, 16s) — أُلغيت (الملف DragonGift.tsx وملف أصواته باقيين — شيل // ورجّعها بالمصفوفة لو تبي)
- *  6) Wolf   → ذئب العاصفة (6,000 Coins, ~19.5s) — الهدية الثامنة: الصف الثاني — المربع الثاني (أول مربع + بعد هدية المطر)
- *              (البث يتحول لظلام وسماء نجوم وبرق، ثم يدخل الذئب بزئيره الأصلي من مشهد GIF مدمج بدون ما يبان إنه ملف —
- *               للمضيف: هالة قمر وشرارات ذهبية على صورته —
- *               لمستخدم: بعد نهاية المشهد إطار صورته يرتفع لمنتصف الشاشة)
- *              المشهد: GIF + صوته الأصلي مدمجين داخل src/lib/wolfSounds.ts (ما عاد نحتاج public/gifts/wolf-howl.mp4) — الأصوات المساندة: src/lib/wolfSounds.ts
- *  7) DragonFire → تنين ناري (10,000 Coins, ~22s / ~27s) — الهدية التاسعة: المربع الأخير بالشبكة (فهرس 5 — المربع اللي عليه الدائرة الصفراء)
+ *  6) DragonFire → تنين ناري (10,000 Coins, ~22s / ~27s) — المربع الأخير بالشبكة (المربع اللي عليه الدائرة الصفراء) — فهرس 4 داخل GIFTS لكن يُعرض آخر مربع عبر MAIN_GIFT_ORDER بـ LiveCoinsDock
+ *     (هدية الذئب Wolf: أُلغيت بالكامل وحُذف ملفها WolfGift.tsx وملف أصواته wolfSounds.ts — مربعها صار "+")
  *              (البث يتحول لظلام وسماء حمراء ومؤثرات نار، ثم يدخل مشهد التنين بصرخته الأصلية من ملف الفيديو
- *               مدمجاً مع المؤثرات بدون ما يبان إنه فيديو — الصوت يشتغل تلقائياً —
+ *               مدمجاً مع المؤثرات بدون ما يبان إنه فيديو (فيديو عادي public/gifts/dragon-roar.mp4، بدون GIF) — الصوت يشتغل تلقائياً —
  *               للمضيف (لما المستخدم يدعمه): هالة نار على صورته أثناء نفث التنين —
  *               لمستخدم (لما المضيف يعطيه): بعد نهاية الفيديو إطار صورته يرتفع لمنتصف الشاشة بحلقة نار)
  *              مربع الهدية قبل النقر: تنين صغير متحرك ينفث نار وجمرات
- *              المشهد: GIF مدمج داخل DragonFireGift.tsx (ما عاد نحتاج public/gifts/dragon-roar.mp4) — الأصوات المساندة: src/lib/dragonFireSounds.ts
+ *              المشهد: فيديو public/gifts/dragon-roar.mp4 (صامت) — الصوت الأصلي والأصوات المساندة: src/lib/dragonFireSounds.ts
  *
  * الصف العلوي (المربعات الصغيرة) — TOP_GIFTS:
  *  1) Rose   → وردة حمراء صغيرة (25 Coins, 6s) — المربع الأول يسار الصف العلوي
@@ -50,7 +46,6 @@ import { VolcanoGift } from '../components/gifts/VolcanoGift';
 // import { FalconGift } from '../components/gifts/FalconGift'; // هدية الصقر: استُبدلت بالقلعة (الملف باقي، شيل // ورجّعها بالمصفوفة لو تبي)
 import { CastleGift } from '../components/gifts/CastleGift';
 // import { DragonGift } from '../components/gifts/DragonGift'; // هدية التنين: أُلغيت (الملف باقي — شيل // ورجّعها بالمصفوفة لو تبي)
-import { WolfGift } from '../components/gifts/WolfGift';
 import { DragonFireGift } from '../components/gifts/DragonFireGift';
 import { RoseGift } from '../components/gifts/RoseGift';
 import { BalloonGift } from '../components/gifts/BalloonGift';
@@ -62,8 +57,7 @@ export const GIFTS: GiftDefinition[] = [
   StormGift,
   CastleGift,  // الصف الثالث — المربع الأول (3,500 Coins) — مكان الصقر
   // DragonGift,  // التنين (6,000 Coins, 16s) — أُلغيت
-  WolfGift,    // الهدية الثامنة — ذئب (6,000 Coins, ~19.5s) — فهرس 4 = الصف الثاني، المربع الثاني (مكان أول +)
-  DragonFireGift, // الهدية التاسعة — تنين ناري (10,000 Coins) — فهرس 5 = المربع الأخير (مكان الـ + الثاني)
+  DragonFireGift, // تنين ناري (10,000 Coins) — فهرس 4 داخل المصفوفة، ويُعرض بآخر مربع (MAIN_GIFT_ORDER بـ LiveCoinsDock)
   // لا يوجد مربع فاضي بعد الآن: لإضافة هدايا جديدة وسّع الشبكة بـ LiveCoinsDock (MAIN_GIFT_ORDER)
 ];
 
