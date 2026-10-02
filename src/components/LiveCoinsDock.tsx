@@ -14,7 +14,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Plus, CreditCard, Lock, Pencil, ExternalLink } from 'lucide-react';
+import { X, Plus, CreditCard, Lock, Pencil, ExternalLink, Gift as GiftIcon, DollarSign } from 'lucide-react';
 import { GIFTS, TOP_GIFTS, ALL_GIFTS } from '@/lib/index';
 import type { GiftDefinition } from '@/lib/types';
 
@@ -58,6 +58,7 @@ const YELLOW_DOT_RIGHT = 74; // px من اليمين (نفس القيمة للب
 const BLUE_DOT_RIGHT = 38;   // px من اليمين
 const DOTS_BOTTOM_OFFSET = 33; // px فوق حد الشريط السفلي
 const DOT_SIZE = 11; // حجم النقطتين (الصفراء والزرقاء نفس الحجم)
+void DOT_SIZE; // kept for compatibility (buttons now sized like the hand button)
 
 const PACKS: { id: string; coins: number; usd: number }[] = [
   { id: 'p50', coins: 50, usd: 0.5 },
@@ -609,17 +610,23 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     window.setTimeout(() => setPaidToast(false), 2200);
   }
 
-  const dot = (right: number, color: string, label: string, onClick: () => void) => (
+  // Dock buttons: same size as the mic-request hand button (36 in host room, 46 otherwise)
+  const BTN = hostId ? 36 : 46;
+  const ICON = hostId ? 17 : 20;
+  const dot = (right: number, color: string, label: string, icon: React.ReactNode, onClick: () => void) => (
     <button
-      type="button" aria-label={label} onClick={onClick}
+      type="button" aria-label={label} title={label} onClick={onClick}
       style={{
         position: 'fixed', zIndex: 9000,
-        right: right - 13, bottom: `calc(max(env(safe-area-inset-bottom, 0px), 12px) + ${DOTS_BOTTOM_OFFSET}px - 13px)`,
-        width: 36, height: 36, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer',
+        right: right - BTN / 2 + 5,
+        bottom: `calc(max(env(safe-area-inset-bottom, 0px), 12px) + ${DOTS_BOTTOM_OFFSET}px + 5px - ${BTN / 2}px)`,
+        width: BTN, height: BTN, padding: 0, borderRadius: '50%', boxSizing: 'border-box',
+        background: 'rgba(0,0,0,0.35)', border: `1.5px solid ${color}`, boxShadow: `0 0 8px ${color}88`,
+        color, cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center', WebkitTapHighlightColor: 'transparent',
       }}
     >
-      <span style={{ width: DOT_SIZE, height: DOT_SIZE, borderRadius: '50%', background: color, boxShadow: `0 0 8px ${color}` }} />
+      {icon}
     </button>
   );
 
@@ -630,8 +637,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
 
   return (
     <>
-      {dot(yellowRight, '#facc15', 'Coins', () => { setGiftsOpen(false); setCoinsOpen(true); })}
-      {dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', () => {
+      {dot(yellowRight + (BTN - 36), '#facc15', 'Coins', <DollarSign size={ICON + 1} color="#facc15" strokeWidth={2.6} />, () => { setGiftsOpen(false); setCoinsOpen(true); })}
+      {dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', <GiftIcon size={ICON} color="#1d7cf2" strokeWidth={2.2} />, () => {
         setCoinsOpen(false);
         if (!resolveGiftTarget()) { flashGiftMsg('اضغط على صورة متحدث واختر إرسال هدية'); return; }
         setGiftsOpen(true);
