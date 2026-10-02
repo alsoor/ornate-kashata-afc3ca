@@ -42,10 +42,9 @@ import {
   type MicRequest,
   type LiveSignal,
 } from '@/lib/liveRoomStage';
-import { getVipMaxSpeakers, isVip } from '@/lib/vipPatch';
+import { getVipMaxSpeakers } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { LiveCoinsDock, SupportCrown, useSupportLeaders } from '@/components/LiveCoinsDock';
-import { VipAvatarFrame, VipBadge } from '@/components/VipBadge';
 
 const AGORA_APP_ID = '149ef04e839c4132a08efb49d717c436';
 const PUBLIC_CHANNEL = 'stooorna-live-voice';
@@ -103,7 +102,6 @@ export default function LivePage() {
   const isHostRoom = !!hostId;
   const amHost = !!(myId && hostId && myId === hostId);
   const micCap = getVipMaxSpeakers(hostId);
-  const hostIsVip = isVip(hostId);
   const channelName = isHostRoom
     ? `stooorna-live-${hostId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48) || uidFromString(hostId)}`
     : PUBLIC_CHANNEL;
@@ -1511,8 +1509,7 @@ export default function LivePage() {
                 position: 'relative',
               }}
             >
-              <VipAvatarFrame userId={hostId} size={40} live>
-                <UserAvatar
+              <UserAvatar
                   name={hostName}
                   avatarUrl={hostAvatar}
                   size={40}
@@ -1525,7 +1522,6 @@ export default function LivePage() {
                     flexShrink: 0,
                   }}
                 />
-              </VipAvatarFrame>
               <span
                 title={!hostInRoom ? 'غير موجود' : hostBusy ? 'مشغول' : 'متوفر'}
                 style={{
@@ -1569,7 +1565,6 @@ export default function LivePage() {
                 >
                   {hostName}
                 </span>
-                <VipBadge userId={hostId} compact />
               </div>
               <p style={{ margin: '2px 0 0', fontSize: '0.66rem', color: 'rgba(150,200,200,0.55)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 {hostUsername ? <>@{hostUsername}</> : null}
