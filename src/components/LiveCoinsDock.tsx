@@ -55,7 +55,7 @@ function giftPrice(gift: GiftDefinition): number {
 
 // مواضع النقطتين (فوق نقاط LiveVipDock الموجودة). عدّل الأرقام إذا ما انطبقت.
 const YELLOW_DOT_RIGHT = 74; // px من اليمين (نفس القيمة للبث الصوتي والمرئي)
-const BLUE_DOT_RIGHT = 38;   // px من اليمين
+const BLUE_DOT_RIGHT = 28;   // px من اليمين (moved ~10px to the right)
 const DOTS_BOTTOM_OFFSET = 33; // px فوق حد الشريط السفلي
 const DOT_SIZE = 11; // حجم النقطتين (الصفراء والزرقاء نفس الحجم)
 void DOT_SIZE; // kept for compatibility (buttons now sized like the hand button)
