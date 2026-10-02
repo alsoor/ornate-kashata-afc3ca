@@ -15,7 +15,45 @@ import { getAppProfitsSnapshot, syncAppProfitsFromServer, syncEarningsFromServer
 // VIP frame cancelled — avatar renders without frame
 // import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
-import { WalletSheet, grantAppCoins } from '@/components/LiveCoinsDock';
+import { WalletSheet } from '@/components/LiveCoinsDock';
+
+/** Owner gift: credits spendable Coins immediately and queues the gifts-box notice. */
+function grantAppCoins(targetUserId: string, coins: number): { ok: boolean; error?: string; id?: string } {
+  const uid = String(targetUserId || '').trim();
+  const n = Math.floor(Number(coins) || 0);
+  if (!uid) return { ok: false, error: 'اختر مستخدماً' };
+  if (n < 1 || n > 1_000_000) return { ok: false, error: 'العدد من 1 إلى 1,000,000' };
+  const id = `own_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const grant = { id, userId: uid, coins: n, at: Date.now(), text: 'تم اعطاؤك دعم من التطبيق' };
+  try {
+    const raw = localStorage.getItem('stooorna_app_coin_grants');
+    const list = raw ? JSON.parse(raw) : [];
+    const next = Array.isArray(list) ? list : [];
+    next.push(grant);
+    localStorage.setItem('stooorna_app_coin_grants', JSON.stringify(next.slice(-500)));
+    const balKey = `stooorna_coins_balance_${uid}`;
+    const cur = Math.max(0, Math.floor(Number(localStorage.getItem(balKey) || 0) || 0));
+    const bal = cur + n;
+    localStorage.setItem(balKey, String(bal));
+    localStorage.setItem(`stooorna_gift_box_notice_${uid}`, JSON.stringify({ id, coins: n, at: Date.now(), text: 'تم اعطاؤك دعم من التطبيق' }));
+    localStorage.setItem(`stooorna_app_coin_grants_applied_${uid}`, JSON.stringify(
+      Array.from(new Set([...(JSON.parse(localStorage.getItem(`stooorna_app_coin_grants_applied_${uid}`) || '[]')), id])).slice(-400),
+    ));
+    window.dispatchEvent(new CustomEvent('stooorna:coins-balance', { detail: { userId: uid, balance: bal } }));
+    window.dispatchEvent(new CustomEvent('stooorna:app-coin-grant', { detail: { ...grant, balance: bal } }));
+    window.dispatchEvent(new CustomEvent('stooorna:gift-box-notice', { detail: { id, coins: n, text: 'تم اعطاؤك دعم من التطبيق' } }));
+  } catch { /* ignore */ }
+  const body = JSON.stringify({ userId: uid, coins: n, grantId: id, note: 'تم اعطاؤك دعم من التطبيق', source: 'owner' });
+  for (const url of ['/api/owner/grant-coins', '/api/coins/grant', '/api/gifts/grant']) {
+    void fetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body }).catch(() => {});
+  }
+  void fetch('/api/gifts/balance', {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: uid, delta: n, grantId: id }),
+  }).catch(() => {});
+  return { ok: true, id };
+}
+
 import StoryModerationManager from '@/components/StoryModerationManager';
 import { ClearUserStoriesDialog } from '@/components/StoryModeration';
 import { SharePageView } from '@/pages/share';
