@@ -15,7 +15,7 @@ import { getAppProfitsSnapshot, syncAppProfitsFromServer, syncEarningsFromServer
 // VIP frame cancelled — avatar renders without frame
 // import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
-import { WalletSheet } from '@/components/LiveCoinsDock';
+import { WalletSheet, grantAppCoins } from '@/components/LiveCoinsDock';
 import StoryModerationManager from '@/components/StoryModerationManager';
 import { ClearUserStoriesDialog } from '@/components/StoryModeration';
 import { SharePageView } from '@/pages/share';
@@ -5896,6 +5896,9 @@ export default function SettingsPage() {
   }, [ownerCompanies]);
 
   const [scEditBox, setScEditBox] = useState<'color' | 'username' | 'password' | null>(null);
+  const [scCoinsOpen, setScCoinsOpen] = useState(false);
+  const [scCoins, setScCoins] = useState('');
+  const [scCoinsMsg, setScCoinsMsg] = useState('');
   const [scUsername, setScUsername] = useState('');
   const [scPassword, setScPassword] = useState('');
   const [scColor, setScColor] = useState('#00BCD4');
@@ -10533,6 +10536,54 @@ export default function SettingsPage() {
                   </div>
                 )}
 
+                <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={() => { setScCoinsOpen(v => !v); setScCoinsMsg(''); }}
+                  style={{
+                    padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                    background: 'rgba(139,18,255,0.12)', border: '1px solid rgba(139,18,255,0.4)',
+                    color: '#c084fc', fontWeight: 700, fontSize: '0.85rem',
+                  }}>
+                  إهداء Coins من التطبيق (1 → 1,000,000)
+                </motion.button>
+                {scCoinsOpen && (
+                  <div style={{
+                    padding: 12, borderRadius: 12, background: 'rgba(0,0,0,0.35)',
+                    border: '1px solid rgba(139,18,255,0.25)', display: 'flex', flexDirection: 'column', gap: 10,
+                  }}>
+                    <p style={{ margin: 0, color: 'rgba(220,200,255,0.8)', fontSize: '0.75rem', lineHeight: 1.45 }}>
+                      يدخل الرصيد فوراً ويظهر إشعار على بوكس الهدايا: تم اعطاؤك دعم من التطبيق
+                    </p>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={scCoins}
+                      onChange={e => setScCoins(e.target.value.replace(/\D/g, '').slice(0, 7))}
+                      placeholder="عدد الكوينز"
+                      style={{
+                        padding: '10px 12px', borderRadius: 10, outline: 'none',
+                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
+                        color: '#fff', fontSize: '0.9rem',
+                      }}
+                    />
+                    <motion.button whileTap={{ scale: 0.97 }} type="button" disabled={scSaving}
+                      onClick={() => {
+                        if (!supportCtrlUser?.id) return;
+                        const n = Math.floor(Number(scCoins) || 0);
+                        setScSaving(true);
+                        const res = grantAppCoins(String(supportCtrlUser.id), n);
+                        setScSaving(false);
+                        if (!res.ok) { setScCoinsMsg(res.error || 'تعذر الإهداء'); return; }
+                        setScCoinsMsg(`تم تنفيذ الأمر · +${n.toLocaleString('en-US')} Coins`);
+                        setScCoins('');
+                      }}
+                      style={{
+                        padding: '10px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                        background: '#8b12ff', color: '#fff', fontWeight: 800, fontSize: '0.85rem',
+                      }}>
+                      تنفيذ الأمر
+                    </motion.button>
+                    {scCoinsMsg ? <p style={{ margin: 0, color: '#c084fc', fontSize: '0.75rem' }}>{scCoinsMsg}</p> : null}
+                  </div>
+                )}
                 <motion.button whileTap={{ scale: 0.98 }} type="button"
                   onClick={() => { setScEditBox(scEditBox === 'password' ? null : 'password'); setScMsg(''); setScPassword(''); }}
                   style={{
