@@ -14789,7 +14789,8 @@ const LIVE_CHAT_BOT_COLOR = '#0b3a82';
 const LIVE_CHAT_CLEAR_MS = 24 * 60 * 60 * 1000;
 const LIVE_CHAT_CLEAR_OFFSET_MS = 3 * 60 * 60 * 1000;
 
-/** بداية الدورة الحالية (آخر نقطة تنظيف). أي رسالة أقدم منها تُعتبر ممسوحة. */
+/** بداية الدورة الحالية (آخر نقطة تنظيف). أي رسالة شات أقدم منها تُعتبر ممسوحة.
+ *  مهم: لا تُطبَّق على منشورات الصور/الفيديو (/api/posts) — الشات فقط. */
 function liveChatCycleStart(now: number = Date.now()): number {
   return Math.floor((now + LIVE_CHAT_CLEAR_OFFSET_MS) / LIVE_CHAT_CLEAR_MS) * LIVE_CHAT_CLEAR_MS - LIVE_CHAT_CLEAR_OFFSET_MS;
 }
@@ -17247,7 +17248,8 @@ function PublicLiveCommentsPanel({
   const typingTimer = useRef<number | null>(null);
   const [, setComposerFocused] = useState(false);
 
-  // كل 24 ساعة: تنظيف الشات ومسح محتواه بالكامل
+  // كل 24 ساعة: تنظيف الشات العام فقط (نص/صور/فيديو/صوت داخل الشات)
+  // لا نمس منشورات الصفحة (photos/videos posts) — تبقى دائمة حتى يحذفها صاحبها
   const lastClearCycleRef = useRef<number>(liveChatCycleStart());
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -17255,9 +17257,11 @@ function PublicLiveCommentsPanel({
       if (cs === lastClearCycleRef.current) return;
       lastClearCycleRef.current = cs;
       liveSigRef.current = '';
+      // public live-chat messages only
       savePublicLiveComments([]);
       setComments([]);
       void clearLiveChatOnServer();
+      // intentionally NO setPosts / setMyMediaPosts / fetchPosts wipe
     }, 1000);
     return () => window.clearInterval(id);
   }, []);

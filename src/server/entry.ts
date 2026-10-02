@@ -463,6 +463,18 @@ app.get("/api/live-chat", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.json({ ok: true, comments, messages: comments, list: comments });
 });
+
+// Clear live-chat room messages only (does NOT delete feed posts / photos / videos)
+app.delete("/api/live-chat", (req, res) => {
+  const channel = String(req.query.channel || req.query.room || "stooorna-live-chat");
+  try {
+    const g = globalThis as typeof globalThis & { __stooornaLiveChat?: Map<string, unknown[]> };
+    if (g.__stooornaLiveChat) g.__stooornaLiveChat.set(channel, []);
+  } catch { /* */ }
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ ok: true, cleared: "live-chat-only" });
+});
+
 app.post("/api/live-chat/voice", (req, res) => {
   const body = (req.body || {}) as any;
   const id = String(body.id || `vc_${Date.now()}`);

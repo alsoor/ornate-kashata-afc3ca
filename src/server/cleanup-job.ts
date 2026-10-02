@@ -1,35 +1,62 @@
 /**
- * Periodic cleanup job for time-limited DB records.
- * Runs every 60 seconds and deletes expired rows from signal/audio tables.
- *
- * TTLs:
- *   audio_chunks          — 2 minutes  (live audio is ephemeral)
- *   call_signals          — 60 seconds (call events are consumed quickly)
- *   rtc_signals           — 2 minutes  (WebRTC handshake window)
- *   whisper_notifications — 60 seconds (consumed on first poll)
- *   statuses              — per expiresAt column (image=30s, video=60s)
+ * cleanup-job — ONLY public live-chat retention (24h cycle).
+ * Does NOT delete feed posts (photos/videos) or their media files.
  */
-import { db } from './db/client.js';
-import { sql } from 'drizzle-orm';
+const LIVE_CHAT_CLEAR_MS = 24 * 60 * 60 * 1000;
+const LIVE_CHAT_CLEAR_OFFSET_MS = 3 * 60 * 60 * 1000; // Kuwait UTC+3 midnight
 
-async function cleanup() {
+function liveChatCycleStart(now = Date.now()): number {
+  return (
+    Math.floor((now + LIVE_CHAT_CLEAR_OFFSET_MS) / LIVE_CHAT_CLEAR_MS) *
+      LIVE_CHAT_CLEAR_MS -
+    LIVE_CHAT_CLEAR_OFFSET_MS
+  );
+}
+
+type LiveChatMap = Map<string, Array<{ at: number; payload: any }>>;
+
+function getLiveChatMem(): LiveChatMap | null {
   try {
-    await Promise.all([
-      db.execute(sql`DELETE FROM audio_chunks          WHERE created_at < DATE_SUB(NOW(), INTERVAL 2  MINUTE)`),
-      db.execute(sql`DELETE FROM call_signals          WHERE created_at < DATE_SUB(NOW(), INTERVAL 60 SECOND)`),
-      db.execute(sql`DELETE FROM rtc_signals           WHERE created_at < DATE_SUB(NOW(), INTERVAL 2  MINUTE)`),
-      db.execute(sql`DELETE FROM whisper_notifications WHERE created_at < DATE_SUB(NOW(), INTERVAL 60 SECOND)`),
-      // Statuses: delete rows where expiresAt has passed (set to 24h after upload)
-      db.execute(sql`DELETE FROM statuses WHERE expires_at < NOW()`).catch(() => {}),
-    ]);
-  } catch (e) {
-    // Non-fatal — log and continue
-    console.error('[cleanup-job] Error during cleanup:', e);
+    const g = globalThis as typeof globalThis & {
+      __stooornaLiveChat?: LiveChatMap;
+    };
+    return g.__stooornaLiveChat || null;
+  } catch {
+    return null;
   }
 }
 
-export function startCleanupJob(): void {
-  // Run immediately on startup, then every 60 seconds
-  cleanup();
-  setInterval(cleanup, 60_000);
+/** Drop only live-chat messages older than the current 24h cycle. Never touch posts DB/media. */
+function purgeLiveChatOlderThanCycle() {
+  const mem = getLiveChatMem();
+  if (!mem) return;
+  const start = liveChatCycleStart();
+  for (const [channel, list] of mem.entries()) {
+    if (!Array.isArray(list)) continue;
+    const next = list.filter((m) => {
+      const at = Number(m?.at || m?.payload?.createdAt || 0);
+      return at >= start;
+    });
+    if (next.length !== list.length) mem.set(channel, next);
+  }
+}
+
+let started = false;
+
+export function startCleanupJob() {
+  if (started) return;
+  started = true;
+  // Run shortly after boot, then every minute — chat only
+  const run = () => {
+    try {
+      purgeLiveChatOlderThanCycle();
+    } catch (e) {
+      console.error("[cleanup-job] live-chat purge failed", e);
+    }
+  };
+  setTimeout(run, 5000);
+  setInterval(run, 60 * 1000);
+  console.log(
+    "[cleanup-job] started — 24h live-chat only (posts/photos/videos are NOT purged)",
+  );
 }
