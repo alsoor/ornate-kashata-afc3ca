@@ -610,9 +610,9 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     window.setTimeout(() => setPaidToast(false), 2200);
   }
 
-  // Dock buttons: same size as the mic-request hand button (36 in host room, 46 otherwise)
-  const BTN = hostId ? 36 : 46;
-  const ICON = hostId ? 17 : 20;
+  // Dock buttons: fixed 30px in both audio and video broadcasts, same position
+  const BTN = 30; // same size for audio and video broadcasts
+  const ICON = 14;
   const dot = (right: number, color: string, label: string, icon: React.ReactNode, onClick: () => void) => (
     <button
       type="button" aria-label={label} title={label} onClick={onClick}
