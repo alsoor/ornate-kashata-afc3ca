@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 // call site below still guards with a typeof check instead of relying on
 // import() rejecting when the export is missing.
 import * as dbClientModule from "./db/client.js";
+import { COIN_PACKS, createCheckout, handlePolarEvent, polarConfigured, verifyPolarSignature } from "./polar.js";
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -324,6 +325,38 @@ app.use((req, res, next) => {
     return rawBinary(req, res, next);
   }
   next();
+});
+
+// ── Polar webhook (شراء Coins) — لازم يكون قبل express.json() لأن التوقيع يُحسب على الـ body الخام ──
+app.post("/api/webhooks/polar", express.raw({ type: "*/*", limit: "1mb" }), async (req, res) => {
+  const secret = process.env.POLAR_WEBHOOK_SECRET || "";
+  if (!secret) {
+    console.error("[polar] POLAR_WEBHOOK_SECRET is not set");
+    return res.status(500).json({ error: "webhook not configured" });
+  }
+  const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(typeof req.body === "string" ? req.body : JSON.stringify(req.body || {}));
+  if (!verifyPolarSignature(raw, req.headers as Record<string, string | string[] | undefined>, secret)) {
+    return res.status(403).json({ error: "invalid signature" });
+  }
+  let event: { type?: string; data?: unknown };
+  try { event = JSON.parse(raw.toString("utf-8")); } catch { return res.status(400).json({ error: "invalid json" }); }
+  try {
+    const mem = giftProfitMem();
+    const out = await handlePolarEvent(event, {
+      has: (k) => mem.done.has(k),
+      mark: (k) => { mem.done.add(k); },
+      add: (userId, delta) => {
+        const next = Math.max(0, (mem.balances.get(userId) || 0) + delta);
+        mem.balances.set(userId, next);
+        return next;
+      },
+      save: () => giftProfitTouch(),
+    });
+    return res.json({ ok: true, ...out });
+  } catch (e) {
+    console.error("[polar] webhook handler failed", e);
+    return res.status(500).json({ error: "handler failed" }); // Polar يعيد المحاولة تلقائياً
+  }
 });
 
 app.use(express.json());
@@ -985,6 +1018,28 @@ app.get("/api/gifts/balance", (req, res) => {
   const mem = giftProfitMem();
   res.setHeader("Cache-Control", "no-store");
   res.json({ ok: true, userId, balance: userId ? (mem.balances.get(userId) || 0) : 0, earnings: userId ? (mem.earnings.get(userId) || 0) : 0 });
+});
+
+// ── شراء Coins عبر Polar: ينشئ رابط دفع للباقة ويرجّعه، والرصيد يُضاف من الويب هوك فقط بعد الدفع ──
+app.get("/api/polar/packs", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ ok: true, packs: COIN_PACKS });
+});
+app.post("/api/polar/checkout", async (req, res) => {
+  if (!polarConfigured()) return res.status(503).json({ ok: false, error: "payments not configured" });
+  const body = (req.body || {}) as Record<string, unknown>;
+  const userId = String(body.userId || "").slice(0, 80);
+  const coins = Math.floor(Number(body.coins) || 0);
+  if (!userId) return res.status(400).json({ ok: false, error: "userId required" });
+  if (!COIN_PACKS.includes(coins)) return res.status(400).json({ ok: false, error: "invalid pack" });
+  const origin = process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get("host")}`;
+  try {
+    const c = await createCheckout({ coins, userId, successUrl: `${origin}/?coins_paid=1` });
+    res.json({ ok: true, url: c.url });
+  } catch (e) {
+    console.error("[polar] checkout failed", e);
+    res.status(502).json({ ok: false, error: "checkout failed" });
+  }
 });
 
 function pushOwnerGrant(userId: string, coins: number, grantId?: string) {
