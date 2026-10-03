@@ -100,6 +100,7 @@ import { publishLiveChatRoundVideo, normalizeLiveChatMediaFields, extractLiveCha
 import { publishLiveChatVideoDelete, onLiveChatVideoDeleted, applyLiveChatVideoTombstone, isLiveChatRoundGone, LIVE_CHAT_ROUND_GONE } from '@/lib/liveChatVideoDeletePatch';
 import { StoryModerationBell, StoryModerateDialog, StoryBanModal, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
+import { noteHostClosed, refreshStoryLives, startStoryLiveWatch, storyLiveStillOpen, readStoryLive } from '@/lib/liveStoryPresencePatch';
 
 // Refresh / coming back to this page: RootLayout's bottom bar (with the "+") used to flash for a moment until this page mounted and
 // told it to hide. Announce it as early as possible (module load), and again when the browser restores the page from cache.
@@ -114,6 +115,8 @@ function announceStoryPageActive() {
   } catch { /* ignore */ }
 }
 announceStoryPageActive();
+startStoryLiveWatch();
+void refreshStoryLives();
 if (typeof window !== 'undefined') window.addEventListener('pageshow', announceStoryPageActive);
 
 interface SearchUser {
@@ -247,7 +250,12 @@ function liveSharedMark(id: string, kind: 'voice' | 'camera') {
 // إنهاء صريح: صاحب البث أغلق، أو تأكدنا أن القناة فاضية
 function liveSharedEnd(id: string, opts?: { forced?: boolean }) {
   const sid = String(id);
-  if (opts?.forced) liveShared.forcedEnd.set(sid, Date.now());
+  // خروج المشاهد أو غرفة فاضية لحظياً لا تُخفي البث إذا السيرفر ما زال يراه مفتوحاً
+  if (opts?.forced && storyLiveStillOpen(sid)) return;
+  if (opts?.forced) {
+    noteHostClosed(sid);
+    liveShared.forcedEnd.set(sid, Date.now());
+  }
   liveShared.seen.delete(sid);
   liveShared.roomEmpty.set(sid, true);
   // امسح أي بقايا localStorage فوراً حتى لا يُعيد checkLocal تفعيل البث
@@ -392,7 +400,7 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
             apply('voice');
             return;
           }
-          if (voiceMembers.length > 0 && !hostInMembers(voiceMembers) && liveSharedIsHeld(String(hostId))) {
+          if (voiceMembers.length > 0 && !hostInMembers(voiceMembers) && liveSharedIsHeld(String(hostId)) && !storyLiveStillOpen(String(hostId))) {
             apply(null);
             return;
           }
@@ -405,8 +413,13 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
         return;
       }
       // تأكدنا أن الغرفتين فارغتين (استجابة ناجحة + 0 أعضاء) → إنهاء فوري
-      if (camOk && voiceOk && (camMembers?.length ?? 0) === 0 && (voiceMembers?.length ?? 0) === 0) {
+      if (camOk && voiceOk && (camMembers?.length ?? 0) === 0 && (voiceMembers?.length ?? 0) === 0 && !storyLiveStillOpen(String(hostId))) {
         apply(null);
+        return;
+      }
+      const serverLive = readStoryLive(String(hostId));
+      if (serverLive) {
+        apply(serverLive.kind);
         return;
       }
       // فشل أحد الفحوصات: لا نُنهي ولا نُفعّل — نترك الحالة السابقة
@@ -19221,7 +19234,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
             continue;
           }
           // غرفة فارغة مؤكدة أو صاحب البث غادر → إنهاء فوري للمربع والدائرة
-          if (r === null) {
+          if (r === null && !storyLiveStillOpen(h.id)) {
             if (liveSharedIsHeld(h.id) || prevE) {
               liveSharedEnd(h.id, { forced: true });
             }
@@ -19235,6 +19248,12 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
             continue;
           }
           liveShared.roomEmpty.set(h.id, false);
+          const serverRow = readStoryLive(h.id);
+          if ((!r || r === 'unknown') && serverRow) {
+            liveSharedMark(h.id, serverRow.kind);
+            if (!sinceRef.current.has(h.id)) sinceRef.current.set(h.id, now);
+            hold = { ...h, kind: serverRow.kind, members: prevE?.members || 1, since: sinceRef.current.get(h.id)! };
+          }
           if (r && r !== 'unknown') {
             liveSharedMark(h.id, r.kind);
             if (!sinceRef.current.has(h.id)) sinceRef.current.set(h.id, now);

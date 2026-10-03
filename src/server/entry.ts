@@ -705,7 +705,7 @@ type LivePresenceRow = {
   hostAvatar?: string | null;
   at: number;
 };
-const LIVE_PRESENCE_TTL_MS = 90_000;
+const LIVE_PRESENCE_TTL_MS = 180_000;
 const livePresenceMem = () => {
   const g = globalThis as typeof globalThis & { __stooornaLivePresence?: Map<string, LivePresenceRow> };
   if (!g.__stooornaLivePresence) g.__stooornaLivePresence = new Map();
