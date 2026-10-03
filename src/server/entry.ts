@@ -722,6 +722,7 @@ app.post("/api/room/signal", (req, res) => {
   const list = mem.get(roomId) || [];
   list.push({ at, payload: { ...payload, at } });
   mem.set(roomId, list.slice(-160));
+  const fromId = String(body.fromId || "").slice(0, 80);
   const pmemOut = giftProfitMem();
   res.json({ ok: true, at, balance: fromId ? (pmemOut.balances.get(fromId) || 0) : undefined });
 });
