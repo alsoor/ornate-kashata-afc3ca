@@ -4655,43 +4655,46 @@ function GlobalBottomNavigation() {
             <div style={{ textAlign: 'center', fontSize: 42, marginBottom: 8 }}>{homeCallEmojiBurst}</div>
           ) : null}
           <div style={{ margin: '0 18px max(18px, env(safe-area-inset-bottom))', background: '#171b22', borderRadius: 28, padding: '22px 18px 16px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '18px 8px', justifyItems: 'center' }}>
-              <button type="button" onClick={() => homeCallAction(() => toggleHomeCallSpeaker())} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 64, height: 64, borderRadius: '50%', background: homeCallSpeakerOn ? '#2a3140' : '#3a465c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{homeCallSpeakerOn ? <Volume2 size={24} /> : <VolumeX size={24} />}</span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>Speaker</span>
-              </button>
-              <button type="button" onClick={() => homeCallAction(() => { void toggleHomeCallVideo(); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 64, height: 64, borderRadius: '50%', background: homeCallIsVideo ? '#2a3140' : '#3a465c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Video size={24} /></span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>Video</span>
-              </button>
-              <button type="button" onClick={() => homeCallAction(() => toggleHomeCallMute())} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 64, height: 64, borderRadius: '50%', background: homeCallMuted ? '#3a465c' : '#2a3140', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{homeCallMuted ? <MicOff size={24} /> : <Mic size={24} />}</span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>Mute</span>
-              </button>
-              <button type="button" onClick={() => homeCallAction(() => { setHomeCallMembersOpen(o => !o); setHomeCallAddOpen(false); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 64, height: 64, borderRadius: '50%', background: homeCallMembersOpen ? '#3a465c' : '#2a3140', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><MoreVertical size={24} /></span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>More</span>
-              </button>
-              <button type="button" onClick={() => homeCallAction(() => { setHomeCallAddOpen(true); setHomeCallMembersOpen(false); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 64, height: 64, borderRadius: '50%', background: '#2a3140', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={24} /></span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>Share</span>
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'flex-start', gap: 8 }}>
               {isIncomingRinging ? (
-                <button type="button" onClick={() => homeCallAction(() => { void answerHomeIncoming(); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <button type="button" aria-label="Decline" onClick={() => homeCallAction(() => ignoreHomeIncoming())} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(239,68,68,0.2)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={26} /></span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Decline</span>
+                </button>
+              ) : (
+                <button type="button" aria-label={homeCallMuted ? 'Unmute' : 'Mute'} onClick={() => homeCallAction(() => toggleHomeCallMute())} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 64, height: 64, borderRadius: '50%', background: '#2a3140', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{homeCallMuted ? <MicOff size={24} /> : <Mic size={24} />}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{homeCallMuted ? 'Unmute' : 'Mute'}</span>
+                </button>
+              )}
+              {!isIncomingRinging && (
+                <button type="button" aria-label="Call participants" onClick={() => homeCallAction(() => { setHomeCallMembersOpen(o => !o); setHomeCallAddOpen(false); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 64, height: 64, borderRadius: '50%', background: homeCallMembersOpen ? 'rgba(34,197,94,0.2)' : '#2a3140', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                    <Users size={24} />
+                    <span style={{ position: 'absolute', bottom: 10, right: 10, width: 10, height: 10, borderRadius: '50%', background: '#22c55e', border: '1.5px solid #171b22' }} />
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>People</span>
+                </button>
+              )}
+              {!isIncomingRinging && (
+                <button type="button" aria-label="Wave and re-ring" onClick={() => homeCallAction(() => { setHomeCallEmojiBurst('👋'); window.setTimeout(() => setHomeCallEmojiBurst(null), 900); if (homeCallPhase === 'connecting' || homeCallPhase === 'live' || homeCallPhase === 'animating') void notifyHomeCallAgain({ onlyUnanswered: true }); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 64, height: 64, borderRadius: '50%', background: '#2a3140', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>👋</span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Wave</span>
+                </button>
+              )}
+              {isIncomingRinging ? (
+                <button type="button" aria-label="Answer" onClick={() => homeCallAction(() => { void answerHomeIncoming(); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                   <span style={{ width: 64, height: 64, borderRadius: '50%', background: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Phone size={26} /></span>
                   <span style={{ fontSize: 13, fontWeight: 600 }}>Answer</span>
                 </button>
               ) : (
-                <button type="button" onClick={() => homeCallAction(() => { void leaveHomeGroupCall(); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <button type="button" aria-label="End call" onClick={() => homeCallAction(() => { void leaveHomeGroupCall(); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                   <span style={{ width: 64, height: 64, borderRadius: '50%', background: '#ff2d3c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PhoneOff size={26} /></span>
                   <span style={{ fontSize: 13, fontWeight: 600 }}>End</span>
                 </button>
               )}
             </div>
-            {isIncomingRinging ? (
-              <button type="button" onClick={() => homeCallAction(() => ignoreHomeIncoming())} style={{ marginTop: 14, width: '100%', border: 'none', background: 'transparent', color: '#ff5a6a', fontWeight: 800, cursor: 'pointer' }}>Decline</button>
-            ) : null}
-          </div>
+</div>
         </div>
       )}
       {showTopCallBar && (
