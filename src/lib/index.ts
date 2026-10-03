@@ -31,6 +31,14 @@
  *               لمستخدم (لما المضيف يعطيه): الأيقونة تتحول لإطار صورته، يصعد للأعلى وأطرافه شرار نار وينتهي)
  *              مربع الهدية قبل النقر: نيزك ينزل + أيقونة بسنون تدور + مطر وبرق
  *              الملفات: components/gifts/MeteorGift.tsx + lib/meteorSounds.ts (Web Audio) + lib/meteorIcon.ts (الأيقونة مضمّنة)
+ *  8) FireLion → أسد ناري (15,000 Coins, ~22s / ~27s) — الهدية التاسعة — فهرس 5 داخل GIFTS (مكان النيزك الملغي) ويُعرض بالمربع الخامس بالشبكة عبر MAIN_GIFT_ORDER بـ LiveCoinsDock
+ *              (السعر 15,000 مضبوط بـ GIFT_PRICE_BY_INDEX)
+ *              (بداية ~3 ثواني: سماء حمراء + مطر خفيف على البث + برق ورعد + جمرات، ثم يدخل فيديو الأسد 1080p (public/gifts/fire-lion.mp4)
+ *               ملء الشاشة كهدية بدون أزرار تشغيل/إيقاف — صوت الفيديو الأصلي كاملاً يشتغل تلقائياً مع بدايته —
+ *               للمضيف (لما المستخدم يدعمه): تنتهي الهدية بنهاية الفيديو —
+ *               لمستخدم (لما المضيف يعطيه): بعد الفيديو إطار صورته يصعد للأعلى ويتحول إطاره لنار ثم ينفجر ويختفي)
+ *              مربع الهدية قبل النقر: صورة الأسد بإطار ناري متوهج وجمرات صاعدة (public/gifts/fire-lion-thumb.jpg)
+ *              الملفات: components/gifts/FireLionGift.tsx + lib/fireLionSounds.ts (مطر/رعد البداية) + public/gifts/fire-lion.mp4 + public/gifts/fire-lion-thumb.jpg
  *
  * الصف العلوي (المربعات الصغيرة) — TOP_GIFTS:
  *  1) Rose   → وردة حمراء صغيرة (25 Coins, 6s) — المربع الأول يسار الصف العلوي
@@ -55,6 +63,7 @@ import { CastleGift } from '../components/gifts/CastleGift';
 // import { DragonGift } from '../components/gifts/DragonGift'; // هدية التنين: أُلغيت (الملف باقي — شيل // ورجّعها بالمصفوفة لو تبي)
 import { InfernoDragonGift } from '../components/gifts/InfernoDragonGift';
 // import { MeteorGift } from '../components/gifts/MeteorGift'; // هدية النيزك: أُلغيت (الملفات باقية، شيل // ورجّعها بالمصفوفة لو تبي)
+import { FireLionGift } from '../components/gifts/FireLionGift';
 import { RoseGift } from '../components/gifts/RoseGift';
 import { BalloonGift } from '../components/gifts/BalloonGift';
 import { StarryPianoGift } from '../components/gifts/StarryPianoGift';
@@ -66,6 +75,7 @@ export const GIFTS: GiftDefinition[] = [
   CastleGift,  // الصف الثالث — المربع الأول (3,500 Coins) — مكان الصقر
   // DragonGift,  // التنين (6,000 Coins, 16s) — أُلغيت
   InfernoDragonGift, // تنين جهنمي (يُعرض بسعر 7,000 Coins) — فهرس 4 داخل المصفوفة، ويُعرض بآخر مربع بالشبكة (MAIN_GIFT_ORDER بـ LiveCoinsDock)
+  FireLionGift, // أسد ناري (15,000 Coins) — فهرس 5 داخل المصفوفة (مكان النيزك الملغي) — يُعرض بالمربع الخامس بالشبكة
   // MeteorGift, // نيزك الدمار (15,000 Coins, 25s) — أُلغيت (الملفات MeteorGift.tsx وmeteorSounds.ts وmeteorIcon.ts باقية — شيل // ورجّعها بالمصفوفة لو تبي)
   // لا يوجد مربع فاضي بعد الآن: لإضافة هدايا جديدة وسّع الشبكة بـ LiveCoinsDock (MAIN_GIFT_ORDER)
 ];
