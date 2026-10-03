@@ -25252,6 +25252,20 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const closeBubble = () => setDockBubble(null);
   const title = dockBubble.kind === 'call' ? 'Call' : dockBubble.kind === 'chat' ? 'Chat' : dockBubble.kind === 'live' ? 'LIVE' : 'Settings';
   const primaryBtn: React.CSSProperties = { width: '100%', padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.5)', background: 'rgba(0,188,212,0.16)', color: '#7ee8f5', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
+  if (dockBubble.kind === 'chat') {
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 10080, background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 'max(10px, env(safe-area-inset-top)) 12px 10px', background: '#071416', color: '#fff', flexShrink: 0 }}>
+          <MessageCircle size={18} color="#00BCD4" />
+          <p style={{ margin: 0, flex: 1, fontWeight: 800 }}>Chat</p>
+          <button type="button" aria-label="Close" onClick={closeBubble} style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer' }}><X size={16} /></button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#ffffff' }}>
+          <PublicLiveCommentsPanel embedded user={user as any} headerOpen={false} onToggleHeader={closeBubble} onBusyChange={setLiveChatBusy} />
+        </div>
+      </div>
+    );
+  }
   return (
     <>
       <div onPointerDown={e => { e.preventDefault(); closeBubble(); }} style={{ position: 'fixed', inset: 0, zIndex: 10068, background: 'rgba(0,6,8,0.45)' }} />
@@ -25406,11 +25420,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               </>
             );
           })()}
-          {dockBubble.kind === 'chat' && (
-            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
-              <PublicLiveCommentsPanel embedded user={user as any} headerOpen={false} onToggleHeader={closeBubble} onBusyChange={setLiveChatBusy} />
-            </div>
-          )}
           {dockBubble.kind === 'settings' && (
             <DockEmbeddedApp onExit={(to) => { closeBubble(); navigate(to); }} />
           )}
@@ -32265,7 +32274,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         }}
       />
       {pageTab === 'profile' && !isFriendManagement && !guestMode && (
-        <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen || liveScrollHidden} onToggleHeader={toggleHeaderOpen} onBusyChange={setLiveChatBusy} />
+        {false && <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen || liveScrollHidden} onToggleHeader={toggleHeaderOpen} onBusyChange={setLiveChatBusy} />}
       )}
       {GuestModal}
     </>;
