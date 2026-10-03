@@ -1608,5 +1608,3 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
 }
 
 export default LiveCoinsDock;
-
-export { grantAppCoins };
