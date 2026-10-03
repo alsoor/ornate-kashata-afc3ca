@@ -13049,7 +13049,7 @@ export default function SettingsPage() {
 
       {/* ── Wallet (Balance | Deposit) — from profile $ button ── */}
       {user?.id && (
-        <WalletSheet open={walletOpen} onClose={() => setWalletOpen(false)} userId={user.id} />
+        <WalletSheet open={walletOpen} onClose={() => setWalletOpen(false)} userId={user.id} allowWithdraw />
       )}
 
       {/* ── Music modal — from profile Music button ── */}
