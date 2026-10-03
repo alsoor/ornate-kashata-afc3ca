@@ -35,24 +35,37 @@ import {
 const PAYMENT_DEMO_MODE = true;
 
 // ترتيب عرض شبكة الهدايا الرئيسية (فهرس داخل GIFTS):
-// 0 حديقة، 1 بركان، 2 مطر، 3 قلعة، 4 تنين ناري  →  عرض: حديقة | قلعة | بركان | مطر | + | تنين ناري
-// (الذئب ملغي: فهرس 5 فاضي فيطلع "+" بالمربع الخامس، والتنين الناري يبقى بآخر مربع)
+// 0 حديقة، 1 بركان، 2 مطر، 3 قلعة، 4 تنين ناري، 5 أسد ناري (كان النيزك الملغي)  →  عرض: حديقة | قلعة | بركان | مطر | أسد ناري (15,000) | تنين ناري (7,000)
+// (فهرس 5 صار الأسد الناري بالمربع الخامس — لو شلته من GIFTS يرجع "+" — والتنين الناري بآخر مربع)
 const MAIN_GIFT_ORDER = [0, 3, 1, 2, 5, 4];
 
 // أسعار مخصّصة حسب فهرس GIFTS (لا تغيّر تعريف الهدية في lib — فقط العرض والخصم هنا)
-// 1 بركان → 1500 | 2 مطر → 3500 | 3 قلعة → 1000
+// 1 بركان → 1500 | 2 مطر → 3500 | 3 قلعة → 1000 | 4 تنين ناري → 7000 | 5 أسد ناري → 15000
 const GIFT_PRICE_BY_INDEX: Record<number, number> = {
   1: 1500,
   2: 3500,
   3: 1000,
+  4: 7000,
+  5: 15000,
 };
 
-/** خريطة id → سعر فعّال (تُبنى مرة من GIFTS + التجاوزات أعلاه) */
+// أسعار مخصّصة للصف العلوي حسب فهرس TOP_GIFTS (0 وردة، 1 بالونات، 2 بيانو) — العرض والخصم هنا فقط
+// 0 وردة → 50 (كانت 25)
+const TOP_GIFT_PRICE_BY_INDEX: Record<number, number> = {
+  0: 50,
+};
+
+/** خريطة id → سعر فعّال (تُبنى مرة من GIFTS + TOP_GIFTS + التجاوزات أعلاه) */
 const GIFT_PRICE_BY_ID: Map<string, number> = (() => {
   const m = new Map<string, number>();
   GIFTS.forEach((g, i) => {
     if (!g?.id) return;
     const override = GIFT_PRICE_BY_INDEX[i];
+    m.set(g.id, override != null ? override : g.price);
+  });
+  TOP_GIFTS.forEach((g, i) => {
+    if (!g?.id) return;
+    const override = TOP_GIFT_PRICE_BY_INDEX[i];
     m.set(g.id, override != null ? override : g.price);
   });
   return m;
@@ -227,7 +240,7 @@ async function spendCoinsForGift(gift: GiftDefinition, hostId?: string, alreadyD
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ giftId: gift.id, price: gift.price, hostId }),
+      body: JSON.stringify({ giftId: gift.id, price: giftPrice(gift), hostId }),
     });
     if (!r.ok) return { ok: false, error: 'تعذر إرسال الهدية' };
     const d = await r.json().catch(() => ({})) as { balance?: number };
@@ -1143,7 +1156,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
             }
             const count = tap && tap.id === gift.id ? tap.n : 0;
             return (
-              <button key={gift.id} type="button" aria-label={`${gift.name} — ${gift.price} Coins`}
+              <button key={gift.id} type="button" aria-label={`${gift.name} — ${giftPrice(gift)} Coins`}
                 onClick={() => void tapGift(gift)}
                 style={{
                   ...CARD, position: 'relative', flexDirection: 'row', gap: 6, minHeight: 56, height: 56, padding: '4px 6px',
@@ -1152,7 +1165,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
                 }}>
                 <gift.Preview size={40} />
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'rgba(255,255,255,0.8)', fontWeight: 800, fontSize: 12.5, lineHeight: '16px' }}>
-                  <CoinIcon size={14} /> {fmtCoins(gift.price)}
+                  <CoinIcon size={14} /> {fmtCoins(giftPrice(gift))}
                 </span>
                 <AnimatePresence>
                   {count > 0 && (
@@ -1176,7 +1189,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
           })}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-          {/* ترتيب: حديقة | قلعة(1000) مكان البركان | بركان(1500) | مطر(3500) مكان القلعة | + | + */}
+          {/* ترتيب: حديقة(500) | قلعة(1000) | بركان(1500) | مطر(3500) | أسد ناري(15000) | تنين ناري(7000) */}
           {MAIN_GIFT_ORDER.map(i => {
             const gift = GIFTS[i];
             if (!gift) {
