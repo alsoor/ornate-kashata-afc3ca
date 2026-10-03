@@ -18198,7 +18198,7 @@ function PublicLiveCommentsPanel({
           if (isRoundHiddenRow(c, roundLocalNow.gone)) return false;
           if (String(c.imageUrl || '').startsWith('blob:') && !pendingRoundRef.current.has(c.id)) return false;
           return true;
-        })).map(item => {
+        }))).map(item => {
           const raw = item.c;
           const c = (dustHoldIds.has(raw.id) && (!raw.imageUrl || raw.text === LIVE_ROUND_GONE))
             ? {
