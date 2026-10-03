@@ -32,10 +32,12 @@ import {
   CallWaitingToggle,
   announceBusy,
   callPatchAnswer,
+  callPatchAgoraFailed,
   callPatchBegin,
   callPatchConsumeSignal,
   callPatchEnd,
   callPatchOnIncomingWhileBusy,
+  callPatchWatchAudio,
   setCallBridge,
 } from '@/lib/callPatch';
 // Welcome guide + splash are DISABLED (files kept). Set to true to bring them back.
@@ -2763,6 +2765,7 @@ function GlobalBottomNavigation() {
         }
         const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
         homeCallAgoraRef.current = client;
+        callPatchWatchAudio(client);
         client.on('user-published', async (remoteUser: any, mediaType: string) => {
           try {
             await client.subscribe(remoteUser, mediaType);
@@ -2783,15 +2786,17 @@ function GlobalBottomNavigation() {
         });
         const [tokenResponse, micTrack] = await Promise.all([
           fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(user.id)}`, { credentials: 'include' }),
-          AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' }),
+          AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' }).catch((e: unknown) => { callPatchAgoraFailed('microphone', e); return null as any; }),
         ]);
-        if (!tokenResponse.ok) return;
+        if (!tokenResponse.ok) { callPatchAgoraFailed('token', new Error('token ' + tokenResponse.status)); return; }
         const tokenData = await tokenResponse.json() as { token: string; uid: number; appId?: string };
         await client.join(tokenData.appId || '149ef04e839c4132a08efb49d717c436', channel, tokenData.token, tokenData.uid);
         try { await micTrack.setMuted(false); } catch { /* */ }
         try { await micTrack.setEnabled(true); } catch { /* */ }
-        homeCallMicRef.current = micTrack;
-        await client.publish([micTrack]);
+        if (micTrack) {
+          homeCallMicRef.current = micTrack;
+          await client.publish([micTrack]);
+        }
         await Promise.all((client.remoteUsers || []).map(async (remoteUser: any) => {
           try {
             if (remoteUser.hasAudio) {
@@ -2800,7 +2805,7 @@ function GlobalBottomNavigation() {
             }
           } catch { /* */ }
         }));
-      } catch { /* */ }
+      } catch (e) { callPatchAgoraFailed('join', e); }
     };
     void joinCallerAgora();
     try {
@@ -3480,6 +3485,7 @@ function GlobalBottomNavigation() {
       }
       const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
       homeCallAgoraRef.current = client;
+      callPatchWatchAudio(client);
       client.on('user-published', async (remoteUser: any, mediaType: string) => {
         try {
           await client.subscribe(remoteUser, mediaType);
@@ -3508,15 +3514,16 @@ function GlobalBottomNavigation() {
       });
       const [tokenResponse, micTrack] = await Promise.all([
         fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(user.id)}`, { credentials: 'include' }),
-        AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' }),
+        AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard' }).catch((e: unknown) => { callPatchAgoraFailed('microphone', e); return null as any; }),
       ]);
+      if (!tokenResponse.ok) callPatchAgoraFailed('token', new Error('token ' + tokenResponse.status));
       if (tokenResponse.ok) {
         const tokenData = await tokenResponse.json() as { token: string; uid: number; appId?: string };
         await client.join(tokenData.appId || '149ef04e839c4132a08efb49d717c436', channel, tokenData.token, tokenData.uid);
         try { await micTrack.setMuted(false); } catch { /* */ }
         try { await micTrack.setEnabled(true); } catch { /* */ }
-        homeCallMicRef.current = micTrack;
-        const tracks: any[] = [micTrack];
+        if (micTrack) homeCallMicRef.current = micTrack;
+        const tracks: any[] = micTrack ? [micTrack] : [];
         if (homeCallVideoRef.current) {
           try {
             const cam = await AgoraRTC.createCameraVideoTrack();
@@ -3525,7 +3532,7 @@ function GlobalBottomNavigation() {
             requestAnimationFrame(() => { try { cam.play(localVideoRef.current || undefined); } catch { /* */ } });
           } catch { /* camera permission */ }
         }
-        await client.publish(tracks);
+        if (tracks.length) await client.publish(tracks);
         await Promise.all((client.remoteUsers || []).map(async (remoteUser: any) => {
           try {
             if (remoteUser.hasAudio) {
@@ -3539,7 +3546,7 @@ function GlobalBottomNavigation() {
           } catch { /* */ }
         }));
       }
-    } catch { /* */ }
+    } catch (e) { callPatchAgoraFailed('join', e); }
     if (homeCallSessionRef.current !== session) return;
     // Callee answered and joined Agora — mark live and start timer
     setHomeCallMinimized(true);

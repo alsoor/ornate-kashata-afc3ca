@@ -162,6 +162,45 @@ export function announceBusy(text: string, kind: Toast['kind'] = 'busy') {
   toastTimer = window.setTimeout(() => { if (state.toast?.id === id) setState({ toast: null }); }, 3800);
 }
 
+// ───────────────────────────── صوت المكالمة (فشل صامت / autoplay) ─────────────────────────────
+const watchedClients = new Set<any>();
+const connectedOnce = new WeakSet<object>();
+let watchTimer: number | null = null;
+let unlockBound = false;
+function replayRemoteAudio() {
+  for (const c of Array.from(watchedClients)) {
+    try {
+      const st = c?.connectionState;
+      if (st === 'CONNECTED') connectedOnce.add(c);
+      if (st === 'DISCONNECTED' && connectedOnce.has(c)) { watchedClients.delete(c); continue; }
+      for (const ru of c?.remoteUsers || []) {
+        const t = ru?.audioTrack;
+        if (t && t.isPlaying === false) { try { t.play(); } catch { /* */ } }
+      }
+    } catch { /* */ }
+  }
+  if (!watchedClients.size && watchTimer) { window.clearInterval(watchTimer); watchTimer = null; }
+}
+/** يراقب عميل Agora للمكالمة: لو المتصفح منع تشغيل الصوت تلقائياً يعيد تشغيله عند أول لمسة وكل ثانيتين. */
+export function callPatchWatchAudio(client: any) {
+  if (!client) return;
+  watchedClients.add(client);
+  if (!watchTimer) watchTimer = window.setInterval(replayRemoteAudio, 2000);
+  if (!unlockBound) {
+    unlockBound = true;
+    for (const ev of ['pointerdown', 'touchstart', 'click', 'keydown']) window.addEventListener(ev, replayRemoteAudio, { passive: true });
+  }
+}
+/** فشل اتصال الصوت كان يُبلع بصمت (المؤقت يشتغل بدون صوت). الآن: سجل + تنبيه واضح. */
+export function callPatchAgoraFailed(stage: 'microphone' | 'token' | 'join' | string, err: unknown) {
+  try { console.error('[call-audio] failed at', stage, err); } catch { /* */ }
+  const text =
+    stage === 'microphone' ? 'Microphone blocked — allow mic permission to speak'
+    : stage === 'token' ? 'Call audio server error — try calling again'
+    : 'Call audio failed to connect — try calling again';
+  announceBusy(text, 'info');
+}
+
 // ───────────────────────────── ربط السيرفر ─────────────────────────────
 export async function callPatchBegin(opts: { toUserIds: string[]; channel: string; clientIdle: boolean }): Promise<{ selfBusy: boolean; busy: string[]; waiting: string[] }> {
   const d = await post('/api/call/begin', { toUserIds: opts.toUserIds, channel: opts.channel, clientIdle: opts.clientIdle });
@@ -204,6 +243,9 @@ export function callPatchOnIncomingWhileBusy(invite: WaitingInvite): void {
   if (!b || !invite?.channel || !invite.hostId) return;
   const ch = String(invite.channel);
   if (ch === b.channel()) return; // نفس المكالمة (نبض/تذكير)
+  // نبض الدعوة يستمر عند المتصل حتى يصله الرد — لو المتصل هو نفس الشخص الذي أنا داخل مكالمة معه الآن فهذا ليس اتصالاً ثانياً:
+  // نتجاهله (قبل: كان يُرسل "مشغول" بالغلط فيقطع المتصل المكالمة بعد ما رددت)
+  if (b.members().some((m) => m.id === invite.hostId)) return;
   if (state.second?.channel === ch) return;
   const declinedAt = declinedWaiting.get(ch);
   if (declinedAt && Date.now() - declinedAt < 60_000) return;
@@ -449,7 +491,9 @@ export function callPatchConsumeSignal(msg: any): boolean {
     return false;
   }
   if (type === 'busy') {
-    if (ch && ch === b.channel()) {
+    const busyFrom = String(msg.from || '');
+    const fromKnown = !busyFrom || b.members().some((m) => m.id === busyFrom); // حماية: "مشغول" فقط من شخص أنا فعلاً أتصل به
+    if (ch && ch === b.channel() && fromKnown) {
       if (b.phase() !== 'live') {
         announceBusy('Busy · الخط مشغول');
         b.cancelOutgoing();
