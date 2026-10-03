@@ -17,12 +17,17 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, CreditCard, Lock, Pencil, ExternalLink, Gift as GiftIcon, DollarSign } from 'lucide-react';
 import { GIFTS, TOP_GIFTS, ALL_GIFTS } from '@/lib/index';
 import type { GiftDefinition } from '@/lib/types';
+import { supportSpend } from '@/lib/supportCoinsPatch';
+import { deductGiftSupport, giftBalanceOrLocked } from '@/lib/giftDeductPatch';
+import { recordOwnerSupportHalf } from '@/lib/ownerSupportProfitPatch';
 import {
   applyGiftProfitSplitOnce,
   convertEarningsToGiftBalance,
+  convertEarningsToGiftBalanceAsync,
   syncAppProfitsFromServer,
   syncEarningsFromServer,
   readUserEarnings,
+  writeUserGiftBalance,
   PAYPAL_WITHDRAW_URL,
 } from '@/lib/giftProfitSplit';
 
@@ -30,8 +35,9 @@ import {
 const PAYMENT_DEMO_MODE = true;
 
 // ترتيب عرض شبكة الهدايا الرئيسية (فهرس داخل GIFTS):
-// 0 حديقة، 1 بركان، 2 مطر، 3 قلعة  →  عرض: حديقة | قلعة | بركان | مطر | + | +
-const MAIN_GIFT_ORDER = [0, 3, 1, 2, 4, 5];
+// 0 حديقة، 1 بركان، 2 مطر، 3 قلعة، 4 تنين ناري  →  عرض: حديقة | قلعة | بركان | مطر | + | تنين ناري
+// (الذئب ملغي: فهرس 5 فاضي فيطلع "+" بالمربع الخامس، والتنين الناري يبقى بآخر مربع)
+const MAIN_GIFT_ORDER = [0, 3, 1, 2, 5, 4];
 
 // أسعار مخصّصة حسب فهرس GIFTS (لا تغيّر تعريف الهدية في lib — فقط العرض والخصم هنا)
 // 1 بركان → 1500 | 2 مطر → 3500 | 3 قلعة → 1000
@@ -101,11 +107,49 @@ function readBalance(uid: string): number {
     return 0;
   }
 }
-function writeBalance(uid: string, n: number) {
+const spendGuardKey = (uid: string) => `stooorna_coins_spend_guard_${uid || 'guest'}`;
+function markSpendGuard(uid: string, balance: number) {
   try {
-    localStorage.setItem(balanceKey(uid), String(Math.max(0, Math.floor(n))));
-    window.dispatchEvent(new CustomEvent('stooorna:coins-balance', { detail: { userId: uid, balance: n } }));
+    localStorage.setItem(spendGuardKey(uid), JSON.stringify({ balance: Math.max(0, Math.floor(balance)), at: Date.now() }));
   } catch { /* ignore */ }
+}
+function readSpendGuard(uid: string): { balance: number; at: number } | null {
+  try {
+    const raw = localStorage.getItem(spendGuardKey(uid));
+    if (!raw) return null;
+    const d = JSON.parse(raw) as { balance?: number; at?: number };
+    if (!d || typeof d.at !== 'number' || Date.now() - d.at > 45_000) return null;
+    return { balance: Math.max(0, Math.floor(Number(d.balance) || 0)), at: d.at };
+  } catch {
+    return null;
+  }
+}
+
+function writeBalance(uid: string, n: number, opts?: { spend?: boolean }) {
+  try {
+    const v = Math.max(0, Math.floor(n));
+    localStorage.setItem(balanceKey(uid), String(v));
+    if (opts?.spend) markSpendGuard(uid, v);
+    window.dispatchEvent(new CustomEvent('stooorna:coins-balance', { detail: { userId: uid, balance: v } }));
+    // mirror spendable Coins to server for cross-device
+    if (uid) {
+      void fetch('/api/gifts/balance', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: uid, balance: v }),
+      }).catch(() => {});
+    }
+  } catch { /* ignore */ }
+}
+
+/** خصم مؤكد: ينقص الرصيد محلياً أولاً، ولا يُرجع السيرفر الرصيد القديم بعد الدعم. */
+function deductSpendable(uid: string, price: number): number {
+  const before = readBalance(uid);
+  const next = Math.max(0, before - Math.max(0, Math.floor(price)));
+  writeBalance(uid, next, { spend: true });
+  try { writeUserGiftBalance(uid, next); } catch { /* ignore */ }
+  return next;
 }
 
 // ── أرباح الدعم (المبلغ اللي وصلك من الهدايا) + السحب ─────────────────────
@@ -175,8 +219,9 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
 }
 
 // خصم سعر الهدية. في الوضع التجريبي محلي فقط؛ للإنتاج اربطه بسيرفرك (يخصم ويرجّع الرصيد الجديد).
-async function spendCoinsForGift(gift: GiftDefinition, hostId?: string): Promise<{ ok: boolean; balance?: number; error?: string }> {
-  if (PAYMENT_DEMO_MODE) return { ok: true };
+async function spendCoinsForGift(gift: GiftDefinition, hostId?: string, alreadyDeducted?: number): Promise<{ ok: boolean; balance?: number; error?: string }> {
+  // الخصم المحلي هو المصدر المعتمد داخل البث. السيرفر إن رجع رصيداً أعلى (ما خصم) نتجاهله.
+  if (PAYMENT_DEMO_MODE) return { ok: true, balance: alreadyDeducted };
   try {
     const r = await fetch('/api/gifts/send', {
       method: 'POST',
@@ -186,9 +231,14 @@ async function spendCoinsForGift(gift: GiftDefinition, hostId?: string): Promise
     });
     if (!r.ok) return { ok: false, error: 'تعذر إرسال الهدية' };
     const d = await r.json().catch(() => ({})) as { balance?: number };
-    return { ok: true, balance: typeof d.balance === 'number' ? d.balance : undefined };
+    const serverBal = typeof d.balance === 'number' ? d.balance : undefined;
+    if (typeof alreadyDeducted === 'number' && typeof serverBal === 'number' && serverBal > alreadyDeducted) {
+      return { ok: true, balance: alreadyDeducted };
+    }
+    return { ok: true, balance: serverBal };
   } catch {
-    return { ok: false, error: 'Network error' };
+    // الشبكة فشلت بعد الخصم المحلي — الإرسال المحلي يبقى خصماً حتى لا يظل الرصيد ثابتاً
+    return { ok: true, balance: alreadyDeducted };
   }
 }
 
@@ -316,6 +366,88 @@ export function SupportCrown({ rank }: { rank: 1 | 2 | 3 }) {
   );
 }
 
+const APP_COIN_GRANTS_KEY = 'stooorna_app_coin_grants';
+const appliedGrantsKey = (uid: string) => `stooorna_app_coin_grants_applied_${uid || 'guest'}`;
+const giftNoticeKey = (uid: string) => `stooorna_gift_box_notice_${uid || 'guest'}`;
+
+type AppCoinGrant = { id: string; userId: string; coins: number; at: number; text?: string };
+
+function readGrantList(): AppCoinGrant[] {
+  try {
+    const raw = localStorage.getItem(APP_COIN_GRANTS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+function readAppliedGrants(uid: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(appliedGrantsKey(uid));
+    const list = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(list) ? list.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+function markAppliedGrant(uid: string, id: string) {
+  try {
+    const set = readAppliedGrants(uid);
+    set.add(id);
+    localStorage.setItem(appliedGrantsKey(uid), JSON.stringify([...set].slice(-400)));
+  } catch { /* ignore */ }
+}
+
+/** يطبّق إهداء التطبيق على رصيد المستخدم مرة واحدة ويجهّز إشعار بوكس الهدايا. */
+export function applyAppCoinGrant(grant: AppCoinGrant): boolean {
+  const uid = String(grant.userId || '');
+  const coins = Math.max(0, Math.floor(Number(grant.coins) || 0));
+  if (!uid || coins <= 0 || !grant.id) return false;
+  if (readAppliedGrants(uid).has(grant.id)) return false;
+  const next = readBalance(uid) + coins;
+  writeBalance(uid, next);
+  try { writeUserGiftBalance(uid, next); } catch { /* ignore */ }
+  markAppliedGrant(uid, grant.id);
+  const notice = {
+    id: grant.id,
+    coins,
+    at: Date.now(),
+    text: grant.text || 'تم اعطاؤك دعم من التطبيق',
+  };
+  try { localStorage.setItem(giftNoticeKey(uid), JSON.stringify(notice)); } catch { /* ignore */ }
+  try {
+    window.dispatchEvent(new CustomEvent('stooorna:app-coin-grant', { detail: { ...grant, balance: next } }));
+    window.dispatchEvent(new CustomEvent('stooorna:gift-box-notice', { detail: notice }));
+  } catch { /* ignore */ }
+  return true;
+}
+
+/** الأونر: إهداء Coins من 1 إلى 1,000,000 — يدخل الرصيد فوراً + إشعار بوكس الهدايا. */
+export function grantAppCoins(targetUserId: string, coins: number): { ok: boolean; error?: string; id?: string } {
+  const uid = String(targetUserId || '').trim();
+  const n = Math.floor(Number(coins) || 0);
+  if (!uid) return { ok: false, error: 'اختر مستخدماً' };
+  if (n < 1 || n > 1_000_000) return { ok: false, error: 'العدد من 1 إلى 1,000,000' };
+  const id = `own_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const grant: AppCoinGrant = { id, userId: uid, coins: n, at: Date.now(), text: 'تم اعطاؤك دعم من التطبيق' };
+  try {
+    const list = readGrantList();
+    list.push(grant);
+    localStorage.setItem(APP_COIN_GRANTS_KEY, JSON.stringify(list.slice(-500)));
+  } catch { /* ignore */ }
+  applyAppCoinGrant(grant);
+  const body = JSON.stringify({ userId: uid, coins: n, grantId: id, note: 'تم اعطاؤك دعم من التطبيق', source: 'owner' });
+  for (const url of ['/api/owner/grant-coins', '/api/coins/grant', '/api/gifts/grant']) {
+    void fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    }).catch(() => {});
+  }
+  return { ok: true, id };
+}
+
 export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRight = YELLOW_DOT_RIGHT }: { hostId?: string; currentUserId?: string; currentUserName?: string; yellowRight?: number }) {
   const uid = String(currentUserId || '');
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
@@ -326,6 +458,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState('');
   const [paidToast, setPaidToast] = useState(false);
+  const [appGiftNotice, setAppGiftNotice] = useState<{ id: string; coins: number; text: string } | null>(null);
   const [playing, setPlaying] = useState<{ gift: GiftDefinition; key: number } | null>(null);
   const [giftMsg, setGiftMsg] = useState('');
   const [customText, setCustomText] = useState('');
@@ -370,6 +503,53 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
   const canBuy = !isCustom || customValid;
 
   useEffect(() => { setBalance(readBalance(uid)); }, [uid]);
+
+  useEffect(() => {
+    if (!uid) return;
+    const showStored = () => {
+      try {
+        const raw = localStorage.getItem(giftNoticeKey(uid));
+        if (!raw) return;
+        const n = JSON.parse(raw) as { id?: string; coins?: number; text?: string };
+        if (!n?.id) return;
+        setAppGiftNotice({ id: String(n.id), coins: Math.floor(Number(n.coins) || 0), text: n.text || 'تم اعطاؤك دعم من التطبيق' });
+      } catch { /* ignore */ }
+    };
+    const pull = async () => {
+      try {
+        for (const g of readGrantList()) {
+          if (String(g.userId) === uid) applyAppCoinGrant(g);
+        }
+      } catch { /* ignore */ }
+      for (const url of [`/api/owner/grant-coins?userId=${encodeURIComponent(uid)}`, `/api/coins/grants?userId=${encodeURIComponent(uid)}`]) {
+        try {
+          const r = await fetch(url, { credentials: 'include', cache: 'no-store' });
+          if (!r.ok) continue;
+          const d = await r.json().catch(() => null) as { grants?: AppCoinGrant[]; id?: string; coins?: number; userId?: string } | null;
+          const list = Array.isArray(d?.grants) ? d!.grants! : (d?.id ? [d as AppCoinGrant] : []);
+          for (const g of list) {
+            if (!g?.id) continue;
+            applyAppCoinGrant({ ...g, userId: String(g.userId || uid), text: g.text || 'تم اعطاؤك دعم من التطبيق' });
+          }
+        } catch { /* ignore */ }
+      }
+      showStored();
+      setBalance(readBalance(uid));
+    };
+    const onGrant = () => { void pull(); };
+    showStored();
+    void pull();
+    const id = window.setInterval(() => { void pull(); }, 5000);
+    window.addEventListener('stooorna:app-coin-grant', onGrant);
+    window.addEventListener('stooorna:gift-box-notice', onGrant);
+    window.addEventListener('storage', onGrant);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('stooorna:app-coin-grant', onGrant);
+      window.removeEventListener('stooorna:gift-box-notice', onGrant);
+      window.removeEventListener('storage', onGrant);
+    };
+  }, [uid]);
   useEffect(() => {
     const on = () => setBalance(readBalance(uid));
     window.addEventListener('stooorna:coins-balance', on);
@@ -384,7 +564,13 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     fetch('/api/coins/balance', { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
       .then((d: { balance?: number } | null) => {
-        if (d && typeof d.balance === 'number') { writeBalance(uid, d.balance); setBalance(d.balance); }
+        if (!d || typeof d.balance !== 'number') return;
+        const guard = readSpendGuard(uid);
+        // بعد الدعم: لا نُعيد الرصيد القديم من السيرفر
+        if (guard && d.balance > guard.balance) return;
+        const kept = giftBalanceOrLocked(uid, d.balance);
+        writeBalance(uid, kept);
+        setBalance(kept);
       })
       .catch(() => { /* ignore */ });
   }, [uid]);
@@ -578,23 +764,29 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
       flashGiftMsg(`✓ استبدال ${fmtCoins(top.converted)} من أرباح الدعم → Coins`);
     }
     let sent = 0;
-    for (let i = 0; i < t.n; i++) {
-      if (bal < price) {
-        // محاولة أخيرة: استبدال مرة واحدة لهديه واحدة
-        const one = topUpBalanceFromEarnings(uid, price);
-        bal = one.balance;
-        if (one.converted > 0) setBalance(bal);
-        if (bal < price) break;
+    const affordable = Math.min(t.n, Math.floor(bal / price));
+    if (affordable > 0) {
+      const spend = await deductGiftSupport({
+        userId: uid,
+        price,
+        count: affordable,
+        giftId: gift.id,
+        toUserId: target.userId,
+      });
+      void supportSpend;
+      if (!spend.ok) {
+        flashGiftMsg(spend.error || 'تعذر خصم الدعم');
+      } else {
+        bal = spend.balance;
+        writeBalance(uid, bal, { spend: true });
+        try { writeUserGiftBalance(uid, bal); } catch { /* ignore */ }
+        setBalance(bal);
+        sent = affordable;
       }
-      const res = await spendCoinsForGift({ ...gift, price }, hostId);
-      if (!res.ok) { flashGiftMsg(res.error || 'تعذر إرسال الهدية'); break; }
-      bal = typeof res.balance === 'number' ? res.balance : bal - price;
-      writeBalance(uid, bal);
-      setBalance(bal);
-      sent++;
     }
     busyRef.current = false;
     if (sent === 0) return;
+    flashGiftMsg(`تم خصم ${fmtCoins(price * sent)} من رصيدك`);
     setGiftsOpen(false);
     // تشغيل الأنميشن عندي (بعدد المرات). الإرسال لباقي الحضور يتم تحت عبر /api/live-gifts.
     window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: gift.id, fromId: uid, hostId, toUserId: target.userId, toName: target.name, toAvatar: target.avatarUrl ?? null, count: sent } }));
@@ -604,6 +796,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     try {
       applyGiftProfitSplitOnce(String(target.userId), total, ckStable);
     } catch { /* ignore */ }
+    void recordOwnerSupportHalf({ total, dedupeKey: ckStable, fromId: uid, toUserId: target.userId });
     giftTargetRef.current = null;
     setGiftTarget(null);
     // بث الهدية + تسجيل 50/50 على السيرفر (نفس dedupeKey)
@@ -624,6 +817,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
         fromKey: clientKeyRef.current,
         id: `lg_${clientKeyRef.current}_${Date.now()}`,
         dedupeKey: ckStable,
+        alreadyDeducted: true,
+        supportPatch: true,
       }),
     }).catch(() => { /* ignore */ });
   }
@@ -741,9 +936,33 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
       {dot(yellowRight + (BTN - 36), '#facc15', 'Coins', <DollarSign size={ICON + 1} color="#facc15" strokeWidth={2.6} />, () => { setGiftsOpen(false); setCoinsOpen(true); })}
       {dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', <GiftIcon size={ICON} color="#1d7cf2" strokeWidth={2.2} />, () => {
         setCoinsOpen(false);
+        if (appGiftNotice) {
+          try { localStorage.removeItem(giftNoticeKey(uid)); } catch { /* ignore */ }
+          setAppGiftNotice(null);
+        }
         if (!resolveGiftTarget()) { flashGiftMsg('اضغط على صورة متحدث واختر إرسال هدية'); return; }
         setGiftsOpen(true);
       })}
+      {appGiftNotice ? (
+        <button
+          type="button"
+          onClick={() => {
+            try { localStorage.removeItem(giftNoticeKey(uid)); } catch { /* ignore */ }
+            setAppGiftNotice(null);
+            setCoinsOpen(false);
+            setGiftsOpen(true);
+          }}
+          style={{
+            position: 'fixed', zIndex: 9050, left: 12, right: 12, maxWidth: 420, margin: '0 auto',
+            bottom: 'calc(max(env(safe-area-inset-bottom, 0px), 12px) + 78px)',
+            background: '#8b12ff', color: '#fff', border: 'none', borderRadius: 14,
+            padding: '10px 12px', fontWeight: 800, fontSize: 13, cursor: 'pointer',
+            boxShadow: '0 8px 24px rgba(139,18,255,0.45)', textAlign: 'center',
+          }}
+        >
+          {appGiftNotice.text} · +{fmtCoins(appGiftNotice.coins)}
+        </button>
+      ) : null}
 
       {/* مربع شحن Coins */}
       <Sheet open={coinsOpen} onClose={() => setCoinsOpen(false)} title="Coins" balance={balance}>
@@ -1065,16 +1284,17 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState('');
   const [toast, setToast] = useState('');
+  const [convertText, setConvertText] = useState('');
+  const [convertCustomOpen, setConvertCustomOpen] = useState(false);
 
   useEffect(() => {
     setBalance(readBalance(uid));
     setEarnings(readEarnings(uid));
     if (open && uid) {
       void syncEarningsFromServer(uid).then((n) => {
-        if (n > 0) {
-          try { writeEarnings(uid, Math.max(n, readEarnings(uid))); } catch { /* */ }
-          setEarnings(Math.max(n, readEarnings(uid)));
-        }
+        try { writeEarnings(uid, n); } catch { /* */ }
+        setEarnings(n);
+        setBalance(readBalance(uid));
       });
     }
   }, [uid, open]);
@@ -1094,7 +1314,11 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
     fetch('/api/coins/balance', { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
       .then((d: { balance?: number } | null) => {
-        if (d && typeof d.balance === 'number') { writeBalance(uid, d.balance); setBalance(d.balance); }
+        if (d && typeof d.balance === 'number') {
+          const guard = readSpendGuard(uid);
+          if (guard && d.balance > guard.balance) return;
+          writeBalance(uid, d.balance); setBalance(d.balance);
+        }
       })
       .catch(() => { /* ignore */ });
     fetch('/api/coins/earnings', { credentials: 'include' })
@@ -1157,33 +1381,47 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
     try { window.open(PAYPAL_WITHDRAW_URL || PAYPAL_URL, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ }
   }
 
-  function convertToGiftBalance() {
+  async function convertToGiftBalance(customAmount?: number) {
     if (!uid) {
       setToast('يجب تسجيل الدخول');
       window.setTimeout(() => setToast(''), 2200);
       return;
     }
-    // Re-read from storage in case state is stale
-    const liveEarn = readEarnings(uid);
+    // Sync from server first so other-device earnings appear here
+    const serverEarn = await syncEarningsFromServer(uid);
+    const liveEarn = Math.max(serverEarn, readEarnings(uid));
     if (liveEarn <= 0) {
       setToast('لا توجد أرباح للتحويل');
       window.setTimeout(() => setToast(''), 2200);
       return;
     }
-    const res = convertEarningsToGiftBalance(uid, liveEarn);
+    const requested = customAmount == null ? liveEarn : Math.floor(Number(customAmount) || 0);
+    if (requested <= 0) {
+      setToast('اكتب عدد العملات التي تريد استبدالها');
+      window.setTimeout(() => setToast(''), 2200);
+      return;
+    }
+    if (requested > liveEarn) {
+      setToast(`المتاح ${fmtCoins(liveEarn)} فقط`);
+      window.setTimeout(() => setToast(''), 2200);
+      return;
+    }
+    const res = await convertEarningsToGiftBalanceAsync(uid, requested);
     if (!res.ok) {
       setToast(res.error || 'تعذر التحويل');
       window.setTimeout(() => setToast(''), 2200);
       return;
     }
-    const nextEarn = typeof res.earnings === 'number' ? res.earnings : 0;
-    const nextBal = typeof res.balance === 'number' ? res.balance : readBalance(uid);
+    const converted = Math.max(0, Math.floor(Number(res.converted ?? requested) || 0));
+    const nextEarn = typeof res.earnings === 'number' ? res.earnings : Math.max(0, liveEarn - converted);
+    const nextBal = typeof res.balance === 'number' ? res.balance : readBalance(uid) + converted;
     setEarnings(nextEarn);
     setBalance(nextBal);
-    // Keep localStorage keys in sync with LiveCoinsDock helpers
     try { writeEarnings(uid, nextEarn); } catch { /* */ }
     try { writeBalance(uid, nextBal); } catch { /* */ }
-    setToast(`✓ تم تحويل ${fmtCoins(res.converted ?? liveEarn)} إلى Coins`);
+    try { writeUserGiftBalance(uid, nextBal); } catch { /* */ }
+    setConvertText('');
+    setToast(`✓ تم تحويل ${fmtCoins(converted)} إلى Coins`);
     window.setTimeout(() => setToast(''), 2200);
   }
 
@@ -1234,17 +1472,47 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
           }}>
           Withdrawal · PayPal <ExternalLink size={16} />
         </button>
-        <button type="button" onClick={convertToGiftBalance}
+        <button type="button" onClick={() => { void convertToGiftBalance(); }}
           style={{
             width: '100%', marginTop: 10, padding: '13px 10px', borderRadius: 14,
             cursor: 'pointer', opacity: earnings > 0 ? 1 : 0.75,
             background: 'rgba(0,188,212,0.12)', border: '1.5px solid rgba(0,188,212,0.45)', color: '#00BCD4',
             fontWeight: 800, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}>
-          استبدال العملات → رصيد الهدايا
+          استبدال كل الرصيد → Coins
         </button>
+        <button type="button" onClick={() => setConvertCustomOpen(v => !v)}
+          style={{
+            width: '100%', marginTop: 8, padding: '12px 10px', borderRadius: 14, cursor: 'pointer',
+            background: 'rgba(139,18,255,0.12)', border: '1.5px solid rgba(139,18,255,0.45)', color: '#c084fc',
+            fontWeight: 800, fontSize: 15,
+          }}>
+          Custom · تحديد عدد العملات
+        </button>
+        {convertCustomOpen ? (
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <input
+              value={convertText}
+              inputMode="numeric"
+              placeholder="عدد العملات"
+              aria-label="Custom convert amount"
+              onChange={e => setConvertText(e.target.value.replace(/\D/g, '').slice(0, 9))}
+              style={{
+                flex: 1, boxSizing: 'border-box', padding: '12px 12px', borderRadius: 12,
+                border: '1px solid rgba(255,255,255,0.14)', background: '#1c1c1c', color: '#fff', fontSize: 15, outline: 'none',
+              }}
+            />
+            <button type="button" onClick={() => { void convertToGiftBalance(Number(convertText) || 0); }}
+              style={{
+                padding: '0 14px', borderRadius: 12, border: 'none', cursor: 'pointer',
+                background: '#8b12ff', color: '#fff', fontWeight: 800,
+              }}>
+              استبدال
+            </button>
+          </div>
+        ) : null}
         <p style={{ margin: '8px 4px 0', color: 'rgba(255,255,255,0.4)', fontSize: 11, textAlign: 'center', lineHeight: 1.4 }}>
-          حوّل أرباح الدعم إلى رصيد هدايا لتتمكن من الدعم مرة أخرى، أو اسحب إلى PayPal
+          حوّل أرباح الدعم كلها أو حدد العدد يدوياً (Custom) إلى رصيد هدايا، أو اسحب إلى PayPal
         </p>
       </Sheet>
 
@@ -1340,3 +1608,5 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
 }
 
 export default LiveCoinsDock;
+
+export { grantAppCoins };

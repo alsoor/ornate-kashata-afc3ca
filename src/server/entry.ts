@@ -1069,11 +1069,17 @@ app.post("/api/support/spend", (req, res) => {
   const logical = `support_${userId}_${String(body.dedupeKey || `${body.giftId}_${body.toUserId}_${cost}`).slice(0, 140)}`;
   if (!mem.done.has(logical)) {
     mem.done.add(logical);
-    const cur = mem.balances.get(userId) || 0;
-    mem.balances.set(userId, Math.max(0, cur - cost));
+    const after = body.balanceAfter != null ? Math.max(0, Math.floor(Number(body.balanceAfter) || 0)) : Math.max(0, (mem.balances.get(userId) || 0) - cost);
+    mem.balances.set(userId, after);
+    const half = Math.max(0, Math.floor(Number(body.ownerHalf) || Math.floor(cost / 2)));
+    const ownerKey = `ownerhalf_${logical}`;
+    if (half > 0 && !mem.done.has(ownerKey)) {
+      mem.done.add(ownerKey);
+      mem.appCoins += half;
+    }
     giftProfitTouch();
   }
-  res.json({ ok: true, balance: mem.balances.get(userId) || 0, deducted: cost });
+  res.json({ ok: true, balance: mem.balances.get(userId) || 0, deducted: cost, ownerCoins: mem.appCoins, ownerUsd: mem.appCoins / 100 });
 });
 
 app.post("/api/support/convert", (req, res) => {
