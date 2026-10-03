@@ -16,7 +16,7 @@
  *              الأصوات: src/lib/castleSounds.ts
  *     (هدية الصقر FalconGift: استُبدلت بالقلعة، الملف وملف أصواته falconSounds.ts باقيين — شيل // ورجّعها بالمصفوفة لو تبي)
  *  5) Dragon → تنين ضخم (6,000 Coins, 16s) — أُلغيت (الملف DragonGift.tsx وملف أصواته باقيين — شيل // ورجّعها بالمصفوفة لو تبي)
- *  6) InfernoDragon → تنين جهنمي (10,000 Coins, ~22s / ~27s) — المربع الأخير بالشبكة (المربع اللي عليه الدائرة الصفراء) — فهرس 4 داخل GIFTS لكن يُعرض آخر مربع عبر MAIN_GIFT_ORDER بـ LiveCoinsDock
+ *  6) InfernoDragon → تنين جهنمي (7,000 Coins, ~22s / ~27s) — المربع الأوسط بالصف الثالث (المربع اللي عليه الدائرة الصفراء) — فهرس 4 داخل GIFTS ويُعرض بالمربع الأوسط عبر MAIN_GIFT_ORDER بـ LiveCoinsDock (السعر 7,000 مضبوط بـ GIFT_PRICE_BY_INDEX)
  *              (يستبدل هدية DragonFire القديمة اللي حُذفت ملفاتها وأُعيد بناؤها بالكامل)
  *              (البث يتحول لظلام وسماء حمراء ومؤثرات نار، ثم يدخل فيديو التنين 1080p بألوانه الكاملة (public/gifts/inferno-dragon.mp4) —
  *               الموسيقى وزئير التنين (الصوت الأصلي كاملاً) يشتغلون تلقائياً مع بدء الفيديو —
@@ -24,6 +24,13 @@
  *               لمستخدم (لما المضيف يعطيه): بعد نهاية الفيديو إطار صورته يرتفع لمنتصف الشاشة بحلقة نار)
  *              مربع الهدية قبل النقر: تنين صغير متحرك ينفث نار وجمرات
  *              الملفات: components/gifts/InfernoDragonGift.tsx + lib/infernoDragonSounds.ts (الصوت مضمّن) + public/gifts/inferno-dragon.mp4
+ *  7) Meteor → نيزك الدمار (15,000 Coins, 25s) — المربع الأخير بالشبكة (فهرس 5 داخل GIFTS)
+ *              (ظلام وسماء حمراء + أمطار وعواصف وبرق + زلزال يهز البث ويرجّ الأزرار → نيزك ينزل ويضرب البث فتتطاير الأزرار →
+ *               أيقونة التطبيق (دائرة كبيرة بسنون حديد على إطارها) تنزل من السماء وتدور —
+ *               للمضيف (لما المستخدم يدعمه): تحفر البث من الأسفل بشرار وانفجارات ورياح وأمطار حتى النهاية —
+ *               لمستخدم (لما المضيف يعطيه): الأيقونة تتحول لإطار صورته، يصعد للأعلى وأطرافه شرار نار وينتهي)
+ *              مربع الهدية قبل النقر: نيزك ينزل + أيقونة بسنون تدور + مطر وبرق
+ *              الملفات: components/gifts/MeteorGift.tsx + lib/meteorSounds.ts (Web Audio) + lib/meteorIcon.ts (الأيقونة مضمّنة)
  *
  * الصف العلوي (المربعات الصغيرة) — TOP_GIFTS:
  *  1) Rose   → وردة حمراء صغيرة (25 Coins, 6s) — المربع الأول يسار الصف العلوي
@@ -47,6 +54,7 @@ import { VolcanoGift } from '../components/gifts/VolcanoGift';
 import { CastleGift } from '../components/gifts/CastleGift';
 // import { DragonGift } from '../components/gifts/DragonGift'; // هدية التنين: أُلغيت (الملف باقي — شيل // ورجّعها بالمصفوفة لو تبي)
 import { InfernoDragonGift } from '../components/gifts/InfernoDragonGift';
+import { MeteorGift } from '../components/gifts/MeteorGift';
 import { RoseGift } from '../components/gifts/RoseGift';
 import { BalloonGift } from '../components/gifts/BalloonGift';
 import { StarryPianoGift } from '../components/gifts/StarryPianoGift';
@@ -57,7 +65,8 @@ export const GIFTS: GiftDefinition[] = [
   StormGift,
   CastleGift,  // الصف الثالث — المربع الأول (3,500 Coins) — مكان الصقر
   // DragonGift,  // التنين (6,000 Coins, 16s) — أُلغيت
-  InfernoDragonGift, // تنين جهنمي (10,000 Coins) — فهرس 4 داخل المصفوفة، ويُعرض بآخر مربع (MAIN_GIFT_ORDER بـ LiveCoinsDock)
+  InfernoDragonGift, // تنين جهنمي (يُعرض بسعر 7,000 Coins) — فهرس 4 داخل المصفوفة، ويُعرض بالمربع الأوسط بالصف الثالث (MAIN_GIFT_ORDER بـ LiveCoinsDock)
+  MeteorGift, // نيزك الدمار (15,000 Coins, 25s) — فهرس 5 داخل المصفوفة، ويُعرض بآخر مربع بالشبكة
   // لا يوجد مربع فاضي بعد الآن: لإضافة هدايا جديدة وسّع الشبكة بـ LiveCoinsDock (MAIN_GIFT_ORDER)
 ];
 
