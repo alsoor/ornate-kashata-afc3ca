@@ -4719,6 +4719,7 @@ function GlobalBottomNavigation() {
           `}</style>
           {/* Outer ring: rotating cyan shine around the pill — اسحبه بالإصبع للأعلى/الأسفل */}
           {homeCallMinimized && (
+          <>
           <div
             {...homeCallDragProps}
             style={{
@@ -4974,6 +4975,7 @@ function GlobalBottomNavigation() {
               ? ' · No one else is here yet…'
               : ''}
           </p>
+          </>
           )}
           {/* In-call participant list (green = active, muted mic when self muted) */}
           {homeCallMembersOpen && !isIncomingRinging && (
