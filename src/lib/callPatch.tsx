@@ -194,6 +194,10 @@ export function callPatchWatchAudio(client: any) {
 /** فشل اتصال الصوت كان يُبلع بصمت (المؤقت يشتغل بدون صوت). الآن: سجل + تنبيه واضح. */
 export function callPatchAgoraFailed(stage: 'microphone' | 'token' | 'join' | string, err: unknown) {
   try { console.error('[call-audio] failed at', stage, err); } catch { /* */ }
+  try {
+    const msg = String((err as any)?.message || err || '');
+    if (/OPERATION_ABORTED|cancel|leave|INVALID_OPERATION/i.test(msg)) return;
+  } catch { /* */ }
   const text =
     stage === 'microphone' ? 'Microphone blocked — allow mic permission to speak'
     : stage === 'token' ? 'Call audio server error — try calling again'

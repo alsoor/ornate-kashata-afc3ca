@@ -40,6 +40,7 @@ import {
   callPatchWatchAudio,
   setCallBridge,
 } from '@/lib/callPatch';
+import { CallFixPatchUI, noteCallClosed, noteCallPhoto, notePeerOnAnotherCall, peerIsOnAnotherCall, resolveCallPhoto, shouldBlockPhantomCall, shouldIgnoreCallAudioError } from '@/lib/callFixPatch';
 // Welcome guide + splash are DISABLED (files kept). Set to true to bring them back.
 const WELCOME_SPLASH_ENABLED: boolean = false;
 
@@ -2190,6 +2191,7 @@ function GlobalBottomNavigation() {
     void callPatchEnd(endedChannel); // السيرفر: أنا ما عدت مشغول بهذه المكالمة
     // Instant UI close for both local and remote — do not wait for Agora teardown
     homeCallJustLeftRef.current = Date.now();
+    try { noteCallClosed(); notePeerOnAnotherCall(false); } catch { /* */ }
     homeCallSessionRef.current += 1;
     homeCallPhaseRef.current = 'idle';
     setHomeCallPhase('idle');
@@ -2632,6 +2634,7 @@ function GlobalBottomNavigation() {
 
   async function startHomeGroupCall(overrideFriendIds?: string[], asVideo = false) {
     if (!user?.id) return;
+    if (shouldBlockPhantomCall()) return;
     homeCallVideoRef.current = !!asVideo;
     setHomeCallIsVideo(!!asVideo);
     const ids = overrideFriendIds?.length
@@ -2669,7 +2672,10 @@ function GlobalBottomNavigation() {
       others = picked.map(f => ({ ...f, joined: false }));
       if (!picked.length) return;
     }
-    if (callGate.waiting.length) announceBusy('User is on another call — ringing as call waiting', 'info');
+    if (callGate.waiting.length) {
+      notePeerOnAnotherCall(true);
+      announceBusy('ارجو الانتظار المتصل عليه لديه مكالمه اخرى', 'info');
+    } else notePeerOnAnotherCall(false);
     // Fresh call on this channel — wipe stale end/answer markers from the previous session
     try {
       localStorage.removeItem(`stooorna_call_ended_${channel}`);
@@ -2891,7 +2897,7 @@ function GlobalBottomNavigation() {
             }
           } catch { /* */ }
         }));
-      } catch (e) { callPatchAgoraFailed('join', e); }
+      } catch (e) { if (!shouldIgnoreCallAudioError()) callPatchAgoraFailed('join', e); }
     };
     void joinCallerAgora();
     try {
@@ -3652,7 +3658,7 @@ function GlobalBottomNavigation() {
           } catch { /* */ }
         }));
       }
-    } catch (e) { callPatchAgoraFailed('join', e); }
+    } catch (e) { if (!shouldIgnoreCallAudioError()) callPatchAgoraFailed('join', e); }
     if (homeCallSessionRef.current !== session) return;
     // Callee answered and joined Agora — mark live and start timer
     setHomeCallMinimized(true);
@@ -4476,6 +4482,12 @@ function GlobalBottomNavigation() {
     return null;
   })();
 
+  function peerIsWaitingLabel() {
+    try {
+      if (peerIsOnAnotherCall()) return 'ارجو الانتظار المتصل عليه لديه مكالمه اخرى';
+    } catch { /* */ }
+    return homeCallPhase === 'live' ? formatCallDuration(homeCallElapsedSec) : (isIncomingRinging ? 'Incoming call' : 'Ringing…');
+  }
   const formatCallDuration = (sec: number) => {
     const s = Math.max(0, Math.floor(sec));
     const m = Math.floor(s / 60);
@@ -4644,7 +4656,7 @@ function GlobalBottomNavigation() {
                 {(peerOnCall?.name || peerOnCall?.username || 'Call')} <span aria-hidden>❤️</span>
               </p>
               <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.62)', fontSize: 13 }}>
-                {homeCallPhase === 'live' ? formatCallDuration(homeCallElapsedSec) : (isIncomingRinging ? 'Incoming call' : 'Ringing…')}
+                {peerIsWaitingLabel()}
               </p>
             </div>
             <div style={{ width: 118, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, paddingTop: 4 }}>
@@ -4660,13 +4672,21 @@ function GlobalBottomNavigation() {
           </div>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
             <div style={{ width: 210, height: 210, borderRadius: '50%', overflow: 'hidden', background: '#d7c4a8', boxShadow: '0 16px 40px rgba(0,0,0,0.35)', border: '4px solid rgba(255,255,255,0.08)' }}>
-              {(peerOnCall?.avatarUrl || homeCallMembers.find(m => m.id !== user?.id)?.avatarUrl) ? (
-                <img src={peerOnCall?.avatarUrl || homeCallMembers.find(m => m.id !== user?.id)?.avatarUrl || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 64, fontWeight: 800, color: '#1b1b1b' }}>
-                  {(peerOnCall?.name || peerOnCall?.username || 'U')[0]}
-                </div>
-              )}
+              {(() => {
+                const friend = homeCallFriends.find(f => f.id === (peerOnCall?.id || homeIncoming?.hostId));
+                const pic = resolveCallPhoto({
+                  name: peerOnCall?.name || peerOnCall?.username || friend?.name || null,
+                  avatarUrl: peerOnCall?.avatarUrl || friend?.avatarUrl || homeIncoming?.hostAvatar || homeCallMembers.find(m => m.id !== user?.id)?.avatarUrl || null,
+                });
+                try { noteCallPhoto(pic); } catch { /* */ }
+                return pic.avatarUrl ? (
+                  <img src={pic.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 64, fontWeight: 800, color: '#1b1b1b' }}>
+                    {(pic.name || 'U')[0]}
+                  </div>
+                );
+              })()}
             </div>
           </div>
           {homeCallEmojiBurst ? (
@@ -5197,6 +5217,7 @@ function GlobalBottomNavigation() {
   {miniChatOverlay}
   {homeVideoOverlay}{homeIncomingOverlay}{homeCallOverlay}
   <CallPatchUI userId={user?.id ? String(user.id) : null} />
+  <CallFixPatchUI />
 
       {homeCallLogOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 10980, background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
