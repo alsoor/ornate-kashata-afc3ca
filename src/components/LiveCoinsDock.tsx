@@ -228,6 +228,37 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
   }
 }
 
+/** After a hosted checkout: poll the server balance (credited by the payment webhook) and hand it to the caller once it is higher. */
+function watchPolarCredit(uid: string, onCredited: (balance: number) => void): () => void {
+  if (!uid) return () => {};
+  const key = `stooorna_polar_pending_${uid}`;
+  let timer = 0;
+  let stopped = false;
+  const check = async () => {
+    if (stopped) return;
+    let startedAt = 0;
+    try { startedAt = Number(localStorage.getItem(key) || 0); } catch { /* ignore */ }
+    if (!startedAt || Date.now() - startedAt > 30 * 60 * 1000) {
+      try { localStorage.removeItem(key); } catch { /* ignore */ }
+      return;
+    }
+    try {
+      const r = await fetch(`/api/gifts/balance?userId=${encodeURIComponent(uid)}`, { credentials: 'include', cache: 'no-store' });
+      const d = (await r.json().catch(() => ({}))) as { balance?: number };
+      const srv = Math.floor(Number(d?.balance) || 0);
+      if (srv > readBalance(uid)) {
+        writeBalance(uid, srv);
+        try { localStorage.removeItem(key); } catch { /* ignore */ }
+        onCredited(srv);
+        return;
+      }
+    } catch { /* ignore */ }
+    timer = window.setTimeout(() => { void check(); }, 4000);
+  };
+  void check();
+  return () => { stopped = true; window.clearTimeout(timer); };
+}
+
 // خصم سعر الهدية. في الوضع التجريبي محلي فقط؛ للإنتاج اربطه بسيرفرك (يخصم ويرجّع الرصيد الجديد).
 async function spendCoinsForGift(gift: GiftDefinition, hostId?: string, alreadyDeducted?: number): Promise<{ ok: boolean; balance?: number; error?: string }> {
   // الخصم المحلي هو المصدر المعتمد داخل البث. السيرفر إن رجع رصيداً أعلى (ما خصم) نتجاهله.
@@ -515,37 +546,11 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
   useEffect(() => { setBalance(readBalance(uid)); }, [uid]);
 
   // After a hosted checkout: pull the balance credited by the server (payment webhook) into this device.
-  useEffect(() => {
-    if (!uid) return;
-    const key = `stooorna_polar_pending_${uid}`;
-    let timer = 0;
-    let stopped = false;
-    const check = async () => {
-      if (stopped) return;
-      let startedAt = 0;
-      try { startedAt = Number(localStorage.getItem(key) || 0); } catch { /* ignore */ }
-      if (!startedAt || Date.now() - startedAt > 30 * 60 * 1000) {
-        try { localStorage.removeItem(key); } catch { /* ignore */ }
-        return;
-      }
-      try {
-        const r = await fetch(`/api/gifts/balance?userId=${encodeURIComponent(uid)}`, { credentials: 'include', cache: 'no-store' });
-        const d = (await r.json().catch(() => ({}))) as { balance?: number };
-        const srv = Math.floor(Number(d?.balance) || 0);
-        if (srv > readBalance(uid)) {
-          writeBalance(uid, srv);
-          setBalance(srv);
-          try { localStorage.removeItem(key); } catch { /* ignore */ }
-          setPaidToast(true);
-          window.setTimeout(() => setPaidToast(false), 2200);
-          return;
-        }
-      } catch { /* ignore */ }
-      timer = window.setTimeout(() => { void check(); }, 4000);
-    };
-    void check();
-    return () => { stopped = true; window.clearTimeout(timer); };
-  }, [uid]);
+  useEffect(() => watchPolarCredit(uid, (srv) => {
+    setBalance(srv);
+    setPaidToast(true);
+    window.setTimeout(() => setPaidToast(false), 2200);
+  }), [uid]);
 
   useEffect(() => {
     if (!uid) return;
@@ -1341,6 +1346,8 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
   const [toast, setToast] = useState('');
   const [convertText, setConvertText] = useState('');
   const [convertCustomOpen, setConvertCustomOpen] = useState(false);
+  const [packsOpen, setPacksOpen] = useState(false);
+  const [walletPackId, setWalletPackId] = useState<string>(PACKS[0].id);
 
   useEffect(() => {
     setBalance(readBalance(uid));
@@ -1384,6 +1391,12 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
       .catch(() => { /* ignore */ });
   }, [open, uid]);
 
+  useEffect(() => watchPolarCredit(uid, (srv) => {
+    setBalance(srv);
+    setToast('Coins added');
+    window.setTimeout(() => setToast(''), 2200);
+  }), [uid]);
+
   const cents = parseCents(amountText);
   const coins = Math.floor(cents / CUSTOM_CENTS_PER_COIN);
   const amountValid = coins >= CUSTOM_MIN_COINS && coins <= CUSTOM_MAX_COINS;
@@ -1395,8 +1408,19 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
   };
 
   function openDeposit() {
-    setAmountText(''); setCardNum(''); setCardExp(''); setCardCvc(''); setCardName(''); setPayError('');
-    setDepositOpen(true);
+    setPayError('');
+    setPacksOpen(true);
+  }
+
+  async function startCheckout() {
+    if (paying) return;
+    const p = PACKS.find(x => x.id === walletPackId) || PACKS[0];
+    setPayError('');
+    setPaying(true);
+    const res = await processVisaPayment(p, uid);
+    if (!res.ok) { setPaying(false); setPayError(res.error || 'Payment failed'); return; }
+    // The browser is moving to the hosted checkout page; coins are added by the server after payment.
+    window.setTimeout(() => setPaying(false), 8000);
   }
 
   function validate(): string {
@@ -1570,6 +1594,36 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
         <p style={{ margin: '8px 4px 0', color: 'rgba(255,255,255,0.4)', fontSize: 11, textAlign: 'center', lineHeight: 1.4 }}>
           حوّل أرباح الدعم كلها أو حدد العدد يدوياً (Custom) إلى رصيد هدايا، أو اسحب إلى PayPal
         </p>
+      </Sheet>
+
+      {/* Deposit: same pack picker as the live room, then hosted checkout */}
+      <Sheet open={packsOpen} onClose={() => { if (!paying) setPacksOpen(false); }} title="Coins" balance={balance} z={10100}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          {PACKS.map(p => {
+            const on = p.id === walletPackId;
+            return (
+              <button key={p.id} type="button" onClick={() => setWalletPackId(p.id)}
+                style={{ ...CARD, border: on ? '1.5px solid #8b12ff' : '1.5px solid transparent' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <CoinIcon size={22} />
+                  <span style={{ fontWeight: 800, fontSize: 17 }}>{fmtCoins(p.coins)}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <button type="button" disabled={paying} onClick={() => { void startCheckout(); }}
+          style={{
+            width: '100%', marginTop: 14, padding: '14px 10px', borderRadius: 14, border: 'none',
+            cursor: paying ? 'default' : 'pointer', opacity: paying ? 0.7 : 1,
+            background: '#8b12ff', color: '#fff', fontWeight: 800, fontSize: 16,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}>
+          {paying
+            ? <>Opening checkout…</>
+            : <>Get <CoinIcon size={20} /> {fmtCoins((PACKS.find(x => x.id === walletPackId) || PACKS[0]).coins)}</>}
+        </button>
+        {payError ? <p style={{ margin: '10px 0 0', color: '#f87171', fontSize: 13, fontWeight: 700, textAlign: 'center' }}>{payError}</p> : null}
       </Sheet>
 
       {/* Deposit: مبلغ مخصّص (بدون باقات) + بيانات VISA → يزيد رصيد الهدايا مباشرة */}
