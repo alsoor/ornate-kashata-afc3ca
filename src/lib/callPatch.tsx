@@ -490,9 +490,15 @@ export function callPatchConsumeSignal(msg: any): boolean {
   if (type === 'hangup' || type === 'call-end' || type === 'ended') {
     if (state.waiting && ch && state.waiting.channel === ch) { dismissWaiting('missed'); return true; }
     if (state.second && ch && state.second.channel === ch) { void endSecond({ remote: true }); return true; }
-    // إغلاق قناة ثانية (رفض انتظار / مكالمة قديمة) لا ينهي المكالمة الحالية
     const cur = String(b.channel() || '');
+    // إغلاق قناة ثانية (رفض انتظار / مكالمة قديمة) لا ينهي المكالمة الحالية
     if (ch && cur && ch !== cur) return true;
+    // نفس القناة: أقفل صفحة الاتصال عند الطرف الثاني حتى لو الإشارة وصلت HTTP مو WebSocket
+    if (!ch || !cur || ch === cur) {
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: { channel: ch || cur, at: Date.now(), remote: true } }));
+      } catch { /* */ }
+    }
     return false;
   }
   if (type === 'call-waiting') {

@@ -1755,7 +1755,14 @@ function GlobalBottomNavigation() {
       const hostId = String(rawIn.hostId || rawIn.fromId || rawIn.callerId || '');
       const channel = String(rawIn.channel || rawIn.roomId || rawIn.room || '');
       if (!channel || !hostId || hostId === String(user.id)) return;
-      if (rawIn.ended || rawIn.answered || rawIn.clear) return;
+      if (rawIn.ended || rawIn.clear) {
+        const endedCh = String(rawIn.channel || rawIn.roomId || channel || '');
+        if (endedCh && homeCallChannelRef.current && endedCh === String(homeCallChannelRef.current) && homeCallPhaseRef.current !== 'idle') {
+          try { window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: { channel: endedCh, at: Date.now(), remote: true } })); } catch { /* */ }
+        }
+        return;
+      }
+      if (rawIn.answered) return;
       const leftAt = homeCallJustLeftRef.current;
       const incomingAt = Number(rawIn.at || rawIn.ts || rawIn.createdAt) || 0;
       if (leftAt && Date.now() - leftAt < 12000 && incomingAt <= leftAt) return;
@@ -2240,6 +2247,17 @@ function GlobalBottomNavigation() {
             channel: endedChannel,
             at: endedAt,
           });
+          // احتياط إذا WebSocket مو متصل: الطرف الثاني يسحب الإشارة ويقفل الصفحة
+          void fetch('/api/call/signal', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: m.id, type: 'hangup', id: `hang_${endedAt}_${m.id}`, payload: { channel: endedChannel, from: user.id, at: endedAt } }),
+            keepalive: true,
+          }).catch(() => {});
+          void fetch('/api/call/invite', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ toUserId: m.id, userId: m.id, channel: endedChannel, ended: true, clear: true, at: endedAt }),
+            keepalive: true,
+          }).catch(() => {});
           try {
             for (const roomId of homeRingRoomIds(m.id)) {
               void fetch('/api/room/leave', {
