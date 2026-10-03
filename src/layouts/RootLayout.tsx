@@ -13,7 +13,7 @@ function isStoryProfileRoute(pathname: string, search: string): boolean {
   const tab = new URLSearchParams(search || '').get('tab');
   return !(tab === 'search' || tab === 'requests');
 }
-import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus, Image as ImageIcon, Video, MoreVertical, Clock } from 'lucide-react';
+import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus, Image as ImageIcon, Video, MoreVertical, Clock, ChevronDown } from 'lucide-react';
 import HomepageSameAsJsonLd from '@/components/HomepageSameAsJsonLd';
 import Website from '@/layouts/Website';
 import LiveKindPicker from '@/components/LiveKindPicker';
@@ -4598,6 +4598,102 @@ function GlobalBottomNavigation() {
       )}
 
       {/* WhatsApp-style bottom call pill — active call only (dark app chrome + moving border shine) */}
+      {showTopCallBar && !homeCallMinimized && (
+        <div style={{
+          pointerEvents: 'auto',
+          position: 'fixed',
+          inset: 0,
+          zIndex: 10970,
+          background: '#070b14',
+          backgroundImage: 'radial-gradient(circle at 20% 10%, rgba(255,255,255,0.04) 0 1px, transparent 1px), radial-gradient(circle at 80% 30%, rgba(255,255,255,0.035) 0 1px, transparent 1px)',
+          backgroundSize: '28px 28px, 36px 36px',
+          display: 'flex',
+          flexDirection: 'column',
+          color: '#fff',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: 'max(14px, env(safe-area-inset-top)) 16px 0', gap: 10 }}>
+            <button
+              type="button"
+              aria-label="Minimize call"
+              onClick={() => homeCallAction(() => setHomeCallMinimized(true))}
+              style={{ width: 54, height: 54, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0, flexShrink: 0 }}
+            >
+              <ChevronDown size={18} strokeWidth={2.6} style={{ marginBottom: -8 }} />
+              <ChevronDown size={18} strokeWidth={2.6} />
+            </button>
+            <div style={{ flex: 1, minWidth: 0, textAlign: 'center', paddingTop: 6 }}>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 18, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {(peerOnCall?.name || peerOnCall?.username || 'Call')} <span aria-hidden>❤️</span>
+              </p>
+              <p style={{ margin: '4px 0 0', color: 'rgba(255,255,255,0.62)', fontSize: 13 }}>
+                {homeCallPhase === 'live' ? formatCallDuration(homeCallElapsedSec) : (isIncomingRinging ? 'Incoming call' : 'Ringing…')}
+              </p>
+            </div>
+            <div style={{ width: 118, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, paddingTop: 4 }}>
+              {homeCallMembers.slice(0, 3).map(m => (
+                <div key={`corner-${m.id}`} style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: 118 }}>
+                  <span style={{ color: 'rgba(255,255,255,0.88)', fontSize: 11, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name || m.username || 'User'}</span>
+                  <span style={{ width: 28, height: 28, borderRadius: '50%', overflow: 'hidden', background: 'rgba(255,255,255,0.12)', flexShrink: 0, border: '1px solid rgba(255,255,255,0.2)' }}>
+                    {m.avatarUrl ? <img src={m.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800 }}>{(m.name || m.username || 'U')[0]}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
+            <div style={{ width: 210, height: 210, borderRadius: '50%', overflow: 'hidden', background: '#d7c4a8', boxShadow: '0 16px 40px rgba(0,0,0,0.35)', border: '4px solid rgba(255,255,255,0.08)' }}>
+              {(peerOnCall?.avatarUrl || homeCallMembers.find(m => m.id !== user?.id)?.avatarUrl) ? (
+                <img src={peerOnCall?.avatarUrl || homeCallMembers.find(m => m.id !== user?.id)?.avatarUrl || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 64, fontWeight: 800, color: '#1b1b1b' }}>
+                  {(peerOnCall?.name || peerOnCall?.username || 'U')[0]}
+                </div>
+              )}
+            </div>
+          </div>
+          {homeCallEmojiBurst ? (
+            <div style={{ textAlign: 'center', fontSize: 42, marginBottom: 8 }}>{homeCallEmojiBurst}</div>
+          ) : null}
+          <div style={{ margin: '0 18px max(18px, env(safe-area-inset-bottom))', background: '#171b22', borderRadius: 28, padding: '22px 18px 16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '18px 8px', justifyItems: 'center' }}>
+              <button type="button" onClick={() => homeCallAction(() => toggleHomeCallSpeaker())} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 64, height: 64, borderRadius: '50%', background: homeCallSpeakerOn ? '#2a3140' : '#3a465c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{homeCallSpeakerOn ? <Volume2 size={24} /> : <VolumeX size={24} />}</span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Speaker</span>
+              </button>
+              <button type="button" onClick={() => homeCallAction(() => { void toggleHomeCallVideo(); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 64, height: 64, borderRadius: '50%', background: homeCallIsVideo ? '#2a3140' : '#3a465c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Video size={24} /></span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Video</span>
+              </button>
+              <button type="button" onClick={() => homeCallAction(() => toggleHomeCallMute())} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 64, height: 64, borderRadius: '50%', background: homeCallMuted ? '#3a465c' : '#2a3140', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{homeCallMuted ? <MicOff size={24} /> : <Mic size={24} />}</span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Mute</span>
+              </button>
+              <button type="button" onClick={() => homeCallAction(() => { setHomeCallMembersOpen(o => !o); setHomeCallAddOpen(false); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 64, height: 64, borderRadius: '50%', background: homeCallMembersOpen ? '#3a465c' : '#2a3140', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><MoreVertical size={24} /></span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>More</span>
+              </button>
+              <button type="button" onClick={() => homeCallAction(() => { setHomeCallAddOpen(true); setHomeCallMembersOpen(false); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 64, height: 64, borderRadius: '50%', background: '#2a3140', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={24} /></span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Share</span>
+              </button>
+              {isIncomingRinging ? (
+                <button type="button" onClick={() => homeCallAction(() => { void answerHomeIncoming(); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 64, height: 64, borderRadius: '50%', background: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Phone size={26} /></span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Answer</span>
+                </button>
+              ) : (
+                <button type="button" onClick={() => homeCallAction(() => { void leaveHomeGroupCall(); })} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 64, height: 64, borderRadius: '50%', background: '#ff2d3c', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PhoneOff size={26} /></span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>End</span>
+                </button>
+              )}
+            </div>
+            {isIncomingRinging ? (
+              <button type="button" onClick={() => homeCallAction(() => ignoreHomeIncoming())} style={{ marginTop: 14, width: '100%', border: 'none', background: 'transparent', color: '#ff5a6a', fontWeight: 800, cursor: 'pointer' }}>Decline</button>
+            ) : null}
+          </div>
+        </div>
+      )}
       {showTopCallBar && (
         <div
           ref={homeCallBarRef}
@@ -4608,7 +4704,7 @@ function GlobalBottomNavigation() {
             right: 12,
             top: homeCallDock === 'top' ? 'max(10px, env(safe-area-inset-top, 0px))' : 'auto',
             bottom: homeCallDock === 'bottom' ? 'max(10px, env(safe-area-inset-bottom, 0px))' : 'auto',
-            zIndex: 10960,
+            zIndex: homeCallMembersOpen || homeCallAddOpen ? 10990 : 10960,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -4622,6 +4718,7 @@ function GlobalBottomNavigation() {
             }
           `}</style>
           {/* Outer ring: rotating cyan shine around the pill — اسحبه بالإصبع للأعلى/الأسفل */}
+          {homeCallMinimized && (
           <div
             {...homeCallDragProps}
             style={{
@@ -4648,6 +4745,11 @@ function GlobalBottomNavigation() {
               }}
             />
             <div
+              onClick={(e) => {
+                const t = e.target as HTMLElement;
+                if (t.closest('button')) return;
+                setHomeCallMinimized(false);
+              }}
               style={{
                 position: 'relative',
                 zIndex: 1,
@@ -4660,6 +4762,7 @@ function GlobalBottomNavigation() {
                 justifyContent: 'space-between',
                 gap: 8,
                 boxSizing: 'border-box',
+                cursor: 'pointer',
               }}
             >
             {isIncomingRinging ? (
@@ -4871,6 +4974,7 @@ function GlobalBottomNavigation() {
               ? ' · No one else is here yet…'
               : ''}
           </p>
+          )}
           {/* In-call participant list (green = active, muted mic when self muted) */}
           {homeCallMembersOpen && !isIncomingRinging && (
             <div style={{
