@@ -178,6 +178,14 @@ export function registerCallStateRoutes(app: Express, deps: Deps) {
 					v.waiting = { channel, from: me, at: now };
 					c.invited.add(id);
 					results[id] = "waiting";
+					signals.push({
+						id: `wait_${now.toString(36)}_${id.slice(0, 8)}`,
+						at: now,
+						from: me,
+						to: id,
+						type: "call-waiting",
+						payload: { channel, from: me, hostId: me, at: now },
+					});
 				} else {
 					results[id] = "busy";
 				}

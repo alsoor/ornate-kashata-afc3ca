@@ -1858,7 +1858,20 @@ function GlobalBottomNavigation() {
       };
     } catch { /* */ }
     const poll = async () => {
-      if (homeCallPhase !== 'idle') return;
+      // حتى لو أنا داخل مكالمة: لازم نستلم الدعوة الثانية عشان شريط انتظار المكالمة
+      if (homeCallPhase !== 'idle') {
+        try {
+          const rawBusy = localStorage.getItem(`stooorna_home_call_invite_${user.id}`);
+          if (rawBusy) applyInvite(JSON.parse(rawBusy));
+          const invRes = await fetch(`/api/call/invite?userId=${encodeURIComponent(user.id)}&toUserId=${encodeURIComponent(user.id)}`, { credentials: 'include', cache: 'no-store' });
+          if (invRes.ok) {
+            const invData = await invRes.json() as any;
+            const inviteObj = invData?.invite || invData?.data || invData?.call || (invData?.channel ? invData : null);
+            if (inviteObj) applyInvite(inviteObj);
+          }
+        } catch { /* */ }
+        return;
+      }
       try {
         const raw = localStorage.getItem(`stooorna_home_call_invite_${user.id}`);
         if (raw) applyInvite(JSON.parse(raw));
@@ -1954,6 +1967,7 @@ function GlobalBottomNavigation() {
           const ch = String(msg.channel || '');
           if (ch && homeCallChannelRef.current && ch === String(homeCallChannelRef.current)) {
             if (homeCallPhaseRef.current === 'connecting' || homeCallPhaseRef.current === 'animating') {
+              homeCallPhaseRef.current = 'live';
               setHomeCallPhase('live');
               if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
               if (homeCallNoAnswerTimer.current) {
@@ -1969,7 +1983,9 @@ function GlobalBottomNavigation() {
         if (type === 'hangup' || type === 'call-end' || type === 'ended') {
           const ch = String(msg.channel || '');
           if (ch) markHomeCallChannelEnded(ch);
-          if (homeCallPhaseRef.current !== 'idle' || homeIncoming) {
+          const cur = String(homeCallChannelRef.current || '');
+          // إغلاق قناة أخرى (انتظار / مكالمة قديمة) لا يقطع المكالمة الحالية
+          if (ch && cur && ch === cur && homeCallPhaseRef.current !== 'idle') {
             void leaveHomeGroupCall({ remote: true });
           }
           return;
@@ -2379,6 +2395,38 @@ function GlobalBottomNavigation() {
   }
 
   useEffect(() => {
+    if (homeCallPhase === 'idle') return;
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      try { callPatchWatchAudio(homeCallAgoraRef.current); } catch { /* */ }
+      try {
+        const client = homeCallAgoraRef.current;
+        for (const ru of client?.remoteUsers || []) {
+          try { ru.audioTrack?.setVolume?.(100); ru.audioTrack?.play?.(); } catch { /* */ }
+        }
+      } catch { /* */ }
+      stopHomeIncomingRing();
+    };
+    const onHide = () => {
+      // إغلاق التطبيق/الخروج برا لا ينهي المكالمة — نبض فقط حتى ما يفك السيرفر الحجز
+      if (!user?.id || homeCallPhaseRef.current === 'idle') return;
+      try {
+        void fetch('/api/call/heartbeat', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+          keepalive: true,
+        });
+      } catch { /* */ }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', onHide);
+    };
+  }, [homeCallPhase, user?.id]);
+
+  useEffect(() => {
     if (homeCallPhase !== 'live') {
       if (homeCallPhase === 'idle') setHomeCallElapsedSec(0);
       return;
@@ -2421,7 +2469,9 @@ function GlobalBottomNavigation() {
         const raw = localStorage.getItem(`stooorna_call_ended_${channel}`);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (parsed?.at && Date.now() - Number(parsed.at) < 120000) onEnd(parsed);
+          const endedAt = Number(parsed?.at) || 0;
+          const startedAt = homeCallLiveStartedAt.current || homeInviteFirstSeenRef.current.get(channel) || 0;
+          if (endedAt && Date.now() - endedAt < 120000 && (!startedAt || endedAt >= startedAt - 1500)) onEnd(parsed);
         }
       } catch { /* */ }
       // Cross-device hang-up: room empty means peer left
@@ -2432,9 +2482,14 @@ function GlobalBottomNavigation() {
           if (!r.ok) return;
           const d = await r.json() as { members?: { userId?: string }[] };
           const others = (d.members || []).filter(m => String(m.userId || '') !== String(user.id));
-          if (others.length === 0 && homeCallPhaseRef.current === 'live') {
+          const agoraRemotes = (homeCallAgoraRef.current?.remoteUsers || []).length;
+          const started = homeCallLiveStartedAt.current || 0;
+          const tooSoon = !started || Date.now() - started < 15000;
+          const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+          // غرفة السيرفر فاضية لحظياً لا تعني إن الطرف طلع — خصوصاً بعد الرد أو والتطبيق بالخلفية
+          if (others.length === 0 && agoraRemotes === 0 && homeCallPhaseRef.current === 'live' && !tooSoon && !hidden) {
             aloneTicks += 1;
-            if (aloneTicks >= 2) onEnd({ channel });
+            if (aloneTicks >= 8) onEnd({ channel });
           } else {
             aloneTicks = 0;
           }
@@ -2483,7 +2538,9 @@ function GlobalBottomNavigation() {
         const raw = localStorage.getItem(`stooorna_call_ended_${channel}`);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (parsed?.at && Date.now() - Number(parsed.at) < 120000) closeBoth(parsed);
+          const endedAt = Number(parsed?.at) || 0;
+          const startedAt = homeCallLiveStartedAt.current || 0;
+          if (endedAt && Date.now() - endedAt < 120000 && (!startedAt || endedAt >= startedAt - 1500)) closeBoth(parsed);
         }
       } catch { /* */ }
     }, 350);
@@ -2501,7 +2558,11 @@ function GlobalBottomNavigation() {
     const channel = homeCallChannel;
     if (!channel) return;
     const promote = () => {
-      if (homeCallPhaseRef.current === 'live') return;
+      if (homeCallPhaseRef.current === 'live') {
+        stopHomeIncomingRing();
+        return;
+      }
+      homeCallPhaseRef.current = 'live';
       setHomeCallPhase('live');
       if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
       if (homeCallNoAnswerTimer.current) {
@@ -2510,6 +2571,11 @@ function GlobalBottomNavigation() {
       }
       stopHomeIncomingRing();
       try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
+      try {
+        const w = window as any;
+        if (w.__stooornaRingCtx && w.__stooornaRingCtx.state !== 'closed') void w.__stooornaRingCtx.close();
+        w.__stooornaRingCtx = null;
+      } catch { /* */ }
     };
     const onAnswered = (e: Event) => {
       const d = (e as CustomEvent).detail as { channel?: string } | undefined;
@@ -2769,7 +2835,8 @@ function GlobalBottomNavigation() {
         client.on('user-published', async (remoteUser: any, mediaType: string) => {
           try {
             await client.subscribe(remoteUser, mediaType);
-            if (mediaType === 'audio') remoteUser.audioTrack?.play();
+            if (mediaType === 'audio') try { remoteUser.audioTrack?.setVolume?.(100); } catch { /* */ }
+              try { const played = remoteUser.audioTrack?.play(); if (played && typeof played.then === 'function') void played.catch(() => { try { remoteUser.audioTrack?.play(); } catch { /* */ } }); } catch { /* */ }
             if (mediaType === 'video') {
               requestAnimationFrame(() => { try { remoteUser.videoTrack?.play(remoteVideoRef.current || undefined); } catch { /* */ } });
             }
@@ -2801,7 +2868,8 @@ function GlobalBottomNavigation() {
           try {
             if (remoteUser.hasAudio) {
               await client.subscribe(remoteUser, 'audio');
-              remoteUser.audioTrack?.play();
+              try { remoteUser.audioTrack?.setVolume?.(100); } catch { /* */ }
+              try { const played = remoteUser.audioTrack?.play(); if (played && typeof played.then === 'function') void played.catch(() => { try { remoteUser.audioTrack?.play(); } catch { /* */ } }); } catch { /* */ }
             }
           } catch { /* */ }
         }));
@@ -2875,18 +2943,23 @@ function GlobalBottomNavigation() {
         })));
         const others = remote.filter(x => String(x.userId || x.id) !== String(user.id));
         if (others.length > 0 && (homeCallPhaseRef.current === 'connecting' || homeCallPhaseRef.current === 'animating')) {
+          homeCallPhaseRef.current = 'live';
           setHomeCallPhase('live');
           if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
           if (homeCallNoAnswerTimer.current) {
             window.clearTimeout(homeCallNoAnswerTimer.current);
             homeCallNoAnswerTimer.current = null;
           }
+          stopHomeIncomingRing();
+          try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
         }
         // Only auto-end if we were live for a while and peer clearly left (avoid false ends while ringing)
         if (homeCallPhaseRef.current === 'live' && others.length === 0) {
           const started = homeCallLiveStartedAt.current;
-          // Peer left Agora/room — close local UI quickly so the bar does not stay stuck
-          if (started && Date.now() - started > 3000) {
+          const agoraRemotes = (homeCallAgoraRef.current?.remoteUsers || []).length;
+          const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+          // لا تقفل المكالمة بعد 3 ثواني من الرد: العضو ممكن يتأخر ينضم للغرفة والصوت لسا يتصل
+          if (started && Date.now() - started > 20000 && agoraRemotes === 0 && !hidden) {
             void leaveHomeGroupCall({ remote: true });
           }
         }
@@ -3380,6 +3453,9 @@ function GlobalBottomNavigation() {
     // Stop ring immediately on BOTH devices before any async work
     stopHomeIncomingRing();
     homeRingLockRef.current = { mode: 'answered', channel: invite.channel, at: Date.now() };
+    // علامة إنهاء المكالمة السابقة على نفس القناة ما لازم تقفل المكالمة الجديدة
+    try { localStorage.removeItem(`stooorna_call_ended_${invite.channel}`); } catch { /* */ }
+    homeCallPhaseRef.current = 'connecting';
     // Keep top bar visible: enter connecting before async so UI does not vanish on answer
     setHomeCallMinimized(true);
     setHomeCallPhase('connecting');
@@ -3489,17 +3565,21 @@ function GlobalBottomNavigation() {
       client.on('user-published', async (remoteUser: any, mediaType: string) => {
         try {
           await client.subscribe(remoteUser, mediaType);
-          if (mediaType === 'audio') remoteUser.audioTrack?.play();
+          if (mediaType === 'audio') try { remoteUser.audioTrack?.setVolume?.(100); } catch { /* */ }
+              try { const played = remoteUser.audioTrack?.play(); if (played && typeof played.then === 'function') void played.catch(() => { try { remoteUser.audioTrack?.play(); } catch { /* */ } }); } catch { /* */ }
           if (mediaType === 'video') {
             requestAnimationFrame(() => { try { remoteUser.videoTrack?.play(remoteVideoRef.current || undefined); } catch { /* */ } });
           }
           if (homeCallPhaseRef.current === 'connecting') {
+            homeCallPhaseRef.current = 'live';
             setHomeCallPhase('live');
             if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
             if (homeCallNoAnswerTimer.current) {
               window.clearTimeout(homeCallNoAnswerTimer.current);
               homeCallNoAnswerTimer.current = null;
             }
+            stopHomeIncomingRing();
+            try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
           }
         } catch { /* */ }
       });
@@ -3508,7 +3588,14 @@ function GlobalBottomNavigation() {
         try {
           const remotes = client.remoteUsers || [];
           if (remotes.length === 0 && homeCallPhaseRef.current === 'live') {
-            void leaveHomeGroupCall({ remote: true });
+            window.setTimeout(() => {
+              if (homeCallPhaseRef.current !== 'live') return;
+              if ((client.remoteUsers || []).length > 0) return;
+              if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+              const started = homeCallLiveStartedAt.current || 0;
+              if (started && Date.now() - started < 12000) return;
+              void leaveHomeGroupCall({ remote: true });
+            }, 10000);
           }
         } catch { /* */ }
       });
@@ -3537,7 +3624,8 @@ function GlobalBottomNavigation() {
           try {
             if (remoteUser.hasAudio) {
               await client.subscribe(remoteUser, 'audio');
-              remoteUser.audioTrack?.play();
+              try { remoteUser.audioTrack?.setVolume?.(100); } catch { /* */ }
+              try { const played = remoteUser.audioTrack?.play(); if (played && typeof played.then === 'function') void played.catch(() => { try { remoteUser.audioTrack?.play(); } catch { /* */ } }); } catch { /* */ }
             }
             if (remoteUser.hasVideo) {
               await client.subscribe(remoteUser, 'video');

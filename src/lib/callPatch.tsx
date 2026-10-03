@@ -252,8 +252,10 @@ export function callPatchOnIncomingWhileBusy(invite: WaitingInvite): void {
 
   if (state.waiting?.channel === ch) { waitingSeenAt = Date.now(); return; } // نفس الاتصال المنتظر: جدّد فقط
 
-  const inLive = b.phase() === 'live' || !!state.second;
-  const canWait = inLive && !state.second && !state.waiting && getCallWaiting(b.userId);
+  // connecting/animating = المستخدم مشغول أصلاً (يرن أو يتصل) — انتظار المكالمة لازم يشتغل هنا مو بس بعد live
+  const phase = b.phase();
+  const inCall = phase === 'live' || phase === 'connecting' || phase === 'animating' || !!state.second;
+  const canWait = inCall && !state.second && !state.waiting && getCallWaiting(b.userId);
   if (canWait) {
     waitingSeenAt = Date.now();
     setState({ waiting: { ...invite, channel: ch } });
@@ -343,7 +345,7 @@ async function startSecond(w: WaitingInvite) {
       try {
         await client.subscribe(ru, mt);
         if (mt === 'audio') {
-          ru.audioTrack?.play();
+          try { await ru.audioTrack?.play(); } catch { try { ru.audioTrack?.play(); } catch { /* */ } }
           ru.audioTrack?.setVolume?.(state.second?.activeIsSecond ? 100 : 0);
         }
       } catch { /* */ }
@@ -488,7 +490,24 @@ export function callPatchConsumeSignal(msg: any): boolean {
   if (type === 'hangup' || type === 'call-end' || type === 'ended') {
     if (state.waiting && ch && state.waiting.channel === ch) { dismissWaiting('missed'); return true; }
     if (state.second && ch && state.second.channel === ch) { void endSecond({ remote: true }); return true; }
+    // إغلاق قناة ثانية (رفض انتظار / مكالمة قديمة) لا ينهي المكالمة الحالية
+    const cur = String(b.channel() || '');
+    if (ch && cur && ch !== cur) return true;
     return false;
+  }
+  if (type === 'call-waiting') {
+    const hostId = String(msg.from || msg.hostId || '');
+    const channel = String(msg.channel || (msg.payload as any)?.channel || '');
+    if (hostId && channel) {
+      callPatchOnIncomingWhileBusy({
+        channel,
+        hostId,
+        hostName: (msg.fromName as string) || null,
+        hostAvatar: (msg.fromAvatar as string) || null,
+        at: Number(msg.at) || Date.now(),
+      });
+    }
+    return true;
   }
   if (type === 'busy') {
     const busyFrom = String(msg.from || '');
@@ -553,6 +572,15 @@ export function CallPatchUI({ userId }: { userId?: string | null }) {
   useEffect(() => {
     if (!userId) return;
     void post('/api/call/waiting', { enabled: getCallWaiting(userId) });
+    // لو السيرفر حافظ الإعداد وهذا الجهاز فاضي، لا نخلي الانتظار يطلع مطفي بالغلط
+    void (async () => {
+      try {
+        const r = await fetch('/api/call/waiting', { credentials: 'include', cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json() as { enabled?: boolean };
+        if (d?.enabled === true && !getCallWaiting(userId)) setCallWaiting(userId, true);
+      } catch { /* */ }
+    })();
     let since: number | null = null; // وقت السيرفر فقط — لا نعتمد على ساعة الجهاز (قد تختلف)
     let stopped = false;
     const active = () => (bridge?.phase() ?? 'idle') !== 'idle' || !!state.second || !!state.waiting;
