@@ -7,7 +7,8 @@
  *  - Custom: المستخدم يكتب عدد Coins بنفسه والسعر USD يتحسب بالضبط (بالسنت، بدون كسور عشرية)
  *  - الهدية: كل نقرة تزيد العداد 1 2 3 ... وبعد توقف النقر تنرسل الهدية بعدد المرات وتنخصم بعدد المرات
  *
- *  - WalletSheet (مصدّر): صفحة الرصيد من زر $ في الإعدادات — Balance (أرباح الدعم + Withdrawal إلى PayPal) | Deposit (+ شحن مخصّص بالفيزا يزيد رصيد الهدايا مباشرة)
+ *  - Withdrawal: زر السحب يفتح نموذج (إيميل PayPal + مبلغ، حد أدنى WITHDRAW_MIN_COINS) يرسل POST /api/withdrawals/request — السيرفر يخصم من الأرباح ويسجّل الطلب (انظر withdrawals.server.ts)
+ *  - WalletSheet (مصدّر): صفحة الرصيد من زر $ في الإعدادات — Balance (أرباح الدعم + Withdrawal إلى PayPal فقط عند allowWithdraw — داخل البث بدون سحب) | Deposit (+ شحن مخصّص بالفيزا يزيد رصيد الهدايا مباشرة)
  *
  * مهم: PAYMENT_DEMO_MODE = true يعني الدفع تجريبي (ما يخصم أي مبلغ).
  * قبل الإطلاق الفعلي اربطه ببوابة دفع (processVisaPayment) وخله false.
@@ -90,8 +91,11 @@ void DOT_SIZE; // kept for compatibility (buttons now sized like the hand button
 // Same pack list the server sells (COIN_PACKS in polar.ts). Prices are set in the Polar dashboard and shown on the checkout page.
 const PACKS: { id: string; coins: number; usd: number }[] = [50, 125, 400, 500, 1000, 1500, 3500, 10000, 15000].map(c => ({ id: `p${c}`, coins: c, usd: 0 }));
 
-// Free-amount purchases are not supported by the hosted checkout (fixed packs only).
-const CUSTOM_ENABLED = false;
+// أيقونة النقود الصفراء داخل البث: true = تفتح صفحة Wallet (Balance | Deposit | استبدال | Custom) بدون سحب PayPal — false = ترجع لمربع الباقات القديم
+const LIVE_COINS_USES_WALLET = true;
+
+// Free-amount (Custom) purchases: any amount, paid through the same Polar hosted checkout. Max USD 1,000 per payment (see CUSTOM_MAX_COINS).
+const CUSTOM_ENABLED = true;
 
 // ── Custom: عدد Coins حر ────────────────────────────────────────────────
 // السعر يتحسب بالسنت (أعداد صحيحة) عشان ما يصير أي خلل بالكسور: USD = coins × CUSTOM_CENTS_PER_COIN ÷ 100
@@ -206,20 +210,72 @@ function topUpBalanceFromEarnings(uid: string, need: number): { balance: number;
 const WITHDRAW_CENTS_PER_COIN = 1;   // قيمة Coin وحدة عند عرض الأرباح بالدولار (1 Coin = USD 0.01) — عدّلها إذا تبي نسبة ثانية
 const PAYPAL_URL = 'https://www.paypal.com/myaccount/transfer/homepage';
 
+// ── سحب الأرباح: طلب سحب حقيقي يُسجَّل بالسيرفر ويُخصم من الأرباح ────────────
+const WITHDRAW_MIN_COINS = 1000;   // أقل مبلغ سحب (1,000 Coins = USD 10.00 بنسبة WITHDRAW_CENTS_PER_COIN) — عدّله إذا تبي حد ثاني
+const PAYPAL_EMAIL_KEY = 'stooorna_withdraw_paypal_email';
+const isEmail = (t: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(t.trim());
+type WithdrawReq = { id: string; coins: number; usd?: number; paypalEmail?: string; status: 'pending' | 'paid' | 'rejected'; createdAt: number };
+const WITHDRAW_STATUS_LABEL: Record<WithdrawReq['status'], { text: string; color: string }> = {
+  pending: { text: 'قيد المراجعة', color: '#facc15' },
+  paid: { text: 'تم التحويل', color: '#4ade80' },
+  rejected: { text: 'مرفوض — رجع الرصيد', color: '#f87171' },
+};
+
+/** السيرفر هو اللي يتحقق ويخصم الأرباح (ذرّياً) ويسجّل الطلب؛ هنا فقط نرسل الطلب. */
+async function requestWithdrawal(userId: string, paypalEmail: string, coins: number): Promise<{ ok: boolean; earnings?: number; error?: string }> {
+  try {
+    const r = await fetch('/api/withdrawals/request', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, paypalEmail, coins }),
+    });
+    const d = (await r.json().catch(() => ({}))) as { earnings?: number; error?: string };
+    if (!r.ok) return { ok: false, error: typeof d.error === 'string' && d.error && d.error.length < 160 ? d.error : 'تعذر إرسال طلب السحب' };
+    return { ok: true, earnings: typeof d.earnings === 'number' ? d.earnings : undefined };
+  } catch {
+    return { ok: false, error: 'خطأ بالشبكة' };
+  }
+}
+
+async function fetchWithdrawals(userId: string): Promise<WithdrawReq[]> {
+  try {
+    const r = await fetch(`/api/withdrawals?userId=${encodeURIComponent(userId)}`, { credentials: 'include', cache: 'no-store' });
+    if (!r.ok) return [];
+    const d = (await r.json().catch(() => ({}))) as { requests?: WithdrawReq[] };
+    return Array.isArray(d.requests) ? d.requests.slice(0, 10) : [];
+  } catch {
+    return [];
+  }
+}
+
 // ── الدفع ───────────────────────────────────────────────────────────────
 // نقطة الربط ببوابة الدفع. لا ترسل بيانات البطاقة الخام لسيرفرك؛ استخدم توكن من البوابة.
 async function processVisaPayment(pack: { id: string; coins: number; usd: number }, userId?: string): Promise<{ ok: boolean; balance?: number; redirected?: boolean; error?: string }> {
   if (!userId) return { ok: false, error: 'Please sign in first' };
-  if (!PACKS.some(p => p.coins === pack.coins)) return { ok: false, error: 'Choose one of the available packs' };
+  const isCustomPack = pack.id === CUSTOM_ID;
+  const customCoinsN = Math.floor(Number(pack.coins) || 0);
+  if (isCustomPack) {
+    if (customCoinsN < CUSTOM_MIN_COINS) return { ok: false, error: `Minimum ${fmtCoins(CUSTOM_MIN_COINS)} Coins (${fmtUsd(CUSTOM_MIN_COINS * CUSTOM_CENTS_PER_COIN / 100)})` };
+    if (customCoinsN > CUSTOM_MAX_COINS) return { ok: false, error: `Maximum ${fmtUsd(CUSTOM_MAX_COINS * CUSTOM_CENTS_PER_COIN / 100)} per payment` };
+  } else if (!PACKS.some(p => p.coins === pack.coins)) {
+    return { ok: false, error: 'Choose one of the available packs' };
+  }
   try {
     const r = await fetch('/api/polar/checkout', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, coins: pack.coins }),
+      // Custom: the server must price it as coins × CUSTOM_CENTS_PER_COIN cents and enforce the USD 1,000 cap itself.
+      body: JSON.stringify(isCustomPack
+        ? { userId, coins: customCoinsN, custom: true, amountCents: customCoinsN * CUSTOM_CENTS_PER_COIN }
+        : { userId, coins: pack.coins }),
     });
-    const d = await r.json().catch(() => ({})) as { url?: string };
-    if (!r.ok || !d.url) return { ok: false, error: 'Payment is not available right now' };
+    const d = await r.json().catch(() => ({})) as { url?: string; error?: string };
+    if (!r.ok || !d.url) {
+      const msg = isCustomPack && typeof d.error === 'string' && d.error.length > 0 && d.error.length < 140 ? d.error : 'Payment is not available right now';
+      return { ok: false, error: msg };
+    }
     try { localStorage.setItem(`stooorna_polar_pending_${userId}`, String(Date.now())); } catch { /* ignore */ }
     window.location.assign(d.url);
     return { ok: true, redirected: true };
@@ -1024,7 +1080,11 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
       ) : null}
 
       {/* مربع شحن Coins */}
-      <Sheet open={coinsOpen} onClose={() => setCoinsOpen(false)} title="Coins" balance={balance}>
+      {/* داخل البث: أيقونة النقود تفتح Wallet بدون Withdrawal (السحب بالإعدادات فقط) */}
+      {LIVE_COINS_USES_WALLET ? (
+        <WalletSheet open={coinsOpen} onClose={() => setCoinsOpen(false)} userId={uid} allowWithdraw={false} />
+      ) : null}
+      <Sheet open={!LIVE_COINS_USES_WALLET && coinsOpen} onClose={() => setCoinsOpen(false)} title="Coins" balance={balance}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
           {PACKS.map(p => {
             const on = p.id === packId;
@@ -1050,26 +1110,23 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
             <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: 16 }}>
               <Pencil size={18} /> Custom
             </span>
-            {isCustom ? (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8, direction: 'ltr' }}>
-                <CoinIcon size={20} />
-                <input
-                  autoFocus value={customText} inputMode="numeric" placeholder="Coins" aria-label="Custom coins"
-                  onClick={e => e.stopPropagation()}
-                  onChange={e => setCustomText(e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 6))}
-                  style={{
-                    width: 96, boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, textAlign: 'right',
-                    border: '1px solid rgba(255,255,255,0.18)', background: '#1c1c1c', color: '#fff',
-                    fontSize: 16, fontWeight: 800, outline: 'none',
-                  }}
-                />
-                <span style={{ minWidth: 92, textAlign: 'right', color: customValid ? '#fff' : 'rgba(255,255,255,0.4)', fontWeight: 800, fontSize: 14 }}>
-                  {customValid ? fmtUsd(pack.usd) : 'USD —'}
-                </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, direction: 'ltr' }}>
+              <CoinIcon size={20} />
+              <input
+                value={customText} inputMode="numeric" placeholder="Coins" aria-label="Custom coins"
+                onClick={e => e.stopPropagation()}
+                onFocus={() => setPackId(CUSTOM_ID)}
+                onChange={e => { setPackId(CUSTOM_ID); setCustomText(e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 7)); }}
+                style={{
+                  width: 110, boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, textAlign: 'right',
+                  border: isCustom ? '1px solid #8b12ff' : '1px solid rgba(255,255,255,0.18)', background: '#1c1c1c', color: '#fff',
+                  fontSize: 16, fontWeight: 800, outline: 'none',
+                }}
+              />
+              <span style={{ minWidth: 92, textAlign: 'right', color: isCustom && customValid ? '#fff' : 'rgba(255,255,255,0.4)', fontWeight: 800, fontSize: 14 }}>
+                {isCustom && customValid ? fmtUsd(pack.usd) : 'USD —'}
               </span>
-            ) : (
-              <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 700, fontSize: 12.5 }}>اكتب أي عدد تبيه</span>
-            )}
+            </span>
           </div>
         ) : null}
         </div>
@@ -1078,7 +1135,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
             margin: '8px 2px 0', textAlign: 'center', fontSize: 12, fontWeight: 700,
             color: customText && !customValid ? '#f87171' : 'rgba(255,255,255,0.45)',
           }}>
-            {fmtCoins(CUSTOM_MIN_COINS)} – {fmtCoins(CUSTOM_MAX_COINS)} Coins · 1 Coin = {fmtUsd(CUSTOM_CENTS_PER_COIN / 100)}
+            {fmtCoins(CUSTOM_MIN_COINS)} – {fmtCoins(CUSTOM_MAX_COINS)} Coins · 1 Coin = {fmtUsd(CUSTOM_CENTS_PER_COIN / 100)} · Max {fmtUsd(CUSTOM_MAX_COINS * CUSTOM_CENTS_PER_COIN / 100)} per payment
           </p>
         ) : null}
         <button type="button" disabled={!canBuy || paying} onClick={() => { void startCheckout(); }}
@@ -1331,7 +1388,8 @@ function parseCents(t: string): number {
   return Number(m[1]) * 100 + Number((m[2] || '').padEnd(2, '0'));
 }
 
-export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose: () => void; userId?: string }) {
+/** allowWithdraw: زر السحب إلى PayPal يظهر فقط حيث تمرّره true (الإعدادات). داخل البث يبقى مخفي. */
+export function WalletSheet({ open, onClose, userId, allowWithdraw = false }: { open: boolean; onClose: () => void; userId?: string; allowWithdraw?: boolean }) {
   const uid = String(userId || '');
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [earnings, setEarnings] = useState<number>(() => readEarnings(uid));
@@ -1348,6 +1406,20 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
   const [convertCustomOpen, setConvertCustomOpen] = useState(false);
   const [packsOpen, setPacksOpen] = useState(false);
   const [walletPackId, setWalletPackId] = useState<string>(PACKS[0].id);
+  const [walletCustomText, setWalletCustomText] = useState('');
+  const walletIsCustom = walletPackId === CUSTOM_ID;
+  const walletCustomCoins = Number(walletCustomText) || 0;
+  const walletCustomValid = walletCustomCoins >= CUSTOM_MIN_COINS && walletCustomCoins <= CUSTOM_MAX_COINS;
+  const walletCanBuy = !walletIsCustom || walletCustomValid;
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [wdEmail, setWdEmail] = useState<string>(() => { try { return localStorage.getItem(PAYPAL_EMAIL_KEY) || ''; } catch { return ''; } });
+  const [wdText, setWdText] = useState('');
+  const [wdBusy, setWdBusy] = useState(false);
+  const [wdError, setWdError] = useState('');
+  const [wdList, setWdList] = useState<WithdrawReq[]>([]);
+  const walletPack = walletIsCustom
+    ? { id: CUSTOM_ID, coins: walletCustomCoins, usd: (walletCustomCoins * CUSTOM_CENTS_PER_COIN) / 100 }
+    : (PACKS.find(x => x.id === walletPackId) || PACKS[0]);
 
   useEffect(() => {
     setBalance(readBalance(uid));
@@ -1413,8 +1485,8 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
   }
 
   async function startCheckout() {
-    if (paying) return;
-    const p = PACKS.find(x => x.id === walletPackId) || PACKS[0];
+    if (paying || !walletCanBuy) return;
+    const p = walletPack;
     setPayError('');
     setPaying(true);
     const res = await processVisaPayment(p, uid);
@@ -1455,6 +1527,37 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
     setDepositOpen(false);
     setToast(`✓ تم الشحن +${fmtCoins(coins)}`);
     window.setTimeout(() => setToast(''), 2200);
+  }
+
+  function openWithdraw() {
+    setWdError('');
+    setWithdrawOpen(true);
+    if (uid) {
+      void fetchWithdrawals(uid).then(setWdList);
+      void syncEarningsFromServer(uid).then((n) => { try { writeEarnings(uid, n); } catch { /* */ } setEarnings(n); });
+    }
+  }
+
+  async function submitWithdraw() {
+    if (wdBusy) return;
+    const wdCoinsN = Math.floor(Number(wdText) || 0);
+    if (!uid) { setWdError('يجب تسجيل الدخول'); return; }
+    if (!isEmail(wdEmail)) { setWdError('اكتب إيميل PayPal صحيح'); return; }
+    if (wdCoinsN < WITHDRAW_MIN_COINS) { setWdError(`أقل مبلغ للسحب ${fmtCoins(WITHDRAW_MIN_COINS)} Coins (${fmtUsd(WITHDRAW_MIN_COINS * WITHDRAW_CENTS_PER_COIN / 100)})`); return; }
+    if (wdCoinsN > earnings) { setWdError(`المتاح للسحب ${fmtCoins(earnings)} فقط`); return; }
+    setWdError('');
+    setWdBusy(true);
+    const res = await requestWithdrawal(uid, wdEmail.trim(), wdCoinsN);
+    setWdBusy(false);
+    if (!res.ok) { setWdError(res.error || 'تعذر إرسال طلب السحب'); return; }
+    try { localStorage.setItem(PAYPAL_EMAIL_KEY, wdEmail.trim()); } catch { /* ignore */ }
+    const next = typeof res.earnings === 'number' ? res.earnings : Math.max(0, earnings - wdCoinsN);
+    try { writeEarnings(uid, next); } catch { /* */ }
+    setEarnings(next);
+    setWdText('');
+    setToast('✓ تم إرسال طلب السحب');
+    window.setTimeout(() => setToast(''), 2400);
+    void fetchWithdrawals(uid).then(setWdList);
   }
 
   function withdraw() {
@@ -1543,8 +1646,9 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
           </div>
         </div>
 
-        {/* Withdrawal تحت Balance → PayPal */}
-        <button type="button" onClick={withdraw}
+        {/* Withdrawal تحت Balance → PayPal (بالإعدادات فقط — مخفي داخل البث) */}
+        {allowWithdraw ? (
+        <button type="button" onClick={openWithdraw}
           style={{
             width: '100%', marginTop: 12, padding: '13px 10px', borderRadius: 14, cursor: 'pointer',
             background: 'rgba(250,204,21,0.12)', border: '1.5px solid rgba(250,204,21,0.55)', color: '#facc15',
@@ -1552,6 +1656,7 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
           }}>
           Withdrawal · PayPal <ExternalLink size={16} />
         </button>
+        ) : null}
         <button type="button" onClick={() => { void convertToGiftBalance(); }}
           style={{
             width: '100%', marginTop: 10, padding: '13px 10px', borderRadius: 14,
@@ -1592,7 +1697,7 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
           </div>
         ) : null}
         <p style={{ margin: '8px 4px 0', color: 'rgba(255,255,255,0.4)', fontSize: 11, textAlign: 'center', lineHeight: 1.4 }}>
-          حوّل أرباح الدعم كلها أو حدد العدد يدوياً (Custom) إلى رصيد هدايا، أو اسحب إلى PayPal
+          حوّل أرباح الدعم كلها أو حدد العدد يدوياً (Custom) إلى رصيد هدايا{allowWithdraw ? '، أو اسحب إلى PayPal' : ''}
         </p>
       </Sheet>
 
@@ -1611,19 +1716,136 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
               </button>
             );
           })}
+          {CUSTOM_ENABLED ? (
+            <div
+              role="button" tabIndex={0} onClick={() => setWalletPackId(CUSTOM_ID)}
+              onKeyDown={e => { if (e.key === 'Enter') setWalletPackId(CUSTOM_ID); }}
+              style={{
+                ...CARD, gridColumn: '1 / -1', minHeight: 60, flexDirection: 'row', justifyContent: 'space-between',
+                padding: '10px 14px', gap: 10, border: walletIsCustom ? '1.5px solid #8b12ff' : '1.5px solid transparent',
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: 16 }}>
+                <Pencil size={18} /> Custom
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, direction: 'ltr' }}>
+                <CoinIcon size={20} />
+                <input
+                  value={walletCustomText} inputMode="numeric" placeholder="Coins" aria-label="Custom coins"
+                  onClick={e => e.stopPropagation()}
+                  onFocus={() => setWalletPackId(CUSTOM_ID)}
+                  onChange={e => { setWalletPackId(CUSTOM_ID); setWalletCustomText(e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 7)); }}
+                  style={{
+                    width: 110, boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, textAlign: 'right',
+                    border: walletIsCustom ? '1px solid #8b12ff' : '1px solid rgba(255,255,255,0.18)', background: '#1c1c1c', color: '#fff',
+                    fontSize: 16, fontWeight: 800, outline: 'none',
+                  }}
+                />
+                <span style={{ minWidth: 92, textAlign: 'right', color: walletIsCustom && walletCustomValid ? '#fff' : 'rgba(255,255,255,0.4)', fontWeight: 800, fontSize: 14 }}>
+                  {walletIsCustom && walletCustomValid ? fmtUsd(walletPack.usd) : 'USD —'}
+                </span>
+              </span>
+            </div>
+          ) : null}
         </div>
-        <button type="button" disabled={paying} onClick={() => { void startCheckout(); }}
+        {CUSTOM_ENABLED && walletIsCustom ? (
+          <p style={{
+            margin: '8px 2px 0', textAlign: 'center', fontSize: 12, fontWeight: 700,
+            color: walletCustomText && !walletCustomValid ? '#f87171' : 'rgba(255,255,255,0.45)',
+          }}>
+            {fmtCoins(CUSTOM_MIN_COINS)} – {fmtCoins(CUSTOM_MAX_COINS)} Coins · 1 Coin = {fmtUsd(CUSTOM_CENTS_PER_COIN / 100)} · Max {fmtUsd(CUSTOM_MAX_COINS * CUSTOM_CENTS_PER_COIN / 100)} per payment
+          </p>
+        ) : null}
+        <button type="button" disabled={paying || !walletCanBuy} onClick={() => { void startCheckout(); }}
           style={{
             width: '100%', marginTop: 14, padding: '14px 10px', borderRadius: 14, border: 'none',
-            cursor: paying ? 'default' : 'pointer', opacity: paying ? 0.7 : 1,
+            cursor: paying || !walletCanBuy ? 'default' : 'pointer', opacity: paying ? 0.7 : walletCanBuy ? 1 : 0.5,
             background: '#8b12ff', color: '#fff', fontWeight: 800, fontSize: 16,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>
-          {paying
-            ? <>Opening checkout…</>
-            : <>Get <CoinIcon size={20} /> {fmtCoins((PACKS.find(x => x.id === walletPackId) || PACKS[0]).coins)}</>}
+          {!walletCanBuy
+            ? <>Enter Coins amount</>
+            : paying
+              ? <>Opening checkout…</>
+              : <>Get <CoinIcon size={20} /> {fmtCoins(walletPack.coins)}</>}
         </button>
         {payError ? <p style={{ margin: '10px 0 0', color: '#f87171', fontSize: 13, fontWeight: 700, textAlign: 'center' }}>{payError}</p> : null}
+      </Sheet>
+
+      {/* Withdrawal: طلب سحب إلى PayPal (السيرفر يخصم من الأرباح ويسجّل الطلب) */}
+      <Sheet open={allowWithdraw && withdrawOpen} onClose={() => { if (!wdBusy) setWithdrawOpen(false); }} title="Withdrawal" balance={balance} z={10100}>
+        {(() => {
+          const wdCoinsN = Math.floor(Number(wdText) || 0);
+          const wdUsd = (wdCoinsN * WITHDRAW_CENTS_PER_COIN) / 100;
+          const wdOk = isEmail(wdEmail) && wdCoinsN >= WITHDRAW_MIN_COINS && wdCoinsN <= earnings;
+          return (
+            <>
+              <div style={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', direction: 'ltr' }}>
+                <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: 800, letterSpacing: 1.2 }}>AVAILABLE</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#fff', fontWeight: 900, fontSize: 18 }}>
+                  <CoinIcon size={20} /> {fmtCoins(earnings)}
+                  <span style={{ color: '#4ade80', fontSize: 13, fontWeight: 800 }}>{fmtUsd(earningsUsd)}</span>
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12, direction: 'ltr' }}>
+                <input
+                  value={wdEmail} type="email" inputMode="email" autoComplete="email" placeholder="PayPal email" aria-label="PayPal email"
+                  onChange={e => setWdEmail(e.target.value.trim().slice(0, 120))}
+                  style={inputStyle}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    value={wdText} inputMode="numeric" placeholder="Coins" aria-label="Withdraw amount"
+                    onChange={e => setWdText(e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 9))}
+                    style={{ ...inputStyle, flex: 1, fontSize: 17, fontWeight: 800 }}
+                  />
+                  <button type="button" onClick={() => setWdText(String(earnings))}
+                    style={{ padding: '0 14px', height: 44, borderRadius: 10, border: '1px solid rgba(250,204,21,0.5)', background: 'rgba(250,204,21,0.12)', color: '#facc15', fontWeight: 800, cursor: 'pointer' }}>
+                    Max
+                  </button>
+                  <span style={{ minWidth: 86, textAlign: 'right', color: wdCoinsN > 0 ? '#fff' : 'rgba(255,255,255,0.35)', fontWeight: 800, fontSize: 14 }}>
+                    {wdCoinsN > 0 ? fmtUsd(wdUsd) : 'USD —'}
+                  </span>
+                </div>
+              </div>
+              <p style={{ margin: '8px 2px 0', textAlign: 'center', fontSize: 12, fontWeight: 700, color: wdText && !wdOk ? '#f87171' : 'rgba(255,255,255,0.45)' }}>
+                الحد الأدنى {fmtCoins(WITHDRAW_MIN_COINS)} Coins ({fmtUsd(WITHDRAW_MIN_COINS * WITHDRAW_CENTS_PER_COIN / 100)}) · يتم التحويل بعد مراجعة الطلب
+              </p>
+              {wdError ? <p style={{ margin: '10px 0 0', color: '#f87171', fontSize: 13, fontWeight: 700, textAlign: 'center' }}>{wdError}</p> : null}
+              <button type="button" disabled={wdBusy || !wdOk} onClick={() => { void submitWithdraw(); }}
+                style={{
+                  width: '100%', marginTop: 14, padding: '14px 10px', borderRadius: 14, border: 'none',
+                  cursor: wdBusy || !wdOk ? 'default' : 'pointer', opacity: wdBusy ? 0.7 : wdOk ? 1 : 0.5,
+                  background: '#facc15', color: '#111', fontWeight: 900, fontSize: 16,
+                }}>
+                {wdBusy ? 'جارٍ الإرسال…' : wdOk ? `طلب سحب ${fmtUsd(wdUsd)}` : 'طلب سحب'}
+              </button>
+              {wdList.length > 0 ? (
+                <div style={{ marginTop: 16 }}>
+                  <p style={{ margin: '0 2px 8px', color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: 800 }}>آخر الطلبات</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {wdList.map(w => {
+                      const st = WITHDRAW_STATUS_LABEL[w.status] || WITHDRAW_STATUS_LABEL.pending;
+                      return (
+                        <div key={w.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#1c1c1c', borderRadius: 10, padding: '9px 12px', direction: 'ltr' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#fff', fontWeight: 800, fontSize: 14 }}>
+                            <CoinIcon size={16} /> {fmtCoins(w.coins)}
+                            <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>{fmtUsd((w.coins * WITHDRAW_CENTS_PER_COIN) / 100)}</span>
+                          </span>
+                          <span style={{ color: st.color, fontWeight: 800, fontSize: 12.5 }}>{st.text}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              <button type="button" onClick={withdraw}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%', marginTop: 12, padding: '8px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                فتح PayPal <ExternalLink size={13} />
+              </button>
+            </>
+          );
+        })()}
       </Sheet>
 
       {/* Deposit: مبلغ مخصّص (بدون باقات) + بيانات VISA → يزيد رصيد الهدايا مباشرة */}
