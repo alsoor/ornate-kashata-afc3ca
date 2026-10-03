@@ -11,6 +11,7 @@ import * as dbClientModule from "./db/client.js";
 import { COIN_PACKS, createCheckout, handlePolarEvent, polarConfigured, verifyPolarSignature } from "./polar.js";
 import { createSession, makeLimiter, markSeen, normId, pickKey, recordPaid, seenRecently, takePaid } from "./gift-guard.js";
 import { mapEarningsAdapter, privateAssetsGuard, registerWithdrawalRoutes } from "./withdrawals.js";
+import { registerCallStateRoutes } from "./call-state";
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -1026,8 +1027,9 @@ app.post("/api/gifts/balance", guarded(async (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
   if (session.isAdmin(u) && body.userId && (body.delta != null || body.add != null || body.balance != null)) {
     const target = String(body.userId).slice(0, 80);
-    if (body.balance != null) mem.balances.set(target, Math.max(0, Math.floor(Number(body.balance) || 0)));
-    else mem.balances.set(target, Math.max(0, (mem.balances.get(target) || 0) + Math.floor(Number(body.delta ?? body.add) || 0)));
+    // ضبط رصيد مطلق: فقط بطلب أدمن صريح (adminSet) — العميل القديم كان يرسل رصيده المحلي هنا فيرفع الرصيد الحقيقي ويسمح بدعم بدون رصيد
+    if (body.balance != null && body.adminSet === true) mem.balances.set(target, Math.max(0, Math.floor(Number(body.balance) || 0)));
+    else if (body.delta != null || body.add != null) mem.balances.set(target, Math.max(0, (mem.balances.get(target) || 0) + Math.floor(Number(body.delta ?? body.add) || 0)));
     giftProfitTouch();
   }
   const o = readOwn(u);
@@ -1221,6 +1223,14 @@ registerWithdrawalRoutes(app, {
   allowedOrigins: (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
 });
 
+
+// ── حالة المكالمات (مشغول / انتظار المكالمة / دمج): ملف مستقل server/call-state.ts ──
+registerCallStateRoutes(app, {
+  getUser: async (req) => {
+    const u = await session.user(req);
+    return u ? { id: String(u.id) } : null;
+  },
+});
 
 app.get("/api/me/ban-status", me_ban_status_get_36);
 app.post("/api/me/update-ip", me_update_ip_post_37);

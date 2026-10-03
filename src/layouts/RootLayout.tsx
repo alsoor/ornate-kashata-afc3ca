@@ -27,6 +27,17 @@ import WelcomeGuide from '@/components/WelcomeGuide';
 import { startPublicBadgeSync } from '@/lib/publicVisibility';
 import PwaInstallBanner from '@/components/PwaInstallBanner';
 import OwnerControlDock from '@/components/OwnerControlDock';
+import {
+  CallPatchUI,
+  CallWaitingToggle,
+  announceBusy,
+  callPatchAnswer,
+  callPatchBegin,
+  callPatchConsumeSignal,
+  callPatchEnd,
+  callPatchOnIncomingWhileBusy,
+  setCallBridge,
+} from '@/lib/callPatch';
 // Welcome guide + splash are DISABLED (files kept). Set to true to bring them back.
 const WELCOME_SPLASH_ENABLED: boolean = false;
 
@@ -1935,6 +1946,8 @@ function GlobalBottomNavigation() {
         try { msg = JSON.parse(String(ev.data || '')); } catch { return; }
         if (!msg || typeof msg !== 'object') return;
         const type = String(msg.type || '');
+        // إشارات الانتظار/الدمج/مشغول/تعليق تعالجها lib/callPatch.tsx — وما تنهي المكالمة الحالية بالغلط
+        if (callPatchConsumeSignal(msg)) return;
         if (type === 'answered' || type === 'call-answered') {
           const ch = String(msg.channel || '');
           if (ch && homeCallChannelRef.current && ch === String(homeCallChannelRef.current)) {
@@ -2149,6 +2162,7 @@ function GlobalBottomNavigation() {
     const endedMembers = homeCallMembers.slice();
     const endedChannel = homeCallChannel;
     const endedAt = Date.now();
+    void callPatchEnd(endedChannel); // السيرفر: أنا ما عدت مشغول بهذه المكالمة
     // Instant UI close for both local and remote — do not wait for Agora teardown
     homeCallJustLeftRef.current = Date.now();
     homeCallSessionRef.current += 1;
@@ -2555,10 +2569,21 @@ function GlobalBottomNavigation() {
       avatarUrl: (user as any).avatarUrl ?? (user as any).image ?? null,
       joined: true,
     };
-    const others: HomeCallMember[] = picked.map(f => ({ ...f, joined: false }));
+    let others: HomeCallMember[] = picked.map(f => ({ ...f, joined: false }));
     const channel = picked.length === 1
       ? `private_${homeCallShortHash([user.id, picked[0].id].sort().join('_'))}`
       : `home_group_${homeCallShortHash([user.id, ...picked.map(p => p.id)].sort().join('_'))}`;
+    // ── مشغول / انتظار المكالمة: السيرفر يقرر قبل ما نرسل أي دعوة (ملف lib/callPatch.tsx) ──
+    const callGate = await callPatchBegin({ toUserIds: picked.map(p => p.id), channel, clientIdle: homeCallPhaseRef.current === 'idle' && !homeIncoming });
+    if (callGate.selfBusy) { announceBusy('Busy · مشغول — finish or answer your current call first'); return; }
+    if (callGate.busy.length) {
+      const busyNames = picked.filter(p => callGate.busy.includes(p.id)).map(p => p.name || 'User');
+      announceBusy(`${busyNames.join(', ')} · Busy · مشغول`);
+      picked = picked.filter(p => !callGate.busy.includes(p.id));
+      others = picked.map(f => ({ ...f, joined: false }));
+      if (!picked.length) return;
+    }
+    if (callGate.waiting.length) announceBusy('User is on another call — ringing as call waiting', 'info');
     // Fresh call on this channel — wipe stale end/answer markers from the previous session
     try {
       localStorage.removeItem(`stooorna_call_ended_${channel}`);
@@ -3151,7 +3176,20 @@ function GlobalBottomNavigation() {
   }, [homeCallPhase, homeCallChannel, user?.id]);
 
   function beginHomeIncoming(invite: { channel: string; hostId: string; hostName: string | null; hostUsername?: string | null; hostAvatar: string | null; members: HomeCallMember[]; video?: boolean; at?: number }) {
-    if (homeCallPhase !== 'idle') return;
+    if (homeCallPhase !== 'idle') {
+      // مشغول: إما تنبيه "انتظار المكالمة" (لو الزر مشغّل) أو رد "مشغول" على المتصل — بدل التجاهل الصامت
+      callPatchOnIncomingWhileBusy({
+        channel: invite.channel,
+        hostId: invite.hostId,
+        hostName: invite.hostName,
+        hostAvatar: invite.hostAvatar,
+        hostUsername: invite.hostUsername ?? null,
+        video: !!invite.video,
+        members: invite.members,
+        at: invite.at,
+      });
+      return;
+    }
     const lock = homeRingLockRef.current;
     if (lock.mode === 'answered' && lock.channel === invite.channel && Date.now() - lock.at < 1200) return;
     if (lock.mode === 'ignored' && lock.channel === invite.channel && Date.now() - lock.at < 1200) return;
@@ -3250,6 +3288,7 @@ function GlobalBottomNavigation() {
     const inviteSnap = homeIncoming;
     const endedAt = Date.now();
     const channel = String(inviteSnap?.channel || '').trim();
+    void callPatchEnd(channel); // رفض: السيرفر يفك الحجز عني وعن المتصل
     try {
       window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
     } catch { /* */ }
@@ -3332,6 +3371,7 @@ function GlobalBottomNavigation() {
   async function answerHomeIncoming(inviteOverride?: NonNullable<typeof homeIncoming>) {
     const invite = inviteOverride ?? homeIncoming;
     if (!user?.id || !invite) return;
+    void callPatchAnswer(String(invite.channel || '').trim()); // السيرفر: صرت داخل مكالمة (مشغول لغيره)
     // Stop ring immediately on BOTH devices before any async work
     stopHomeIncomingRing();
     homeRingLockRef.current = { mode: 'answered', channel: invite.channel, at: Date.now() };
@@ -4879,6 +4919,54 @@ function GlobalBottomNavigation() {
     </div>
   ) : null;
 
+  // ── جسر ملف المكالمات المستقل (lib/callPatch.tsx): يقرأ حالة المكالمة الحالية ويتحكم بها بدون ما يلمس منطقها ──
+  setCallBridge(user?.id ? {
+    userId: String(user.id),
+    userName: (user as any).name ?? null,
+    userAvatar: (user as any).avatarUrl ?? (user as any).image ?? null,
+    phase: () => homeCallPhaseRef.current,
+    channel: () => homeCallChannelRef.current,
+    members: () => homeCallMembers.map(m => ({ id: m.id, name: m.name ?? null, avatarUrl: m.avatarUrl ?? null })),
+    sendSignal: (msg) => sendHomeCallSignal(msg),
+    // تعليق = نكتم المايك وصوت الطرف الآخر فقط (نبقى داخل القناة عشان المكالمة ما تنتهي عند الطرف الثاني)
+    holdCurrent: (on) => {
+      try { void homeCallMicRef.current?.setMuted?.(on ? true : !!homeCallMuted); } catch { /* */ }
+      try {
+        for (const ru of (homeCallAgoraRef.current?.remoteUsers || [])) {
+          try { ru.audioTrack?.setVolume?.(on ? 0 : 100); } catch { /* */ }
+        }
+      } catch { /* */ }
+    },
+    cancelOutgoing: () => { void leaveHomeGroupCall(); },
+    joinChannelAsAnswer: async (inv) => {
+      if (homeCallPhaseRef.current !== 'idle') await leaveHomeGroupCall({ remote: true });
+      homeCallJustLeftRef.current = 0;
+      homeRingLockRef.current = { mode: 'none', channel: '', at: 0 };
+      await answerHomeIncoming({
+        channel: inv.channel,
+        hostId: inv.hostId,
+        hostName: inv.hostName ?? null,
+        hostUsername: inv.hostUsername ?? null,
+        hostAvatar: inv.hostAvatar ?? null,
+        members: (Array.isArray(inv.members) ? inv.members : []) as HomeCallMember[],
+        video: false,
+        at: Date.now(),
+      } as any);
+    },
+    logMissed: (inv) => {
+      if (!user?.id) return;
+      recordMissedCallChat(user.id, inv.hostId, inv.hostId);
+      pushCallLog(user.id, {
+        peerId: inv.hostId,
+        peerName: inv.hostName ?? null,
+        peerAvatar: inv.hostAvatar ?? null,
+        direction: 'in',
+        status: 'missed',
+        at: Date.now(),
+      });
+      setHomeCallLogTick(x => x + 1);
+    },
+  } : null);
 
   return (
   <>
@@ -4886,6 +4974,7 @@ function GlobalBottomNavigation() {
   {userListPanel}
   {miniChatOverlay}
   {homeVideoOverlay}{homeIncomingOverlay}{homeCallOverlay}
+  <CallPatchUI userId={user?.id ? String(user.id) : null} />
 
       {homeCallLogOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 10980, background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
@@ -4911,6 +5000,9 @@ function GlobalBottomNavigation() {
             <button type="button" onClick={() => { setHomeCallLogOpen(false); setHomeCallLogMenuOpen(false); }} style={{ width: 36, height: 36, border: 'none', background: 'none', color: '#111', cursor: 'pointer' }}>
               <X size={18} />
             </button>
+          </div>
+          <div style={{ padding: '10px 14px 0' }}>
+            <CallWaitingToggle userId={user?.id ? String(user.id) : null} variant="light" />
           </div>
           <div style={{ padding: '16px 18px 8px' }}>
             <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#f2f2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>

@@ -84,6 +84,7 @@ import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
+import { CallWaitingToggle } from '@/lib/callPatch';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { usePresenceQuery } from '@/hooks/usePresence';
 import { pullLiveLocations, pullOnlineIds } from '@/lib/liveLocationSync';
@@ -30392,6 +30393,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 }}>
                   <X size={14} />
                 </button>
+              </div>
+              <div style={{ padding: '10px 12px 0', flexShrink: 0 }}>
+                <CallWaitingToggle userId={user?.id ? String(user.id) : null} variant="dark" />
               </div>
               <div style={{ padding: '10px 16px 2px', flexShrink: 0 }}>
                 <p style={{ margin: 0, color: CLR_TEXT_DIM, fontWeight: 800, fontSize: '0.68rem', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Recent</p>
