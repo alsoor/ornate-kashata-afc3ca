@@ -18059,11 +18059,11 @@ function PublicLiveCommentsPanel({
 
   const chatTree = (
     <>
-    <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />
-    {mediaViewer}
-    {mediaFeedOverlay}
-    {mediaCommentsSheet}
-    {onceViewer}
+    {!embedded && <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />}
+    {!embedded && mediaViewer}
+    {!embedded && mediaFeedOverlay}
+    {!embedded && mediaCommentsSheet}
+    {!embedded && onceViewer}
     {roundToast ? (
       <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)', zIndex: 100003, padding: '8px 14px', borderRadius: 999, background: 'rgba(17,17,17,0.92)', color: '#fff', fontSize: '0.78rem', fontWeight: 700, pointerEvents: 'none' }}>
         {roundToast}
@@ -18083,12 +18083,12 @@ function PublicLiveCommentsPanel({
         zIndex: embedded ? 2 : (chatLift === 1 ? 40 : 15),
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'flex-end',
-        background: 'transparent',
+        justifyContent: embedded ? 'flex-start' : 'flex-end',
+        background: embedded ? '#ffffff' : 'transparent',
         overflow: 'hidden',
         color: '#111',
         touchAction: 'pan-y',
-        pointerEvents: 'none',
+        pointerEvents: embedded ? 'auto' : 'none',
       }}
     >
       {chatLift === 1 ? <LiveChatClearCountdown onDotClick={() => setBigEmojiOpen(v => !v)} dotActive={bigEmojiOpen} /> : null}
@@ -18128,15 +18128,16 @@ function PublicLiveCommentsPanel({
         </>
       ) : null}
       <div style={{
-        flex: chatLift === 0 ? 1 : undefined,
+        flex: embedded ? 0 : (chatLift === 0 ? 1 : undefined),
         flexShrink: 0,
-        height: chatLift === 1 ? 'max(8px, env(safe-area-inset-top))' : undefined,
-        minHeight: chatLift === 0 ? 0 : undefined,
+        height: embedded ? 0 : (chatLift === 1 ? 'max(8px, env(safe-area-inset-top))' : undefined),
+        minHeight: 0,
+        display: embedded ? 'none' : undefined,
         pointerEvents: 'none',
         background: 'transparent',
         position: 'relative',
       }}>
-        {chatLift === 0 && mediaPosts.length > 0 ? (
+        {!embedded && chatLift === 0 && mediaPosts.length > 0 ? (
           <div
             onTouchStart={e => e.stopPropagation()}
             onTouchMove={e => e.stopPropagation()}
@@ -18186,19 +18187,20 @@ function PublicLiveCommentsPanel({
         onTouchMove={e => e.stopPropagation()}
         onWheel={e => e.stopPropagation()}
         style={{
-          flex: chatLift === 0 ? '0 0 0px' : 1,
-          minHeight: chatLift === 0 ? 0 : 0,
-          height: chatLift === 0 ? 0 : undefined,
-          overflowY: chatLift === 0 ? 'hidden' : 'scroll',
-          display: chatLift === 0 ? 'none' : undefined,
+          flex: (embedded || chatLift !== 0) ? 1 : '0 0 0px',
+          minHeight: 0,
+          height: !embedded && chatLift === 0 ? 0 : undefined,
+          overflowY: !embedded && chatLift === 0 ? 'hidden' : 'scroll',
+          display: !embedded && chatLift === 0 ? 'none' : 'flex',
+          flexDirection: 'column',
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
-          padding: chatLift === 1 ? '60px 12px 6px' : '4px 12px 6px',
+          padding: embedded ? '12px 12px 6px' : (chatLift === 1 ? '60px 12px 6px' : '4px 12px 6px'),
           background: '#ffffff',
           touchAction: 'pan-y',
           pointerEvents: chatClosing ? 'none' : 'auto',
-          willChange: chatLift === 1 ? 'transform' : undefined,
-          animation: chatLift === 1 ? (chatClosing ? 'stooornaChatFall .28s cubic-bezier(.4,0,.9,.6) both' : 'stooornaChatRise .34s cubic-bezier(.22,1,.36,1) both') : undefined,
+          willChange: !embedded && chatLift === 1 ? 'transform' : undefined,
+          animation: embedded ? undefined : (chatLift === 1 ? (chatClosing ? 'stooornaChatFall .28s cubic-bezier(.4,0,.9,.6) both' : 'stooornaChatRise .34s cubic-bezier(.22,1,.36,1) both') : undefined),
         }}
       >
         <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
@@ -25405,7 +25407,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             );
           })()}
           {dockBubble.kind === 'chat' && (
-            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#071416' }}>
+            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
               <PublicLiveCommentsPanel embedded user={user as any} headerOpen={false} onToggleHeader={closeBubble} onBusyChange={setLiveChatBusy} />
             </div>
           )}
