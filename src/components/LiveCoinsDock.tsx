@@ -87,14 +87,11 @@ const DOTS_BOTTOM_OFFSET = 33; // px فوق حد الشريط السفلي
 const DOT_SIZE = 11; // حجم النقطتين (الصفراء والزرقاء نفس الحجم)
 void DOT_SIZE; // kept for compatibility (buttons now sized like the hand button)
 
-const PACKS: { id: string; coins: number; usd: number }[] = [
-  { id: 'p50', coins: 50, usd: 0.5 },
-  { id: 'p500', coins: 500, usd: 5 },
-  { id: 'p1500', coins: 1500, usd: 20 },
-  { id: 'p5500', coins: 5500, usd: 50 },
-  { id: 'p7000', coins: 7000, usd: 80 },
-  { id: 'p10000', coins: 10000, usd: 100 },
-];
+// Same pack list the server sells (COIN_PACKS in polar.ts). Prices are set in the Polar dashboard and shown on the checkout page.
+const PACKS: { id: string; coins: number; usd: number }[] = [50, 125, 400, 500, 1000, 1500, 3500, 10000, 15000].map(c => ({ id: `p${c}`, coins: c, usd: 0 }));
+
+// Free-amount purchases are not supported by the hosted checkout (fixed packs only).
+const CUSTOM_ENABLED = false;
 
 // ── Custom: عدد Coins حر ────────────────────────────────────────────────
 // السعر يتحسب بالسنت (أعداد صحيحة) عشان ما يصير أي خلل بالكسور: USD = coins × CUSTOM_CENTS_PER_COIN ÷ 100
@@ -211,21 +208,21 @@ const PAYPAL_URL = 'https://www.paypal.com/myaccount/transfer/homepage';
 
 // ── الدفع ───────────────────────────────────────────────────────────────
 // نقطة الربط ببوابة الدفع. لا ترسل بيانات البطاقة الخام لسيرفرك؛ استخدم توكن من البوابة.
-async function processVisaPayment(pack: { id: string; coins: number; usd: number }): Promise<{ ok: boolean; balance?: number; error?: string }> {
-  if (PAYMENT_DEMO_MODE) {
-    await new Promise(r => setTimeout(r, 1200));
-    return { ok: true };
-  }
+async function processVisaPayment(pack: { id: string; coins: number; usd: number }, userId?: string): Promise<{ ok: boolean; balance?: number; redirected?: boolean; error?: string }> {
+  if (!userId) return { ok: false, error: 'Please sign in first' };
+  if (!PACKS.some(p => p.coins === pack.coins)) return { ok: false, error: 'Choose one of the available packs' };
   try {
-    const r = await fetch('/api/coins/checkout', {
+    const r = await fetch('/api/polar/checkout', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ packId: pack.id, coins: pack.coins, amountUsd: pack.usd, amountCents: Math.round(pack.usd * 100), method: 'visa' }),
+      body: JSON.stringify({ userId, coins: pack.coins }),
     });
-    if (!r.ok) return { ok: false, error: 'Payment failed' };
-    const d = await r.json().catch(() => ({})) as { balance?: number };
-    return { ok: true, balance: typeof d.balance === 'number' ? d.balance : undefined };
+    const d = await r.json().catch(() => ({})) as { url?: string };
+    if (!r.ok || !d.url) return { ok: false, error: 'Payment is not available right now' };
+    try { localStorage.setItem(`stooorna_polar_pending_${userId}`, String(Date.now())); } catch { /* ignore */ }
+    window.location.assign(d.url);
+    return { ok: true, redirected: true };
   } catch {
     return { ok: false, error: 'Network error' };
   }
@@ -516,6 +513,39 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
   const canBuy = !isCustom || customValid;
 
   useEffect(() => { setBalance(readBalance(uid)); }, [uid]);
+
+  // After a hosted checkout: pull the balance credited by the server (payment webhook) into this device.
+  useEffect(() => {
+    if (!uid) return;
+    const key = `stooorna_polar_pending_${uid}`;
+    let timer = 0;
+    let stopped = false;
+    const check = async () => {
+      if (stopped) return;
+      let startedAt = 0;
+      try { startedAt = Number(localStorage.getItem(key) || 0); } catch { /* ignore */ }
+      if (!startedAt || Date.now() - startedAt > 30 * 60 * 1000) {
+        try { localStorage.removeItem(key); } catch { /* ignore */ }
+        return;
+      }
+      try {
+        const r = await fetch(`/api/gifts/balance?userId=${encodeURIComponent(uid)}`, { credentials: 'include', cache: 'no-store' });
+        const d = (await r.json().catch(() => ({}))) as { balance?: number };
+        const srv = Math.floor(Number(d?.balance) || 0);
+        if (srv > readBalance(uid)) {
+          writeBalance(uid, srv);
+          setBalance(srv);
+          try { localStorage.removeItem(key); } catch { /* ignore */ }
+          setPaidToast(true);
+          window.setTimeout(() => setPaidToast(false), 2200);
+          return;
+        }
+      } catch { /* ignore */ }
+      timer = window.setTimeout(() => { void check(); }, 4000);
+    };
+    void check();
+    return () => { stopped = true; window.clearTimeout(timer); };
+  }, [uid]);
 
   useEffect(() => {
     if (!uid) return;
@@ -901,15 +931,26 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     return '';
   }
 
+  async function startCheckout() {
+    if (paying || !canBuy) return;
+    setPayError('');
+    setPaying(true);
+    const res = await processVisaPayment(pack, uid);
+    if (!res.ok) { setPaying(false); setPayError(res.error || 'Payment failed'); return; }
+    // The browser is now moving to the hosted checkout page; coins are added by the server after payment.
+    window.setTimeout(() => setPaying(false), 8000);
+  }
+
   async function pay() {
     if (paying) return;
     const err = validateCard();
     if (err) { setPayError(err); return; }
     setPayError('');
     setPaying(true);
-    const res = await processVisaPayment(pack);
+    const res = await processVisaPayment(pack, uid);
     setPaying(false);
     if (!res.ok) { setPayError(res.error || 'فشل الدفع'); return; }
+    if (res.redirected) return;
     const next = typeof res.balance === 'number' ? res.balance : readBalance(uid) + pack.coins;
     writeBalance(uid, next);
     setBalance(next);
@@ -989,11 +1030,10 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
                   <CoinIcon size={22} />
                   <span style={{ fontWeight: 800, fontSize: 17 }}>{fmtCoins(p.coins)}</span>
                 </span>
-                <span style={{ color: 'rgba(255,255,255,0.55)', fontWeight: 700, fontSize: 12.5 }}>{fmtUsd(p.usd)}</span>
               </button>
             );
           })}
-          {/* Custom: يكتب عدد Coins اللي يبيه والسعر يطلع بالضبط */}
+          {CUSTOM_ENABLED ? (
           <div
             role="button" tabIndex={0} onClick={() => setPackId(CUSTOM_ID)}
             onKeyDown={e => { if (e.key === 'Enter') setPackId(CUSTOM_ID); }}
@@ -1026,8 +1066,9 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
               <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 700, fontSize: 12.5 }}>اكتب أي عدد تبيه</span>
             )}
           </div>
+        ) : null}
         </div>
-        {isCustom ? (
+        {CUSTOM_ENABLED && isCustom ? (
           <p style={{
             margin: '8px 2px 0', textAlign: 'center', fontSize: 12, fontWeight: 700,
             color: customText && !customValid ? '#f87171' : 'rgba(255,255,255,0.45)',
@@ -1035,7 +1076,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
             {fmtCoins(CUSTOM_MIN_COINS)} – {fmtCoins(CUSTOM_MAX_COINS)} Coins · 1 Coin = {fmtUsd(CUSTOM_CENTS_PER_COIN / 100)}
           </p>
         ) : null}
-        <button type="button" disabled={!canBuy} onClick={() => { if (!canBuy) return; resetCard(); setPayOpen(true); }}
+        <button type="button" disabled={!canBuy || paying} onClick={() => { void startCheckout(); }}
           style={{
             width: '100%', marginTop: 14, padding: '14px 10px', borderRadius: 14, border: 'none',
             cursor: canBuy ? 'pointer' : 'default', opacity: canBuy ? 1 : 0.5,
@@ -1043,9 +1084,10 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>
           {canBuy
-            ? <>Get <CoinIcon size={20} /> {fmtCoins(pack.coins)} ({fmtUsd(pack.usd)})</>
+            ? paying ? <>Opening checkout…</> : <>Get <CoinIcon size={20} /> {fmtCoins(pack.coins)}</>
             : <>Enter Coins amount</>}
         </button>
+        {payError ? <p style={{ margin: '10px 0 0', color: '#f87171', fontSize: 13, fontWeight: 700, textAlign: 'center' }}>{payError}</p> : null}
       </Sheet>
 
       {/* مربع الدفع بالفيزا */}
@@ -1378,9 +1420,10 @@ export function WalletSheet({ open, onClose, userId }: { open: boolean; onClose:
     if (err) { setPayError(err); return; }
     setPayError('');
     setPaying(true);
-    const res = await processVisaPayment({ id: CUSTOM_ID, coins, usd: cents / 100 });
+    const res = await processVisaPayment({ id: CUSTOM_ID, coins, usd: cents / 100 }, uid);
     setPaying(false);
     if (!res.ok) { setPayError(res.error || 'فشل الدفع'); return; }
+    if (res.redirected) return;
     const next = typeof res.balance === 'number' ? res.balance : readBalance(uid) + coins;
     writeBalance(uid, next);          // نفس رصيد مربع الهدايا داخل البث
     setBalance(next);
