@@ -1037,6 +1037,27 @@ app.post("/api/gifts/grant", (req, res) => {
 
 
 /** باتش الدعم: خصم مؤكد من رصيد المرسل مرة واحدة لكل dedupeKey. */
+
+/** أرباح الدعم الخاصة للأونر: نصف كل دعم يُضاف مرة واحدة ويظهر في الإعدادات. */
+app.post("/api/owner/support-profit", (req, res) => {
+  const body = (req.body || {}) as Record<string, unknown>;
+  const total = Math.max(0, Math.floor(Number(body.total) || 0));
+  const half = Math.max(0, Math.floor(Number(body.half) || Math.floor(total / 2)));
+  const key = `ownerhalf_${String(body.dedupeKey || `${body.fromId}_${body.toUserId}_${total}`).slice(0, 160)}`;
+  const mem = giftProfitMem();
+  if (half > 0 && !mem.done.has(key)) {
+    mem.done.add(key);
+    mem.appCoins += half;
+    giftProfitTouch();
+  }
+  res.json({ ok: true, coins: mem.appCoins, usd: mem.appCoins / 100, credited: half });
+});
+app.get("/api/owner/support-profit", (_req, res) => {
+  const mem = giftProfitMem();
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ ok: true, coins: mem.appCoins, usd: mem.appCoins / 100 });
+});
+
 app.post("/api/support/spend", (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
   const userId = String(body.userId || "").slice(0, 80);

@@ -14754,6 +14754,9 @@ type PublicLiveComment = {
   createdAt: number;
   /** how many times the author edited the text (max LIVE_CHAT_MAX_EDITS) */
   editCount?: number;
+  replyToId?: string | null;
+  replyToName?: string | null;
+  replyToText?: string | null;
 };
 
 function loadPublicLiveComments(): PublicLiveComment[] {
@@ -14775,6 +14778,9 @@ function loadPublicLiveComments(): PublicLiveComment[] {
         likes: Array.isArray(x.likes) ? x.likes.map(String) : [],
         createdAt: Number(x.createdAt) || Date.now(),
         editCount: Math.max(0, Number(x.editCount) || 0),
+        replyToId: x.replyToId ? String(x.replyToId) : null,
+        replyToName: x.replyToName ? String(x.replyToName) : null,
+        replyToText: x.replyToText ? String(x.replyToText).slice(0, 120) : null,
       }))
       .slice(-400);
   } catch {
@@ -14968,9 +14974,32 @@ function mergeLiveChatLists(a: PublicLiveComment[], b: PublicLiveComment[]): Pub
       voiceDuration: gone ? null : (row.voiceDuration ?? prev.voiceDuration ?? null),
       // IMPORTANT: null from tombstone must replace old URL (|| would keep the video visible)
       imageUrl: gone ? null : (row.imageUrl || prev.imageUrl || null),
+      replyToId: row.replyToId || prev.replyToId || null,
+      replyToName: row.replyToName || prev.replyToName || null,
+      replyToText: row.replyToText || prev.replyToText || null,
     });
   }
   return [...map.values()].sort((x, y) => x.createdAt - y.createdAt).slice(-400);
+}
+
+function orderLiveChatReplies(list: PublicLiveComment[]): PublicLiveComment[] {
+  const ids = new Set(list.map(c => c.id));
+  const kids = new Map<string, PublicLiveComment[]>();
+  const roots: PublicLiveComment[] = [];
+  for (const c of list) {
+    if (c.replyToId && ids.has(c.replyToId)) {
+      const arr = kids.get(c.replyToId) || [];
+      arr.push(c);
+      kids.set(c.replyToId, arr);
+    } else roots.push(c);
+  }
+  const out: PublicLiveComment[] = [];
+  const walk = (c: PublicLiveComment) => {
+    out.push(c);
+    for (const k of kids.get(c.id) || []) walk(k);
+  };
+  for (const r of roots) walk(r);
+  return out;
 }
 
 async function fetchLiveChatFromServer(): Promise<PublicLiveComment[] | null> {
@@ -17176,6 +17205,9 @@ function PublicLiveCommentsPanel({
 }) {
   const [comments, setComments] = useState<PublicLiveComment[]>(() => loadPublicLiveComments());
   const [text, setText] = useState('');
+  const [replyTarget, setReplyTarget] = useState<{ id: string; name: string; text: string } | null>(null);
+  const replyTargetRef = useRef<{ id: string; name: string; text: string } | null>(null);
+  const replyDragRef = useRef<{ id: string; x: number; dx: number } | null>(null);
   const [, setEmojiOpen] = useState(false);
   const [composerDock, setComposerDock] = useState<'none' | 'emoji' | 'gallery' | 'voice'>('none');
   const [plusOpen, setPlusOpen] = useState(false);   // "+" bubble that holds Photos / Voice / Emoji / Video AI
@@ -17526,6 +17558,7 @@ function PublicLiveCommentsPanel({
     const mediaText = imageUrl
       ? (trimmed || (looksVideo ? LIVE_VIDEO_CAPTION : LIVE_PHOTO_CAPTION))
       : (trimmed || (voice?.url ? '🎤' : ''));
+    const reply = replyTargetRef.current;
     const row: PublicLiveComment = {
       id: `plc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       userId: myId,
@@ -17538,8 +17571,16 @@ function PublicLiveCommentsPanel({
       voiceDuration: voice?.duration ?? null,
       likes: [],
       createdAt: Date.now(),
+      replyToId: reply?.id || null,
+      replyToName: reply?.name || null,
+      replyToText: reply?.text || null,
     };
-    const next = [...loadPublicLiveComments(), row];
+    const base = loadPublicLiveComments();
+    const next = reply?.id
+      ? (() => { const i = base.findIndex(x => x.id === reply.id); const copy = base.slice(); copy.splice(i >= 0 ? i + 1 : copy.length, 0, row); return copy; })()
+      : [...base, row];
+    replyTargetRef.current = null;
+    setReplyTarget(null);
     savePublicLiveComments(next);
     setComments(next);
     setText('');
@@ -18149,7 +18190,7 @@ function PublicLiveCommentsPanel({
             كن أول من يكتب تعليقاً مباشراً
           </p>
         )}
-        {groupLiveChatRows(comments.filter(c => {
+        {groupLiveChatRows(orderLiveChatReplies(comments.filter(c => {
           if (/Join Live Chat/i.test(c.text || '')) return false;
           if (isLiveMediaPost(c)) return false;
           if (parseMediaComment(c.text)) return false;
@@ -18179,11 +18220,38 @@ function PublicLiveCommentsPanel({
           return (
             <div
               key={c.id}
-              onPointerDown={canEdit ? (e => beginPress(c.id, e)) : undefined}
-              onPointerMove={canEdit ? movePress : undefined}
-              onPointerUp={canEdit ? clearPress : undefined}
-              onPointerCancel={canEdit ? clearPress : undefined}
-              onPointerLeave={canEdit ? clearPress : undefined}
+              onPointerDown={e => {
+                replyDragRef.current = { id: c.id, x: e.clientX, dx: 0 };
+                if (canEdit) beginPress(c.id, e);
+              }}
+              onPointerMove={e => {
+                const d = replyDragRef.current;
+                if (d && d.id === c.id) {
+                  const dx = e.clientX - d.x;
+                  if (dx > 8) {
+                    d.dx = Math.max(0, Math.min(78, dx));
+                    (e.currentTarget as HTMLDivElement).style.transform = `translateX(${d.dx}px)`;
+                    return;
+                  }
+                }
+                if (canEdit) movePress(e);
+              }}
+              onPointerUp={e => {
+                const d = replyDragRef.current;
+                replyDragRef.current = null;
+                (e.currentTarget as HTMLDivElement).style.transform = 'translateX(0px)';
+                if (d && d.id === c.id && d.dx > 46) {
+                  const target = { id: c.id, name: displayName(c), text: String(c.text || '').slice(0, 80) };
+                  replyTargetRef.current = target;
+                  setReplyTarget(target);
+                  window.setTimeout(() => chatInputRef.current?.focus(), 30);
+                  if (canEdit) clearPress(e);
+                  return;
+                }
+                if (canEdit) clearPress(e);
+              }}
+              onPointerCancel={e => { replyDragRef.current = null; if (canEdit) clearPress(e); }}
+              onPointerLeave={e => { if (canEdit) clearPress(e); }}
               onContextMenu={canEdit ? (e => e.preventDefault()) : undefined}
               style={{
               display: 'flex',
@@ -18191,6 +18259,8 @@ function PublicLiveCommentsPanel({
               gap: 10,
               padding: '10px 2px',
               direction: 'ltr',
+              transition: 'transform 0.16s ease',
+              touchAction: 'pan-y',
               ...(canEdit ? { WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' } as React.CSSProperties : null),
             }}>
               <button
@@ -18211,6 +18281,11 @@ function PublicLiveCommentsPanel({
                 />
               </button>
               <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
+                {c.replyToName ? (
+                  <p style={{ margin: '0 0 3px', fontSize: '0.68rem', color: '#0f766e', fontWeight: 700 }}>
+                    رد على {c.replyToName}{c.replyToText ? ` · ${c.replyToText}` : ''}
+                  </p>
+                ) : null}
                 <p style={{ margin: 0, fontSize: '0.84rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
                   <span style={{ fontWeight: 800, color: (c.userId === LIVE_CHAT_BOT_ID || c.name === LIVE_CHAT_BOT_NAME) ? LIVE_CHAT_BOT_COLOR : '#111', marginRight: 6 }}>{displayName(c)}</span>
                   {c.voiceUrl || c.text === '🎤' || bigEmoji || round || loc ? null : (
@@ -18558,6 +18633,14 @@ function PublicLiveCommentsPanel({
                 })()}
               </div>
             ) : null}
+            {replyTarget ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, padding: '6px 8px', borderRadius: 10, background: '#f0fdfa', border: '1px solid #99f6e4' }}>
+                <span style={{ flex: 1, minWidth: 0, color: '#0f766e', fontSize: '0.72rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  رد على {replyTarget.name}
+                </span>
+                <button type="button" onClick={() => { replyTargetRef.current = null; setReplyTarget(null); }} style={{ border: 'none', background: 'transparent', color: '#0f766e', fontWeight: 800, cursor: 'pointer' }}>×</button>
+              </div>
+            ) : null}
             <input
               ref={chatInputRef}
               value={text}
@@ -18577,7 +18660,7 @@ function PublicLiveCommentsPanel({
                   else pushComment(text, pendingImage);
                 }
               }}
-              placeholder={(chatLift === 0 && liveTypers.length > 0 && !text.trim()) ? '' : (myUsername ? `Comment as ${String(myUsername).replace(/^@/, '')}…` : 'Comment…')}
+              placeholder={(chatLift === 0 && liveTypers.length > 0 && !text.trim()) ? '' : (replyTarget ? `Reply to ${replyTarget.name}…` : (myUsername ? `Comment as ${String(myUsername).replace(/^@/, '')}…` : 'Comment…'))}
               onFocus={() => {
                 chatInputFocused.current = true;
                 setComposerFocused(true);

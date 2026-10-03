@@ -12,6 +12,7 @@ import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
 import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, hydrateVipDirectory, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown, ownerGrantEightMics, getVipFeats } from '@/lib/vipPatch';
 import { getAppProfitsSnapshot, syncAppProfitsFromServer, syncEarningsFromServer, readUserEarnings, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
+import { readOwnerSupportProfit, syncOwnerSupportProfit } from '@/lib/ownerSupportProfitPatch';
 // VIP frame cancelled — avatar renders without frame
 // import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
@@ -6465,11 +6466,20 @@ export default function SettingsPage() {
   const [vipOn, setVipOn] = useState(false);
   const [appProfits, setAppProfits] = useState(() => getAppProfitsSnapshot());
   useEffect(() => {
-    const syncLocal = () => setAppProfits(getAppProfitsSnapshot());
+    const syncLocal = () => {
+      const base = getAppProfitsSnapshot();
+      const own = readOwnerSupportProfit();
+      setAppProfits({ coins: Math.max(Number(base.coins) || 0, own.coins), usd: Math.max(Number(base.usd) || 0, own.usd) });
+    };
     const syncServer = () => {
-      void syncAppProfitsFromServer().then((s) => setAppProfits(s));
+      void syncAppProfitsFromServer().then((snap) => {
+        const own = readOwnerSupportProfit();
+        setAppProfits({ coins: Math.max(Number(snap?.coins) || 0, own.coins), usd: Math.max(Number(snap?.usd) || 0, own.usd) });
+      });
+      void syncOwnerSupportProfit().then(syncLocal);
     };
     window.addEventListener('stooorna:app-profits', syncLocal);
+    window.addEventListener('stooorna:owner-support-profit', syncLocal);
     window.addEventListener('storage', syncLocal);
     // Immediate + interval + when tab becomes visible (other phone sent gifts)
     syncServer();
@@ -6480,6 +6490,7 @@ export default function SettingsPage() {
     window.addEventListener('focus', onFocus);
     return () => {
       window.removeEventListener('stooorna:app-profits', syncLocal);
+      window.removeEventListener('stooorna:owner-support-profit', syncLocal);
       window.removeEventListener('storage', syncLocal);
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVis);
@@ -7964,7 +7975,7 @@ export default function SettingsPage() {
                     </div>
                     <p style={{ margin: '0 0 12px', color: 'rgba(200,220,220,0.7)', fontSize: '0.78rem' }}>
                       Coins · {Number(appProfits.coins || 0).toLocaleString('en-US')}
-                      <span style={{ color: 'rgba(150,180,180,0.5)', marginLeft: 8 }}>(إيرادات التطبيق من الدعم 50%)</span>
+                      <span style={{ color: 'rgba(150,180,180,0.5)', marginLeft: 8 }}>(نصف الدعم وصل للأونر عبر السيرفر)</span>
                     </p>
                     {ownerSupportEarn > 0 ? (
                       <p style={{ margin: '0 0 10px', color: 'rgba(255,255,255,0.55)', fontSize: '0.78rem', fontWeight: 700 }}>
