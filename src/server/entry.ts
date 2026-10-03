@@ -1,4 +1,4 @@
-import express, { type Express, type NextFunction, type Request, type Response } from "express";
+import express, { type Express, type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, extname, join } from "node:path";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -9,6 +9,8 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 // import() rejecting when the export is missing.
 import * as dbClientModule from "./db/client.js";
 import { COIN_PACKS, createCheckout, handlePolarEvent, polarConfigured, verifyPolarSignature } from "./polar.js";
+import { createSession, makeLimiter, markSeen, normId, pickKey, recordPaid, seenRecently, takePaid } from "./gift-guard.js";
+import { mapEarningsAdapter, privateAssetsGuard, registerWithdrawalRoutes } from "./withdrawals.js";
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -376,6 +378,8 @@ try {
   console.error('[startup] Could not create ASSETS_DIR', ASSETS_DIR, e);
 }
 const staticOpts = { maxAge: '30d', fallthrough: true as const, etag: true, lastModified: true };
+// يحجب الوصول العام لملفات حساسة داخل ASSETS_DIR (سجل الأرباح + مجلد _private) — يجب أن يسبق express.static
+for (const p of ['/airo-assets', '/assets', '/uploads', '/media']) app.use(p, privateAssetsGuard());
 app.use('/airo-assets', express.static(ASSETS_DIR, staticOpts));
 // Common alternate prefixes used by older clients / partial uploads
 app.use('/assets', express.static(ASSETS_DIR, staticOpts));
@@ -712,7 +716,7 @@ app.get("/api/room/signal", (req, res) => {
   const list = (liveSignalMem().get(roomId) || []).filter((m) => m.at > since).slice(-80);
   res.json({ messages: list, signals: list });
 });
-app.post("/api/room/signal", (req, res) => {
+app.post("/api/room/signal", async (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
   const roomId = String(body.roomId || body.channel || "");
   if (!roomId) return res.status(400).json({ error: "roomId required" });
@@ -723,8 +727,11 @@ app.post("/api/room/signal", (req, res) => {
   list.push({ at, payload: { ...payload, at } });
   mem.set(roomId, list.slice(-160));
   const fromId = String(body.fromId || "").slice(0, 80);
+  // الرصيد يُرجَع فقط لصاحبه المسجّل (كان يُكشف لأي أحد بمعرفة الـ id)
+  const su = fromId ? await session.user(req).catch(() => null) : null;
   const pmemOut = giftProfitMem();
-  res.json({ ok: true, at, balance: fromId ? (pmemOut.balances.get(fromId) || 0) : undefined });
+  const ownBal = su && session.owns(su, fromId) ? [...pmemOut.balances].filter(([k]) => session.keysOf(su).includes(normId(k))).reduce((m, [, n]) => Math.max(m, n), 0) : undefined;
+  res.json({ ok: true, at, balance: ownBal });
 });
 
 
@@ -899,150 +906,157 @@ const creditRecipientEarnings = (toUserId: string, amount: number) => {
 };
 
 
-app.get("/api/gifts/profits", (_req, res) => {
-  const mem = giftProfitMem();
+// ═══════════════════════════ اقتصاد الهدايا — نسخة محميّة ═══════════════════════════
+// القاعدة: الهوية من الجلسة فقط، والأرباح لا تُنشأ إلا مقابل خصم فعلي من رصيد السيرفر.
+const session = createSession(users_me_get_148 as unknown as RequestHandler, OWNER_IDS);
+const allow = makeLimiter();
+const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });
+const needUser = async (req: Request, res: Response) => {
   res.setHeader("Cache-Control", "no-store");
+  const u = await session.user(req);
+  if (!u) { deny(res, 401, "unauthorized"); return null; }
+  return u;
+};
+const needAdmin = async (req: Request, res: Response) => {
+  const u = await needUser(req, res);
+  if (!u) return null;
+  if (!session.isAdmin(u)) { deny(res, 403, "forbidden"); return null; }
+  return u;
+};
+const guarded = (fn: (req: Request, res: Response) => Promise<unknown> | unknown): RequestHandler => (req, res) => {
+  Promise.resolve(fn(req, res)).catch((e) => {
+    console.error("[gifts] handler error:", e instanceof Error ? e.message : "unknown");
+    if (!res.headersSent) deny(res, 500, "server_error");
+  });
+};
+const maxOf = (m: Map<string, number>, keys: string[]) => {
+  let v = 0;
+  for (const [k, n] of m) if (keys.includes(normId(k))) v = Math.max(v, n);
+  return v;
+};
+
+app.get("/api/gifts/profits", guarded(async (req, res) => {
+  if (!(await needAdmin(req, res))) return;
+  const mem = giftProfitMem();
   res.json({ ok: true, coins: mem.appCoins, usd: mem.appCoins / 100 });
-});
+}));
 
-app.get("/api/gifts/earnings", (req, res) => {
-  const userId = String(req.query.userId || "").slice(0, 80);
+function readOwn(u: NonNullable<Awaited<ReturnType<typeof session.user>>>) {
   const mem = giftProfitMem();
-  res.setHeader("Cache-Control", "no-store");
-  let coins = 0;
-  let balance = 0;
-  if (userId) {
-    const candidates = [userId];
-    const low = userId.toLowerCase();
-    if (OWNER_IDS.has(low) || low.includes("stooorna")) {
-      candidates.push("stooorna", "Stooorna", "stooorna@mail.com");
-    }
-    for (const c of candidates) {
-      coins = Math.max(coins, mem.earnings.get(c) || 0);
-      balance = Math.max(balance, mem.balances.get(c) || 0);
-    }
-  }
-  res.json({ ok: true, userId, coins, balance, usd: coins / 100 });
-});
+  const keys = session.keysOf(u);
+  return { coins: maxOf(mem.earnings, keys), balance: maxOf(mem.balances, keys) };
+}
+app.get("/api/gifts/earnings", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  const asked = String(req.query.userId || "");
+  if (asked && !session.owns(u, asked)) return deny(res, 403, "forbidden");
+  const o = readOwn(u);
+  res.json({ ok: true, userId: u.id, coins: o.coins, balance: o.balance, usd: o.coins / 100 });
+}));
+app.get("/api/gifts/balance", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  const asked = String(req.query.userId || "");
+  if (asked && !session.owns(u, asked)) return deny(res, 403, "forbidden");
+  const o = readOwn(u);
+  res.json({ ok: true, userId: u.id, balance: o.balance, earnings: o.coins });
+}));
+// أسماء بديلة يستدعيها الـ Wallet في وضع الدفع الحقيقي
+app.get("/api/coins/balance", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  res.json({ ok: true, balance: readOwn(u).balance });
+}));
+app.get("/api/coins/earnings", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  res.json({ ok: true, earnings: readOwn(u).coins });
+}));
 
-app.post("/api/gifts/profit-split", (req, res) => {
+/** كان يسمح لأي زائر بإنشاء أرباح لأي حساب. السيرفر يقسم 50/50 بنفسه عند الخصم، فلا حاجة له من العميل. */
+app.post("/api/gifts/profit-split", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  if (!session.isAdmin(u)) return res.json({ ok: true, applied: false, deprecated: true });
   const body = (req.body || {}) as Record<string, unknown>;
   const toUserId = String(body.toUserId || "").slice(0, 80);
   const total = Math.max(0, Math.floor(Number(body.total) || 0));
-  const dedupeKey = String(body.dedupeKey || body.id || "").slice(0, 180);
-  if (!toUserId || total <= 0) return res.status(400).json({ error: "toUserId and total required" });
+  const key = String(body.dedupeKey || "").slice(0, 180);
+  if (!toUserId || total <= 0 || !key) return deny(res, 400, "toUserId, total, dedupeKey required");
   const mem = giftProfitMem();
-  const key = dedupeKey || `manual_${toUserId}_${total}_${Date.now()}`;
-  if (mem.done.has(key)) {
-    return res.json({
-      ok: true,
-      applied: false,
-      appCoins: mem.appCoins,
-      recipientCoins: mem.earnings.get(toUserId) || 0,
-    });
-  }
-  mem.done.add(key);
-  if (mem.done.size > 5000) {
-    const arr = [...mem.done];
-    mem.done = new Set(arr.slice(-2500));
-  }
+  const dk = `admin_split_${key}`;
+  if (mem.done.has(dk)) return res.json({ ok: true, applied: false });
+  mem.done.add(dk);
   const toApp = Math.floor(total / 2);
-  const toRecipient = total - toApp;
   mem.appCoins += toApp;
-  creditRecipientEarnings(toUserId, toRecipient);
+  creditRecipientEarnings(toUserId, total - toApp);
   giftProfitTouch();
-  res.json({
-    ok: true,
-    applied: true,
-    toApp,
-    toRecipient,
-    appCoins: mem.appCoins,
-    recipientCoins: mem.earnings.get(toUserId) || 0,
-  });
-});
+  res.json({ ok: true, applied: true, toApp, toRecipient: total - toApp });
+}));
 
-/** Convert support earnings → spendable gift Coins (server source of truth for all devices). */
-app.post("/api/gifts/convert-earnings", (req, res) => {
+/** تحويل أرباح الدعم → رصيد Coins للمستخدم نفسه فقط. */
+const convertOwnEarnings = guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  if (!allow(`conv:${u.id}`, 10, 60_000)) return deny(res, 429, "rate_limited");
   const body = (req.body || {}) as Record<string, unknown>;
-  const userId = String(body.userId || "").slice(0, 80);
+  const mem = giftProfitMem();
+  const keys = session.keysOf(u);
+  const ek = pickKey(mem.earnings, u, keys);
+  const earn = mem.earnings.get(ek) || 0;
   let amount = Math.max(0, Math.floor(Number(body.amount) || 0));
-  if (!userId) return res.status(400).json({ error: "userId required" });
-  const mem = giftProfitMem();
-  const earn = mem.earnings.get(userId) || 0;
   if (amount <= 0) amount = earn;
-  if (amount <= 0) return res.status(400).json({ error: "no earnings" });
+  if (amount <= 0) return deny(res, 400, "no earnings");
   if (amount > earn) amount = earn;
-  mem.earnings.set(userId, earn - amount);
-  mem.balances.set(userId, (mem.balances.get(userId) || 0) + amount);
+  const bk = pickKey(mem.balances, u, keys);
+  mem.earnings.set(ek, earn - amount);
+  mem.balances.set(bk, (mem.balances.get(bk) || 0) + amount);
   giftProfitTouch();
-  res.json({
-    ok: true,
-    converted: amount,
-    earnings: mem.earnings.get(userId) || 0,
-    balance: mem.balances.get(userId) || 0,
-  });
+  res.json({ ok: true, converted: amount, earnings: mem.earnings.get(ek) || 0, balance: mem.balances.get(bk) || 0 });
 });
+app.post("/api/gifts/convert-earnings", convertOwnEarnings);
+app.post("/api/support/convert", convertOwnEarnings);
 
-/** Sync / set spendable gift balance (deposit demo or after local top-up). */
-app.post("/api/gifts/balance", (req, res) => {
+/** كان العميل يضبط رصيده بنفسه. الآن: الرصيد يتغير فقط من الخصم/الويب هوك/الأدمن — طلب العميل يُتجاهل. */
+app.post("/api/gifts/balance", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  const mem = giftProfitMem();
   const body = (req.body || {}) as Record<string, unknown>;
-  const userId = String(body.userId || "").slice(0, 80);
-  if (!userId) return res.status(400).json({ error: "userId required" });
-  const mem = giftProfitMem();
-  if (body.delta != null) {
-    const delta = Math.floor(Number(body.delta) || 0);
-    mem.balances.set(userId, Math.max(0, (mem.balances.get(userId) || 0) + delta));
-  } else if (body.balance != null) {
-    const b = Math.max(0, Math.floor(Number(body.balance) || 0));
-    const cur = mem.balances.get(userId) || 0;
-    // لا تُرجع رصيداً أعلى بعد خصم دعم حديث (يمنع بقاء الـ 10,000)
-    const spentRecently = [...mem.done].some((k) => k.startsWith(`spend_${userId}_`) && Date.now() - Number(k.split("_").pop()) < 45000);
-    if (spentRecently && b > cur) {
-      /* keep deducted balance */
-    } else {
-      mem.balances.set(userId, b);
-    }
-  } else if (body.add != null) {
-    const add = Math.floor(Number(body.add) || 0);
-    mem.balances.set(userId, Math.max(0, (mem.balances.get(userId) || 0) + add));
+  if (session.isAdmin(u) && body.userId && (body.delta != null || body.add != null || body.balance != null)) {
+    const target = String(body.userId).slice(0, 80);
+    if (body.balance != null) mem.balances.set(target, Math.max(0, Math.floor(Number(body.balance) || 0)));
+    else mem.balances.set(target, Math.max(0, (mem.balances.get(target) || 0) + Math.floor(Number(body.delta ?? body.add) || 0)));
+    giftProfitTouch();
   }
-  giftProfitTouch();
-  res.json({
-    ok: true,
-    balance: mem.balances.get(userId) || 0,
-    earnings: mem.earnings.get(userId) || 0,
-  });
-});
+  const o = readOwn(u);
+  res.json({ ok: true, balance: o.balance, earnings: o.coins });
+}));
 
-app.get("/api/gifts/balance", (req, res) => {
-  const userId = String(req.query.userId || "").slice(0, 80);
-  const mem = giftProfitMem();
-  res.setHeader("Cache-Control", "no-store");
-  res.json({ ok: true, userId, balance: userId ? (mem.balances.get(userId) || 0) : 0, earnings: userId ? (mem.earnings.get(userId) || 0) : 0 });
-});
-
-// ── شراء Coins عبر Polar: ينشئ رابط دفع للباقة ويرجّعه، والرصيد يُضاف من الويب هوك فقط بعد الدفع ──
+// ── شراء Coins عبر Polar: الرابط يُربط بالمستخدم المسجّل (وليس userId من العميل)، والرصيد يُضاف من الويب هوك فقط ──
 app.get("/api/polar/packs", (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.json({ ok: true, packs: COIN_PACKS });
 });
-app.post("/api/polar/checkout", async (req, res) => {
-  if (!polarConfigured()) return res.status(503).json({ ok: false, error: "payments not configured" });
-  const body = (req.body || {}) as Record<string, unknown>;
-  const userId = String(body.userId || "").slice(0, 80);
-  const coins = Math.floor(Number(body.coins) || 0);
-  if (!userId) return res.status(400).json({ ok: false, error: "userId required" });
-  if (!COIN_PACKS.includes(coins)) return res.status(400).json({ ok: false, error: "invalid pack" });
+app.post("/api/polar/checkout", guarded(async (req, res) => {
+  if (!polarConfigured()) return deny(res, 503, "payments not configured");
+  const u = await needUser(req, res);
+  if (!u) return;
+  if (!allow(`co:${u.id}`, 10, 10 * 60_000)) return deny(res, 429, "rate_limited");
+  const coins = Math.floor(Number((req.body || {}).coins) || 0);
+  if (!COIN_PACKS.includes(coins)) return deny(res, 400, "invalid pack");
   const origin = process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get("host")}`;
   try {
-    const c = await createCheckout({ coins, userId, successUrl: `${origin}/?coins_paid=1` });
+    const c = await createCheckout({ coins, userId: u.id, successUrl: `${origin}/?coins_paid=1` });
     res.json({ ok: true, url: c.url });
   } catch (e) {
     console.error("[polar] checkout failed", e);
-    res.status(502).json({ ok: false, error: "checkout failed" });
+    deny(res, 502, "checkout failed");
   }
-});
+}));
 
+// ── منح Coins: للأدمن فقط (كانت مفتوحة لأي زائر) ──
 function pushOwnerGrant(userId: string, coins: number, grantId?: string) {
   const uid = String(userId || "").slice(0, 80);
   const n = Math.floor(Number(coins) || 0);
@@ -1059,112 +1073,120 @@ function pushOwnerGrant(userId: string, coins: number, grantId?: string) {
   giftProfitTouch();
   return { ok: true as const, id, balance: mem.balances.get(uid) || 0, coins: n, text: "تم اعطاؤك دعم من التطبيق" };
 }
-function listOwnerGrants(userId: string) {
-  const uid = String(userId || "").slice(0, 80);
-  const mem = giftProfitMem();
-  return (mem.grants || []).filter((g) => !uid || g.userId === uid).slice(-50);
-}
-app.post("/api/owner/grant-coins", (req, res) => {
+const grantHandler = guarded(async (req, res) => {
+  const a = await needAdmin(req, res);
+  if (!a) return;
   const body = (req.body || {}) as Record<string, unknown>;
   const out = pushOwnerGrant(String(body.userId || ""), Number(body.coins), body.grantId ? String(body.grantId) : undefined);
+  console.log("[grant]", a.id, "→", String(body.userId || ""), Number(body.coins));
   if (!out.ok) return res.status(400).json(out);
   res.json(out);
 });
-app.get("/api/owner/grant-coins", (req, res) => {
-  res.setHeader("Cache-Control", "no-store");
-  res.json({ ok: true, grants: listOwnerGrants(String(req.query.userId || "")) });
-});
-app.post("/api/coins/grant", (req, res) => {
-  const body = (req.body || {}) as Record<string, unknown>;
-  const out = pushOwnerGrant(String(body.userId || ""), Number(body.coins), body.grantId ? String(body.grantId) : undefined);
-  if (!out.ok) return res.status(400).json(out);
-  res.json(out);
-});
-app.get("/api/coins/grants", (req, res) => {
-  res.setHeader("Cache-Control", "no-store");
-  res.json({ ok: true, grants: listOwnerGrants(String(req.query.userId || "")) });
-});
-app.post("/api/gifts/grant", (req, res) => {
-  const body = (req.body || {}) as Record<string, unknown>;
-  const out = pushOwnerGrant(String(body.userId || ""), Number(body.coins), body.grantId ? String(body.grantId) : undefined);
-  if (!out.ok) return res.status(400).json(out);
-  res.json(out);
-});
-
-
-/** باتش الدعم: خصم مؤكد من رصيد المرسل مرة واحدة لكل dedupeKey. */
-
-/** أرباح الدعم الخاصة للأونر: نصف كل دعم يُضاف مرة واحدة ويظهر في الإعدادات. */
-app.post("/api/owner/support-profit", (req, res) => {
-  const body = (req.body || {}) as Record<string, unknown>;
-  const total = Math.max(0, Math.floor(Number(body.total) || 0));
-  const half = Math.max(0, Math.floor(Number(body.half) || Math.floor(total / 2)));
-  const key = `ownerhalf_${String(body.dedupeKey || `${body.fromId}_${body.toUserId}_${total}`).slice(0, 160)}`;
+const listGrants = guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
   const mem = giftProfitMem();
-  if (half > 0 && !mem.done.has(key)) {
-    mem.done.add(key);
-    mem.appCoins += half;
-    giftProfitTouch();
-  }
-  res.json({ ok: true, coins: mem.appCoins, usd: mem.appCoins / 100, credited: half });
+  const asked = String(req.query.userId || "");
+  const admin = session.isAdmin(u);
+  const keys = session.keysOf(u);
+  let rows = mem.grants || [];
+  if (admin && asked) rows = rows.filter((g) => normId(g.userId) === normId(asked));
+  else if (!admin) rows = rows.filter((g) => keys.includes(normId(g.userId)));
+  res.json({ ok: true, grants: rows.slice(-50) });
 });
-app.get("/api/owner/support-profit", (_req, res) => {
+app.post("/api/owner/grant-coins", grantHandler);
+app.post("/api/coins/grant", grantHandler);
+app.post("/api/gifts/grant", grantHandler);
+app.get("/api/owner/grant-coins", listGrants);
+app.get("/api/coins/grants", listGrants);
+
+/** ربح الأونر يُحسب على السيرفر عند الخصم؛ ما عاد العميل يضيف شيئاً. */
+app.post("/api/owner/support-profit", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  res.json({ ok: true, credited: 0, deprecated: true });
+}));
+app.get("/api/owner/support-profit", guarded(async (req, res) => {
+  if (!(await needAdmin(req, res))) return;
   const mem = giftProfitMem();
-  res.setHeader("Cache-Control", "no-store");
   res.json({ ok: true, coins: mem.appCoins, usd: mem.appCoins / 100 });
-});
+}));
 
-app.post("/api/support/spend", (req, res) => {
-  const body = (req.body || {}) as Record<string, unknown>;
-  const userId = String(body.userId || "").slice(0, 80);
-  const price = Math.max(0, Math.floor(Number(body.price) || 0));
-  const count = Math.max(1, Math.min(50, Math.floor(Number(body.count) || 1)));
-  const cost = price * count;
-  if (!userId || cost <= 0) return res.status(400).json({ ok: false, error: "invalid spend" });
+// ── الخصم الفعلي للهدية: مصدر الحقيقة الوحيد للأرباح ──
+type ChargeIn = { giftId: string; toUserId: string; price: number; count: number; dedupeKey: string };
+type SessionU = NonNullable<Awaited<ReturnType<typeof session.user>>>;
+function chargeGift(u: SessionU, a: ChargeIn): { ok: true; balance: number; duplicate?: boolean } | { ok: false; status: number; error: string } {
+  if (!a.giftId || a.giftId.length > 40) return { ok: false, status: 400, error: "invalid gift" };
+  if (!Number.isSafeInteger(a.price) || a.price < 1 || a.price > 100000) return { ok: false, status: 400, error: "invalid price" };
+  if (!Number.isSafeInteger(a.count) || a.count < 1 || a.count > 50) return { ok: false, status: 400, error: "invalid count" };
+  if (!a.toUserId || a.toUserId.length > 80) return { ok: false, status: 400, error: "invalid recipient" };
+  if (session.owns(u, a.toUserId)) return { ok: false, status: 400, error: "cannot gift yourself" };
   const mem = giftProfitMem();
-  const logical = `support_${userId}_${String(body.dedupeKey || `${body.giftId}_${body.toUserId}_${cost}`).slice(0, 140)}`;
-  if (!mem.done.has(logical)) {
-    mem.done.add(logical);
-    const after = body.balanceAfter != null ? Math.max(0, Math.floor(Number(body.balanceAfter) || 0)) : Math.max(0, (mem.balances.get(userId) || 0) - cost);
-    mem.balances.set(userId, after);
-    const half = Math.max(0, Math.floor(Number(body.ownerHalf) || Math.floor(cost / 2)));
-    const ownerKey = `ownerhalf_${logical}`;
-    if (half > 0 && !mem.done.has(ownerKey)) {
-      mem.done.add(ownerKey);
-      mem.appCoins += half;
-    }
-    giftProfitTouch();
+  const keys = session.keysOf(u);
+  const bk = pickKey(mem.balances, u, keys);
+  const dupKey = `${u.id}|${a.giftId}|${normId(a.toUserId)}|${a.price}|${a.count}|${a.dedupeKey}`;
+  if (seenRecently(dupKey)) return { ok: true, duplicate: true, balance: mem.balances.get(bk) || 0 };
+  const cost = a.price * a.count;
+  // ===== قسم متزامن: فحص + خصم + تقسيم بدون أي await =====
+  let bal = mem.balances.get(bk) || 0;
+  if (bal < cost) {
+    const ek = pickKey(mem.earnings, u, keys);
+    const earn = mem.earnings.get(ek) || 0;
+    const take = Math.min(earn, cost - bal); // نفس منطق العميل: العجز فقط من أرباح الدعم
+    if (bal + take < cost) return { ok: false, status: 402, error: "insufficient balance" };
+    mem.earnings.set(ek, earn - take);
+    bal += take;
   }
-  res.json({ ok: true, balance: mem.balances.get(userId) || 0, deducted: cost, ownerCoins: mem.appCoins, ownerUsd: mem.appCoins / 100 });
-});
-
-app.post("/api/support/convert", (req, res) => {
-  const body = (req.body || {}) as Record<string, unknown>;
-  const userId = String(body.userId || "").slice(0, 80);
-  let amount = Math.max(0, Math.floor(Number(body.amount) || 0));
-  if (!userId) return res.status(400).json({ ok: false, error: "userId required" });
-  const mem = giftProfitMem();
-  const earn = mem.earnings.get(userId) || 0;
-  if (amount <= 0) amount = earn;
-  if (amount <= 0) return res.status(400).json({ ok: false, error: "no earnings" });
-  if (amount > earn) amount = earn;
-  mem.earnings.set(userId, earn - amount);
-  mem.balances.set(userId, (mem.balances.get(userId) || 0) + amount);
+  mem.balances.set(bk, bal - cost);
+  const toApp = Math.floor(cost / 2);
+  mem.appCoins += toApp;
+  creditRecipientEarnings(a.toUserId, cost - toApp);
   giftProfitTouch();
-  res.json({ ok: true, converted: amount, earnings: mem.earnings.get(userId) || 0, balance: mem.balances.get(userId) || 0 });
+  markSeen(dupKey);
+  recordPaid({ userId: u.id, to: a.toUserId, giftId: a.giftId, count: a.count, price: a.price });
+  return { ok: true, balance: bal - cost };
+}
+const parseCharge = (body: Record<string, unknown>): ChargeIn => ({
+  giftId: String(body.giftId || "").slice(0, 40),
+  toUserId: String(body.toUserId || "").slice(0, 80),
+  price: Number(body.price),
+  count: Number(body.count ?? 1),
+  dedupeKey: String(body.dedupeKey || "").slice(0, 140),
 });
 
-app.post("/api/live-gifts", (req, res) => {
+app.post("/api/support/spend", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  if (!allow(`spend:${u.id}`, 40, 10_000)) return deny(res, 429, "rate_limited");
+  // balanceAfter / ownerHalf / userId القادمة من العميل تُتجاهل بالكامل
+  const r = chargeGift(u, parseCharge((req.body || {}) as Record<string, unknown>));
+  if (!r.ok) return deny(res, r.status, r.error);
+  res.json({ ok: true, balance: r.balance, deducted: r.duplicate ? 0 : undefined });
+}));
+
+app.post("/api/live-gifts", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  if (!allow(`lg:${u.id}`, 40, 10_000)) return deny(res, 429, "rate_limited");
   const body = (req.body || {}) as Record<string, unknown>;
   const room = String(body.room || body.channel || "").slice(0, 80);
-  const giftId = String(body.giftId || "").slice(0, 40);
-  if (!room || !giftId) return res.status(400).json({ error: "room and giftId required" });
-  const count = Math.max(1, Math.min(10, Math.floor(Number(body.count) || 1)));
-  const fromId = String(body.fromId || "").slice(0, 80);
-  const toUserId = String(body.toUserId || "").slice(0, 80);
+  const c = parseCharge(body);
+  if (!room || !c.giftId) return deny(res, 400, "room and giftId required");
+  const claimed = [true, "true"].includes(body.alreadyDeducted as never) || [true, "true"].includes(body.supportPatch as never);
+  if (claimed) {
+    // العميل يقول إنه دُفع مسبقاً عبر /api/support/spend — نتحقق من وجود خصم مطابق ونستهلكه مرة واحدة
+    if (!Number.isSafeInteger(c.price) || !Number.isSafeInteger(c.count) || !takePaid({ userId: u.id, to: c.toUserId, giftId: c.giftId, count: c.count, price: c.price })) {
+      return deny(res, 402, "gift not paid");
+    }
+  } else {
+    const r = chargeGift(u, c);
+    if (!r.ok) return deny(res, r.status, r.error);
+    if (r.duplicate) return res.json({ ok: true, duplicate: true }); // إعادة إرسال فورية: لا بث مكرر
+  }
+  const count = Math.max(1, Math.min(10, c.count));
+  const fromId = body.fromId && session.owns(u, body.fromId) ? String(body.fromId).slice(0, 80) : u.id;
   const toName = String(body.toName || "").slice(0, 60);
   const toAvatar = String(body.toAvatar || "").slice(0, 300);
-  if (fromId && toUserId && fromId === toUserId) return res.status(400).json({ error: "cannot gift yourself" });
   const now = Date.now();
   const mem = liveGiftMem();
   const prev = mem.get(room) || [];
@@ -1172,50 +1194,31 @@ app.post("/api/live-gifts", (req, res) => {
   const at = Math.max(now, lastAt + 1);
   const list = prev.filter((e) => now - e.at < 60000);
   const eventId = String(body.id || `lg_${at}`).slice(0, 60);
-  list.push({ at, id: eventId, giftId, fromId, toUserId, toName, toAvatar, fromKey: String(body.fromKey || "").slice(0, 60), count });
+  list.push({ at, id: eventId, giftId: c.giftId, fromId, toUserId: c.toUserId, toName, toAvatar, fromKey: String(body.fromKey || "").slice(0, 60), count });
   mem.set(room, list.slice(-120));
-  // ترتيب الداعمين: يزيد مجموع المرسل (السعر × العدد)
-  const price = Math.max(0, Math.min(100000, Math.floor(Number(body.price) || 0)));
-  if (fromId && price > 0) {
-    const sup = liveSupportMem();
-    const rec = sup.get(room) || { at: now, map: new Map() };
-    const cur = rec.map.get(fromId) || { name: "", coins: 0, firstAt: now };
-    const nm = String(body.fromName || "").slice(0, 60);
-    cur.coins += price * count;
-    if (nm) cur.name = nm;
-    rec.map.set(fromId, cur);
-    rec.at = now;
-    sup.set(room, rec);
-  }
-  // خصم رصيد المرسل مرة واحدة. العميل الجديد يرسل alreadyDeducted حتى ما ينخصم مرتين.
-  if (fromId && price > 0 && body.supportPatch !== true && body.supportPatch !== "true" && body.alreadyDeducted !== true && body.alreadyDeducted !== "true") {
-    const spendKey = `spend_${fromId}_${String(body.dedupeKey || eventId).slice(0, 120)}_${Date.now()}`;
-    const pmemSpend = giftProfitMem();
-    const logical = `spendlogic_${fromId}_${String(body.dedupeKey || `${giftId}_${count}_${price}_${toUserId}`).slice(0, 140)}`;
-    if (!pmemSpend.done.has(logical)) {
-      pmemSpend.done.add(logical);
-      pmemSpend.done.add(spendKey);
-      const cost = price * count;
-      const cur = pmemSpend.balances.get(fromId) || 0;
-      pmemSpend.balances.set(fromId, Math.max(0, cur - cost));
-      giftProfitTouch();
-    }
-  }
-  // 50/50 server-side so owner Profits + recipient earnings sync across devices
-  if (toUserId && price > 0) {
-    const total = price * count;
-    const pmem = giftProfitMem();
-    const dkey = String(body.dedupeKey || `split_${fromId}_${toUserId}_${giftId}_${count}_${price}`).slice(0, 180);
-    if (!pmem.done.has(dkey)) {
-      pmem.done.add(dkey);
-      const toApp = Math.floor(total / 2);
-      const toRecipient = total - toApp;
-      pmem.appCoins += toApp;
-      creditRecipientEarnings(toUserId, toRecipient);
-      giftProfitTouch();
-    }
-  }
+  // ترتيب الداعمين — الآن مبني على خصم مؤكد فقط
+  const sup = liveSupportMem();
+  const rec = sup.get(room) || { at: now, map: new Map() };
+  const cur = rec.map.get(fromId) || { name: "", coins: 0, firstAt: now };
+  const nm = String(body.fromName || "").slice(0, 60);
+  cur.coins += c.price * c.count;
+  if (nm) cur.name = nm;
+  rec.map.set(fromId, cur);
+  rec.at = now;
+  sup.set(room, rec);
   res.json({ ok: true, at });
+}));
+
+// ── سحب أرباح الدعم (بنك/PayPal): ملف مستقل server/withdrawals.ts ──
+registerWithdrawalRoutes(app, {
+  dataDir: process.env.WITHDRAW_DATA_DIR || join(ASSETS_DIR, "_private", "withdrawals"),
+  earnings: mapEarningsAdapter(() => giftProfitMem().earnings, () => giftProfitTouch()),
+  getUser: async (req) => {
+    const u = await session.user(req);
+    return u ? { id: u.id, username: u.username, email: u.email } : null;
+  },
+  isAdmin: (u) => session.isAdmin({ id: u.id, username: String(u.username || "").toLowerCase(), email: String(u.email || "").toLowerCase() }),
+  allowedOrigins: (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
 });
 
 
