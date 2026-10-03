@@ -19252,7 +19252,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
           if ((!r || r === 'unknown') && serverRow) {
             liveSharedMark(h.id, serverRow.kind);
             if (!sinceRef.current.has(h.id)) sinceRef.current.set(h.id, now);
-            hold = { ...h, kind: serverRow.kind, members: prevE?.members || 1, since: sinceRef.current.get(h.id)! };
+            hold = { ...h, kind: serverRow.kind, members: Array.isArray(prevE?.members) ? prevE.members : [], since: sinceRef.current.get(h.id)! };
           }
           if (r && r !== 'unknown') {
             liveSharedMark(h.id, r.kind);
@@ -19543,7 +19543,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
       >
         <AnimatePresence initial={false}>
           {visible.map(e => {
-            const listeners = e.members;
+            const listeners = Array.isArray(e.members) ? e.members : [];
             const name = e.name || e.username || 'Host';
             const isActiveLive = e.id === activeLiveId;
             const soundOff = mutedIds.has(e.id) || !isActiveLive;
