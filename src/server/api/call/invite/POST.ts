@@ -29,6 +29,8 @@ export default async function handler(req: Request, res: Response) {
       kind?: string;
       video?: boolean;
       answered?: boolean;
+      clear?: boolean;
+      ended?: boolean;
       hostId?: string;
       hostName?: string | null;
       hostAvatar?: string | null;
@@ -48,6 +50,13 @@ export default async function handler(req: Request, res: Response) {
     if (!channel) return res.status(400).json({ error: 'channel is required' });
     if (toUserId === String(hostId)) {
       return res.status(400).json({ error: 'cannot invite yourself' });
+    }
+
+    // الكلاينت يرسل { clear: true, ended: true } إلى هذا المسار عند إنهاء المكالمة.
+    // كان المعالج يتجاهل هذين الحقلين فيُنشئ دعوة جديدة (at = الآن) للمستقبِل، فيعود الرنين بعد الإنهاء.
+    // طلب الإلغاء لا يجب أن يُنشئ دعوة أبداً؛ المسح الفعلي يتم عبر /api/call/invite/clear.
+    if (body.clear === true || body.ended === true) {
+      return res.json({ ok: true, cleared: true });
     }
 
     const video = body.video === true || body.kind === 'video';
