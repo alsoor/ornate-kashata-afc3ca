@@ -14,6 +14,7 @@
  * قبل الإطلاق الفعلي اربطه ببوابة دفع (processVisaPayment) وخله false.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, CreditCard, Lock, Pencil, ExternalLink, Gift as GiftIcon, DollarSign } from 'lucide-react';
 import { GIFTS, TOP_GIFTS, ALL_GIFTS } from '@/lib/index';
@@ -277,11 +278,146 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
       return { ok: false, error: msg };
     }
     try { localStorage.setItem(`stooorna_polar_pending_${userId}`, String(Date.now())); } catch { /* ignore */ }
-    window.location.assign(d.url);
+    openPolarCheckout(d.url, userId);   // slide-up page inside the app (no page navigation → the room stays open)
     return { ok: true, redirected: true };
   } catch {
     return { ok: false, error: 'Network error' };
   }
+}
+
+// ── Hosted checkout INSIDE the app ───────────────────────────────────────────────────────────
+// The Polar checkout used to replace the whole page (window.location.assign) → the live room was unloaded and the user
+// was kicked out ("Entering…"). Now it opens as a page that slides up over the room with an X on top; closing it just slides
+// it down. The room, the mic and the stream are never touched. Coins are still credited by the server webhook and picked up
+// by watchPolarCredit.
+let polarRoot: Root | null = null;
+let polarHost: HTMLDivElement | null = null;
+let polarStopWatch: (() => void) | null = null;
+
+function PolarCheckoutSheet({ url, onDone }: { url: string; onDone: () => void }) {
+  const [shown, setShown] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const [paid, setPaid] = useState(false);
+  const closingRef = useRef(false);
+
+  const src = useMemo(() => {
+    try {
+      const u = new URL(url);
+      u.searchParams.set('embed', 'true');
+      u.searchParams.set('embed_origin', window.location.origin);
+      u.searchParams.set('theme', 'dark');
+      return u.toString();
+    } catch { return url; }
+  }, [url]);
+
+  const close = React.useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setShown(false);
+    window.setTimeout(onDone, 280);
+  }, [onDone]);
+
+  useEffect(() => {
+    const t = requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
+    const slowT = window.setTimeout(() => setSlow(true), 9000);
+    const onMsg = (e: MessageEvent) => {
+      let d: any = e.data;
+      if (typeof d === 'string') { try { d = JSON.parse(d); } catch { return; } }
+      const ev = String(d?.event || d?.type || '');
+      if (!ev) return;
+      if (ev === 'loaded') setLoaded(true);
+      else if (ev === 'close') close();
+      else if (ev === 'success' || ev === 'confirmed') { setPaid(true); window.setTimeout(close, 1800); }
+    };
+    window.addEventListener('message', onMsg);
+    return () => { cancelAnimationFrame(t); window.clearTimeout(slowT); window.removeEventListener('message', onMsg); };
+  }, [close]);
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 200000, background: shown ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0)',
+        transition: 'background .28s ease', direction: 'ltr',
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0, top: 'max(22px, env(safe-area-inset-top, 0px))',
+          background: '#0b0b0f', borderRadius: '18px 18px 0 0', overflow: 'hidden',
+          display: 'flex', flexDirection: 'column',
+          transform: shown ? 'translateY(0)' : 'translateY(100%)', transition: 'transform .3s cubic-bezier(.2,.8,.2,1)',
+          boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', flexShrink: 0, color: '#fff' }}>
+          <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Checkout</span>
+          <button
+            type="button"
+            onClick={close}
+            aria-label="Close"
+            style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div style={{ position: 'relative', flex: 1, minHeight: 0, background: '#fff' }}>
+          <iframe
+            title="Checkout"
+            src={src}
+            allow="payment *; clipboard-write"
+            onLoad={() => setLoaded(true)}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#fff' }}
+          />
+          {!loaded ? (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0b0f', color: 'rgba(255,255,255,0.7)', fontWeight: 700, fontSize: '0.86rem', pointerEvents: 'none' }}>
+              Loading checkout…
+            </div>
+          ) : null}
+          {paid ? (
+            <div style={{ position: 'absolute', left: 12, right: 12, bottom: 16, padding: '12px 14px', borderRadius: 14, background: '#16a34a', color: '#fff', fontWeight: 800, textAlign: 'center' }}>
+              Payment received ✅ Coins are being added…
+            </div>
+          ) : null}
+        </div>
+        {slow && !paid ? (
+          <div style={{ flexShrink: 0, padding: '8px 14px calc(8px + env(safe-area-inset-bottom, 0px))', background: '#0b0b0f', textAlign: 'center' }}>
+            <button
+              type="button"
+              onClick={() => { try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ } }}
+              style={{ border: '1px solid rgba(255,255,255,0.25)', background: 'transparent', color: '#fff', borderRadius: 10, padding: '7px 14px', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
+            >
+              Not loading? Open in a new tab
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function openPolarCheckout(url: string, userId: string) {
+  if (typeof document === 'undefined') return;
+  try { polarStopWatch?.(); } catch { /* ignore */ }
+  // keep watching after the sheet closes: the server credits the coins by webhook
+  polarStopWatch = watchPolarCredit(userId, () => { polarStopWatch = null; });
+  if (polarRoot) { try { polarRoot.unmount(); } catch { /* ignore */ } polarRoot = null; }
+  if (polarHost) { try { polarHost.remove(); } catch { /* ignore */ } polarHost = null; }
+  const host = document.createElement('div');
+  // The sheet lives in its own React root: keep taps from reaching "tap outside to close" listeners of the sheets under it.
+  ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach(t => host.addEventListener(t, ev => ev.stopPropagation()));
+  document.body.appendChild(host);
+  polarHost = host;
+  polarRoot = createRoot(host);
+  const done = () => {
+    try { polarRoot?.unmount(); } catch { /* ignore */ }
+    polarRoot = null;
+    try { host.remove(); } catch { /* ignore */ }
+    if (polarHost === host) polarHost = null;
+  };
+  polarRoot.render(<PolarCheckoutSheet url={url} onDone={done} />);
 }
 
 /** After a hosted checkout: poll the server balance (credited by the payment webhook) and hand it to the caller once it is higher. */
@@ -988,8 +1124,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     setPaying(true);
     const res = await processVisaPayment(pack, uid);
     if (!res.ok) { setPaying(false); setPayError(res.error || 'Payment failed'); return; }
-    // The browser is now moving to the hosted checkout page; coins are added by the server after payment.
-    window.setTimeout(() => setPaying(false), 8000);
+    // The checkout page slid up inside the app; coins are added by the server after payment.
+    window.setTimeout(() => setPaying(false), 600);
   }
 
   async function pay() {
@@ -1481,8 +1617,8 @@ export function WalletSheet({ open, onClose, userId, allowWithdraw = false }: { 
     setPaying(true);
     const res = await processVisaPayment(p, uid);
     if (!res.ok) { setPaying(false); setPayError(res.error || 'Payment failed'); return; }
-    // The browser is moving to the hosted checkout page; coins are added by the server after payment.
-    window.setTimeout(() => setPaying(false), 8000);
+    // The checkout page slid up inside the app; coins are added by the server after payment.
+    window.setTimeout(() => setPaying(false), 600);
   }
 
   function validate(): string {

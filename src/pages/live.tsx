@@ -80,6 +80,11 @@ async function fetchToken(channel: string, userId: string): Promise<{
   return r.json();
 }
 
+/** One person = one row: the same user can hold several Agora uids after a refresh/rejoin. */
+function micPersonKey(x: { userId?: string | null; username?: string | null; uid: number }): string {
+  return String(x.userId || (x.username ? `@${x.username}` : '') || `uid:${x.uid}`);
+}
+
 export default function LivePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -121,6 +126,8 @@ export default function LivePage() {
   const [speakerMuted, setSpeakerMuted] = useState(false);
   const speakerMutedRef = useRef(false);
   const [members, setMembers] = useState<Member[]>([]);
+  const membersRef = useRef<Member[]>([]);
+  membersRef.current = members;
   const [speakingUids, setSpeakingUids] = useState<Set<number>>(new Set());
   const [mutedUids, setMutedUids] = useState<Set<number>>(new Set());
   const mutedUidsRef = useRef<Set<number>>(new Set());
@@ -1216,6 +1223,11 @@ export default function LivePage() {
     const next = new Set(speakerUidsRef.current);
     if (grant) {
       if (frozenUidsRef.current.has(uid)) return;
+      {
+        const who = membersRef.current.find(x => x.uid === uid);
+        const wk = who ? micPersonKey(who) : '';
+        if (wk) for (const x of membersRef.current) { if (x.uid !== uid && !x.isHost && micPersonKey(x) === wk) next.delete(x.uid); }
+      }
       if (!canGrantSpeaker(next, uid, hostId)) {
         setError(`Max ${micCap} speakers`);
         return;
@@ -1223,6 +1235,11 @@ export default function LivePage() {
       next.add(uid);
     } else {
       next.delete(uid);
+      {
+        const who = membersRef.current.find(x => x.uid === uid);
+        const wk = who ? micPersonKey(who) : '';
+        if (wk) for (const x of membersRef.current) { if (!x.isHost && micPersonKey(x) === wk) next.delete(x.uid); }
+      }
     }
     speakerUidsRef.current = next;
     setSpeakerUids(next);
@@ -1345,12 +1362,47 @@ export default function LivePage() {
     } catch { /* ignore */ }
   };
 
+  const chatInitScrollRef = useRef(false);
   useEffect(() => {
-    if (!liveChatOpen || liveChatMsgs.length === 0) return;
+    if (!liveChatOpen) { chatInitScrollRef.current = false; return; }
+    if (liveChatMsgs.length === 0) return;
     try {
-      liveChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      const end = liveChatEndRef.current;
+      const box = end?.parentElement;
+      const first = !chatInitScrollRef.current;
+      chatInitScrollRef.current = true;
+      const near = !!box && box.scrollHeight - box.scrollTop - box.clientHeight < 90;
+      const last = liveChatMsgs[liveChatMsgs.length - 1];
+      // Follow new messages only when the reader is at the bottom (or it is my own message): scrolling up to read old ones is never interrupted.
+      if (first || near || last?.isMe) end?.scrollIntoView({ behavior: first ? 'auto' : 'smooth' });
     } catch { /* ignore */ }
   }, [liveChatMsgs, liveChatOpen]);
+
+  // Mic protection: while I hold the mic a refresh must not drop me silently.
+  const [leaveMicAsk, setLeaveMicAsk] = useState(false);
+  const iHoldMic = !!joined && !amHost && myUidRef.current != null && speakerUids.has(myUidRef.current as number);
+  useEffect(() => {
+    if (!iHoldMic) return;
+    const onBefore = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; return ''; };
+    window.addEventListener('beforeunload', onBefore);
+    const onKey = (e: KeyboardEvent) => {
+      const k = String(e.key || '').toLowerCase();
+      if (k === 'f5' || ((e.ctrlKey || e.metaKey) && k === 'r')) { e.preventDefault(); setLeaveMicAsk(true); }
+    };
+    window.addEventListener('keydown', onKey);
+    const html = document.documentElement;
+    const body = document.body;
+    const prevH = html.style.overscrollBehaviorY;
+    const prevB = body.style.overscrollBehaviorY;
+    html.style.overscrollBehaviorY = 'contain';   // blocks pull-to-refresh
+    body.style.overscrollBehaviorY = 'contain';
+    return () => {
+      window.removeEventListener('beforeunload', onBefore);
+      window.removeEventListener('keydown', onKey);
+      html.style.overscrollBehaviorY = prevH;
+      body.style.overscrollBehaviorY = prevB;
+    };
+  }, [iHoldMic]);
 
   useEffect(() => {
     if (!joined || !channelName) return;
@@ -2009,7 +2061,7 @@ export default function LivePage() {
             display: 'flex',
             flexDirection: 'column',
             gap: 6,
-            maxHeight: liveChatOpen ? 220 : 36,
+            maxHeight: liveChatOpen ? 'min(66vh, 620px)' : 36,
           }}
         >
           <button
@@ -2041,10 +2093,10 @@ export default function LivePage() {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 6,
-                maxHeight: 160,
+                maxHeight: 'min(56vh, 520px)',
               }}
             >
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, minHeight: 48 }}>
+              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, minHeight: 48, overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 28px)', maskImage: 'linear-gradient(to bottom, transparent 0, #000 28px)' } as React.CSSProperties}>
                 {liveChatMsgs.length === 0 && (
                   <p style={{ margin: 0, color: 'rgba(150,200,200,0.45)', fontSize: '0.68rem' }}>Live chat — say hello</p>
                 )}
@@ -2304,40 +2356,87 @@ export default function LivePage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 10px', borderBottom: '1px solid rgba(250,204,21,0.15)' }}>
               <Hand size={18} color="#facc15" />
               <p style={{ margin: 0, flex: 1, color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>
-                Mic requests · speakers {speakerUids.size}/{micCap}
+                Mic requests · speakers {new Set(members.filter(m => speakerUids.has(m.uid) && !m.isHost).map(micPersonKey)).size}/{micCap}
               </p>
               <button type="button" onClick={() => setRequestsOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(200,230,230,0.8)', cursor: 'pointer', padding: 6 }}>
                 <X size={18} />
               </button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px 16px' }}>
-              {members.filter(m => speakerUids.has(m.uid) && !m.isHost).map(m => (
-                <button
-                  key={`spk-${m.uid}`}
-                  type="button"
-                  onClick={() => void hostSetSpeaker(m.uid, false)}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', border: 'none', borderBottom: '1px solid rgba(0,188,212,0.08)', background: 'transparent', color: '#e8f6f6', cursor: 'pointer', textAlign: 'left' }}
-                >
-                  <span style={{ flex: 1, fontWeight: 800 }}>{m.name}{m.username ? ` @${m.username}` : ''}</span>
-                  <span style={{ color: '#ef4444', fontSize: '0.72rem', fontWeight: 800 }}>Remove mic</span>
-                </button>
-              ))}
-              {micRequests.length === 0 && members.filter(m => speakerUids.has(m.uid) && !m.isHost).length === 0 && (
-                <p style={{ textAlign: 'center', color: 'rgba(150,200,200,0.5)', fontSize: '0.8rem', marginTop: 24 }}>No mic requests</p>
-              )}
-              {micRequests.map(r => (
-                <button
-                  key={`req-${r.uid}`}
-                  type="button"
-                  onClick={() => void hostSetSpeaker(r.uid, !speakerUids.has(r.uid))}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', border: 'none', borderBottom: '1px solid rgba(0,188,212,0.08)', background: 'transparent', color: '#e8f6f6', cursor: 'pointer', textAlign: 'left' }}
-                >
-                  <span style={{ flex: 1, fontWeight: 800 }}>{r.name}{r.username ? ` @${r.username}` : ''}</span>
-                  <span style={{ color: speakerUids.has(r.uid) ? '#ef4444' : '#22c55e', fontSize: '0.72rem', fontWeight: 800 }}>
-                    {speakerUids.has(r.uid) ? 'Remove mic' : 'Raise'}
-                  </span>
-                </button>
-              ))}
+              {(() => {
+                type Row = { key: string; name: string; username: string | null; uids: number[] };
+                const spk = new Map<string, Row>();
+                members.filter(m => speakerUids.has(m.uid) && !m.isHost).forEach(m => {
+                  const k = micPersonKey(m);
+                  const e = spk.get(k);
+                  if (e) e.uids.push(m.uid);
+                  else spk.set(k, { key: k, name: m.name, username: m.username, uids: [m.uid] });
+                });
+                const req = new Map<string, Row>();
+                micRequests.forEach(r => {
+                  const k = micPersonKey(r);
+                  if (spk.has(k) || speakerUids.has(r.uid)) return;
+                  const e = req.get(k);
+                  if (e) e.uids.push(r.uid);
+                  else req.set(k, { key: k, name: r.name, username: r.username ?? null, uids: [r.uid] });
+                });
+                return (
+                  <>
+                    {[...spk.values()].map(p => (
+                      <button
+                        key={`spk-${p.key}`}
+                        type="button"
+                        onClick={async () => { for (const u of p.uids) await hostSetSpeaker(u, false); }}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', border: 'none', borderBottom: '1px solid rgba(0,188,212,0.08)', background: 'transparent', color: '#e8f6f6', cursor: 'pointer', textAlign: 'left' }}
+                      >
+                        <span style={{ flex: 1, fontWeight: 800 }}>{p.name}{p.username ? ` @${p.username}` : ''}</span>
+                        <span style={{ color: '#ef4444', fontSize: '0.72rem', fontWeight: 800 }}>Remove mic</span>
+                      </button>
+                    ))}
+                    {spk.size === 0 && req.size === 0 && (
+                      <p style={{ textAlign: 'center', color: 'rgba(150,200,200,0.5)', fontSize: '0.8rem', marginTop: 24 }}>No mic requests</p>
+                    )}
+                    {[...req.values()].map(p => (
+                      <button
+                        key={`req-${p.key}`}
+                        type="button"
+                        onClick={() => void hostSetSpeaker(p.uids[p.uids.length - 1], true)}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 8px', border: 'none', borderBottom: '1px solid rgba(0,188,212,0.08)', background: 'transparent', color: '#e8f6f6', cursor: 'pointer', textAlign: 'left' }}
+                      >
+                        <span style={{ flex: 1, fontWeight: 800 }}>{p.name}{p.username ? ` @${p.username}` : ''}</span>
+                        <span style={{ color: '#22c55e', fontSize: '0.72rem', fontWeight: 800 }}>Raise</span>
+                      </button>
+                    ))}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {leaveMicAsk && iHoldMic && (
+        <div
+          onClick={() => setLeaveMicAsk(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.62)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 320, background: 'rgba(6,16,18,0.98)', border: '1px solid rgba(250,204,21,0.35)', borderRadius: 16, padding: 18, color: '#fff', textAlign: 'center' }}
+          >
+            <p style={{ margin: '0 0 6px', fontWeight: 800, fontSize: '0.98rem' }}>Remove your mic?</p>
+            <p style={{ margin: '0 0 14px', color: 'rgba(200,230,230,0.7)', fontSize: '0.78rem' }}>Refreshing will drop you from the mic.</p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => { setLeaveMicAsk(false); void forceMuteLocalMic().finally(() => { window.setTimeout(() => window.location.reload(), 150); }); }}
+                style={{ flex: 1, borderRadius: 12, border: 'none', padding: '10px 0', fontWeight: 800, cursor: 'pointer', background: '#ef4444', color: '#fff' }}
+              >Yes</button>
+              <button
+                type="button"
+                onClick={() => setLeaveMicAsk(false)}
+                style={{ flex: 1, borderRadius: 12, border: '1px solid rgba(0,188,212,0.45)', padding: '10px 0', fontWeight: 800, cursor: 'pointer', background: 'transparent', color: '#00BCD4' }}
+              >Cancel</button>
             </div>
           </div>
         </div>
