@@ -2087,6 +2087,18 @@ function readLocalSupportTickets(): Array<{
   }
 }
 
+/** معرّف ثابت للزائر (غير المسجّل) حتى تبقى محادثته واحدة عند الدعم */
+function getSupportGuestId(): string {
+  try {
+    let id = localStorage.getItem('stooorna_support_guest_id');
+    if (!id) {
+      id = `guest-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+      localStorage.setItem('stooorna_support_guest_id', id);
+    }
+    return id;
+  } catch { return 'guest'; }
+}
+
 /** Support chat history lives 10 minutes then is wiped (client + optional API) */
 const SUPPORT_CHAT_TTL_MS = 10 * 60 * 1000;
 
@@ -2601,7 +2613,7 @@ function SupportChatOverlay({
     const L = SUPPORT_COPY[chosen];
     await pushBotTyped(L.greetingUser(resolveUserDisplayName()));
     await pushBotTyped(L.waitSupport);
-    pushOwnerSupportAlert(resolveUserDisplayName());
+    // لا نرسل تنبيه للدعم هنا — التنبيه يصل فقط عندما يرسل المستخدم رسالة فعلية
   }
 
   /** Resolve display name for individual users */
@@ -2681,7 +2693,6 @@ function SupportChatOverlay({
     aiPhaseRef.current = 'waiting';
     await pushBotTyped(waitMsg);
     pushOwnerSupportAlert(resolveUserDisplayName());
-    startAutoMusic();
   }
 
   // Auto-scroll
@@ -2808,9 +2819,13 @@ function SupportChatOverlay({
           : '';
     const notifyText = notifyPrefix ? `${notifyPrefix}\n${text}` : text;
 
+    // مفتاح ثابت لكل مستخدم → محادثة واحدة فقط عند الدعم
+    // (قبل: كل رسالة كانت تُحفظ بمعرّف مختلف cmt-… فتظهر كمحادثة جديدة)
+    const stableSupportKey = fromUserId || (fromUsername ? `user:${fromUsername}` : getSupportGuestId());
+
     // Always queue locally so owner inbox can pick it up
     queueSupportTicket({
-      fromUserId: payload.commentThreadId || fromUserId,
+      fromUserId: stableSupportKey,
       fromUsername,
       fromName,
       fromEmail,
@@ -2946,6 +2961,7 @@ function SupportChatOverlay({
       mediaType: media?.type,
       commentThreadId,
     });
+    pushOwnerSupportAlert(resolveUserDisplayName());
 
     if (aiPhaseRef.current === 'human') {
       setSending(false);
@@ -2960,8 +2976,6 @@ function SupportChatOverlay({
       const L = SUPPORT_COPY[langRef.current];
       await pushBotTyped(L.waiting);
       if ((aiPhaseRef as React.MutableRefObject<AiPhase>).current === 'human') return;
-      // Auto-play calm background music
-      startAutoMusic();
       return;
     }
 
@@ -3022,9 +3036,9 @@ function SupportChatOverlay({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 80, opacity: 0 }}
           onClick={e => e.stopPropagation()}
-          style={{ height: '72vh', maxHeight: '78vh', display: 'flex', flexDirection: 'column', background: '#071416', borderRadius: '18px 18px 0 0', border: '1px solid rgba(0,188,212,0.28)', overflow: 'hidden' }}
+          style={{ height: '72vh', maxHeight: '78vh', display: 'flex', flexDirection: 'column', background: '#ffffff', borderRadius: '18px 18px 0 0', border: '1px solid rgba(0,188,212,0.28)', overflow: 'hidden' }}
         >
-        <div style={{ width: 42, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.28)', margin: '8px auto 0' }} />
+        <div style={{ width: 42, height: 4, borderRadius: 2, background: '#cbd5e1', margin: '8px auto 0' }} />
         {/* Header — slim: avatar + Stooorna stacked title */}
         <div
           style={{
@@ -3032,7 +3046,7 @@ function SupportChatOverlay({
             alignItems: 'center',
             gap: 10,
             padding: '8px 12px',
-            background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
+            background: '#ffffff',
             borderBottom: '1px solid rgba(0,188,212,0.25)',
             flexShrink: 0,
             minHeight: 52,
@@ -3044,7 +3058,7 @@ function SupportChatOverlay({
               stopAutoMusic();
               onClose();
             }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00BCD4', padding: 2, flexShrink: 0 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0277BD', padding: 2, flexShrink: 0 }}
             aria-label="Close"
           >
             <X size={20} />
@@ -3087,7 +3101,7 @@ function SupportChatOverlay({
                 height: 11,
                 borderRadius: '50%',
                 background: supportOnline ? '#22c55e' : '#64748b',
-                border: '2px solid #06141c',
+                border: '2px solid #ffffff',
                 boxShadow: supportOnline ? '0 0 6px rgba(34,197,94,0.7)' : 'none',
               }}
             />
@@ -3095,7 +3109,7 @@ function SupportChatOverlay({
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             <p style={{
               margin: 0,
-              color: '#00BCD4',
+              color: '#0277BD',
               fontWeight: 900,
               fontSize: '0.95rem',
               letterSpacing: '0.02em',
@@ -3105,7 +3119,7 @@ function SupportChatOverlay({
             </p>
             <p style={{
               margin: '1px 0 0',
-              color: 'rgba(150,190,190,0.85)',
+              color: '#64748b',
               fontWeight: 700,
               fontSize: '0.68rem',
               lineHeight: 1.2,
@@ -3113,43 +3127,6 @@ function SupportChatOverlay({
               {settings.supportHeader}
             </p>
           </div>
-          {/* Auto calm music toggle button */}
-          {autoMusicRef.current && (
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              type="button"
-              onClick={toggleAutoMusic}
-              title={autoMusicPlaying ? 'إيقاف الموسيقى' : 'تشغيل الموسيقى'}
-              style={{
-                width: 32, height: 32, borderRadius: 8,
-                background: autoMusicPlaying ? 'rgba(0,188,212,0.22)' : 'rgba(0,188,212,0.08)',
-                border: `1px solid ${autoMusicPlaying ? 'rgba(0,188,212,0.6)' : 'rgba(0,188,212,0.25)'}`,
-                color: 'hsl(var(--primary))', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
-              }}
-              aria-label={autoMusicPlaying ? 'Pause music' : 'Play music'}
-            >
-              {autoMusicPlaying ? <Pause size={14} /> : <Play size={14} style={{ marginLeft: 2 }} />}
-            </motion.button>
-          )}
-          {nowPlaying && aiPhase !== 'human' && (
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              type="button"
-              onClick={togglePlayPause}
-              title={nowPlaying.title}
-              style={{
-                width: 32, height: 32, borderRadius: 8,
-                background: 'rgba(0,188,212,0.18)',
-                border: '1px solid rgba(0,188,212,0.45)',
-                color: 'hsl(var(--primary))', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
-              }}
-              aria-label={isPlaying ? 'Pause' : 'Play'}
-            >
-              {isPlaying ? <Pause size={14} /> : <Play size={14} style={{ marginLeft: 2 }} />}
-            </motion.button>
-          )}
         </div>
 
         {/* Messages */}
@@ -3162,7 +3139,7 @@ function SupportChatOverlay({
             display: 'flex',
             flexDirection: 'column',
             gap: 10,
-            background: 'radial-gradient(ellipse 70% 50% at 50% 0%, #0d2a2e 0%, #060e0e 70%)',
+            background: '#ffffff',
           }}
         >
           {/* Language choice — before any AI message (مربعات أصغر) */}
@@ -3174,7 +3151,7 @@ function SupportChatOverlay({
               alignItems: 'center',
               gap: 10,
             }}>
-              <p style={{ margin: 0, color: 'rgba(200,230,230,0.85)', fontSize: '0.8rem', fontWeight: 600 }}>
+              <p style={{ margin: 0, color: '#0f172a', fontSize: '0.8rem', fontWeight: 600 }}>
                 {settings.chooseLang}
               </p>
               <div style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 240 }}>
@@ -3185,7 +3162,7 @@ function SupportChatOverlay({
                   style={{
                     flex: 1, padding: '8px 0', borderRadius: 10, cursor: 'pointer',
                     background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
-                    color: '#00BCD4', fontWeight: 700, fontSize: '0.78rem',
+                    color: '#0277BD', fontWeight: 700, fontSize: '0.78rem',
                   }}
                 >
                   {settings.langEn}
@@ -3197,7 +3174,7 @@ function SupportChatOverlay({
                   style={{
                     flex: 1, padding: '8px 0', borderRadius: 10, cursor: 'pointer',
                     background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
-                    color: '#00BCD4', fontWeight: 700, fontSize: '0.78rem',
+                    color: '#0277BD', fontWeight: 700, fontSize: '0.78rem',
                   }}
                 >
                   {settings.langAr}
@@ -3215,7 +3192,7 @@ function SupportChatOverlay({
               alignItems: 'center',
               gap: 10,
             }}>
-              <p style={{ margin: 0, color: 'rgba(200,230,230,0.85)', fontSize: '0.8rem', fontWeight: 600 }}>
+              <p style={{ margin: 0, color: '#0f172a', fontSize: '0.8rem', fontWeight: 600 }}>
                 {SUPPORT_COPY[lang].askRole}
               </p>
               <div style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 280 }}>
@@ -3226,7 +3203,7 @@ function SupportChatOverlay({
                   style={{
                     flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
                     background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
-                    color: '#00BCD4', fontWeight: 800, fontSize: '0.8rem',
+                    color: '#0277BD', fontWeight: 800, fontSize: '0.8rem',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                   }}
                 >
@@ -3240,7 +3217,7 @@ function SupportChatOverlay({
                   style={{
                     flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
                     background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
-                    color: '#00BCD4', fontWeight: 800, fontSize: '0.8rem',
+                    color: '#0277BD', fontWeight: 800, fontSize: '0.8rem',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                   }}
                 >
@@ -3269,7 +3246,7 @@ function SupportChatOverlay({
                 style={{
                   width: '100%', padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
                   background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
-                  color: '#00BCD4', fontWeight: 800, fontSize: '0.84rem',
+                  color: '#0277BD', fontWeight: 800, fontSize: '0.84rem',
                   textAlign: 'center',
                 }}
               >
@@ -3282,7 +3259,7 @@ function SupportChatOverlay({
                 style={{
                   width: '100%', padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
                   background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
-                  color: '#00BCD4', fontWeight: 800, fontSize: '0.84rem',
+                  color: '#0277BD', fontWeight: 800, fontSize: '0.84rem',
                   textAlign: 'center',
                 }}
               >
@@ -3306,7 +3283,7 @@ function SupportChatOverlay({
                 }}
               >
                 {isSupport && (
-                  <span style={{ fontSize: '0.62rem', color: '#00BCD4', fontWeight: 700, paddingInline: 4 }}>
+                  <span style={{ fontSize: '0.62rem', color: '#0277BD', fontWeight: 700, paddingInline: 4 }}>
                     Support
                   </span>
                 )}
@@ -3320,7 +3297,7 @@ function SupportChatOverlay({
                         ? 'rgba(34,197,94,0.12)'
                         : 'rgba(0,188,212,0.1)',
                     border: `1px solid ${isUser ? 'rgba(0,188,212,0.45)' : isSupport ? 'rgba(34,197,94,0.4)' : 'rgba(0,188,212,0.22)'}`,
-                    color: 'rgba(200,230,230,0.95)',
+                    color: '#0f172a',
                     fontSize: '0.84rem',
                     lineHeight: 1.55,
                     direction: (lang ?? 'ar') === 'ar' ? 'rtl' : 'ltr',
@@ -3348,7 +3325,7 @@ function SupportChatOverlay({
                       href={m.mediaUrl}
                       target="_blank"
                       rel="noreferrer"
-                      style={{ color: '#00BCD4', fontSize: '0.8rem', display: 'block', marginBottom: m.text ? 6 : 0 }}
+                      style={{ color: '#0277BD', fontSize: '0.8rem', display: 'block', marginBottom: m.text ? 6 : 0 }}
                     >
                       📎 Attachment
                     </a>
@@ -3363,7 +3340,7 @@ function SupportChatOverlay({
           {isTyping && (
             <div style={{ alignSelf: 'flex-start', padding: '4px 8px' }}>
               <span style={{
-                color: 'rgba(0,188,212,0.85)',
+                color: '#0277BD',
                 fontSize: '0.75rem',
                 fontWeight: 600,
                 fontStyle: 'italic',
@@ -3383,7 +3360,7 @@ function SupportChatOverlay({
             gap: 8,
             padding: '10px 12px',
             paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
-            background: 'rgba(6,14,14,0.96)',
+            background: '#ffffff',
             borderTop: '1px solid rgba(0,188,212,0.2)',
             flexShrink: 0,
           }}
@@ -3407,7 +3384,7 @@ function SupportChatOverlay({
               flexShrink: 0,
               background: 'rgba(0,188,212,0.12)',
               border: '1px solid rgba(0,188,212,0.35)',
-              color: '#00BCD4',
+              color: '#0277BD',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -3437,7 +3414,7 @@ function SupportChatOverlay({
               borderRadius: 12,
               background: 'rgba(0,188,212,0.06)',
               border: '1px solid rgba(0,188,212,0.22)',
-              color: 'rgba(200,230,230,0.95)',
+              color: '#0f172a',
               fontSize: '0.88rem',
               outline: 'none',
               fontFamily: 'var(--font-sans)',
@@ -3458,7 +3435,7 @@ function SupportChatOverlay({
               flexShrink: 0,
               background: input.trim() ? 'rgba(0,188,212,0.25)' : 'rgba(0,188,212,0.06)',
               border: `1px solid ${input.trim() ? 'rgba(0,188,212,0.55)' : 'rgba(0,188,212,0.15)'}`,
-              color: input.trim() ? '#00BCD4' : 'rgba(150,190,190,0.4)',
+              color: input.trim() ? '#0277BD' : '#94a3b8',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -3741,8 +3718,7 @@ function OwnerSupportThread({
         position: 'fixed',
         inset: 0,
         zIndex: 10360,
-        background: 'rgba(0,0,0,0.96)',
-        backdropFilter: 'blur(10px)',
+        background: '#ffffff',
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -3755,7 +3731,7 @@ function OwnerSupportThread({
           gap: 10,
           padding: '8px 12px',
           paddingTop: 'max(8px, env(safe-area-inset-top))',
-          background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
+          background: '#ffffff',
           borderBottom: '1px solid rgba(0,188,212,0.25)',
           flexShrink: 0,
           minHeight: 52,
@@ -3792,7 +3768,7 @@ function OwnerSupportThread({
             <div style={{
               width: 34, height: 34, borderRadius: '50%', overflow: 'hidden',
               background: 'rgba(0,188,212,0.2)', border: '2px solid rgba(0,188,212,0.45)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00BCD4', fontWeight: 700, fontSize: '0.75rem',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0277BD', fontWeight: 700, fontSize: '0.75rem',
             }}>
               {peer.avatarUrl
                 ? <img src={peer.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -3801,14 +3777,14 @@ function OwnerSupportThread({
             <span style={{
               position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%',
               background: peer.online ? '#22c55e' : '#64748b',
-              border: '2px solid #06141c',
+              border: '2px solid #ffffff',
             }} />
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p style={{ margin: 0, color: '#0277BD', fontWeight: 800, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {displayName}
             </p>
-            <p style={{ margin: 0, color: 'rgba(150,190,190,0.7)', fontSize: '0.62rem' }}>
+            <p style={{ margin: 0, color: '#64748b', fontSize: '0.62rem' }}>
               {peer.online ? 'Online' : 'Offline'}
               {peer.username ? ` · @${peer.username}` : ''}
               {peer.lastIp ? ` · IP ${peer.lastIp}` : ''}
@@ -3823,7 +3799,7 @@ function OwnerSupportThread({
         flexShrink: 0,
         padding: '8px 12px',
         borderBottom: '1px solid rgba(239,68,68,0.2)',
-        background: 'rgba(20,8,10,0.9)',
+        background: '#fff5f5',
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
@@ -3849,16 +3825,11 @@ function OwnerSupportThread({
         >
           {taskDone ? settings.taskDone : settings.taskDoneSimple}
         </motion.button>
-        {ttlLeft != null && ttlLeft > 0 && (
-          <p style={{ margin: 0, textAlign: 'center', color: 'rgba(252,165,165,0.85)', fontSize: '0.68rem' }}>
-            {settings.deleteCountdown} {Math.floor(ttlLeft / 60000)}:{String(Math.floor((ttlLeft % 60000) / 1000)).padStart(2, '0')}
-          </p>
-        )}
       </div>
 
       <div ref={listRef} style={{
         flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10,
-        background: 'radial-gradient(ellipse 70% 50% at 50% 0%, #0d2a2e 0%, #060e0e 70%)',
+        background: '#ffffff',
       }}>
         {messages.map(m => {
           const mine = m.from === 'me' || m.from === 'support';
@@ -3869,7 +3840,7 @@ function OwnerSupportThread({
                 borderRadius: mine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
                 background: mine ? 'linear-gradient(135deg, rgba(0,188,212,0.28), rgba(0,120,180,0.22))' : 'rgba(0,188,212,0.1)',
                 border: `1px solid ${mine ? 'rgba(0,188,212,0.45)' : 'rgba(0,188,212,0.22)'}`,
-                color: 'rgba(200,230,230,0.95)',
+                color: '#0f172a',
                 fontSize: '0.84rem',
                 lineHeight: 1.55,
                 whiteSpace: 'pre-wrap',
@@ -3883,7 +3854,7 @@ function OwnerSupportThread({
           );
         })}
         {messages.length === 0 && (
-          <p style={{ color: 'rgba(150,190,190,0.5)', fontSize: '0.8rem', textAlign: 'center', marginTop: 40 }}>
+          <p style={{ color: '#64748b', fontSize: '0.8rem', textAlign: 'center', marginTop: 40 }}>
             {settings.noMessages}
           </p>
         )}
@@ -3892,12 +3863,12 @@ function OwnerSupportThread({
       <div style={{
         display: 'flex', alignItems: 'flex-end', gap: 8, padding: '10px 12px',
         paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
-        background: 'rgba(6,14,14,0.96)', borderTop: '1px solid rgba(0,188,212,0.2)', flexShrink: 0,
+        background: '#ffffff', borderTop: '1px solid rgba(0,188,212,0.2)', flexShrink: 0,
       }}>
         <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.zip,.txt" style={{ display: 'none' }} onChange={onPickFile} />
         <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => fileRef.current?.click()} style={{
           width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-          background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.35)', color: '#00BCD4',
+          background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.35)', color: '#0277BD',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
         }}>
           <Plus size={20} strokeWidth={2.4} />
@@ -3913,14 +3884,14 @@ function OwnerSupportThread({
           style={{
             flex: 1, resize: 'none', minHeight: 40, maxHeight: 120, padding: '10px 12px', borderRadius: 12,
             background: 'rgba(0,188,212,0.06)', border: '1px solid rgba(0,188,212,0.22)',
-            color: 'rgba(200,230,230,0.95)', fontSize: '0.88rem', outline: 'none', fontFamily: 'var(--font-sans)', lineHeight: 1.4,
+            color: '#0f172a', fontSize: '0.88rem', outline: 'none', fontFamily: 'var(--font-sans)', lineHeight: 1.4,
           }}
         />
         <motion.button whileTap={{ scale: 0.9 }} type="button" disabled={sending || !input.trim()} onClick={() => send()} style={{
           width: 40, height: 40, borderRadius: 12, flexShrink: 0,
           background: input.trim() ? 'rgba(0,188,212,0.25)' : 'rgba(0,188,212,0.06)',
           border: `1px solid ${input.trim() ? 'rgba(0,188,212,0.55)' : 'rgba(0,188,212,0.15)'}`,
-          color: input.trim() ? '#00BCD4' : 'rgba(150,190,190,0.4)',
+          color: input.trim() ? '#0277BD' : '#94a3b8',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: input.trim() ? 'pointer' : 'default',
         }}>
           <Send size={18} />
@@ -6384,7 +6355,7 @@ export default function SettingsPage() {
             const raw = Array.isArray(d) ? d : (d.conversations || d.messages || d.items || []);
             if (!raw.length) continue;
             list = raw.map((x: any) => ({
-              id: String(x.userId || x.peerId || x.fromUserId || x.id || x._id),
+              id: String(x.userId || x.peerId || x.fromUserId || x.senderId || x.id || x._id),
               name: x.name || x.fromName || x.user?.name || null,
               username: x.username || x.fromUsername || x.user?.username || null,
               avatarUrl: x.avatarUrl || x.user?.avatarUrl || null,
@@ -6400,36 +6371,61 @@ export default function SettingsPage() {
         }
       }
 
-      // 3) Local tickets queue (same browser) — always merge so nothing is lost
+      // 3) Local tickets queue (same browser) — merged so each user appears ONCE
       const localTickets = readLocalSupportTickets();
       const deletedIds = getDeletedThreadIds();
-      if (localTickets.length) {
-        const byUser = new Map<string, SupportPeer>();
-        for (const p of list) byUser.set(p.id, p);
-        for (const t of localTickets) {
-          const key = t.fromUserId || t.fromUsername || t.id;
-          if (!key) continue;
-          if (deletedIds.has(key) && toMs(t.at) <= getSupportWipedAt(key)) continue; // skip deleted threads (unless newer message)
-          const existing = byUser.get(key);
-          if (existing) {
-            existing.lastMessage = t.text || existing.lastMessage;
-            existing.unread = (existing.unread || 0) + (t.unread || 1);
-            existing.lastAt = t.at || existing.lastAt;
-          } else {
-            byUser.set(key, {
-              id: key,
-              name: t.fromName || null,
-              username: t.fromUsername || null,
-              avatarUrl: null,
-              online: false,
-              unread: t.unread || 1,
-              lastMessage: t.text,
-              lastAt: t.at,
-            });
-          }
+      const normUn = (v?: string | null) => String(v || '').replace(/^@/, '').trim().toLowerCase();
+      const ownId = String((user as { id?: string } | null)?.id || '');
+      const byUser = new Map<string, SupportPeer>();
+      for (const p of list) {
+        const k = String(p.id || '');
+        if (!k) continue;
+        const prev = byUser.get(k);
+        if (!prev) { byUser.set(k, { ...p, id: k }); continue; }
+        prev.unread = (prev.unread || 0) + (p.unread || 0);
+        if (toMs(p.lastAt) >= toMs(prev.lastAt)) {
+          prev.lastAt = p.lastAt ?? prev.lastAt;
+          prev.lastMessage = p.lastMessage || prev.lastMessage;
         }
-        list = Array.from(byUser.values());
+        prev.name = prev.name || p.name;
+        prev.username = prev.username || p.username;
+        prev.avatarUrl = prev.avatarUrl || p.avatarUrl;
+        prev.online = prev.online || p.online;
       }
+      const idByUsername = new Map<string, string>();
+      for (const p of byUser.values()) { const u = normUn(p.username); if (u) idByUsername.set(u, p.id); }
+      for (const t of localTickets) {
+        const un = normUn(t.fromUsername);
+        // تذاكر قديمة كانت محفوظة بمعرّف cmt-… لكل رسالة → نعيد تجميعها حسب المستخدم الحقيقي
+        const realId = t.fromUserId && !String(t.fromUserId).startsWith('cmt-') ? String(t.fromUserId) : '';
+        const key = realId || (un && idByUsername.get(un)) || (un ? `user:${un}` : 'guest');
+        if (deletedIds.has(key) && toMs(t.at) <= getSupportWipedAt(key)) continue; // skip deleted threads (unless newer message)
+        const existing = byUser.get(key);
+        if (existing) {
+          if (toMs(t.at) >= toMs(existing.lastAt)) {
+            existing.lastMessage = t.text || existing.lastMessage;
+            existing.lastAt = t.at || existing.lastAt;
+          }
+          existing.unread = (existing.unread || 0) + (t.unread || 1);
+          existing.name = existing.name || t.fromName || null;
+          existing.username = existing.username || t.fromUsername || null;
+        } else {
+          byUser.set(key, {
+            id: key,
+            name: t.fromName || null,
+            username: t.fromUsername || null,
+            avatarUrl: null,
+            online: false,
+            unread: t.unread || 1,
+            lastMessage: t.text,
+            lastAt: t.at,
+          });
+          if (un) idByUsername.set(un, key);
+        }
+      }
+      list = Array.from(byUser.values())
+        .filter(p => !ownId || p.id !== ownId)
+        .sort((x, y) => toMs(y.lastAt) - toMs(x.lastAt));
 
       setSupportInbox(list.filter(p => !getDeletedThreadIds().has(p.id) || toMs(p.lastAt) > getSupportWipedAt(p.id)));
       setSupportUnreadTotal(list.reduce((s, x) => s + (x.unread || 0), 0));
@@ -10028,9 +10024,8 @@ export default function SettingsPage() {
               position: 'fixed',
               inset: 0,
               zIndex: 10340,
-              background: 'rgba(0,0,0,0.96)',
-              backdropFilter: 'blur(10px)',
-              display: 'flex',
+              background: '#ffffff',
+                    display: 'flex',
               flexDirection: 'column',
             }}
           >
@@ -10038,13 +10033,13 @@ export default function SettingsPage() {
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
               borderBottom: '1px solid rgba(0,188,212,0.25)',
-              background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
+              background: '#ffffff',
               minHeight: 52, flexShrink: 0,
             }}>
               <button
                 type="button"
                 onClick={() => setShowOwnerInbox(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00BCD4', padding: 2 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0277BD', padding: 2 }}
                 aria-label="Close"
               >
                 <X size={20} />
@@ -10056,8 +10051,8 @@ export default function SettingsPage() {
                 color: '#041018', fontWeight: 800, fontSize: '0.75rem',
               }}>S</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, color: '#00BCD4', fontWeight: 900, fontSize: '0.95rem', lineHeight: 1.15 }}>Stooorna</p>
-                <p style={{ margin: '1px 0 0', color: 'rgba(150,190,190,0.85)', fontWeight: 700, fontSize: '0.68rem' }}>الدعم · Support</p>
+                <p style={{ margin: 0, color: '#0277BD', fontWeight: 900, fontSize: '0.95rem', lineHeight: 1.15 }}>Stooorna</p>
+                <p style={{ margin: '1px 0 0', color: '#64748b', fontWeight: 700, fontSize: '0.68rem' }}>الدعم · Support</p>
               </div>
               {supportUnreadTotal > 0 && (
                 <span style={{
@@ -10072,20 +10067,20 @@ export default function SettingsPage() {
 
             <div style={{
               flex: 1, overflowY: 'auto', padding: '12px 14px',
-              background: 'radial-gradient(ellipse 70% 50% at 50% 0%, #0d2a2e 0%, #060e0e 70%)',
+              background: '#ffffff',
             }}>
               {supportInboxLoading && supportInbox.length === 0 && (
-                <p style={{ color: 'rgba(150,190,190,0.55)', fontSize: '0.8rem', textAlign: 'center', marginTop: 48 }}>
+                <p style={{ color: '#64748b', fontSize: '0.8rem', textAlign: 'center', marginTop: 48 }}>
                   جاري التحميل…
                 </p>
               )}
               {!supportInboxLoading && supportInbox.length === 0 && (
                 <div style={{ textAlign: 'center', marginTop: 56, padding: '0 20px' }}>
                   <MessageCircle size={36} style={{ color: 'rgba(0,188,212,0.35)', marginBottom: 12 }} />
-                  <p style={{ color: 'rgba(200,230,230,0.85)', fontSize: '0.9rem', fontWeight: 600, margin: '0 0 6px' }}>
+                  <p style={{ color: '#0f172a', fontSize: '0.9rem', fontWeight: 600, margin: '0 0 6px' }}>
                     شات الدعم جاهز
                   </p>
-                  <p style={{ color: 'rgba(150,190,190,0.55)', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
+                  <p style={{ color: '#64748b', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
                     لا رسائل حالياً. عند إرسال أي مستخدم لرسالة دعم ستظهر هنا ويمكنك الدخول والرد مباشرة.
                   </p>
                 </div>
@@ -10104,7 +10099,7 @@ export default function SettingsPage() {
                         background: peer.unread ? 'rgba(0,188,212,0.12)' : 'rgba(0,188,212,0.05)',
                         border: `1px solid ${peer.unread ? 'rgba(0,188,212,0.4)' : 'rgba(0,188,212,0.15)'}`,
                         borderRight: 'none',
-                        color: 'rgba(200,230,230,0.95)',
+                        color: '#0f172a',
                       }}
                     >
                       <div style={{ position: 'relative', width: 44, height: 44, flexShrink: 0 }}>
@@ -10112,7 +10107,7 @@ export default function SettingsPage() {
                           width: 44, height: 44, borderRadius: '50%', overflow: 'hidden',
                           background: 'rgba(0,188,212,0.15)', border: '1.5px solid rgba(0,188,212,0.35)',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          color: '#00BCD4', fontWeight: 700, fontSize: '0.85rem',
+                          color: '#0277BD', fontWeight: 700, fontSize: '0.85rem',
                         }}>
                           {peer.avatarUrl
                             ? <img src={peer.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -10121,16 +10116,16 @@ export default function SettingsPage() {
                         <span style={{
                           position: 'absolute', bottom: 1, right: 1, width: 11, height: 11, borderRadius: '50%',
                           background: peer.online ? '#22c55e' : '#64748b',
-                          border: '2px solid #06141c',
+                          border: '2px solid #ffffff',
                         }} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {peer.name || peer.username || 'User'}
-                          {peer.username ? <span style={{ color: 'rgba(0,188,212,0.7)', fontWeight: 500, fontSize: '0.72rem' }}> @{peer.username}</span> : null}
+                          {peer.username ? <span style={{ color: '#0277BD', fontWeight: 500, fontSize: '0.72rem' }}> @{peer.username}</span> : null}
                         </p>
                         <p style={{
-                          margin: '3px 0 0', color: 'rgba(150,190,190,0.65)', fontSize: '0.72rem',
+                          margin: '3px 0 0', color: '#64748b', fontSize: '0.72rem',
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>
                           {peer.lastMessage || 'فتح المحادثة'}
