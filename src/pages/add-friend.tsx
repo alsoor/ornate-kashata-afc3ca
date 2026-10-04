@@ -32273,9 +32273,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           navigate('/settings');
         }}
       />
-      {pageTab === 'profile' && !isFriendManagement && !guestMode && (
-        {false && <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen || liveScrollHidden} onToggleHeader={toggleHeaderOpen} onBusyChange={setLiveChatBusy} />}
-      )}
+      {/* الشات انتقل لزر Chat كصفحة مستقلة — ما ينعرض تحت أيقونة التطبيق */}
       {GuestModal}
     </>;
 }
