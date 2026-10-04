@@ -13963,9 +13963,9 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
         aria-hidden
         style={{
           position: 'absolute',
-          top: -20,
+          top: -28,
           left: '50%',
-          transform: 'translateX(-78%)',
+          transform: 'translateX(-50%)',
           color: '#ffffff',
           fontSize: '0.78rem',
           fontWeight: 800,
