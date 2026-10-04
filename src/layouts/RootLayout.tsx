@@ -2045,8 +2045,20 @@ function GlobalBottomNavigation() {
           }
         }
       } catch { /* */ }
-      // Cross-device: if ring room is empty, caller left
+      // Cross-device: caller cancel clears the invite. Missing/ended invite stops the ring.
       void (async () => {
+        try {
+          if (!user?.id) return;
+          const ir = await fetch(`/api/call/invite?userId=${encodeURIComponent(user.id)}`, { credentials: 'include' });
+          if (ir.ok) {
+            const idata = await ir.json() as { invite?: { channel?: string; ended?: boolean; clear?: boolean; at?: number } | null };
+            const inv = idata?.invite;
+            if (!inv || inv.ended || inv.clear || (inv.channel && String(inv.channel) !== channel)) {
+              closeIncoming();
+              return;
+            }
+          }
+        } catch { /* */ }
         try {
           if (!user?.id) return;
           const ringId = `home_ring_${homeCallShortHash(user.id)}`;
@@ -2223,13 +2235,16 @@ function GlobalBottomNavigation() {
             localStorage.removeItem(`stooorna_home_call_invite_${m.id}`);
           } catch { /* */ }
           clearServerCallInvite(m.id, endedChannel);
-          sendHomeCallSignal({
-            type: 'hangup',
-            to: m.id,
-            from: user.id,
-            channel: endedChannel,
-            at: endedAt,
-          });
+          sendHomeCallSignal({ type: 'hangup', to: m.id, from: user.id, channel: endedChannel, at: endedAt });
+          sendHomeCallSignal({ type: 'ended', to: m.id, from: user.id, channel: endedChannel, at: endedAt });
+          window.setTimeout(() => {
+            clearServerCallInvite(m.id, endedChannel);
+            sendHomeCallSignal({ type: 'hangup', to: m.id, from: user.id, channel: endedChannel, at: Date.now() });
+          }, 600);
+          window.setTimeout(() => {
+            clearServerCallInvite(m.id, endedChannel);
+            sendHomeCallSignal({ type: 'hangup', to: m.id, from: user.id, channel: endedChannel, at: Date.now() });
+          }, 1600);
           try {
             for (const roomId of homeRingRoomIds(m.id)) {
               void fetch('/api/room/leave', {
