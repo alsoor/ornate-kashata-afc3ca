@@ -40,6 +40,7 @@ export default function HomeCallHost({ user }: { user: { id: string; name?: stri
   const phaseRef = useRef<Phase>('idle');
   const channelRef = useRef<string | null>(null);
   const peerRef = useRef<Peer | null>(null);
+  const videoRef = useRef(false);
   const wsRef = useRef<WebSocket | null>(null);
   const clientRef = useRef<any>(null);
   const micRef = useRef<any>(null);
@@ -48,18 +49,32 @@ export default function HomeCallHost({ user }: { user: { id: string; name?: stri
   const noAnswerTimer = useRef<number | null>(null);
   const sessionRef = useRef(0);
   const endedAt = useRef<Map<string, number>>(new Map());
+  const inviteInflight = useRef<Promise<unknown> | null>(null);
   const remoteBox = useRef<HTMLDivElement | null>(null);
   const localBox = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => { phaseRef.current = phase; }, [phase]);
-  useEffect(() => { channelRef.current = channel; }, [channel]);
-  useEffect(() => { peerRef.current = peer; }, [peer]);
+  // الـ refs تُحدَّث فوراً مع الـ state (وليس بعد الرسم) حتى لا تقرأ المعالجات قيمة قديمة.
+  function setPhaseNow(p: Phase) { phaseRef.current = p; setPhase(p); }
+  function setChannelNow(c: string | null) { channelRef.current = c; setChannel(c); }
+  function setPeerNow(p: Peer | null) { peerRef.current = p; setPeer(p); }
+  function setVideoNow(v: boolean) { videoRef.current = v; setVideo(v); }
+  function markEnded(ch: string, at: number) {
+    const prev = endedAt.current.get(ch) || 0;
+    if (at > prev) endedAt.current.set(ch, at);
+  }
 
   function stopRing() {
     if (ringTimer.current) { window.clearInterval(ringTimer.current); ringTimer.current = null; }
     try { navigator.vibrate?.(0); } catch { /* */ }
-    const ctx = (window as any).__stooornaRingCtx as AudioContext | undefined;
-    if (ctx && ctx.state !== 'closed') { void ctx.close().catch(() => {}); (window as any).__stooornaRingCtx = null; }
+    const w = window as any;
+    if (w.__stooornaIncomingVibrateTimer) { window.clearInterval(w.__stooornaIncomingVibrateTimer); w.__stooornaIncomingVibrateTimer = null; }
+    const ctx = w.__stooornaRingCtx as AudioContext | undefined;
+    if (ctx && ctx.state !== 'closed') { void ctx.close().catch(() => {}); w.__stooornaRingCtx = null; }
+    // يُغلق أيضاً أي شريط/نغمة قديمة خارج هذا المكوّن.
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring'));
+      window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
+    } catch { /* */ }
   }
   function playRing() {
     if (phaseRef.current === 'live' || phaseRef.current === 'idle') return;
@@ -80,9 +95,12 @@ export default function HomeCallHost({ user }: { user: { id: string; name?: stri
     } catch { /* */ }
   }
   function startRing() {
-    stopRing();
+    if (ringTimer.current) { window.clearInterval(ringTimer.current); ringTimer.current = null; }
     playRing();
-    ringTimer.current = window.setInterval(playRing, 2600);
+    ringTimer.current = window.setInterval(() => {
+      if (phaseRef.current === 'live' || phaseRef.current === 'idle') { stopRing(); return; }
+      playRing();
+    }, 2600);
   }
   function send(msg: Record<string, unknown>) {
     const payload = JSON.stringify(msg);
@@ -96,6 +114,12 @@ export default function HomeCallHost({ user }: { user: { id: string; name?: stri
     const t = window.setInterval(() => { n += 1; if (trySend() || n >= 20) window.clearInterval(t); }, 500);
   }
   async function clearInvite(userId: string, ch: string) {
+    // إذا أنهى المتصل بسرعة، قد يصل طلب "المسح" قبل طلب "الإنشاء" فيُنشئ الخادم الدعوة بعد مسحها
+    // ويبقى الرنين عند الطرف الآخر. لذلك ننتظر استقرار طلب الإنشاء أولاً.
+    const pending = inviteInflight.current;
+    if (pending) {
+      try { await Promise.race([pending, new Promise(resolve => window.setTimeout(resolve, 3000))]); } catch { /* */ }
+    }
     const body = JSON.stringify({ userId, toUserId: userId, channel: ch, clear: true, ended: true });
     for (let i = 0; i < 3; i++) {
       void fetch('/api/call/invite/clear', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
@@ -103,45 +127,71 @@ export default function HomeCallHost({ user }: { user: { id: string; name?: stri
     }
   }
   async function leaveAgora() {
-    try { micRef.current?.stop?.(); micRef.current?.close?.(); } catch { /* */ }
-    try { camRef.current?.stop?.(); camRef.current?.close?.(); } catch { /* */ }
-    try { await clientRef.current?.leave?.(); } catch { /* */ }
+    const mic = micRef.current, cam = camRef.current, client = clientRef.current;
     micRef.current = null;
     camRef.current = null;
     clientRef.current = null;
+    try { mic?.stop?.(); mic?.close?.(); } catch { /* */ }
+    try { cam?.stop?.(); cam?.close?.(); } catch { /* */ }
+    try { await client?.leave?.(); } catch { /* */ }
     document.querySelectorAll('audio[data-stooorna-call-audio="1"]').forEach(el => el.remove());
   }
-  async function hangup(remote = false) {
+  async function hangup(remote = false, at?: number) {
     const ch = channelRef.current;
     const other = peerRef.current;
     const me = user?.id;
-    sessionRef.current += 1;
+    if (!ch) return; // لا توجد مكالمة: لا نلغي جلسة جديدة بالخطأ
+    const stamp = remote ? (at || Date.now()) : Date.now();
+    sessionRef.current += 1; // يُبطل أي انضمام Agora جارٍ
     if (noAnswerTimer.current) { window.clearTimeout(noAnswerTimer.current); noAnswerTimer.current = null; }
     stopRing();
-    if (ch) endedAt.current.set(ch, Date.now());
-    if (!remote && ch && other?.id && me) {
-      send({ type: 'hangup', to: other.id, from: me, channel: ch, at: Date.now() });
-      void clearInvite(other.id, ch);
-      window.setTimeout(() => send({ type: 'hangup', to: other.id, from: me, channel: ch, at: Date.now() }), 800);
+    markEnded(ch, stamp);
+    // أغلق الواجهة والحالة فوراً (قبل انتظار Agora) ليختفي الاتصال والرنين مباشرة.
+    setPhaseNow('idle');
+    setChannelNow(null);
+    setPeerNow(null);
+    setVideoNow(false);
+    setSeconds(0);
+    try { window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: { channel: ch, at: stamp } })); } catch { /* */ }
+    if (!remote && other?.id && me) {
+      const blast = () => {
+        send({ type: 'hangup', to: other.id, from: me, channel: ch, at: Date.now() });
+        send({ type: 'ended', to: other.id, from: me, channel: ch, at: Date.now() });
+        void clearInvite(other.id, ch);
+      };
+      blast();
+      window.setTimeout(blast, 400);
+      window.setTimeout(blast, 1200);
+      window.setTimeout(blast, 2500);
     }
-    if (ch && me) {
+    if (me) {
       void fetch('/api/room/leave', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: ch, userId: me, endRoom: !remote }) }).catch(() => {});
     }
     await leaveAgora();
-    setPhase('idle');
-    setPeer(null);
-    setChannel(null);
-    setSeconds(0);
-    setVideo(false);
   }
-  async function joinAgora(ch: string, withVideo: boolean) {
+  async function joinAgora(ch: string, withVideo: boolean, session: number) {
     if (!user?.id) return;
+    const alive = () => sessionRef.current === session;
     const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
+    if (!alive()) return;
     await leaveAgora();
+    if (!alive()) return;
     const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
     clientRef.current = client;
+    let mic: any = null;
+    let cam: any = null;
+    // انتهت الجلسة أثناء التحضير: أغلق المايك/الكاميرا واخرج حتى لا يبقى المتصل داخل القناة.
+    const abort = async () => {
+      for (const t of [mic, cam]) { try { t?.stop?.(); t?.close?.(); } catch { /* */ } }
+      try { await client.leave(); } catch { /* */ }
+      if (clientRef.current === client) clientRef.current = null;
+      if (micRef.current === mic) micRef.current = null;
+      if (camRef.current === cam) camRef.current = null;
+    };
     client.on('user-published', async (remoteUser: any, mediaType: string) => {
+      if (!alive()) return;
       await client.subscribe(remoteUser, mediaType);
+      if (!alive()) return;
       if (mediaType === 'audio') {
         const el = document.createElement('audio');
         el.autoplay = true;
@@ -152,24 +202,28 @@ export default function HomeCallHost({ user }: { user: { id: string; name?: stri
       }
       if (mediaType === 'video') remoteUser.videoTrack?.play(remoteBox.current || undefined);
       if (phaseRef.current !== 'live') {
-        setPhase('live');
+        setPhaseNow('live');
         stopRing();
         if (noAnswerTimer.current) { window.clearTimeout(noAnswerTimer.current); noAnswerTimer.current = null; }
       }
     });
-    client.on('user-left', () => { void hangup(true); });
+    client.on('user-left', () => { if (alive()) void hangup(true); });
     const tokenRes = await fetch(`/api/call/token?channel=${encodeURIComponent(ch)}&uid=${encodeURIComponent(user.id)}`, { credentials: 'include' });
     const tokenData = await tokenRes.json().catch(() => ({}));
-    const mic = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard', AEC: true, ANS: true } as any);
+    if (!alive()) return abort();
+    mic = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard', AEC: true, ANS: true } as any);
+    if (!alive()) return abort();
     micRef.current = mic;
-    let cam: any = null;
     if (withVideo) {
       cam = await AgoraRTC.createCameraVideoTrack();
+      if (!alive()) return abort();
       camRef.current = cam;
       cam.play(localBox.current || undefined);
     }
     await client.join(tokenData.appId || APP_ID, ch, tokenData.token || null, tokenData.uid || user.id);
+    if (!alive()) return abort();
     await client.publish(cam ? [mic, cam] : [mic]);
+    if (!alive()) return abort();
   }
   function armNoAnswer(session: number) {
     if (noAnswerTimer.current) window.clearTimeout(noAnswerTimer.current);
@@ -185,29 +239,30 @@ export default function HomeCallHost({ user }: { user: { id: string; name?: stri
     const ch = channelFor(user.id, p.id);
     const session = ++sessionRef.current;
     endedAt.current.delete(ch);
-    setPeer(p);
-    setChannel(ch);
-    setVideo(asVideo);
-    setPhase('outgoing');
+    setPeerNow(p);
+    setChannelNow(ch);
+    setVideoNow(asVideo);
+    setPhaseNow('outgoing');
     setSeconds(0);
     const at = Date.now();
     const body = { toUserId: p.id, userId: p.id, channel: ch, hostId: user.id, fromId: user.id, hostName: user.name || user.username, hostAvatar: user.avatarUrl || user.image, at, video: asVideo, kind: asVideo ? 'video' : 'voice' };
-    void fetch('/api/call/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
+    inviteInflight.current = fetch('/api/call/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
     send({ type: 'call', to: p.id, from: user.id, fromName: user.name || user.username, fromAvatar: user.avatarUrl || user.image, channel: ch, at, callType: asVideo ? 'video' : 'voice' });
     startRing();
     armNoAnswer(session);
-    void joinAgora(ch, asVideo);
+    void joinAgora(ch, asVideo, session).catch(() => {});
   }
   async function answer() {
     const ch = channelRef.current;
     const p = peerRef.current;
     if (!ch || !p || !user?.id) return;
+    const session = sessionRef.current;
     stopRing();
     if (noAnswerTimer.current) { window.clearTimeout(noAnswerTimer.current); noAnswerTimer.current = null; }
-    setPhase('live');
+    setPhaseNow('live');
     send({ type: 'answered', to: p.id, from: user.id, channel: ch, at: Date.now() });
     void clearInvite(user.id, ch);
-    await joinAgora(ch, video);
+    await joinAgora(ch, videoRef.current, session);
   }
 
   useEffect(() => {
@@ -221,17 +276,21 @@ export default function HomeCallHost({ user }: { user: { id: string; name?: stri
       wsRef.current = ws;
       ws.onopen = () => { try { ws.send(JSON.stringify({ type: 'register', userId: user.id })); } catch { /* */ } };
       ws.onmessage = (ev) => {
+        if (closed) return;
         let msg: any;
         try { msg = JSON.parse(String(ev.data || '')); } catch { return; }
         const type = String(msg.type || '');
         const ch = String(msg.channel || '');
         if (type === 'hangup' || type === 'call-end' || type === 'ended') {
-          if (!ch || ch === channelRef.current) void hangup(true);
+          const stamp = Number(msg.at) || Date.now();
+          // سجّل الإنهاء حتى لو وصل قبل رسالة "call" أو بعدها: أي رنة أقدم منه تُرفض.
+          if (ch) markEnded(ch, stamp);
+          if (!ch || ch === channelRef.current) void hangup(true, stamp);
           return;
         }
         if (type === 'answered' || type === 'call-answered') {
           if (ch && ch === channelRef.current && phaseRef.current === 'outgoing') {
-            setPhase('live');
+            setPhaseNow('live');
             stopRing();
             if (noAnswerTimer.current) { window.clearTimeout(noAnswerTimer.current); noAnswerTimer.current = null; }
           }
@@ -244,10 +303,10 @@ export default function HomeCallHost({ user }: { user: { id: string; name?: stri
         if (ended && (!at || at <= ended + 800)) return;
         if (phaseRef.current !== 'idle') return;
         const session = ++sessionRef.current;
-        setPeer({ id: String(msg.from || msg.hostId || ''), name: msg.fromName || msg.hostName || null, avatarUrl: msg.fromAvatar || msg.hostAvatar || null });
-        setChannel(ch);
-        setVideo(msg.callType === 'video' || msg.video === true);
-        setPhase('incoming');
+        setPeerNow({ id: String(msg.from || msg.hostId || ''), name: msg.fromName || msg.hostName || null, avatarUrl: msg.fromAvatar || msg.hostAvatar || null });
+        setChannelNow(ch);
+        setVideoNow(msg.callType === 'video' || msg.video === true);
+        setPhaseNow('incoming');
         startRing();
         armNoAnswer(session);
       };
@@ -267,9 +326,34 @@ export default function HomeCallHost({ user }: { user: { id: string; name?: stri
       if (retry) window.clearTimeout(retry);
       window.removeEventListener('stooorna:direct-call', onDirect as EventListener);
       window.removeEventListener('stooorna:home-group-call', onDirect as EventListener);
+      if (ringTimer.current) { window.clearInterval(ringTimer.current); ringTimer.current = null; }
+      if (noAnswerTimer.current) { window.clearTimeout(noAnswerTimer.current); noAnswerTimer.current = null; }
       try { wsRef.current?.close(); } catch { /* */ }
     };
   }, [user?.id]);
+
+  // احتياط: إذا فاتتنا رسالة hangup (انقطاع الويب سوكت)، يُسقط الخادم الدعوة فنوقف الرنين.
+  useEffect(() => {
+    if (phase !== 'incoming' || !user?.id || !channel) return;
+    const ch = channel;
+    const session = sessionRef.current;
+    const since = Date.now();
+    const t = window.setInterval(() => {
+      void fetch(`/api/call/invite?userId=${encodeURIComponent(user.id)}`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(data => {
+          if (sessionRef.current !== session || phaseRef.current !== 'incoming') return;
+          const inv = data?.invite;
+          const same = !!inv && String(inv.channel || '') === ch;
+          const cancelled = same && (!!inv.clear || !!inv.ended);
+          // غياب الدعوة وحده لا يُعتبر إلغاءً في أول ثوانٍ: قد لا يكون الخادم خزّنها بعد.
+          const missing = !same && Date.now() - since > 4000;
+          if (cancelled || missing) void hangup(true);
+        })
+        .catch(() => {});
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [phase, channel, user?.id]);
 
   useEffect(() => {
     if (phase !== 'live') return;
