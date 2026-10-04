@@ -14779,7 +14779,7 @@ function loadPublicLiveComments(): PublicLiveComment[] {
     const raw = JSON.parse(localStorage.getItem(PUBLIC_LIVE_COMMENTS_KEY) || '[]');
     if (!Array.isArray(raw)) return [];
     return raw
-      .filter((x: any) => x && x.id && (x.text || x.voiceUrl || x.imageUrl) && (Number(x.createdAt) || Date.now()) >= liveChatCycleStart())
+      .filter((x: any) => x && x.id && (x.text || x.voiceUrl || x.imageUrl) && ((x.imageUrl && !/^(blob:|data:)/i.test(String(x.imageUrl))) || (Number(x.createdAt) || Date.now()) >= liveChatCycleStart()))
       .map((x: any) => ({
         id: String(x.id),
         userId: String(x.userId || ''),
@@ -16353,7 +16353,7 @@ function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url:
 
 /** One tile of the public media grid (outside the chat): video autoplays muted, photo is static.
  *  Publisher avatar bottom-left, like bottom-right, comment count top-left. Tap = open (viewer with live comments). */
-function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenProfile }: {
+function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenProfile, onDelete }: {
   c: PublicLiveComment;
   liked: boolean;
   name: string;
@@ -16361,6 +16361,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
   onLike: () => void;
   onOpen: () => void;
   onOpenProfile: () => void;
+  onDelete?: () => void;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const isVideo = c.text !== LIVE_PHOTO_CAPTION;
@@ -16390,7 +16391,9 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
         ) : (
           <img src={c.imageUrl || ''} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
         )}
-        {isVideo ? (
+        {onDelete ? (
+          <button type="button" aria-label="Delete post" onClick={e => { e.stopPropagation(); onDelete(); }} style={{ position: 'absolute', top: 6, right: 6, zIndex: 2, border: 'none', borderRadius: 999, padding: '4px 8px', background: 'rgba(0,0,0,0.62)', color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>حذف</button>
+        ) : isVideo ? (
           <div style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.5)', borderRadius: 999, padding: 5, display: 'flex', pointerEvents: 'none' }}>
             <Play size={13} color="#fff" fill="#fff" />
           </div>
@@ -17324,9 +17327,11 @@ function PublicLiveCommentsPanel({
       lastClearCycleRef.current = cs;
       liveSigRef.current = '';
       // public live-chat messages only
-      savePublicLiveComments([]);
-      setComments([]);
-      void clearLiveChatOnServer();
+      setComments(prev => {
+        const kept = prev.filter(x => !!(x.imageUrl && !/^(blob:|data:)/i.test(String(x.imageUrl))));
+        savePublicLiveComments(kept);
+        return kept;
+      });
       // intentionally NO setPosts / setMyMediaPosts / fetchPosts wipe
     }, 1000);
     return () => window.clearInterval(id);
@@ -17491,7 +17496,7 @@ function PublicLiveCommentsPanel({
         const remote = await fetchLiveChatFromServer();
         const local = loadPublicLiveComments();
         let next = remote ? mergeLiveChatLists(local, remote) : local;
-        next = next.filter(x => x.createdAt >= liveChatCycleStart());
+        next = next.filter(x => (x.imageUrl && !/^(blob:|data:)/i.test(String(x.imageUrl))) || x.createdAt >= liveChatCycleStart());
         const cleaned: PublicLiveComment[] = [];
         let blocked = false;
         for (const row of next) {
@@ -18175,6 +18180,13 @@ function PublicLiveCommentsPanel({
                   onLike={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleLike(vc.id); }}
                   onOpen={() => { if (Date.now() - composerGuardRef.current < 700) return; if (LIVE_MEDIA_TAP_OPENS_FEED) setFeedStartId(vc.id); else setOpenMediaId(vc.id); }}
                   onOpenProfile={() => { if (Date.now() - composerGuardRef.current < 700) return; openProfileOf(vc); }}
+                  onDelete={myId && vc.userId === myId ? () => {
+                    setComments(prev => {
+                      const next = prev.filter(x => x.id !== vc.id);
+                      savePublicLiveComments(next);
+                      return next;
+                    });
+                  } : undefined}
                 />
               ))}
             </div>
@@ -25487,27 +25499,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     </button>
 <span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Call</span>
 </div>
-                  )}
-                  {user?.id && (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
-                    <button
-                      type="button"
-                      onClick={() => { setDockBubble(null); setChatPageOpen(true); setHeaderOpen(false); }}
-                      aria-label="Chat"
-                      style={{
-                        width: 38, height: 38, borderRadius: '50%',
-                        border: '1px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
-                        cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                      }}
-                    >
-                      <MessageCircle size={18} strokeWidth={2.2} />
-                    </button>
-                    <span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Chat</span>
-                  </div>
                   )}
                   {user?.id && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
