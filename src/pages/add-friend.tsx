@@ -85,6 +85,7 @@ import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
 import { CallWaitingToggle } from '@/lib/callPatch';
+import { AppMediaSheet, syncAppMedia } from '@/lib/appMediaPatch';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { usePresenceQuery } from '@/hooks/usePresence';
 import { pullLiveLocations, pullOnlineIds } from '@/lib/liveLocationSync';
@@ -17967,6 +17968,18 @@ function PublicLiveCommentsPanel({
   if (typeof document === 'undefined') return null;
   if (!user?.id) return null;
   const mediaPosts = comments.filter(isLiveMediaPost).slice().reverse();
+  useEffect(() => {
+    syncAppMedia(comments.filter(isLiveMediaPost).map(c => ({
+      id: c.id,
+      url: String(c.imageUrl || ''),
+      type: /video|\.mp4|\.webm|\.mov/i.test(String(c.imageUrl || '') + String(c.text || '')) ? 'video' as const : 'image' as const,
+      userId: String(c.userId || ''),
+      name: c.name || null,
+      username: c.username || null,
+      avatarUrl: c.avatarUrl || null,
+      createdAt: Number(c.createdAt) || Date.now(),
+    })));
+  }, [comments]);
   const commentCountOf = (id: string) => comments.reduce((n, x) => (parseMediaComment(x.text)?.parentId === id ? n + 1 : n), 0);
   const openMedia = openMediaId ? (mediaPosts.find(m => m.id === openMediaId) || null) : null;
   const commentsMedia = commentsMediaId ? (mediaPosts.find(m => m.id === commentsMediaId) || null) : null;
@@ -18137,7 +18150,7 @@ function PublicLiveCommentsPanel({
         background: 'transparent',
         position: 'relative',
       }}>
-        {!embedded && chatLift === 0 && mediaPosts.length > 0 ? (
+        {false && !embedded && chatLift === 0 && mediaPosts.length > 0 ? (
           <div
             onTouchStart={e => e.stopPropagation()}
             onTouchMove={e => e.stopPropagation()}
@@ -22534,6 +22547,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // also collapses it; scrolling back to the top expands it again.
   const [headerOpen, setHeaderOpen] = useState(true);
   const [chatPageOpen, setChatPageOpen] = useState(false);
+  const [appTplOpen, setAppTplOpen] = useState(false);
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
   const [liveScrollHidden, setLiveScrollHidden] = useState(false);
   useEffect(() => {
@@ -32263,6 +32277,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       />
       {chatPageOpen && pageTab === 'profile' && !isFriendManagement && !guestMode && (
         <PublicLiveCommentsPanel user={user as any} headerOpen={false} onToggleHeader={() => { setChatPageOpen(false); setHeaderOpen(true); }} onBusyChange={setLiveChatBusy} />
+      )}
+      {!chatPageOpen && !headerOpen && pageTab === 'profile' && !isFriendManagement && !guestMode && (
+        <AppMediaSheet open myId={user?.id ? String(user.id) : null} onClose={() => setHeaderOpen(true)} onOpenTemplates={() => setAppTplOpen(true)} />
+      )}
+      {appTplOpen && (
+        <LiveChatVideoStudio open userId={user?.id ? String(user.id) : ''} onClose={() => setAppTplOpen(false)} onPost={(caption, url) => {
+          syncAppMedia([{ id: 'app_' + Date.now(), url, type: /video|\.mp4|\.webm|\.mov/i.test(url) ? 'video' : 'image', userId: String(user?.id || ''), name: (user as any)?.name || null, username: (user as any)?.username || null, avatarUrl: (user as any)?.avatarUrl || null, createdAt: Date.now() }]);
+          setAppTplOpen(false);
+        }} />
       )}
       {GuestModal}
     </>;

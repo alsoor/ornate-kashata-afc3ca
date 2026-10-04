@@ -44,7 +44,7 @@ export function deleteAppMedia(id: string) {
   write(read().filter(x => x.id !== id));
 }
 
-export function AppMediaSheet({ open, myId, onClose }: { open: boolean; myId?: string | null; onClose?: () => void }) {
+export function AppMediaSheet({ open, myId, onClose, onOpenTemplates }: { open: boolean; myId?: string | null; onClose?: () => void; onOpenTemplates?: () => void }) {
   const [items, setItems] = useState<AppMedia[]>(() => read());
   const [openId, setOpenId] = useState<string | null>(null);
   useEffect(() => {
@@ -69,6 +69,9 @@ export function AppMediaSheet({ open, myId, onClose }: { open: boolean; myId?: s
             {myId && item.userId === myId ? <span onClick={e => { e.stopPropagation(); deleteAppMedia(item.id); }} style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.65)', color: '#fff', borderRadius: 8, padding: '2px 6px', fontSize: 11 }}>حذف</span> : null}
           </button>
         ))}
+      </div>
+      <div style={{ position: 'fixed', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 78px)', zIndex: 25, display: 'flex', justifyContent: 'center' }}>
+        <button type="button" onClick={onOpenTemplates} style={{ height: 36, padding: '0 16px', borderRadius: 999, border: '1px solid rgba(0,188,212,0.45)', background: 'rgba(7,20,22,0.92)', color: '#7ee8f5', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>Templates</button>
       </div>
       {current ? (
         <div onClick={() => setOpenId(null)} style={{ position: 'fixed', inset: 0, zIndex: 30, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
