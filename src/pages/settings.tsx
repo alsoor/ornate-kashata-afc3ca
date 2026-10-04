@@ -2324,6 +2324,21 @@ async function resolveAudio(category: 'quran' | 'ar_song' | 'en_song' | 'music',
   return hit || list[0];
 }
 
+/** ردود الدعم التي حذفها المستخدم من عنده (تبقى مخفية حتى لو السيرفر يرجّعها) */
+function supportHiddenKey(uid: string) {
+  return `stooorna_support_hidden_replies_${uid}`;
+}
+function getHiddenSupportReplies(uid: string): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(supportHiddenKey(uid)) || '[]')); } catch { return new Set(); }
+}
+function hideSupportReply(uid: string, id: string) {
+  try {
+    const ids = getHiddenSupportReplies(uid);
+    ids.add(id);
+    localStorage.setItem(supportHiddenKey(uid), JSON.stringify(Array.from(ids).slice(-300)));
+  } catch { /* ignore */ }
+}
+
 /** مفتاح "آخر رد شافه المستخدم" — يُستخدم لنقطة التنبيه على أيقونة الدعم */
 function supportSeenKey(uid: string) {
   return `stooorna_support_seen_${uid}`;
@@ -2400,6 +2415,8 @@ async function fetchSupportReplies(uid: string): Promise<SupportMsg[]> {
     try { localStorage.setItem(supportWipedKey(uid), String(done.at)); } catch { /* ignore */ }
   }
   out = out.filter(m => !wipedAt || !m.at || m.at > wipedAt);
+  const hidden = getHiddenSupportReplies(uid);
+  if (hidden.size) out = out.filter(m => !hidden.has(m.id));
   return out.sort((x, y) => x.at - y.at);
 }
 
@@ -2442,7 +2459,6 @@ function SupportChatOverlay({
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
-  const [replies, setReplies] = useState<SupportMsg[]>([]);
   const imgRef = useRef<HTMLInputElement>(null);
   const vidRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -2459,24 +2475,6 @@ function SupportChatOverlay({
     setError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, currentUser?.id]);
-
-  // ردود الدعم: تظهر داخل الفقاعة وتُعتبر "مقروءة" عند فتحها
-  useEffect(() => {
-    if (!open || !uid) { setReplies([]); return; }
-    let cancelled = false;
-    const load = async () => {
-      const list = await fetchSupportReplies(uid);
-      if (cancelled) return;
-      setReplies(prev => (
-        prev.length === list.length && prev[prev.length - 1]?.id === list[list.length - 1]?.id ? prev : list
-      ));
-      const maxAt = list.reduce((m, x) => Math.max(m, x.at || 0), 0);
-      if (maxAt) markSupportRepliesSeen(uid, maxAt);
-    };
-    void load();
-    const id = setInterval(load, 5000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [open, uid]);
 
   async function deliverToSupport(p: { email: string; text: string; media: SupportAttachment | null }) {
     const fromUsername = uname || null;
@@ -2643,26 +2641,6 @@ function SupportChatOverlay({
             </span>
           </div>
 
-          {/* رسائل الدعم (الردود) — تظهر في نفس المكان */}
-          {replies.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <p style={{ margin: '0 0 6px', fontSize: '0.74rem', fontWeight: 800, color: '#15803d' }}>{t.replies}</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 190, overflowY: 'auto' }}>
-                {replies.map(m => (
-                  <div key={m.id} style={{
-                    padding: '10px 12px', borderRadius: 14, background: '#ecfdf5', border: '1px solid #86efac',
-                    fontSize: '0.84rem', lineHeight: 1.55, whiteSpace: 'pre-wrap', color: '#0f172a',
-                  }}>
-                    {m.mediaUrl && m.mediaType === 'image' && (
-                      <img src={m.mediaUrl} alt="" style={{ width: '100%', borderRadius: 10, marginBottom: m.text ? 8 : 0, display: 'block' }} />
-                    )}
-                    {m.text}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* تم إرسال طلبك */}
           {sent && (
             <div style={{
@@ -2784,6 +2762,121 @@ function SupportChatOverlay({
           </div>
         </motion.div>
       </motion.div>
+    </AnimatePresence>
+  );
+}
+
+/** فقاعة قراءة رد الدعم — للقراءة فقط، وبجانب كل رسالة زر حذف */
+function SupportRepliesBubble({
+  open,
+  onClose,
+  replies,
+  onDelete,
+}: {
+  open: boolean;
+  onClose: () => void;
+  replies: SupportMsg[];
+  onDelete: (id: string) => void;
+}) {
+  const isAr = (() => { try { return localStorage.getItem('lang') !== 'en'; } catch { return true; } })();
+  const title = isAr ? 'رسالة من الدعم' : 'Message from support';
+  const empty = isAr ? 'لا توجد رسائل من الدعم' : 'No messages from support';
+  const orange = '#f97316';
+  const fmt = (at: number) => {
+    if (!at) return '';
+    try { return new Date(at).toLocaleString(isAr ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }); } catch { return ''; }
+  };
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          key="support-replies-bubble"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10350, background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.92, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 20 }}
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: 'min(94vw, 420px)', maxHeight: '80vh', overflowY: 'auto', background: '#ffffff',
+              borderRadius: 22, boxShadow: '0 20px 60px rgba(0,0,0,0.35)', padding: '14px 16px 18px',
+              direction: isAr ? 'rtl' : 'ltr', color: '#0f172a',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, direction: 'ltr', marginBottom: 12 }}>
+              <img
+                src={STOOORNA_APP_ICON}
+                alt=""
+                style={{ width: 38, height: 38, borderRadius: 10, objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0' }}
+              />
+              <span style={{ fontWeight: 900, fontSize: '1.05rem', color: orange }}>{title}</span>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                style={{ marginInlineStart: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {replies.length === 0 ? (
+              <p style={{ margin: '24px 0', textAlign: 'center', color: '#64748b', fontSize: '0.84rem' }}>{empty}</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {replies.map(m => (
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'stretch', gap: 8 }}>
+                    <div style={{
+                      flex: 1, minWidth: 0, padding: '10px 12px', borderRadius: 14,
+                      background: '#fff7ed', border: '1px solid #fdba74',
+                      fontSize: '0.86rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#0f172a',
+                      wordBreak: 'break-word',
+                    }}>
+                      {m.mediaUrl && m.mediaType === 'image' && (
+                        <img src={m.mediaUrl} alt="" style={{ width: '100%', borderRadius: 10, marginBottom: m.text ? 8 : 0, display: 'block' }} />
+                      )}
+                      {m.mediaUrl && m.mediaType === 'video' && (
+                        <video src={m.mediaUrl} controls playsInline style={{ width: '100%', borderRadius: 10, marginBottom: m.text ? 8 : 0, display: 'block' }} />
+                      )}
+                      {m.mediaUrl && m.mediaType === 'file' && (
+                        <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ color: orange, fontSize: '0.8rem', display: 'block', marginBottom: m.text ? 6 : 0 }}>
+                          📎 Attachment
+                        </a>
+                      )}
+                      {m.text}
+                      {!!m.at && (
+                        <div style={{ marginTop: 6, fontSize: '0.66rem', color: '#9a6b3d', direction: 'ltr', textAlign: isAr ? 'right' : 'left' }}>{fmt(m.at)}</div>
+                      )}
+                    </div>
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      type="button"
+                      title={isAr ? 'حذف' : 'Delete'}
+                      aria-label={isAr ? 'حذف' : 'Delete'}
+                      onClick={() => onDelete(m.id)}
+                      style={{
+                        width: 40, flexShrink: 0, borderRadius: 12, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626',
+                      }}
+                    >
+                      <Trash2 size={17} />
+                    </motion.button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        </motion.div>
+      )}
     </AnimatePresence>
   );
 }
@@ -4861,6 +4954,8 @@ export default function SettingsPage() {
     return () => window.clearTimeout(id);
   }, [showSupportSentToast]);
   const [supportReplyDot, setSupportReplyDot] = useState(false);
+  const [supportReplies, setSupportReplies] = useState<SupportMsg[]>([]);
+  const [showSupportReplies, setShowSupportReplies] = useState(false);
   const [showLiveLocation, setShowLiveLocation] = useState(false);
   const [showPublicVoice, setShowPublicVoice] = useState(false);
   const [profileCountry, setProfileCountry] = useState<string | null>(() => readSavedCountry()?.name || null);
@@ -5795,36 +5890,43 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, profileUsername]);
 
-  // نقطة حمراء على أيقونة الدعم عند وصول رد جديد من الدعم (تختفي بعد فتح الفقاعة)
+  // أيقونتا الدعم تتحولان للبرتقالي طالما فيه رد من الدعم لم يُحذف
   useEffect(() => {
     const uid = (user as { id?: string } | null)?.id;
     if (!uid || isSupportOwnerAccount(user as { email?: string | null; username?: string | null }, profileUsername)) {
       setSupportReplyDot(false);
+      setSupportReplies([]);
       return;
     }
     let cancelled = false;
     const check = async () => {
-      if (showSupportChat) { setSupportReplyDot(false); return; }
       const list = await fetchSupportReplies(uid);
       if (cancelled) return;
-      const maxAt = list.reduce((m, x) => Math.max(m, x.at || 0), 0);
-      let seen = 0;
-      try { seen = Number(localStorage.getItem(supportSeenKey(uid)) || 0) || 0; } catch { /* ignore */ }
-      setSupportReplyDot(maxAt > seen);
+      setSupportReplies(prev => (
+        prev.length === list.length && prev[prev.length - 1]?.id === list[list.length - 1]?.id ? prev : list
+      ));
+      setSupportReplyDot(list.length > 0);
     };
-    const boot = window.setTimeout(() => { void check(); }, 1500);
-    const id = window.setInterval(() => { void check(); }, 20000);
-    const onSeen = () => setSupportReplyDot(false);
-    window.addEventListener('stooorna:support-seen', onSeen);
+    const boot = window.setTimeout(() => { void check(); }, 800);
+    const id = window.setInterval(() => { void check(); }, 8000);
     return () => {
       cancelled = true;
       clearTimeout(boot);
       clearInterval(id);
-      window.removeEventListener('stooorna:support-seen', onSeen);
     };
-  }, [user, profileUsername, showSupportChat]);
+  }, [user, profileUsername]);
 
-
+  function deleteSupportReply(id: string) {
+    const uid = (user as { id?: string } | null)?.id;
+    if (!uid) return;
+    hideSupportReply(uid, id);
+    setSupportReplies(prev => {
+      const next = prev.filter(m => m.id !== id);
+      setSupportReplyDot(next.length > 0);
+      if (!next.length) setShowSupportReplies(false);
+      return next;
+    });
+  }
 
   // Load recordings only when Live tab is active (deferred to keep tab switch smooth)
   useEffect(() => {
@@ -6760,37 +6862,68 @@ export default function SettingsPage() {
             user as { email?: string | null; username?: string | null; name?: string | null } | null,
             profileUsername,
           ) ? (
-            <motion.button
-              whileTap={{ scale: 0.88 }}
-              onClick={() => setShowSupportChat(true)}
-              title="Support"
-              aria-label="Support"
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'rgba(0,188,212,0.12)',
-                border: '1px solid rgba(0,188,212,0.4)',
-                color: '#00BCD4',
-                cursor: 'pointer',
-                boxShadow: '0 0 12px rgba(0,188,212,0.25)',
-                position: 'relative',
-              }}
-            >
-              <Headphones size={18} strokeWidth={2.2} />
-              {supportReplyDot && (
-                <span
-                  aria-label="New support reply"
-                  style={{
-                    position: 'absolute', top: -3, right: -3, width: 11, height: 11, borderRadius: '50%',
-                    background: '#ef4444', border: '2px solid #ffffff',
-                  }}
-                />
-              )}
-            </motion.button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* زر قراءة رد الدعم — برتقالي عند وجود رسالة */}
+              <motion.button
+                whileTap={{ scale: 0.88 }}
+                onClick={() => setShowSupportReplies(true)}
+                title="Support replies"
+                aria-label="Support replies"
+                animate={supportReplyDot ? { boxShadow: ['0 0 6px rgba(249,115,22,0.35)', '0 0 16px rgba(249,115,22,0.8)', '0 0 6px rgba(249,115,22,0.35)'] } : { boxShadow: '0 0 0px rgba(0,0,0,0)' }}
+                transition={supportReplyDot ? { duration: 1.6, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: (supportReplyDot || showSupportReplies) ? 'rgba(249,115,22,0.16)' : 'rgba(148,163,184,0.12)',
+                  border: `1px solid ${(supportReplyDot || showSupportReplies) ? 'rgba(249,115,22,0.7)' : 'rgba(148,163,184,0.35)'}`,
+                  color: (supportReplyDot || showSupportReplies) ? '#f97316' : '#94a3b8',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  transition: 'background 0.2s, border-color 0.2s, color 0.2s',
+                }}
+              >
+                <MessageCircle size={18} strokeWidth={2.2} />
+                {supportReplies.length > 0 && (
+                  <span style={{
+                    position: 'absolute', top: -5, right: -5, minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px',
+                    background: '#f97316', color: '#fff', fontSize: '0.6rem', fontWeight: 800,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #ffffff',
+                    boxSizing: 'content-box',
+                  }}>
+                    {supportReplies.length > 9 ? '9+' : supportReplies.length}
+                  </span>
+                )}
+              </motion.button>
+
+              {/* أيقونة الدعم (كتابة المشكلة) — تتحول للبرتقالي عند وجود رد */}
+              <motion.button
+                whileTap={{ scale: 0.88 }}
+                onClick={() => setShowSupportChat(true)}
+                title="Support"
+                aria-label="Support"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: supportReplyDot ? 'rgba(249,115,22,0.16)' : 'rgba(0,188,212,0.12)',
+                  border: `1px solid ${supportReplyDot ? 'rgba(249,115,22,0.7)' : 'rgba(0,188,212,0.4)'}`,
+                  color: supportReplyDot ? '#f97316' : '#00BCD4',
+                  cursor: 'pointer',
+                  boxShadow: supportReplyDot ? '0 0 12px rgba(249,115,22,0.4)' : '0 0 12px rgba(0,188,212,0.25)',
+                  position: 'relative',
+                  transition: 'background 0.2s, border-color 0.2s, color 0.2s',
+                }}
+              >
+                <Headphones size={18} strokeWidth={2.2} />
+              </motion.button>
+            </div>
           ) : (
             <div style={{ width: 36 }} />
           )}
@@ -9394,6 +9527,14 @@ export default function SettingsPage() {
         onClose={() => setShowSupportChat(false)}
         onSent={() => setShowSupportSentToast(true)}
         currentUser={user as { id?: string; name?: string | null; username?: string | null; email?: string | null } | null}
+      />
+
+      {/* فقاعة قراءة رد الدعم (للقراءة + حذف) */}
+      <SupportRepliesBubble
+        open={showSupportReplies}
+        onClose={() => setShowSupportReplies(false)}
+        replies={supportReplies}
+        onDelete={deleteSupportReply}
       />
 
       {/* مربع تأكيد إرسال رسالة الدعم — يختفي بعد ثانيتين (أنميشن) */}
