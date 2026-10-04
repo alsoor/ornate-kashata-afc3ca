@@ -2011,6 +2011,11 @@ async function sendRealChatMessage(opts: {
     { url: '/api/support/messages', bodies: [{ toUserId: to, text: opts.text, from: 'support', isSupportReply: true, ...media }] },
   ];
 
+  // رد الدعم: مسار الدعم المخصص أولاً
+  if (opts.meta && (opts.meta as Record<string, unknown>).isSupportReply) {
+    const i = routes.findIndex(r => r.url === '/api/support/messages');
+    if (i > 0) routes.unshift(routes.splice(i, 1)[0]);
+  }
   for (const route of routes) {
     for (const body of route.bodies) {
       try {
@@ -2022,12 +2027,18 @@ async function sendRealChatMessage(opts: {
         });
         if (r.ok || r.status === 201) return true;
         let detail = '';
-        try { detail = (await r.text()).replace(/\s+/g, ' ').slice(0, 90); } catch { /* ignore */ }
-        lastSendDiag.push(`POST ${route.url.replace(/\/[A-Za-z0-9_-]{12,}/g, '/…')} → ${r.status}${detail ? ' ' + detail : ''}`);
+        try {
+          const raw = await r.text();
+          const pre = /<pre[^>]*>([\s\S]*?)<\/pre>/i.exec(raw);
+          if (pre) detail = pre[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 70);
+          else if (!/^\s*</.test(raw)) detail = raw.replace(/\s+/g, ' ').trim().slice(0, 70);
+        } catch { /* ignore */ }
+        const label = route.url.replace(/\/[A-Za-z0-9_-]{12,}/g, '/:id');
+        lastSendDiag.push(`${label} ← ${r.status}${detail ? ' ' + detail : ''}`);
         // مسار غير موجود / ممنوع: تغيير شكل الجسم ما يفيد → ننتقل للمسار التالي
         if (r.status === 401 || r.status === 403 || r.status === 404 || r.status === 405) break;
       } catch (e) {
-        lastSendDiag.push(`POST ${route.url.slice(0, 40)} → network error`);
+        lastSendDiag.push(`${route.url.slice(0, 40)} ← network error`);
         break;
       }
     }
@@ -2924,7 +2935,7 @@ function CommentsSheet({
         style={{
           width: 'min(100vw, 560px)', height: 'min(84vh, 780px)', background: '#ffffff',
           borderRadius: '22px 22px 0 0', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          boxShadow: '0 -10px 40px rgba(0,0,0,0.3)', direction: 'rtl', color: '#0f172a',
+          boxShadow: '0 -10px 40px rgba(0,0,0,0.3)', direction: 'ltr', color: '#0f172a',
         }}
       >
         {/* مقبض السحب */}
@@ -2947,7 +2958,7 @@ function CommentsSheet({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            style={{ position: 'absolute', insetInlineStart: 12, top: 0, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}
+            style={{ position: 'absolute', right: 12, top: 0, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}
           >
             <X size={20} />
           </button>
@@ -3356,15 +3367,15 @@ function OwnerSupportThread({
     } catch { /* handled below */ }
 
     if (!delivered) {
-      // لا نخدع الدعم: الرسالة ما وصلت للسيرفر → نرجّعها للخانة ونوضّح
-      const diag = lastSendDiag.slice(-3).join(' | ');
+      // السيرفر ما قبل الرسالة: توصل لنفس الجهاز فقط (قناة محلية) — ونوضّح ذلك بدل ما نخدع الدعم
+      queueSupportReply({ toUserId: candidates0[0] || peer.id, toUsername: peer.username || null, text: body, mediaUrl: media?.url, mediaType: media?.type });
+      const diag = lastSendDiag.slice(-6).join('\n');
       setSendError(
-        candidates0.length === 0
-          ? 'تعذّر تحديد حساب المستخدم لإرسال الرد إليه.'
-          : `تعذّر إرسال الرد للمستخدم.${diag ? '\n' + diag : ''}`,
+        (candidates0.length === 0
+          ? 'تعذّر تحديد حساب المستخدم، فالرد وصل لهذا الجهاز فقط.'
+          : 'السيرفر ما قبل الرد: وصل لهذا الجهاز فقط ولن يصل لأجهزة المستخدم.')
+        + (diag ? '\n' + diag : ''),
       );
-      setMessages(prev => prev.filter(m => m.id !== local.id));
-      if (!media) setInput(text);
     } else {
       setSendError('');
     }
@@ -3410,7 +3421,7 @@ function OwnerSupportThread({
   const footer = (
     <div style={{ flexShrink: 0, background: '#ffffff', borderTop: '1px solid #e5e7eb' }}>
       {sendError && (
-        <div style={{ padding: '8px 14px', background: '#fef2f2', borderBottom: '1px solid #fecaca', color: '#dc2626', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        <div dir="auto" style={{ padding: '8px 14px', background: '#fffbeb', borderBottom: '1px solid #fde68a', color: '#b45309', fontSize: '0.74rem', fontWeight: 700, textAlign: 'center', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 120, overflowY: 'auto' }}>
           {sendError}
         </div>
       )}
@@ -3431,7 +3442,7 @@ function OwnerSupportThread({
         <img src={STOOORNA_APP_ICON} alt="" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0' }} />
         <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.zip,.txt" style={{ display: 'none' }} onChange={onPickFile} />
         <div style={{
-          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px 0 12px',
+          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px 0 14px',
           border: '1px solid #cbd5e1', borderRadius: 999, background: '#ffffff', minHeight: 46,
         }}>
           <textarea
@@ -3439,11 +3450,12 @@ function OwnerSupportThread({
             onChange={e => setInput(e.target.value.slice(0, 2000))}
             placeholder={`الرد على ${peerHandle}...`}
             rows={1}
+            dir="auto"
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
             }}
             style={{
-              flex: 1, minWidth: 0, resize: 'none', maxHeight: 96, padding: '12px 0', border: 'none', outline: 'none',
+              flex: 1, minWidth: 0, resize: 'none', maxHeight: 96, textAlign: 'left', padding: '12px 0', border: 'none', outline: 'none',
               background: 'transparent', color: '#0f172a', fontSize: '0.92rem', fontFamily: 'var(--font-sans)', lineHeight: 1.35,
             }}
           />
@@ -3469,7 +3481,7 @@ function OwnerSupportThread({
             display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: input.trim() ? 'pointer' : 'default',
           }}
         >
-          <Send size={20} style={{ transform: 'scaleX(-1)' }} />
+          <Send size={20} />
         </motion.button>
       </div>
     </div>
@@ -3501,7 +3513,7 @@ function OwnerSupportThread({
         return (
           <div key={m.id} style={{
             display: 'flex', gap: 10, padding: '10px 14px', alignItems: 'flex-start',
-            marginInlineStart: mine ? 44 : 0,
+            marginLeft: mine ? 44 : 0,
           }}>
             {mine ? (
               <img src={STOOORNA_APP_ICON} alt="" style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0' }} />
@@ -3528,7 +3540,7 @@ function OwnerSupportThread({
                 )}
                 <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{relTimeAr(m.at)}</span>
               </div>
-              <div style={{ marginTop: 4, fontSize: '0.92rem', lineHeight: 1.6, color: '#334155', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              <div dir="auto" style={{ marginTop: 4, fontSize: '0.92rem', lineHeight: 1.6, color: '#334155', whiteSpace: 'pre-wrap', wordBreak: 'break-word', textAlign: 'left' }}>
                 {m.mediaUrl && m.mediaType === 'image' && (
                   <img src={m.mediaUrl} alt="" style={{ width: '100%', maxWidth: 260, borderRadius: 12, marginBottom: m.text ? 8 : 0, display: 'block' }} />
                 )}
@@ -9864,7 +9876,8 @@ export default function SettingsPage() {
                         }}>{peer.unread}</span>
                       )}
                     </div>
-                    <p style={{
+                    <p dir="auto" style={{
+                      textAlign: 'left',
                       margin: '4px 0 0', color: '#334155', fontSize: '0.9rem', lineHeight: 1.55,
                       display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', whiteSpace: 'pre-wrap',
                     }}>
