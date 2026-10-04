@@ -2,7 +2,7 @@
  * outgoingCall.ts — إرسال الاتصال فقط.
  * src/call/outgoingCall.ts
  */
-import { callSession, newSessionId, sendSignal, stopRing, type CallPeer } from './endCall';
+import { callSession, newSessionId, sendSignal, stopRing, trackInvite, type CallPeer } from './endCall';
 
 const NO_ANSWER_MS = 45000;
 export const APP_ID = '149ef04e839c4132a08efb49d717c436';
@@ -38,11 +38,27 @@ function playRingback() {
   } catch { /* */ }
 }
 
-export async function publishCall(meId: string, channel: string, video: boolean, client: { current: any }, mic: { current: any }, cam: { current: any }, onRemote: () => void) {
+/**
+ * sessionId: رقم جلسة المكالمة. إذا انتهت الجلسة أثناء التحضير (طلب المايك/التوكن/الانضمام)
+ * نوقف كل شيء وننظّف، بدل أن يكمل المتصل الانضمام ويبقى المايك مفتوحاً بعد الإنهاء.
+ */
+export async function publishCall(meId: string, channel: string, video: boolean, client: { current: any }, mic: { current: any }, cam: { current: any }, onRemote: () => void, sessionId?: number) {
+  const alive = () => sessionId === undefined || callSession.current?.id === sessionId;
   const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
+  if (!alive()) return;
   const c = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
   client.current = c;
+  let micTrack: any = null;
+  let camTrack: any = null;
+  const abort = async () => {
+    for (const t of [micTrack, camTrack]) { try { t?.stop?.(); t?.close?.(); } catch { /* */ } }
+    try { await c.leave(); } catch { /* */ }
+    if (client.current === c) client.current = null;
+    if (micTrack && mic.current === micTrack) mic.current = null;
+    if (camTrack && cam.current === camTrack) cam.current = null;
+  };
   c.on('user-published', async (remote: any, mediaType: string) => {
+    if (!alive()) return;
     await c.subscribe(remote, mediaType);
     if (mediaType === 'audio') {
       const el = document.createElement('audio');
@@ -56,13 +72,19 @@ export async function publishCall(meId: string, channel: string, video: boolean,
   });
   const tokenRes = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(meId)}`, { credentials: 'include' });
   const tokenData = await tokenRes.json().catch(() => ({}));
-  const track = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard', AEC: true, ANS: true } as any);
-  mic.current = track;
+  if (!alive()) return abort();
+  micTrack = await AgoraRTC.createMicrophoneAudioTrack({ encoderConfig: 'speech_standard', AEC: true, ANS: true } as any);
+  if (!alive()) return abort();
+  mic.current = micTrack;
   if (video) {
-    cam.current = await AgoraRTC.createCameraVideoTrack();
+    camTrack = await AgoraRTC.createCameraVideoTrack();
+    if (!alive()) return abort();
+    cam.current = camTrack;
   }
   await c.join(tokenData.appId || APP_ID, channel, tokenData.token || null, tokenData.uid || meId);
-  await c.publish(cam.current ? [track, cam.current] : [track]);
+  if (!alive()) return abort();
+  await c.publish(camTrack ? [micTrack, camTrack] : [micTrack]);
+  if (!alive()) return abort();
 }
 
 export function startOutgoing(me: CallPeer, peers: CallPeer[], video: boolean, onNoAnswer: () => void) {
@@ -74,12 +96,12 @@ export function startOutgoing(me: CallPeer, peers: CallPeer[], video: boolean, o
   try { localStorage.removeItem(`stooorna_call_ended_${channel}`); } catch { /* */ }
   for (const peer of peers) {
     const body = { toUserId: peer.id, userId: peer.id, channel, hostId: me.id, fromId: me.id, hostName: me.name, hostAvatar: me.avatarUrl, members: callSession.current.peers, at, video, kind: video ? 'video' : 'voice' };
-    void fetch('/api/call/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
+    trackInvite(fetch('/api/call/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {}));
     sendSignal({ type: 'call', to: peer.id, from: me.id, fromName: me.name, fromAvatar: me.avatarUrl, channel, at, callType: video ? 'video' : 'voice', video, members: callSession.current.peers });
   }
   playRingback();
   const ring = window.setInterval(() => {
-    if (callSession.current?.phase === 'live' || callSession.current?.phase === 'idle') { window.clearInterval(ring); stopRing(); return; }
+    if (callSession.current?.phase === 'live' || callSession.current?.phase === 'idle' || callSession.current?.id !== id) { window.clearInterval(ring); stopRing(); return; }
     playRingback();
   }, 2600);
   const timer = window.setTimeout(() => {
@@ -95,7 +117,7 @@ export function inviteThird(me: CallPeer, peer: CallPeer) {
   if (!session.peers.some(p => p.id === peer.id)) session.peers.push({ ...peer, joined: false });
   const at = Date.now();
   const body = { toUserId: peer.id, userId: peer.id, channel: session.channel, hostId: session.hostId, fromId: me.id, hostName: me.name, hostAvatar: me.avatarUrl, members: session.peers, at, video: session.video, kind: session.video ? 'video' : 'voice' };
-  void fetch('/api/call/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
+  trackInvite(fetch('/api/call/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {}));
   sendSignal({ type: 'call', to: peer.id, from: me.id, fromName: me.name, fromAvatar: me.avatarUrl || peer.avatarUrl, channel: session.channel, at, callType: session.video ? 'video' : 'voice', members: session.peers });
   for (const other of session.peers) {
     if (!other.id || other.id === me.id || other.id === peer.id) continue;

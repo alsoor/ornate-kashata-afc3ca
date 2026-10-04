@@ -2,7 +2,7 @@
  * incomingCall.ts — استقبال الاتصال فقط.
  * src/call/incomingCall.ts
  */
-import { callSession, newSessionId, sendSignal, stopRing, trackSignalSocket, type CallPeer } from './endCall';
+import { callSession, endedAtOf, markEnded, newSessionId, sendSignal, stopRing, trackSignalSocket, type CallPeer } from './endCall';
 
 export function wsUrl() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -28,6 +28,10 @@ function playIncoming() {
 }
 
 export function isEnded(channel: string, at: number) {
+  // 1) سجل الذاكرة: يُملأ عند وصول hangup حتى على جهاز المستقبِل.
+  const mem = endedAtOf(channel);
+  if (mem && !(at && at > mem + 800)) return true;
+  // 2) علامة localStorage (نفس الجهاز).
   try {
     const raw = localStorage.getItem(`stooorna_call_ended_${channel}`);
     if (!raw) return false;
@@ -58,12 +62,15 @@ export function answerIncoming(me: CallPeer) {
 export function attachIncoming(meId: string, onEvent: (type: string, msg: any) => void) {
   let closed = false;
   let retry = 0;
+  let ws: WebSocket | null = null;
   const connect = () => {
     if (closed) return;
-    const ws = new WebSocket(wsUrl());
-    trackSignalSocket(ws);
-    ws.onopen = () => { try { ws.send(JSON.stringify({ type: 'register', userId: meId })); } catch { /* */ } };
-    ws.onmessage = (ev) => {
+    const sock = new WebSocket(wsUrl());
+    ws = sock;
+    trackSignalSocket(sock);
+    sock.onopen = () => { try { sock.send(JSON.stringify({ type: 'register', userId: meId })); } catch { /* */ } };
+    sock.onmessage = (ev) => {
+      if (closed) return;
       let msg: any;
       try { msg = JSON.parse(String(ev.data || '')); } catch { return; }
       const type = String(msg.type || '');
@@ -71,7 +78,14 @@ export function attachIncoming(meId: string, onEvent: (type: string, msg: any) =
         const channel = String(msg.channel || '');
         const at = Number(msg.at || Date.now());
         if (!channel || isEnded(channel, at)) return;
-        if (callSession.current?.phase === 'live') return;
+        const cur = callSession.current;
+        if (cur?.phase === 'live') return;
+        if (cur && cur.channel === channel && cur.phase === 'incoming') {
+          // نفس الرنة وصلت مرتين: حدّث الأعضاء فقط ولا تُعد الرنين.
+          if (Array.isArray(msg.members) && msg.members.length) cur.peers = msg.members;
+          onEvent(type, msg);
+          return;
+        }
         const peers: CallPeer[] = Array.isArray(msg.members) ? msg.members : [];
         callSession.current = {
           id: newSessionId(),
@@ -86,11 +100,19 @@ export function attachIncoming(meId: string, onEvent: (type: string, msg: any) =
       }
       if (type === 'hangup' || type === 'call-end' || type === 'ended') {
         const channel = String(msg.channel || '');
-        if (!callSession.current || !channel || channel === callSession.current.channel) {
-          stopRing();
-          if (callSession.current) callSession.current.phase = 'idle';
-          callSession.current = null;
+        const s = callSession.current;
+        const from = String(msg.from || '');
+        const endsCall = !s || !from || s.peers.length <= 2 || from === s.hostId;
+        if (channel && endsCall && (!s || channel === s.channel)) {
+          const endedAt = Number(msg.at) || Date.now();
+          // سجّل الإنهاء عندنا: أي "call" متأخرة أو دعوة قديمة لن تُعيد الرنين.
+          markEnded(channel, endedAt);
+          // يُغلق أيضاً شريط الرنين القديم إن وُجد في RootLayout.
+          window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: { channel, at: endedAt } }));
         }
+        if (!s || !channel || channel === s.channel) stopRing();
+        // مهم: لا نمسح callSession هنا. CallHost هو من ينهي الجلسة عبر endCall
+        // (يغلق Agora والمايك ويحدّث الواجهة). مسحها هنا كان يمنعه من التنظيف.
       }
       if (type === 'answered' || type === 'call-answered') {
         if (callSession.current && String(msg.channel || '') === callSession.current.channel) {
@@ -103,25 +125,39 @@ export function attachIncoming(meId: string, onEvent: (type: string, msg: any) =
       }
       onEvent(type, msg);
     };
-    ws.onclose = () => { if (!closed) retry = window.setTimeout(connect, 2000); };
+    sock.onclose = () => { if (!closed) retry = window.setTimeout(connect, 2000); };
   };
   connect();
+
+  // احتياط: إذا فاتتنا رسالة hangup (انقطاع الويب سوكت)، الخادم يُسقط الدعوة فنوقف الرنين.
+  let watchId = 0;
+  let watchSince = 0;
   const poll = window.setInterval(() => {
     const session = callSession.current;
-    if (!session || session.phase === 'live') return;
+    if (!session || session.phase === 'live') { watchId = 0; return; }
+    if (session.id !== watchId) { watchId = session.id; watchSince = Date.now(); }
     void fetch(`/api/call/invite?userId=${encodeURIComponent(meId)}`, { credentials: 'include' })
       .then(r => r.json())
       .then(data => {
         const inv = data?.invite;
-        if (!inv || inv.clear || inv.ended || String(inv.channel || '') !== session.channel) {
-          if (callSession.current?.channel === session.channel && callSession.current.phase !== 'live') {
-            stopRing();
-            callSession.current = null;
-            onEvent('hangup', { channel: session.channel, from: session.hostId });
-          }
+        const sameChannel = !!inv && String(inv.channel || '') === session.channel;
+        const cancelled = sameChannel && (!!inv.clear || !!inv.ended);
+        // غياب الدعوة وحده لا يُعتبر إلغاءً في أول ثوانٍ: قد لا يكون الخادم خزّنها بعد.
+        const missing = !sameChannel && Date.now() - watchSince > 4000;
+        if (!cancelled && !missing) return;
+        const cur = callSession.current;
+        if (cur && cur.id === session.id && cur.phase !== 'live') {
+          markEnded(session.channel, session.startedAt);
+          stopRing();
+          onEvent('hangup', { channel: session.channel, from: session.hostId, at: session.startedAt });
         }
       })
       .catch(() => {});
   }, 1000);
-  return () => { closed = true; if (retry) window.clearTimeout(retry); window.clearInterval(poll); };
+  return () => {
+    closed = true;
+    if (retry) window.clearTimeout(retry);
+    window.clearInterval(poll);
+    try { ws?.close(); } catch { /* */ }
+  };
 }

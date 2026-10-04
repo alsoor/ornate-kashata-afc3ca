@@ -35,7 +35,11 @@ export default function CallHost({ user }: { user: { id: string; name?: string |
     if (noAnswer.current) window.clearTimeout(noAnswer.current);
     const guest = callSession.current && callSession.current.hostId !== me.id && callSession.current.peers.length > 2;
     if (guest) leaveAsGuest(me.id, client, mic, cam);
-    else await endCall(me.id, { client, mic, cam });
+    else {
+      const done = endCall(me.id, { client, mic, cam });
+      sync(); // أغلق الواجهة فوراً، ثم انتظر تنظيف Agora
+      await done;
+    }
     sync();
   }
 
@@ -56,7 +60,12 @@ export default function CallHost({ user }: { user: { id: string; name?: string |
           sync();
           return;
         }
-        void endCall(me.id, { remote: true, client, mic, cam, sessionId: callSession.current.id }).then(sync);
+        if (ring.current) { window.clearInterval(ring.current); ring.current = null; }
+        if (noAnswer.current) { window.clearTimeout(noAnswer.current); noAnswer.current = null; }
+        const endedId = callSession.current.id;
+        const done = endCall(me.id, { remote: true, client, mic, cam, sessionId: endedId, at: Number(msg.at) || undefined });
+        sync(); // الجلسة أُغلقت فوراً: يختفي الرنين والواجهة بدون انتظار
+        void done.then(sync);
         return;
       }
       if (type === 'member-left') {
@@ -105,7 +114,7 @@ export default function CallHost({ user }: { user: { id: string; name?: string |
         if (callSession.current) callSession.current.phase = 'live';
         stopRing();
         sync();
-      });
+      }, started.id);
       sync();
     };
     const onAdd = (e: Event) => {
@@ -153,7 +162,7 @@ export default function CallHost({ user }: { user: { id: string; name?: string |
               <div style={{ fontSize: 12, opacity: 0.75 }}>{phase === 'live' ? `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}` : phase === 'incoming' ? 'مكالمة واردة' : 'جاري الاتصال'}</div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {phase === 'incoming' && <button onClick={() => { answerIncoming(me); if (callSession.current) callSession.current.phase = 'live'; stopRing(); setPhase('live'); void publishCall(me.id, callSession.current!.channel, !!callSession.current?.video, client, mic, cam, () => { if (callSession.current) callSession.current.phase = 'live'; sync(); }); sync(); }} style={{ background: '#16a34a', color: '#fff', border: 0, borderRadius: 12, padding: '8px 12px' }}>رد</button>}
+              {phase === 'incoming' && <button onClick={() => { answerIncoming(me); if (callSession.current) callSession.current.phase = 'live'; stopRing(); setPhase('live'); void publishCall(me.id, callSession.current!.channel, !!callSession.current?.video, client, mic, cam, () => { if (callSession.current) callSession.current.phase = 'live'; sync(); }, callSession.current!.id); sync(); }} style={{ background: '#16a34a', color: '#fff', border: 0, borderRadius: 12, padding: '8px 12px' }}>رد</button>}
               <button onClick={() => void hangup()} style={{ background: '#dc2626', color: '#fff', border: 0, borderRadius: 12, padding: '8px 12px' }}>إنهاء</button>
             </div>
           </div>
