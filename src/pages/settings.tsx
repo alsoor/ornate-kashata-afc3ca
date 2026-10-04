@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useMemo, useCallback, startTransition } fr
 import { createPortal } from 'react-dom';
 import { useNavigate } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
-import { motion, AnimatePresence } from 'motion/react';
-import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, Briefcase, Menu, ChevronDown, AlertTriangle, FileText, DollarSign, Image as ImageIcon, Video as VideoIcon } from 'lucide-react';
+import { motion, AnimatePresence, useDragControls } from 'motion/react';
+import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, Briefcase, Menu, ChevronDown, AlertTriangle, FileText, DollarSign, Image as ImageIcon, Video as VideoIcon, Smile } from 'lucide-react';
 import { useSession, signOut, signIn, signUp } from '@/lib/auth/auth-client';
 import { usePresenceQuery } from '@/hooks/usePresence';
 import LiveLocationMap from '@/components/LiveLocationMap';
@@ -2458,6 +2458,7 @@ async function fetchSupportReplies(uid: string, uname?: string | null): Promise<
       { url: `/api/messages?peerId=${q}`, thread: true },
     );
   }
+  sources.push({ url: '/api/notifications', thread: false });
   let gotThread = false;
   for (const src of sources) {
     if (src.thread && gotThread) break; // أول صيغة تنجح تكفي
@@ -2465,7 +2466,20 @@ async function fetchSupportReplies(uid: string, uname?: string | null): Promise<
       const r = await fetch(src.url, { credentials: 'include' });
       if (!r.ok) continue;
       const d = await r.json();
-      const list: any[] = Array.isArray(d) ? d : (d.messages || d.items || []);
+      let list: any[] = Array.isArray(d) ? d : (d.messages || d.items || d.notifications || []);
+      if (src.url === '/api/notifications') {
+        // إشعارات رد الدعم فقط → نحوّلها لشكل رسالة صادرة من الدعم
+        list = list
+          .filter((n: any) => /support/i.test(String(n?.kind || n?.type || '')) && /reply/i.test(String(n?.kind || n?.type || '')))
+          .map((n: any) => ({
+            id: n.id ?? n._id,
+            text: n.body || n.text || n.message || '',
+            createdAt: n.createdAt ?? n.at,
+            from: 'support',
+            mediaUrl: n.mediaUrl,
+            mediaType: n.mediaType,
+          }));
+      }
       if (src.thread && list.length) gotThread = true;
       const { replies, tombAt: t } = extractSupportReplies(list, { uid, supportId, assumeThreadWithSupport: src.thread });
       tombAt = Math.max(tombAt, t);
@@ -2849,6 +2863,106 @@ function SupportChatOverlay({
   );
 }
 
+/** "منذ ٣ دقائق" — وقت نسبي بالعربي */
+function relTimeAr(at?: number | string | null): string {
+  const t = typeof at === 'number' ? at : toMs(at);
+  if (!t) return '';
+  const diff = Math.max(0, Date.now() - t);
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'الآن';
+  if (min < 60) return min === 1 ? 'منذ دقيقة' : `منذ ${min} دقيقة`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return h === 1 ? 'منذ ساعة' : `منذ ${h} ساعة`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? 'منذ يوم' : `منذ ${d} يوم`;
+}
+
+/** ورقة سفلية بشكل "التعليقات": مقبض سحب + عنوان "N تعليق" + قائمة + شريط كتابة */
+function CommentsSheet({
+  onClose,
+  count,
+  title,
+  subtitle,
+  scrollRef,
+  footer,
+  children,
+}: {
+  onClose: () => void;
+  count: number;
+  title?: string;
+  subtitle?: React.ReactNode;
+  scrollRef?: React.RefObject<HTMLDivElement>;
+  footer?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  const dragControls = useDragControls();
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10360, background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      }}
+    >
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+        drag="y"
+        dragControls={dragControls}
+        dragListener={false}
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={{ top: 0, bottom: 0.5 }}
+        onDragEnd={(_e: unknown, info: { offset: { y: number }; velocity: { y: number } }) => {
+          if (info.offset.y > 110 || info.velocity.y > 600) onClose();
+        }}
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 'min(100vw, 560px)', height: 'min(84vh, 780px)', background: '#ffffff',
+          borderRadius: '22px 22px 0 0', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          boxShadow: '0 -10px 40px rgba(0,0,0,0.3)', direction: 'rtl', color: '#0f172a',
+        }}
+      >
+        {/* مقبض السحب */}
+        <div
+          onPointerDown={e => dragControls.start(e)}
+          style={{ padding: '10px 0 6px', display: 'flex', justifyContent: 'center', cursor: 'grab', touchAction: 'none', flexShrink: 0 }}
+        >
+          <div style={{ width: 56, height: 5, borderRadius: 3, background: '#cbd5e1' }} />
+        </div>
+
+        {/* العنوان: ٣ تعليق */}
+        <div style={{
+          position: 'relative', textAlign: 'center', padding: '4px 44px 12px', borderBottom: '1px solid #e5e7eb', flexShrink: 0,
+        }}>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: '#475569' }}>
+            {title ?? `${count.toLocaleString('ar-EG')} تعليق`}
+          </p>
+          {subtitle && <div style={{ marginTop: 3, fontSize: '0.68rem', color: '#94a3b8', direction: 'ltr' }}>{subtitle}</div>}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{ position: 'absolute', insetInlineStart: 12, top: 0, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '6px 0', background: '#ffffff' }}>
+          {children}
+        </div>
+
+        {footer}
+      </motion.div>
+    </motion.div>
+  );
+}
+
 /** فقاعة قراءة رد الدعم — للقراءة فقط، وبجانب كل رسالة زر حذف */
 function SupportRepliesBubble({
   open,
@@ -2991,6 +3105,7 @@ function OwnerSupportThread({
   const [sending, setSending] = useState(false);
   const [taskDone, setTaskDone] = useState(false);
   const [sendError, setSendError] = useState('');
+  const [showEmoji, setShowEmoji] = useState(false);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [ttlLeft, setTtlLeft] = useState<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -3229,6 +3344,14 @@ function OwnerSupportThread({
           from: 'support', isSupportReply: true,
         }),
       }).then(r => { if (r.ok) delivered = true; }).catch(() => {});
+      void fetch('/api/notifications', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'رد من الدعم', body, text: body, kind: 'support_reply',
+          toUserId: candidates[0] || peer.id, toUsername: peer.username || null,
+          mediaUrl: media?.url, mediaType: media?.type,
+        }),
+      }).catch(() => {});
       if (delivered) queueSupportReply({ toUserId: candidates[0] || peer.id, toUsername: peer.username || null, text: body, mediaUrl: media?.url, mediaType: media?.type });
     } catch { /* handled below */ }
 
@@ -3272,196 +3395,158 @@ function OwnerSupportThread({
     await send('', { url: mediaUrl, type: mediaType });
   }
 
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 10360,
-        background: 'rgba(0,0,0,0.45)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 12,
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: 'min(94vw, 480px)', height: 'min(86vh, 720px)', background: '#ffffff', borderRadius: 20,
-          overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
-        }}
-      >
-      {/* Slim header: avatar + name + online + open profile */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          padding: '8px 12px',
-          paddingTop: 'max(8px, env(safe-area-inset-top))',
-          background: '#ffffff',
-          borderBottom: '1px solid rgba(0,0,0,0.25)',
-          flexShrink: 0,
-          minHeight: 52,
-        }}
-      >
-        <button onClick={() => { onClose(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0a0a0a', padding: 2 }} aria-label="Close">
-          <X size={20} />
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            // البروفايل الجديد (بث / منشورات) وليس صفحة /u/ القديمة
-            const q = new URLSearchParams();
-            q.set('openProfile', peer.id);
-            if (peer.name) q.set('openProfileName', peer.name);
-            if (peer.username) q.set('openProfileUsername', peer.username);
-            if (peer.avatarUrl) q.set('openProfileAvatar', peer.avatarUrl);
-            window.location.href = `/?${q.toString()}`;
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            flex: 1,
-            minWidth: 0,
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 0,
-            textAlign: 'left',
-          }}
-        >
-          <div style={{ position: 'relative', width: 34, height: 34, flexShrink: 0 }}>
-            <div style={{
-              width: 34, height: 34, borderRadius: '50%', overflow: 'hidden',
-              background: 'rgba(0,0,0,0.2)', border: '2px solid rgba(0,0,0,0.45)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0a0a0a', fontWeight: 700, fontSize: '0.75rem',
-            }}>
-              {peer.avatarUrl
-                ? <img src={peer.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                : (displayName[0] || '?').toUpperCase()}
-            </div>
-            <span style={{
-              position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: '50%',
-              background: peer.online ? '#22c55e' : '#64748b',
-              border: '2px solid #ffffff',
-            }} />
-          </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <p style={{ margin: 0, color: '#0a0a0a', fontWeight: 800, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {displayName}
-            </p>
-            <p style={{ margin: 0, color: '#64748b', fontSize: '0.62rem' }}>
-              {peer.online ? 'Online' : 'Offline'}
-              {peer.username ? ` · @${peer.username}` : ''}
-              {peer.lastIp ? ` · IP ${peer.lastIp}` : ''}
-              {peer.country ? ` · ${peer.country}` : ''}
-            </p>
-          </div>
-        </button>
-      </div>
+  const peerHandle = peer.username ? `@${String(peer.username).replace(/^@/, '')}` : displayName;
+  const openPeerProfile = () => {
+    // البروفايل الجديد (بث / منشورات) وليس صفحة /u/ القديمة
+    const q = new URLSearchParams();
+    q.set('openProfile', peer.id);
+    if (peer.name) q.set('openProfileName', peer.name);
+    if (peer.username) q.set('openProfileUsername', peer.username);
+    if (peer.avatarUrl) q.set('openProfileAvatar', peer.avatarUrl);
+    window.location.href = `/?${q.toString()}`;
+  };
+  const quickEmojis = ['❤️', '😊', '👍', '🙏', '🌹', '✅', '😂', '🔥'];
 
-      {emailShown && (
-        <div style={{
-          flexShrink: 0, padding: '8px 14px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0',
-          color: '#0f172a', fontSize: '0.78rem', fontWeight: 700, direction: 'ltr', textAlign: 'left',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          📧 {emailShown}
+  const footer = (
+    <div style={{ flexShrink: 0, background: '#ffffff', borderTop: '1px solid #e5e7eb' }}>
+      {sendError && (
+        <div style={{ padding: '8px 14px', background: '#fef2f2', borderBottom: '1px solid #fecaca', color: '#dc2626', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {sendError}
         </div>
       )}
-
-      <div ref={listRef} style={{
-        flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10,
-        background: '#ffffff',
+      {showEmoji && (
+        <div style={{ display: 'flex', gap: 6, padding: '8px 14px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          {quickEmojis.map(em => (
+            <button key={em} type="button" onClick={() => setInput(v => (v + em).slice(0, 2000))}
+              style={{ background: '#f1f5f9', border: 'none', borderRadius: 10, fontSize: '1.25rem', padding: '4px 8px', cursor: 'pointer' }}>
+              {em}
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+        paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
       }}>
-        {messages.map(m => {
-          const mine = m.from === 'me' || m.from === 'support';
-          return (
-            <div key={m.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '82%' }}>
-              <div style={{
-                padding: '10px 14px',
-                borderRadius: mine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                background: mine ? 'linear-gradient(135deg, rgba(0,0,0,0.28), rgba(0,0,0,0.22))' : 'rgba(0,0,0,0.1)',
-                border: `1px solid ${mine ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.22)'}`,
-                color: '#0f172a',
-                fontSize: '0.84rem',
-                lineHeight: 1.55,
-                whiteSpace: 'pre-wrap',
-              }}>
+        <img src={STOOORNA_APP_ICON} alt="" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0' }} />
+        <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.zip,.txt" style={{ display: 'none' }} onChange={onPickFile} />
+        <div style={{
+          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px 0 12px',
+          border: '1px solid #cbd5e1', borderRadius: 999, background: '#ffffff', minHeight: 46,
+        }}>
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value.slice(0, 2000))}
+            placeholder={`الرد على ${peerHandle}...`}
+            rows={1}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+            }}
+            style={{
+              flex: 1, minWidth: 0, resize: 'none', maxHeight: 96, padding: '12px 0', border: 'none', outline: 'none',
+              background: 'transparent', color: '#0f172a', fontSize: '0.92rem', fontFamily: 'var(--font-sans)', lineHeight: 1.35,
+            }}
+          />
+          <button type="button" onClick={() => fileRef.current?.click()} aria-label="Attach"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4, display: 'flex' }}>
+            <Plus size={22} strokeWidth={2.2} />
+          </button>
+          <button type="button" onClick={() => setShowEmoji(v => !v)} aria-label="Emoji"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: showEmoji ? '#0a0a0a' : '#64748b', padding: 4, display: 'flex' }}>
+            <Smile size={24} strokeWidth={2} />
+          </button>
+        </div>
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          type="button"
+          disabled={sending || !input.trim()}
+          onClick={() => send()}
+          aria-label="Send"
+          style={{
+            width: 48, height: 48, borderRadius: '50%', flexShrink: 0, border: 'none',
+            background: input.trim() ? '#0a0a0a' : '#e5e7eb',
+            color: input.trim() ? '#ffffff' : '#94a3b8',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: input.trim() ? 'pointer' : 'default',
+          }}
+        >
+          <Send size={20} style={{ transform: 'scaleX(-1)' }} />
+        </motion.button>
+      </div>
+    </div>
+  );
+
+  return (
+    <CommentsSheet
+      onClose={onClose}
+      count={messages.length}
+      scrollRef={listRef}
+      footer={footer}
+      subtitle={
+        <>
+          {emailShown ? `📧 ${emailShown}` : ''}
+          {emailShown ? ' · ' : ''}
+          {peer.online ? 'Online' : 'Offline'}
+          {peer.lastIp ? ` · IP ${peer.lastIp}` : ''}
+          {peer.country ? ` · ${peer.country}` : ''}
+        </>
+      }
+    >
+      {messages.length === 0 && (
+        <p style={{ color: '#94a3b8', fontSize: '0.84rem', textAlign: 'center', marginTop: 48 }}>
+          {settings.noMessages}
+        </p>
+      )}
+      {messages.map(m => {
+        const mine = m.from === 'me' || m.from === 'support';
+        return (
+          <div key={m.id} style={{
+            display: 'flex', gap: 10, padding: '10px 14px', alignItems: 'flex-start',
+            marginInlineStart: mine ? 44 : 0,
+          }}>
+            {mine ? (
+              <img src={STOOORNA_APP_ICON} alt="" style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0' }} />
+            ) : (
+              <button type="button" onClick={openPeerProfile} aria-label="Profile"
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0 }}>
+                <div style={{
+                  width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', background: '#e5e7eb',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0a0a0a', fontWeight: 700,
+                }}>
+                  {peer.avatarUrl
+                    ? <img src={peer.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : (displayName[0] || '?').toUpperCase()}
+                </div>
+              </button>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0a0a0a', direction: 'ltr' }}>
+                  {mine ? '@Stooorna' : peerHandle}
+                </span>
+                {mine && (
+                  <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#ffffff', background: '#0a0a0a', borderRadius: 6, padding: '1px 6px' }}>الدعم</span>
+                )}
+                <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{relTimeAr(m.at)}</span>
+              </div>
+              <div style={{ marginTop: 4, fontSize: '0.92rem', lineHeight: 1.6, color: '#334155', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                 {m.mediaUrl && m.mediaType === 'image' && (
-                  <img src={m.mediaUrl} alt="" style={{ width: '100%', borderRadius: 10, marginBottom: m.text ? 8 : 0, display: 'block' }} />
+                  <img src={m.mediaUrl} alt="" style={{ width: '100%', maxWidth: 260, borderRadius: 12, marginBottom: m.text ? 8 : 0, display: 'block' }} />
                 )}
                 {m.mediaUrl && m.mediaType === 'video' && (
-                  <video src={m.mediaUrl} controls playsInline style={{ width: '100%', borderRadius: 10, marginBottom: m.text ? 8 : 0, display: 'block' }} />
+                  <video src={m.mediaUrl} controls playsInline style={{ width: '100%', maxWidth: 260, borderRadius: 12, marginBottom: m.text ? 8 : 0, display: 'block' }} />
                 )}
                 {m.mediaUrl && m.mediaType === 'file' && (
-                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ color: '#0a0a0a', fontSize: '0.8rem', display: 'block', marginBottom: m.text ? 6 : 0 }}>
+                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ color: '#0a0a0a', fontSize: '0.84rem', display: 'block', marginBottom: m.text ? 6 : 0 }}>
                     📎 Attachment
                   </a>
                 )}
                 {stripSupportHeader(m.text) || m.text}
               </div>
             </div>
-          );
-        })}
-        {messages.length === 0 && (
-          <p style={{ color: '#64748b', fontSize: '0.8rem', textAlign: 'center', marginTop: 40 }}>
-            {settings.noMessages}
-          </p>
-        )}
-      </div>
-
-      {sendError && (
-        <div style={{ flexShrink: 0, padding: '8px 14px', background: '#fef2f2', borderTop: '1px solid #fecaca', color: '#dc2626', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {sendError}
-        </div>
-      )}
-      <div style={{
-        display: 'flex', alignItems: 'flex-end', gap: 8, padding: '10px 12px',
-        paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
-        background: '#ffffff', borderTop: '1px solid rgba(0,0,0,0.2)', flexShrink: 0,
-      }}>
-        <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.zip,.txt" style={{ display: 'none' }} onChange={onPickFile} />
-        <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => fileRef.current?.click()} style={{
-          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-          background: 'rgba(0,0,0,0.12)', border: '1px solid rgba(0,0,0,0.35)', color: '#0a0a0a',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}>
-          <Plus size={20} strokeWidth={2.4} />
-        </motion.button>
-        <textarea
-          value={input}
-          onChange={e => setInput(e.target.value.slice(0, 2000))}
-          placeholder={settings.supportReplyPlaceholder}
-          rows={1}
-          onKeyDown={e => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-          }}
-          style={{
-            flex: 1, resize: 'none', minHeight: 40, maxHeight: 120, padding: '10px 12px', borderRadius: 12,
-            background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.22)',
-            color: '#0f172a', fontSize: '0.88rem', outline: 'none', fontFamily: 'var(--font-sans)', lineHeight: 1.4,
-          }}
-        />
-        <motion.button whileTap={{ scale: 0.9 }} type="button" disabled={sending || !input.trim()} onClick={() => send()} style={{
-          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-          background: input.trim() ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.06)',
-          border: `1px solid ${input.trim() ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.15)'}`,
-          color: input.trim() ? '#0a0a0a' : '#94a3b8',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: input.trim() ? 'pointer' : 'default',
-        }}>
-          <Send size={18} />
-        </motion.button>
-      </div>
-      </div>
-    </motion.div>
+          </div>
+        );
+      })}
+    </CommentsSheet>
   );
 }
 
@@ -9712,226 +9797,113 @@ export default function SettingsPage() {
       {/* Owner: full inbox list — opens even when empty */}
       <AnimatePresence>
         {showOwnerInbox && !ownerChatUser && (
-          <motion.div
-            key="owner-inbox"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setShowOwnerInbox(false)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 10340,
-              background: 'rgba(0,0,0,0.45)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 12,
-            }}
+          <CommentsSheet
+            onClose={() => setShowOwnerInbox(false)}
+            count={supportInbox.length}
+            subtitle="Stooorna · الدعم / Support"
           >
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{
-                width: 'min(94vw, 480px)', height: 'min(86vh, 720px)', background: '#ffffff', borderRadius: 20,
-                overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
-              }}
-            >
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
-              borderBottom: '1px solid rgba(0,188,212,0.25)',
-              background: '#ffffff',
-              minHeight: 52, flexShrink: 0,
-            }}>
-              <button
-                type="button"
-                onClick={() => setShowOwnerInbox(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0277BD', padding: 2 }}
-                aria-label="Close"
-              >
-                <X size={20} />
-              </button>
-              <div style={{
-                width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-                background: 'linear-gradient(135deg, #00BCD4 0%, #0288D1 100%)',
-                border: '2px solid #00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#041018', fontWeight: 800, fontSize: '0.75rem',
-              }}>S</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, color: '#0277BD', fontWeight: 900, fontSize: '0.95rem', lineHeight: 1.15 }}>Stooorna</p>
-                <p style={{ margin: '1px 0 0', color: '#64748b', fontWeight: 700, fontSize: '0.68rem' }}>الدعم · Support</p>
-              </div>
-              {supportUnreadTotal > 0 && (
-                <span style={{
-                  minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px',
-                  background: '#ef4444', color: '#fff', fontSize: '0.65rem', fontWeight: 800,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {supportUnreadTotal > 99 ? '99+' : supportUnreadTotal}
-                </span>
-              )}
-            </div>
-
-            <div style={{
-              flex: 1, overflowY: 'auto', padding: '12px 14px',
-              background: '#ffffff',
-            }}>
-              {supportInboxLoading && supportInbox.length === 0 && (
-                <p style={{ color: '#64748b', fontSize: '0.8rem', textAlign: 'center', marginTop: 48 }}>
-                  جاري التحميل…
+            {supportInboxLoading && supportInbox.length === 0 && (
+              <p style={{ color: '#94a3b8', fontSize: '0.84rem', textAlign: 'center', marginTop: 48 }}>جاري التحميل…</p>
+            )}
+            {!supportInboxLoading && supportInbox.length === 0 && (
+              <div style={{ textAlign: 'center', marginTop: 56, padding: '0 20px' }}>
+                <MessageCircle size={36} style={{ color: '#cbd5e1', marginBottom: 12 }} />
+                <p style={{ color: '#0f172a', fontSize: '0.9rem', fontWeight: 600, margin: '0 0 6px' }}>لا توجد تعليقات</p>
+                <p style={{ color: '#94a3b8', fontSize: '0.78rem', margin: 0, lineHeight: 1.5 }}>
+                  عند إرسال أي مستخدم لمشكلته ستظهر هنا باسمه ويمكنك الرد عليه مباشرة.
                 </p>
-              )}
-              {!supportInboxLoading && supportInbox.length === 0 && (
-                <div style={{ textAlign: 'center', marginTop: 56, padding: '0 20px' }}>
-                  <MessageCircle size={36} style={{ color: 'rgba(0,188,212,0.35)', marginBottom: 12 }} />
-                  <p style={{ color: '#0f172a', fontSize: '0.9rem', fontWeight: 600, margin: '0 0 6px' }}>
-                    شات الدعم جاهز
-                  </p>
-                  <p style={{ color: '#64748b', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
-                    لا رسائل حالياً. عند إرسال أي مستخدم لرسالة دعم ستظهر هنا ويمكنك الدخول والرد مباشرة.
-                  </p>
-                </div>
-              )}
+              </div>
+            )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {supportInbox.map(peer => (
-                  <div key={peer.id} style={{ position: 'relative', display: 'flex', alignItems: 'stretch', gap: 0 }}>
-                    <motion.button
-                      whileTap={{ scale: 0.98 }}
-                      type="button"
-                      onClick={() => setOwnerChatUser(peer)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10, flex: 1,
-                        padding: '12px 14px', borderRadius: '14px 0 0 14px', cursor: 'pointer', textAlign: 'left',
-                        background: peer.unread ? 'rgba(0,188,212,0.12)' : 'rgba(0,188,212,0.05)',
-                        border: `1px solid ${peer.unread ? 'rgba(0,188,212,0.4)' : 'rgba(0,188,212,0.15)'}`,
-                        borderRight: 'none',
-                        color: '#0f172a',
-                      }}
-                    >
-                      <div style={{ position: 'relative', width: 44, height: 44, flexShrink: 0 }}>
-                        <div style={{
-                          width: 44, height: 44, borderRadius: '50%', overflow: 'hidden',
-                          background: 'rgba(0,188,212,0.15)', border: '1.5px solid rgba(0,188,212,0.35)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          color: '#0277BD', fontWeight: 700, fontSize: '0.85rem',
-                        }}>
-                          {peer.avatarUrl
-                            ? <img src={peer.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            : ((peer.name || peer.username || '?')[0] || '?').toUpperCase()}
-                        </div>
-                        <span style={{
-                          position: 'absolute', bottom: 1, right: 1, width: 11, height: 11, borderRadius: '50%',
-                          background: peer.online ? '#22c55e' : '#64748b',
-                          border: '2px solid #ffffff',
-                        }} />
+            {supportInbox.map(peer => {
+              const handle = peer.username ? `@${String(peer.username).replace(/^@/, '')}` : (peer.name || 'User');
+              const goProfile = () => {
+                setShowOwnerInbox(false);
+                const q = new URLSearchParams();
+                q.set('openProfile', peer.id);
+                if (peer.name) q.set('openProfileName', peer.name);
+                if (peer.username) q.set('openProfileUsername', peer.username);
+                if (peer.avatarUrl) q.set('openProfileAvatar', peer.avatarUrl);
+                navigate(`/?${q.toString()}`);
+              };
+              return (
+                <div key={peer.id} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px',
+                  background: peer.unread ? '#f8fafc' : 'transparent', borderBottom: '1px solid #f1f5f9',
+                }}>
+                  <button type="button" onClick={goProfile} aria-label="Profile" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0 }}>
+                    <div style={{ position: 'relative', width: 42, height: 42 }}>
+                      <div style={{
+                        width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', background: '#e5e7eb',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0a0a0a', fontWeight: 700,
+                      }}>
+                        {peer.avatarUrl
+                          ? <img src={peer.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : ((peer.name || peer.username || '?')[0] || '?').toUpperCase()}
                       </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {peer.name || peer.username || 'User'}
-                          {peer.username ? <span style={{ color: '#0277BD', fontWeight: 500, fontSize: '0.72rem' }}> @{peer.username}</span> : null}
-                        </p>
-                        <p style={{
-                          margin: '3px 0 0', color: '#64748b', fontSize: '0.72rem',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>
-                          {supportPreview(peer.lastMessage) || peer.lastMessage || 'فتح المحادثة'}
-                        </p>
-                      </div>
+                      <span style={{
+                        position: 'absolute', bottom: 0, right: 0, width: 11, height: 11, borderRadius: '50%',
+                        background: peer.online ? '#22c55e' : '#64748b', border: '2px solid #ffffff',
+                      }} />
+                    </div>
+                  </button>
+
+                  <motion.button
+                    whileTap={{ scale: 0.99 }}
+                    type="button"
+                    onClick={() => setOwnerChatUser(peer)}
+                    style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'start', color: '#0f172a' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0a0a0a', direction: 'ltr' }}>{handle}</span>
+                      <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{relTimeAr(peer.lastAt)}</span>
                       {!!peer.unread && peer.unread > 0 && (
                         <span style={{
-                          minWidth: 20, height: 20, borderRadius: 10, padding: '0 6px',
-                          background: '#00BCD4', color: '#041018', fontSize: '0.65rem', fontWeight: 800,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                        }}>
-                          {peer.unread}
-                        </span>
+                          minWidth: 18, height: 18, borderRadius: 9, padding: '0 5px', background: '#0a0a0a', color: '#fff',
+                          fontSize: '0.64rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        }}>{peer.unread}</span>
                       )}
-                    </motion.button>
-                    {/* Profile button — navigate to user's public profile */}
-                    {peer.username && (
-                      <motion.button
-                        whileTap={{ scale: 0.92 }}
-                        type="button"
-                        title="عرض البروفايل"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowOwnerInbox(false);
-                          // البروفايل الجديد في صفحة المنشورات (بث صوتي) — ليس /u/ القديمة
-                          const q = new URLSearchParams();
-                          q.set('openProfile', peer.id);
-                          if (peer.name) q.set('openProfileName', peer.name);
-                          if (peer.username) q.set('openProfileUsername', peer.username);
-                          if (peer.avatarUrl) q.set('openProfileAvatar', peer.avatarUrl);
-                          navigate(`/?${q.toString()}`);
-                        }}
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          width: 40, flexShrink: 0,
-                          borderRadius: 0,
-                          background: 'hsl(var(--primary) / 0.08)',
-                          border: `1px solid ${peer.unread ? 'rgba(0,188,212,0.4)' : 'rgba(0,188,212,0.15)'}`,
-                          borderLeft: '1px solid hsl(var(--primary) / 0.25)',
-                          borderRight: 'none',
-                          cursor: 'pointer',
-                          color: 'hsl(var(--primary))',
-                          transition: 'background 0.15s',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'hsl(var(--primary) / 0.18)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'hsl(var(--primary) / 0.08)')}
-                      >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                          <circle cx="12" cy="7" r="4"/>
-                        </svg>
-                      </motion.button>
-                    )}
-                    {/* Delete thread button — owner only */}
-                    <motion.button
-                      whileTap={{ scale: 0.92 }}
-                      type="button"
-                      title="حذف المحادثة"
-                      data-peerid={peer.id}
-                      data-peername={peer.name || peer.username || ''}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const btn = e.currentTarget as HTMLButtonElement;
-                        const pid = btn.dataset.peerid || '';
-                        const pname = btn.dataset.peername || 'هذا المستخدم';
-                        if (!window.confirm(`حذف محادثة ${pname}؟`)) return;
-                        clearSupportThread(pid);
-                        const tickets = readLocalSupportTickets().filter((t: { fromUserId?: string }) => t.fromUserId !== pid);
-                        try { localStorage.setItem('stooorna_support_tickets', JSON.stringify(tickets)); } catch { /* */ }
-                        setSupportInbox(prev => prev.filter(x => x.id !== pid));
-                        setOwnerChatUser(prev => (prev && (prev as { id?: string }).id === pid ? null : prev));
-                      }}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        width: 44, flexShrink: 0,
-                        borderRadius: '0 14px 14px 0',
-                        background: 'hsl(var(--destructive) / 0.08)',
-                        border: `1px solid ${peer.unread ? 'rgba(0,188,212,0.4)' : 'rgba(0,188,212,0.15)'}`,
-                        borderLeft: '1px solid hsl(var(--destructive) / 0.3)',
-                        cursor: 'pointer',
-                        color: 'hsl(var(--destructive))',
-                        transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'hsl(var(--destructive) / 0.18)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'hsl(var(--destructive) / 0.08)')}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                        <path d="M10 11v6M14 11v6" />
-                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                      </svg>
-                    </motion.button>
-                  </div>
-                ))}
-              </div>
-            </div>
-            </div>
-          </motion.div>
+                    </div>
+                    <p style={{
+                      margin: '4px 0 0', color: '#334155', fontSize: '0.9rem', lineHeight: 1.55,
+                      display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', whiteSpace: 'pre-wrap',
+                    }}>
+                      {supportPreview(peer.lastMessage) || peer.lastMessage || 'فتح المحادثة'}
+                    </p>
+                    <span style={{ display: 'inline-block', marginTop: 6, fontSize: '0.78rem', fontWeight: 700, color: '#64748b' }}>رد</span>
+                  </motion.button>
+
+                  {/* حذف المحادثة — للدعم فقط */}
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    type="button"
+                    title="حذف المحادثة"
+                    data-peerid={peer.id}
+                    data-peername={peer.name || peer.username || ''}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const btn = e.currentTarget as HTMLButtonElement;
+                      const pid = btn.dataset.peerid || '';
+                      const pname = btn.dataset.peername || 'هذا المستخدم';
+                      if (!window.confirm(`حذف محادثة ${pname}؟`)) return;
+                      clearSupportThread(pid);
+                      const tickets = readLocalSupportTickets().filter((t: { fromUserId?: string }) => t.fromUserId !== pid);
+                      try { localStorage.setItem('stooorna_support_tickets', JSON.stringify(tickets)); } catch { /* */ }
+                      setSupportInbox(prev => prev.filter(x => x.id !== pid));
+                      setOwnerChatUser(prev => (prev && (prev as { id?: string }).id === pid ? null : prev));
+                    }}
+                    style={{
+                      width: 36, height: 36, flexShrink: 0, borderRadius: 10, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626',
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </motion.button>
+                </div>
+              );
+            })}
+          </CommentsSheet>
         )}
       </AnimatePresence>
 
