@@ -4998,11 +4998,9 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                       </div>
                     ) : (
                       <div style={{
-                        position: 'absolute', inset: '-18% -8% -4%',
-                        transform: 'perspective(820px) rotateX(32deg) scale(1.18)',
-                        transformOrigin: 'center 72%',
+                        position: 'absolute', inset: 0, overflow: 'hidden',
                         pointerEvents: 'none',
-                        background: '#cfe6b8',
+                        background: '#e8e4dc',
                       }}>
                         {tiles.map(t => {
                           if (t.x < 0 || t.y < 0 || t.x >= n || t.y >= n) return null;
@@ -5016,12 +5014,14 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                                 position: 'absolute',
                                 left: `calc(50% + ${(t.x - cx) * tile}px)`,
                                 top: `calc(50% + ${(t.y - cy) * tile}px)`,
-                                width: tile, height: tile, pointerEvents: 'none',
-                                filter: 'saturate(1.45) contrast(1.08) brightness(1.06) hue-rotate(-8deg)',
+                                width: tile + 0.6, height: tile + 0.6, pointerEvents: 'none', userSelect: 'none',
                               }}
                             />
                           );
                         })}
+                        <div style={{ position: 'absolute', left: 6, bottom: 4, fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.55)', pointerEvents: 'none', textShadow: '0 0 3px #fff' }}>
+                          © OpenStreetMap
+                        </div>
                       </div>
                     )}
                     {pins.map(pin => {
@@ -15301,6 +15301,10 @@ function LiveChatClearCountdown({ onDotClick, dotActive = false }: { onDotClick?
 // chat list; it is shown outside the chat, in a 2-per-row autoplay grid when the chat is lowered.
 const LIVE_VIDEO_CAPTION = '🎬 AI Video';   // legacy value kept on purpose: it is the marker of every video post already published
 const LIVE_PHOTO_CAPTION = '🖼 Photo';
+/** Invisible marker appended to Templates posts: they are published OUTSIDE only (gallery) and never drawn in the chat list. */
+const LIVE_TPL_SUFFIX = '\u200b\u200bTPL';
+const isLiveTplText = (t: string) => String(t || '').endsWith(LIVE_TPL_SUFFIX);
+const liveBaseText = (t: string) => (isLiveTplText(t) ? String(t).slice(0, -LIVE_TPL_SUFFIX.length) : String(t || ''));
 const VIDEO_SWAP_ENDPOINT = '/api/video-swap';   // (name kept so entry.ts needs no change) POST multipart {userId, kind, file} → {url}
 const VIDEO_SWAP_MAX_MB = 300;   // size cap only — video LENGTH is unlimited
 const LIVE_VIDEO_GALLERY_TOP = 'calc(max(8px, env(safe-area-inset-top)) + 72px)'; // clears the header grabber
@@ -16474,7 +16478,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
   onOpenProfile: () => void;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
-  const isVideo = c.text !== LIVE_PHOTO_CAPTION;
+  const isVideo = liveBaseText(c.text) !== LIVE_PHOTO_CAPTION;
   useEffect(() => {
     const v = ref.current;
     if (!v || typeof IntersectionObserver === 'undefined') return;
@@ -16581,7 +16585,7 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const vref = useRef<HTMLVideoElement | null>(null);
-  const isVideo = post.text !== LIVE_PHOTO_CAPTION;
+  const isVideo = liveBaseText(post.text) !== LIVE_PHOTO_CAPTION;
   const thread = comments
     .map(x => ({ x, p: parseMediaComment(x.text) }))
     .filter(r => r.p && r.p.parentId === post.id) as { x: PublicLiveComment; p: { parentId: string; body: string } }[];
@@ -16992,7 +16996,7 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
   const [paused, setPaused] = useState(false);
   const [mutedForced, setMutedForced] = useState(false);
   const [prog, setProg] = useState(0);
-  const isVideo = c.text !== LIVE_PHOTO_CAPTION;
+  const isVideo = liveBaseText(c.text) !== LIVE_PHOTO_CAPTION;
 
   useEffect(() => {
     const v = vref.current;
@@ -18170,7 +18174,7 @@ function PublicLiveCommentsPanel({
     />
   ) : null;
   const studioPost = (caption: string, url: string) => {
-    pushComment(caption, url);
+    pushComment(caption + LIVE_TPL_SUFFIX, url);
     setTplOpen(false);
     setChatLift(0);
   };
@@ -18377,6 +18381,7 @@ function PublicLiveCommentsPanel({
         {groupLiveChatRows(orderLiveChatReplies(comments.filter(c => {
           if (/Join Live Chat/i.test(c.text || '')) return false;
           if (parseMediaComment(c.text)) return false;
+          if (isLiveTplText(c.text)) return false; // Templates posts live outside the chat only
           if (dustHoldIds.has(c.id)) return true;
           if (isRoundHiddenRow(c, roundLocalNow.gone)) return false;
           if (
