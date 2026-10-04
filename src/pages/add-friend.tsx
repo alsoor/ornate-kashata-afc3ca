@@ -25254,12 +25254,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const primaryBtn: React.CSSProperties = { width: '100%', padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.5)', background: 'rgba(0,188,212,0.16)', color: '#7ee8f5', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
   if (dockBubble.kind === 'chat') {
     return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 10080, background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 'max(10px, env(safe-area-inset-top)) 12px 10px', background: '#071416', color: '#fff', flexShrink: 0 }}>
-          <MessageCircle size={18} color="#00BCD4" />
-          <p style={{ margin: 0, flex: 1, fontWeight: 800 }}>Chat</p>
-          <button type="button" aria-label="Close" onClick={closeBubble} style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', cursor: 'pointer' }}><X size={16} /></button>
-        </div>
+      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, top: 'calc(env(safe-area-inset-top, 0px) + 118px)', zIndex: 30, background: '#ffffff', display: 'flex', flexDirection: 'column', animation: 'stooornaPlusFanIn 0.22s ease-out', boxShadow: '0 -8px 24px rgba(0,0,0,0.18)' }}>
+        <button type="button" aria-label="Close" onClick={closeBubble} style={{ position: 'absolute', top: 8, right: 10, zIndex: 5, width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(7,20,22,0.88)', color: '#fff', cursor: 'pointer' }}><X size={16} /></button>
         <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#ffffff' }}>
           <PublicLiveCommentsPanel embedded user={user as any} headerOpen={false} onToggleHeader={closeBubble} onBusyChange={setLiveChatBusy} />
         </div>
