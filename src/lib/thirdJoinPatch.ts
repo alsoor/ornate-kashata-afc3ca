@@ -168,6 +168,7 @@ export function installThirdJoinPatch() {
           const type = String(msg?.type || '');
           if (type === 'answered' || type === 'call-answered') onAnswered(msg);
           if (type === 'member-left') onMemberLeft(msg);
+          if (type === 'member-invited') window.dispatchEvent(new CustomEvent('stooorna:call-member-invited', { detail: msg }));
         } catch { /* */ }
       });
     }

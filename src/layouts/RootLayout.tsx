@@ -1947,19 +1947,22 @@ function GlobalBottomNavigation() {
         try { msg = JSON.parse(String(ev.data || '')); } catch { return; }
         if (!msg || typeof msg !== 'object') return;
         const type = String(msg.type || '');
-        if (type === 'answered' || type === 'call-answered') {
+        if (type === 'answered' || type === 'call-answered' || type === 'member-invited') {
           const ch = String(msg.channel || '');
+          if (type === 'member-invited') {
+            window.dispatchEvent(new CustomEvent('stooorna:call-member-invited', { detail: msg }));
+            return;
+          }
           if (ch && homeCallChannelRef.current && ch === String(homeCallChannelRef.current)) {
-            if (homeCallPhaseRef.current === 'connecting' || homeCallPhaseRef.current === 'animating') {
-              setHomeCallPhase('live');
-              if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
-              if (homeCallNoAnswerTimer.current) {
-                window.clearTimeout(homeCallNoAnswerTimer.current);
-                homeCallNoAnswerTimer.current = null;
-              }
-              stopHomeIncomingRing();
-              try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
+            setHomeCallPhase('live');
+            if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
+            if (homeCallNoAnswerTimer.current) {
+              window.clearTimeout(homeCallNoAnswerTimer.current);
+              homeCallNoAnswerTimer.current = null;
             }
+            stopHomeIncomingRing();
+            if (msg.from) setHomeCallMembers(prev => prev.map(m => m.id === String(msg.from) ? { ...m, joined: true } : m));
+            try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
           }
           return;
         }
@@ -3643,6 +3646,36 @@ function GlobalBottomNavigation() {
     } catch { /* */ }
     setHomeCallAddOpen(false);
     setHomeCallAddSelected({});
+    // Tell everyone already in the call about the new person, so the call stays live for all.
+    for (const m of homeCallMembers) {
+      if (!m.id || m.id === user.id) continue;
+      sendHomeCallSignal({
+        type: 'member-invited',
+        to: m.id,
+        from: user.id,
+        channel: homeCallChannel,
+        members: nextMembers,
+        added: toAdd,
+        at: invitePayload.at,
+      });
+    }
+    for (const peer of toAdd) {
+      sendHomeCallSignal({
+        type: 'call',
+        to: peer.id,
+        from: user.id,
+        fromName: meName,
+        fromAvatar: meAvatar,
+        channel: homeCallChannel,
+        callType: homeCallVideoRef.current ? 'video' : 'voice',
+        video: !!homeCallVideoRef.current,
+        hostId: user.id,
+        hostName: meName,
+        hostAvatar: meAvatar,
+        members: nextMembers,
+        at: invitePayload.at,
+      });
+    }
   }
 
   useEffect(() => {
@@ -3661,6 +3694,25 @@ function GlobalBottomNavigation() {
       setHomeCallMembers(prev => prev.map(m => m.id === id ? { ...m, joined: true } : m));
       try { stopHomeIncomingRing(); } catch { /* */ }
     };
+    const onInvited = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      const ch = String(d.channel || '');
+      if (ch && homeCallChannelRef.current && ch !== String(homeCallChannelRef.current)) return;
+      const incoming = Array.isArray(d.members) ? d.members : Array.isArray(d.added) ? d.added : [];
+      if (!incoming.length) return;
+      setHomeCallMembers(prev => {
+        const ids = new Set(prev.map(m => m.id));
+        const extra = incoming.filter((m: any) => m?.id && !ids.has(m.id)).map((m: any) => ({
+          id: String(m.id),
+          name: m.name || m.username || 'User',
+          username: m.username || null,
+          avatarUrl: m.avatarUrl || null,
+          joined: !!m.joined,
+        }));
+        return extra.length ? [...prev, ...extra] : prev;
+      });
+      if (homeCallPhaseRef.current === 'connecting' || homeCallPhaseRef.current === 'animating') setHomeCallPhase('live');
+    };
     const onRejoin = (e: Event) => {
       const d = (e as CustomEvent).detail || {};
       if (!d.channel || !user?.id) return;
@@ -3675,10 +3727,12 @@ function GlobalBottomNavigation() {
     };
     window.addEventListener('stooorna:call-member-left', onLeft as EventListener);
     window.addEventListener('stooorna:call-member-joined', onJoined as EventListener);
+    window.addEventListener('stooorna:call-member-invited', onInvited as EventListener);
     window.addEventListener('stooorna:rejoin-call', onRejoin as EventListener);
     return () => {
       window.removeEventListener('stooorna:call-member-left', onLeft as EventListener);
       window.removeEventListener('stooorna:call-member-joined', onJoined as EventListener);
+      window.removeEventListener('stooorna:call-member-invited', onInvited as EventListener);
       window.removeEventListener('stooorna:rejoin-call', onRejoin as EventListener);
     };
   }, [user?.id]);
