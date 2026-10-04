@@ -1698,6 +1698,20 @@ function formatCompactCount(n: number | string | null | undefined): string {
   return fmt(abs / 1000000000, 'B');
 }
 
+// Visitors counter: shows the plain number up to 999, then 1K at 1000, 1M at 1,000,000 (rounds DOWN, one decimal, never a long number).
+function formatVisitorCount(n: number | string | null | undefined): string {
+  const v = Math.floor(Number(n));
+  if (!Number.isFinite(v) || v <= 0) return '0';
+  if (v < 1000) return String(v);
+  const cut = (div: number, suffix: string) => {
+    const t = Math.floor(v / (div / 10)); // tenths of the unit, integer math (no float errors)
+    return (t >= 1000 ? String(Math.floor(t / 10)) : (t / 10).toFixed(1).replace(/\.0$/, '')) + suffix;
+  };
+  if (v < 1_000_000) return cut(1000, 'K');
+  if (v < 1_000_000_000) return cut(1_000_000, 'M');
+  return cut(1_000_000_000, 'B');
+}
+
 function formatVideoClock(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '0:00';
   const s = Math.floor(sec);
@@ -12734,7 +12748,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
                   <div style={{ height: 1, background: 'hsl(var(--border))', margin: '10px 0 8px' }} />
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 3px 10px', color: 'hsl(var(--foreground))', fontSize: '0.85rem', fontWeight: 800 }}>
                     <Eye size={16} color="#FACC15" /> الموجودون في بروفايل قصتك
-                    <span style={{ marginInlineStart: 'auto', color: '#FACC15', fontSize: '0.72rem', fontWeight: 700 }}>{profileVisitors.length}</span>
+                    <span style={{ marginInlineStart: 'auto', color: '#FACC15', fontSize: '0.72rem', fontWeight: 700 }}>{formatVisitorCount(profileVisitors.length)}</span>
                   </div>
                   {profileVisitors.map(visitor => (
                     <div key={visitor.userId} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 6px' }}>
@@ -14024,7 +14038,7 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
           pointerEvents: 'none',
           zIndex: 6,
         }}
-      >{visitorCount}</span>
+      >{formatVisitorCount(visitorCount)}</span>
       {open && typeof document !== 'undefined' && createPortal(
         <>
           <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', border: 'none', zIndex: 14000 }} />
