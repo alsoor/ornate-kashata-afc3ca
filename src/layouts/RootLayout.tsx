@@ -40,6 +40,7 @@ import {
   callPatchWatchAudio,
   setCallBridge,
 } from '@/lib/callPatch';
+import { blastCallCancel, installCallCancelWatch } from '@/lib/callCancelPatch';
 import { CallFixPatchUI, noteCallClosed, noteCallPhoto, notePeerOnAnotherCall, peerIsOnAnotherCall, resolveCallPhoto, shouldBlockPhantomCall, shouldIgnoreCallAudioError } from '@/lib/callFixPatch';
 // Welcome guide + splash are DISABLED (files kept). Set to true to bring them back.
 const WELCOME_SPLASH_ENABLED: boolean = false;
@@ -2271,6 +2272,7 @@ function GlobalBottomNavigation() {
             body: JSON.stringify({ toUserId: m.id, userId: m.id, channel: endedChannel, ended: true, clear: true, at: endedAt }),
             keepalive: true,
           }).catch(() => {});
+          try { blastCallCancel(endedChannel, [{ id: m.id, name: m.name, avatarUrl: m.avatarUrl }], user.id); } catch { /* */ }
           try {
             for (const roomId of homeRingRoomIds(m.id)) {
               void fetch('/api/room/leave', {
