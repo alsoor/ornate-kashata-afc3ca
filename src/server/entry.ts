@@ -1307,7 +1307,7 @@ registerWithdrawalRoutes(app, {
 // صاحب البث الصوتي يستدعي أي شخص أونلاين (مو شرط يكون في بث). الدعوة تُحفظ في صندوق وارد المدعو
 // في ذاكرة السيرفر 45 ثانية، والمدعو يسحبها من أي صفحة في التطبيق (VoiceInviteGlobalWatcher).
 // الهوية دائماً من الجلسة: المضيف = المستخدم المسجّل، ولا يمكن انتحال hostId من العميل.
-type VoiceInviteRow = { id: string; fromId: string; fromName: string; toId: string; hostId: string; hostName: string; hostUsername: string; hostAvatar: string | null; at: number };
+type VoiceInviteRow = { id: string; fromId: string; fromName: string; toId: string; hostId: string; hostName: string; hostUsername: string; hostAvatar: string | null; kind?: "voice" | "camera"; at: number };
 type VoiceInviteReply = { id: string; inviteId: string; fromId: string; fromName: string; status: "accepted" | "declined" | "busy"; at: number };
 const VOICE_INVITE_TTL_MS = 45_000;
 const voiceInviteStore = () => {
@@ -1375,13 +1375,14 @@ app.post("/api/voice-invite", guarded(async (req, res) => {
     if (session.owns(u, toId)) return deny(res, 400, "cannot invite yourself");
     const key = normId(toId);
     // الغرفة: المضيف نفسه، أو أي عضو يدعو أصدقاءه لبث المضيف (يُقبل فقط إذا المضيف فعلاً في بث صوتي الآن)
+    const inviteKind: "voice" | "camera" = String(body.kind || "voice") === "camera" ? "camera" : "voice";
     const reqHost = String(body.hostId || "").trim().slice(0, 80);
     const hostId = !reqHost || session.owns(u, reqHost) ? me : reqHost;
     if (hostId !== me) {
       livePresencePurge();
       const pm = livePresenceMem();
       const pr = pm.get(hostId) || pm.get(hostId.toLowerCase());
-      if (!pr || pr.kind !== "voice") return deny(res, 409, "host not live");
+      if (!pr || pr.kind !== inviteKind) return deny(res, 409, "host not live");
       if (normId(toId) === normId(hostId)) return deny(res, 400, "cannot invite the host");
     }
     const id = `vi_${now.toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
@@ -1394,6 +1395,7 @@ app.post("/api/voice-invite", guarded(async (req, res) => {
       hostName: String(body.hostName || "User").slice(0, 60),
       hostUsername: String(body.hostUsername || "").replace(/^@/, "").slice(0, 60),
       hostAvatar: body.hostAvatar != null && String(body.hostAvatar) ? String(body.hostAvatar).slice(0, 400) : null,
+      kind: inviteKind,
       at: now,
     };
     // دعوة واحدة فقط لنفس البث لنفس الشخص (الجديدة تحل محل القديمة)

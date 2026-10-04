@@ -44,11 +44,16 @@ export type VoiceInviteIncoming = {
   /** who sent the invite (a room member other than the host) — null when the host invited directly */
   fromId?: string;
   fromName?: string | null;
+  /** audio (/live) or video (/live-camera) broadcast */
+  kind: VoiceInviteKind;
   /** ms left according to the SERVER clock (no client clock skew) */
   ttlLeftMs: number;
   /** local time we received it */
   receivedAt: number;
 };
+
+/** Which broadcast the invite is for: audio room (/live) or video room (/live-camera). */
+export type VoiceInviteKind = 'voice' | 'camera';
 
 export type VoiceInviteReply = {
   id: string;
@@ -70,14 +75,14 @@ export function voiceOnlineRoomId(userId: string): string {
 }
 
 /** /live URL of a host's voice room (same params live.tsx reads). */
-export function voiceRoomUrl(host: { userId: string; name?: string | null; username?: string | null; avatarUrl?: string | null }): string {
+export function voiceRoomUrl(host: { userId: string; name?: string | null; username?: string | null; avatarUrl?: string | null }, kind: VoiceInviteKind = 'voice'): string {
   const q = new URLSearchParams({
     hostId: host.userId,
     hostName: host.name || '',
     hostUsername: host.username || '',
     hostAvatar: host.avatarUrl || '',
   });
-  return `/live?${q.toString()}`;
+  return `${kind === 'camera' ? '/live-camera' : '/live'}?${q.toString()}`;
 }
 
 async function postInvite(body: Record<string, unknown>): Promise<any | null> {
@@ -181,10 +186,11 @@ function useSentInvites(): SentMap {
  * `me`   = the person sending the invite (host OR any member of the room)
  * `host` = owner of the voice room the invite is for (defaults to me when I am the host)
  */
-export async function sendVoiceInvite(to: VoiceInvitePerson, me: VoiceInvitePerson, host?: VoiceInvitePerson | null): Promise<boolean> {
+export async function sendVoiceInvite(to: VoiceInvitePerson, me: VoiceInvitePerson, host?: VoiceInvitePerson | null, kind: VoiceInviteKind = 'voice'): Promise<boolean> {
   const h = host || me;
   const res = await postInvite({
     action: 'send',
+    kind,
     toUserId: to.userId,
     hostId: h.userId,
     hostName: h.name,
@@ -247,13 +253,13 @@ export function useVoiceInviteReplies(enabled: boolean, onReply: (r: VoiceInvite
 
 /* ───────────────────────── UI: header button ───────────────────────── */
 
-export function VoiceInviteButton({ onClick, active }: { onClick: () => void; active?: boolean }) {
+export function VoiceInviteButton({ onClick, active, kind = 'voice' }: { onClick: () => void; active?: boolean; kind?: VoiceInviteKind }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label="استدعاء شخص لبثك الصوتي"
-      title="استدعاء للبث"
+      aria-label={kind === 'camera' ? 'Invite someone to this video live' : 'استدعاء شخص لبثك الصوتي'}
+      title={kind === 'camera' ? 'Invite to live' : 'استدعاء للبث'}
       style={{
         width: 36,
         height: 36,
@@ -282,6 +288,7 @@ export function VoiceInvitePanel({
   me,
   host,
   canSearchAll = true,
+  kind = 'voice',
   onClose,
 }: {
   open: boolean;
@@ -290,6 +297,8 @@ export function VoiceInvitePanel({
   host?: VoiceInvitePerson | null;
   /** host: search every user. member: only my own online friends. */
   canSearchAll?: boolean;
+  /** audio (/live) or video (/live-camera) broadcast */
+  kind?: VoiceInviteKind;
   onClose: () => void;
 }) {
   const [friends, setFriends] = useState<OnlinePerson[]>([]);
@@ -400,7 +409,7 @@ export function VoiceInvitePanel({
           <button
             type="button"
             disabled={!p.online || !me}
-            onClick={() => { if (me) void sendVoiceInvite(p, me, host); }}
+            onClick={() => { if (me) void sendVoiceInvite(p, me, host, kind); }}
             style={{
               padding: '7px 18px', borderRadius: 999, fontWeight: 800, fontSize: '0.78rem', border: 'none',
               cursor: p.online ? 'pointer' : 'not-allowed',
@@ -450,7 +459,7 @@ export function VoiceInvitePanel({
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 10px', borderBottom: '1px solid rgba(250,204,21,0.15)' }}>
               <UserPlus size={18} color="#facc15" />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>استدعاء لبثك الصوتي</p>
+                <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>{kind === 'camera' ? 'Invite to this live' : 'استدعاء لبثك الصوتي'}</p>
                 <p style={{ margin: 0, color: 'rgba(150,200,200,0.55)', fontSize: '0.66rem' }}>
                   {canSearchAll ? 'أي شخص أونلاين يوصله المربع حتى لو ما هو في بث' : 'استدعِ أصدقاءك المتصلين إلى هذا البث'}
                 </p>
@@ -581,7 +590,7 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
         name: myName || undefined,
       });
       if (status === 'accepted') {
-        navigate(voiceRoomUrl({ userId: inv.hostId, name: inv.hostName, username: inv.hostUsername, avatarUrl: inv.hostAvatar }));
+        navigate(voiceRoomUrl({ userId: inv.hostId, name: inv.hostName, username: inv.hostUsername, avatarUrl: inv.hostAvatar }, inv.kind));
       }
     },
     [navigate, myName],
@@ -613,7 +622,8 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
         // already inside this host's voice room → nothing to ask
         try {
           const here = window.location;
-          if (here.pathname.startsWith('/live') && new URLSearchParams(here.search).get('hostId') === String(fresh.hostId)) {
+          const roomPath = fresh.kind === 'camera' ? '/live-camera' : '/live';
+          if (here.pathname.startsWith(roomPath) && new URLSearchParams(here.search).get('hostId') === String(fresh.hostId)) {
             answeredInvites.add(String(fresh.id));
             void postInvite({ action: 'accept', inviteId: fresh.id, hostId: fresh.hostId });
             return;
@@ -626,6 +636,7 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
           hostName: String(fresh.hostName || 'User'),
           hostUsername: fresh.hostUsername ? String(fresh.hostUsername) : null,
           hostAvatar: fresh.hostAvatar ? String(fresh.hostAvatar) : null,
+          kind: fresh.kind === 'camera' ? 'camera' : 'voice',
           fromId: fresh.fromId ? String(fresh.fromId) : undefined,
           fromName: fresh.fromName ? String(fresh.fromName) : null,
           ttlLeftMs: Math.max(0, Number(fresh.ttlLeftMs ?? VOICE_INVITE_TTL_MS)),
@@ -722,8 +733,10 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
             </p>
             <p style={{ margin: 0, color: 'rgba(200,230,230,0.8)', fontSize: '0.78rem', textAlign: 'center', lineHeight: 1.5 }}>
               {invite.fromId && invite.fromId !== invite.hostId && invite.fromName
-                ? `${invite.fromName} يدعوك للانضمام إلى بث ${invite.hostName} الصوتي`
-                : 'يدعوك للانضمام إلى بثه الصوتي'}
+                ? (invite.kind === 'camera'
+                    ? `${invite.fromName} invites you to join ${invite.hostName}'s video live`
+                    : `${invite.fromName} يدعوك للانضمام إلى بث ${invite.hostName} الصوتي`)
+                : (invite.kind === 'camera' ? 'Invites you to join his video live' : 'يدعوك للانضمام إلى بثه الصوتي')}
             </p>
             <p style={{ margin: 0, color: 'rgba(150,200,200,0.5)', fontSize: '0.62rem' }}>{left}s</p>
             <div style={{ display: 'flex', gap: 10, width: '100%', marginTop: 4 }}>

@@ -69,7 +69,6 @@ import {
   isDuetMessage,
   newDuetId,
   duetRoomUrl,
-  DuetInviteButton,
   DuetInvitePanel,
   DuetIncomingDialog,
   DuetDivider,
@@ -81,6 +80,15 @@ import {
   type DuetPerson,
   type AvailableLive,
 } from '@/lib/liveDuetPatch';
+// VOICE-INVITE-PATCH (video): anyone in the room invites ONLINE people (not only people who are live); they get the Accept / Decline box anywhere in the app
+import {
+  VoiceInviteButton,
+  VoiceInvitePanel,
+  VoiceInviteToast,
+  useVoiceInviteReplies,
+  cancelAllVoiceInvites,
+  voiceReplyText,
+} from '@/lib/liveVoiceInvite';
 
 const AGORA_APP_ID = '149ef04e839c4132a08efb49d717c436';
 
@@ -360,6 +368,15 @@ export default function LiveCameraPage() {
   const duetRef = useRef<DuetGuest | null>(null);
   const duetSetTsRef = useRef(0);
   const [duetPanelOpen, setDuetPanelOpen] = useState(false);
+  // VOICE-INVITE-PATCH (video) state
+  const [voiceInvOpen, setVoiceInvOpen] = useState(false);
+  const [voiceInvToast, setVoiceInvToast] = useState('');
+  const voiceInvToastTimerRef = useRef<number | null>(null);
+  useVoiceInviteReplies(!!(joined && isHostRoom), (r) => {
+    setVoiceInvToast(voiceReplyText(r));
+    if (voiceInvToastTimerRef.current) window.clearTimeout(voiceInvToastTimerRef.current);
+    voiceInvToastTimerRef.current = window.setTimeout(() => setVoiceInvToast(''), 3200);
+  });
   const [duetSent, setDuetSent] = useState<Record<string, number>>({});
   const duetSentIdsRef = useRef<Record<string, string>>({});
   const [duetIncoming, setDuetIncoming] = useState<DuetInvite | null>(null);
@@ -691,6 +708,7 @@ export default function LiveCameraPage() {
     const forced = !!opts?.forced;
     leftRef.current = true;
     forceEndRef.current = forced || forceEndRef.current;
+    try { cancelAllVoiceInvites(); } catch { /* ignore */ } // VOICE-INVITE-PATCH (video)
 
     // DUET-PATCH: a guest leaving tells the room so the split screen closes right away
     if (amGuest && !forced && myUidRef.current != null) {
@@ -2297,9 +2315,9 @@ export default function LiveCameraPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          {/* DUET-PATCH: invite another live */}
-          {amHost && !duet ? (
-            <DuetInviteButton onClick={() => setDuetPanelOpen(true)} active={duetPanelOpen} />
+          {/* VOICE-INVITE-PATCH (video): everyone in the room invites their online friends (replaces the live-only duet list) */}
+          {isHostRoom ? (
+            <VoiceInviteButton kind="camera" active={voiceInvOpen} onClick={() => setVoiceInvOpen(true)} />
           ) : null}
           <button
             type="button"
@@ -3354,9 +3372,21 @@ export default function LiveCameraPage() {
       </AnimatePresence>
       {/* DUET-PATCH overlays */}
       {amHost && duet ? <DuetEndButton onClick={endDuet} /> : null}
+      {isHostRoom ? (
+        <VoiceInvitePanel
+          kind="camera"
+          open={voiceInvOpen}
+          onClose={() => setVoiceInvOpen(false)}
+          canSearchAll={amHost}
+          host={{ userId: hostId, name: hostName, username: hostUsername, avatarUrl: hostAvatar }}
+          me={myId ? { userId: myId, name: myName, username: myUsername, avatarUrl: myAvatar } : null}
+        />
+      ) : null}
+      <VoiceInviteToast text={voiceInvToast} />
+      {/* DUET-PATCH: old live-only invite list kept in code but never opened (the online-people list above replaces it) */}
       {amHost ? (
         <DuetInvitePanel
-          open={duetPanelOpen && !duet}
+          open={false && duetPanelOpen && !duet}
           myId={myId}
           sent={duetSent}
           onInvite={inviteToDuet}
