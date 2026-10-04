@@ -24328,23 +24328,54 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }
 
   async function sendRequest(addresseeId: string) {
-    setSending(addresseeId);
+    const targetId = String(addresseeId || '').trim();
+    if (!targetId) return;
+    setSending(targetId);
     try {
-      const { addOrRequestFriend } = await import('@/lib/friendAddPatch');
-      const myId = (user as { id?: string } | null)?.id || '';
-      const next = await addOrRequestFriend(myId, addresseeId);
-      const status = next === 'friends' ? 'accepted' : 'pending';
-      setResults(prev => prev.map(u => u.id === addresseeId ? {
-        ...u,
-        friendStatus: status,
-        iRequested: true
-      } : u));
-      setStoryReqResults(prev => prev.map(u => u.id === addresseeId ? {
-        ...u,
-        friendStatus: status,
-        iRequested: true
-      } : u));
+      // Server is the source of truth. The local friendAddPatch only updates this
+      // browser, so the other account never sees a request it can accept.
+      const response = await fetch('/api/friends', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          addresseeId: targetId,
+          userId: targetId,
+          targetId,
+          toUserId: targetId,
+        }),
+      });
+      const data = await response.json().catch(() => ({} as { status?: 'accepted' | 'pending' }));
+      if (!response.ok && response.status !== 409) return;
+      const status: 'accepted' | 'pending' = data.status === 'accepted' ? 'accepted' : 'pending';
+      try {
+        const { addOrRequestFriend } = await import('@/lib/friendAddPatch');
+        const myId = (user as { id?: string } | null)?.id || '';
+        if (myId) await addOrRequestFriend(myId, targetId);
+      } catch { /* local mirror is optional */ }
+      const patch = (u: SearchUser) => u.id === targetId ? { ...u, friendStatus: status, iRequested: true } : u;
+      setResults(prev => prev.map(patch));
+      setStoryReqResults(prev => prev.map(patch));
       try { await loadFriends(); } catch { /* ignore */ }
+      const peer = results.find(u => u.id === targetId) || storyReqResults.find(u => u.id === targetId);
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:friend-request-sent', {
+          detail: { addresseeId: targetId, name: peer?.name || peer?.username || null },
+        }));
+      } catch { /* */ }
+      void fetch('/api/notifications', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'friend_request',
+          toUserId: targetId,
+          addresseeId: targetId,
+          title: 'Friend request',
+          body: 'You have a new friend request',
+        }),
+      }).catch(() => {});
+      try { playNotificationSound(); } catch { /* */ }
     } catch {/* silent */} finally {
       setSending(null);
     }
