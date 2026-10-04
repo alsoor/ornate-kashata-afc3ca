@@ -859,16 +859,18 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     if (target.userId === uid) { flashGiftMsg('ما تقدر تعطي نفسك هدية'); return; }
     if (!canGiftTo(target.userId)) { flashGiftMsg('الدعم لصاحب البث أو لمن أخذ المايك فقط'); return; }
     busyRef.current = true;
-    // استبدال تلقائي من أرباح الدعم بمقدار العجز فقط (على قد الهدايا المطلوبة)
+    // الدعم من رصيد الكوينز المشحون فقط. أرباح الدعم لا تُستخدم هنا — بدون رصيد لازم يشحن.
     const needTotal = price * t.n;
-    const top = topUpBalanceFromEarnings(uid, needTotal);
-    let bal = top.balance;
-    if (top.converted > 0) {
-      setBalance(bal);
-      flashGiftMsg(`✓ استبدال ${fmtCoins(top.converted)} من أرباح الدعم → Coins`);
-    }
+    let bal = readBalance(uid);
     let sent = 0;
-    const affordable = Math.min(t.n, Math.floor(bal / price));
+    const affordable = price > 0 ? Math.min(t.n, Math.floor(bal / price)) : 0;
+    if (affordable <= 0) {
+      busyRef.current = false;
+      setGiftsOpen(false);
+      setCoinsOpen(true);
+      flashGiftMsg('رصيدك غير كافٍ — اشحن Coins');
+      return;
+    }
     if (affordable > 0) {
       const spend = await deductGiftSupport({
         userId: uid,
@@ -936,24 +938,12 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     const nextN = cur + 1;
     let bal = readBalance(uid);
     const price = giftPrice(gift);
-    if (bal < price * nextN) {
-      // جرّب استبدال العجز من أرباح الدعم (على قد المطلوب فقط)
-      const top = topUpBalanceFromEarnings(uid, price * nextN);
-      bal = top.balance;
-      if (top.converted > 0) {
-        setBalance(bal);
-        flashGiftMsg(`✓ استبدال ${fmtCoins(top.converted)} من الدعم → Coins`);
-      }
-      if (bal < price * nextN) {
+    if (!(price > 0) || bal < price * nextN) {
+      if (bal < price * nextN || !(price > 0)) {
         if (cur === 0) {
-          const earnLeft = readEarnings(uid);
           setGiftsOpen(false);
           setCoinsOpen(true);
-          flashGiftMsg(
-            earnLeft > 0
-              ? `رصيدك + أرباح الدعم لا يكفيان — اشحن Coins (أرباحك ${fmtCoins(earnLeft)})`
-              : 'رصيدك غير كافٍ — اشحن Coins',
-          );
+          flashGiftMsg('رصيدك غير كافٍ — اشحن Coins');
           return;
         }
         flashGiftMsg(`رصيدك يكفي ${cur} فقط`);
