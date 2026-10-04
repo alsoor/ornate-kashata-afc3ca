@@ -1618,6 +1618,7 @@ function GlobalBottomNavigation() {
   const homeCallApplyInviteRef = useRef<(raw: any) => void>(() => {});
   const homeCallEndedAtRef = useRef<Map<string, number>>(new Map());
   const homeCallChannelRef = useRef<string | null>(null);
+  const homeCallTargetsRef = useRef<{ id: string; name?: string | null; avatarUrl?: string | null }[]>([]);
   const homeInviteFirstSeenRef = useRef<Map<string, number>>(new Map());
   const homeCallJustLeftRef = useRef(0);
 
@@ -1758,7 +1759,12 @@ function GlobalBottomNavigation() {
       if (!channel || !hostId || hostId === String(user.id)) return;
       if (rawIn.ended || rawIn.clear) {
         const endedCh = String(rawIn.channel || rawIn.roomId || channel || '');
-        if (endedCh && homeCallChannelRef.current && endedCh === String(homeCallChannelRef.current) && homeCallPhaseRef.current !== 'idle') {
+        const ringing = homeCallPhaseRef.current !== 'idle';
+        if (endedCh && (endedCh === String(homeCallChannelRef.current || '') || ringing)) {
+          stopHomeIncomingRing();
+          try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
+          try { window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } })); } catch { /* */ }
+          if (user?.id && hostId) recordMissedCallChat(user.id, hostId, hostId);
           try { window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: { channel: endedCh, at: Date.now(), remote: true } })); } catch { /* */ }
         }
         return;
@@ -1988,12 +1994,15 @@ function GlobalBottomNavigation() {
           }
           return;
         }
-        if (type === 'hangup' || type === 'call-end' || type === 'ended') {
-          const ch = String(msg.channel || '');
+        if (type === 'hangup' || type === 'call-end' || type === 'ended' || type === 'cancel') {
+          const ch = String(msg.channel || msg.payload && (msg.payload as any).channel || '');
           if (ch) markHomeCallChannelEnded(ch);
           const cur = String(homeCallChannelRef.current || '');
-          // إغلاق قناة أخرى (انتظار / مكالمة قديمة) لا يقطع المكالمة الحالية
-          if (ch && cur && ch === cur && homeCallPhaseRef.current !== 'idle') {
+          const unanswered = homeCallPhaseRef.current === 'connecting' || homeCallPhaseRef.current === 'animating';
+          // قبل الرد: أي إغلاق من المتصل يوقف الرنين فوراً ويسجّل مسكول
+          if (homeCallPhaseRef.current !== 'idle' && (!ch || !cur || ch === cur || unanswered)) {
+            stopHomeIncomingRing();
+            try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
             void leaveHomeGroupCall({ remote: true });
           }
           return;
@@ -2235,8 +2244,10 @@ function GlobalBottomNavigation() {
         try { localStorage.removeItem('stooorna_home_call_active_invite'); } catch { /* */ }
         try { localStorage.removeItem(`stooorna_home_call_invite_${user.id}`); } catch { /* */ }
         try { localStorage.removeItem('stooorna_home_call_live_session'); } catch { /* */ }
-        for (const m of endedMembers) {
-          if (!m.id || m.id === user.id) continue;
+        const notifyIds = new Map<string, { id: string; name?: string | null; avatarUrl?: string | null }>();
+        for (const m of endedMembers) if (m.id && m.id !== user.id) notifyIds.set(m.id, m);
+        for (const m of homeCallTargetsRef.current) if (m.id && m.id !== user.id) notifyIds.set(m.id, m);
+        for (const m of notifyIds.values()) {
           try {
             localStorage.setItem(`stooorna_home_call_invite_${m.id}`, JSON.stringify({ ended: true, channel: endedChannel, at: endedAt, clear: true }));
             localStorage.removeItem(`stooorna_home_call_invite_${m.id}`);
@@ -2306,7 +2317,7 @@ function GlobalBottomNavigation() {
     }
     setPendingDirectCallId(null);
     if (user?.id && endedPhase !== 'idle') {
-      const peers = endedMembers.filter(m => m.id && m.id !== user.id);
+      const peers = (endedMembers.filter(m => m.id && m.id !== user.id).length ? endedMembers.filter(m => m.id && m.id !== user.id) : homeCallTargetsRef.current);
       for (const peer of peers) {
         recordMissedCallChat(user.id, peer.id, user.id);
         const outRow = {
@@ -2684,6 +2695,7 @@ function GlobalBottomNavigation() {
     homeRingLockRef.current = { mode: 'none', channel: '', at: 0 };
     setHomeIncoming(null);
     setHomeCallChannel(channel);
+    homeCallTargetsRef.current = others.map(o => ({ id: o.id, name: o.name, avatarUrl: o.avatarUrl }));
     setHomeCallMembers([me, ...others]);
     setHomeCallPickerOpen(false);
     setHomeCallPhase('animating');
