@@ -161,6 +161,8 @@ export default function LiveCameraPage() {
   const [liveChatMsgs, setLiveChatMsgs] = useState<LiveChatMsg[]>([]);
   const [liveChatText, setLiveChatText] = useState('');
   const [liveChatOpen, setLiveChatOpen] = useState(true);
+  /** Compact by default. Full Chat rises to the yellow line; Hide chat drops it back. */
+  const [chatFull, setChatFull] = useState(false);
   const [membersSheetOpen, setMembersSheetOpen] = useState(false);
   const [roomEndedOverlay, setRoomEndedOverlay] = useState(false);
   const liveChatEndRef = useRef<HTMLDivElement | null>(null);
@@ -2327,25 +2329,29 @@ export default function LiveCameraPage() {
       </div>
 
 
-      {/* Live room chat */}
+      {/* Live room chat — compact on open; Full Chat rises to the yellow line, Hide chat drops it */}
       {joined && (
         <div
           style={{
             position: 'absolute',
             left: 10,
             right: 10,
+            top: chatFull ? '36%' : 'auto',
             bottom: 'calc(118px + env(safe-area-inset-bottom, 0px))',
             zIndex: 25,
             pointerEvents: 'none',
             display: 'flex',
             flexDirection: 'column',
+            justifyContent: 'flex-start',
             gap: 6,
-            maxHeight: liveChatOpen ? 'min(66vh, 620px)' : 36,
+            height: chatFull ? 'auto' : 'auto',
+            maxHeight: chatFull ? 'none' : 168,
+            transition: 'top .28s ease',
           }}
         >
           <button
             type="button"
-            onClick={() => setLiveChatOpen(o => !o)}
+            onClick={() => setChatFull(v => !v)}
             style={{
               alignSelf: 'flex-start',
               pointerEvents: 'auto',
@@ -2357,9 +2363,10 @@ export default function LiveCameraPage() {
               fontSize: '0.68rem',
               fontWeight: 800,
               cursor: 'pointer',
+              flexShrink: 0,
             }}
           >
-            {liveChatOpen ? 'Hide chat' : 'Show chat'}
+            {chatFull ? 'Hide chat' : 'Full Chat'}
           </button>
           {liveChatOpen && (
             <div
@@ -2372,10 +2379,13 @@ export default function LiveCameraPage() {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 6,
-                maxHeight: 'min(56vh, 520px)',
+                flex: chatFull ? 1 : '0 0 auto',
+                minHeight: chatFull ? 0 : undefined,
+                maxHeight: chatFull ? 'none' : 132,
+                overflow: 'hidden',
               }}
             >
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, minHeight: 48, overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 28px)', maskImage: 'linear-gradient(to bottom, transparent 0, #000 28px)' } as React.CSSProperties}>
+              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: chatFull ? 8 : 4, minHeight: chatFull ? 0 : 48, maxHeight: chatFull ? 'none' : 64, overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', WebkitMaskImage: chatFull ? 'none' : 'linear-gradient(to bottom, transparent 0, #000 18px)', maskImage: chatFull ? 'none' : 'linear-gradient(to bottom, transparent 0, #000 18px)' } as React.CSSProperties}>
                 {liveChatMsgs.length === 0 && (
                   <p style={{ margin: 0, color: 'rgba(150,200,200,0.45)', fontSize: '0.68rem' }}>Live chat — say hello</p>
                 )}
@@ -2397,7 +2407,7 @@ export default function LiveCameraPage() {
                           </div>
                         )}
                       </div>
-                      <p style={{ margin: 0, fontSize: '0.72rem', lineHeight: 1.35, color: m.isMe ? '#00BCD4' : 'rgba(220,240,240,0.92)', minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: chatFull ? '0.9rem' : '0.72rem', lineHeight: chatFull ? 1.45 : 1.35, color: m.isMe ? '#00BCD4' : 'rgba(220,240,240,0.92)', minWidth: 0 }}>
                         <span style={{ fontWeight: 800, color: m.isMe ? '#00BCD4' : '#eab308' }}>{uname} </span>
                         {m.text}
                       </p>
@@ -2424,8 +2434,8 @@ export default function LiveCameraPage() {
                     border: '1px solid rgba(0,188,212,0.28)',
                     background: 'rgba(0,20,24,0.9)',
                     color: '#dff6f6',
-                    padding: '8px 10px',
-                    fontSize: '0.78rem',
+                    padding: chatFull ? '10px 12px' : '8px 10px',
+                    fontSize: chatFull ? '0.92rem' : '0.78rem',
                     outline: 'none',
                   }}
                 />
