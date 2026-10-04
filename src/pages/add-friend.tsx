@@ -3461,22 +3461,60 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     };
   }, [camSearchQuery, requestsBoxOpen]);
   async function camSendFriendRequest(addresseeId: string) {
-    setCamSendingId(addresseeId);
+    const targetId = String(addresseeId || '').trim();
+    if (!targetId) return;
+    setCamSendingId(targetId);
     try {
+      let status: 'accepted' | 'pending' = 'pending';
+      let ok = false;
+      try {
+        const { addOrRequestFriend } = await import('@/lib/friendAddPatch');
+        const next = await addOrRequestFriend(String(myId || ''), targetId);
+        status = next === 'friends' ? 'accepted' : 'pending';
+        ok = true;
+      } catch { /* fall through to API */ }
       const response = await fetch('/api/friends', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ addresseeId }),
+        body: JSON.stringify({
+          addresseeId: targetId,
+          userId: targetId,
+          targetId,
+          toUserId: targetId,
+        }),
       });
       const data = await response.json().catch(() => ({})) as { status?: 'accepted' | 'pending' };
-      if (!response.ok && response.status !== 409) return;
-      const status = data.status ?? 'pending';
-      setCamSearchResults(prev => prev.map(u => u.id === addresseeId ? {
+      if (response.ok || response.status === 409) {
+        ok = true;
+        status = data.status ?? status;
+      }
+      if (!ok) return;
+      setCamSearchResults(prev => prev.map(u => u.id === targetId ? {
         ...u,
         friendStatus: status,
         iRequested: true,
       } : u));
+      const peer = camSearchResults.find(u => u.id === targetId);
+      try {
+        window.dispatchEvent(new CustomEvent('stooorna:friend-request-sent', {
+          detail: { addresseeId: targetId, name: peer?.name || peer?.username || null },
+        }));
+      } catch { /* */ }
+      // Notify the other account so the requests icon and in-app list update.
+      void fetch('/api/notifications', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'friend_request',
+          toUserId: targetId,
+          addresseeId: targetId,
+          title: 'Friend request',
+          body: 'You have a new friend request',
+        }),
+      }).catch(() => {});
+      try { playNotificationSound(); } catch { /* */ }
     } catch { /* silent */ } finally {
       setCamSendingId(null);
     }
@@ -24047,8 +24085,31 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     loadHighlights();
     // Poll highlights every 10s — also re-runs on tick (every 3s from useAutoRefresh)
     const interval = setInterval(loadHighlights, 10_000);
+    // Friend requests must arrive without a refresh: poll and ping the requests icon.
+    let lastIncoming = -1;
+    const pollReq = window.setInterval(async () => {
+      try {
+        const r = await fetch('/api/friends', { credentials: 'include' });
+        if (!r.ok) return;
+        const d = await r.json();
+        const inc = Array.isArray(d.incoming) ? d.incoming : [];
+        if (lastIncoming >= 0 && inc.length > lastIncoming) {
+          try { playNotificationSound(); } catch { /* */ }
+          try {
+            window.dispatchEvent(new CustomEvent('stooorna:friend-request-received', { detail: { count: inc.length } }));
+          } catch { /* */ }
+        }
+        lastIncoming = inc.length;
+        setIncoming(inc);
+        setFriends(d.accepted ?? []);
+        setOutgoingRequestedIds(new Set(
+          (d.outgoing ?? []).map((request: { addresseeId?: string; userId?: string }) => request.addresseeId ?? request.userId).filter(Boolean)
+        ));
+      } catch { /* */ }
+    }, 4000);
     return () => {
       clearInterval(interval);
+      window.clearInterval(pollReq);
     };
   }, [user, tick]);
 
