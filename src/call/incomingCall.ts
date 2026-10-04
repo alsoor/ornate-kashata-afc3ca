@@ -84,6 +84,14 @@ export function attachIncoming(meId: string, onEvent: (type: string, msg: any) =
         };
         playIncoming();
       }
+      if (type === 'hangup' || type === 'call-end' || type === 'ended') {
+        const channel = String(msg.channel || '');
+        if (!callSession.current || !channel || channel === callSession.current.channel) {
+          stopRing();
+          if (callSession.current) callSession.current.phase = 'idle';
+          callSession.current = null;
+        }
+      }
       if (type === 'answered' || type === 'call-answered') {
         if (callSession.current && String(msg.channel || '') === callSession.current.channel) {
           callSession.current.phase = 'live';
@@ -98,5 +106,22 @@ export function attachIncoming(meId: string, onEvent: (type: string, msg: any) =
     ws.onclose = () => { if (!closed) retry = window.setTimeout(connect, 2000); };
   };
   connect();
-  return () => { closed = true; if (retry) window.clearTimeout(retry); };
+  const poll = window.setInterval(() => {
+    const session = callSession.current;
+    if (!session || session.phase === 'live') return;
+    void fetch(`/api/call/invite?userId=${encodeURIComponent(meId)}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        const inv = data?.invite;
+        if (!inv || inv.clear || inv.ended || String(inv.channel || '') !== session.channel) {
+          if (callSession.current?.channel === session.channel && callSession.current.phase !== 'live') {
+            stopRing();
+            callSession.current = null;
+            onEvent('hangup', { channel: session.channel, from: session.hostId });
+          }
+        }
+      })
+      .catch(() => {});
+  }, 1000);
+  return () => { closed = true; if (retry) window.clearTimeout(retry); window.clearInterval(poll); };
 }

@@ -90,17 +90,18 @@ export async function endCall(meId: string, opts?: { remote?: boolean; client?: 
   if (!session) return;
   const remote = !!opts?.remote;
   if (!remote) {
-    for (const peer of session.peers) {
-      if (!peer.id || peer.id === meId) continue;
-      sendSignal({ type: 'hangup', to: peer.id, from: meId, channel: session.channel, at: Date.now() });
-      void clearInvite(peer.id, session.channel);
-    }
-    window.setTimeout(() => {
-      for (const peer of session.peers) {
-        if (!peer.id || peer.id === meId) continue;
+    const peers = session.peers.filter(p => p.id && p.id !== meId);
+    const blast = () => {
+      for (const peer of peers) {
         sendSignal({ type: 'hangup', to: peer.id, from: meId, channel: session.channel, at: Date.now() });
+        sendSignal({ type: 'ended', to: peer.id, from: meId, channel: session.channel, at: Date.now() });
+        void clearInvite(peer.id, session.channel);
       }
-    }, 700);
+    };
+    blast();
+    window.setTimeout(blast, 400);
+    window.setTimeout(blast, 1200);
+    window.setTimeout(blast, 2500);
   }
   void fetch('/api/room/leave', {
     method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },

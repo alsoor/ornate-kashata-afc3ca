@@ -48,7 +48,9 @@ export default function CallHost({ user }: { user: { id: string; name?: string |
     return attachIncoming(me.id, (type, msg) => {
       if (type === 'hangup' || type === 'call-end' || type === 'ended') {
         const ch = String(msg.channel || '');
-        if (!callSession.current || (ch && ch !== callSession.current.channel)) return;
+        if (callSession.current && ch && ch !== callSession.current.channel) return;
+        stopRing();
+        if (!callSession.current) { sync(); return; }
         if (callSession.current.phase === 'live' && String(msg.from || '') && callSession.current.peers.length > 2 && String(msg.from) !== callSession.current.hostId) {
           callSession.current.peers = callSession.current.peers.filter(p => p.id !== String(msg.from));
           sync();
