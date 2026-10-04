@@ -2,7 +2,7 @@
  * outgoingCall.ts — إرسال الاتصال فقط.
  * src/call/outgoingCall.ts
  */
-import { callSession, sendSignal, stopRing, type CallPeer } from './endCall';
+import { callSession, newSessionId, sendSignal, stopRing, type CallPeer } from './endCall';
 
 const NO_ANSWER_MS = 45000;
 export const APP_ID = '149ef04e839c4132a08efb49d717c436';
@@ -69,7 +69,8 @@ export function startOutgoing(me: CallPeer, peers: CallPeer[], video: boolean, o
   const ids = [me.id, ...peers.map(p => p.id)];
   const channel = peers.length === 1 ? channelFor(me.id, peers[0].id) : groupChannel(ids);
   const at = Date.now();
-  callSession.current = { channel, hostId: me.id, peers: [{ ...me, joined: true }, ...peers.map(p => ({ ...p, joined: false }))], video, phase: 'outgoing', startedAt: at };
+  const id = newSessionId();
+  callSession.current = { id, channel, hostId: me.id, peers: [{ ...me, joined: true }, ...peers.map(p => ({ ...p, joined: false }))], video, phase: 'outgoing', startedAt: at };
   try { localStorage.removeItem(`stooorna_call_ended_${channel}`); } catch { /* */ }
   for (const peer of peers) {
     const body = { toUserId: peer.id, userId: peer.id, channel, hostId: me.id, fromId: me.id, hostName: me.name, hostAvatar: me.avatarUrl, members: callSession.current.peers, at, video, kind: video ? 'video' : 'voice' };
@@ -82,9 +83,9 @@ export function startOutgoing(me: CallPeer, peers: CallPeer[], video: boolean, o
     playRingback();
   }, 2600);
   const timer = window.setTimeout(() => {
-    if (callSession.current?.phase !== 'live') onNoAnswer();
+    if (callSession.current?.id === id && callSession.current.phase !== 'live') onNoAnswer();
   }, NO_ANSWER_MS);
-  return { channel, ring, timer };
+  return { channel, ring, timer, id };
 }
 
 /** دعوة شخص ثالث داخل مكالمة قائمة، وتبليغ كل الموجودين. */

@@ -47,7 +47,14 @@ export default function CallHost({ user }: { user: { id: string; name?: string |
     } catch { /* */ }
     return attachIncoming(me.id, (type, msg) => {
       if (type === 'hangup' || type === 'call-end' || type === 'ended') {
-        void endCall(me.id, { remote: true, client, mic, cam }).then(sync);
+        const ch = String(msg.channel || '');
+        if (!callSession.current || (ch && ch !== callSession.current.channel)) return;
+        if (callSession.current.phase === 'live' && String(msg.from || '') && callSession.current.peers.length > 2 && String(msg.from) !== callSession.current.hostId) {
+          callSession.current.peers = callSession.current.peers.filter(p => p.id !== String(msg.from));
+          sync();
+          return;
+        }
+        void endCall(me.id, { remote: true, client, mic, cam, sessionId: callSession.current.id }).then(sync);
         return;
       }
       if (type === 'member-left') {
@@ -63,9 +70,13 @@ export default function CallHost({ user }: { user: { id: string; name?: string |
         return;
       }
       if (type === 'answered' || type === 'call-answered' || type === 'member-joined') {
-        if (callSession.current) callSession.current.phase = 'live';
+        if (callSession.current) {
+          callSession.current.phase = 'live';
+          callSession.current.peers = callSession.current.peers.map(p => p.id === String(msg.from || '') ? { ...p, joined: true } : p);
+        }
         stopRing();
-        if (noAnswer.current) window.clearTimeout(noAnswer.current);
+        if (ring.current) { window.clearInterval(ring.current); ring.current = null; }
+        if (noAnswer.current) { window.clearTimeout(noAnswer.current); noAnswer.current = null; }
         sync();
       }
       if (type === 'call' || type === 'incoming-call' || type === 'home-call') sync();
@@ -78,7 +89,14 @@ export default function CallHost({ user }: { user: { id: string; name?: string |
       if (!me || !d.friendId) return;
       if (ring.current) window.clearInterval(ring.current);
       if (noAnswer.current) window.clearTimeout(noAnswer.current);
-      const started = startOutgoing(me, [{ id: String(d.friendId), name: d.name || null, avatarUrl: d.avatarUrl || null }], !!d.video, () => { void hangup(); });
+      const previous = callSession.current;
+      if (previous && previous.phase !== 'idle') {
+        if (ring.current) window.clearInterval(ring.current);
+        if (noAnswer.current) window.clearTimeout(noAnswer.current);
+      }
+      const started = startOutgoing(me, [{ id: String(d.friendId), name: d.name || null, avatarUrl: d.avatarUrl || null }], !!d.video, () => {
+        if (callSession.current?.id === started.id && callSession.current.phase !== 'live') void hangup();
+      });
       ring.current = started.ring;
       noAnswer.current = started.timer;
       void publishCall(me.id, started.channel, !!d.video, client, mic, cam, () => {
@@ -133,7 +151,7 @@ export default function CallHost({ user }: { user: { id: string; name?: string |
               <div style={{ fontSize: 12, opacity: 0.75 }}>{phase === 'live' ? `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}` : phase === 'incoming' ? 'مكالمة واردة' : 'جاري الاتصال'}</div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {phase === 'incoming' && <button onClick={() => { answerIncoming(me); void publishCall(me.id, callSession.current!.channel, !!callSession.current?.video, client, mic, cam, sync); sync(); }} style={{ background: '#16a34a', color: '#fff', border: 0, borderRadius: 12, padding: '8px 12px' }}>رد</button>}
+              {phase === 'incoming' && <button onClick={() => { answerIncoming(me); if (callSession.current) callSession.current.phase = 'live'; stopRing(); setPhase('live'); void publishCall(me.id, callSession.current!.channel, !!callSession.current?.video, client, mic, cam, () => { if (callSession.current) callSession.current.phase = 'live'; sync(); }); sync(); }} style={{ background: '#16a34a', color: '#fff', border: 0, borderRadius: 12, padding: '8px 12px' }}>رد</button>}
               <button onClick={() => void hangup()} style={{ background: '#dc2626', color: '#fff', border: 0, borderRadius: 12, padding: '8px 12px' }}>إنهاء</button>
             </div>
           </div>

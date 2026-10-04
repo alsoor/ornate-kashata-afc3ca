@@ -2,7 +2,7 @@
  * incomingCall.ts — استقبال الاتصال فقط.
  * src/call/incomingCall.ts
  */
-import { callSession, sendSignal, stopRing, trackSignalSocket, type CallPeer } from './endCall';
+import { callSession, newSessionId, sendSignal, stopRing, trackSignalSocket, type CallPeer } from './endCall';
 
 export function wsUrl() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -74,6 +74,7 @@ export function attachIncoming(meId: string, onEvent: (type: string, msg: any) =
         if (callSession.current?.phase === 'live') return;
         const peers: CallPeer[] = Array.isArray(msg.members) ? msg.members : [];
         callSession.current = {
+          id: newSessionId(),
           channel,
           hostId: String(msg.from || msg.hostId || ''),
           peers,

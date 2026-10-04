@@ -5,6 +5,7 @@
  */
 export type CallPeer = { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; joined?: boolean };
 export type CallSession = {
+  id: number;
   channel: string;
   hostId: string;
   peers: CallPeer[];
@@ -12,6 +13,8 @@ export type CallSession = {
   phase: 'idle' | 'outgoing' | 'incoming' | 'live';
   startedAt: number;
 };
+let nextSessionId = 1;
+export function newSessionId() { return nextSessionId++; }
 
 const sockets = new Set<WebSocket>();
 export const callSession: { current: CallSession | null } = { current: null };
@@ -80,8 +83,9 @@ export async function leaveAgora(client: { current: any }, mic: { current: any }
 }
 
 /** إنهاء كامل: يوقف الرنين ويخرج الطرفين. */
-export async function endCall(meId: string, opts?: { remote?: boolean; client?: { current: any }; mic?: { current: any }; cam?: { current: any } }) {
+export async function endCall(meId: string, opts?: { remote?: boolean; client?: { current: any }; mic?: { current: any }; cam?: { current: any }; sessionId?: number }) {
   const session = callSession.current;
+  if (opts?.sessionId && session && session.id !== opts.sessionId) return;
   stopRing();
   if (!session) return;
   const remote = !!opts?.remote;
