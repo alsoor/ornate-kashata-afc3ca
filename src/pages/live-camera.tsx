@@ -378,6 +378,18 @@ export default function LiveCameraPage() {
   // SPLIT-PATCH: second connection of an invited host who stays live in his own room
   const splitRef = useRef<SplitGuestHandle | null>(null);
   const [splitWith, setSplitWith] = useState<DuetPerson | null>(null);
+  // SPLIT-PATCH: the inviter's camera shown in the right half of the invited host's own screen
+  const splitPaneRef = useRef<HTMLDivElement | null>(null);
+  const splitRemoteRef = useRef<any>(null);
+  const attachSplitRemote = () => {
+    const el = splitPaneRef.current;
+    const t = splitRemoteRef.current;
+    if (!el || !t) return;
+    try { t.play(el, { fit: 'cover' }); } catch { /* ignore */ }
+  };
+  useEffect(() => {
+    if (splitWith) window.setTimeout(attachSplitRemote, 60);
+  }, [splitWith]);
   // VOICE-INVITE-PATCH (video) state
   const [voiceInvOpen, setVoiceInvOpen] = useState(false);
   const [voiceInvToast, setVoiceInvToast] = useState('');
@@ -1937,8 +1949,13 @@ export default function LiveCameraPage() {
         cam: camRef.current,
         mic: micRef.current,
         appIdFallback: AGORA_APP_ID,
+        onRemoteVideo: (track) => {
+          splitRemoteRef.current = track;
+          if (track) window.setTimeout(attachSplitRemote, 40);
+        },
         onEnded: () => {
           splitRef.current = null;
+          splitRemoteRef.current = null;
           setSplitWith(null);
           showDuetToast('Split screen ended');
         },
@@ -2210,8 +2227,17 @@ export default function LiveCameraPage() {
               Camera off
             </div>
           ) : null}
-          {duet ? <DuetNameTag name={hostName} username={hostUsername} /> : null}
+          {duet || splitWith ? <DuetNameTag name={hostName} username={hostUsername} /> : null}
         </div>
+        {!duet && splitWith ? (
+          <>
+            <DuetDivider />
+            <div style={{ flex: 1, minWidth: 0, height: '100%', position: 'relative', overflow: 'hidden' }}>
+              <div ref={splitPaneRef} style={{ width: '100%', height: '100%' }} />
+              <DuetNameTag name={splitWith.name} username={splitWith.username} />
+            </div>
+          </>
+        ) : null}
         {duet ? (
           <>
             <DuetDivider />

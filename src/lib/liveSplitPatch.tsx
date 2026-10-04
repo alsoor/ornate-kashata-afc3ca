@@ -82,9 +82,11 @@ export async function startSplitGuest(opts: {
   cam: any;
   mic: any | null;
   appIdFallback: string;
+  /** The inviter's camera, to be shown in the other half of MY screen (null = it stopped). */
+  onRemoteVideo: (track: any | null) => void;
   onEnded: () => void;
 }): Promise<SplitGuestHandle> {
-  const { host, me, appIdFallback, onEnded } = opts;
+  const { host, me, appIdFallback, onEnded, onRemoteVideo } = opts;
   const hostChannel = camChannelForHost(host.userId);
   const hostUid = uidFromString(host.userId);
   const startedAt = Date.now();
@@ -96,6 +98,7 @@ export async function startSplitGuest(opts: {
   let currentCam: any = opts.cam;
   let unsubSig: (() => void) | null = null;
   let announce: number[] = [];
+  let announceIv: number | null = null;
   const extra: any[] = [];
 
   const finish = async (notifyHost: boolean) => {
@@ -103,6 +106,8 @@ export async function startSplitGuest(opts: {
     ended = true;
     announce.forEach((t) => window.clearTimeout(t));
     announce = [];
+    if (announceIv != null) { window.clearInterval(announceIv); announceIv = null; }
+    try { onRemoteVideo(null); } catch { /* ignore */ }
     try { unsubSig?.(); } catch { /* ignore */ }
     if (notifyHost) {
       sendDuetSignal(hostChannel, { t: 'duet-leave', uid: myUid, ts: Date.now() });
@@ -126,6 +131,19 @@ export async function startSplitGuest(opts: {
 
   client.on('user-left', (u: any) => {
     if (Number(u.uid) === hostUid) void finish(false); // inviter left his live
+  });
+  // I also watch + hear the inviter, so MY screen is split too (me on one half, him on the other)
+  const subscribeHost = async (u: any, mediaType: 'audio' | 'video') => {
+    if (Number(u.uid) !== hostUid) return;
+    try {
+      await client.subscribe(u, mediaType);
+      if (mediaType === 'audio') { try { u.audioTrack?.play(); } catch { /* ignore */ } }
+      else if (u.videoTrack) onRemoteVideo(u.videoTrack);
+    } catch { /* ignore */ }
+  };
+  client.on('user-published', (u: any, mt: string) => { void subscribeHost(u, mt as 'audio' | 'video'); });
+  client.on('user-unpublished', (u: any, mt: string) => {
+    if (Number(u.uid) === hostUid && mt === 'video') onRemoteVideo(null);
   });
   client.on('connection-state-change', (cur: string) => {
     if (cur === 'DISCONNECTED') void finish(false);
@@ -186,6 +204,10 @@ export async function startSplitGuest(opts: {
   currentCam = publishedMine[0];
 
   unsubSig = subscribeLiveSignals(hostChannel, onMsg as any);
+  for (const u of client.remoteUsers || []) {
+    if (u.hasVideo) await subscribeHost(u, 'video');
+    if (u.hasAudio) await subscribeHost(u, 'audio');
+  }
   } catch (err) {
     ended = true;
     try { await client.leave(); } catch { /* ignore */ }
@@ -200,12 +222,20 @@ export async function startSplitGuest(opts: {
     const payload = { t: 'duet-join', uid: myUid, guest, ts: Date.now() };
     sendDuetSignal(hostChannel, payload);
     try { publishLiveSignal(hostChannel, payload as any); } catch { /* ignore */ }
-    if (streamId != null) {
-      try { void client.sendStreamMessage?.(new TextEncoder().encode(JSON.stringify(payload)), streamId); } catch { /* ignore */ }
+    {
+      const json = JSON.stringify(payload);
+      try {
+        const r = client.sendStreamMessage?.(streamId ?? 0, new TextEncoder().encode(json));
+        if (r && typeof r.then === 'function') r.catch(() => { /* ignore */ });
+      } catch {
+        try { void client.sendStreamMessage?.(streamId ?? 0, json); } catch { /* ignore */ }
+      }
     }
   };
   sendJoin();
-  announce = [window.setTimeout(sendJoin, 800), window.setTimeout(sendJoin, 2000), window.setTimeout(sendJoin, 4000)];
+  announce = [window.setTimeout(sendJoin, 800), window.setTimeout(sendJoin, 2000)];
+  // keep announcing while the split is alive: if one signal gets lost the inviter's screen still splits
+  announceIv = window.setInterval(sendJoin, 2500);
 
   return {
     uid: myUid,
