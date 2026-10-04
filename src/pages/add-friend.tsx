@@ -850,6 +850,23 @@ function useLiveMapPresence(enabled = true): { liveIds: Set<string>; onlineIds: 
   return state;
 }
 
+const LIVE_GPS_LASTSEEN_KEY = 'stooorna_live_gps_lastseen_v1';
+type LiveGpsLastSeen = { id: string; name: string; username: string; avatarUrl: string | null; lat: number; lng: number; at: number };
+/** Last known map position of every user we have seen on the GPS Live map (kept even after they go offline). */
+function readLiveGpsLastSeen(): LiveGpsLastSeen[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LIVE_GPS_LASTSEEN_KEY) || '[]');
+    return (Array.isArray(raw) ? raw : []).filter((p: any) => p && p.id && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  } catch {
+    return [];
+  }
+}
+function writeLiveGpsLastSeen(list: LiveGpsLastSeen[]) {
+  try {
+    localStorage.setItem(LIVE_GPS_LASTSEEN_KEY, JSON.stringify(list.slice(0, 500)));
+  } catch { /* */ }
+}
+
 function anyFriendOnMapPins_(
   friendIds: string[], selfId: string,
   sync: { liveIds: Set<string>; onlineIds: Set<string> },
@@ -3273,6 +3290,16 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const mapOnlineCount = mapPoolOnline + (myId && liveShareOn ? 1 : 0);
   const mapOfflineCount = Math.max(0, mapPoolIds.length + mapSelfCount - mapOnlineCount);
   const liveSearchFocusedRef = useRef(false);
+  // Online = the user is present in the app (or just sent a fresh position). Anyone else is shown as offline at the last known spot.
+  const livePresenceRef = useRef<{ sync: typeof mapSync; room: Set<string>; pres: any }>({ sync: mapSync, room: mapRoomOnline, pres: mapPresence });
+  livePresenceRef.current = { sync: mapSync, room: mapRoomOnline, pres: mapPresence };
+  const isLiveUserOnline = (id: string, at?: number) => {
+    const sid = String(id);
+    if (sid === String(myId || '')) return !!liveShareOn;
+    const r = livePresenceRef.current;
+    if (r.sync.onlineIds.has(sid) || r.room.has(sid) || !!r.pres?.[sid]?.online) return true;
+    return !!(at && Date.now() - Number(at) < 2 * 60 * 1000);
+  };
   useEffect(() => { livePinsRef.current = livePins; }, [livePins]);
   const [livePlace, setLivePlace] = useState('');
   const [liveZoom, setLiveZoom] = useState(16);
@@ -3343,7 +3370,6 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           .filter(p => p.name)
           .map(p => [String(p.name).toLowerCase(), p]),
       );
-      const now = Date.now();
       const seen = new Set<string>();
       const hits: {
         id: string;
@@ -3365,8 +3391,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           pinById.get(id)
           || (uname ? pinByUser.get(uname) : undefined)
           || (nname ? pinByName.get(nname) : undefined);
-        const fresh = !!(pin && (!pin.at || now - Number(pin.at) < 30 * 60 * 1000));
-        const sharing = !!pin && fresh;
+        const sharing = !!pin;
         seen.add(id);
         hits.push({
           id,
@@ -3374,7 +3399,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           username: String(u.username || ''),
           avatarUrl: u.avatarUrl ?? pin?.avatarUrl ?? null,
           sharing,
-          online: sharing,
+          online: !!pin && isLiveUserOnline(id, pin.at),
           lat: pin?.lat,
           lng: pin?.lng,
         });
@@ -3387,15 +3412,13 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         const uname = String(pin.username || '').toLowerCase().replace(/^@/, '');
         const nname = String(pin.name || '').toLowerCase();
         if (!uname.includes(q) && !nname.includes(q) && !String(pin.id).toLowerCase().includes(q)) continue;
-        const fresh = !pin.at || now - Number(pin.at) < 30 * 60 * 1000;
-        if (!fresh) continue;
         hits.push({
           id: String(pin.id),
           name: String(pin.name || pin.username || 'User'),
           username: String(pin.username || ''),
           avatarUrl: pin.avatarUrl ?? null,
           sharing: true,
-          online: true,
+          online: isLiveUserOnline(String(pin.id), pin.at),
           lat: pin.lat,
           lng: pin.lng,
         });
@@ -3563,18 +3586,18 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         const prev = byId.get(p.id);
         if (!prev || Number(p.at) >= Number(prev.at || 0)) byId.set(p.id, p);
       }
-      const next = Array.from(byId.values()).filter(
-        p => p && Date.now() - Number(p.at || 0) < 30 * 60 * 1000,
-      );
+      // Never drop old pins: an offline user stays on the map at the last place they were seen.
+      const next = Array.from(byId.values()).filter(p => !!p);
       livePinsRef.current = next;
       setLivePins(next);
+      writeLiveGpsLastSeen(next.filter(p => liveShareOn || String(p.id) !== String(myId || '')));
     };
     const readPins = async () => {
       const bucket: any[] = [];
       try {
         const raw = JSON.parse(localStorage.getItem(key) || '{}') as Record<string, any>;
         for (const p of Object.values(raw)) {
-          if (p && typeof (p as any).lat === 'number' && Date.now() - Number((p as any).at || 0) < 30 * 60 * 1000) {
+          if (p && typeof (p as any).lat === 'number') {
             bucket.push(p);
           }
         }
@@ -3595,8 +3618,31 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         : bucket;
       mergePins(filtered);
     };
+    mergePins(readLiveGpsLastSeen());
     void readPins();
     const iv = window.setInterval(() => { void readPins(); }, 5000);
+    let lastOwnPin: any = null;
+    // Heartbeat: keeps my pin "fresh" while the map is open even when I am standing still.
+    const hb = window.setInterval(() => {
+      if (!lastOwnPin || !liveShareOn) return;
+      lastOwnPin = { ...lastOwnPin, at: Date.now() };
+      mergePins([lastOwnPin]);
+      try {
+        void fetch('/api/live-gps', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: lastOwnPin.id,
+            lat: lastOwnPin.lat,
+            lng: lastOwnPin.lng,
+            name: lastOwnPin.name,
+            username: lastOwnPin.username,
+            avatarUrl: lastOwnPin.avatarUrl,
+          }),
+        });
+      } catch { /* */ }
+    }, 20000);
     let watchId: number | null = null;
     if (navigator.geolocation && myId) {
       watchId = navigator.geolocation.watchPosition((pos) => {
@@ -3609,6 +3655,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           lng: pos.coords.longitude,
           at: Date.now(),
         };
+        lastOwnPin = pin;
         setLiveCenter({ lat: pin.lat, lng: pin.lng });
         setLiveFocus(prev => prev || { lat: pin.lat, lng: pin.lng });
         setLiveMapSrc(prev => prev || `https://www.google.com/maps?q=${pin.lat},${pin.lng}&z=18&hl=en&output=embed`);
@@ -3659,6 +3706,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     }
     return () => {
       window.clearInterval(iv);
+      window.clearInterval(hb);
       if (watchId != null) navigator.geolocation.clearWatch(watchId);
     };
   }, [liveMapOpen, myId, userName, avatarUrl, liveShareOn, liveFriends]);
@@ -4823,7 +4871,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                       <div style={{ position: 'relative', width: 36, height: 36, flexShrink: 0 }}>
                         <div style={{
                           width: 36, height: 36, borderRadius: '50%', overflow: 'hidden',
-                          border: `2px solid ${hit.sharing ? '#22c55e' : '#ef4444'}`, background: '#111',
+                          border: `2px solid ${hit.online ? '#22c55e' : '#ef4444'}`, background: '#111',
                         }}>
                           {hit.avatarUrl
                             ? <img src={hit.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -4840,7 +4888,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                           {hit.name}
                         </p>
                         <p style={{ margin: 0, color: 'rgba(200,230,230,0.55)', fontSize: '0.68rem' }}>
-                          @{hit.username || 'user'} · {hit.sharing ? 'On map' : 'Location off'}
+                          @{hit.username || 'user'} · {hit.online ? 'On map' : (hit.sharing ? 'Offline · last location' : 'Location off')}
                         </p>
                       </div>
                     </button>
@@ -4984,7 +5032,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                       const isHighlight = !!(liveHighlightId && String(pin.id) === String(liveHighlightId));
                       const lift = isHighlight ? -36 : 0;
                       const zPin = isHighlight ? 12 : (isMe ? 6 : 2);
-                      const online = !!(pin.at && Date.now() - Number(pin.at) < 30 * 60 * 1000);
+                      const online = isLiveUserOnline(String(pin.id), pin.at);
                       return (
                         <div key={pin.id} style={{
                           position: 'absolute',
@@ -5019,6 +5067,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                                 width: 42, height: 42, borderRadius: '50%', overflow: 'hidden',
                                 border: isHighlight ? '2.5px solid #22c55e' : '2px solid #fff',
                                 background: '#111', boxShadow: '0 4px 12px rgba(0,0,0,0.28)',
+                                filter: online ? 'none' : 'grayscale(0.75)', opacity: online ? 1 : 0.92,
                               }}>
                                 {pin.avatarUrl ? <img src={pin.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: '#fff' }}>{pin.name.slice(0,1)}</span>}
                               </div>
@@ -5033,7 +5082,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                               background: isHighlight ? 'rgba(34,197,94,0.95)' : 'rgba(255,255,255,0.94)',
                               color: isHighlight ? '#041018' : '#111',
                               padding: '1px 6px', borderRadius: 8,
-                            }}>@{pin.username || pin.name}</span>
+                            }}>@{pin.username || pin.name}{online ? '' : ' · offline'}</span>
                           </button>
                         </div>
                       );
@@ -15257,8 +15306,18 @@ const VIDEO_SWAP_MAX_MB = 300;   // size cap only — video LENGTH is unlimited
 const LIVE_VIDEO_GALLERY_TOP = 'calc(max(8px, env(safe-area-inset-top)) + 72px)'; // clears the header grabber
 /** Opening the system gallery blurs the page; on return `focus`/`visibilitychange` used to run snapHomeLayout()
  *  which force-opened the header → the chat panel (and this studio) unmounted = "kicked out". Call right before .click(). */
+/** Time-based hold: while it is active, the home layout snap (which pushes the user out of the chat) is skipped.
+ *  Used around the system gallery, the microphone/camera permission prompt and while a media message is being sent. */
+function stooornaExtendMediaHold(ms = 20000) {
+  try {
+    const until = Date.now() + ms;
+    const w = window as any;
+    if (!w.__stooornaMediaHoldUntil || w.__stooornaMediaHoldUntil < until) w.__stooornaMediaHoldUntil = until;
+  } catch { /* */ }
+}
 function stooornaHoldForFilePicker() {
   try {
+    stooornaExtendMediaHold(60000);
     document.body.dataset.stooornaFilePicking = '1';
     let done = false;
     let left = false;   // page really went away (blur / hidden) → only then the return can release
@@ -15271,7 +15330,8 @@ function stooornaHoldForFilePicker() {
       window.removeEventListener('blur', onLeave);
       window.removeEventListener('focus', onBack);
       document.removeEventListener('visibilitychange', onVis);
-      window.setTimeout(() => { delete document.body.dataset.stooornaFilePicking; }, 4000);
+      stooornaExtendMediaHold(8000);
+      window.setTimeout(() => { delete document.body.dataset.stooornaFilePicking; }, 8000);
     };
     window.addEventListener('blur', onLeave);
     window.addEventListener('focus', onBack);
@@ -15957,6 +16017,7 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError, onReco
     let st: MediaStream;
     try {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') throw new Error('unsupported');
+      stooornaExtendMediaHold(60000);
       st = await navigator.mediaDevices.getUserMedia(
         kind === 'video'
           ? { audio: true, video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 480 } } }
@@ -17313,6 +17374,8 @@ function PublicLiveCommentsPanel({
   const [openMediaId, setOpenMediaId] = useState<string | null>(null);
   // ── round video / voice recorder state ──
   const [onceViewId, setOnceViewId] = useState<string | null>(null);   // view-once round video currently open
+  // Full-screen photo/video from the chat list: first tap opens it, second tap closes it (same as Saved Messages)
+  const [chatMediaView, setChatMediaView] = useState<{ kind: 'image' | 'video'; url: string } | null>(null);
   const [roundToast, setRoundToast] = useState('');
   const [, setRoundTick] = useState(0);                                 // re-render after local seen/deleted changes
   const pendingRoundRef = useRef<Set<string>>(new Set());               // my round videos still uploading
@@ -17602,6 +17665,7 @@ function PublicLiveCommentsPanel({
     const trimmed = body.trim().slice(0, 500);
     if (!trimmed && !imageUrl && !voice?.url) return;
     if (!myId) return;
+    if (imageUrl || voice?.url) stooornaExtendMediaHold(45000);
     if (liveChatTextIsBlocked(trimmed) || liveChatImageLooksBlocked(imageUrl, trimmed)) {
       const notice = makeLiveChatBotNotice(imageUrl ? 'image' : 'text');
       const next = [...loadPublicLiveComments(), notice];
@@ -17696,6 +17760,24 @@ function PublicLiveCommentsPanel({
         } catch { /* keep local preview; other users may not see until retry */ }
       }
       await postLiveChatToServer(send);
+      if (send.imageUrl || send.voiceUrl) {
+        // Instant refresh so the sent media shows up right away, without leaving and re-entering the page.
+        const refreshNow = async () => {
+          try {
+            liveSigRef.current = '';
+            const remote = await fetchLiveChatFromServer();
+            const local = loadPublicLiveComments();
+            const merged = (remote ? mergeLiveChatLists(local, remote) : local).filter(x => x.createdAt >= liveChatCycleStart());
+            savePublicLiveComments(merged);
+            setComments(merged);
+          } catch {
+            setComments(loadPublicLiveComments());
+          }
+        };
+        void refreshNow();
+        window.setTimeout(() => { void refreshNow(); }, 1200);
+        window.setTimeout(() => { void refreshNow(); }, 3500);
+      }
     })();
   };
 
@@ -17835,6 +17917,7 @@ function PublicLiveCommentsPanel({
   };
   const sendRound = (blob: Blob, seconds: number, once: boolean) => {
     if (!myId) return;
+    stooornaExtendMediaHold(45000);
     const id = `plc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const localUrl = URL.createObjectURL(blob);
     const marker = makeLiveChatRoundText(!!once, seconds);
@@ -18112,6 +18195,42 @@ function PublicLiveCommentsPanel({
     {mediaFeedOverlay}
     {mediaCommentsSheet}
     {onceViewer}
+    {chatMediaView ? (
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={() => setChatMediaView(null)}
+        onTouchStart={e => e.stopPropagation()}
+        onTouchMove={e => e.stopPropagation()}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 130000,
+          background: 'rgba(0,0,0,0.96)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+        }}
+      >
+        {chatMediaView.kind === 'image' ? (
+          <img
+            src={chatMediaView.url}
+            alt=""
+            draggable={false}
+            onClick={e => { e.stopPropagation(); setChatMediaView(null); }}
+            style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }}
+          />
+        ) : (
+          <video
+            src={chatMediaView.url}
+            autoPlay
+            playsInline
+            controls={false}
+            disablePictureInPicture
+            controlsList="nodownload nofullscreen noremoteplayback"
+            onClick={e => { e.stopPropagation(); setChatMediaView(null); }}
+            style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', background: '#000' }}
+          />
+        )}
+      </div>
+    ) : null}
     {roundToast ? (
       <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)', zIndex: 100003, padding: '8px 14px', borderRadius: 999, background: 'rgba(17,17,17,0.92)', color: '#fff', fontSize: '0.78rem', fontWeight: 700, pointerEvents: 'none' }}>
         {roundToast}
@@ -18257,11 +18376,14 @@ function PublicLiveCommentsPanel({
         )}
         {groupLiveChatRows(orderLiveChatReplies(comments.filter(c => {
           if (/Join Live Chat/i.test(c.text || '')) return false;
-          if (isLiveMediaPost(c)) return false;
           if (parseMediaComment(c.text)) return false;
           if (dustHoldIds.has(c.id)) return true;
           if (isRoundHiddenRow(c, roundLocalNow.gone)) return false;
-          if (String(c.imageUrl || '').startsWith('blob:') && !pendingRoundRef.current.has(c.id)) return false;
+          if (
+            String(c.imageUrl || '').startsWith('blob:')
+            && !pendingRoundRef.current.has(c.id)
+            && !(c.userId === myId && Date.now() - c.createdAt < 10 * 60 * 1000)
+          ) return false;
           return true;
         }))).map(item => {
           const raw = item.c;
@@ -18280,7 +18402,7 @@ function PublicLiveCommentsPanel({
           const loc = parseChatLocation(c.text);
           // Only my own plain-text messages can be edited (not voice, image-only, big emoji, or bot rows)
           const canEdit = !!myId && c.userId === myId && !bigEmoji && !round && !loc && !c.voiceUrl && c.text !== '🎤'
-            && !(c.imageUrl && c.text === '📷') && c.userId !== LIVE_CHAT_BOT_ID;
+            && !c.imageUrl && c.userId !== LIVE_CHAT_BOT_ID;
           const editsLeft = Math.max(0, LIVE_CHAT_MAX_EDITS - (c.editCount || 0));
           return (
             <div
@@ -18353,7 +18475,7 @@ function PublicLiveCommentsPanel({
                 ) : null}
                 <p style={{ margin: 0, fontSize: '0.84rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
                   <span style={{ fontWeight: 800, color: (c.userId === LIVE_CHAT_BOT_ID || c.name === LIVE_CHAT_BOT_NAME) ? LIVE_CHAT_BOT_COLOR : '#111', marginRight: 6 }}>{displayName(c)}</span>
-                  {c.voiceUrl || c.text === '🎤' || bigEmoji || round || loc ? null : (
+                  {c.voiceUrl || c.text === '🎤' || bigEmoji || round || loc || (c.imageUrl && (c.text === LIVE_PHOTO_CAPTION || c.text === LIVE_VIDEO_CAPTION)) ? null : (
                     <span style={{ fontWeight: 500, color: '#222' }}>
                       {splitLiveChatLinks(c.text).map((part, i) => {
                         if (part.type === 'link') {
@@ -18427,17 +18549,38 @@ function PublicLiveCommentsPanel({
                   />
                 ) : null}
                 {c.imageUrl && !round ? (
-                  isLiveChatVideoUrl(c.imageUrl) ? (
-                    <video
-                      src={c.imageUrl}
-                      controls
-                      playsInline
-                      preload="metadata"
-                      style={{ marginTop: 6, maxWidth: 220, maxHeight: 200, borderRadius: 10, display: 'block', background: '#000' }}
-                    />
-                  ) : (
-                    <img src={c.imageUrl} alt="" style={{ marginTop: 6, maxWidth: 180, maxHeight: 160, borderRadius: 10, display: 'block', objectFit: 'cover' }} />
-                  )
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      setChatMediaView({ kind: isLiveChatVideoUrl(c.imageUrl as string) ? 'video' : 'image', url: c.imageUrl as string });
+                    }}
+                    style={{
+                      marginTop: 6, padding: 0, border: 'none', background: '#000', borderRadius: 10, overflow: 'hidden',
+                      position: 'relative', display: 'block', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                    }}
+                  >
+                    {isLiveChatVideoUrl(c.imageUrl) ? (
+                      <>
+                        <video
+                          src={c.imageUrl}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          controls={false}
+                          disablePictureInPicture
+                          style={{ maxWidth: 220, maxHeight: 200, borderRadius: 10, display: 'block', background: '#000', pointerEvents: 'none', objectFit: 'cover' }}
+                        />
+                        <span aria-hidden style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                          <span style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', border: '2px solid rgba(255,255,255,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Play size={20} color="#fff" fill="#fff" style={{ marginLeft: 3 }} />
+                          </span>
+                        </span>
+                      </>
+                    ) : (
+                      <img src={c.imageUrl} alt="" draggable={false} style={{ maxWidth: 180, maxHeight: 160, borderRadius: 10, display: 'block', objectFit: 'cover' }} />
+                    )}
+                  </button>
                 ) : null}
                 <p style={{ margin: '4px 0 0', fontSize: '0.68rem', color: '#9ca3af', fontWeight: 600 }}>
                   {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -18759,6 +18902,7 @@ function PublicLiveCommentsPanel({
                 const file = e.target.files?.[0];
                 e.target.value = '';
                 if (!file) return;
+                stooornaExtendMediaHold(45000);
                 pendingImageFileRef.current = file;
                 const url = URL.createObjectURL(file);
                 setPendingImage(url);
@@ -18954,6 +19098,7 @@ function PublicLiveCommentsPanel({
                   return;
                 }
                 try {
+                  stooornaExtendMediaHold(60000);
                   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                   const rec = new MediaRecorder(stream);
                   recChunksRef.current = [];
@@ -22724,10 +22869,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const lastFeedScrollTopRef = useRef(0);
   const feedScrollRafRef = useRef(0);
 
+  const chatLiftedRef = useRef(false);
+  chatLiftedRef.current = chatLifted;
   const snapHomeLayout = useCallback(() => {
     if (document.body.dataset.stooornaChatLock != null) return;
     // Video AI / gallery picker is open → returning from the system gallery must NOT push us to the main story page.
     if (document.body.dataset.stooornaFilePicking != null) return;
+    // Media/voice being picked, recorded or sent → stay exactly where we are.
+    try { if (Date.now() < Number((window as any).__stooornaMediaHoldUntil || 0)) return; } catch { /* */ }
+    // Public chat is open → coming back to the app must not kick the user out of it.
+    if (chatLiftedRef.current) return;
     setHeaderOpen(true);
     setStoryPullProgress(0);
     storyPullProgressRef.current = 0;

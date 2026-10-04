@@ -799,6 +799,87 @@ app.post("/api/live-presence", (req, res) => {
   res.json({ ok: true, active: true, hostId, kind });
 });
 
+// -- GPS Live: last known position of every user (kept after they go offline, survives restarts) --
+type LiveGpsPin = { id: string; name: string; username: string; avatarUrl: string | null; lat: number; lng: number; at: number };
+const LIVE_GPS_FILE = () => join(ASSETS_DIR, "stooorna-live-gps.json");
+const liveGpsMem = (): Map<string, LiveGpsPin> => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveGps?: Map<string, LiveGpsPin> };
+  if (!g.__stooornaLiveGps) {
+    const m = new Map<string, LiveGpsPin>();
+    try {
+      const p = LIVE_GPS_FILE();
+      if (existsSync(p)) {
+        const raw = JSON.parse(readFileSync(p, "utf-8"));
+        for (const r of Array.isArray(raw) ? raw : []) {
+          if (r && r.id && Number.isFinite(r.lat) && Number.isFinite(r.lng)) m.set(String(r.id), r as LiveGpsPin);
+        }
+      }
+    } catch (e) {
+      console.error("[live-gps] load failed", e);
+    }
+    g.__stooornaLiveGps = m;
+  }
+  return g.__stooornaLiveGps;
+};
+let liveGpsSaveTimer: ReturnType<typeof setTimeout> | null = null;
+const liveGpsSaveSoon = () => {
+  if (liveGpsSaveTimer) return;
+  liveGpsSaveTimer = setTimeout(() => {
+    liveGpsSaveTimer = null;
+    try {
+      if (!existsSync(ASSETS_DIR)) mkdirSync(ASSETS_DIR, { recursive: true });
+      writeFileSync(LIVE_GPS_FILE(), JSON.stringify([...liveGpsMem().values()].slice(0, 2000)), "utf-8");
+    } catch (e) {
+      console.error("[live-gps] save failed", e);
+    }
+  }, 3000);
+};
+const liveGpsGet: RequestHandler = async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const u = await session.user(req).catch(() => null);
+  if (!u) return res.status(401).json({ error: "unauthorized", pins: [] });
+  const wanted = String(req.query.id || "").trim();
+  const all = [...liveGpsMem().values()];
+  const pins = wanted ? all.filter((p) => p.id === wanted) : all;
+  res.json({ ok: true, pins });
+};
+const liveGpsPost: RequestHandler = async (req, res) => {
+  const u = await session.user(req).catch(() => null);
+  if (!u) return res.status(401).json({ error: "unauthorized" });
+  const body = (req.body || {}) as Record<string, unknown>;
+  const id = String(body.id || body.userId || "").trim().slice(0, 80);
+  if (!id) return res.status(400).json({ error: "id required" });
+  if (!session.owns(u, id)) return res.status(403).json({ error: "forbidden" });
+  const mem = liveGpsMem();
+  if (body.clear === true || body.on === false) {
+    mem.delete(id);
+    liveGpsSaveSoon();
+    return res.json({ ok: true, cleared: true });
+  }
+  const lat = Number(body.lat);
+  const lng = Number(body.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return res.status(400).json({ error: "bad coordinates" });
+  }
+  const prev = mem.get(id);
+  const pin: LiveGpsPin = {
+    id,
+    name: String(body.name || prev?.name || "User").slice(0, 80),
+    username: String(body.username || prev?.username || "").replace(/^@/, "").slice(0, 80),
+    avatarUrl: body.avatarUrl != null ? String(body.avatarUrl).slice(0, 400) : (prev?.avatarUrl ?? null),
+    lat,
+    lng,
+    at: Date.now(),
+  };
+  mem.set(id, pin);
+  liveGpsSaveSoon();
+  res.json({ ok: true, pin });
+};
+app.get("/api/live-gps", liveGpsGet);
+app.post("/api/live-gps", liveGpsPost);
+app.get("/api/live-location", liveGpsGet);
+app.post("/api/live-location", liveGpsPost);
+
 // ── Live gifts: بث الهدايا لكل من في البث (ذاكرة السيرفر، نفس أسلوب live-chat / room-signal) ──
 const liveGiftMem = () => {
   const g = globalThis as typeof globalThis & { __stooornaLiveGifts?: Map<string, Array<{ at: number; id: string; giftId: string; fromId: string; toUserId: string; toName: string; toAvatar: string; fromKey: string; count: number }>> };
