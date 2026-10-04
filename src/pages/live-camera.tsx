@@ -80,6 +80,13 @@ import {
   type DuetPerson,
   type AvailableLive,
 } from '@/lib/liveDuetPatch';
+// SPLIT-PATCH: host-only split screen — the invited live host stays in his own live and also appears in the right half of mine
+import {
+  SplitInviteButton,
+  SplitGuestBadge,
+  startSplitGuest,
+  type SplitGuestHandle,
+} from '@/lib/liveSplitPatch';
 // VOICE-INVITE-PATCH (video): anyone in the room invites ONLINE people (not only people who are live); they get the Accept / Decline box anywhere in the app
 import {
   VoiceInviteButton,
@@ -368,6 +375,9 @@ export default function LiveCameraPage() {
   const duetRef = useRef<DuetGuest | null>(null);
   const duetSetTsRef = useRef(0);
   const [duetPanelOpen, setDuetPanelOpen] = useState(false);
+  // SPLIT-PATCH: second connection of an invited host who stays live in his own room
+  const splitRef = useRef<SplitGuestHandle | null>(null);
+  const [splitWith, setSplitWith] = useState<DuetPerson | null>(null);
   // VOICE-INVITE-PATCH (video) state
   const [voiceInvOpen, setVoiceInvOpen] = useState(false);
   const [voiceInvToast, setVoiceInvToast] = useState('');
@@ -709,6 +719,7 @@ export default function LiveCameraPage() {
     leftRef.current = true;
     forceEndRef.current = forced || forceEndRef.current;
     try { cancelAllVoiceInvites(); } catch { /* ignore */ } // VOICE-INVITE-PATCH (video)
+    try { void splitRef.current?.leave(true); } catch { /* ignore */ } // SPLIT-PATCH
 
     // DUET-PATCH: a guest leaving tells the room so the split screen closes right away
     if (amGuest && !forced && myUidRef.current != null) {
@@ -1523,6 +1534,7 @@ export default function LiveCameraPage() {
       });
       camRef.current = cam;
       if (client) await client.publish([cam]);
+      try { void splitRef.current?.replaceCam(cam); } catch { /* ignore */ } // SPLIT-PATCH
       setFacingMode(next);
       camOnRef.current = true;
       setCamOn(true);
@@ -1894,25 +1906,39 @@ export default function LiveCameraPage() {
     });
   };
 
-  /** Invited user: Accept → leave my own live (my viewers follow) and join the inviter's room as a guest. */
+  /** Invited host: Accept → STAY in my own live; also appear in the inviter's room (right half) through a second connection. */
   const acceptDuetInvite = async () => {
     const inv = duetIncomingRef.current;
     if (!inv || !myId) return;
     duetIncomingRef.current = null;
     setDuetIncoming(null);
+    if (!camRef.current || splitRef.current) {
+      sendDuetSignal(camChannelForHost(inv.from.userId), {
+        t: 'duet-decline', id: inv.id, to: inv.from.userId, from: duetMe, busy: true, ts: Date.now(),
+      });
+      return;
+    }
     sendDuetSignal(camChannelForHost(inv.from.userId), {
       t: 'duet-accept', id: inv.id, to: inv.from.userId, from: duetMe, ts: Date.now(),
     });
-    await leaveRoom({
-      skipNavigate: true,
-      duetMove: {
-        toHostId: inv.from.userId,
-        toName: inv.from.name,
-        toUsername: inv.from.username,
-        toAvatar: inv.from.avatarUrl,
-      },
-    });
-    navigate(duetRoomUrl(inv.from, true), { replace: true });
+    try {
+      const h = await startSplitGuest({
+        host: inv.from,
+        me: duetMe,
+        cam: camRef.current,
+        mic: micRef.current,
+        appIdFallback: AGORA_APP_ID,
+        onEnded: () => {
+          splitRef.current = null;
+          setSplitWith(null);
+          showDuetToast('Split screen ended');
+        },
+      });
+      splitRef.current = h;
+      setSplitWith(inv.from);
+    } catch {
+      showDuetToast('Could not join the split screen');
+    }
   };
 
   /** Host: close the split screen. */
@@ -1943,7 +1969,7 @@ export default function LiveCameraPage() {
         const from = toDuetPerson(msg.from);
         if (!id || !from || from.userId === myId || duetSeenRef.current.has(id)) return true;
         duetSeenRef.current.add(id);
-        if (duetRef.current || duetIncomingRef.current) {
+        if (duetRef.current || duetIncomingRef.current || splitRef.current) {
           sendDuetSignal(camChannelForHost(from.userId), {
             t: 'duet-decline', id, to: from.userId, from: duetMe, busy: true, ts: Date.now(),
           });
@@ -2315,6 +2341,10 @@ export default function LiveCameraPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {/* SPLIT-PATCH: host-only button — list of people who are live on camera, Invite = split screen */}
+          {amHost && !duet && !splitWith ? (
+            <SplitInviteButton onClick={() => setDuetPanelOpen(true)} active={duetPanelOpen} />
+          ) : null}
           {/* VOICE-INVITE-PATCH (video): everyone in the room invites their online friends (replaces the live-only duet list) */}
           {isHostRoom ? (
             <VoiceInviteButton kind="camera" active={voiceInvOpen} onClick={() => setVoiceInvOpen(true)} />
@@ -3383,10 +3413,10 @@ export default function LiveCameraPage() {
         />
       ) : null}
       <VoiceInviteToast text={voiceInvToast} />
-      {/* DUET-PATCH: old live-only invite list kept in code but never opened (the online-people list above replaces it) */}
+      {/* SPLIT-PATCH: live-only list (host-only) opened by the split button */}
       {amHost ? (
         <DuetInvitePanel
-          open={false && duetPanelOpen && !duet}
+          open={duetPanelOpen && !duet && !splitWith}
           myId={myId}
           sent={duetSent}
           onInvite={inviteToDuet}
@@ -3401,6 +3431,7 @@ export default function LiveCameraPage() {
           onDecline={declineDuetInvite}
         />
       ) : null}
+      <SplitGuestBadge withName={splitWith ? (splitWith.username ? `@${splitWith.username}` : splitWith.name) : null} onEnd={() => void splitRef.current?.leave(true)} />
       <DuetToast text={duetToast} />
       <LiveVipDock hostId={hostId} currentUserId={myId} />
       {/* قائمة المتحدث: دعم (هدية) + تجميد المايك لصاحب البث / كتم محلي للمشاهد */}
