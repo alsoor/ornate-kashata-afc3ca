@@ -1976,9 +1976,13 @@ async function resolveSupportUserId(): Promise<string | null> {
   }
 }
 
+/** آخر محاولات الإرسال (للتشخيص — تظهر للدعم إذا فشل الإرسال) */
+let lastSendDiag: string[] = [];
+
 /**
  * Deliver a message into the real messaging system.
- * /api/support/* does not exist on the server (404) — use /api/messages instead.
+ * نجرّب أولاً صيغاً "نظيفة" بدون حقول إضافية (بعض السيرفرات ترفض أي حقل غير معروف بـ 400)،
+ * ثم نفس الصيغ مع الحقول الإضافية، ثم مسارات بديلة. أول نجاح يكفي.
  */
 async function sendRealChatMessage(opts: {
   toUserId: string;
@@ -1987,53 +1991,46 @@ async function sendRealChatMessage(opts: {
   mediaType?: string;
   meta?: Record<string, unknown>;
 }): Promise<boolean> {
-  const bodies: Record<string, unknown>[] = [
-    {
-      toUserId: opts.toUserId,
-      text: opts.text,
-      mediaUrl: opts.mediaUrl,
-      mediaType: opts.mediaType,
-      ...opts.meta,
-    },
-    {
-      recipientId: opts.toUserId,
-      content: opts.text,
-      mediaUrl: opts.mediaUrl,
-      mediaType: opts.mediaType,
-      ...opts.meta,
-    },
-    {
-      userId: opts.toUserId,
-      message: opts.text,
-      text: opts.text,
-      mediaUrl: opts.mediaUrl,
-      ...opts.meta,
-    },
-    {
-      peerId: opts.toUserId,
-      body: opts.text,
-      text: opts.text,
-      ...opts.meta,
-    },
-    {
-      to: opts.toUserId,
-      text: opts.text,
-      ...opts.meta,
-    },
+  lastSendDiag = [];
+  const to = opts.toUserId;
+  const media = { mediaUrl: opts.mediaUrl, mediaType: opts.mediaType };
+  const shapes = (withMeta: boolean): Record<string, unknown>[] => {
+    const m = withMeta ? (opts.meta || {}) : {};
+    return [
+      { toUserId: to, text: opts.text, ...media, ...m },
+      { recipientId: to, content: opts.text, ...media, ...m },
+      { userId: to, message: opts.text, text: opts.text, ...media, ...m },
+      { peerId: to, body: opts.text, text: opts.text, ...m },
+      { to, text: opts.text, ...m },
+    ];
+  };
+  const routes: Array<{ url: string; bodies: Record<string, unknown>[] }> = [
+    { url: '/api/messages', bodies: [...shapes(false), ...(opts.meta ? shapes(true) : [])] },
+    { url: `/api/messages/${encodeURIComponent(to)}`, bodies: [{ text: opts.text, ...media }, { content: opts.text, ...media }] },
+    { url: `/api/conversations/${encodeURIComponent(to)}/messages`, bodies: [{ text: opts.text, ...media }] },
+    { url: '/api/support/messages', bodies: [{ toUserId: to, text: opts.text, from: 'support', isSupportReply: true, ...media }] },
   ];
 
-  for (const body of bodies) {
-    try {
-      const r = await fetch('/api/messages', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (r.ok || r.status === 201) return true;
-      // 400 = bad shape, try next; 401/403 = auth issue, stop
-      if (r.status === 401 || r.status === 403) return false;
-    } catch { /* try next shape */ }
+  for (const route of routes) {
+    for (const body of route.bodies) {
+      try {
+        const r = await fetch(route.url, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (r.ok || r.status === 201) return true;
+        let detail = '';
+        try { detail = (await r.text()).replace(/\s+/g, ' ').slice(0, 90); } catch { /* ignore */ }
+        lastSendDiag.push(`POST ${route.url.replace(/\/[A-Za-z0-9_-]{12,}/g, '/…')} → ${r.status}${detail ? ' ' + detail : ''}`);
+        // مسار غير موجود / ممنوع: تغيير شكل الجسم ما يفيد → ننتقل للمسار التالي
+        if (r.status === 401 || r.status === 403 || r.status === 404 || r.status === 405) break;
+      } catch (e) {
+        lastSendDiag.push(`POST ${route.url.slice(0, 40)} → network error`);
+        break;
+      }
+    }
   }
   return false;
 }
@@ -3191,21 +3188,25 @@ function OwnerSupportThread({
     }
     const body = text || (media?.type ? `[${media.type}]` : '');
     let delivered = false;
+    let candidates0: string[] = [];
     try {
       // معرّف المستقبل الحقيقي: نحلّه من اليوزر أولاً (peer.id قد يكون مفتاح محلي وليس معرّف حساب)
       const candidates: string[] = [];
       if (peer.username) {
-        try {
-          const r = await fetch(`/api/users/by-username/${encodeURIComponent(String(peer.username).replace(/^@/, ''))}`, { credentials: 'include' });
-          if (r.ok) {
+        const un = String(peer.username).replace(/^@/, '');
+        for (const variant of Array.from(new Set([un, un.toLowerCase()]))) {
+          try {
+            const r = await fetch(`/api/users/by-username/${encodeURIComponent(variant)}`, { credentials: 'include' });
+            if (!r.ok) continue;
             const d = await r.json();
             const rid = String(d.id || d.userId || d.user?.id || '');
-            if (rid) candidates.push(rid);
-          }
-        } catch { /* ignore */ }
+            if (rid) { if (!candidates.includes(rid)) candidates.push(rid); break; }
+          } catch { /* ignore */ }
+        }
       }
       if (peer.id && !/^(user:|guest|cmt-|peer-last-)/.test(peer.id) && !candidates.includes(peer.id)) candidates.push(peer.id);
 
+      candidates0 = candidates;
       for (const toUserId of candidates) {
         const ok = await sendRealChatMessage({
           toUserId,
@@ -3233,7 +3234,12 @@ function OwnerSupportThread({
 
     if (!delivered) {
       // لا نخدع الدعم: الرسالة ما وصلت للسيرفر → نرجّعها للخانة ونوضّح
-      setSendError('تعذّر إرسال الرد للمستخدم. تحقق من الاتصال وحاول مرة ثانية.');
+      const diag = lastSendDiag.slice(-3).join(' | ');
+      setSendError(
+        candidates0.length === 0
+          ? 'تعذّر تحديد حساب المستخدم لإرسال الرد إليه.'
+          : `تعذّر إرسال الرد للمستخدم.${diag ? '\n' + diag : ''}`,
+      );
       setMessages(prev => prev.filter(m => m.id !== local.id));
       if (!media) setInput(text);
     } else {
@@ -3413,7 +3419,7 @@ function OwnerSupportThread({
       </div>
 
       {sendError && (
-        <div style={{ flexShrink: 0, padding: '8px 14px', background: '#fef2f2', borderTop: '1px solid #fecaca', color: '#dc2626', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center' }}>
+        <div style={{ flexShrink: 0, padding: '8px 14px', background: '#fef2f2', borderTop: '1px solid #fecaca', color: '#dc2626', fontSize: '0.78rem', fontWeight: 700, textAlign: 'center', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
           {sendError}
         </div>
       )}
