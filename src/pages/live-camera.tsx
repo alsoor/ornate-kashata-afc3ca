@@ -1941,6 +1941,12 @@ export default function LiveCameraPage() {
     send: (payload) => {
       if (battleMySide === 'right') splitRef.current?.send(payload);
       else void sendDataPayload(payload);
+      // BATTLE-RELIABLE: ALSO deliver straight to the other host's own live channel (the same path the split Accept uses),
+      // so the round opens on BOTH phones even if the split data channel is slow or drops a message. Receivers de-dupe by id.
+      try {
+        const peerId = battleMySide === 'right' ? splitWith?.userId : duet?.userId;
+        if (peerId) sendDuetSignal(camChannelForHost(peerId), payload as any);
+      } catch { /* ignore */ }
     },
     onToast: showDuetToast,
   });

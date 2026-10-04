@@ -276,6 +276,8 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         if (me.mySide === 'left' && id && !seenMsgRef.current.has(`a:${id}`)) {
           seenMsgRef.current.add(`a:${id}`);
           startAsAuthority(id);
+        } else if (me.mySide === 'left' && battleRef.current?.id === id && battleRef.current.phase === 'running') {
+          broadcastState(); // BATTLE-RELIABLE: B repeated his Accept = he has not got the round yet -> send the state to him again now
         }
         return true;
       }
@@ -320,7 +322,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
       default:
         return true;
     }
-  }, [addScore, startAsAuthority, openAsGuest, emit]);
+  }, [addScore, startAsAuthority, openAsGuest, broadcastState, emit]);
 
   /* ── authority loop: finish at 0 + heartbeat ── */
   React.useEffect(() => {
