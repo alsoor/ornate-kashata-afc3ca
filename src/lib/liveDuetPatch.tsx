@@ -261,21 +261,23 @@ export function DuetInvitePanel({
             zIndex: 60,
             background: 'rgba(0,0,0,0.55)',
             display: 'flex',
-            alignItems: 'flex-end',
+            alignItems: 'flex-start', // opens from the TOP
           }}
         >
           <motion.div
-            initial={{ y: '100%' }}
+            initial={{ y: '-100%' }}
             animate={{ y: 0 }}
-            exit={{ y: '100%' }}
+            exit={{ y: '-100%' }}
             transition={{ type: 'spring', stiffness: 380, damping: 36 }}
             onClick={e => e.stopPropagation()}
             style={{
               width: '100%',
               maxHeight: '66vh',
+              marginTop: 'max(env(safe-area-inset-top, 0px), 8px)',
               background: 'rgba(6,16,18,0.98)',
-              borderRadius: '18px 18px 0 0',
+              borderRadius: '0 0 18px 18px',
               border: '1px solid rgba(250,204,21,0.3)',
+              borderTop: 'none',
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
