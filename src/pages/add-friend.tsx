@@ -25495,20 +25495,70 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             };
             return (
               <>
-                <button
-                  type="button"
-                  onClick={() => startLive('/live')}
-                  style={{ ...primaryBtn, justifyContent: 'flex-start', gap: 12, padding: '16px 16px', fontSize: '1rem', background: 'rgba(0,188,212,0.10)', border: '1px solid rgba(0,188,212,0.35)', color: '#e6fbfd' }}
-                >
-                  <Mic size={20} strokeWidth={2.2} color="#00BCD4" /> Voice Live
-                </button>
-                <button
-                  type="button"
-                  onClick={() => startLive('/live-camera')}
-                  style={{ ...primaryBtn, justifyContent: 'flex-start', gap: 12, padding: '16px 16px', fontSize: '1rem', background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.35)', color: '#ffeceb', marginTop: 14 }}
-                >
-                  <Video size={20} strokeWidth={2.2} color="#ef4444" /> Video Live
-                </button>
+                <style>{`
+                  @keyframes stooornaLiveChoiceShake {
+                    0%,100% { transform: translateX(0) rotate(0deg) scale(1); }
+                    15% { transform: translateX(-1.5px) rotate(-7deg) scale(1.06); }
+                    30% { transform: translateX(1.5px) rotate(7deg) scale(1.1); }
+                    45% { transform: translateX(-1px) rotate(-5deg) scale(1.06); }
+                    60% { transform: translateX(1px) rotate(5deg) scale(1.1); }
+                    80% { transform: translateX(0) rotate(0deg) scale(1.03); }
+                  }
+                  @keyframes stooornaLiveChoiceRing {
+                    0% { transform: scale(0.85); opacity: 0.7; }
+                    100% { transform: scale(1.75); opacity: 0; }
+                  }
+                `}</style>
+                <div style={{ display: 'flex', justifyContent: 'space-evenly', alignItems: 'flex-start', gap: 18, padding: '8px 6px 4px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <button
+                      type="button"
+                      aria-label="Video Live"
+                      onClick={() => startLive('/live-camera')}
+                      style={{
+                        position: 'relative', width: 64, height: 64, borderRadius: '50%', cursor: 'pointer',
+                        background: 'rgba(0,188,212,0.14)', border: '1.5px solid rgba(0,188,212,0.75)', color: '#00BCD4',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                        boxShadow: myLiveBroadcastKind === 'camera' ? '0 0 18px rgba(0,188,212,0.55)' : '0 0 10px rgba(0,188,212,0.28)',
+                      }}
+                    >
+                      {myLiveBroadcastKind === 'camera' && (
+                        <>
+                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(0,188,212,0.75)', animation: 'stooornaLiveChoiceRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
+                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(0,188,212,0.5)', animation: 'stooornaLiveChoiceRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
+                        </>
+                      )}
+                      <span style={{ display: 'flex', animation: myLiveBroadcastKind === 'camera' ? 'stooornaLiveChoiceShake 0.7s ease-in-out infinite' : 'none' }}>
+                        <Video size={26} strokeWidth={2.3} color="#00BCD4" />
+                      </span>
+                    </button>
+                    <span style={{ color: '#67e8f9', fontWeight: 800, fontSize: '0.78rem' }}>Video Live</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <button
+                      type="button"
+                      aria-label="Voice Live"
+                      onClick={() => startLive('/live')}
+                      style={{
+                        position: 'relative', width: 64, height: 64, borderRadius: '50%', cursor: 'pointer',
+                        background: 'rgba(250,204,21,0.14)', border: '1.5px solid rgba(250,204,21,0.8)', color: '#facc15',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                        boxShadow: myLiveBroadcastKind === 'voice' ? '0 0 18px rgba(250,204,21,0.55)' : '0 0 10px rgba(250,204,21,0.28)',
+                      }}
+                    >
+                      {myLiveBroadcastKind === 'voice' && (
+                        <>
+                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(250,204,21,0.8)', animation: 'stooornaLiveChoiceRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
+                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(250,204,21,0.5)', animation: 'stooornaLiveChoiceRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
+                        </>
+                      )}
+                      <span style={{ display: 'flex', animation: myLiveBroadcastKind === 'voice' ? 'stooornaLiveChoiceShake 0.7s ease-in-out infinite' : 'none' }}>
+                        <Mic size={26} strokeWidth={2.3} color="#facc15" />
+                      </span>
+                    </button>
+                    <span style={{ color: '#facc15', fontWeight: 800, fontSize: '0.78rem' }}>Voice Live</span>
+                  </div>
+                </div>
                 {/* ── Public LIVE: مايك كبير — ضغطة وحدة تفتح اللايف العام. برتقالي + ذبذبات لو في أحد داخل الغرفة أو يتكلم ── */}
                 {(() => {
                   const hot = publicVoiceStatus.present || publicVoiceStatus.talking;
