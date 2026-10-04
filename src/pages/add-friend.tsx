@@ -19119,8 +19119,8 @@ function SiteVisitorsBadge({ userId }: { userId?: string | null }) {
       title="الزوار الآن"
       style={{
         position: 'absolute',
-        top: 'max(22px, calc(env(safe-area-inset-top, 0px) + 14px))',
-        right: 18,
+        top: 'max(58px, calc(env(safe-area-inset-top, 0px) + 50px))',
+        right: 52,
         zIndex: 30,
         pointerEvents: 'none',
       }}
