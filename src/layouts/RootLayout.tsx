@@ -703,8 +703,9 @@ function isFreshHomeInvite(raw: any): boolean {
   if (!raw) return false;
   if (raw.ended || raw.answered || raw.clear) return false;
   const at = Number(raw?.at || 0);
-  // Missing at: treat as fresh so API invites without a timestamp still ring
-  if (!at) return true;
+  // No timestamp must NOT ring. A ring-room member without metadata used to
+  // be stamped Date.now() on every poll, so a hung-up call kept ringing.
+  if (!at) return false;
   return Date.now() - at <= HOME_CALL_NO_ANSWER_MS;
 }
 
@@ -1616,11 +1617,21 @@ function GlobalBottomNavigation() {
   function isHomeCallChannelJustEnded(channel: string, inviteAt?: number) {
     const ch = String(channel || '').trim();
     if (!ch) return false;
-    const endedAt = homeCallEndedAtRef.current.get(ch);
+    let endedAt = homeCallEndedAtRef.current.get(ch) || 0;
+    try {
+      const raw = localStorage.getItem(`stooorna_call_ended_${ch}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const at = Number(parsed?.at || 0);
+        if (at && Date.now() - at < 180000) endedAt = Math.max(endedAt, at);
+      }
+    } catch { /* */ }
     if (!endedAt) return false;
+    if (Date.now() - endedAt > 180000) return false;
     const invAt = Number(inviteAt || 0);
-    if (invAt && invAt > endedAt + 250) return false;
-    return Date.now() - endedAt < 8000;
+    // A newer timestamp is a new call. Missing/older timestamps are the hung-up call.
+    if (invAt && invAt > endedAt + 1500) return false;
+    return true;
   }
 
   function clearServerCallInvite(targetUserId?: string | null, channel?: string | null) {
@@ -1882,14 +1893,14 @@ function GlobalBottomNavigation() {
             || (other.name && (String(other.name).startsWith('private_') || String(other.name).startsWith('home_group_')) ? other.name : null);
           const hostId = String(parsed?.hostId || other.userId || other.id || '');
           const skipped = !ch || !hostId || hostId === String(user.id) || !!(parsed?.ended || parsed?.answered || parsed?.clear);
-          if (!skipped) {
+          if (!skipped && Number(parsed?.at)) {
             applyInvite({
               channel: String(ch),
               hostId,
               hostName: parsed?.hostName || null,
               hostAvatar: parsed?.hostAvatar || other.avatarUrl || null,
               members: parsed?.members || [],
-              at: Number(parsed?.at) || Date.now(),
+              at: Number(parsed.at),
               video: !!parsed?.video,
             });
             break;
@@ -1938,7 +1949,7 @@ function GlobalBottomNavigation() {
         if (type === 'answered' || type === 'call-answered') {
           const ch = String(msg.channel || '');
           if (ch && homeCallChannelRef.current && ch === String(homeCallChannelRef.current)) {
-            if (homeCallPhaseRef.current === 'connecting' || homeCallPhaseRef.current === 'animating') {
+            if (homeCallPhaseRef.current === 'connecting' || homeCallPhaseRef.current === 'animating' || homeCallPhaseRef.current === 'live') {
               setHomeCallPhase('live');
               if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
               if (homeCallNoAnswerTimer.current) {
@@ -1947,6 +1958,17 @@ function GlobalBottomNavigation() {
               }
               stopHomeIncomingRing();
               try { window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring')); } catch { /* */ }
+              const peerId = String(msg.from || msg.fromId || '');
+              if (peerId) {
+                for (const roomId of homeRingRoomIds(peerId)) {
+                  void fetch('/api/room/leave', {
+                    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roomId, userId: user.id, endRoom: true }),
+                    keepalive: true,
+                  });
+                }
+                clearServerCallInvite(peerId, ch);
+              }
             }
           }
           return;
@@ -1998,9 +2020,10 @@ function GlobalBottomNavigation() {
     if (!channel) return;
     const closeIncoming = () => {
       stopHomeIncomingRing();
+      markHomeCallChannelEnded(channel);
       setHomeIncoming(null);
       setHomeIncomingExpanded(false);
-      homeRingLockRef.current = { mode: 'none', channel: '', at: Date.now() };
+      homeRingLockRef.current = { mode: 'ignored', channel, at: Date.now() };
       try {
         window.dispatchEvent(new CustomEvent('stooorna:incoming-call-ui', { detail: { ringing: false } }));
         window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring'));
@@ -2030,24 +2053,35 @@ function GlobalBottomNavigation() {
           }
         }
       } catch { /* */ }
-      // Cross-device: if ring room is empty, caller left
+      // Cross-device: caller left the ring room, or the server invite was cleared.
       void (async () => {
         try {
           if (!user?.id) return;
-          const ringId = `home_ring_${homeCallShortHash(user.id)}`;
-          const r = await fetch(`/api/room?id=${encodeURIComponent(ringId)}`, { credentials: 'include' });
-          if (!r.ok) return;
-          const d = await r.json() as { members?: { userId?: string }[] };
-          const others = (d.members || []).filter(m => String(m.userId || '') !== String(user.id));
-          if (others.length === 0) closeIncoming();
-        } catch { /* */ }
-        try {
-          const r2 = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
-          if (!r2.ok) return;
-          const d2 = await r2.json() as { members?: { userId?: string }[] };
-          const hostId = homeIncoming?.hostId;
-          const hostStill = (d2.members || []).some(m => String(m.userId || '') === String(hostId));
-          if (!hostStill && hostId) closeIncoming();
+          let inviteCleared = false;
+          try {
+            const invRes = await fetch(`/api/call/invite?userId=${encodeURIComponent(user.id)}&toUserId=${encodeURIComponent(user.id)}`, { credentials: 'include' });
+            if (invRes.ok) {
+              const invData = await invRes.json() as any;
+              const inviteObj = invData?.invite || invData?.data || invData?.call || (invData?.channel ? invData : null);
+              const same = inviteObj && String(inviteObj.channel || '') === channel;
+              inviteCleared = !inviteObj || !!inviteObj.ended || !!inviteObj.clear || !!inviteObj.answered || (same && !isFreshHomeInvite(inviteObj));
+            }
+          } catch { /* */ }
+          let ringsEmpty = true;
+          for (const ringId of homeRingRoomIds(user.id)) {
+            try {
+              const r = await fetch(`/api/room?id=${encodeURIComponent(ringId)}`, { credentials: 'include' });
+              if (!r.ok) continue;
+              const d = await r.json() as { members?: { userId?: string; id?: string; username?: string; name?: string }[] };
+              const others = (d.members || []).filter(m => String(m.userId || m.id || '') !== String(user.id));
+              const stillThisCall = others.some(m => {
+                const blob = `${m.name || ''} ${m.username || ''}`;
+                return blob.includes(channel);
+              });
+              if (stillThisCall) ringsEmpty = false;
+            } catch { /* */ }
+          }
+          if (inviteCleared && ringsEmpty) closeIncoming();
         } catch { /* */ }
       })();
     }, 900);
@@ -2194,30 +2228,35 @@ function GlobalBottomNavigation() {
         try { localStorage.removeItem('stooorna_home_call_active_invite'); } catch { /* */ }
         try { localStorage.removeItem(`stooorna_home_call_invite_${user.id}`); } catch { /* */ }
         try { localStorage.removeItem('stooorna_home_call_live_session'); } catch { /* */ }
-        for (const m of endedMembers) {
-          if (!m.id || m.id === user.id) continue;
-          try {
-            localStorage.setItem(`stooorna_home_call_invite_${m.id}`, JSON.stringify({ ended: true, channel: endedChannel, at: endedAt, clear: true }));
-            localStorage.removeItem(`stooorna_home_call_invite_${m.id}`);
-          } catch { /* */ }
-          clearServerCallInvite(m.id, endedChannel);
-          sendHomeCallSignal({
-            type: 'hangup',
-            to: m.id,
-            from: user.id,
-            channel: endedChannel,
-            at: endedAt,
-          });
-          try {
-            for (const roomId of homeRingRoomIds(m.id)) {
-              void fetch('/api/room/leave', {
-                method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ roomId, userId: user.id, endRoom: true }),
-                keepalive: true,
-              });
-            }
-          } catch { /* */ }
-        }
+        const cancelPeerRing = () => {
+          for (const m of endedMembers) {
+            if (!m.id || m.id === user.id) continue;
+            try {
+              localStorage.setItem(`stooorna_home_call_invite_${m.id}`, JSON.stringify({ ended: true, clear: true, channel: endedChannel, at: endedAt }));
+              localStorage.removeItem(`stooorna_home_call_invite_${m.id}`);
+            } catch { /* */ }
+            clearServerCallInvite(m.id, endedChannel);
+            sendHomeCallSignal({
+              type: 'hangup',
+              to: m.id,
+              from: user.id,
+              channel: endedChannel,
+              at: endedAt,
+            });
+            try {
+              for (const roomId of homeRingRoomIds(m.id)) {
+                void fetch('/api/room/leave', {
+                  method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ roomId, userId: user.id, endRoom: true }),
+                  keepalive: true,
+                });
+              }
+            } catch { /* */ }
+          }
+        };
+        cancelPeerRing();
+        window.setTimeout(cancelPeerRing, 700);
+        window.setTimeout(cancelPeerRing, 1800);
         try {
           void fetch('/api/room/leave', {
             method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
@@ -2235,18 +2274,19 @@ function GlobalBottomNavigation() {
     // private channel is not immediately treated as already ended.
     if (endedChannel) {
       const chClear = endedChannel;
+      // Keep the end marker long enough that a stale invite cannot restart the ring.
+      // A brand-new call writes a newer `at` and is not blocked.
       window.setTimeout(() => {
         try {
           const raw = localStorage.getItem(`stooorna_call_ended_${chClear}`);
           if (raw) {
-            const p = JSON.parse(raw);
-            if (p?.at && Date.now() - Number(p.at) >= 2500) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.at && Date.now() - Number(parsed.at) >= 180000) {
               localStorage.removeItem(`stooorna_call_ended_${chClear}`);
             }
           }
-          localStorage.removeItem(`stooorna_call_answered_${chClear}`);
         } catch { /* */ }
-      }, 3500);
+      }, 180000);
     }
     if (homeCallNoAnswerTimer.current) {
       window.clearTimeout(homeCallNoAnswerTimer.current);
@@ -2417,8 +2457,11 @@ function GlobalBottomNavigation() {
           const d = await r.json() as { members?: { userId?: string }[] };
           const others = (d.members || []).filter(m => String(m.userId || '') !== String(user.id));
           if (others.length === 0 && homeCallPhaseRef.current === 'live') {
+            const agoraRemotes = (homeCallAgoraRef.current?.remoteUsers || []).length;
+            if (agoraRemotes > 0) { aloneTicks = 0; return; }
             aloneTicks += 1;
-            if (aloneTicks >= 2) onEnd({ channel });
+            // Room membership lags Agora. Do not tear the call down after a couple of empty polls.
+            if (aloneTicks >= 12) onEnd({ channel });
           } else {
             aloneTicks = 0;
           }
@@ -2855,8 +2898,9 @@ function GlobalBottomNavigation() {
         // Only auto-end if we were live for a while and peer clearly left (avoid false ends while ringing)
         if (homeCallPhaseRef.current === 'live' && others.length === 0) {
           const started = homeCallLiveStartedAt.current;
-          // Peer left Agora/room — close local UI quickly so the bar does not stay stuck
-          if (started && Date.now() - started > 3000) {
+          const agoraRemotes = (homeCallAgoraRef.current?.remoteUsers || []).length;
+          // Empty room list is not proof the peer left — Agora remote users are.
+          if (agoraRemotes === 0 && started && Date.now() - started > 20000) {
             void leaveHomeGroupCall({ remote: true });
           }
         }
@@ -3164,7 +3208,13 @@ function GlobalBottomNavigation() {
     setHomeIncomingExpanded(false);
     stopHomeIncomingRing();
     playHomeIncomingRing();
-    homeRingTimer.current = window.setInterval(() => playHomeIncomingRing(), 2600);
+    homeRingTimer.current = window.setInterval(() => {
+      if (homeCallPhaseRef.current !== 'idle' || homeCallLiveStartedAt.current) {
+        stopHomeIncomingRing();
+        return;
+      }
+      playHomeIncomingRing();
+    }, 2600);
     // Strong continuous-style vibration pattern for incoming call
     try {
       navigator.vibrate?.([400, 200, 400, 200, 400, 200, 400]);
@@ -3355,6 +3405,15 @@ function GlobalBottomNavigation() {
       channel: invite.channel,
       at: Date.now(),
     });
+    try {
+      for (const roomId of homeRingRoomIds(user.id)) {
+        void fetch('/api/room/leave', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId, userId: invite.hostId, endRoom: true }),
+          keepalive: true,
+        });
+      }
+    } catch { /* */ }
     if (invite.hostId) {
       try {
         void fetch('/api/call/invite', {
@@ -3462,7 +3521,8 @@ function GlobalBottomNavigation() {
         try {
           const remotes = client.remoteUsers || [];
           if (remotes.length === 0 && homeCallPhaseRef.current === 'live') {
-            void leaveHomeGroupCall({ remote: true });
+            const started = homeCallLiveStartedAt.current;
+            if (started && Date.now() - started > 8000) void leaveHomeGroupCall({ remote: true });
           }
         } catch { /* */ }
       });
