@@ -2336,6 +2336,14 @@ function markSupportRepliesSeen(uid: string, at: number) {
   } catch { /* ignore */ }
 }
 
+/** نص المشكلة فقط بدون سطر [مستخدم] وسطر الإيميل (مع الحفاظ على الأسطر) لعرضه داخل محادثة الدعم */
+function stripSupportHeader(text?: string | null): string {
+  const lines = String(text || '')
+    .split('\n')
+    .filter(l => l.trim() && !/^\s*\[(مستخدم|شركة)\]/.test(l) && !l.trim().startsWith('📧'));
+  return lines.join('\n').trim();
+}
+
 /** استخراج نص المشكلة فقط (بدون سطر [مستخدم] وسطر الإيميل) لعرضه مختصراً في القائمة */
 function supportPreview(text?: string | null): string {
   const lines = String(text || '')
@@ -2401,10 +2409,13 @@ type SupportAttachment = { url: string; type: 'image' | 'video' | 'file'; name: 
 function SupportChatOverlay({
   open,
   onClose,
+  onSent,
   currentUser,
 }: {
   open: boolean;
   onClose: () => void;
+  /** يُستدعى بعد نجاح الإرسال (الصفحة تتسكر + يطلع مربع تأكيد) */
+  onSent?: () => void;
   currentUser: { id?: string; name?: string | null; username?: string | null; email?: string | null } | null;
 }) {
   const uid = currentUser?.id || '';
@@ -2535,9 +2546,11 @@ function SupportChatOverlay({
     try {
       await deliverToSupport({ email: mail, text, media: attachment });
       pushOwnerSupportAlert(uname ? `@${uname}` : (currentUser?.name || mail));
-      setSent(true);
       setProblem('');
       setAttachment(null);
+      // إغلاق الصفحة مباشرة + إظهار مربع "تم ارسال الرساله" لمدة ثانيتين
+      onClose();
+      onSent?.();
     } finally {
       setSending(false);
     }
@@ -2790,6 +2803,8 @@ function OwnerSupportThread({
     lastIp?: string | null;
     country?: string | null;
     email?: string | null;
+    lastMessage?: string | null;
+    lastAt?: string | null;
   };
   onClose: () => void;
   currentUser: { id?: string; name?: string | null; username?: string | null; email?: string | null } | null;
@@ -2913,7 +2928,9 @@ function OwnerSupportThread({
           } catch { /* next */ }
         }
         const local = readLocalSupportTickets().filter(
-          t => t.fromUserId === peer.id || t.fromUsername === peer.username,
+          t => t.fromUserId === peer.id
+            || (!!peer.username && t.fromUsername === peer.username)
+            || (!!peer.email && t.fromEmail === peer.email),
         );
         if (!list.length && local.length) {
           list = local.map(t => ({
@@ -2923,6 +2940,15 @@ function OwnerSupportThread({
             at: t.at,
             mediaUrl: t.mediaUrl,
           }));
+        }
+        // احتياط: لو ما رجع شي من السيرفر نعرض رسالة المستخدم نفسها اللي ظاهرة في القائمة الخارجية
+        if (!list.length && peer.lastMessage) {
+          list = [{
+            id: `peer-last-${peer.id}`,
+            from: 'user',
+            text: peer.lastMessage,
+            at: peer.lastAt || Date.now(),
+          }];
         }
         if (cancelled || !list.length) return;
         const mapped: Msg[] = list.map((m: any) => ({
@@ -2942,7 +2968,9 @@ function OwnerSupportThread({
         setMessages(prev => {
           // merge by id, prefer longer history
           const byId = new Map<string, Msg>();
-          [...prev, ...fresh].forEach(m => byId.set(m.id, m));
+          // رسالة القائمة المؤقتة تُستبدل بالرسائل الحقيقية إذا وصلت
+          const hasReal = fresh.some(m => !m.id.startsWith('peer-last-'));
+          [...prev.filter(m => !(hasReal && m.id.startsWith('peer-last-'))), ...fresh].forEach(m => byId.set(m.id, m));
           return Array.from(byId.values()).sort((a, b) => a.at - b.at);
         });
       } catch { /* silent */ }
@@ -2956,32 +2984,6 @@ function OwnerSupportThread({
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
-
-  async function markTaskDone() {
-    if (taskDone || sending) return;
-    if (!window.confirm('تأكيد: تم تنفيذ الطلب؟ سيُرسل شكر للمستخدم وتُحذف المحادثة بعد 10 دقائق.')) return;
-    setSending(true);
-    const completedAt = Date.now();
-    const doneMsg: Msg = {
-      id: `done-${completedAt}`,
-      from: 'me',
-      text: SUPPORT_TASK_DONE_MSG,
-      at: completedAt,
-    };
-    setMessages(prev => {
-      const next = [...prev, doneMsg];
-      saveSupportThread(
-        peer.id,
-        next.map(m => ({ id: m.id, from: m.from, text: m.text, at: m.at, mediaUrl: m.mediaUrl, mediaType: m.mediaType })),
-        { completedAt },
-      );
-      return next;
-    });
-    setTaskDone(true);
-    setExpiresAt(completedAt + SUPPORT_CHAT_TTL_MS);
-    await notifySupportThreadComplete(peer.id);
-    setSending(false);
-  }
 
   async function send(textOverride?: string, media?: { url: string; type: string }) {
     const text = (textOverride ?? input).trim();
@@ -3147,39 +3149,6 @@ function OwnerSupportThread({
         </div>
       )}
 
-      {/* Task complete (red) + 10-min delete timer */}
-      <div style={{
-        flexShrink: 0,
-        padding: '8px 12px',
-        borderBottom: '1px solid rgba(239,68,68,0.2)',
-        background: '#fff5f5',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 6,
-      }}>
-        <motion.button
-          whileTap={{ scale: 0.97 }}
-          type="button"
-          disabled={taskDone || sending}
-          onClick={markTaskDone}
-          style={{
-            width: '100%',
-            padding: '11px 12px',
-            borderRadius: 12,
-            border: '1.5px solid rgba(239,68,68,0.65)',
-            background: taskDone ? 'rgba(239,68,68,0.15)' : 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
-            color: '#fff',
-            fontWeight: 800,
-            fontSize: '0.82rem',
-            cursor: taskDone ? 'default' : 'pointer',
-            opacity: taskDone ? 0.75 : 1,
-            boxShadow: taskDone ? 'none' : '0 0 14px rgba(239,68,68,0.35)',
-          }}
-        >
-          {taskDone ? settings.taskDone : settings.taskDoneSimple}
-        </motion.button>
-      </div>
-
       <div ref={listRef} style={{
         flex: 1, overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 10,
         background: '#ffffff',
@@ -3209,7 +3178,7 @@ function OwnerSupportThread({
                     📎 Attachment
                   </a>
                 )}
-                {m.text}
+                {stripSupportHeader(m.text) || m.text}
               </div>
             </div>
           );
@@ -4884,6 +4853,12 @@ export default function SettingsPage() {
   } = useSession();
   const [tab, setTab] = useState<Tab>('account');
   const [showSupportChat, setShowSupportChat] = useState(false);
+  const [showSupportSentToast, setShowSupportSentToast] = useState(false);
+  useEffect(() => {
+    if (!showSupportSentToast) return;
+    const id = window.setTimeout(() => setShowSupportSentToast(false), 2000);
+    return () => window.clearTimeout(id);
+  }, [showSupportSentToast]);
   const [supportReplyDot, setSupportReplyDot] = useState(false);
   const [showLiveLocation, setShowLiveLocation] = useState(false);
   const [showPublicVoice, setShowPublicVoice] = useState(false);
@@ -9416,8 +9391,37 @@ export default function SettingsPage() {
       <SupportChatOverlay
         open={showSupportChat}
         onClose={() => setShowSupportChat(false)}
+        onSent={() => setShowSupportSentToast(true)}
         currentUser={user as { id?: string; name?: string | null; username?: string | null; email?: string | null } | null}
       />
+
+      {/* مربع تأكيد إرسال رسالة الدعم — يختفي بعد ثانيتين (أنميشن) */}
+      <AnimatePresence>
+        {showSupportSentToast && (
+          <motion.div
+            key="support-sent-toast"
+            initial={{ opacity: 0, scale: 0.85, y: 24 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: -16 }}
+            transition={{ duration: 0.28, ease: 'easeOut' }}
+            style={{
+              position: 'fixed', top: '42%', left: '50%', x: '-50%', zIndex: 10400,
+              width: 'min(86vw, 320px)', padding: '18px 20px', borderRadius: 18,
+              background: '#ffffff', border: '1px solid #86efac',
+              boxShadow: '0 18px 50px rgba(0,0,0,0.35)', textAlign: 'center',
+              direction: 'rtl', pointerEvents: 'none',
+            }}
+          >
+            <div style={{
+              width: 44, height: 44, borderRadius: '50%', margin: '0 auto 10px',
+              background: '#dcfce7', color: '#16a34a', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', fontWeight: 900,
+            }}>✓</div>
+            <p style={{ margin: 0, fontWeight: 900, fontSize: '0.95rem', color: '#15803d' }}>تم ارسال الرساله</p>
+            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#166534' }}>سوف يتم الرد عليكم قريبا</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Owner: full inbox list — opens even when empty */}
       <AnimatePresence>
