@@ -1,16 +1,11 @@
 /**
- * callSessionPatch — باتش واحد للمكالمات (إرسال / استقبال / صوت / إغلاق فوري).
+ * callSessionPatch — إرسال / استقبال / صوت / إغلاق فوري للطرفين.
  *
- * ضعه في src/lib/callSessionPatch.ts واستورده مرة واحدة من RootLayout:
+ * src/lib/callSessionPatch.ts
+ * في أول RootLayout.tsx:
  *   import '@/lib/callSessionPatch';
  *
- * يحل:
- *  1) بعد الرد، الاتصال مرة ثانية لا يصل (القناة الثابتة private_* كانت تُقفل بعد أول إغلاق).
- *  2) المتصل يغلق والمكالمة تظل ترن عند الطرف الثاني.
- *  3) عدم الرد: الرنين يتوقف فوراً عند الإغلاق، وبعد 45 ثانية تُنهى الدعوة تلقائياً.
- *  4) صوت الرنين لا يعود أثناء المكالمة ولا بعد الإغلاق.
- *
- * المكالمة تُعرَّف بـ channel + at. إغلاق دعوة لا يمنع دعوة أحدث على نفس القناة.
+ * المكالمة = channel + at. إغلاق دعوة لا يمنع اتصالاً أحدث على نفس القناة.
  */
 const NO_ANSWER_MS = 45_000;
 const ENDED_KEEP_MS = 3 * 60_000;
@@ -18,26 +13,30 @@ const ENDED_KEEP_MS = 3 * 60_000;
 type EndedCall = { channel: string; at: number; endedAt: number };
 
 const endedByChannel = new Map<string, EndedCall>();
+const noAnswerTimers = new Map<string, number>();
+const sockets = new Set<WebSocket>();
 let installed = false;
+let activeChannel = '';
+let activeAt = 0;
+let activePeers: string[] = [];
+let suppressRingUntil = 0;
 
 function num(v: unknown): number {
   const n = Number(v || 0);
   return Number.isFinite(n) ? n : 0;
 }
 
-function sessionKey(channel: string, at: number): string {
-  return `${channel}@${num(at)}`;
-}
-
 function rememberEnded(channel: string, inviteAt: number) {
   const ch = String(channel || '').trim();
   if (!ch) return;
+  const row: EndedCall = { channel: ch, at: num(inviteAt), endedAt: Date.now() };
   const prev = endedByChannel.get(ch);
-  const at = num(inviteAt) || prev?.at || 0;
-  const row: EndedCall = { channel: ch, at, endedAt: Date.now() };
   if (!prev || row.endedAt >= prev.endedAt) endedByChannel.set(ch, row);
   try {
-    localStorage.setItem(`stooorna_call_ended_${ch}`, JSON.stringify({ channel: ch, at: row.at, endedAt: row.endedAt, by: 'patch' }));
+    localStorage.setItem(
+      `stooorna_call_ended_${ch}`,
+      JSON.stringify({ channel: ch, inviteAt: row.at, at: row.endedAt, endedAt: row.endedAt }),
+    );
   } catch { /* */ }
 }
 
@@ -52,25 +51,21 @@ function isEndedInvite(channel: string, inviteAt: number): boolean {
         const p = JSON.parse(raw);
         const endedAt = num(p.endedAt || p.at);
         if (endedAt && Date.now() - endedAt < ENDED_KEEP_MS) {
-          row = { channel: ch, at: num(p.inviteAt || p.callAt || 0), endedAt };
+          row = { channel: ch, at: num(p.inviteAt || 0), endedAt };
           endedByChannel.set(ch, row);
         }
       }
     } catch { /* */ }
   }
-  if (!row) return false;
-  if (Date.now() - row.endedAt > ENDED_KEEP_MS) {
-    endedByChannel.delete(ch);
-    return false;
-  }
+  if (!row || Date.now() - row.endedAt > ENDED_KEEP_MS) return false;
   const at = num(inviteAt);
-  // دعوة أحدث من الإغلاق = مكالمة جديدة ويجب أن تصل.
+  // وقت أحدث من لحظة الإغلاق = مكالمة جديدة ويجب أن تصل.
   if (at && at > row.endedAt + 800) return false;
-  // بدون وقت، أو وقت أقدم/مساوٍ للإغلاق = نفس المكالمة المنتهية.
   return true;
 }
 
 export function stopCallAudio() {
+  suppressRingUntil = Date.now() + 4000;
   try {
     const w = window as any;
     if (w.__stooornaIncomingVibrateTimer) {
@@ -80,15 +75,10 @@ export function stopCallAudio() {
     try { navigator.vibrate?.(0); } catch { /* */ }
     const ctx: AudioContext | undefined = w.__stooornaRingCtx;
     if (ctx && ctx.state !== 'closed') {
+      void ctx.suspend().catch(() => {});
       void ctx.close().catch(() => {});
       w.__stooornaRingCtx = null;
     }
-    document.querySelectorAll('audio').forEach((el) => {
-      const src = (el.currentSrc || el.src || '').toLowerCase();
-      if (src.includes('ring') || src.includes('call')) {
-        try { el.pause(); el.currentTime = 0; } catch { /* */ }
-      }
-    });
   } catch { /* */ }
   try {
     window.dispatchEvent(new CustomEvent('stooorna:stop-incoming-ring'));
@@ -96,50 +86,122 @@ export function stopCallAudio() {
   } catch { /* */ }
 }
 
-function wipeLocalInvite(userId?: string) {
+function allowRing() {
+  suppressRingUntil = 0;
+}
+
+function wipeInvites() {
   try {
-    const uid = userId || '';
-    if (uid) localStorage.removeItem(`stooorna_home_call_invite_${uid}`);
-    localStorage.removeItem('stooorna_home_call_active_invite');
+    const drop: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i) || '';
-      if (k.startsWith('stooorna_home_call_invite_')) localStorage.removeItem(k);
+      if (k.startsWith('stooorna_home_call_invite_') || k === 'stooorna_home_call_active_invite') drop.push(k);
     }
+    drop.forEach(k => localStorage.removeItem(k));
   } catch { /* */ }
 }
 
-export function endCallNow(channel: string, inviteAt?: number, peerIds: string[] = []) {
-  const ch = String(channel || '').trim();
-  rememberEnded(ch, num(inviteAt));
+function sendHangup(channel: string, peerId: string) {
+  const payload = JSON.stringify({
+    type: 'hangup',
+    to: peerId,
+    channel,
+    at: Date.now(),
+  });
+  sockets.forEach(ws => {
+    if (ws.readyState === WebSocket.OPEN) {
+      try { ws.send(payload); } catch { /* */ }
+    }
+  });
+  const body = JSON.stringify({
+    userId: peerId,
+    toUserId: peerId,
+    channel,
+    clear: true,
+    ended: true,
+    hangup: true,
+    at: Date.now(),
+  });
+  void fetch('/api/call/invite/clear', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    keepalive: true,
+  }).catch(() => {});
+  void fetch('/api/call/invite', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    keepalive: true,
+  }).catch(() => {});
+}
+
+function forceLocalEnd(channel: string) {
+  const ch = String(channel || activeChannel || '').trim();
   stopCallAudio();
-  wipeLocalInvite();
+  wipeInvites();
   try {
-    window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: { channel: ch, at: Date.now(), inviteAt: num(inviteAt) } }));
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: `stooorna_call_ended_${ch}`,
-      newValue: JSON.stringify({ channel: ch, at: Date.now() }),
+    window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', {
+      detail: { channel: ch, at: Date.now() },
+    }));
+    window.dispatchEvent(new CustomEvent('stooorna:call-declined', {
+      detail: { channel: ch, at: Date.now() },
     }));
   } catch { /* */ }
-  const peers = peerIds.filter(Boolean);
-  const clearPeer = (peerId: string) => {
-    void fetch('/api/call/invite/clear', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: peerId, toUserId: peerId, channel: ch, clear: true, ended: true }),
-      keepalive: true,
-    }).catch(() => {});
-    void fetch('/api/call/invite', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ toUserId: peerId, userId: peerId, channel: ch, clear: true, ended: true, at: Date.now() }),
-      keepalive: true,
-    }).catch(() => {});
-  };
-  peers.forEach(clearPeer);
-  window.setTimeout(() => peers.forEach(clearPeer), 600);
-  window.setTimeout(() => peers.forEach(clearPeer), 1600);
+  if (activeChannel === ch) {
+    activeChannel = '';
+    activeAt = 0;
+    activePeers = [];
+  }
+}
+
+export function endCallNow(channel: string, inviteAt?: number, peerIds: string[] = []) {
+  const ch = String(channel || activeChannel || '').trim();
+  if (!ch) {
+    stopCallAudio();
+    return;
+  }
+  cancelNoAnswer(ch);
+  rememberEnded(ch, num(inviteAt) || activeAt);
+  const peers = Array.from(new Set([...peerIds, ...activePeers].filter(Boolean)));
+  const blast = () => peers.forEach(id => sendHangup(ch, id));
+  blast();
+  window.setTimeout(blast, 500);
+  window.setTimeout(blast, 1400);
+  forceLocalEnd(ch);
+}
+
+function cancelNoAnswer(channel: string) {
+  for (const [key, timer] of noAnswerTimers) {
+    if (!channel || key.startsWith(`${channel}@`)) {
+      window.clearTimeout(timer);
+      noAnswerTimers.delete(key);
+    }
+  }
+}
+
+function armNoAnswer(channel: string, at: number, peers: string[]) {
+  const key = `${channel}@${at}`;
+  if (noAnswerTimers.has(key)) return;
+  const timer = window.setTimeout(() => {
+    noAnswerTimers.delete(key);
+    endCallNow(channel, at, peers);
+  }, NO_ANSWER_MS);
+  noAnswerTimers.set(key, timer);
+}
+
+function noteOutgoing(channel: string, at: number, peers: string[]) {
+  const ch = String(channel || '').trim();
+  if (!ch || !at) return;
+  const prev = endedByChannel.get(ch);
+  if (prev && at > prev.endedAt) endedByChannel.delete(ch);
+  activeChannel = ch;
+  activeAt = at;
+  activePeers = Array.from(new Set([...activePeers, ...peers.filter(id => id && id !== ch)]));
+  allowRing();
+  armNoAnswer(ch, at, activePeers);
 }
 
 function inviteOf(data: any): any {
@@ -147,39 +209,53 @@ function inviteOf(data: any): any {
   return data.invite || data.data || data.call || (data.channel ? data : null);
 }
 
-function stripIfEnded(data: any): any {
-  const inv = inviteOf(data);
-  if (!inv) return data;
-  if (inv.ended || inv.clear || inv.answered) return { ...data, invite: null, channel: undefined };
-  if (isEndedInvite(String(inv.channel || ''), num(inv.at))) return { ...data, invite: null, channel: undefined };
-  return data;
-}
-
-const outgoingTimers = new Map<string, number>();
-
-function armNoAnswer(channel: string, at: number, peers: string[]) {
-  const key = sessionKey(channel, at);
-  const prev = outgoingTimers.get(key);
-  if (prev) window.clearTimeout(prev);
-  const timer = window.setTimeout(() => {
-    outgoingTimers.delete(key);
-    endCallNow(channel, at, peers);
-  }, NO_ANSWER_MS);
-  outgoingTimers.set(key, timer);
-}
-
-function cancelNoAnswer(channel: string) {
-  for (const [key, timer] of outgoingTimers) {
-    if (key.startsWith(`${channel}@`)) {
-      window.clearTimeout(timer);
-      outgoingTimers.delete(key);
+function handleSignal(msg: any) {
+  if (!msg || typeof msg !== 'object') return;
+  const type = String(msg.type || '');
+  const channel = String(msg.channel || '');
+  if (type === 'hangup' || type === 'call-end' || type === 'ended' || msg.clear || msg.ended) {
+    rememberEnded(channel, num(msg.at));
+    cancelNoAnswer(channel);
+    forceLocalEnd(channel);
+    return;
+  }
+  if (type === 'answered' || type === 'call-answered') {
+    cancelNoAnswer(channel);
+    stopCallAudio();
+    return;
+  }
+  if (type === 'call' || type === 'incoming-call' || type === 'home-call') {
+    const at = num(msg.at);
+    if (isEndedInvite(channel, at)) {
+      stopCallAudio();
+      forceLocalEnd(channel);
+      return;
     }
+    activeChannel = channel || activeChannel;
+    if (at) activeAt = at;
+    allowRing();
   }
 }
 
 export function installCallSessionPatch() {
   if (installed || typeof window === 'undefined') return;
   installed = true;
+
+  const AC = window.AudioContext || (window as any).webkitAudioContext;
+  if (AC && !(AC.prototype as any).__stooornaRingGuard) {
+    const orig = AC.prototype.createOscillator;
+    AC.prototype.createOscillator = function () {
+      const osc = orig.call(this);
+      if (Date.now() < suppressRingUntil) {
+        try { osc.frequency.value = 0; } catch { /* */ }
+        const start = osc.start.bind(osc);
+        osc.start = () => { try { osc.stop(); } catch { /* */ } return undefined as any; };
+        void start;
+      }
+      return osc;
+    };
+    (AC.prototype as any).__stooornaRingGuard = true;
+  }
 
   const origFetch = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -191,21 +267,17 @@ export function installCallSessionPatch() {
     }
 
     if (url.includes('/api/call/invite') && method === 'POST' && body) {
-      const channel = String(body.channel || '');
-      const peers = [body.toUserId, body.userId, body.addresseeId].map((x: unknown) => String(x || '')).filter(Boolean);
+      const channel = String(body.channel || activeChannel || '');
+      const peers = [body.toUserId, body.userId].map((x: unknown) => String(x || '')).filter(Boolean);
       if (body.clear || body.ended || body.hangup) {
         rememberEnded(channel, num(body.at));
         cancelNoAnswer(channel);
-        stopCallAudio();
+        forceLocalEnd(channel);
       } else if (body.answered) {
         cancelNoAnswer(channel);
         stopCallAudio();
-        rememberEnded(channel, num(body.at));
       } else if (channel && num(body.at)) {
-        // مكالمة جديدة: لا تُحجب بسبب إغلاق قديم على نفس القناة.
-        const prev = endedByChannel.get(channel);
-        if (prev && num(body.at) > prev.endedAt) endedByChannel.delete(channel);
-        armNoAnswer(channel, num(body.at), peers);
+        noteOutgoing(channel, num(body.at), peers);
       }
     }
 
@@ -213,12 +285,16 @@ export function installCallSessionPatch() {
 
     if (url.includes('/api/call/invite') && method === 'GET') {
       try {
-        const cloned = res.clone();
-        const data = await cloned.json();
-        const stripped = stripIfEnded(data);
-        if (stripped !== data) {
-          stopCallAudio();
-          return new Response(JSON.stringify(stripped), { status: res.status, headers: { 'Content-Type': 'application/json' } });
+        const data = await res.clone().json();
+        const inv = inviteOf(data);
+        if (inv && (inv.ended || inv.clear || isEndedInvite(String(inv.channel || ''), num(inv.at)))) {
+          forceLocalEnd(String(inv.channel || ''));
+          const stripped = { ...data, invite: null };
+          delete (stripped as any).channel;
+          return new Response(JSON.stringify(stripped), {
+            status: res.status,
+            headers: { 'Content-Type': 'application/json' },
+          });
         }
       } catch { /* */ }
     }
@@ -226,62 +302,42 @@ export function installCallSessionPatch() {
   };
 
   const OrigWS = window.WebSocket;
-  const PatchedWS = function (this: WebSocket, url: string | URL, protocols?: string | string[]) {
+  function PatchedWS(this: WebSocket, url: string | URL, protocols?: string | string[]) {
     const ws = protocols !== undefined ? new OrigWS(url, protocols) : new OrigWS(url);
-    const href = String(url);
-    if (href.includes('/ws/call-signal')) {
+    if (String(url).includes('/ws/call-signal')) {
+      sockets.add(ws);
+      ws.addEventListener('close', () => sockets.delete(ws));
+      ws.addEventListener('message', (ev) => {
+        try { handleSignal(JSON.parse(String(ev.data || ''))); } catch { /* */ }
+      });
       const origSend = ws.send.bind(ws);
       ws.send = (data: any) => {
-        try {
-          const msg = typeof data === 'string' ? JSON.parse(data) : null;
-          if (msg && (msg.type === 'hangup' || msg.type === 'call-end' || msg.type === 'ended')) {
-            endCallNow(String(msg.channel || ''), num(msg.at), [String(msg.to || '')]);
-          }
-          if (msg && (msg.type === 'answered' || msg.type === 'call-answered')) {
-            cancelNoAnswer(String(msg.channel || ''));
-            stopCallAudio();
-          }
-        } catch { /* */ }
+        try { if (typeof data === 'string') handleSignal(JSON.parse(data)); } catch { /* */ }
         return origSend(data);
       };
-      ws.addEventListener('message', (ev) => {
-        try {
-          const msg = JSON.parse(String(ev.data || ''));
-          const type = String(msg?.type || '');
-          if (type === 'hangup' || type === 'call-end' || type === 'ended') {
-            endCallNow(String(msg.channel || ''), num(msg.at), [String(msg.from || '')]);
-          }
-          if (type === 'answered' || type === 'call-answered') stopCallAudio();
-        } catch { /* */ }
-      });
     }
     return ws;
-  } as unknown as typeof WebSocket;
+  }
   PatchedWS.prototype = OrigWS.prototype;
-  Object.setPrototypeOf(PatchedWS, OrigWS);
-  window.WebSocket = PatchedWS;
+  (PatchedWS as any).CONNECTING = OrigWS.CONNECTING;
+  (PatchedWS as any).OPEN = OrigWS.OPEN;
+  (PatchedWS as any).CLOSING = OrigWS.CLOSING;
+  (PatchedWS as any).CLOSED = OrigWS.CLOSED;
+  window.WebSocket = PatchedWS as unknown as typeof WebSocket;
 
   window.addEventListener('stooorna:home-call-ended', (e: Event) => {
     const d = (e as CustomEvent).detail || {};
-    rememberEnded(String(d.channel || ''), num(d.inviteAt || d.at));
+    const ch = String(d.channel || '');
+    if (ch) rememberEnded(ch, num(d.inviteAt));
     stopCallAudio();
   });
   window.addEventListener('stooorna:stop-incoming-ring', () => stopCallAudio());
 
-  // إذا بقيت دعوة محلية بعد الإغلاق، امسحها حتى لا يعيد الاستطلاع الرنين.
   window.setInterval(() => {
-    try {
-      const active = localStorage.getItem('stooorna_home_call_active_invite');
-      if (active) {
-        const d = JSON.parse(active);
-        if (isEndedInvite(String(d.channel || ''), num(d.at))) {
-          localStorage.removeItem('stooorna_home_call_active_invite');
-          stopCallAudio();
-          window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: { channel: d.channel, at: Date.now() } }));
-        }
-      }
-    } catch { /* */ }
-  }, 1000);
+    if (Date.now() < suppressRingUntil) stopCallAudio();
+    if (!activeChannel) return;
+    if (isEndedInvite(activeChannel, activeAt)) forceLocalEnd(activeChannel);
+  }, 700);
 }
 
 installCallSessionPatch();
