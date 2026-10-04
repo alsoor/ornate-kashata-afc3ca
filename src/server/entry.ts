@@ -11,7 +11,6 @@ import * as dbClientModule from "./db/client.js";
 import { COIN_PACKS, createCheckout, handlePolarEvent, polarConfigured, verifyPolarSignature } from "./polar.js";
 import { createSession, makeLimiter, markSeen, normId, pickKey, recordPaid, seenRecently, takePaid } from "./gift-guard.js";
 import { mapEarningsAdapter, privateAssetsGuard, registerWithdrawalRoutes } from "./withdrawals.js";
-import { registerCallStateRoutes } from "./call-state";
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -416,25 +415,6 @@ app.post("/api/auth/:action", auth_action_post_1);
 app.get("/api/auth/:action/:detail", auth_action_detail_get_2);
 app.post("/api/auth/:action/:detail", auth_action_detail_post_3);
 app.get("/api/call/token", call_token_get_4);
-// Cancel before answer: callee invite poll must stop ringing immediately.
-const callCancelledUntil = new Map<string, { channel: string; at: number }>();
-app.post('/api/call/cancel', (req, res) => {
-  const body = (req.body || {}) as { toUserId?: string; userId?: string; channel?: string };
-  const to = String(body.toUserId || body.userId || '');
-  const channel = String(body.channel || '');
-  if (to) callCancelledUntil.set(to, { channel, at: Date.now() });
-  if (channel) callCancelledUntil.set('ch:' + channel, { channel, at: Date.now() });
-  res.json({ ok: true, ended: true, channel });
-});
-app.get('/api/call/invite', (req, res, next) => {
-  const uid = String(req.query.userId || req.query.toUserId || '');
-  const hit = callCancelledUntil.get(uid);
-  if (hit && Date.now() - hit.at < 120000) {
-    res.json({ invite: { ended: true, clear: true, channel: hit.channel, at: hit.at }, ended: true });
-    return;
-  }
-  next();
-});
 app.get("/api/call/invite", call_invite_get);
 app.post("/api/call/invite", call_invite_post);
 app.post("/api/call/invite/clear", call_invite_clear_post);
@@ -1046,9 +1026,8 @@ app.post("/api/gifts/balance", guarded(async (req, res) => {
   const body = (req.body || {}) as Record<string, unknown>;
   if (session.isAdmin(u) && body.userId && (body.delta != null || body.add != null || body.balance != null)) {
     const target = String(body.userId).slice(0, 80);
-    // ضبط رصيد مطلق: فقط بطلب أدمن صريح (adminSet) — العميل القديم كان يرسل رصيده المحلي هنا فيرفع الرصيد الحقيقي ويسمح بدعم بدون رصيد
-    if (body.balance != null && body.adminSet === true) mem.balances.set(target, Math.max(0, Math.floor(Number(body.balance) || 0)));
-    else if (body.delta != null || body.add != null) mem.balances.set(target, Math.max(0, (mem.balances.get(target) || 0) + Math.floor(Number(body.delta ?? body.add) || 0)));
+    if (body.balance != null) mem.balances.set(target, Math.max(0, Math.floor(Number(body.balance) || 0)));
+    else mem.balances.set(target, Math.max(0, (mem.balances.get(target) || 0) + Math.floor(Number(body.delta ?? body.add) || 0)));
     giftProfitTouch();
   }
   const o = readOwn(u);
@@ -1242,14 +1221,6 @@ registerWithdrawalRoutes(app, {
   allowedOrigins: (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
 });
 
-
-// ── حالة المكالمات (مشغول / انتظار المكالمة / دمج): ملف مستقل server/call-state.ts ──
-registerCallStateRoutes(app, {
-  getUser: async (req) => {
-    const u = await session.user(req);
-    return u ? { id: String(u.id) } : null;
-  },
-});
 
 app.get("/api/me/ban-status", me_ban_status_get_36);
 app.post("/api/me/update-ip", me_update_ip_post_37);
