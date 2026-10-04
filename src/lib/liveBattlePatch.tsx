@@ -7,7 +7,8 @@
  *  1. Two hosts are in a split screen (A = owner of the room on the LEFT, B = invited host on the RIGHT).
  *  2. Either host taps the round "Play" button in the middle of the split.
  *  3. The other host gets the same Accept | Decline box used for the split invite.
- *  4. On Accept a round starts in the middle of the split: 4:00 countdown, a yellow (left) / orange (right) line.
+ *  4. INSTANT-OPEN: the moment the other host taps Accept the round opens on BOTH sides (no need to invite back):
+ *     4:00 countdown in the middle of the split, a yellow (left) / orange (right) line.
  *  5. Every gift sent in a host's room lengthens that host's line (15K coins -> +15K points) and an emoji walks on the line.
  *  6. Gift animations stay light (translucent) during the round and the small support pills never cover the screen.
  *  7. Last 15 seconds the timer turns red. At 0 the longer line wins -> "You Win" rectangle on his half.
@@ -108,6 +109,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   const seenGiftsRef = React.useRef<Set<string>>(new Set());
   const seenMsgRef = React.useRef<Set<string>>(new Set());
   const clearTimerRef = React.useRef<number | null>(null);
+  const acceptedIdRef = React.useRef<string | null>(null); // INSTANT-OPEN: invite I accepted as B, until A confirms it with battle-state
   const latest = React.useRef({ send, onToast, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf });
   latest.current = { send, onToast, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf };
 
@@ -150,7 +152,18 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     setPending(null);
     broadcastState();
     window.setTimeout(broadcastState, 500);
+    window.setTimeout(broadcastState, 1500); // INSTANT-OPEN: make sure B opens even if the first signals are lost
+    window.setTimeout(broadcastState, 3500);
   }, [broadcastState]);
+
+  /** INSTANT-OPEN-V2: open the round on MY side (not the authority) the moment the other host agrees; A's battle-state keeps it in sync. */
+  const openAsGuest = React.useCallback((id: string) => {
+    if (battleRef.current?.phase === 'running') return;
+    seenGiftsRef.current = new Set();
+    setBattleBoth({ id, phase: 'running', left: 0, right: 0, endsAt: Date.now() + BATTLE_DURATION_MS, winner: null });
+    pendingRef.current = null;
+    setPending(null);
+  }, []);
 
   const addScore = React.useCallback((side: BattleSide, coins: number) => {
     const b = battleRef.current;
@@ -168,6 +181,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     const payload = { t: 'battle-invite', id, side, name: latest.current.myName };
     emit(payload);
     window.setTimeout(() => { if (pendingRef.current === id) emit(payload); }, 1200);
+    window.setTimeout(() => { if (pendingRef.current === id) emit(payload); }, 3000); // INSTANT-OPEN-V2
     window.setTimeout(() => {
       if (pendingRef.current === id) {
         pendingRef.current = null;
@@ -182,8 +196,24 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     if (!inv) return;
     incomingRef.current = null;
     setIncoming(null);
-    emit({ t: 'battle-accept', id: inv.id, side: latest.current.mySide });
-    if (latest.current.mySide === 'left') startAsAuthority(inv.id);
+    const side = latest.current.mySide;
+    const payload = { t: 'battle-accept', id: inv.id, side };
+    emit(payload);
+    if (side === 'left') { startAsAuthority(inv.id); return; }
+    // INSTANT-OPEN (B / right): open the round on my side the moment I tap Accept; A confirms + syncs it with battle-state.
+    if (battleRef.current?.phase !== 'running') {
+      acceptedIdRef.current = inv.id;
+      seenGiftsRef.current = new Set();
+      setBattleBoth({ id: inv.id, phase: 'running', left: 0, right: 0, endsAt: Date.now() + BATTLE_DURATION_MS, winner: null });
+    }
+    // keep telling A until his confirmation arrives (a lost signal must not cancel the round)
+    [800, 2000, 4000].forEach((ms) => window.setTimeout(() => { if (acceptedIdRef.current === inv.id) emit(payload); }, ms));
+    window.setTimeout(() => {
+      if (acceptedIdRef.current !== inv.id) return;
+      acceptedIdRef.current = null;
+      if (battleRef.current?.id === inv.id && battleRef.current.phase === 'running') setBattleBoth(null);
+      latest.current.onToast?.('Could not start the round');
+    }, 12_000);
   }, [emit, startAsAuthority]);
 
   const decline = React.useCallback(() => {
@@ -209,6 +239,14 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         if (!id || seenMsgRef.current.has(`i:${id}`)) return true;
         seenMsgRef.current.add(`i:${id}`);
         if (battleRef.current?.phase === 'running' || incomingRef.current) return true;
+        // INSTANT-OPEN-V2: both hosts tapped Play at the same time -> that is already an agreement: open at once, no box
+        if (pendingRef.current) {
+          emit({ t: 'battle-accept', id, side: me.mySide });
+          if (me.mySide === 'left') startAsAuthority(id); else openAsGuest(id);
+          pendingRef.current = null;
+          setPending(null);
+          return true;
+        }
         const inv: Incoming = { id, fromSide: msg.side, fromName: String(msg.name || me.peerName || 'User'), at: Date.now() };
         incomingRef.current = inv;
         setIncoming(inv);
@@ -229,7 +267,12 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
       case 'battle-accept': {
         if (age > 45_000) return true;
         const id = String(msg.id || '');
-        if (pendingRef.current === id) { pendingRef.current = null; setPending(null); }
+        if (pendingRef.current === id) {
+          // INSTANT-OPEN-V2: the other host accepted my invite -> open on my side right now (no waiting for the next battle-state)
+          if (me.mySide === 'right') openAsGuest(id);
+          pendingRef.current = null;
+          setPending(null);
+        }
         if (me.mySide === 'left' && id && !seenMsgRef.current.has(`a:${id}`)) {
           seenMsgRef.current.add(`a:${id}`);
           startAsAuthority(id);
@@ -238,15 +281,17 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
       }
       case 'battle-state': {
         if (me.mySide === 'left') return true; // I am the authority
-        if (age > 10_000) return true; // old replayed state
         const id = String(msg.id || '');
         if (!id) return true;
+        const expected = id === pendingRef.current || id === acceptedIdRef.current; // INSTANT-OPEN: round I just invited / accepted
+        if (age > 10_000 && !expected) return true; // old replayed state
         const phase = msg.phase === 'ended' ? 'ended' : 'running';
         const prev = battleRef.current;
         if (phase === 'ended' && !prev) return true; // do not resurrect a finished round
         if (phase === 'running' && prev?.id === id && prev.phase === 'ended') return true;
         pendingRef.current = null;
         setPending(null);
+        if (acceptedIdRef.current === id) acceptedIdRef.current = null; // confirmed by A
         incomingRef.current = null;
         setIncoming(null);
         const next: BattleView = {
@@ -275,7 +320,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
       default:
         return true;
     }
-  }, [addScore, startAsAuthority]);
+  }, [addScore, startAsAuthority, openAsGuest, emit]);
 
   /* ── authority loop: finish at 0 + heartbeat ── */
   React.useEffect(() => {
@@ -350,6 +395,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     if (active) return;
     setBattleBoth(null);
     pendingRef.current = null; setPending(null);
+    acceptedIdRef.current = null;
     incomingRef.current = null; setIncoming(null);
     setPopups([]);
     seenGiftsRef.current = new Set();
