@@ -77,6 +77,11 @@ function giftPrice(gift: GiftDefinition): number {
   return GIFT_PRICE_BY_ID.get(gift.id) ?? gift.price;
 }
 
+/** BATTLE-PATCH: unit price of a gift id (0 if unknown) — used by liveBattlePatch to count gifts on the line. */
+export function giftUnitPrice(giftId: string): number {
+  return GIFT_PRICE_BY_ID.get(giftId) ?? 0;
+}
+
 // قواعد الهدايا:
 //  - المشاهد: يدعم صاحب البث، أو أي متحدث أعطاه صاحب البث المايك.
 //  - صاحب البث: يدعم فقط من أخذ المايك (ما يقدر ينزل دعم عشوائي).
@@ -1469,7 +1474,12 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
         </div>
       </Sheet>
 
-      {playing ? <playing.gift.Animation key={playing.key} onDone={onGiftDone} /> : null}
+      {/* BATTLE-PATCH: wrapper so the split-screen round can make the gift animation light / translucent */}
+      {playing ? (
+        <div data-live-gift-fx="1" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9500 }}>
+          <playing.gift.Animation key={playing.key} onDone={onGiftDone} />
+        </div>
+      ) : null}
 
       <AnimatePresence>
         {giftMsg ? (
