@@ -87,6 +87,23 @@ import {
   startSplitGuest,
   type SplitGuestHandle,
 } from '@/lib/liveSplitPatch';
+// PHOTO-PATCH: long press on the video icon -> show a photo from the library instead of the live camera
+import {
+  useLivePhoto,
+  usePressGesture,
+  PhotoPickInput,
+  PhotoModeIcon,
+} from '@/lib/livePhotoPatch';
+// BATTLE-PATCH: game round inside the split screen (Play button, 4:00 timer, yellow/orange line, gifts)
+import {
+  useLiveBattle,
+  BattlePlayButton,
+  BattleIncomingDialog,
+  BattleNameTag,
+  BattleOverlay,
+  BattleGiftDimStyle,
+} from '@/lib/liveBattlePatch';
+import { giftUnitPrice } from '@/components/LiveCoinsDock'; // BATTLE-PATCH: gift price fallback
 // VOICE-INVITE-PATCH (video): anyone in the room invites ONLINE people (not only people who are live); they get the Accept / Decline box anywhere in the app
 import {
   VoiceInviteButton,
@@ -350,6 +367,7 @@ export default function LiveCameraPage() {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const micRef = useRef<IMicrophoneAudioTrack | null>(null);
   const camRef = useRef<ICameraVideoTrack | null>(null);
+  const photoRef = useRef<{ track: any; close: () => void } | null>(null); // PHOTO-PATCH: photo shown instead of the camera
   // DUET-PATCH: left pane = room host, right pane = duet guest
   const hostPaneRef = useRef<HTMLDivElement | null>(null);
   const guestPaneRef = useRef<HTMLDivElement | null>(null);
@@ -431,9 +449,10 @@ export default function LiveCameraPage() {
   const duetToastTimerRef = useRef<number | null>(null);
   const duetSeenRef = useRef<Set<string>>(new Set());
   const handleDuetMsgRef = useRef<(msg: any) => boolean>(() => false);
+  const handleBattleMsgRef = useRef<(msg: any) => boolean>(() => false); // BATTLE-PATCH
 
   const playLocalVideo = useCallback(() => {
-    const track = camRef.current;
+    const track = photoRef.current?.track || camRef.current; // PHOTO-PATCH
     // DUET-PATCH: host plays in the left half, a duet guest in the right half
     const el = amGuest ? guestPaneRef.current : hostPaneRef.current;
     if (!track || !el) return;
@@ -467,6 +486,21 @@ export default function LiveCameraPage() {
     remoteVideoPlacedRef.current.delete(uid);
     placeRemoteVideos();
   }, [placeRemoteVideos]);
+
+  // ───────── PHOTO-PATCH: photo instead of the live camera ─────────
+  const photoApi = useLivePhoto({
+    photoRef,
+    getCam: () => camRef.current,
+    getClient: () => clientRef.current,
+    getSplit: () => splitRef.current,
+    onVideoShown: () => {
+      camOnRef.current = true;
+      setCamOn(true);
+      window.setTimeout(() => playLocalVideo(), 40);
+    },
+    onError: (m) => setError(m),
+  });
+  const { photoOn, stopPhoto, closePhoto } = photoApi;
 
   useEffect(() => {
     if (!myId) return;
@@ -824,6 +858,7 @@ export default function LiveCameraPage() {
         micRef.current.close();
         micRef.current = null;
       }
+      try { closePhoto(); } catch { /* ignore */ } // PHOTO-PATCH
       if (camRef.current) {
         camRef.current.stop();
         camRef.current.close();
@@ -1044,6 +1079,7 @@ export default function LiveCameraPage() {
           raw = raw.replace(/\u0000/g, '').trim();
           if (!raw) return;
           const msg = JSON.parse(raw) as { t?: string; uid?: number; uids?: number[] };
+          if (handleBattleMsgRef.current(msg)) return; // BATTLE-PATCH
           if (handleDuetMsgRef.current(msg)) return; // DUET-PATCH
           const myUid = myUidRef.current;
           if (msg.t === 'freeze' && msg.uid === myUid) {
@@ -1502,6 +1538,7 @@ export default function LiveCameraPage() {
 
   const switchFacing = async () => {
     if ((!amHost && !amGuest) || !joined) return;
+    if (photoRef.current) await stopPhoto(); // PHOTO-PATCH: back to the live camera before switching it
     const next = facingMode === 'user' ? 'environment' : 'user';
     const client = clientRef.current;
     const oldCam = camRef.current;
@@ -1580,6 +1617,12 @@ export default function LiveCameraPage() {
       setError(String(err?.message ?? err));
     }
   };
+
+  // PHOTO-PATCH: tap = camera on/off (or back to camera from a photo), long press = choose a photo
+  const camBtnGesture = usePressGesture(
+    () => { if (photoRef.current) void stopPhoto(); else void toggleCam(); },
+    () => { if ((amHost || amGuest) && joined) photoApi.openPicker(); },
+  );
 
   const toggleSpeakerMute = () => {
     const next = !speakerMuted;
@@ -1676,6 +1719,7 @@ export default function LiveCameraPage() {
   }, [amHost, sendDataPayload]);
 
   const applyIncomingSignal = useCallback((msg: LiveSignal) => {
+    if (handleBattleMsgRef.current(msg)) return; // BATTLE-PATCH
     if (handleDuetMsgRef.current(msg)) return; // DUET-PATCH
     const myUid = myUidRef.current;
     if (msg.t === 'freeze' && msg.uid === myUid) {
@@ -1882,6 +1926,27 @@ export default function LiveCameraPage() {
     duetToastTimerRef.current = window.setTimeout(() => setDuetToast(''), 3200);
   };
 
+
+  // ───────── BATTLE-PATCH: game round between the two split hosts ─────────
+  const battleMySide: 'left' | 'right' | null = amHost && splitWith ? 'right' : amHost && duet ? 'left' : null;
+  const battleApi = useLiveBattle({
+    active: splitActive,
+    mySide: battleMySide,
+    myId: myId || '',
+    myName: hostName,
+    peerName: battleMySide === 'right' ? (splitWith?.name || '') : (duet?.name || ''),
+    peerUserId: battleMySide === 'right' ? (splitWith?.userId || null) : (duet?.userId || null),
+    giftRooms: amHost ? [`gifts-${String(hostId || 'public').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48) || 'public'}`] : [],
+    priceOf: giftUnitPrice,
+    send: (payload) => {
+      if (battleMySide === 'right') splitRef.current?.send(payload);
+      else void sendDataPayload(payload);
+    },
+    onToast: showDuetToast,
+  });
+  handleBattleMsgRef.current = battleApi.handleMessage;
+  const battleRunning = battleApi.battle?.phase === 'running';
+
   const applyDuetGuest = (g: DuetGuest | null) => {
     if ((duetRef.current?.uid ?? null) === (g?.uid ?? null)) return;
     duetRef.current = g;
@@ -1970,13 +2035,14 @@ export default function LiveCameraPage() {
       const h = await startSplitGuest({
         host: inv.from,
         me: duetMe,
-        cam: camRef.current,
+        cam: photoRef.current?.track || camRef.current, // PHOTO-PATCH
         mic: micRef.current,
         appIdFallback: AGORA_APP_ID,
         onRemoteVideo: (track) => {
           splitRemoteRef.current = track;
           if (track) window.setTimeout(attachSplitRemote, 40);
         },
+        onSignal: (m) => { handleBattleMsgRef.current(m); }, // BATTLE-PATCH
         onEnded: () => {
           splitRef.current = null;
           splitRemoteRef.current = null;
@@ -2257,14 +2323,14 @@ export default function LiveCameraPage() {
               Camera off
             </div>
           ) : null}
-          {duet || splitWith ? <DuetNameTag name={hostName} username={hostUsername} /> : null}
+          {duet || splitWith ? <BattleNameTag name={hostName} username={hostUsername} side="left" /> : null}
         </div>
         {!duet && splitWith ? (
           <>
             <DuetDivider />
             <div style={{ flex: 1, minWidth: 0, height: '100%', position: 'relative', overflow: 'hidden' }}>
               <div ref={splitPaneRef} style={{ width: '100%', height: '100%' }} />
-              <DuetNameTag name={splitWith.name} username={splitWith.username} />
+              <BattleNameTag name={splitWith.name} username={splitWith.username} side="right" />
             </div>
           </>
         ) : null}
@@ -2282,7 +2348,7 @@ export default function LiveCameraPage() {
                   Camera off
                 </div>
               ) : null}
-              <DuetNameTag name={duet.name} username={duet.username} />
+              <BattleNameTag name={duet.name} username={duet.username} side="right" />
             </div>
           </>
         ) : null}
@@ -2718,16 +2784,17 @@ export default function LiveCameraPage() {
 
           {(amHost || amGuest) ? (
             <>
+              <PhotoPickInput inputRef={photoApi.inputRef} onChange={photoApi.onFile} />
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.92 }}
-                onClick={() => void toggleCam()}
-                aria-label={camOn ? 'Turn camera off' : 'Turn camera on'}
+                {...camBtnGesture}
+                aria-label={photoOn ? 'Back to live camera (long press: choose another photo)' : camOn ? 'Turn camera off (long press: show a photo)' : 'Turn camera on (long press: show a photo)'}
                 style={{
                   width: 44,
                   height: 44,
                   borderRadius: '50%',
-                  border: camOn ? '2px solid #00BCD4' : '1px solid rgba(239,68,68,0.4)',
+                  border: photoOn ? '2px solid #facc15' : camOn ? '2px solid #00BCD4' : '1px solid rgba(239,68,68,0.4)', // PHOTO-PATCH
                   background: camOn ? 'rgba(0,188,212,0.16)' : 'rgba(239,68,68,0.14)',
                   color: camOn ? '#00BCD4' : '#ef4444',
                   cursor: 'pointer',
@@ -2736,7 +2803,7 @@ export default function LiveCameraPage() {
                   justifyContent: 'center',
                 }}
               >
-                {camOn ? <Video size={18} /> : <VideoOff size={18} />}
+                {photoOn ? <PhotoModeIcon size={18} /> : camOn ? <Video size={18} /> : <VideoOff size={18} />}
               </motion.button>
               <motion.button
                 type="button"
@@ -3520,6 +3587,30 @@ export default function LiveCameraPage() {
           else void splitRef.current?.leave(true);
         }}
       />
+      {/* BATTLE-PATCH: round overlay (line / timer / win), Play button in the middle, Accept | Decline box */}
+      <BattleGiftDimStyle on={battleRunning} />
+      {splitActive ? (
+        <BattleOverlay
+          battle={battleApi.battle}
+          remainMs={battleApi.remainMs}
+          popups={battleApi.popups}
+          heightPx={splitBottomPx}
+          flip={battleMySide === 'right'}
+        />
+      ) : null}
+      <BattlePlayButton
+        visible={splitActive && !!battleMySide && !battleApi.battle && !battleApi.incoming}
+        waiting={battleApi.pending}
+        topPx={splitBottomPx}
+        onPlay={battleApi.play}
+      />
+      {amHost ? (
+        <BattleIncomingDialog
+          invite={battleApi.incoming}
+          onAccept={battleApi.accept}
+          onDecline={battleApi.decline}
+        />
+      ) : null}
       <DuetToast text={duetToast} />
       <LiveVipDock hostId={hostId} currentUserId={myId} />
       {/* قائمة المتحدث: دعم (هدية) + تجميد المايك لصاحب البث / كتم محلي للمشاهد */}

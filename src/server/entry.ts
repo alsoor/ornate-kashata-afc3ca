@@ -882,7 +882,7 @@ app.post("/api/live-location", liveGpsPost);
 
 // ── Live gifts: بث الهدايا لكل من في البث (ذاكرة السيرفر، نفس أسلوب live-chat / room-signal) ──
 const liveGiftMem = () => {
-  const g = globalThis as typeof globalThis & { __stooornaLiveGifts?: Map<string, Array<{ at: number; id: string; giftId: string; fromId: string; toUserId: string; toName: string; toAvatar: string; fromKey: string; count: number }>> };
+  const g = globalThis as typeof globalThis & { __stooornaLiveGifts?: Map<string, Array<{ at: number; id: string; giftId: string; fromId: string; toUserId: string; toName: string; toAvatar: string; fromKey: string; count: number; price?: number }>> };
   if (!g.__stooornaLiveGifts) g.__stooornaLiveGifts = new Map();
   return g.__stooornaLiveGifts;
 };
@@ -1275,7 +1275,7 @@ app.post("/api/live-gifts", guarded(async (req, res) => {
   const at = Math.max(now, lastAt + 1);
   const list = prev.filter((e) => now - e.at < 60000);
   const eventId = String(body.id || `lg_${at}`).slice(0, 60);
-  list.push({ at, id: eventId, giftId: c.giftId, fromId, toUserId: c.toUserId, toName, toAvatar, fromKey: String(body.fromKey || "").slice(0, 60), count });
+  list.push({ at, id: eventId, giftId: c.giftId, fromId, toUserId: c.toUserId, toName, toAvatar, fromKey: String(body.fromKey || "").slice(0, 60), count, price: Number.isFinite(c.price) ? c.price : undefined });
   mem.set(room, list.slice(-120));
   // ترتيب الداعمين — الآن مبني على خصم مؤكد فقط
   const sup = liveSupportMem();

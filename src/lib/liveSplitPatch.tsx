@@ -70,6 +70,8 @@ export type SplitGuestHandle = {
   replaceCam: (cam: any) => Promise<void>;
   /** Close only the second connection (my own live is untouched). */
   leave: (notifyHost?: boolean) => Promise<void>;
+  /** BATTLE-PATCH: send a signal to everybody in the inviter's room (data stream + signal transport). */
+  send: (payload: Record<string, unknown>) => void;
 };
 
 /**
@@ -85,6 +87,8 @@ export async function startSplitGuest(opts: {
   /** The inviter's camera, to be shown in the other half of MY screen (null = it stopped). */
   onRemoteVideo: (track: any | null) => void;
   onEnded: () => void;
+  /** BATTLE-PATCH: every `battle-*` signal that arrives in the inviter's room (see liveBattlePatch). */
+  onSignal?: (msg: any) => void;
 }): Promise<SplitGuestHandle> {
   const { host, me, appIdFallback, onEnded, onRemoteVideo } = opts;
   const hostChannel = camChannelForHost(host.userId);
@@ -123,6 +127,7 @@ export async function startSplitGuest(opts: {
 
   const onMsg = (msg: any) => {
     if (!msg || typeof msg.t !== 'string') return;
+    if (msg.t.startsWith('battle-')) { try { opts.onSignal?.(msg); } catch { /* ignore */ } return; } // BATTLE-PATCH
     const stamp = Number(msg.at) || Number(msg.ts) || 0;
     if (stamp && stamp < startedAt - 2000) return; // old replayed signal
     if (msg.t === 'duet-end' && (msg.uid == null || Number(msg.uid) === myUid)) void finish(false);
@@ -253,6 +258,19 @@ export async function startSplitGuest(opts: {
       try { await client.publish([next]); } catch { /* ignore */ }
     },
     leave: (notifyHost = true) => finish(notifyHost),
+    // BATTLE-PATCH: same transports as the duet-join announce
+    send: (payload: Record<string, unknown>) => {
+      if (ended) return;
+      try { sendDuetSignal(hostChannel, payload as any); } catch { /* ignore */ }
+      try { publishLiveSignal(hostChannel, payload as any); } catch { /* ignore */ }
+      const json = JSON.stringify(payload);
+      try {
+        const r = client.sendStreamMessage?.(streamId ?? 0, new TextEncoder().encode(json));
+        if (r && typeof r.then === 'function') r.catch(() => { /* ignore */ });
+      } catch {
+        try { void client.sendStreamMessage?.(streamId ?? 0, json); } catch { /* ignore */ }
+      }
+    },
   };
 }
 
