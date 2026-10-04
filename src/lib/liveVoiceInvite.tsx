@@ -18,6 +18,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserPlus, X, Check, Search, Radio } from 'lucide-react';
@@ -627,7 +628,12 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
     return () => window.clearInterval(iv);
   }, [invite?.id, answer]);
 
-  return (
+  // Rendered through a portal on <body> so no parent stacking context (live card, transforms, overflow) can cover it.
+  const [portalReady, setPortalReady] = useState(false);
+  useEffect(() => { setPortalReady(true); }, []);
+  if (!portalReady || typeof document === 'undefined') return null;
+
+  return createPortal(
     <AnimatePresence>
       {invite && (
         <motion.div
@@ -639,7 +645,7 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 10600,
+            zIndex: 2147483000,
             background: 'rgba(0,0,0,0.55)',
             display: 'flex',
             alignItems: 'center',
@@ -716,6 +722,7 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
