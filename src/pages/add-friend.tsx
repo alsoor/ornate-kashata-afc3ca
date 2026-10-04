@@ -101,6 +101,7 @@ import { publishLiveChatVideoDelete, onLiveChatVideoDeleted, applyLiveChatVideoT
 import { StoryModerationBell, StoryModerateDialog, StoryBanModal, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
 import { noteHostClosed, refreshStoryLives, startStoryLiveWatch, storyLiveStillOpen, readStoryLive } from '@/lib/liveStoryPresencePatch';
+import { VoiceInviteGlobalWatcher } from '@/lib/liveVoiceInvite'; // VOICE-INVITE-PATCH
 
 // Refresh / coming back to this page: RootLayout's bottom bar (with the "+") used to flash for a moment until this page mounted and
 // told it to hide. Announce it as early as possible (module load), and again when the browser restores the page from cache.
@@ -25071,6 +25072,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       <FriendVideoCallController userId={user?.id ?? null} userName={user?.name ?? user?.email ?? null} />
       <GlobalMessageAlertWatcher myUserId={user?.id ?? null} />
       <DirectMessageSyncWatcher myUserId={user?.id ?? null} />
+      <VoiceInviteGlobalWatcher myId={user?.id ?? null} myName={user?.name ?? (user as any)?.username ?? null} />{/* VOICE-INVITE-PATCH */}
       <StoryModerationWatcher myUserId={user?.id ?? null} />
       <AdminBellServerSync myUserId={user?.id ?? null} />
       <Helmet>

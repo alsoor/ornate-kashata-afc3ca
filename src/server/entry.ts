@@ -1303,6 +1303,137 @@ registerWithdrawalRoutes(app, {
 });
 
 
+// ═══════════════════════════ VOICE INVITE — دعوة البث الصوتي ═══════════════════════════
+// صاحب البث الصوتي يستدعي أي شخص أونلاين (مو شرط يكون في بث). الدعوة تُحفظ في صندوق وارد المدعو
+// في ذاكرة السيرفر 45 ثانية، والمدعو يسحبها من أي صفحة في التطبيق (VoiceInviteGlobalWatcher).
+// الهوية دائماً من الجلسة: المضيف = المستخدم المسجّل، ولا يمكن انتحال hostId من العميل.
+type VoiceInviteRow = { id: string; fromId: string; toId: string; hostId: string; hostName: string; hostUsername: string; hostAvatar: string | null; at: number };
+type VoiceInviteReply = { id: string; inviteId: string; fromId: string; fromName: string; status: "accepted" | "declined" | "busy"; at: number };
+const VOICE_INVITE_TTL_MS = 45_000;
+const voiceInviteStore = () => {
+  const g = globalThis as typeof globalThis & { __stooornaVoiceInvites?: { inbox: Map<string, VoiceInviteRow[]>; replies: Map<string, VoiceInviteReply[]> } };
+  if (!g.__stooornaVoiceInvites) g.__stooornaVoiceInvites = { inbox: new Map(), replies: new Map() };
+  return g.__stooornaVoiceInvites;
+};
+/** كل المفاتيح التي قد يُخزَّن تحتها هذا المستخدم (id + الأسماء البديلة) */
+const voiceKeysOf = (u: SessionU): string[] => Array.from(new Set([normId(u.id), ...session.keysOf(u)]));
+const voiceInvitesFor = (u: SessionU): VoiceInviteRow[] => {
+  const st = voiceInviteStore();
+  const now = Date.now();
+  const out: VoiceInviteRow[] = [];
+  for (const k of voiceKeysOf(u)) {
+    const live = (st.inbox.get(k) || []).filter((i) => now - i.at < VOICE_INVITE_TTL_MS);
+    if (live.length) { st.inbox.set(k, live); out.push(...live); } else st.inbox.delete(k);
+  }
+  return out;
+};
+const voicePushReply = (hostId: string, r: VoiceInviteReply) => {
+  const st = voiceInviteStore();
+  const k = normId(hostId);
+  const now = Date.now();
+  const list = (st.replies.get(k) || []).filter((x) => now - x.at < 60_000);
+  list.push(r);
+  st.replies.set(k, list.slice(-30));
+};
+
+app.get("/api/voice-invite", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  const scope = String(req.query.scope || "all");
+  const st = voiceInviteStore();
+  const now = Date.now();
+  const out: Record<string, unknown> = { ok: true, now };
+  if (scope !== "replies") {
+    out.invites = voiceInvitesFor(u).map((i) => ({ ...i, ttlLeftMs: Math.max(0, VOICE_INVITE_TTL_MS - (now - i.at)) }));
+  }
+  if (scope !== "invites") {
+    const replies: VoiceInviteReply[] = [];
+    for (const k of voiceKeysOf(u)) {
+      replies.push(...(st.replies.get(k) || []).filter((x) => now - x.at < 60_000));
+      st.replies.delete(k);
+    }
+    out.replies = replies;
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json(out);
+}));
+
+app.post("/api/voice-invite", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  if (!allow(`vi:${u.id}`, 40, 30_000)) return deny(res, 429, "rate_limited");
+  const body = (req.body || {}) as Record<string, unknown>;
+  const action = String(body.action || "send");
+  const st = voiceInviteStore();
+  const me = String(u.id);
+  const now = Date.now();
+
+  // ── المضيف يرسل دعوة ──
+  if (action === "send") {
+    const toId = String(body.toUserId || "").trim().slice(0, 80);
+    if (!toId) return deny(res, 400, "toUserId required");
+    if (session.owns(u, toId)) return deny(res, 400, "cannot invite yourself");
+    const key = normId(toId);
+    const id = `vi_${now.toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    const row: VoiceInviteRow = {
+      id,
+      fromId: me,
+      toId,
+      hostId: me,
+      hostName: String(body.hostName || "User").slice(0, 60),
+      hostUsername: String(body.hostUsername || "").replace(/^@/, "").slice(0, 60),
+      hostAvatar: body.hostAvatar != null && String(body.hostAvatar) ? String(body.hostAvatar).slice(0, 400) : null,
+      at: now,
+    };
+    // دعوة واحدة فقط من نفس المضيف لنفس الشخص (الجديدة تحل محل القديمة)
+    const list = (st.inbox.get(key) || []).filter((i) => now - i.at < VOICE_INVITE_TTL_MS && i.hostId !== me);
+    list.push(row);
+    st.inbox.set(key, list.slice(-10));
+    return res.json({ ok: true, id, at: now });
+  }
+
+  // ── المضيف يلغي دعوة / كل الدعوات (خرج من البث) ──
+  if (action === "cancel" || action === "cancel-all") {
+    const toId = action === "cancel" ? normId(String(body.toUserId || "")) : "";
+    for (const [k, list] of st.inbox) {
+      if (toId && k !== toId) continue;
+      const rest = list.filter((i) => i.hostId !== me);
+      if (rest.length) st.inbox.set(k, rest); else st.inbox.delete(k);
+    }
+    return res.json({ ok: true });
+  }
+
+  // ── المدعو يرد: قبول / رفض / مشغول ──
+  if (action === "accept" || action === "decline" || action === "busy") {
+    const inviteId = String(body.inviteId || "");
+    const hostId = String(body.hostId || "");
+    let found: VoiceInviteRow | null = null;
+    for (const k of voiceKeysOf(u)) {
+      const list = st.inbox.get(k) || [];
+      const keep: VoiceInviteRow[] = [];
+      for (const i of list) {
+        if (!found && (i.id === inviteId || (!inviteId && hostId && i.hostId === hostId))) found = i;
+        else keep.push(i);
+      }
+      if (keep.length) st.inbox.set(k, keep); else st.inbox.delete(k);
+    }
+    if (found) {
+      voicePushReply(found.hostId, {
+        id: `vr_${now.toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+        inviteId: found.id,
+        fromId: me,
+        fromName: String(body.name || "User").slice(0, 60),
+        status: action === "accept" ? "accepted" : action === "busy" ? "busy" : "declined",
+        at: now,
+      });
+    }
+    return res.json({ ok: true, found: !!found });
+  }
+
+  return deny(res, 400, "unknown action");
+}));
+
+
 app.get("/api/me/ban-status", me_ban_status_get_36);
 app.post("/api/me/update-ip", me_update_ip_post_37);
 app.get("/api/messages", messages_get_38);

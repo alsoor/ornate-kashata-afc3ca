@@ -45,6 +45,15 @@ import {
 import { getVipMaxSpeakers } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { LiveCoinsDock, SupportCrown, useSupportLeaders } from '@/components/LiveCoinsDock';
+// VOICE-INVITE-PATCH: invite any online person to this voice live (box reaches them anywhere in the app)
+import {
+  VoiceInviteButton,
+  VoiceInvitePanel,
+  VoiceInviteToast,
+  useVoiceInviteReplies,
+  cancelAllVoiceInvites,
+  voiceReplyText,
+} from '@/lib/liveVoiceInvite';
 
 const AGORA_APP_ID = '149ef04e839c4132a08efb49d717c436';
 const PUBLIC_CHANNEL = 'stooorna-live-voice';
@@ -147,6 +156,15 @@ export default function LivePage() {
   /** Compact by default. Full Chat rises to the yellow line; Hide chat drops it back. */
   const [chatFull, setChatFull] = useState(false);
   const [membersSheetOpen, setMembersSheetOpen] = useState(false);
+  // VOICE-INVITE-PATCH state
+  const [voiceInvOpen, setVoiceInvOpen] = useState(false);
+  const [voiceInvToast, setVoiceInvToast] = useState('');
+  const voiceInvToastTimerRef = useRef<number | null>(null);
+  useVoiceInviteReplies(!!(joined && amHost && isHostRoom), (r) => {
+    setVoiceInvToast(voiceReplyText(r));
+    if (voiceInvToastTimerRef.current) window.clearTimeout(voiceInvToastTimerRef.current);
+    voiceInvToastTimerRef.current = window.setTimeout(() => setVoiceInvToast(''), 3200);
+  });
   const [roomEndedOverlay, setRoomEndedOverlay] = useState(false);
   const liveChatEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -600,6 +618,7 @@ export default function LivePage() {
 
     // Host ends private room: notify listeners BEFORE leaving Agora channel
     if (amHost && isHostRoom && !forced) {
+      try { cancelAllVoiceInvites(); } catch { /* ignore */ } // VOICE-INVITE-PATCH
       try {
         for (let i = 0; i < 3; i++) {
           await sendDataPayload({
@@ -1704,6 +1723,9 @@ export default function LivePage() {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        {amHost && isHostRoom && (
+          <VoiceInviteButton active={voiceInvOpen} onClick={() => setVoiceInvOpen(true)} />
+        )}
         <button
           type="button"
           onClick={() => setMembersSheetOpen(true)}
@@ -2782,6 +2804,15 @@ export default function LivePage() {
           </div>
         </div>
       )}
+      {/* VOICE-INVITE-PATCH */}
+      {amHost && isHostRoom && (
+        <VoiceInvitePanel
+          open={voiceInvOpen}
+          onClose={() => setVoiceInvOpen(false)}
+          me={myId ? { userId: myId, name: myName, username: myUsername, avatarUrl: myAvatar } : null}
+        />
+      )}
+      <VoiceInviteToast text={voiceInvToast} />
       <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} />
     </div>
   );
