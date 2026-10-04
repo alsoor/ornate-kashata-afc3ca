@@ -124,6 +124,9 @@ function replayEnds(to: string, ws: WebSocket) {
   if (m.size === 0) recentEnds.delete(to);
 }
 
+/** من اتصل بمن في كل قناة، وهل رُدّ عليه؟ لاستبدال إشعار "Incoming call" عند إنهاء المتصل قبل الرد. */
+const callOrigins = new Map<string, { from: string; fromName: string; fromAvatar: string | null; answered: boolean; local: number }>();
+
 /** إعادة محاولة تسليم hangup/answered… بدون تكرار الحلقات لنفس الرسالة */
 const retryingSignals = new Map<string, ReturnType<typeof setInterval>>();
 
@@ -241,6 +244,17 @@ export function attachCallSignalingWS(server: Server) {
 
         // اتصال جديد لنفس القناة: لا تعيد إرسال إنهاء قديم للمستقبِل
         clearEnd(to, channel);
+        callOrigins.set(pendingKey(to, channel), {
+          from: String(msg.from || ''),
+          fromName: (msg.fromName as string) ?? 'Someone',
+          fromAvatar: (msg.fromAvatar as string) ?? null,
+          answered: false,
+          local: Date.now(),
+        });
+        if (callOrigins.size > 500) {
+          const now = Date.now();
+          for (const [ok, ov] of callOrigins) if (now - ov.local > ENDED_TTL_MS) callOrigins.delete(ok);
+        }
         // رنة جديدة تستبدل أي رنة معلّقة قديمة لنفس القناة
         const k = pendingKey(to, channel);
         const old = pendingCalls.get(k);
@@ -306,6 +320,12 @@ export function attachCallSignalingWS(server: Server) {
         return;
       }
 
+      if ((type === 'answered' || type === 'call-answered') && channel) {
+        // msg.from = المستقبِل الذي ردّ، msg.to = المتصل
+        const o = callOrigins.get(pendingKey(String(msg.from || ''), channel));
+        if (o) o.answered = true;
+      }
+
       const isEndSignal = type === 'hangup' || type === 'call-end' || type === 'ended';
       if (isEndSignal && channel) {
         const endAt = Number(msg.at) || Date.now();
@@ -313,6 +333,23 @@ export function attachCallSignalingWS(server: Server) {
         markEnded(channel, endAt);
         cancelPendingCall(to, channel, endAt);
         storeEnd(to, channel, msg);
+        // المتصل أنهى قبل الرد: أزل إشعار "Incoming call" من جوال المستقبِل (نفس tag يستبدله).
+        const origin = callOrigins.get(pendingKey(to, channel));
+        if (origin && origin.from === String(msg.from || '') && !origin.answered) {
+          callOrigins.delete(pendingKey(to, channel));
+          void (async () => {
+            try {
+              await sendPushToUser(to, 'call', {
+                title: '📵 Missed call',
+                body: origin.fromName,
+                icon: origin.fromAvatar ?? '/favicon.ico',
+                url: `/dm?with=${encodeURIComponent(origin.from)}`,
+                tag: `call-${origin.from}`,
+                data: { fromId: origin.from, fromName: origin.fromName, ended: true, missed: true },
+              });
+            } catch (e) { console.log('[call-signal] missed-call push failed', e); }
+          })();
+        }
       }
 
       if (deliver(to, msg) > 0) return;

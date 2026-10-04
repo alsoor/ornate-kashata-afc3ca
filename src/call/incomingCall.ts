@@ -4,6 +4,24 @@
  */
 import { callSession, endedAtOf, markEnded, newSessionId, sendSignal, stopRing, trackSignalSocket, type CallPeer } from './endCall';
 
+const NO_ANSWER_MS = 45000;
+
+/** يغلق إشعار "Incoming call" الظاهر في النظام (push) بعد انتهاء المكالمة. */
+export async function dismissCallNotifications() {
+  try {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const regs = await navigator.serviceWorker.getRegistrations();
+    for (const r of regs) {
+      const list = await r.getNotifications();
+      for (const n of list) {
+        const tag = String(n.tag || '');
+        const d: any = n.data || {};
+        if (tag.startsWith('call-') || tag === 'stooorna-incoming-call' || d.channel) n.close();
+      }
+    }
+  } catch { /* */ }
+}
+
 export function wsUrl() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${window.location.host}/ws/call-signal`;
@@ -65,6 +83,7 @@ export function attachIncoming(meId: string, onEvent: (type: string, msg: any) =
   let ws: WebSocket | null = null;
   const connect = () => {
     if (closed) return;
+    if (retry) { window.clearTimeout(retry); retry = 0; }
     const sock = new WebSocket(wsUrl());
     ws = sock;
     trackSignalSocket(sock);
@@ -110,7 +129,7 @@ export function attachIncoming(meId: string, onEvent: (type: string, msg: any) =
           // يُغلق أيضاً شريط الرنين القديم إن وُجد في RootLayout.
           window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: { channel, at: endedAt } }));
         }
-        if (!s || !channel || channel === s.channel) stopRing();
+        if (!s || !channel || channel === s.channel) { stopRing(); void dismissCallNotifications(); }
         // مهم: لا نمسح callSession هنا. CallHost هو من ينهي الجلسة عبر endCall
         // (يغلق Agora والمايك ويحدّث الواجهة). مسحها هنا كان يمنعه من التنظيف.
       }
@@ -125,17 +144,29 @@ export function attachIncoming(meId: string, onEvent: (type: string, msg: any) =
       }
       onEvent(type, msg);
     };
-    sock.onclose = () => { if (!closed) retry = window.setTimeout(connect, 2000); };
+    sock.onclose = () => { if (!closed && ws === sock) retry = window.setTimeout(connect, 2000); };
   };
   connect();
 
-  // احتياط: إذا فاتتنا رسالة hangup (انقطاع الويب سوكت)، الخادم يُسقط الدعوة فنوقف الرنين.
+  // إنهاء رنين وارد لم يُردّ عليه: يغلق الجلسة والواجهة والإشعار.
+  const endIncoming = (session: { id: number; channel: string; hostId: string; startedAt: number }) => {
+    const cur = callSession.current;
+    if (!cur || cur.id !== session.id || cur.phase === 'live') return;
+    markEnded(session.channel, session.startedAt);
+    stopRing();
+    void dismissCallNotifications();
+    onEvent('hangup', { channel: session.channel, from: session.hostId, at: session.startedAt });
+  };
+
+  // احتياط: إذا فاتتنا رسالة hangup (انقطاع الويب سوكت / الجوال في الخلفية)، لا يبقى الرنين.
   let watchId = 0;
   let watchSince = 0;
-  const poll = window.setInterval(() => {
+  const check = () => {
     const session = callSession.current;
     if (!session || session.phase === 'live') { watchId = 0; return; }
     if (session.id !== watchId) { watchId = session.id; watchSince = Date.now(); }
+    // سقف مطلق: الرنين لا يستمر أكثر من مهلة عدم الرد (+5ث) مهما كانت حالة الخادم.
+    if (session.phase === 'incoming' && Date.now() - watchSince > NO_ANSWER_MS + 5000) { endIncoming(session); return; }
     void fetch(`/api/call/invite?userId=${encodeURIComponent(meId)}`, { credentials: 'include' })
       .then(r => r.json())
       .then(data => {
@@ -144,20 +175,34 @@ export function attachIncoming(meId: string, onEvent: (type: string, msg: any) =
         const cancelled = sameChannel && (!!inv.clear || !!inv.ended);
         // غياب الدعوة وحده لا يُعتبر إلغاءً في أول ثوانٍ: قد لا يكون الخادم خزّنها بعد.
         const missing = !sameChannel && Date.now() - watchSince > 4000;
-        if (!cancelled && !missing) return;
-        const cur = callSession.current;
-        if (cur && cur.id === session.id && cur.phase !== 'live') {
-          markEnded(session.channel, session.startedAt);
-          stopRing();
-          onEvent('hangup', { channel: session.channel, from: session.hostId, at: session.startedAt });
-        }
+        if (cancelled || missing) endIncoming(session);
       })
       .catch(() => {});
-  }, 1000);
+  };
+  const poll = window.setInterval(check, 1000);
+
+  // عودة التطبيق من الخلفية: الويب سوكت غالباً ميت وفاتته hangup. أعد الاتصال فوراً (الخادم يعيد إرسال الإنهاء)
+  // وافحص الجلسة، ونظّف أي إشعار مكالمة قديم.
+  let hiddenAt = 0;
+  const onVis = () => {
+    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+    const wasHiddenMs = hiddenAt ? Date.now() - hiddenAt : 0;
+    hiddenAt = 0;
+    if (closed) return;
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING || wasHiddenMs > 5000) {
+      const old = ws;
+      connect(); // يستبدل ws قبل إغلاق القديم فلا يُجدول إعادة اتصال مزدوجة
+      try { old?.close(); } catch { /* */ }
+    }
+    check();
+    if (!callSession.current || callSession.current.phase === 'live') void dismissCallNotifications();
+  };
+  document.addEventListener('visibilitychange', onVis);
   return () => {
     closed = true;
     if (retry) window.clearTimeout(retry);
     window.clearInterval(poll);
+    document.removeEventListener('visibilitychange', onVis);
     try { ws?.close(); } catch { /* */ }
   };
 }
