@@ -2206,6 +2206,31 @@ function clearSupportThread(peerId: string) {
     method: 'DELETE',
     credentials: 'include',
   }).catch(() => { /* optional */ });
+  // Tombstone so the other side (user or owner) drops the thread too.
+  const tomb = '[[support-thread-deleted]]';
+  void fetch('/api/messages', {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ toUserId: peerId, recipientId: peerId, text: tomb, content: tomb, supportDeleted: true }),
+  }).catch(() => {});
+  void fetch('/api/support/messages', {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: tomb, toUserId: peerId, from: 'support', deleted: true }),
+  }).catch(() => {});
+}
+
+function pushOwnerSupportAlert(fromLabel: string) {
+  const alert = { id: `sa-${Date.now()}`, text: 'لديك رساله جديده', from: fromLabel || 'مستخدم', at: Date.now(), unread: true };
+  try {
+    const raw = JSON.parse(localStorage.getItem('stooorna_owner_support_alerts') || '[]');
+    const list = Array.isArray(raw) ? raw : [];
+    list.push(alert);
+    localStorage.setItem('stooorna_owner_support_alerts', JSON.stringify(list.slice(-40)));
+    window.dispatchEvent(new CustomEvent('stooorna:owner-support-alert', { detail: alert }));
+  } catch { /* ignore */ }
+  void fetch('/api/notifications', {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: 'لديك رساله جديده', body: fromLabel || 'رسالة دعم', kind: 'support', toUsername: 'stooorna' }),
+  }).catch(() => {});
 }
 
 async function notifySupportThreadComplete(peerId: string) {
@@ -2650,6 +2675,7 @@ function SupportChatOverlay({
     setAiPhase('waiting');
     aiPhaseRef.current = 'waiting';
     await pushBotTyped(waitMsg);
+    pushOwnerSupportAlert(resolveUserDisplayName());
     startAutoMusic();
   }
 
@@ -2699,8 +2725,14 @@ function SupportChatOverlay({
         const list: Array<{ id: string; from: string; text: string; at?: number }> = Array.isArray(d) ? d : (d.messages || []);
         const myUid = currentUser?.id || 'anon';
         const wipedAtU = getSupportWipedAt(myUid);
+        if (list.some(m => String(m.text || '').includes('[[support-thread-deleted]]'))) {
+          if (currentUser?.id) clearSupportThread(currentUser.id);
+          setMessages([]);
+          return;
+        }
         const supportOnes = list
           .filter(m => m.from === 'support' || m.from === 'agent' || m.from === 'stooorna')
+          .filter(m => !String(m.text || '').includes('[[support-thread-deleted]]'))
           .filter(m => !wipedAtU || !m.at || toMs(m.at) > wipedAtU);
         if (!supportOnes.length) return;
         // الدعم ضغط "تم": نثبّت وقت الإنهاء ونحذف عند المستخدم تلقائياً بعد 10 دقائق
@@ -6730,6 +6762,28 @@ export default function SettingsPage() {
   // Owner: all users + highlights
   const isOwner = isPrivilegedUser(user as { email?: string | null; username?: string | null; name?: string | null } | null);
   const [ownerSupportEarn, setOwnerSupportEarn] = useState(0);
+  const [ownerSupportAlert, setOwnerSupportAlert] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isOwner) return;
+    const read = () => {
+      try {
+        const raw = JSON.parse(localStorage.getItem('stooorna_owner_support_alerts') || '[]');
+        const list = Array.isArray(raw) ? raw.filter((x: any) => x && x.unread !== false) : [];
+        setOwnerSupportAlert(list.length ? String(list[list.length - 1].from || 'مستخدم') : null);
+      } catch { setOwnerSupportAlert(null); }
+    };
+    read();
+    const onAlert = (e: Event) => {
+      const from = String((e as CustomEvent).detail?.from || 'مستخدم');
+      setOwnerSupportAlert(from);
+    };
+    window.addEventListener('stooorna:owner-support-alert', onAlert);
+    window.addEventListener('storage', read);
+    return () => {
+      window.removeEventListener('stooorna:owner-support-alert', onAlert);
+      window.removeEventListener('storage', read);
+    };
+  }, [isOwner]);
   const [ownerControlOn, setOwnerControlOn] = useState(() => {
     try { return localStorage.getItem('stooorna_owner_control_on') !== '0'; } catch { return true; }
   });
@@ -7957,6 +8011,16 @@ export default function SettingsPage() {
                     </AnimatePresence>
                   </div>
                   {/* ── Profits (Owner @Stooorna only) ── */}
+                  {isOwner && ownerSupportAlert && (
+                    <button
+                      type="button"
+                      onClick={() => { setShowOwnerInbox(true); setOwnerSupportAlert(null); try { localStorage.setItem('stooorna_owner_support_alerts', '[]'); } catch { /* */ } }}
+                      style={{ width: '100%', marginTop: 10, padding: '12px 14px', borderRadius: 14, cursor: 'pointer', textAlign: 'right', background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.45)', color: '#fff', fontWeight: 800 }}
+                    >
+                      لديك رساله جديده
+                      <span style={{ display: 'block', marginTop: 4, color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontSize: '0.75rem' }}>{ownerSupportAlert}</span>
+                    </button>
+                  )}
                   {isOwner && (
                   <div style={{
                 background: T.surface,
