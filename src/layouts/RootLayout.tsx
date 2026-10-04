@@ -1628,10 +1628,14 @@ function GlobalBottomNavigation() {
   function clearServerCallInvite(targetUserId?: string | null, channel?: string | null) {
     const uid = String(targetUserId || '').trim();
     if (!uid) return;
-    const body = JSON.stringify({ userId: uid, toUserId: uid, targetUserId: uid, channel: channel || undefined, clear: true, ended: true, hangup: true });
     try {
-      void fetch('/api/call/invite/clear', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body, keepalive: true });
-      void fetch('/api/call/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body, keepalive: true });
+      void fetch('/api/call/invite/clear', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: uid, channel: channel || undefined, clear: true, ended: true }),
+        keepalive: true,
+      });
     } catch { /* */ }
   }
 
@@ -1965,6 +1969,9 @@ function GlobalBottomNavigation() {
         if (type === 'hangup' || type === 'call-end' || type === 'ended') {
           const ch = String(msg.channel || '');
           if (ch) markHomeCallChannelEnded(ch);
+          stopHomeIncomingRing();
+          setHomeIncoming(null);
+          setHomeIncomingExpanded(false);
           if (homeCallPhaseRef.current !== 'idle' || homeIncoming) {
             void leaveHomeGroupCall({ remote: true });
           }
@@ -2049,16 +2056,7 @@ function GlobalBottomNavigation() {
           if (ir.ok) {
             const idata = await ir.json() as { invite?: { channel?: string; ended?: boolean; clear?: boolean; at?: number } | null };
             const inv = idata?.invite;
-            if (!inv || inv.ended || inv.clear || (inv.channel && String(inv.channel) !== channel)) {
-              closeIncoming();
-              return;
-            }
-          }
-          const cancelRoom = `home_cancel_${channel}`;
-          const cr = await fetch(`/api/room?id=${encodeURIComponent(cancelRoom)}`, { credentials: 'include' });
-          if (cr.ok) {
-            const cd = await cr.json() as { members?: { userId?: string }[] };
-            if ((cd.members || []).length > 0) {
+            if (inv && (inv.ended || inv.clear)) {
               closeIncoming();
               return;
             }
@@ -2242,11 +2240,6 @@ function GlobalBottomNavigation() {
           clearServerCallInvite(m.id, endedChannel);
           sendHomeCallSignal({ type: 'hangup', to: m.id, from: user.id, channel: endedChannel, at: endedAt });
           sendHomeCallSignal({ type: 'ended', to: m.id, from: user.id, channel: endedChannel, at: endedAt });
-          void fetch('/api/room/join', {
-            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ roomId: `home_cancel_${endedChannel}`, userId: user.id, name: 'cancelled' }),
-            keepalive: true,
-          });
           window.setTimeout(() => {
             clearServerCallInvite(m.id, endedChannel);
             sendHomeCallSignal({ type: 'hangup', to: m.id, from: user.id, channel: endedChannel, at: Date.now() });
