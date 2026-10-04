@@ -94,6 +94,36 @@ function cancelPendingCall(to: string, channel: string, hangupAt: number) {
   console.log(`[call-signal] cancelled pending call to=${to} channel=${channel} (caller hung up)`);
 }
 
+/**
+ * آخر إشارات إنهاء لكل مستقبِل (to → channel → الرسالة).
+ * إذا كان المستقبِل غير متصل لحظة الإنهاء (انقطاع/إعادة اتصال أطول من 20ث) نعيد إرسالها له فور تسجيله،
+ * فلا يبقى عنده رنين لمكالمة انتهت.
+ */
+const RECENT_END_TTL_MS = 60 * 1000;
+const recentEnds = new Map<string, Map<string, { msg: object; local: number }>>();
+function storeEnd(to: string, channel: string, msg: object) {
+  if (!to || !channel) return;
+  let m = recentEnds.get(to);
+  if (!m) { m = new Map(); recentEnds.set(to, m); }
+  m.set(channel, { msg, local: Date.now() });
+}
+function clearEnd(to: string, channel: string) {
+  const m = recentEnds.get(to);
+  if (!m) return;
+  m.delete(channel);
+  if (m.size === 0) recentEnds.delete(to);
+}
+function replayEnds(to: string, ws: WebSocket) {
+  const m = recentEnds.get(to);
+  if (!m) return;
+  const now = Date.now();
+  for (const [ch, row] of m) {
+    if (now - row.local > RECENT_END_TTL_MS) { m.delete(ch); continue; }
+    send(ws, row.msg);
+  }
+  if (m.size === 0) recentEnds.delete(to);
+}
+
 /** إعادة محاولة تسليم hangup/answered… بدون تكرار الحلقات لنفس الرسالة */
 const retryingSignals = new Map<string, ReturnType<typeof setInterval>>();
 
@@ -137,6 +167,7 @@ export function attachCallSignalingWS(server: Server) {
           if (myUserId && myUserId !== uid) removeClient(myUserId, ws);
           myUserId = uid;
           addClient(myUserId, ws);
+          replayEnds(myUserId, ws); // أي مكالمة أُنهيت وهو غير متصل: أغلقها عنده الآن
           console.log(`[call-signal] REGISTERED userId=${myUserId}. Currently connected:`, Array.from(clients.keys()));
         } else {
           console.log('[call-signal] !!! register message had no userId', msg);
@@ -208,6 +239,8 @@ export function attachCallSignalingWS(server: Server) {
           return;
         }
 
+        // اتصال جديد لنفس القناة: لا تعيد إرسال إنهاء قديم للمستقبِل
+        clearEnd(to, channel);
         // رنة جديدة تستبدل أي رنة معلّقة قديمة لنفس القناة
         const k = pendingKey(to, channel);
         const old = pendingCalls.get(k);
@@ -279,6 +312,7 @@ export function attachCallSignalingWS(server: Server) {
         // سجّل الإنهاء وألغِ أي رنة معلّقة لم تصل بعد (المستقبِل كان غير متصل لحظة الاتصال).
         markEnded(channel, endAt);
         cancelPendingCall(to, channel, endAt);
+        storeEnd(to, channel, msg);
       }
 
       if (deliver(to, msg) > 0) return;
