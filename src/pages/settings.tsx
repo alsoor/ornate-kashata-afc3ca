@@ -1997,6 +1997,7 @@ async function sendRealChatMessage(opts: {
   const shapes = (withMeta: boolean): Record<string, unknown>[] => {
     const m = withMeta ? (opts.meta || {}) : {};
     return [
+      { receiverId: to, body: opts.text, ...media, ...m },
       { toUserId: to, text: opts.text, ...media, ...m },
       { recipientId: to, content: opts.text, ...media, ...m },
       { userId: to, message: opts.text, text: opts.text, ...media, ...m },
