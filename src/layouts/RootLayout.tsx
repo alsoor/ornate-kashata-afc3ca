@@ -3584,7 +3584,7 @@ function GlobalBottomNavigation() {
       // Allow ids not yet in friends cache
       for (const id of friendIds) {
         if (existing.has(id) || id === user.id) continue;
-        toAdd.push({ id, name: 'User', username: null, avatarUrl: null });
+        toAdd.push({ id, name: 'User', username: null, avatarUrl: homeCallFriends.find(f => f.id === id)?.avatarUrl ?? null });
       }
     }
     if (!toAdd.length) return;
@@ -3644,6 +3644,45 @@ function GlobalBottomNavigation() {
     setHomeCallAddOpen(false);
     setHomeCallAddSelected({});
   }
+
+  useEffect(() => {
+    const onLeft = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      const id = String(d.userId || '');
+      const ch = String(d.channel || '');
+      if (!id) return;
+      if (ch && homeCallChannelRef.current && ch !== String(homeCallChannelRef.current)) return;
+      setHomeCallMembers(prev => prev.filter(m => m.id !== id));
+    };
+    const onJoined = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      const id = String(d.userId || '');
+      if (!id) return;
+      setHomeCallMembers(prev => prev.map(m => m.id === id ? { ...m, joined: true } : m));
+      try { stopHomeIncomingRing(); } catch { /* */ }
+    };
+    const onRejoin = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      if (!d.channel || !user?.id) return;
+      setHomeIncoming({
+        channel: String(d.channel),
+        hostId: String(d.hostId || ''),
+        hostName: d.name || 'Call',
+        hostAvatar: d.avatarUrl || null,
+        members: [],
+        at: Date.now(),
+      } as any);
+    };
+    window.addEventListener('stooorna:call-member-left', onLeft as EventListener);
+    window.addEventListener('stooorna:call-member-joined', onJoined as EventListener);
+    window.addEventListener('stooorna:rejoin-call', onRejoin as EventListener);
+    return () => {
+      window.removeEventListener('stooorna:call-member-left', onLeft as EventListener);
+      window.removeEventListener('stooorna:call-member-joined', onJoined as EventListener);
+      window.removeEventListener('stooorna:rejoin-call', onRejoin as EventListener);
+    };
+  }, [user?.id]);
+
 
   function playHomeCallTapFeedback() {
     try { navigator.vibrate?.(28); } catch { /* */ }
@@ -4821,8 +4860,8 @@ function GlobalBottomNavigation() {
                         width: 36, height: 36, borderRadius: '50%', overflow: 'hidden',
                         background: 'rgba(0,188,212,0.15)', border: '1.5px solid rgba(255,255,255,0.2)',
                       }}>
-                        {m.avatarUrl ? (
-                          <img src={m.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        {(m.avatarUrl || homeCallFriends.find(f => f.id === m.id)?.avatarUrl) ? (
+                          <img src={m.avatarUrl || homeCallFriends.find(f => f.id === m.id)?.avatarUrl || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
                           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 13 }}>
                             {(label || '?')[0]}
