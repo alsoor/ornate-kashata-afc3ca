@@ -1572,6 +1572,20 @@ function GlobalBottomNavigation() {
   const [homeCallPhase, setHomeCallPhase] = useState<'idle' | 'animating' | 'connecting' | 'live'>('idle');
   const homeCallPhaseRef = useRef(homeCallPhase);
   useEffect(() => { homeCallPhaseRef.current = homeCallPhase; }, [homeCallPhase]);
+  useEffect(() => {
+    if (!user?.id) return;
+    let raw = '';
+    try { raw = sessionStorage.getItem('stooorna_call_boot_payload') || ''; } catch { return; }
+    if (!raw) return;
+    try { sessionStorage.removeItem('stooorna_call_boot_payload'); } catch { /* */ }
+    try {
+      const job = JSON.parse(raw);
+      window.setTimeout(() => {
+        if (job?.kind === 'out' && Array.isArray(job.ids)) void startHomeGroupCall(job.ids, !!job.video);
+        if (job?.kind === 'in' && job.invite) beginHomeIncoming(job.invite);
+      }, 400);
+    } catch { /* */ }
+  }, [user?.id]);
 
   const [homeCallMembers, setHomeCallMembers] = useState<HomeCallMember[]>([]);
   const [homeCallMuted, setHomeCallMuted] = useState(false);
@@ -2245,6 +2259,7 @@ function GlobalBottomNavigation() {
         try { localStorage.removeItem('stooorna_home_call_active_invite'); } catch { /* */ }
         try { localStorage.removeItem(`stooorna_home_call_invite_${user.id}`); } catch { /* */ }
         try { localStorage.removeItem('stooorna_home_call_live_session'); } catch { /* */ }
+    try { sessionStorage.removeItem('stooorna_call_did_boot'); } catch { /* */ }
         const notifyIds = new Map<string, { id: string; name?: string | null; avatarUrl?: string | null }>();
         for (const m of endedMembers) if (m.id && m.id !== user.id) notifyIds.set(m.id, m);
         for (const m of homeCallTargetsRef.current) if (m.id && m.id !== user.id) notifyIds.set(m.id, m);
@@ -2647,6 +2662,17 @@ function GlobalBottomNavigation() {
 
   async function startHomeGroupCall(overrideFriendIds?: string[], asVideo = false) {
     if (!user?.id) return;
+    try {
+      const ids = overrideFriendIds?.length ? overrideFriendIds : Object.keys(homeCallSelected).filter(id => homeCallSelected[id]);
+      const channelKey = 'out:' + ids.slice().sort().join(',');
+      if (ids.length && sessionStorage.getItem('stooorna_call_did_boot') !== channelKey) {
+        sessionStorage.setItem('stooorna_call_did_boot', channelKey);
+        sessionStorage.setItem('stooorna_call_boot_payload', JSON.stringify({ kind: 'out', ids, video: !!asVideo }));
+        window.location.reload();
+        return;
+      }
+      sessionStorage.removeItem('stooorna_call_did_boot');
+    } catch { /* */ }
     if (shouldBlockPhantomCall()) return;
     homeCallVideoRef.current = !!asVideo;
     setHomeCallIsVideo(!!asVideo);
@@ -3292,6 +3318,16 @@ function GlobalBottomNavigation() {
   }, [homeCallPhase, homeCallChannel, user?.id]);
 
   function beginHomeIncoming(invite: { channel: string; hostId: string; hostName: string | null; hostUsername?: string | null; hostAvatar: string | null; members: HomeCallMember[]; video?: boolean; at?: number }) {
+    try {
+      const channelKey = 'in:' + String(invite.channel || '');
+      if (invite.channel && sessionStorage.getItem('stooorna_call_did_boot') !== channelKey) {
+        sessionStorage.setItem('stooorna_call_did_boot', channelKey);
+        sessionStorage.setItem('stooorna_call_boot_payload', JSON.stringify({ kind: 'in', invite }));
+        window.location.reload();
+        return;
+      }
+      sessionStorage.removeItem('stooorna_call_did_boot');
+    } catch { /* */ }
     if (homeCallPhase !== 'idle') {
       // مشغول: إما تنبيه "انتظار المكالمة" (لو الزر مشغّل) أو رد "مشغول" على المتصل — بدل التجاهل الصامت
       callPatchOnIncomingWhileBusy({
