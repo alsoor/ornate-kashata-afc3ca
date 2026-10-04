@@ -2594,9 +2594,14 @@ function SupportChatOverlay({
     setLang(chosen);
     langRef.current = chosen;
     try { localStorage.setItem('lang', chosen); } catch { /* */ }
-    setAiPhase('ask_role');
-    aiPhaseRef.current = 'ask_role';
-    // أزرار فقط — بدون رسالة AI
+    setAccountRole('user');
+    accountRoleRef.current = 'user';
+    setAiPhase('waiting');
+    aiPhaseRef.current = 'waiting';
+    const L = SUPPORT_COPY[chosen];
+    await pushBotTyped(L.greetingUser(resolveUserDisplayName()));
+    await pushBotTyped(L.waitSupport);
+    pushOwnerSupportAlert(resolveUserDisplayName());
   }
 
   /** Resolve display name for individual users */
@@ -2783,6 +2788,7 @@ function SupportChatOverlay({
     text?: string;
     mediaUrl?: string;
     mediaType?: string;
+    commentThreadId?: string;
   }) {
     const text = payload.text || '';
     const isGuest = !currentUser;
@@ -2804,7 +2810,7 @@ function SupportChatOverlay({
 
     // Always queue locally so owner inbox can pick it up
     queueSupportTicket({
-      fromUserId,
+      fromUserId: payload.commentThreadId || fromUserId,
       fromUsername,
       fromName,
       fromEmail,
@@ -2933,10 +2939,12 @@ function SupportChatOverlay({
     const nextCount = userMsgCount + 1;
     setUserMsgCount(nextCount);
 
+    const commentThreadId = `cmt-${Date.now()}`;
     await deliverToSupport({
       text: text || undefined,
       mediaUrl: media?.url,
       mediaType: media?.type,
+      commentThreadId,
     });
 
     if (aiPhaseRef.current === 'human') {
@@ -3002,12 +3010,21 @@ function SupportChatOverlay({
           position: 'fixed',
           inset: 0,
           zIndex: 10350,
-          background: 'rgba(0,0,0,0.96)',
-          backdropFilter: 'blur(10px)',
+          background: 'rgba(0,0,0,0.45)',
           display: 'flex',
           flexDirection: 'column',
+          justifyContent: 'flex-end',
         }}
+        onClick={onClose}
       >
+        <motion.div
+          initial={{ y: 80, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 80, opacity: 0 }}
+          onClick={e => e.stopPropagation()}
+          style={{ height: '72vh', maxHeight: '78vh', display: 'flex', flexDirection: 'column', background: '#071416', borderRadius: '18px 18px 0 0', border: '1px solid rgba(0,188,212,0.28)', overflow: 'hidden' }}
+        >
+        <div style={{ width: 42, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.28)', margin: '8px auto 0' }} />
         {/* Header — slim: avatar + Stooorna stacked title */}
         <div
           style={{
@@ -3015,7 +3032,6 @@ function SupportChatOverlay({
             alignItems: 'center',
             gap: 10,
             padding: '8px 12px',
-            paddingTop: 'max(8px, env(safe-area-inset-top))',
             background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
             borderBottom: '1px solid rgba(0,188,212,0.25)',
             flexShrink: 0,
@@ -3191,7 +3207,7 @@ function SupportChatOverlay({
           )}
 
           {/* اختيار مستخدم أو شركة بعد اللغة — أزرار فقط */}
-          {lang && aiPhase === 'ask_role' && !accountRole && (
+          {false && lang && aiPhase === 'ask_role' && !accountRole && (
             <div style={{
               marginTop: 8,
               display: 'flex',
@@ -3282,8 +3298,8 @@ function SupportChatOverlay({
               <div
                 key={m.id}
                 style={{
-                  alignSelf: isUser ? 'flex-end' : 'flex-start',
-                  maxWidth: '82%',
+                  alignSelf: 'stretch',
+                  maxWidth: '100%',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 4,
@@ -3453,6 +3469,7 @@ function SupportChatOverlay({
           </motion.button>
         </div>
       </motion.div>
+        </motion.div>
     </AnimatePresence>
   );
 }
