@@ -2892,25 +2892,65 @@ function OwnerSupportThread({
 
   useEffect(() => {
     let cancelled = false;
+
+    // رسالة المستخدم الظاهرة في القائمة الخارجية — تظهر فوراً عند الدخول (بدون انتظار السيرفر)
+    const seedMsg = (): Msg | null => {
+      const t = String(peer.lastMessage || '').trim();
+      if (!t) return null;
+      return { id: `peer-last-${peer.id}`, from: 'user', text: t, at: toMs(peer.lastAt) || Date.now() };
+    };
+    const toMsg = (m: any): Msg => ({
+      id: String(m.id ?? m._id ?? `${m.createdAt || m.at || ''}-${String(m.text || m.content || m.body || m.message || '').slice(0, 12)}`),
+      from: (m.from === 'support' || m.from === 'agent' || m.fromUserId === currentUser?.id || m.senderId === currentUser?.id || m.me)
+        ? 'me'
+        : 'user',
+      text: m.text || m.content || m.body || m.message || '',
+      at: toMs(m.at) || toMs(m.createdAt) || toMs(m.sentAt) || Date.now(),
+      mediaUrl: m.mediaUrl,
+      mediaType: m.mediaType,
+    });
+    const mergeIn = (incoming: Msg[]) => {
+      if (!incoming.length) return;
+      setMessages(prev => {
+        const byId = new Map<string, Msg>();
+        const hasReal = incoming.some(x => !x.id.startsWith('peer-last-'));
+        for (const x of [...prev, ...incoming]) {
+          if (hasReal && x.id.startsWith('peer-last-')) continue; // الرسالة المؤقتة تُستبدل بالحقيقية
+          byId.set(x.id, x);
+        }
+        return Array.from(byId.values()).sort((x, y) => x.at - y.at);
+      });
+    };
+
+    // 1) فوراً: المحفوظ محلياً + رسالة القائمة
+    const stored = loadSupportThread(peer.id);
+    if (stored?.messages?.length) {
+      mergeIn(stored.messages.map(m => ({
+        id: m.id,
+        from: (m.from === 'me' || m.from === 'support' || m.from === 'agent') ? 'me' as const : 'user' as const,
+        text: m.text,
+        at: m.at,
+        mediaUrl: m.mediaUrl,
+        mediaType: m.mediaType,
+      })));
+      if (stored.completedAt) setTaskDone(true);
+      if (stored.expiresAt) setExpiresAt(stored.expiresAt);
+    }
+    const seed = seedMsg();
+    if (seed) mergeIn([seed]);
+    // تذاكر المستخدم المحفوظة محلياً (نفس الجهاز)
+    const localTickets = readLocalSupportTickets().filter(
+      t => t.fromUserId === peer.id
+        || (!!peer.username && t.fromUsername === peer.username)
+        || (!!peer.email && t.fromEmail === peer.email),
+    );
+    if (localTickets.length) {
+      mergeIn(localTickets.map(t => ({ id: String(t.id), from: 'user' as const, text: t.text, at: toMs(t.at) || Date.now(), mediaUrl: t.mediaUrl })));
+    }
+
+    // 2) ثم من السيرفر (يضيف الردود والرسائل الأحدث)
     async function load() {
       try {
-        // Local persisted thread first (survives leave for up to 10 min)
-        const stored = loadSupportThread(peer.id);
-        if (stored?.messages?.length) {
-          if (!cancelled) {
-            setMessages(stored.messages.map(m => ({
-              id: m.id,
-              from: (m.from === 'me' || m.from === 'support' || m.from === 'agent') ? 'me' : 'user',
-              text: m.text,
-              at: m.at,
-              mediaUrl: m.mediaUrl,
-              mediaType: m.mediaType,
-            })));
-            if (stored.completedAt) setTaskDone(true);
-            if (stored.expiresAt) setExpiresAt(stored.expiresAt);
-          }
-        }
-
         const endpoints = [
           `/api/messages?with=${encodeURIComponent(peer.id)}`,
           `/api/messages?userId=${encodeURIComponent(peer.id)}`,
@@ -2927,58 +2967,19 @@ function OwnerSupportThread({
             if (list.length) break;
           } catch { /* next */ }
         }
-        const local = readLocalSupportTickets().filter(
-          t => t.fromUserId === peer.id
-            || (!!peer.username && t.fromUsername === peer.username)
-            || (!!peer.email && t.fromEmail === peer.email),
-        );
-        if (!list.length && local.length) {
-          list = local.map(t => ({
-            id: t.id,
-            from: 'user',
-            text: t.text,
-            at: t.at,
-            mediaUrl: t.mediaUrl,
-          }));
-        }
-        // احتياط: لو ما رجع شي من السيرفر نعرض رسالة المستخدم نفسها اللي ظاهرة في القائمة الخارجية
-        if (!list.length && peer.lastMessage) {
-          list = [{
-            id: `peer-last-${peer.id}`,
-            from: 'user',
-            text: peer.lastMessage,
-            at: peer.lastAt || Date.now(),
-          }];
-        }
         if (cancelled || !list.length) return;
-        const mapped: Msg[] = list.map((m: any) => ({
-          id: String(m.id ?? m._id ?? Math.random()),
-          from: (m.from === 'support' || m.from === 'agent' || m.fromUserId === currentUser?.id || m.senderId === currentUser?.id || m.me)
-            ? 'me'
-            : 'user',
-          text: m.text || m.content || m.body || m.message || '',
-          at: m.at ? new Date(m.at).getTime() : (m.createdAt ? new Date(m.createdAt).getTime() : Date.now()),
-          mediaUrl: m.mediaUrl,
-          mediaType: m.mediaType,
-        }));
-        // رسائل أقدم من آخر تفريغ لا نعيدها (حتى لو السيرفر لسا يرجّعها)
         const wipedAt = getSupportWipedAt(peer.id);
+        const mapped = list.map(toMsg).filter(m => String(m.text || m.mediaUrl || '').length > 0);
+        // التفريغ يخفي الأقدم فقط؛ ورسالة القائمة الحالية تبقى دائماً
         const fresh = wipedAt ? mapped.filter(m => m.at > wipedAt) : mapped;
-        if (!fresh.length) return;
-        setMessages(prev => {
-          // merge by id, prefer longer history
-          const byId = new Map<string, Msg>();
-          // رسالة القائمة المؤقتة تُستبدل بالرسائل الحقيقية إذا وصلت
-          const hasReal = fresh.some(m => !m.id.startsWith('peer-last-'));
-          [...prev.filter(m => !(hasReal && m.id.startsWith('peer-last-'))), ...fresh].forEach(m => byId.set(m.id, m));
-          return Array.from(byId.values()).sort((a, b) => a.at - b.at);
-        });
+        mergeIn(fresh);
       } catch { /* silent */ }
     }
-    load();
+    void load();
     const id = setInterval(load, 4000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [peer.id, peer.username, currentUser?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peer.id, peer.username, peer.lastMessage, currentUser?.id]);
 
   useEffect(() => {
     const el = listRef.current;
@@ -3077,12 +3078,12 @@ function OwnerSupportThread({
           padding: '8px 12px',
           paddingTop: 'max(8px, env(safe-area-inset-top))',
           background: '#ffffff',
-          borderBottom: '1px solid rgba(0,188,212,0.25)',
+          borderBottom: '1px solid rgba(0,0,0,0.25)',
           flexShrink: 0,
           minHeight: 52,
         }}
       >
-        <button onClick={() => { onClose(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--primary))', padding: 2 }} aria-label="Close">
+        <button onClick={() => { onClose(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0a0a0a', padding: 2 }} aria-label="Close">
           <X size={20} />
         </button>
         <button
@@ -3112,8 +3113,8 @@ function OwnerSupportThread({
           <div style={{ position: 'relative', width: 34, height: 34, flexShrink: 0 }}>
             <div style={{
               width: 34, height: 34, borderRadius: '50%', overflow: 'hidden',
-              background: 'rgba(0,188,212,0.2)', border: '2px solid rgba(0,188,212,0.45)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0277BD', fontWeight: 700, fontSize: '0.75rem',
+              background: 'rgba(0,0,0,0.2)', border: '2px solid rgba(0,0,0,0.45)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0a0a0a', fontWeight: 700, fontSize: '0.75rem',
             }}>
               {peer.avatarUrl
                 ? <img src={peer.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -3126,7 +3127,7 @@ function OwnerSupportThread({
             }} />
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <p style={{ margin: 0, color: '#0277BD', fontWeight: 800, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p style={{ margin: 0, color: '#0a0a0a', fontWeight: 800, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {displayName}
             </p>
             <p style={{ margin: 0, color: '#64748b', fontSize: '0.62rem' }}>
@@ -3160,8 +3161,8 @@ function OwnerSupportThread({
               <div style={{
                 padding: '10px 14px',
                 borderRadius: mine ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                background: mine ? 'linear-gradient(135deg, rgba(0,188,212,0.28), rgba(0,120,180,0.22))' : 'rgba(0,188,212,0.1)',
-                border: `1px solid ${mine ? 'rgba(0,188,212,0.45)' : 'rgba(0,188,212,0.22)'}`,
+                background: mine ? 'linear-gradient(135deg, rgba(0,0,0,0.28), rgba(0,0,0,0.22))' : 'rgba(0,0,0,0.1)',
+                border: `1px solid ${mine ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.22)'}`,
                 color: '#0f172a',
                 fontSize: '0.84rem',
                 lineHeight: 1.55,
@@ -3174,7 +3175,7 @@ function OwnerSupportThread({
                   <video src={m.mediaUrl} controls playsInline style={{ width: '100%', borderRadius: 10, marginBottom: m.text ? 8 : 0, display: 'block' }} />
                 )}
                 {m.mediaUrl && m.mediaType === 'file' && (
-                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ color: '#0277BD', fontSize: '0.8rem', display: 'block', marginBottom: m.text ? 6 : 0 }}>
+                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ color: '#0a0a0a', fontSize: '0.8rem', display: 'block', marginBottom: m.text ? 6 : 0 }}>
                     📎 Attachment
                   </a>
                 )}
@@ -3193,12 +3194,12 @@ function OwnerSupportThread({
       <div style={{
         display: 'flex', alignItems: 'flex-end', gap: 8, padding: '10px 12px',
         paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
-        background: '#ffffff', borderTop: '1px solid rgba(0,188,212,0.2)', flexShrink: 0,
+        background: '#ffffff', borderTop: '1px solid rgba(0,0,0,0.2)', flexShrink: 0,
       }}>
         <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.zip,.txt" style={{ display: 'none' }} onChange={onPickFile} />
         <motion.button whileTap={{ scale: 0.9 }} type="button" onClick={() => fileRef.current?.click()} style={{
           width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-          background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.35)', color: '#0277BD',
+          background: 'rgba(0,0,0,0.12)', border: '1px solid rgba(0,0,0,0.35)', color: '#0a0a0a',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
         }}>
           <Plus size={20} strokeWidth={2.4} />
@@ -3213,15 +3214,15 @@ function OwnerSupportThread({
           }}
           style={{
             flex: 1, resize: 'none', minHeight: 40, maxHeight: 120, padding: '10px 12px', borderRadius: 12,
-            background: 'rgba(0,188,212,0.06)', border: '1px solid rgba(0,188,212,0.22)',
+            background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.22)',
             color: '#0f172a', fontSize: '0.88rem', outline: 'none', fontFamily: 'var(--font-sans)', lineHeight: 1.4,
           }}
         />
         <motion.button whileTap={{ scale: 0.9 }} type="button" disabled={sending || !input.trim()} onClick={() => send()} style={{
           width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-          background: input.trim() ? 'rgba(0,188,212,0.25)' : 'rgba(0,188,212,0.06)',
-          border: `1px solid ${input.trim() ? 'rgba(0,188,212,0.55)' : 'rgba(0,188,212,0.15)'}`,
-          color: input.trim() ? '#0277BD' : '#94a3b8',
+          background: input.trim() ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.06)',
+          border: `1px solid ${input.trim() ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.15)'}`,
+          color: input.trim() ? '#0a0a0a' : '#94a3b8',
           display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: input.trim() ? 'pointer' : 'default',
         }}>
           <Send size={18} />
