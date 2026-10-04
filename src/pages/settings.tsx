@@ -6465,6 +6465,12 @@ export default function SettingsPage() {
   const [bizCardCvv, setBizCardCvv] = useState('');
   const [vipOn, setVipOn] = useState(false);
   const [appProfits, setAppProfits] = useState(() => getAppProfitsSnapshot());
+  const [payoutEmail, setPayoutEmail] = useState(() => {
+    try { return localStorage.getItem('stooorna_owner_paypal_email') || ''; } catch { return ''; }
+  });
+  const [payoutBusy, setPayoutBusy] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [profitActionMsg, setProfitActionMsg] = useState('');
   useEffect(() => {
     const syncLocal = () => {
       const base = getAppProfitsSnapshot();
@@ -7982,19 +7988,128 @@ export default function SettingsPage() {
                         دعم شخصي وصلك: {ownerSupportEarn.toLocaleString('en-US')} Coins
                       </p>
                     ) : null}
+                    <input
+                      value={payoutEmail}
+                      onChange={e => setPayoutEmail(e.target.value.slice(0, 120))}
+                      placeholder="PayPal email for Payout"
+                      inputMode="email"
+                      style={{
+                        width: '100%', boxSizing: 'border-box', marginBottom: 8,
+                        borderRadius: 10, padding: '10px 12px',
+                        background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(250,204,21,0.35)',
+                        color: '#fff', fontSize: '0.82rem', outline: 'none',
+                      }}
+                    />
                     <button
                       type="button"
+                      disabled={payoutBusy || Number(appProfits.usd || 0) <= 0}
                       onClick={() => {
-                        try { window.open(PAYPAL_WITHDRAW_URL, '_blank', 'noopener,noreferrer'); } catch { /* */ }
+                        const email = payoutEmail.trim();
+                        const amount = Number(appProfits.usd || 0);
+                        if (!email || !email.includes('@')) { setProfitActionMsg('اكتب إيميل PayPal صحيح'); return; }
+                        if (amount <= 0) { setProfitActionMsg('لا يوجد رصيد للسحب'); return; }
+                        setPayoutBusy(true);
+                        setProfitActionMsg('');
+                        try { localStorage.setItem('stooorna_owner_paypal_email', email); } catch { /* */ }
+                        const body = JSON.stringify({
+                          email, amount, currency: 'USD',
+                          coins: Number(appProfits.coins || 0),
+                          method: 'paypal_payout',
+                          note: 'Owner profits payout',
+                        });
+                        const urls = ['/api/owner/paypal-payout', '/api/paypal/payout', '/api/payments/paypal-payout'];
+                        void (async () => {
+                          let ok = false;
+                          for (const url of urls) {
+                            try {
+                              const r = await fetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body });
+                              if (r.ok) { ok = true; break; }
+                            } catch { /* try next */ }
+                          }
+                          setPayoutBusy(false);
+                          setProfitActionMsg(ok ? 'تم إرسال طلب PayPal Payout' : 'تعذر إرسال Payout للسيرفر — افتح PayPal يدوياً');
+                          try { window.open(PAYPAL_WITHDRAW_URL, '_blank', 'noopener,noreferrer'); } catch { /* */ }
+                        })();
                       }}
                       style={{
-                        width: '100%', padding: '12px 10px', borderRadius: 12, cursor: 'pointer',
+                        width: '100%', padding: '12px 10px', borderRadius: 12, cursor: payoutBusy ? 'default' : 'pointer',
                         background: 'rgba(250,204,21,0.12)', border: '1.5px solid rgba(250,204,21,0.5)',
-                        color: '#facc15', fontWeight: 800, fontSize: '0.88rem',
+                        color: '#facc15', fontWeight: 800, fontSize: '0.88rem', marginBottom: 8,
+                        opacity: payoutBusy || Number(appProfits.usd || 0) <= 0 ? 0.6 : 1,
                       }}
                     >
-                      Withdrawal · PayPal
+                      {payoutBusy ? 'جاري الإرسال…' : 'PayPal · Payout'}
                     </button>
+                    <button
+                      type="button"
+                      disabled={resetBusy || Number(appProfits.usd || 0) <= 0}
+                      onClick={() => {
+                        const usd = Number(appProfits.usd || 0);
+                        if (usd <= 0) { setProfitActionMsg('لا يوجد رصيد لاستبداله'); return; }
+                        const gained = Math.floor(usd * 100);
+                        if (!window.confirm(`استبدال ${usd.toFixed(2)} USD إلى ${gained.toLocaleString('en-US')} Coins؟`)) return;
+                        const nextCoins = Math.floor(Number(appProfits.coins || 0)) + gained;
+                        const next = { coins: nextCoins, usd: 0 };
+                        setAppProfits(next);
+                        try {
+                          localStorage.setItem('stooorna_app_profits', JSON.stringify(next));
+                          window.dispatchEvent(new CustomEvent('stooorna:app-profits', { detail: next }));
+                        } catch { /* */ }
+                        if (user?.id) grantAppCoins(String(user.id), gained);
+                        const body = JSON.stringify({ usd, coins: gained, rate: 100, convert: 'usd_to_coins' });
+                        for (const url of ['/api/owner/profits/convert', '/api/profits/convert', '/api/owner/profits']) {
+                          void fetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body }).catch(() => {});
+                        }
+                        setProfitActionMsg(`تم الاستبدال: +${gained.toLocaleString('en-US')} Coins`);
+                      }}
+                      style={{
+                        width: '100%', padding: '11px 10px', borderRadius: 12, marginBottom: 8,
+                        cursor: resetBusy || Number(appProfits.usd || 0) <= 0 ? 'default' : 'pointer',
+                        background: 'rgba(0,188,212,0.12)', border: '1.5px solid rgba(0,188,212,0.45)',
+                        color: '#67e8f9', fontWeight: 800, fontSize: '0.84rem',
+                        opacity: Number(appProfits.usd || 0) <= 0 ? 0.6 : 1,
+                      }}
+                    >
+                      استبدال الدولار إلى Coins · 1 USD = 100
+                    </button>
+                    <button
+                      type="button"
+                      disabled={resetBusy}
+                      onClick={() => {
+                        if (!window.confirm('تصفير رصيد الأرباح؟')) return;
+                        setResetBusy(true);
+                        setProfitActionMsg('');
+                        const zero = { coins: 0, usd: 0 };
+                        setAppProfits(zero);
+                        setOwnerSupportEarn(0);
+                        try {
+                          localStorage.setItem('stooorna_app_profits', JSON.stringify(zero));
+                          localStorage.setItem('stooorna_owner_support_profit', JSON.stringify(zero));
+                          window.dispatchEvent(new CustomEvent('stooorna:app-profits', { detail: zero }));
+                          window.dispatchEvent(new CustomEvent('stooorna:owner-support-profit', { detail: zero }));
+                        } catch { /* */ }
+                        const body = JSON.stringify({ coins: 0, usd: 0, reset: true });
+                        void (async () => {
+                          for (const url of ['/api/owner/profits/reset', '/api/profits/reset', '/api/owner/profits']) {
+                            try {
+                              await fetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body });
+                            } catch { /* */ }
+                          }
+                          setResetBusy(false);
+                          setProfitActionMsg('تم تصفير الرصيد');
+                        })();
+                      }}
+                      style={{
+                        width: '100%', padding: '11px 10px', borderRadius: 12, cursor: resetBusy ? 'default' : 'pointer',
+                        background: 'rgba(239,68,68,0.12)', border: '1.5px solid rgba(239,68,68,0.45)',
+                        color: '#ef4444', fontWeight: 800, fontSize: '0.84rem',
+                      }}
+                    >
+                      {resetBusy ? '…' : 'تصفير الرصيد'}
+                    </button>
+                    {profitActionMsg ? (
+                      <p style={{ margin: '8px 0 0', color: '#facc15', fontSize: '0.75rem', fontWeight: 700 }}>{profitActionMsg}</p>
+                    ) : null}
                   </div>
                   )}
 
