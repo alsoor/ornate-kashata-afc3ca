@@ -381,6 +381,11 @@ export default function LiveCameraPage() {
   // SPLIT-PATCH: the inviter's camera shown in the right half of the invited host's own screen
   const splitPaneRef = useRef<HTMLDivElement | null>(null);
   const splitRemoteRef = useRef<any>(null);
+  // SPLIT-PATCH: the split only covers the area above the chat (the yellow line); below it the page looks normal
+  const chatCardRef = useRef<HTMLDivElement | null>(null);
+  const [splitBottomPx, setSplitBottomPx] = useState<number | null>(null);
+  // SPLIT-PATCH: tapping the split icon while a split is running shows / hides the exit pill
+  const [splitExitOpen, setSplitExitOpen] = useState(false);
   const attachSplitRemote = () => {
     const el = splitPaneRef.current;
     const t = splitRemoteRef.current;
@@ -390,6 +395,25 @@ export default function LiveCameraPage() {
   useEffect(() => {
     if (splitWith) window.setTimeout(attachSplitRemote, 60);
   }, [splitWith]);
+  const splitActive = !!(duet || splitWith);
+  useEffect(() => {
+    if (!splitActive) { setSplitExitOpen(false); return; }
+    const measure = () => {
+      const el = chatCardRef.current;
+      if (!el) { setSplitBottomPx(null); return; }
+      const top = Math.round(el.getBoundingClientRect().top);
+      setSplitBottomPx(prev => (prev != null && Math.abs(prev - top) < 2 ? prev : top));
+    };
+    measure();
+    const iv = window.setInterval(measure, 250);
+    window.addEventListener('resize', measure);
+    return () => { window.clearInterval(iv); window.removeEventListener('resize', measure); };
+  }, [splitActive]);
+  useEffect(() => {
+    if (!splitExitOpen) return;
+    const id = window.setTimeout(() => setSplitExitOpen(false), 7000);
+    return () => window.clearTimeout(id);
+  }, [splitExitOpen]);
   // VOICE-INVITE-PATCH (video) state
   const [voiceInvOpen, setVoiceInvOpen] = useState(false);
   const [voiceInvToast, setVoiceInvToast] = useState('');
@@ -2215,7 +2239,13 @@ export default function LiveCameraPage() {
       </Helmet>
 
       {/* DUET-PATCH: left = room host, right = duet guest (yellow divider) */}
-      <div style={{ position: 'absolute', inset: 0, background: '#000', zIndex: 0, display: 'flex' }}>
+      <div
+        style={
+          splitActive
+            ? { position: 'absolute', top: 0, left: 0, right: 0, bottom: splitBottomPx != null ? `calc(100% - ${splitBottomPx}px)` : '40%', background: '#000', zIndex: 0, display: 'flex' }
+            : { position: 'absolute', inset: 0, background: '#000', zIndex: 0, display: 'flex' }
+        }
+      >
         <div style={{ flex: 1, minWidth: 0, height: '100%', position: 'relative', overflow: 'hidden' }}>
           <div ref={hostPaneRef} style={{ width: '100%', height: '100%' }} />
           {!camOn && amHost ? (
@@ -2382,8 +2412,14 @@ export default function LiveCameraPage() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           {/* SPLIT-PATCH: host-only button — list of people who are live on camera, Invite = split screen */}
-          {amHost && !duet && !splitWith ? (
-            <SplitInviteButton onClick={() => setDuetPanelOpen(true)} active={duetPanelOpen} />
+          {amHost ? (
+            <SplitInviteButton
+              active={duetPanelOpen || splitExitOpen}
+              onClick={() => {
+                if (duet || splitWith) setSplitExitOpen(v => !v); // during a split: show / hide the exit pill
+                else setDuetPanelOpen(true);
+              }}
+            />
           ) : null}
           {/* VOICE-INVITE-PATCH (video): everyone in the room invites their online friends (replaces the live-only duet list) */}
           {isHostRoom ? (
@@ -2796,6 +2832,7 @@ export default function LiveCameraPage() {
           </button>
           {liveChatOpen && (
             <div
+              ref={chatCardRef}
               style={{
                 pointerEvents: 'auto',
                 background: 'rgba(4,14,16,0.82)',
@@ -3441,7 +3478,7 @@ export default function LiveCameraPage() {
         )}
       </AnimatePresence>
       {/* DUET-PATCH overlays */}
-      {amHost && duet ? <DuetEndButton onClick={endDuet} /> : null}
+      {/* SPLIT-PATCH: the old always-visible End button is replaced by the exit pill that the split icon shows */}
       {isHostRoom ? (
         <VoiceInvitePanel
           kind="camera"
@@ -3471,7 +3508,18 @@ export default function LiveCameraPage() {
           onDecline={declineDuetInvite}
         />
       ) : null}
-      <SplitGuestBadge withName={splitWith ? (splitWith.username ? `@${splitWith.username}` : splitWith.name) : null} onEnd={() => void splitRef.current?.leave(true)} />
+      <SplitGuestBadge
+        withName={(() => {
+          const peer = duet && amHost ? duet : splitWith;
+          if (!splitExitOpen || !peer) return null;
+          return peer.username ? `@${peer.username}` : peer.name;
+        })()}
+        onEnd={() => {
+          setSplitExitOpen(false);
+          if (duet && amHost) endDuet();
+          else void splitRef.current?.leave(true);
+        }}
+      />
       <DuetToast text={duetToast} />
       <LiveVipDock hostId={hostId} currentUserId={myId} />
       {/* قائمة المتحدث: دعم (هدية) + تجميد المايك لصاحب البث / كتم محلي للمشاهد */}
