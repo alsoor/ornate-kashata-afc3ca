@@ -13885,6 +13885,7 @@ function AdminBellServerSync({ myUserId }: { myUserId: string | null }) {
 
 function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?: number }) {
   const uid = String(userId || '');
+  const visitorCount = useSiteVisitorCount(uid || null);
   const [open, setOpen] = useState(false);
   const [hapticOff, setHapticOff] = useState(() => {
     try { return localStorage.getItem('stooorna_haptic_off') === '1'; } catch { return false; }
@@ -13948,18 +13949,21 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
         aria-label="Admin notices"
         style={{
           width: size, height: size, borderRadius: '50%',
-          border: `1.5px solid ${hapticOff ? 'rgba(249,115,22,0.85)' : unread ? 'rgba(234,179,8,0.75)' : 'rgba(255,255,255,0.35)'}`,
-          background: hapticOff ? 'rgba(249,115,22,0.2)' : unread ? 'rgba(234,179,8,0.16)' : 'rgba(255,255,255,0.08)',
-          color: hapticOff ? '#f97316' : unread ? '#eab308' : 'rgba(230,230,230,0.95)',
+          border: `1.5px solid ${unread ? 'rgba(239,68,68,0.95)' : hapticOff ? 'rgba(249,115,22,0.85)' : 'rgba(255,255,255,0.35)'}`,
+          background: unread ? 'rgba(239,68,68,0.16)' : hapticOff ? 'rgba(249,115,22,0.2)' : 'rgba(255,255,255,0.08)',
+          color: '#ffffff',
+          boxShadow: unread ? '0 0 10px rgba(239,68,68,0.55)' : 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', padding: 0,
         }}
       >
-        <span style={{ position: 'relative', display: 'flex' }}>
-          <Bell size={15} strokeWidth={2.2} />
-          {hapticOff ? <span style={{ position: 'absolute', inset: 2, borderTop: '2px solid #f97316', transform: 'rotate(-35deg)', transformOrigin: 'center' }} /> : null}
-          {unread ? <span style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: '50%', background: '#eab308' }} /> : null}
-        </span>
+        <span style={{
+          color: '#ffffff',
+          fontSize: size <= 26 ? '0.68rem' : '0.78rem',
+          fontWeight: 800,
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+        }}>{visitorCount}</span>
       </button>
       {open && typeof document !== 'undefined' && createPortal(
         <>
@@ -19056,7 +19060,7 @@ function hdrIconTone(active: boolean, tone: 'green' | 'orange' = 'green'): React
   };
 }
 
-function SiteVisitorsBadge({ userId }: { userId?: string | null }) {
+function useSiteVisitorCount(userId?: string | null) {
   const [count, setCount] = useState(0);
   useEffect(() => {
     let vid = userId ? String(userId) : '';
@@ -19113,25 +19117,7 @@ function SiteVisitorsBadge({ userId }: { userId?: string | null }) {
       post('/api/room/leave');
     };
   }, [userId]);
-  return (
-    <div
-      aria-label={'زوار الموقع ' + count}
-      title="الزوار الآن"
-      style={{
-        position: 'absolute',
-        top: 'max(18px, calc(env(safe-area-inset-top, 0px) + 10px))',
-        right: 46,
-        zIndex: 30,
-        pointerEvents: 'none',
-      }}
-    >
-      <span style={{
-        fontSize: '0.78rem', fontWeight: 800, lineHeight: 1,
-        fontVariantNumeric: 'tabular-nums',
-        color: '#ffffff',
-      }}>{count}</span>
-    </div>
-  );
+  return count;
 }
 
 function homeLiveSameEntries(a: HomeLiveEntry[], b: HomeLiveEntry[]): boolean {
@@ -24973,7 +24959,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
-          <SiteVisitorsBadge userId={user?.id ? String(user.id) : null} />
           {/* Profile bell lives in the right icon column above Ads (not absolute top). */}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
