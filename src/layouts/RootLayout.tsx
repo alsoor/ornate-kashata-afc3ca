@@ -3387,9 +3387,11 @@ function GlobalBottomNavigation() {
     // Stop ring immediately on BOTH devices before any async work
     stopHomeIncomingRing();
     homeRingLockRef.current = { mode: 'answered', channel: invite.channel, at: Date.now() };
-    // Keep top bar visible: enter connecting before async so UI does not vanish on answer
+    // Answer enters the call immediately. Audio join continues in the background.
     setHomeCallMinimized(true);
-    setHomeCallPhase('connecting');
+    setHomeCallPhase('live');
+    homeCallPhaseRef.current = 'live';
+    if (!homeCallLiveStartedAt.current) homeCallLiveStartedAt.current = Date.now();
     setHomeCallChannel(String(invite.channel || '').trim() || null);
     setHomeCallMembers([
       { id: user.id, name: (user as any).name ?? null, username: (user as any).username ?? null, avatarUrl: (user as any).avatarUrl ?? (user as any).image ?? null, joined: true },
