@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, Briefcase, Menu, ChevronDown, AlertTriangle, FileText, DollarSign } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, LogOut, Mic, Play, Pause, Trash2, Clock, CheckCircle, Share2, X, AtSign, Edit2, Users, Copy, Check, QrCode, Phone, ShieldCheck, Radio, Headphones, Send, Plus, MessageCircle, Bell, Music, Heart, Search, Link2, ClipboardPaste, Building2, Briefcase, Menu, ChevronDown, AlertTriangle, FileText, DollarSign, Image as ImageIcon, Video as VideoIcon } from 'lucide-react';
 import { useSession, signOut, signIn, signUp } from '@/lib/auth/auth-client';
 import { usePresenceQuery } from '@/hooks/usePresence';
 import LiveLocationMap from '@/components/LiveLocationMap';
@@ -2075,6 +2075,7 @@ function readLocalSupportTickets(): Array<{
   fromUserId?: string;
   fromUsername?: string | null;
   fromName?: string | null;
+  fromEmail?: string | null;
   text: string;
   at: string;
   unread?: number;
@@ -2323,6 +2324,80 @@ async function resolveAudio(category: 'quran' | 'ar_song' | 'en_song' | 'music',
   return hit || list[0];
 }
 
+/** مفتاح "آخر رد شافه المستخدم" — يُستخدم لنقطة التنبيه على أيقونة الدعم */
+function supportSeenKey(uid: string) {
+  return `stooorna_support_seen_${uid}`;
+}
+function markSupportRepliesSeen(uid: string, at: number) {
+  try {
+    const prev = Number(localStorage.getItem(supportSeenKey(uid)) || 0) || 0;
+    if (at > prev) localStorage.setItem(supportSeenKey(uid), String(at));
+    window.dispatchEvent(new CustomEvent('stooorna:support-seen', { detail: { uid } }));
+  } catch { /* ignore */ }
+}
+
+/** استخراج نص المشكلة فقط (بدون سطر [مستخدم] وسطر الإيميل) لعرضه مختصراً في القائمة */
+function supportPreview(text?: string | null): string {
+  const lines = String(text || '')
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !/^\[(مستخدم|شركة)\]/.test(l) && !l.startsWith('📧'));
+  return lines.join(' ');
+}
+
+/** ردود فريق الدعم الموجّهة لهذا المستخدم (تصله في نفس مكان أيقونة الدعم) */
+async function fetchSupportReplies(uid: string): Promise<SupportMsg[]> {
+  if (!uid) return [];
+  const tomb = '[[support-thread-deleted]]';
+  const found = new Map<string, SupportMsg>();
+  let tombAt = 0;
+  let supportId: string | null = null;
+  try { supportId = await resolveSupportUserId(); } catch { /* ignore */ }
+  const urls = ['/api/support/messages?role=user'];
+  if (supportId) urls.push(`/api/messages?with=${encodeURIComponent(supportId)}`);
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) continue;
+      const d = await r.json();
+      const list: any[] = Array.isArray(d) ? d : (d.messages || d.items || []);
+      for (const m of list) {
+        const text = String(m.text || m.content || m.body || m.message || '');
+        if (!text && !m.mediaUrl) continue;
+        const sender = String(m.fromUserId || m.senderId || m.authorId || '');
+        if (sender && sender === uid) continue; // رسائلي أنا
+        const fromSupport =
+          m.from === 'support' || m.from === 'agent' || m.from === 'stooorna' ||
+          !!m.isSupportReply || !!m.meta?.isSupportReply ||
+          (!!supportId && sender === supportId);
+        if (!fromSupport) continue;
+        const at = toMs(m.at ?? m.createdAt);
+        if (text.includes(tomb)) { tombAt = Math.max(tombAt, at || Date.now()); continue; }
+        const id = String(m.id ?? m._id ?? `${at}-${text.slice(0, 16)}`);
+        found.set(id, { id, from: 'support', text, at, mediaUrl: m.mediaUrl, mediaType: m.mediaType });
+      }
+    } catch { /* next */ }
+  }
+  let wipedAt = getSupportWipedAt(uid);
+  // الدعم حذف المحادثة → نخفي كل ما قبل وقت الحذف
+  if (tombAt > wipedAt) {
+    wipedAt = tombAt;
+    try { localStorage.setItem(supportWipedKey(uid), String(tombAt)); } catch { /* ignore */ }
+  }
+  let out = Array.from(found.values());
+  // رسالة الشكر (تم): تختفي بعد 10 دقائق
+  const done = out.filter(m => isSupportDoneText(m.text)).sort((x, y) => y.at - x.at)[0];
+  if (done && done.at && Date.now() - done.at >= SUPPORT_CHAT_TTL_MS && done.at > wipedAt) {
+    wipedAt = done.at;
+    try { localStorage.setItem(supportWipedKey(uid), String(done.at)); } catch { /* ignore */ }
+  }
+  out = out.filter(m => !wipedAt || !m.at || m.at > wipedAt);
+  return out.sort((x, y) => x.at - y.at);
+}
+
+type SupportAttachment = { url: string; type: 'image' | 'video' | 'file'; name: string };
+
+/** أيقونة الدعم → فقاعة طلب بسيطة (بدون شات): يوزر + إيميل + المشكلة + مرفق + إرسال */
 function SupportChatOverlay({
   open,
   onClose,
@@ -2332,670 +2407,148 @@ function SupportChatOverlay({
   onClose: () => void;
   currentUser: { id?: string; name?: string | null; username?: string | null; email?: string | null } | null;
 }) {
-  const [lang, setLang] = useState<'ar' | 'en' | null>(null);
-  const copy = SUPPORT_COPY[lang ?? 'ar'];
-  const [messages, setMessages] = useState<SupportMsg[]>([]);
-  const [input, setInput] = useState('');
+  const uid = currentUser?.id || '';
+  const uname = String(currentUser?.username || '').replace(/^@/, '').trim();
+  const isAr = (() => { try { return localStorage.getItem('lang') !== 'en'; } catch { return true; } })();
+  const t = isAr
+    ? {
+        user: 'المستخدم', guest: 'زائر', emailPh: 'البريد الإلكتروني', problemPh: 'اكتب مشكلتك هنا...',
+        send: 'إرسال', sending: 'جاري الإرسال…', sentTitle: 'تم إرسال طلبك', sentSub: 'وسوف يتم الرد عليكم قريباً',
+        replies: 'رسائل الدعم', image: 'صورة', video: 'فيديو', file: 'ملف', attach: 'إرفاق',
+        badEmail: 'اكتب بريداً إلكترونياً صحيحاً', needProblem: 'اكتب المشكلة أو أرفق ملفاً',
+      }
+    : {
+        user: 'User', guest: 'Guest', emailPh: 'Email address', problemPh: 'Describe your problem...',
+        send: 'Send', sending: 'Sending…', sentTitle: 'Your request has been sent', sentSub: 'We will reply to you soon',
+        replies: 'Support messages', image: 'Image', video: 'Video', file: 'File', attach: 'Attach',
+        badEmail: 'Enter a valid email address', needProblem: 'Describe the problem or attach a file',
+      };
+
+  const [email, setEmail] = useState('');
+  const [problem, setProblem] = useState('');
+  const [attachment, setAttachment] = useState<SupportAttachment | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [sending, setSending] = useState(false);
-  const [userMsgCount, setUserMsgCount] = useState(0);
-  const [aiPhase, setAiPhase] = useState<AiPhase>('pick_lang');
-  const [accountRole, setAccountRole] = useState<'user' | 'company' | null>(null);
-  const [listenCategory, setListenCategory] = useState<'quran' | 'ar_song' | 'en_song' | 'music' | null>(null);
-  const [nowPlaying, setNowPlaying] = useState<{ title: string; url: string } | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const [supportOnline, setSupportOnline] = useState(false);
-  const [autoMusicPlaying, setAutoMusicPlaying] = useState(false);
-  const autoMusicRef = useRef<HTMLAudioElement | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+  const [replies, setReplies] = useState<SupportMsg[]>([]);
+  const imgRef = useRef<HTMLInputElement>(null);
+  const vidRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const aiPhaseRef = useRef<AiPhase>('pick_lang');
-  const waitTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastSupportIdRef = useRef<string | null>(null);
-  const typeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const maxPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const langRef = useRef<'ar' | 'en'>('ar');
-  const accountRoleRef = useRef<'user' | 'company' | null>(null);
 
-  // Calm background music URLs (lofi / ambient)
-  const CALM_MUSIC_URLS = [
-    'https://www.bensound.com/bensound-music/bensound-slowmotion.mp3',
-    'https://www.bensound.com/bensound-music/bensound-relaxing.mp3',
-    'https://www.bensound.com/bensound-music/bensound-dreams.mp3',
-  ];
-
-  function startAutoMusic() {
-    if (autoMusicRef.current) return; // already started
-    const url = CALM_MUSIC_URLS[Math.floor(Math.random() * CALM_MUSIC_URLS.length)];
-    const a = new Audio(url);
-    a.loop = true;
-    a.volume = 0.25;
-    autoMusicRef.current = a;
-    a.play().then(() => setAutoMusicPlaying(true)).catch(() => {});
-  }
-
-  function toggleAutoMusic() {
-    const a = autoMusicRef.current;
-    if (!a) return;
-    if (autoMusicPlaying) {
-      a.pause();
-      setAutoMusicPlaying(false);
-    } else {
-      a.play().then(() => setAutoMusicPlaying(true)).catch(() => {});
-    }
-  }
-
-  function stopAutoMusic() {
-    const a = autoMusicRef.current;
-    if (a) { a.pause(); a.src = ''; }
-    autoMusicRef.current = null;
-    setAutoMusicPlaying(false);
-  }
-
-  const pushBotInstant = (text: string) => {
-    setMessages(prev => [...prev, { id: `b-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, from: 'bot', text, at: Date.now() }]);
-  };
-
-  /** Slow typewriter for AI lines */
-  const pushBotTyped = (fullText: string): Promise<void> => {
-    return new Promise(resolve => {
-      if (typeTimerRef.current) {
-        clearInterval(typeTimerRef.current);
-        typeTimerRef.current = null;
-      }
-      setIsTyping(true);
-      const id = `b-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      let i = 0;
-      // reveal ~2–3 chars at a time for a natural slow feel
-      const step = Math.max(1, Math.ceil(fullText.length / 40));
-      const tickMs = 45;
-      // small delay so "Type..." is visible first
-      setTimeout(() => {
-        setMessages(prev => [...prev, { id, from: 'bot', text: '', at: Date.now() }]);
-        typeTimerRef.current = setInterval(() => {
-          i = Math.min(fullText.length, i + step);
-          const slice = fullText.slice(0, i);
-          setMessages(prev => prev.map(m => (m.id === id ? { ...m, text: slice } : m)));
-          if (i >= fullText.length) {
-            if (typeTimerRef.current) clearInterval(typeTimerRef.current);
-            typeTimerRef.current = null;
-            setIsTyping(false);
-            resolve();
-          }
-        }, tickMs);
-      }, 350);
-    });
-  };
-
-  const stopAudio = () => {
-    try {
-      audioRef.current?.pause();
-      if (audioRef.current) audioRef.current.src = '';
-    } catch { /* ignore */ }
-    audioRef.current = null;
-    if (maxPlayTimerRef.current) {
-      clearTimeout(maxPlayTimerRef.current);
-      maxPlayTimerRef.current = null;
-    }
-    setIsPlaying(false);
-    setNowPlaying(null);
-  };
-
-  const stopAiCompletely = () => {
-    aiPhaseRef.current = 'human';
-    setAiPhase('human');
-    if (waitTimerRef.current) {
-      clearInterval(waitTimerRef.current);
-      waitTimerRef.current = null;
-    }
-    if (typeTimerRef.current) {
-      clearInterval(typeTimerRef.current);
-      typeTimerRef.current = null;
-    }
-    setIsTyping(false);
-    stopAudio();
-  };
-
-  const playAudio = (track: { title: string; url: string }) => {
-    stopAudio();
-    const a = new Audio(track.url);
-    audioRef.current = a;
-    a.onended = () => setIsPlaying(false);
-    a.onerror = () => {
-      setIsPlaying(false);
-      pushBotInstant(SUPPORT_COPY[langRef.current].notFound);
-    };
-    // Cap at 5 minutes even if the file is longer
-    a.ontimeupdate = () => {
-      if (a.currentTime >= SUPPORT_AUDIO_MAX_SEC) {
-        a.pause();
-        setIsPlaying(false);
-      }
-    };
-    a.play().then(() => {
-      setNowPlaying(track);
-      setIsPlaying(true);
-      setAiPhase('playing');
-      aiPhaseRef.current = 'playing';
-      pushBotInstant(`${SUPPORT_COPY[langRef.current].playing} ${track.title}`);
-      if (maxPlayTimerRef.current) clearTimeout(maxPlayTimerRef.current);
-      maxPlayTimerRef.current = setTimeout(() => {
-        try { a.pause(); } catch { /* */ }
-        setIsPlaying(false);
-      }, SUPPORT_AUDIO_MAX_SEC * 1000);
-    }).catch(() => {
-      pushBotInstant(SUPPORT_COPY[langRef.current].notFound);
-    });
-  };
-
-  const togglePlayPause = () => {
-    const a = audioRef.current;
-    if (!a || !nowPlaying) return;
-    if (a.paused) {
-      a.play().then(() => setIsPlaying(true)).catch(() => {});
-    } else {
-      a.pause();
-      setIsPlaying(false);
-    }
-  };
-
-  // Seed: language picker first — restore thread if still within 10 minutes
+  // فتح الفقاعة: نظّف النموذج وعبّي الإيميل من حساب المستخدم (قابل للتعديل)
   useEffect(() => {
-    if (!open) {
-      stopAiCompletely();
-      // do NOT wipe messages from storage on leave — keep 10 min
-      return;
-    }
-    const uid = currentUser?.id || 'anon';
-    const stored = loadSupportThread(uid);
-    if (stored?.messages?.length) {
-      setMessages(stored.messages.map(m => ({
-        id: m.id,
-        from: (m.from === 'user' ? 'user' : m.from === 'support' ? 'support' : 'bot') as SupportMsg['from'],
-        text: m.text,
-        at: m.at,
-        mediaUrl: m.mediaUrl,
-        mediaType: m.mediaType as SupportMsg['mediaType'],
-      })));
-      // if already had language + history, skip picker
-      const hadUser = stored.messages.some(m => m.from === 'user');
-      if (hadUser) {
-        setLang(langRef.current || 'ar');
-        setAiPhase(stored.completedAt ? 'human' : 'waiting');
-        aiPhaseRef.current = stored.completedAt ? 'human' : 'waiting';
-      } else {
-        setLang(null);
-        setAiPhase('pick_lang');
-        aiPhaseRef.current = 'pick_lang';
-      }
-      if (stored.completedAt) {
-        stopAiCompletely();
-      }
-    } else {
-      setMessages([]);
-      setLang(null);
-      setAiPhase('pick_lang');
-      aiPhaseRef.current = 'pick_lang';
-    }
-    setInput('');
-    setUserMsgCount(stored?.messages?.filter(m => m.from === 'user').length || 0);
-    setListenCategory(null);
-    setAccountRole(null);
-    accountRoleRef.current = null;
-    lastSupportIdRef.current = null;
-    setIsTyping(false);
-    stopAudio();
-    setSupportOnline(true);
+    if (!open) return;
+    setEmail(currentUser?.email || '');
+    setProblem('');
+    setAttachment(null);
+    setMenuOpen(false);
+    setSending(false);
+    setSent(false);
+    setError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, currentUser?.id]);
 
-  // Persist user support chat (10 min TTL, survives leave/re-enter)
+  // ردود الدعم: تظهر داخل الفقاعة وتُعتبر "مقروءة" عند فتحها
   useEffect(() => {
-    if (!open || !currentUser?.id || !messages.length) return;
-    saveSupportThread(
-      currentUser.id,
-      messages.map(m => ({
-        id: m.id,
-        from: m.from,
-        text: m.text,
-        at: m.at,
-        mediaUrl: m.mediaUrl,
-        mediaType: m.mediaType,
-      })),
-      { resetTtl: true },
-    );
-  }, [messages, open, currentUser?.id]);
-
-  // Auto-delete after expiry
-  useEffect(() => {
-    if (!open || !currentUser?.id) return;
-    const id = setInterval(() => {
-      if (peekSupportThreadExpired(currentUser.id!)) {
-        clearSupportThread(currentUser.id!);
-        setMessages([]);
-        setLang(null);
-        setAiPhase('pick_lang');
-        aiPhaseRef.current = 'pick_lang';
-        setUserMsgCount(0);
-        lastSupportIdRef.current = null;
-      }
-    }, 2000);
-    return () => clearInterval(id);
-  }, [open, currentUser?.id]);
-
-  // تفريغ فوري عند المستخدم لما تنحذف المحادثة (من أي مكان: مؤقّت عام أو حدث تفريغ)
-  useEffect(() => {
-    const uid = currentUser?.id;
-    if (!uid) return;
-    const onCleared = (e: Event) => {
-      const d = (e as CustomEvent).detail as { peerId?: string; cleared?: boolean } | undefined;
-      if (!d?.cleared || String(d.peerId) !== String(uid)) return;
-      setMessages([]);
-      setLang(null);
-      setAiPhase('pick_lang');
-      aiPhaseRef.current = 'pick_lang';
-      setUserMsgCount(0);
-      lastSupportIdRef.current = null;
-    };
-    window.addEventListener('stooorna:support-thread', onCleared);
-    return () => window.removeEventListener('stooorna:support-thread', onCleared);
-  }, [currentUser?.id]);
-
-  async function selectLang(chosen: 'ar' | 'en') {
-    setLang(chosen);
-    langRef.current = chosen;
-    try { localStorage.setItem('lang', chosen); } catch { /* */ }
-    setAccountRole('user');
-    accountRoleRef.current = 'user';
-    setAiPhase('waiting');
-    aiPhaseRef.current = 'waiting';
-    const L = SUPPORT_COPY[chosen];
-    await pushBotTyped(L.greetingUser(resolveUserDisplayName()));
-    await pushBotTyped(L.waitSupport);
-    // لا نرسل تنبيه للدعم هنا — التنبيه يصل فقط عندما يرسل المستخدم رسالة فعلية
-  }
-
-  /** Resolve display name for individual users */
-  function resolveUserDisplayName(): string {
-    const u = currentUser as { username?: string | null; name?: string | null } | null;
-    const un = (u?.username || '').replace(/^@/, '').trim();
-    if (un) return un;
-    const nm = (u?.name || '').trim();
-    if (nm) return nm;
-    return langRef.current === 'ar' ? 'عزيزي' : 'there';
-  }
-
-  /** Resolve company registration info from local registry + session */
-  function resolveCompanyInfo(): { companyName: string; license?: string; tradeName?: string } {
-    const email = (currentUser?.email || '').trim().toLowerCase();
-    let reg: CompanyRegistration | null = null;
-    try {
-      if (email) reg = findCompanyByEmail(email);
-      if (!reg && currentUser) {
-        const list = loadCompaniesRegistry();
-        const un = String((currentUser as any)?.username || '').replace(/^@/, '').trim().toLowerCase();
-        reg = list.find(c => {
-          const blob = `${c.companyName} ${c.tradeName} ${c.email} ${c.ownerName}`.toLowerCase();
-          return (un && blob.includes(un)) || (email && c.email.toLowerCase() === email);
-        }) || null;
-      }
-    } catch { /* ignore */ }
-    const companyName =
-      preferredCompanyDisplayName({
-        companyName: reg?.companyName,
-        name: currentUser?.name,
-        tradeName: reg?.tradeName,
-        email: currentUser?.email,
-        username: (currentUser as any)?.username,
-      }) ||
-      (currentUser?.name || '').trim() ||
-      (langRef.current === 'ar' ? 'الشركة' : 'your company');
-    return {
-      companyName,
-      license: reg?.licenseNumber || undefined,
-      tradeName: reg?.tradeName || undefined,
-    };
-  }
-
-  async function selectRole(role: 'user' | 'company') {
-    setAccountRole(role);
-    accountRoleRef.current = role;
-    const L = SUPPORT_COPY[langRef.current];
-    if (role === 'user') {
-      const name = resolveUserDisplayName();
-      await pushBotTyped(L.greetingUser(name));
-    } else {
-      const info = resolveCompanyInfo();
-      await pushBotTyped(L.greetingCompany(info.companyName, info.license));
-    }
-    await pushBotTyped(L.howHelp);
-    setAiPhase('ask_help');
-    aiPhaseRef.current = 'ask_help';
-  }
-
-  async function selectHelpTopic(topic: 'forgot_pw' | 'talk_support') {
-    if (aiPhaseRef.current === 'human' || aiPhaseRef.current === 'waiting') return;
-    const L = SUPPORT_COPY[langRef.current];
-    const label = topic === 'forgot_pw' ? L.btnForgotPw : L.btnTalkSupport;
-    const waitMsg = topic === 'forgot_pw' ? L.waitForgot : L.waitSupport;
-    setMessages(prev => [...prev, {
-      id: `u-help-${Date.now()}`,
-      from: 'user',
-      text: label,
-      at: Date.now(),
-    }]);
-    setUserMsgCount(c => c + 1);
-    await deliverToSupport({
-      text: `[${topic === 'forgot_pw' ? 'forgot_password' : 'talk_to_support'}] ${label}`,
-    });
-    setAiPhase('waiting');
-    aiPhaseRef.current = 'waiting';
-    await pushBotTyped(waitMsg);
-    pushOwnerSupportAlert(resolveUserDisplayName());
-  }
-
-  // Auto-scroll
-  useEffect(() => {
-    if (!open) return;
-    const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, open, isTyping]);
-
-  // Every 2 minutes: please wait (only while AI is handling wait / listen)
-  useEffect(() => {
-    if (!open || !lang) return;
-    if (waitTimerRef.current) clearInterval(waitTimerRef.current);
-    waitTimerRef.current = setInterval(() => {
-      const phase = aiPhaseRef.current;
-      if (phase === 'human' || phase === 'idle' || phase === 'pick_lang' || phase === 'ask_role') return;
-      void pushBotTyped(SUPPORT_COPY[langRef.current].waiting);
-    }, 120_000);
-    return () => {
-      if (waitTimerRef.current) clearInterval(waitTimerRef.current);
-      waitTimerRef.current = null;
-    };
-  }, [open, lang]);
-
-  // Poll support presence + real agent replies
-  useEffect(() => {
-    if (!open) return;
+    if (!open || !uid) { setReplies([]); return; }
     let cancelled = false;
-    const poll = async () => {
-      try {
-        // presence of support desk
-        try {
-          const pr = await fetch('/api/users/by-username/stooorna', { credentials: 'include' });
-          if (pr.ok) {
-            const pd = await pr.json();
-            if (!cancelled && typeof pd.online === 'boolean') setSupportOnline(!!pd.online);
-            else if (!cancelled) setSupportOnline(true);
-          }
-        } catch {
-          if (!cancelled) setSupportOnline(true);
-        }
-
-        const r = await fetch('/api/support/messages?role=user', { credentials: 'include' });
-        if (!r.ok || cancelled) return;
-        const d = await r.json();
-        const list: Array<{ id: string; from: string; text: string; at?: number }> = Array.isArray(d) ? d : (d.messages || []);
-        const myUid = currentUser?.id || 'anon';
-        const wipedAtU = getSupportWipedAt(myUid);
-        if (list.some(m => String(m.text || '').includes('[[support-thread-deleted]]'))) {
-          if (currentUser?.id) clearSupportThread(currentUser.id);
-          setMessages([]);
-          return;
-        }
-        const supportOnes = list
-          .filter(m => m.from === 'support' || m.from === 'agent' || m.from === 'stooorna')
-          .filter(m => !String(m.text || '').includes('[[support-thread-deleted]]'))
-          .filter(m => !wipedAtU || !m.at || toMs(m.at) > wipedAtU);
-        if (!supportOnes.length) return;
-        // الدعم ضغط "تم": نثبّت وقت الإنهاء ونحذف عند المستخدم تلقائياً بعد 10 دقائق
-        const doneMsg = [...supportOnes].reverse().find(m => isSupportDoneText(m.text));
-        if (doneMsg && currentUser?.id) {
-          const doneAt = toMs(doneMsg.at) || Date.now();
-          if (Date.now() - doneAt >= SUPPORT_CHAT_TTL_MS) {
-            clearSupportThread(currentUser.id);
-            return;
-          }
-          const st = loadSupportThread(currentUser.id);
-          if (st && !st.completedAt) saveSupportThread(currentUser.id, st.messages, { completedAt: doneAt });
-        }
-        const latest = supportOnes[supportOnes.length - 1];
-        if (latest.id && latest.id !== lastSupportIdRef.current) {
-          lastSupportIdRef.current = latest.id;
-          if (aiPhaseRef.current !== 'human') {
-            stopAiCompletely();
-            setMessages(prev => [
-              ...prev,
-              { id: `s-join-${Date.now()}`, from: 'bot', text: SUPPORT_COPY[langRef.current].supportJoined, at: Date.now() },
-              { id: `s-${latest.id}`, from: 'support', text: latest.text, at: latest.at || Date.now() },
-            ]);
-          } else {
-            setMessages(prev => {
-              if (prev.some(p => p.id === `s-${latest.id}`)) return prev;
-              return [...prev, { id: `s-${latest.id}`, from: 'support', text: latest.text, at: latest.at || Date.now() }];
-            });
-          }
-        }
-      } catch { /* silent */ }
+    const load = async () => {
+      const list = await fetchSupportReplies(uid);
+      if (cancelled) return;
+      setReplies(prev => (
+        prev.length === list.length && prev[prev.length - 1]?.id === list[list.length - 1]?.id ? prev : list
+      ));
+      const maxAt = list.reduce((m, x) => Math.max(m, x.at || 0), 0);
+      if (maxAt) markSupportRepliesSeen(uid, maxAt);
     };
-    poll();
-    const id = setInterval(poll, 4000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [open]);
+    void load();
+    const id = setInterval(load, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [open, uid]);
 
-  // Cleanup audio on unmount
-  useEffect(() => () => {
-    stopAudio();
-    if (typeTimerRef.current) clearInterval(typeTimerRef.current);
-  }, []);
-
-  async function deliverToSupport(payload: {
-    text?: string;
-    mediaUrl?: string;
-    mediaType?: string;
-    commentThreadId?: string;
-  }) {
-    const text = payload.text || '';
-    const isGuest = !currentUser;
-    const fromUsername = (currentUser as { username?: string })?.username ?? null;
-    const fromName = isGuest ? 'Guest' : (currentUser?.name ?? null);
-    const fromEmail = currentUser?.email ?? null;
+  async function deliverToSupport(p: { email: string; text: string; media: SupportAttachment | null }) {
+    const fromUsername = uname || null;
+    const fromName = currentUser ? (currentUser.name ?? null) : 'Guest';
     const fromUserId = currentUser?.id;
-
-    const role = accountRoleRef.current;
-    const companyInfo = role === 'company' ? resolveCompanyInfo() : null;
-    const roleLabel = role === 'company' ? 'company' : role === 'user' ? 'user' : 'unknown';
-    const notifyPrefix =
-      role === 'company' && companyInfo
-        ? `[شركة] ${companyInfo.companyName}${companyInfo.license ? ` | ترخيص: ${companyInfo.license}` : ''}`
-        : role === 'user'
-          ? `[مستخدم] @${fromUsername || fromName || 'user'}`
-          : '';
-    const notifyText = notifyPrefix ? `${notifyPrefix}\n${text}` : text;
-
     // مفتاح ثابت لكل مستخدم → محادثة واحدة فقط عند الدعم
-    // (قبل: كل رسالة كانت تُحفظ بمعرّف مختلف cmt-… فتظهر كمحادثة جديدة)
     const stableSupportKey = fromUserId || (fromUsername ? `user:${fromUsername}` : getSupportGuestId());
+    const header = `[مستخدم] @${fromUsername || fromName || 'user'}\n📧 ${p.email}`;
+    const body = p.text || (p.media ? `[${p.media.type}]` : '');
+    const notifyText = `${header}\n${body}`;
+    const lang = isAr ? 'ar' : 'en';
 
-    // Always queue locally so owner inbox can pick it up
+    // يُحفظ محلياً حتى يلتقطه صندوق الدعم
     queueSupportTicket({
       fromUserId: stableSupportKey,
       fromUsername,
       fromName,
-      fromEmail,
-      text: notifyText || text,
-      mediaUrl: payload.mediaUrl,
-      mediaType: payload.mediaType,
-      lang: langRef.current,
-      accountRole: roleLabel,
-      companyName: companyInfo?.companyName,
-      licenseNumber: companyInfo?.license,
+      fromEmail: p.email,
+      text: notifyText,
+      mediaUrl: p.media?.url,
+      mediaType: p.media?.type,
+      lang,
+      accountRole: 'user',
     });
 
-    // Real delivery into the app messaging system → @stooorna (إشعار للدعم)
+    // إرسال حقيقي عبر نظام الرسائل → @stooorna
     try {
       const supportId = await resolveSupportUserId();
       if (supportId) {
         await sendRealChatMessage({
           toUserId: supportId,
-          text: notifyText || (payload.mediaType ? `[${payload.mediaType}]` : ''),
-          mediaUrl: payload.mediaUrl,
-          mediaType: payload.mediaType,
-          meta: {
-            isSupportTicket: true,
-            support: true,
-            fromUsername,
-            fromName,
-            lang: langRef.current,
-            accountRole: roleLabel,
-            companyName: companyInfo?.companyName,
-            licenseNumber: companyInfo?.license,
-          },
+          text: notifyText,
+          mediaUrl: p.media?.url,
+          mediaType: p.media?.type,
+          meta: { isSupportTicket: true, support: true, fromUsername, fromName, fromEmail: p.email, lang, accountRole: 'user' },
         });
       }
-      // Also try dedicated support route if backend adds it later
       await fetch('/api/support/messages', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: notifyText || text,
-          mediaUrl: payload.mediaUrl,
-          mediaType: payload.mediaType,
+          text: notifyText,
+          mediaUrl: p.media?.url,
+          mediaType: p.media?.type,
           toUsername: 'stooorna',
           toUserId: supportId,
           fromUserId,
           fromUsername,
           fromName,
-          fromEmail,
-          lang: langRef.current,
-          accountRole: roleLabel,
-          companyName: companyInfo?.companyName,
-          licenseNumber: companyInfo?.license,
+          fromEmail: p.email,
+          lang,
+          accountRole: 'user',
         }),
       }).catch(() => {});
     } catch { /* non-blocking */ }
   }
 
-  async function handleAiTurn(userText: string) {
-    if (aiPhaseRef.current === 'human' || aiPhaseRef.current === 'pick_lang' || aiPhaseRef.current === 'ask_role') return;
-    const L = SUPPORT_COPY[langRef.current];
-    if (BLOCKED_RE.test(userText)) {
-      await pushBotTyped(L.blocked);
-      return;
-    }
-
-    const phase = aiPhaseRef.current;
-
-    if (phase === 'waiting') {
-      const cat = classifyListenIntent(userText);
-      if (cat !== 'other') {
-        setListenCategory(cat);
-        setAiPhase('ask_title');
-        aiPhaseRef.current = 'ask_title';
-        await pushBotTyped(L.askTitle);
-        return;
-      }
-      return;
-    }
-
-    if (phase === 'ask_category') {
-      const cat = classifyListenIntent(userText);
-      if (cat === 'other') {
-        await pushBotTyped(L.unavailable);
-        return;
-      }
-      setListenCategory(cat);
-      setAiPhase('ask_title');
-      aiPhaseRef.current = 'ask_title';
-      await pushBotTyped(L.askTitle);
-      return;
-    }
-
-    if (phase === 'ask_title' || phase === 'playing') {
-      const cat = listenCategory || classifyListenIntent(userText);
-      if (cat === 'other' && !listenCategory) {
-        await pushBotTyped(L.unavailable);
-        return;
-      }
-      const finalCat = (cat === 'other' ? listenCategory : cat) || 'music';
-      const track = await resolveAudio(finalCat, userText);
-      if (!track) {
-        await pushBotTyped(L.notFound);
-        return;
-      }
-      playAudio(track);
-      return;
-    }
-  }
-
-  async function handleSend(textOverride?: string, media?: { url: string; type: 'image' | 'video' | 'file' }) {
-    if (!lang || aiPhaseRef.current === 'pick_lang' || aiPhaseRef.current === 'ask_role') return;
-    const text = (textOverride ?? input).trim();
-    if (!text && !media) return;
-    if (sending || isTyping) return;
+  async function submit() {
+    if (sending) return;
+    const mail = email.trim();
+    const text = problem.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) { setError(t.badEmail); return; }
+    if (!text && !attachment) { setError(t.needProblem); return; }
+    setError('');
     setSending(true);
-    const userMsg: SupportMsg = {
-      id: `u-${Date.now()}`,
-      from: 'user',
-      text: text || (media?.type === 'image' ? '📷 Image' : media?.type === 'video' ? '🎬 Video' : '📎 File'),
-      at: Date.now(),
-      mediaUrl: media?.url,
-      mediaType: media?.type,
-    };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    const nextCount = userMsgCount + 1;
-    setUserMsgCount(nextCount);
-
-    const commentThreadId = `cmt-${Date.now()}`;
-    await deliverToSupport({
-      text: text || undefined,
-      mediaUrl: media?.url,
-      mediaType: media?.type,
-      commentThreadId,
-    });
-    pushOwnerSupportAlert(resolveUserDisplayName());
-
-    if (aiPhaseRef.current === 'human') {
+    try {
+      await deliverToSupport({ email: mail, text, media: attachment });
+      pushOwnerSupportAlert(uname ? `@${uname}` : (currentUser?.name || mail));
+      setSent(true);
+      setProblem('');
+      setAttachment(null);
+    } finally {
       setSending(false);
-      return;
     }
-
-    // First user message: waiting line → auto-start calm music
-    if (nextCount === 1) {
-      setAiPhase('waiting');
-      (aiPhaseRef as React.MutableRefObject<AiPhase>).current = 'waiting';
-      setSending(false);
-      const L = SUPPORT_COPY[langRef.current];
-      await pushBotTyped(L.waiting);
-      if ((aiPhaseRef as React.MutableRefObject<AiPhase>).current === 'human') return;
-      return;
-    }
-
-    if (!text) {
-      setSending(false);
-      return;
-    }
-
-    await handleAiTurn(text);
-    setSending(false);
   }
 
-  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'file') {
     const file = e.target.files?.[0];
     e.target.value = '';
+    setMenuOpen(false);
     if (!file) return;
-    const isImage = file.type.startsWith('image/');
-    const isVideo = file.type.startsWith('video/');
-    const mediaType: 'image' | 'video' | 'file' = isImage ? 'image' : isVideo ? 'video' : 'file';
-    let mediaUrl = '';
+    let url = '';
     try {
       const r = await fetch('/api/support/upload', {
         method: 'POST',
@@ -3005,448 +2558,219 @@ function SupportChatOverlay({
       });
       if (r.ok) {
         const d = await r.json();
-        mediaUrl = d.url || d.mediaUrl || '';
+        url = d.url || d.mediaUrl || '';
       }
     } catch { /* local preview fallback */ }
-    if (!mediaUrl) mediaUrl = URL.createObjectURL(file);
-    await handleSend('', { url: mediaUrl, type: mediaType });
+    if (!url) url = URL.createObjectURL(file);
+    setAttachment({ url, type, name: file.name });
+    setSent(false);
+    setError('');
   }
 
   if (!open) return null;
 
+  const primary = '#0277BD';
+  const menuItem: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px', border: 'none',
+    background: 'transparent', cursor: 'pointer', color: '#0f172a', fontSize: '0.82rem', fontWeight: 700,
+    textAlign: 'start',
+  };
+
   return (
     <AnimatePresence>
       <motion.div
+        key="support-request-bubble"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 10350,
-          background: 'rgba(0,0,0,0.45)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'flex-end',
-        }}
         onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 10350, background: 'rgba(0,0,0,0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        }}
       >
         <motion.div
-          initial={{ y: 80, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 80, opacity: 0 }}
+          initial={{ opacity: 0, scale: 0.92, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.92, y: 20 }}
           onClick={e => e.stopPropagation()}
-          style={{ height: '72vh', maxHeight: '78vh', display: 'flex', flexDirection: 'column', background: '#ffffff', borderRadius: '18px 18px 0 0', border: '1px solid rgba(0,188,212,0.28)', overflow: 'hidden' }}
-        >
-        <div style={{ width: 42, height: 4, borderRadius: 2, background: '#cbd5e1', margin: '8px auto 0' }} />
-        {/* Header — slim: avatar + Stooorna stacked title */}
-        <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '8px 12px',
-            background: '#ffffff',
-            borderBottom: '1px solid rgba(0,188,212,0.25)',
-            flexShrink: 0,
-            minHeight: 52,
+            width: 'min(94vw, 420px)', maxHeight: '88vh', overflowY: 'auto', background: '#ffffff',
+            borderRadius: 22, boxShadow: '0 20px 60px rgba(0,0,0,0.35)', padding: '14px 16px 18px',
+            direction: isAr ? 'rtl' : 'ltr', color: '#0f172a',
           }}
         >
-          <button
-            onClick={() => {
-              stopAiCompletely();
-              stopAutoMusic();
-              onClose();
+          {/* أيقونة التطبيق + Support */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, direction: 'ltr', marginBottom: 12 }}>
+            <img
+              src={STOOORNA_APP_ICON}
+              alt=""
+              style={{ width: 38, height: 38, borderRadius: 10, objectFit: 'cover', flexShrink: 0, border: '1px solid #e2e8f0' }}
+            />
+            <span style={{ fontWeight: 900, fontSize: '1.05rem', color: primary, letterSpacing: '0.02em' }}>Support</span>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              style={{ marginInlineStart: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* يوزر المستخدم */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 12,
+            background: '#f1f5f9', border: '1px solid #e2e8f0', marginBottom: 10,
+          }}>
+            <User size={15} style={{ color: '#64748b', flexShrink: 0 }} />
+            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>{t.user}</span>
+            <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', direction: 'ltr', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {uname ? `@${uname}` : (currentUser?.name || t.guest)}
+            </span>
+          </div>
+
+          {/* رسائل الدعم (الردود) — تظهر في نفس المكان */}
+          {replies.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <p style={{ margin: '0 0 6px', fontSize: '0.74rem', fontWeight: 800, color: '#15803d' }}>{t.replies}</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 190, overflowY: 'auto' }}>
+                {replies.map(m => (
+                  <div key={m.id} style={{
+                    padding: '10px 12px', borderRadius: 14, background: '#ecfdf5', border: '1px solid #86efac',
+                    fontSize: '0.84rem', lineHeight: 1.55, whiteSpace: 'pre-wrap', color: '#0f172a',
+                  }}>
+                    {m.mediaUrl && m.mediaType === 'image' && (
+                      <img src={m.mediaUrl} alt="" style={{ width: '100%', borderRadius: 10, marginBottom: m.text ? 8 : 0, display: 'block' }} />
+                    )}
+                    {m.text}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* تم إرسال طلبك */}
+          {sent && (
+            <div style={{
+              padding: '12px 14px', borderRadius: 14, background: '#ecfdf5', border: '1px solid #86efac',
+              marginBottom: 12, textAlign: 'center',
+            }}>
+              <p style={{ margin: 0, fontWeight: 900, fontSize: '0.92rem', color: '#15803d' }}>{t.sentTitle}</p>
+              <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: '#166534' }}>{t.sentSub}</p>
+            </div>
+          )}
+
+          {/* الإيميل */}
+          <input
+            type="email"
+            value={email}
+            onChange={e => { setEmail(e.target.value); setSent(false); setError(''); }}
+            placeholder={t.emailPh}
+            autoComplete="email"
+            style={{
+              width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 12, marginBottom: 10,
+              background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '0.88rem',
+              outline: 'none', direction: 'ltr', textAlign: isAr ? 'right' : 'left', fontFamily: 'var(--font-sans)',
             }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0277BD', padding: 2, flexShrink: 0 }}
-            aria-label="Close"
-          >
-            <X size={20} />
-          </button>
-          <div style={{ position: 'relative', width: 34, height: 34, flexShrink: 0 }}>
-            <div
+          />
+
+          {/* المشكلة */}
+          <textarea
+            value={problem}
+            onChange={e => { setProblem(e.target.value.slice(0, 2000)); setSent(false); setError(''); }}
+            placeholder={t.problemPh}
+            rows={4}
+            style={{
+              width: '100%', boxSizing: 'border-box', resize: 'none', padding: '11px 12px', borderRadius: 12,
+              background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '0.88rem',
+              outline: 'none', lineHeight: 1.5, fontFamily: 'var(--font-sans)',
+              direction: isAr ? 'rtl' : 'ltr',
+            }}
+          />
+
+          {/* المرفق المختار */}
+          {attachment && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, padding: '8px 10px', borderRadius: 12,
+              background: '#f1f5f9', border: '1px solid #e2e8f0',
+            }}>
+              {attachment.type === 'image'
+                ? <img src={attachment.url} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
+                : attachment.type === 'video'
+                  ? <VideoIcon size={20} style={{ color: primary, flexShrink: 0 }} />
+                  : <FileText size={20} style={{ color: primary, flexShrink: 0 }} />}
+              <span style={{ flex: 1, minWidth: 0, fontSize: '0.78rem', fontWeight: 700, color: '#0f172a', direction: 'ltr', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {attachment.name}
+              </span>
+              <button type="button" onClick={() => setAttachment(null)} aria-label="Remove" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 2 }}>
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <p style={{ margin: '8px 2px 0', color: '#dc2626', fontSize: '0.78rem', fontWeight: 700 }}>{error}</p>
+          )}
+
+          {/* + (صورة / فيديو / ملف) و إرسال */}
+          <input ref={imgRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => void onPick(e, 'image')} />
+          <input ref={vidRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={e => void onPick(e, 'video')} />
+          <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.zip,.txt,.xls,.xlsx,.ppt,.pptx" style={{ display: 'none' }} onChange={e => void onPick(e, 'file')} />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, position: 'relative' }}>
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                type="button"
+                onClick={() => setMenuOpen(v => !v)}
+                title={t.attach}
+                aria-label={t.attach}
+                style={{
+                  width: 44, height: 44, borderRadius: 12, cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', background: '#f1f5f9',
+                  border: `1px solid ${menuOpen ? primary : '#cbd5e1'}`, color: primary,
+                }}
+              >
+                <Plus size={22} strokeWidth={2.4} />
+              </motion.button>
+              {menuOpen && (
+                <div style={{
+                  position: 'absolute', bottom: 52, insetInlineStart: 0, minWidth: 140, background: '#ffffff',
+                  border: '1px solid #e2e8f0', borderRadius: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+                  overflow: 'hidden', zIndex: 5,
+                }}>
+                  <button type="button" style={menuItem} onClick={() => imgRef.current?.click()}>
+                    <ImageIcon size={17} style={{ color: primary }} /> {t.image}
+                  </button>
+                  <button type="button" style={{ ...menuItem, borderTop: '1px solid #f1f5f9' }} onClick={() => vidRef.current?.click()}>
+                    <VideoIcon size={17} style={{ color: primary }} /> {t.video}
+                  </button>
+                  <button type="button" style={{ ...menuItem, borderTop: '1px solid #f1f5f9' }} onClick={() => fileRef.current?.click()}>
+                    <FileText size={17} style={{ color: primary }} /> {t.file}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              type="button"
+              disabled={sending}
+              onClick={() => void submit()}
               style={{
-                width: 34,
-                height: 34,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #00BCD4 0%, #0288D1 100%)',
-                border: '2px solid #00BCD4',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#041018',
-                fontWeight: 800,
-                fontSize: '0.8rem',
-                overflow: 'hidden',
+                flex: 1, height: 44, borderRadius: 12, border: 'none', cursor: sending ? 'default' : 'pointer',
+                background: primary, color: '#ffffff', fontWeight: 800, fontSize: '0.92rem',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                opacity: sending ? 0.7 : 1,
               }}
             >
-              <img
-                src="/api/users/by-username/stooorna/avatar"
-                alt=""
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                onError={e => {
-                  const el = e.currentTarget;
-                  el.style.display = 'none';
-                  if (el.parentElement) el.parentElement.textContent = 'S';
-                }}
-              />
-            </div>
-            <span
-              title={supportOnline ? 'Online' : 'Offline'}
-              style={{
-                position: 'absolute',
-                bottom: 0,
-                right: 0,
-                width: 11,
-                height: 11,
-                borderRadius: '50%',
-                background: supportOnline ? '#22c55e' : '#64748b',
-                border: '2px solid #ffffff',
-                boxShadow: supportOnline ? '0 0 6px rgba(34,197,94,0.7)' : 'none',
-              }}
-            />
+              <Send size={17} />
+              {sending ? t.sending : t.send}
+            </motion.button>
           </div>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <p style={{
-              margin: 0,
-              color: '#0277BD',
-              fontWeight: 900,
-              fontSize: '0.95rem',
-              letterSpacing: '0.02em',
-              lineHeight: 1.15,
-            }}>
-              Stooorna
-            </p>
-            <p style={{
-              margin: '1px 0 0',
-              color: '#64748b',
-              fontWeight: 700,
-              fontSize: '0.68rem',
-              lineHeight: 1.2,
-            }}>
-              {settings.supportHeader}
-            </p>
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div
-          ref={listRef}
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '16px 14px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 10,
-            background: '#ffffff',
-          }}
-        >
-          {/* Language choice — before any AI message (مربعات أصغر) */}
-          {!lang && (
-            <div style={{
-              marginTop: 20,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 10,
-            }}>
-              <p style={{ margin: 0, color: '#0f172a', fontSize: '0.8rem', fontWeight: 600 }}>
-                {settings.chooseLang}
-              </p>
-              <div style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 240 }}>
-                <motion.button
-                  whileTap={{ scale: 0.96 }}
-                  type="button"
-                  onClick={() => selectLang('en')}
-                  style={{
-                    flex: 1, padding: '8px 0', borderRadius: 10, cursor: 'pointer',
-                    background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
-                    color: '#0277BD', fontWeight: 700, fontSize: '0.78rem',
-                  }}
-                >
-                  {settings.langEn}
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.96 }}
-                  type="button"
-                  onClick={() => selectLang('ar')}
-                  style={{
-                    flex: 1, padding: '8px 0', borderRadius: 10, cursor: 'pointer',
-                    background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
-                    color: '#0277BD', fontWeight: 700, fontSize: '0.78rem',
-                  }}
-                >
-                  {settings.langAr}
-                </motion.button>
-              </div>
-            </div>
-          )}
-
-          {/* اختيار مستخدم أو شركة بعد اللغة — أزرار فقط */}
-          {false && lang && aiPhase === 'ask_role' && !accountRole && (
-            <div style={{
-              marginTop: 8,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 10,
-            }}>
-              <p style={{ margin: 0, color: '#0f172a', fontSize: '0.8rem', fontWeight: 600 }}>
-                {SUPPORT_COPY[lang].askRole}
-              </p>
-              <div style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 280 }}>
-                <motion.button
-                  whileTap={{ scale: 0.96 }}
-                  type="button"
-                  onClick={() => void selectRole('user')}
-                  style={{
-                    flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
-                    background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
-                    color: '#0277BD', fontWeight: 800, fontSize: '0.8rem',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  }}
-                >
-                  <Users size={14} strokeWidth={2.2} />
-                  {SUPPORT_COPY[lang].roleUser}
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.96 }}
-                  type="button"
-                  onClick={() => void selectRole('company')}
-                  style={{
-                    flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
-                    background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
-                    color: '#0277BD', fontWeight: 800, fontSize: '0.8rem',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  }}
-                >
-                  <Building2 size={14} strokeWidth={2.2} />
-                  {SUPPORT_COPY[lang].roleCompany}
-                </motion.button>
-              </div>
-            </div>
-          )}
-
-          {/* أزرار المساعدة: نسيت كلمة المرور / التحدث لخدمة العملاء */}
-          {lang && aiPhase === 'ask_help' && accountRole && (
-            <div style={{
-              marginTop: 4,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8,
-              width: '100%',
-              maxWidth: 320,
-              alignSelf: 'center',
-            }}>
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                type="button"
-                onClick={() => void selectHelpTopic('forgot_pw')}
-                style={{
-                  width: '100%', padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
-                  background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
-                  color: '#0277BD', fontWeight: 800, fontSize: '0.84rem',
-                  textAlign: 'center',
-                }}
-              >
-                {SUPPORT_COPY[lang].btnForgotPw}
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                type="button"
-                onClick={() => void selectHelpTopic('talk_support')}
-                style={{
-                  width: '100%', padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
-                  background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
-                  color: '#0277BD', fontWeight: 800, fontSize: '0.84rem',
-                  textAlign: 'center',
-                }}
-              >
-                {SUPPORT_COPY[lang].btnTalkSupport}
-              </motion.button>
-            </div>
-          )}
-
-          {messages.map(m => {
-            const isUser = m.from === 'user';
-            const isSupport = m.from === 'support';
-            return (
-              <div
-                key={m.id}
-                style={{
-                  alignSelf: 'stretch',
-                  maxWidth: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 4,
-                }}
-              >
-                {isSupport && (
-                  <span style={{ fontSize: '0.62rem', color: '#0277BD', fontWeight: 700, paddingInline: 4 }}>
-                    Support
-                  </span>
-                )}
-                <div
-                  style={{
-                    padding: '10px 14px',
-                    borderRadius: isUser ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                    background: isUser
-                      ? 'linear-gradient(135deg, rgba(0,188,212,0.28), rgba(0,120,180,0.22))'
-                      : isSupport
-                        ? 'rgba(34,197,94,0.12)'
-                        : 'rgba(0,188,212,0.1)',
-                    border: `1px solid ${isUser ? 'rgba(0,188,212,0.45)' : isSupport ? 'rgba(34,197,94,0.4)' : 'rgba(0,188,212,0.22)'}`,
-                    color: '#0f172a',
-                    fontSize: '0.84rem',
-                    lineHeight: 1.55,
-                    direction: (lang ?? 'ar') === 'ar' ? 'rtl' : 'ltr',
-                    textAlign: (lang ?? 'ar') === 'ar' ? 'right' : 'left',
-                    minHeight: m.from === 'bot' && !m.text ? 20 : undefined,
-                  }}
-                >
-                  {m.mediaUrl && m.mediaType === 'image' && (
-                    <img
-                      src={m.mediaUrl}
-                      alt=""
-                      style={{ width: '100%', borderRadius: 10, marginBottom: m.text ? 8 : 0, display: 'block' }}
-                    />
-                  )}
-                  {m.mediaUrl && m.mediaType === 'video' && (
-                    <video
-                      src={m.mediaUrl}
-                      controls
-                      playsInline
-                      style={{ width: '100%', borderRadius: 10, marginBottom: m.text ? 8 : 0, display: 'block' }}
-                    />
-                  )}
-                  {m.mediaUrl && m.mediaType === 'file' && (
-                    <a
-                      href={m.mediaUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ color: '#0277BD', fontSize: '0.8rem', display: 'block', marginBottom: m.text ? 6 : 0 }}
-                    >
-                      📎 Attachment
-                    </a>
-                  )}
-                  {m.text}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Typing indicator above AI stream */}
-          {isTyping && (
-            <div style={{ alignSelf: 'flex-start', padding: '4px 8px' }}>
-              <span style={{
-                color: '#0277BD',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                fontStyle: 'italic',
-                letterSpacing: '0.04em',
-              }}>
-                Type...
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Composer */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-end',
-            gap: 8,
-            padding: '10px 12px',
-            paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
-            background: '#ffffff',
-            borderTop: '1px solid rgba(0,188,212,0.2)',
-            flexShrink: 0,
-          }}
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*,video/*,.pdf,.doc,.docx,.zip,.txt"
-            style={{ display: 'none' }}
-            onChange={onPickFile}
-          />
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            title={copy.attach}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              flexShrink: 0,
-              background: 'rgba(0,188,212,0.12)',
-              border: '1px solid rgba(0,188,212,0.35)',
-              color: '#0277BD',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-            }}
-          >
-            <Plus size={20} strokeWidth={2.4} />
-          </motion.button>
-          <textarea
-            value={input}
-            onChange={e => setInput(e.target.value.slice(0, 2000))}
-            placeholder={!lang ? 'English / العربية' : copy.placeholder}
-            rows={1}
-            disabled={!lang || isTyping}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            style={{
-              flex: 1,
-              resize: 'none',
-              minHeight: 40,
-              maxHeight: 120,
-              padding: '10px 12px',
-              borderRadius: 12,
-              background: 'rgba(0,188,212,0.06)',
-              border: '1px solid rgba(0,188,212,0.22)',
-              color: '#0f172a',
-              fontSize: '0.88rem',
-              outline: 'none',
-              fontFamily: 'var(--font-sans)',
-              lineHeight: 1.4,
-              direction: (lang ?? 'ar') === 'ar' ? 'rtl' : 'ltr',
-              opacity: !lang ? 0.5 : 1,
-            }}
-          />
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            type="button"
-            disabled={!lang || sending || isTyping || !input.trim()}
-            onClick={() => handleSend()}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              flexShrink: 0,
-              background: input.trim() ? 'rgba(0,188,212,0.25)' : 'rgba(0,188,212,0.06)',
-              border: `1px solid ${input.trim() ? 'rgba(0,188,212,0.55)' : 'rgba(0,188,212,0.15)'}`,
-              color: input.trim() ? '#0277BD' : '#94a3b8',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: input.trim() ? 'pointer' : 'default',
-            }}
-          >
-            <Send size={18} />
-          </motion.button>
-        </div>
-      </motion.div>
         </motion.div>
+      </motion.div>
     </AnimatePresence>
   );
 }
@@ -3465,6 +2789,7 @@ function OwnerSupportThread({
     online?: boolean;
     lastIp?: string | null;
     country?: string | null;
+    email?: string | null;
   };
   onClose: () => void;
   currentUser: { id?: string; name?: string | null; username?: string | null; email?: string | null } | null;
@@ -3479,6 +2804,14 @@ function OwnerSupportThread({
   const listRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const displayName = peer.name || peer.username || 'User';
+  // إيميل المستخدم: من بيانات المحادثة أو من سطر 📧 داخل رسالته
+  const emailShown = peer.email || (() => {
+    for (const m of messages) {
+      const mm = /📧\s*([^\s@]+@[^\s@]+\.[^\s@]+)/.exec(m.text || '');
+      if (mm) return mm[1];
+    }
+    return '';
+  })();
 
   // Persist messages while thread is open (survive leave/re-enter until TTL)
   useEffect(() => {
@@ -3714,15 +3047,25 @@ function OwnerSupportThread({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      onClick={onClose}
       style={{
         position: 'fixed',
         inset: 0,
         zIndex: 10360,
-        background: '#ffffff',
+        background: 'rgba(0,0,0,0.45)',
         display: 'flex',
-        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 12,
       }}
     >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 'min(94vw, 480px)', height: 'min(86vh, 720px)', background: '#ffffff', borderRadius: 20,
+          overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+        }}
+      >
       {/* Slim header: avatar + name + online + open profile */}
       <div
         style={{
@@ -3794,6 +3137,16 @@ function OwnerSupportThread({
         </button>
       </div>
 
+      {emailShown && (
+        <div style={{
+          flexShrink: 0, padding: '8px 14px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0',
+          color: '#0f172a', fontSize: '0.78rem', fontWeight: 700, direction: 'ltr', textAlign: 'left',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          📧 {emailShown}
+        </div>
+      )}
+
       {/* Task complete (red) + 10-min delete timer */}
       <div style={{
         flexShrink: 0,
@@ -3848,6 +3201,14 @@ function OwnerSupportThread({
                 {m.mediaUrl && m.mediaType === 'image' && (
                   <img src={m.mediaUrl} alt="" style={{ width: '100%', borderRadius: 10, marginBottom: m.text ? 8 : 0, display: 'block' }} />
                 )}
+                {m.mediaUrl && m.mediaType === 'video' && (
+                  <video src={m.mediaUrl} controls playsInline style={{ width: '100%', borderRadius: 10, marginBottom: m.text ? 8 : 0, display: 'block' }} />
+                )}
+                {m.mediaUrl && m.mediaType === 'file' && (
+                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ color: '#0277BD', fontSize: '0.8rem', display: 'block', marginBottom: m.text ? 6 : 0 }}>
+                    📎 Attachment
+                  </a>
+                )}
                 {m.text}
               </div>
             </div>
@@ -3896,6 +3257,7 @@ function OwnerSupportThread({
         }}>
           <Send size={18} />
         </motion.button>
+      </div>
       </div>
     </motion.div>
   );
@@ -5522,6 +4884,7 @@ export default function SettingsPage() {
   } = useSession();
   const [tab, setTab] = useState<Tab>('account');
   const [showSupportChat, setShowSupportChat] = useState(false);
+  const [supportReplyDot, setSupportReplyDot] = useState(false);
   const [showLiveLocation, setShowLiveLocation] = useState(false);
   const [showPublicVoice, setShowPublicVoice] = useState(false);
   const [profileCountry, setProfileCountry] = useState<string | null>(() => readSavedCountry()?.name || null);
@@ -5713,6 +5076,7 @@ export default function SettingsPage() {
     lastIp?: string | null;
     country?: string | null;
     unread?: number;
+    email?: string | null;
     lastMessage?: string | null;
     lastAt?: string | null;
   };
@@ -6358,6 +5722,7 @@ export default function SettingsPage() {
               id: String(x.userId || x.peerId || x.fromUserId || x.senderId || x.id || x._id),
               name: x.name || x.fromName || x.user?.name || null,
               username: x.username || x.fromUsername || x.user?.username || null,
+              email: x.email || x.fromEmail || x.user?.email || null,
               avatarUrl: x.avatarUrl || x.user?.avatarUrl || null,
               online: !!(x.online ?? x.user?.online),
               lastIp: x.lastIp || null,
@@ -6390,6 +5755,7 @@ export default function SettingsPage() {
         prev.name = prev.name || p.name;
         prev.username = prev.username || p.username;
         prev.avatarUrl = prev.avatarUrl || p.avatarUrl;
+        prev.email = prev.email || p.email;
         prev.online = prev.online || p.online;
       }
       const idByUsername = new Map<string, string>();
@@ -6409,11 +5775,13 @@ export default function SettingsPage() {
           existing.unread = (existing.unread || 0) + (t.unread || 1);
           existing.name = existing.name || t.fromName || null;
           existing.username = existing.username || t.fromUsername || null;
+          existing.email = existing.email || t.fromEmail || null;
         } else {
           byUser.set(key, {
             id: key,
             name: t.fromName || null,
             username: t.fromUsername || null,
+            email: t.fromEmail || null,
             avatarUrl: null,
             online: false,
             unread: t.unread || 1,
@@ -6450,6 +5818,35 @@ export default function SettingsPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, profileUsername]);
+
+  // نقطة حمراء على أيقونة الدعم عند وصول رد جديد من الدعم (تختفي بعد فتح الفقاعة)
+  useEffect(() => {
+    const uid = (user as { id?: string } | null)?.id;
+    if (!uid || isSupportOwnerAccount(user as { email?: string | null; username?: string | null }, profileUsername)) {
+      setSupportReplyDot(false);
+      return;
+    }
+    let cancelled = false;
+    const check = async () => {
+      if (showSupportChat) { setSupportReplyDot(false); return; }
+      const list = await fetchSupportReplies(uid);
+      if (cancelled) return;
+      const maxAt = list.reduce((m, x) => Math.max(m, x.at || 0), 0);
+      let seen = 0;
+      try { seen = Number(localStorage.getItem(supportSeenKey(uid)) || 0) || 0; } catch { /* ignore */ }
+      setSupportReplyDot(maxAt > seen);
+    };
+    const boot = window.setTimeout(() => { void check(); }, 1500);
+    const id = window.setInterval(() => { void check(); }, 20000);
+    const onSeen = () => setSupportReplyDot(false);
+    window.addEventListener('stooorna:support-seen', onSeen);
+    return () => {
+      cancelled = true;
+      clearTimeout(boot);
+      clearInterval(id);
+      window.removeEventListener('stooorna:support-seen', onSeen);
+    };
+  }, [user, profileUsername, showSupportChat]);
 
 
 
@@ -7391,7 +6788,7 @@ export default function SettingsPage() {
               whileTap={{ scale: 0.88 }}
               onClick={() => setShowSupportChat(true)}
               title="Support"
-              aria-label="Support chat"
+              aria-label="Support"
               style={{
                 width: 36,
                 height: 36,
@@ -7404,9 +6801,19 @@ export default function SettingsPage() {
                 color: '#00BCD4',
                 cursor: 'pointer',
                 boxShadow: '0 0 12px rgba(0,188,212,0.25)',
+                position: 'relative',
               }}
             >
               <Headphones size={18} strokeWidth={2.2} />
+              {supportReplyDot && (
+                <span
+                  aria-label="New support reply"
+                  style={{
+                    position: 'absolute', top: -3, right: -3, width: 11, height: 11, borderRadius: '50%',
+                    background: '#ef4444', border: '2px solid #ffffff',
+                  }}
+                />
+              )}
             </motion.button>
           ) : (
             <div style={{ width: 36 }} />
@@ -10020,15 +9427,25 @@ export default function SettingsPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            onClick={() => setShowOwnerInbox(false)}
             style={{
               position: 'fixed',
               inset: 0,
               zIndex: 10340,
-              background: '#ffffff',
-                    display: 'flex',
-              flexDirection: 'column',
+              background: 'rgba(0,0,0,0.45)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 12,
             }}
           >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: 'min(94vw, 480px)', height: 'min(86vh, 720px)', background: '#ffffff', borderRadius: 20,
+                overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+              }}
+            >
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
@@ -10128,7 +9545,7 @@ export default function SettingsPage() {
                           margin: '3px 0 0', color: '#64748b', fontSize: '0.72rem',
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>
-                          {peer.lastMessage || 'فتح المحادثة'}
+                          {supportPreview(peer.lastMessage) || peer.lastMessage || 'فتح المحادثة'}
                         </p>
                       </div>
                       {!!peer.unread && peer.unread > 0 && (
@@ -10222,6 +9639,7 @@ export default function SettingsPage() {
                   </div>
                 ))}
               </div>
+            </div>
             </div>
           </motion.div>
         )}
