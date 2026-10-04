@@ -13957,14 +13957,24 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
           cursor: 'pointer', padding: 0,
         }}
       >
-        <span style={{
+        <Bell size={15} strokeWidth={2.2} />
+      </button>
+      <span
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: -20,
+          left: '50%',
+          transform: 'translateX(-78%)',
           color: '#ffffff',
-          fontSize: size <= 26 ? '0.68rem' : '0.78rem',
+          fontSize: '0.78rem',
           fontWeight: 800,
           lineHeight: 1,
           fontVariantNumeric: 'tabular-nums',
-        }}>{visitorCount}</span>
-      </button>
+          pointerEvents: 'none',
+          zIndex: 6,
+        }}
+      >{visitorCount}</span>
       {open && typeof document !== 'undefined' && createPortal(
         <>
           <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', border: 'none', zIndex: 14000 }} />
