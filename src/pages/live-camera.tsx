@@ -62,6 +62,25 @@ import {
 import { getVipMaxSpeakers } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { LiveCoinsDock, SupportCrown, useSupportLeaders } from '@/components/LiveCoinsDock';
+// DUET-PATCH: invite another live to join this live (split screen)
+import {
+  camChannelForHost,
+  sendDuetSignal,
+  isDuetMessage,
+  newDuetId,
+  duetRoomUrl,
+  DuetInviteButton,
+  DuetInvitePanel,
+  DuetIncomingDialog,
+  DuetDivider,
+  DuetNameTag,
+  DuetEndButton,
+  DuetToast,
+  type DuetGuest,
+  type DuetInvite,
+  type DuetPerson,
+  type AvailableLive,
+} from '@/lib/liveDuetPatch';
 
 const AGORA_APP_ID = '149ef04e839c4132a08efb49d717c436';
 
@@ -125,6 +144,8 @@ export default function LiveCameraPage() {
   const micCap = getVipMaxSpeakers(hostId);
   const channelName = `stooorna-livecam-${(hostId || 'none').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48) || uidFromString(hostId || 'none')}`;
   const roomTitle = hostUsername ? `${hostName} (@${hostUsername})` : hostName;
+  // DUET-PATCH: guest invited into this room's live (publishes camera + mic, shown on the right half)
+  const amGuest = !!(isHostRoom && !amHost && searchParams.get('duet') === '1');
 
   const [joined, setJoined] = useState(false);
   const [livePageClosing, setLivePageClosing] = useState(false);
@@ -314,13 +335,16 @@ export default function LiveCameraPage() {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const micRef = useRef<IMicrophoneAudioTrack | null>(null);
   const camRef = useRef<ICameraVideoTrack | null>(null);
-  const localVideoElRef = useRef<HTMLDivElement | null>(null);
-  const remoteVideoElRef = useRef<HTMLDivElement | null>(null);
+  // DUET-PATCH: left pane = room host, right pane = duet guest
+  const hostPaneRef = useRef<HTMLDivElement | null>(null);
+  const guestPaneRef = useRef<HTMLDivElement | null>(null);
   /** Last remote video track received, replayed once the viewer's video
    *  container has actually mounted (see the effect below). Without this,
    *  a track that arrives while the "Connecting…" screen is still showing
    *  gets silently dropped because remoteVideoElRef isn't attached yet. */
-  const remoteVideoTrackRef = useRef<{ play: (el: HTMLElement, opts?: object) => void } | null>(null);
+  type RemoteVideo = { play: (el: HTMLElement, opts?: object) => void; stop: () => void };
+  const remoteVideoTracksRef = useRef<Map<number, RemoteVideo>>(new Map());
+  const remoteVideoPlacedRef = useRef<Map<number, HTMLElement>>(new Map());
   const remoteTracksRef = useRef<Map<number, { stop: () => void; play: () => void }>>(new Map());
   const myUidRef = useRef<number | null>(null);
   const dataStreamIdRef = useRef<number | null>(null);
@@ -331,27 +355,55 @@ export default function LiveCameraPage() {
   /** Host ended private room — listeners exit without re-broadcasting active */
   const forceEndRef = useRef(false);
 
+  // ───────── DUET-PATCH state ─────────
+  const [duet, setDuet] = useState<DuetGuest | null>(null);
+  const duetRef = useRef<DuetGuest | null>(null);
+  const duetSetTsRef = useRef(0);
+  const [duetPanelOpen, setDuetPanelOpen] = useState(false);
+  const [duetSent, setDuetSent] = useState<Record<string, number>>({});
+  const duetSentIdsRef = useRef<Record<string, string>>({});
+  const [duetIncoming, setDuetIncoming] = useState<DuetInvite | null>(null);
+  const duetIncomingRef = useRef<DuetInvite | null>(null);
+  const [duetToast, setDuetToast] = useState('');
+  const duetToastTimerRef = useRef<number | null>(null);
+  const duetSeenRef = useRef<Set<string>>(new Set());
+  const handleDuetMsgRef = useRef<(msg: any) => boolean>(() => false);
+
   const playLocalVideo = useCallback(() => {
     const track = camRef.current;
-    const el = localVideoElRef.current;
+    // DUET-PATCH: host plays in the left half, a duet guest in the right half
+    const el = amGuest ? guestPaneRef.current : hostPaneRef.current;
     if (!track || !el) return;
     try {
       track.play(el, { fit: 'cover' });
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [amGuest]);
 
-  const playRemoteVideo = useCallback((track: { play: (el: HTMLElement, opts?: object) => void }) => {
-    remoteVideoTrackRef.current = track;
-    const el = remoteVideoElRef.current;
-    if (!el) return;
-    try {
-      track.play(el, { fit: 'cover' });
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  /** Put every received remote video into the right half (guest uid → right, everything else → left). */
+  const placeRemoteVideos = useCallback(() => {
+    remoteVideoTracksRef.current.forEach((track, uid) => {
+      const d = duetRef.current;
+      let target: HTMLElement | null = null;
+      if (d && uid === d.uid) target = guestPaneRef.current;
+      else if (!amHost) target = hostPaneRef.current; // the host shows their own camera on the left
+      if (!target || remoteVideoPlacedRef.current.get(uid) === target) return;
+      try { track.stop(); } catch { /* ignore */ }
+      try {
+        track.play(target, { fit: 'cover' });
+        remoteVideoPlacedRef.current.set(uid, target);
+      } catch {
+        /* ignore */
+      }
+    });
+  }, [amHost]);
+
+  const playRemoteVideo = useCallback((track: RemoteVideo, uid: number) => {
+    remoteVideoTracksRef.current.set(uid, track);
+    remoteVideoPlacedRef.current.delete(uid);
+    placeRemoteVideos();
+  }, [placeRemoteVideos]);
 
   useEffect(() => {
     if (!myId) return;
@@ -635,21 +687,26 @@ export default function LiveCameraPage() {
     }
   }, [sendDataPayload]);
 
-  const leaveRoom = useCallback(async (opts?: { forced?: boolean; skipNavigate?: boolean }) => {
+  const leaveRoom = useCallback(async (opts?: { forced?: boolean; skipNavigate?: boolean; duetMove?: Record<string, unknown> }) => {
     const forced = !!opts?.forced;
     leftRef.current = true;
     forceEndRef.current = forced || forceEndRef.current;
+
+    // DUET-PATCH: a guest leaving tells the room so the split screen closes right away
+    if (amGuest && !forced && myUidRef.current != null) {
+      try { await sendDataPayload({ t: 'duet-leave', uid: myUidRef.current, ts: Date.now() }); } catch { /* ignore */ }
+    }
 
     // Host ends private room: notify listeners BEFORE leaving Agora channel
     if (amHost && isHostRoom && !forced) {
       try {
         for (let i = 0; i < 3; i++) {
-          await sendDataPayload({
-            t: 'room-ended',
-            hostId: hostId || myId || '',
-            host: myUidRef.current,
-            ts: Date.now(),
-          });
+          // DUET-PATCH: when the host leaves to join someone else's live, viewers are moved along instead of kicked out
+          await sendDataPayload(
+            opts?.duetMove
+              ? { t: 'duet-moved', hostId: hostId || myId || '', host: myUidRef.current, ts: Date.now(), ...opts.duetMove }
+              : { t: 'room-ended', hostId: hostId || myId || '', host: myUidRef.current, ts: Date.now() },
+          );
         }
       } catch { /* ignore */ }
       try {
@@ -718,6 +775,15 @@ export default function LiveCameraPage() {
     } catch { /* ignore */ }
     myUidRef.current = null;
     dataStreamIdRef.current = null;
+    // DUET-PATCH: reset split-screen state
+    duetRef.current = null;
+    setDuet(null);
+    duetIncomingRef.current = null;
+    setDuetIncoming(null);
+    setDuetPanelOpen(false);
+    setDuetSent({});
+    remoteVideoTracksRef.current.clear();
+    remoteVideoPlacedRef.current.clear();
     setMembers([]);
     setMutedUids(new Set());
     mutedUidsRef.current = new Set();
@@ -751,7 +817,7 @@ export default function LiveCameraPage() {
     setJoining(false);
     setStatus('');
     if (!opts?.skipNavigate) navigate(-1);
-  }, [navigate, hostId, myId, amHost, isHostRoom, channelName, sendDataPayload]);
+  }, [navigate, hostId, myId, amHost, amGuest, isHostRoom, channelName, sendDataPayload]);
 
   const dismissLivePage = useCallback(() => {
     if (livePageClosing) return;
@@ -857,7 +923,7 @@ export default function LiveCameraPage() {
             }
           }
           if (mediaType === 'video' && remoteUser.videoTrack) {
-            playRemoteVideo(remoteUser.videoTrack);
+            playRemoteVideo(remoteUser.videoTrack, remoteUser.uid as number);
           }
         } catch {
           /* remote left mid-subscribe */
@@ -871,6 +937,8 @@ export default function LiveCameraPage() {
         }
         if (mediaType === 'video') {
           remoteUser.videoTrack?.stop();
+          remoteVideoTracksRef.current.delete(remoteUser.uid as number);
+          remoteVideoPlacedRef.current.delete(remoteUser.uid as number);
         }
       });
 
@@ -881,6 +949,12 @@ export default function LiveCameraPage() {
         revokedUidsRef.current.delete(remoteUser.uid as number);
         remoteUids.delete(remoteUser.uid as number);
         syncList();
+        remoteVideoTracksRef.current.delete(remoteUser.uid as number);
+        remoteVideoPlacedRef.current.delete(remoteUser.uid as number);
+        // DUET-PATCH: the guest left → back to full screen
+        if (duetRef.current && duetRef.current.uid === (remoteUser.uid as number)) {
+          handleDuetMsgRef.current({ t: 'duet-leave', uid: remoteUser.uid, ts: Date.now() });
+        }
         if (isHostRoom && !amHost && hostId) {
           const hostUid = uidFromString(hostId);
           const leftUid = remoteUser.uid as number;
@@ -905,6 +979,7 @@ export default function LiveCameraPage() {
           raw = raw.replace(/\u0000/g, '').trim();
           if (!raw) return;
           const msg = JSON.parse(raw) as { t?: string; uid?: number; uids?: number[] };
+          if (handleDuetMsgRef.current(msg)) return; // DUET-PATCH
           const myUid = myUidRef.current;
           if (msg.t === 'freeze' && msg.uid === myUid) {
             micFrozenRef.current = true;
@@ -980,7 +1055,7 @@ export default function LiveCameraPage() {
             speakerUidsRef.current = nextSpeakers;
             setSpeakerUids(nextSpeakers);
             const me = myUidRef.current;
-            if (me != null && !amHost && !list.includes(me)) void forceMuteLocalMic();
+            if (me != null && !amHost && !amGuest && !list.includes(me)) void forceMuteLocalMic();
           }
         } catch {
           /* ignore bad payload */
@@ -1058,7 +1133,7 @@ export default function LiveCameraPage() {
         if (u.hasVideo) {
           try {
             await client.subscribe(u, 'video');
-            if (u.videoTrack) playRemoteVideo(u.videoTrack);
+            if (u.videoTrack) playRemoteVideo(u.videoTrack, u.uid as number);
           } catch {
             /* ignore */
           }
@@ -1074,7 +1149,7 @@ export default function LiveCameraPage() {
         AGC: true,
       });
       micRef.current = mic;
-      const startLive = amHost;
+      const startLive = amHost || amGuest; // DUET-PATCH
       await mic.setEnabled(true);
       try {
         mic.setMuted(false);
@@ -1083,7 +1158,7 @@ export default function LiveCameraPage() {
       }
 
       const tracksToPublish: any[] = [mic];
-      if (amHost) {
+      if (amHost || amGuest) {
         const cam = await AgoraRTC.createCameraVideoTrack({
           facingMode: 'user',
           encoderConfig: '720p_2',
@@ -1094,7 +1169,7 @@ export default function LiveCameraPage() {
       }
 
       await client.publish(tracksToPublish);
-      if (amHost) {
+      if (amHost || amGuest) {
         window.setTimeout(() => playLocalVideo(), 60);
       }
 
@@ -1111,12 +1186,25 @@ export default function LiveCameraPage() {
       }
       micOnRef.current = startLive;
       setMicOn(startLive);
-      camOnRef.current = amHost;
-      setCamOn(amHost);
+      camOnRef.current = amHost || amGuest;
+      setCamOn(amHost || amGuest);
 
       setJoined(true);
       setStatus('');
       setJoining(false);
+      // DUET-PATCH: guest announces itself to the room → split screen on every device
+      if (amGuest && myId) {
+        const g: DuetGuest = { uid, userId: myId, name: myName, username: myUsername, avatarUrl: myAvatar };
+        duetRef.current = g;
+        setDuet(g);
+        const sendJoin = () => {
+          if (leftRef.current) return;
+          void sendDataPayload({ t: 'duet-join', uid, guest: g, ts: Date.now() });
+        };
+        sendJoin();
+        window.setTimeout(sendJoin, 800);
+        window.setTimeout(sendJoin, 2000);
+      }
       if (amHost) {
         const seed = new Set<number>([uid]);
         speakerUidsRef.current = seed;
@@ -1178,6 +1266,7 @@ export default function LiveCameraPage() {
     applyTrackPlayback,
     channelName,
     amHost,
+    amGuest,
     hostId,
     forceMuteLocalMic,
     sendDataPayload,
@@ -1197,20 +1286,12 @@ export default function LiveCameraPage() {
     return () => window.clearInterval(id);
   }, [micFrozenByHost, forceMuteLocalMic]);
 
+  // DUET-PATCH: (re)attach local + remote video whenever the layout changes (single ↔ split screen)
   useEffect(() => {
-    if (joined && amHost) playLocalVideo();
-  }, [joined, amHost, playLocalVideo]);
-
-  useEffect(() => {
-    // A viewer's video container only exists once `joined` flips to true and
-    // this component re-renders past the "Connecting…" screen. If the host's
-    // video track was already received before that happened, replay it now
-    // that remoteVideoElRef is actually mounted — otherwise the viewer is
-    // stuck on a black screen until the host toggles their camera off/on.
-    if (joined && !amHost && remoteVideoTrackRef.current) {
-      playRemoteVideo(remoteVideoTrackRef.current);
-    }
-  }, [joined, amHost, playRemoteVideo]);
+    if (!joined) return;
+    if (amHost || amGuest) playLocalVideo();
+    placeRemoteVideos();
+  }, [joined, amHost, amGuest, duet?.uid, playLocalVideo, placeRemoteVideos]);
 
   // Keep presence alive for profile visitors (local + event)
   useEffect(() => {
@@ -1293,7 +1374,7 @@ export default function LiveCameraPage() {
       setError('Mic frozen by host');
       return;
     }
-    if (!amHost) {
+    if (!amHost && !amGuest) {
       const allowed = speakerUidsRef.current.has(myUidRef.current || -1);
       if (!allowed) {
         if (myUidRef.current == null) return;
@@ -1342,7 +1423,7 @@ export default function LiveCameraPage() {
   };
 
   const toggleCam = async () => {
-    if (!amHost || !camRef.current || !joined) return;
+    if ((!amHost && !amGuest) || !camRef.current || !joined) return;
     const next = !camOn;
     try {
       await camRef.current.setEnabled(next);
@@ -1355,7 +1436,7 @@ export default function LiveCameraPage() {
   };
 
   const switchFacing = async () => {
-    if (!amHost || !joined) return;
+    if ((!amHost && !amGuest) || !joined) return;
     const next = facingMode === 'user' ? 'environment' : 'user';
     const client = clientRef.current;
     const oldCam = camRef.current;
@@ -1479,12 +1560,12 @@ export default function LiveCameraPage() {
     speakerUidsRef.current = next;
     setSpeakerUids(next);
     const me = myUidRef.current;
-    if (me == null || amHost) return;
+    if (me == null || amHost || amGuest) return;
     if (!next.has(me) || frozenUidsRef.current.has(me)) {
       setMicRequested(false);
       void forceMuteLocalMic();
     }
-  }, [amHost, forceMuteLocalMic, applyTrackPlayback]);
+  }, [amHost, amGuest, forceMuteLocalMic, applyTrackPlayback]);
 
   const hostSetSpeaker = useCallback(async (uid: number, grant: boolean) => {
     if (!amHost) return;
@@ -1529,6 +1610,7 @@ export default function LiveCameraPage() {
   }, [amHost, sendDataPayload]);
 
   const applyIncomingSignal = useCallback((msg: LiveSignal) => {
+    if (handleDuetMsgRef.current(msg)) return; // DUET-PATCH
     const myUid = myUidRef.current;
     if (msg.t === 'freeze' && msg.uid === myUid) {
       micFrozenRef.current = true;
@@ -1725,6 +1807,239 @@ export default function LiveCameraPage() {
     toggleUserListenMute(m.uid, m.isMe);
   };
 
+  // ───────── DUET-PATCH: invite / accept / split screen ─────────
+  const duetMe: DuetPerson = { userId: myId || '', name: myName, username: myUsername, avatarUrl: myAvatar };
+
+  const showDuetToast = (text: string) => {
+    setDuetToast(text);
+    if (duetToastTimerRef.current) window.clearTimeout(duetToastTimerRef.current);
+    duetToastTimerRef.current = window.setTimeout(() => setDuetToast(''), 3200);
+  };
+
+  const applyDuetGuest = (g: DuetGuest | null) => {
+    if ((duetRef.current?.uid ?? null) === (g?.uid ?? null)) return;
+    duetRef.current = g;
+    setDuet(g);
+    if (g) {
+      friendsByUidRef.current.set(g.uid, { userId: g.userId, name: g.name, username: g.username, avatarUrl: g.avatarUrl });
+    }
+  };
+
+  const toDuetGuest = (raw: any, uidFallback?: unknown): DuetGuest | null => {
+    const uid = Number(raw?.uid ?? uidFallback);
+    if (!raw?.userId || !Number.isFinite(uid)) return null;
+    return {
+      uid,
+      userId: String(raw.userId),
+      name: String(raw.name || raw.username || 'User'),
+      username: raw.username ?? null,
+      avatarUrl: raw.avatarUrl ?? null,
+    };
+  };
+
+  const toDuetPerson = (raw: any): DuetPerson | null => {
+    if (!raw?.userId) return null;
+    return {
+      userId: String(raw.userId),
+      name: String(raw.name || raw.username || 'User'),
+      username: raw.username ?? null,
+      avatarUrl: raw.avatarUrl ?? null,
+    };
+  };
+
+  /** Host: invite someone who is live on camera right now. */
+  const inviteToDuet = (p: AvailableLive) => {
+    if (!amHost || !myId || duetRef.current) return;
+    const id = newDuetId(myId);
+    duetSentIdsRef.current[p.userId] = id;
+    setDuetSent(prev => ({ ...prev, [p.userId]: Date.now() }));
+    const payload = { t: 'duet-invite', id, to: p.userId, from: duetMe, ts: Date.now() };
+    const ch = camChannelForHost(p.userId);
+    sendDuetSignal(ch, payload);
+    window.setTimeout(() => sendDuetSignal(ch, payload), 1200); // receiver de-dupes by id
+  };
+
+  const cancelDuetInvite = (p: AvailableLive) => {
+    const id = duetSentIdsRef.current[p.userId];
+    setDuetSent(prev => { const n = { ...prev }; delete n[p.userId]; return n; });
+    if (id) sendDuetSignal(camChannelForHost(p.userId), { t: 'duet-cancel', id, to: p.userId, ts: Date.now() });
+  };
+
+  /** Invited user: Decline (also used when the 30s timer runs out). */
+  const declineDuetInvite = () => {
+    const inv = duetIncomingRef.current;
+    if (!inv) return;
+    duetIncomingRef.current = null;
+    setDuetIncoming(null);
+    sendDuetSignal(camChannelForHost(inv.from.userId), {
+      t: 'duet-decline', id: inv.id, to: inv.from.userId, from: duetMe, ts: Date.now(),
+    });
+  };
+
+  /** Invited user: Accept → leave my own live (my viewers follow) and join the inviter's room as a guest. */
+  const acceptDuetInvite = async () => {
+    const inv = duetIncomingRef.current;
+    if (!inv || !myId) return;
+    duetIncomingRef.current = null;
+    setDuetIncoming(null);
+    sendDuetSignal(camChannelForHost(inv.from.userId), {
+      t: 'duet-accept', id: inv.id, to: inv.from.userId, from: duetMe, ts: Date.now(),
+    });
+    await leaveRoom({
+      skipNavigate: true,
+      duetMove: {
+        toHostId: inv.from.userId,
+        toName: inv.from.name,
+        toUsername: inv.from.username,
+        toAvatar: inv.from.avatarUrl,
+      },
+    });
+    navigate(duetRoomUrl(inv.from, true), { replace: true });
+  };
+
+  /** Host: close the split screen. */
+  const endDuet = () => {
+    const g = duetRef.current;
+    if (!g) return;
+    const ts = Date.now();
+    duetSetTsRef.current = ts;
+    void sendDataPayload({ t: 'duet-end', uid: g.uid, ts });
+    void sendDataPayload({ t: 'duet-set', guest: null, ts: ts + 1 });
+    applyDuetGuest(null);
+  };
+
+  // One handler for every duet message (Agora data stream + signal transport) — latest closure via ref.
+  handleDuetMsgRef.current = (msg: any): boolean => {
+    if (!isDuetMessage(msg)) return false;
+    // The server keeps the last signals of a room in memory (no expiry), so old duet messages can be replayed
+    // to someone who joins later → ignore anything stale (invites live 30s, the rest 30s too).
+    const stamp = Number(msg.at) || Number(msg.ts) || 0;
+    if (stamp && Date.now() - stamp > (msg.t === 'duet-invite' ? 45_000 : 30_000)) return true;
+    const ts = Number(msg.ts) || Date.now();
+    const myUid = myUidRef.current;
+
+    switch (msg.t) {
+      case 'duet-invite': {
+        if (!amHost || !myId || String(msg.to) !== String(myId)) return true;
+        const id = String(msg.id || '');
+        const from = toDuetPerson(msg.from);
+        if (!id || !from || from.userId === myId || duetSeenRef.current.has(id)) return true;
+        duetSeenRef.current.add(id);
+        if (duetRef.current || duetIncomingRef.current) {
+          sendDuetSignal(camChannelForHost(from.userId), {
+            t: 'duet-decline', id, to: from.userId, from: duetMe, busy: true, ts: Date.now(),
+          });
+          return true;
+        }
+        const inv: DuetInvite = { id, from, at: Date.now() };
+        duetIncomingRef.current = inv;
+        setDuetIncoming(inv);
+        return true;
+      }
+      case 'duet-cancel': {
+        if (String(msg.to) === String(myId) && duetIncomingRef.current?.id === msg.id) {
+          duetIncomingRef.current = null;
+          setDuetIncoming(null);
+        }
+        return true;
+      }
+      case 'duet-decline': {
+        if (!amHost || String(msg.to) !== String(myId)) return true;
+        const who = toDuetPerson(msg.from);
+        if (who) setDuetSent(prev => { const n = { ...prev }; delete n[who.userId]; return n; });
+        showDuetToast(`${who?.name || 'User'} ${msg.busy ? 'is busy' : 'declined'}`);
+        return true;
+      }
+      case 'duet-accept': {
+        if (!amHost || String(msg.to) !== String(myId)) return true;
+        const who = toDuetPerson(msg.from);
+        showDuetToast(`${who?.name || 'User'} accepted — joining…`);
+        return true;
+      }
+      case 'duet-join': {
+        const g = toDuetGuest(msg.guest, msg.uid);
+        if (!g) return true;
+        const isNew = duetRef.current?.uid !== g.uid;
+        applyDuetGuest(g);
+        if (amHost && isNew) {
+          // the guest may speak: add to the speakers list for everyone
+          const next = new Set(speakerUidsRef.current);
+          next.add(g.uid);
+          speakerUidsRef.current = next;
+          setSpeakerUids(next);
+          void sendDataPayload({ t: 'mic-grant', uid: g.uid, uids: [...next], speakers: [...next], host: myUid, ts: Date.now() });
+          void sendDataPayload({ t: 'speakers-set', uids: [...next], host: myUid, ts: Date.now() });
+          setDuetPanelOpen(false);
+          setDuetSent({});
+          showDuetToast(`${g.name} joined`);
+        }
+        return true;
+      }
+      case 'duet-set': {
+        if (ts < duetSetTsRef.current) return true; // stale
+        duetSetTsRef.current = ts;
+        if (amHost) return true; // the host is the source of truth
+        const g = toDuetGuest(msg.guest);
+        // a guest never drops itself on a "null" set — it leaves on duet-end
+        if (!g && amGuest) return true;
+        applyDuetGuest(g);
+        return true;
+      }
+      case 'duet-end': {
+        if (amGuest) {
+          if (msg.uid == null || Number(msg.uid) === myUid) {
+            applyDuetGuest(null);
+            if (!leftRef.current) void leaveRoom();
+          }
+          return true;
+        }
+        applyDuetGuest(null);
+        return true;
+      }
+      case 'duet-leave': {
+        const cur = duetRef.current;
+        if (cur && Number(msg.uid) === cur.uid) {
+          applyDuetGuest(null);
+          if (amHost) {
+            const t2 = Date.now();
+            duetSetTsRef.current = t2;
+            void sendDataPayload({ t: 'duet-set', guest: null, ts: t2 });
+          }
+        }
+        return true;
+      }
+      case 'duet-moved': {
+        // the host of this room just joined another live → follow them
+        if (amHost || amGuest || leftRef.current) return true;
+        if (String(msg.hostId) !== String(hostId)) return true;
+        const dest = toDuetPerson({
+          userId: msg.toHostId, name: msg.toName, username: msg.toUsername, avatarUrl: msg.toAvatar,
+        });
+        if (!dest) return true;
+        void (async () => {
+          await leaveRoom({ forced: true, skipNavigate: true });
+          navigate(duetRoomUrl(dest, false), { replace: true });
+        })();
+        return true;
+      }
+      default:
+        return true;
+    }
+  };
+
+  // Host keeps the room's split-screen state fresh for late joiners (viewers who arrive after the duet started)
+  useEffect(() => {
+    if (!joined || !amHost || !duet) return;
+    const send = () => {
+      const ts = Date.now();
+      duetSetTsRef.current = ts;
+      void sendDataPayload({ t: 'duet-set', guest: duetRef.current, ts });
+    };
+    send();
+    const id = window.setInterval(send, 2500);
+    return () => window.clearInterval(id);
+  }, [joined, amHost, duet?.uid, sendDataPayload]);
+
   useEffect(() => {
     const id = window.setTimeout(() => setEnterGateDone(true), 5000);
     return () => window.clearTimeout(id);
@@ -1824,20 +2139,38 @@ export default function LiveCameraPage() {
         <meta name="robots" content="noindex" />
       </Helmet>
 
-      <div style={{ position: 'absolute', inset: 0, background: '#000', zIndex: 0 }}>
-        {amHost ? (
-          <div ref={localVideoElRef} style={{ width: '100%', height: '100%' }} />
-        ) : (
-          <div ref={remoteVideoElRef} style={{ width: '100%', height: '100%' }} />
-        )}
-        {!camOn && amHost ? (
-          <div style={{
-            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', background: '#0a1416', color: 'rgba(200,230,230,0.7)',
-            fontWeight: 800,
-          }}>
-            Camera off
-          </div>
+      {/* DUET-PATCH: left = room host, right = duet guest (yellow divider) */}
+      <div style={{ position: 'absolute', inset: 0, background: '#000', zIndex: 0, display: 'flex' }}>
+        <div style={{ flex: 1, minWidth: 0, height: '100%', position: 'relative', overflow: 'hidden' }}>
+          <div ref={hostPaneRef} style={{ width: '100%', height: '100%' }} />
+          {!camOn && amHost ? (
+            <div style={{
+              position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', background: '#0a1416', color: 'rgba(200,230,230,0.7)',
+              fontWeight: 800,
+            }}>
+              Camera off
+            </div>
+          ) : null}
+          {duet ? <DuetNameTag name={hostName} username={hostUsername} /> : null}
+        </div>
+        {duet ? (
+          <>
+            <DuetDivider />
+            <div style={{ flex: 1, minWidth: 0, height: '100%', position: 'relative', overflow: 'hidden' }}>
+              <div ref={guestPaneRef} style={{ width: '100%', height: '100%' }} />
+              {!camOn && amGuest ? (
+                <div style={{
+                  position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', background: '#0a1416', color: 'rgba(200,230,230,0.7)',
+                  fontWeight: 800,
+                }}>
+                  Camera off
+                </div>
+              ) : null}
+              <DuetNameTag name={duet.name} username={duet.username} />
+            </div>
+          </>
         ) : null}
       </div>
 
@@ -1964,6 +2297,10 @@ export default function LiveCameraPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {/* DUET-PATCH: invite another live */}
+          {amHost && !duet ? (
+            <DuetInviteButton onClick={() => setDuetPanelOpen(true)} active={duetPanelOpen} />
+          ) : null}
           <button
             type="button"
             onClick={() => setMembersSheetOpen(true)}
@@ -2099,6 +2436,7 @@ export default function LiveCameraPage() {
               {members.filter(m => {
                   // صاحب البث: لا يظهر في الشريط الجانبي عند التحدث — فقط الإطار الأخضر فوق أيقونته العلوية
                   if (m.isHost) return false;
+                  if (duet && m.uid === duet.uid) return false; // DUET-PATCH: guest has its own half
                   const talking = speakingUids.has(m.uid) && !(m.isMe && (micFrozenByHost || !micOn));
                   const micActive = m.isMe ? (micOn && !micFrozenByHost) : !frozenUids.has(m.uid);
                   // Side rail: only active speakers (not silent viewers) — غير صاحب البث
@@ -2254,7 +2592,7 @@ export default function LiveCameraPage() {
             )}
           </motion.button>
 
-          {amHost ? (
+          {(amHost || amGuest) ? (
             <>
               <motion.button
                 type="button"
@@ -3014,6 +3352,26 @@ export default function LiveCameraPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* DUET-PATCH overlays */}
+      {amHost && duet ? <DuetEndButton onClick={endDuet} /> : null}
+      {amHost ? (
+        <DuetInvitePanel
+          open={duetPanelOpen && !duet}
+          myId={myId}
+          sent={duetSent}
+          onInvite={inviteToDuet}
+          onCancel={cancelDuetInvite}
+          onClose={() => setDuetPanelOpen(false)}
+        />
+      ) : null}
+      {amHost ? (
+        <DuetIncomingDialog
+          invite={duetIncoming}
+          onAccept={() => void acceptDuetInvite()}
+          onDecline={declineDuetInvite}
+        />
+      ) : null}
+      <DuetToast text={duetToast} />
       <LiveVipDock hostId={hostId} currentUserId={myId} />
       {/* قائمة المتحدث: دعم (هدية) + تجميد المايك لصاحب البث / كتم محلي للمشاهد */}
       {speakerMenu && (
