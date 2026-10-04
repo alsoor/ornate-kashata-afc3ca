@@ -14,7 +14,7 @@
  */
 import type { Request, Response } from 'express';
 import { getAuth } from '../../../../lib/auth/auth.js';
-import { setCallInvite } from '../../../lib/callInvite.js';
+import { clearCallInvite, setCallInvite } from '../../../lib/callInvite.js';
 
 export default async function handler(req: Request, res: Response) {
   try {
@@ -55,7 +55,9 @@ export default async function handler(req: Request, res: Response) {
     // الكلاينت يرسل { clear: true, ended: true } إلى هذا المسار عند إنهاء المكالمة.
     // كان المعالج يتجاهل هذين الحقلين فيُنشئ دعوة جديدة (at = الآن) للمستقبِل، فيعود الرنين بعد الإنهاء.
     // طلب الإلغاء لا يجب أن يُنشئ دعوة أبداً؛ المسح الفعلي يتم عبر /api/call/invite/clear.
-    if (body.clear === true || body.ended === true) {
+    if (body.clear === true || body.ended === true || body.answered === true) {
+      clearCallInvite(toUserId, channel);
+      if (hostId) clearCallInvite(String(hostId), channel);
       return res.json({ ok: true, cleared: true });
     }
 
