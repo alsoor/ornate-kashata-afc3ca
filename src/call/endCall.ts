@@ -150,8 +150,9 @@ export async function endCall(meId: string, opts?: { remote?: boolean; client?: 
     const peers = session.peers.filter(p => p.id && p.id !== meId);
     const blast = () => {
       for (const peer of peers) {
-        sendSignal({ type: 'hangup', to: peer.id, from: meId, channel: session.channel, at: Date.now() });
-        sendSignal({ type: 'ended', to: peer.id, from: meId, channel: session.channel, at: Date.now() });
+        // at ثابت في كل الدفعات: وإلا تُسجَّل آخر دفعة كوقت الإنهاء وتُرفض إعادة اتصال سريعة.
+        sendSignal({ type: 'hangup', to: peer.id, from: meId, channel: session.channel, at: endedAt });
+        sendSignal({ type: 'ended', to: peer.id, from: meId, channel: session.channel, at: endedAt });
         void clearInvite(peer.id, session.channel);
       }
     };
