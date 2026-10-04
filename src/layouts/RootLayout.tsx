@@ -1628,14 +1628,10 @@ function GlobalBottomNavigation() {
   function clearServerCallInvite(targetUserId?: string | null, channel?: string | null) {
     const uid = String(targetUserId || '').trim();
     if (!uid) return;
+    const body = JSON.stringify({ userId: uid, toUserId: uid, targetUserId: uid, channel: channel || undefined, clear: true, ended: true, hangup: true });
     try {
-      void fetch('/api/call/invite/clear', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: uid, channel: channel || undefined }),
-        keepalive: true,
-      });
+      void fetch('/api/call/invite/clear', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body, keepalive: true });
+      void fetch('/api/call/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body, keepalive: true });
     } catch { /* */ }
   }
 
@@ -2058,6 +2054,15 @@ function GlobalBottomNavigation() {
               return;
             }
           }
+          const cancelRoom = `home_cancel_${channel}`;
+          const cr = await fetch(`/api/room?id=${encodeURIComponent(cancelRoom)}`, { credentials: 'include' });
+          if (cr.ok) {
+            const cd = await cr.json() as { members?: { userId?: string }[] };
+            if ((cd.members || []).length > 0) {
+              closeIncoming();
+              return;
+            }
+          }
         } catch { /* */ }
         try {
           if (!user?.id) return;
@@ -2237,6 +2242,11 @@ function GlobalBottomNavigation() {
           clearServerCallInvite(m.id, endedChannel);
           sendHomeCallSignal({ type: 'hangup', to: m.id, from: user.id, channel: endedChannel, at: endedAt });
           sendHomeCallSignal({ type: 'ended', to: m.id, from: user.id, channel: endedChannel, at: endedAt });
+          void fetch('/api/room/join', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId: `home_cancel_${endedChannel}`, userId: user.id, name: 'cancelled' }),
+            keepalive: true,
+          });
           window.setTimeout(() => {
             clearServerCallInvite(m.id, endedChannel);
             sendHomeCallSignal({ type: 'hangup', to: m.id, from: user.id, channel: endedChannel, at: Date.now() });
