@@ -19113,35 +19113,22 @@ function SiteVisitorsBadge({ userId }: { userId?: string | null }) {
       post('/api/room/leave');
     };
   }, [userId]);
-  const on = count > 0;
   return (
     <div
       aria-label={'زوار الموقع ' + count}
       title="الزوار الآن"
       style={{
-        position: 'relative',
-        zIndex: 6,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 1,
-        marginRight: 8,
-        marginTop: 6,
-        flexShrink: 0,
+        position: 'absolute',
+        top: 'max(22px, calc(env(safe-area-inset-top, 0px) + 14px))',
+        right: 18,
+        zIndex: 30,
         pointerEvents: 'none',
       }}
     >
       <span style={{
-        width: 18, height: 18, borderRadius: '50%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        ...hdrIconTone(on, 'orange'),
-      }}>
-        <Users size={9} strokeWidth={2.4} />
-      </span>
-      <span style={{
-        fontSize: '0.55rem', fontWeight: 800, lineHeight: 1,
+        fontSize: '0.78rem', fontWeight: 800, lineHeight: 1,
         fontVariantNumeric: 'tabular-nums',
-        color: on ? '#f97316' : 'rgba(150,200,200,0.55)',
+        color: '#ffffff',
       }}>{count}</span>
     </div>
   );
@@ -24986,6 +24973,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
+          <SiteVisitorsBadge userId={user?.id ? String(user.id) : null} />
           {/* Profile bell lives in the right icon column above Ads (not absolute top). */}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
@@ -25245,10 +25233,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
                   {/* Settings — نُقلت من قائمة (+) إلى نهاية صف الأيقونات (أقصى اليمين)، بيضاء ومميّزة وتدور ببطء.
                       margin سالب حتى لا يزيد ارتفاع الصف رغم أن حجمها 38px. */}
-                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                  {/* زوار الموقع — يسار الجرس بقليل، بنفس مستواه ومنزّلة شوي */}
-                  <SiteVisitorsBadge userId={user?.id ? String(user.id) : null} />
-                  <div style={{ position: 'relative', marginTop: -3, marginBottom: -3, width: 30, height: 30, flexShrink: 0 }}>
+                  <div style={{ position: 'relative', marginLeft: 'auto', marginTop: -3, marginBottom: -3, width: 30, height: 30, flexShrink: 0 }}>
                   {/* زر الإعدادات نُقل إلى صف الأيقونات (Friends / Call / Live) تحت الخط */}
                   {/* Bell — نزل لنفس مستوى الأيقونات (أقصى اليمين)، same size: notices the owner sent (deleted story + message) */}
                   <div style={{ position: 'absolute', bottom: 0, left: 0, zIndex: 5 }}>
@@ -25256,7 +25241,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
                       <StoryModerationBell userId={user?.id} size={30} />
                     </div>
-                  </div>
                   </div>
                   </div>
 
