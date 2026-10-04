@@ -41,6 +41,9 @@ export type VoiceInviteIncoming = {
   hostName: string;
   hostUsername: string | null;
   hostAvatar: string | null;
+  /** who sent the invite (a room member other than the host) — null when the host invited directly */
+  fromId?: string;
+  fromName?: string | null;
   /** ms left according to the SERVER clock (no client clock skew) */
   ttlLeftMs: number;
   /** local time we received it */
@@ -174,13 +177,20 @@ function useSentInvites(): SentMap {
   return sentInvites;
 }
 
-export async function sendVoiceInvite(to: VoiceInvitePerson, me: VoiceInvitePerson): Promise<boolean> {
+/**
+ * `me`   = the person sending the invite (host OR any member of the room)
+ * `host` = owner of the voice room the invite is for (defaults to me when I am the host)
+ */
+export async function sendVoiceInvite(to: VoiceInvitePerson, me: VoiceInvitePerson, host?: VoiceInvitePerson | null): Promise<boolean> {
+  const h = host || me;
   const res = await postInvite({
     action: 'send',
     toUserId: to.userId,
-    hostName: me.name,
-    hostUsername: me.username,
-    hostAvatar: me.avatarUrl,
+    hostId: h.userId,
+    hostName: h.name,
+    hostUsername: h.username,
+    hostAvatar: h.avatarUrl,
+    fromName: me.name,
   });
   if (!res?.ok) return false;
   sentInvites = { ...sentInvites, [to.userId]: { id: String(res.id || ''), at: Date.now() } };
@@ -270,10 +280,16 @@ export function VoiceInviteButton({ onClick, active }: { onClick: () => void; ac
 export function VoiceInvitePanel({
   open,
   me,
+  host,
+  canSearchAll = true,
   onClose,
 }: {
   open: boolean;
   me: VoiceInvitePerson | null;
+  /** owner of the room; when I am not the host I invite my friends to the host's live */
+  host?: VoiceInvitePerson | null;
+  /** host: search every user. member: only my own online friends. */
+  canSearchAll?: boolean;
   onClose: () => void;
 }) {
   const [friends, setFriends] = useState<OnlinePerson[]>([]);
@@ -312,19 +328,24 @@ export function VoiceInvitePanel({
   // search any user (debounced)
   useEffect(() => {
     const term = q.trim().replace(/^@/, '');
-    if (!open || !myId || term.length < 2) { setFound([]); return; }
+    if (!open || !myId || term.length < 2 || !canSearchAll) { setFound([]); return; }
     let stop = false;
     const t = window.setTimeout(async () => {
       const l = await searchUsersWithPresence(term, myId);
       if (!stop && alive.current) setFound(l);
     }, 350);
     return () => { stop = true; window.clearTimeout(t); };
-  }, [q, open, myId]);
+  }, [q, open, myId, canSearchAll]);
 
   useEffect(() => { if (!open) setQ(''); }, [open]);
 
-  const searching = q.trim().replace(/^@/, '').length >= 2;
-  const list = searching ? found : friends;
+  const term0 = q.trim().replace(/^@/, '').toLowerCase();
+  const searching = canSearchAll && term0.length >= 2;
+  const list = searching
+    ? found
+    : term0
+      ? friends.filter((f) => f.name.toLowerCase().includes(term0) || (f.username || '').toLowerCase().includes(term0))
+      : friends;
 
   const row = (p: OnlinePerson) => {
     const s = sent[p.userId];
@@ -332,8 +353,10 @@ export function VoiceInvitePanel({
     return (
       <div
         key={p.userId}
+        dir="ltr"
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', borderBottom: '1px solid rgba(0,188,212,0.08)' }}
       >
+        {/* profile picture — LEFT */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <UserAvatar
             name={p.name}
@@ -348,17 +371,19 @@ export function VoiceInvitePanel({
             }}
           />
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
           <p style={{ margin: 0, color: '#dff6f6', fontWeight: 800, fontSize: '0.84rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {p.name}
           </p>
-          <p style={{ margin: 0, fontSize: '0.64rem', color: 'rgba(150,200,200,0.55)', display: 'flex', gap: 6, alignItems: 'center' }}>
+          {/* @username first, online status after it */}
+          <p style={{ margin: 0, fontSize: '0.64rem', color: 'rgba(150,200,200,0.55)', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-start' }}>
             {p.username ? <span>@{p.username}</span> : null}
             <span style={{ color: p.online ? '#22c55e' : '#9ca3af', fontWeight: 800 }}>
               {p.online ? '● أونلاين' : 'غير متصل'}
             </span>
           </p>
         </div>
+        {/* Invite — RIGHT */}
         {pending ? (
           <button
             type="button"
@@ -366,23 +391,25 @@ export function VoiceInvitePanel({
             style={{
               padding: '7px 14px', borderRadius: 999, cursor: 'pointer', fontWeight: 800, fontSize: '0.74rem',
               border: '1px solid rgba(150,200,200,0.35)', background: 'rgba(150,200,200,0.08)', color: 'rgba(200,230,230,0.8)',
+              flexShrink: 0,
             }}
           >
-            تم · إلغاء
+            Invited · Cancel
           </button>
         ) : (
           <button
             type="button"
             disabled={!p.online || !me}
-            onClick={() => { if (me) void sendVoiceInvite(p, me); }}
+            onClick={() => { if (me) void sendVoiceInvite(p, me, host); }}
             style={{
               padding: '7px 18px', borderRadius: 999, fontWeight: 800, fontSize: '0.78rem', border: 'none',
               cursor: p.online ? 'pointer' : 'not-allowed',
               background: p.online ? '#facc15' : 'rgba(150,200,200,0.15)',
               color: p.online ? '#1a1400' : 'rgba(200,230,230,0.4)',
+              flexShrink: 0,
             }}
           >
-            استدعاء
+            Invite
           </button>
         )}
       </div>
@@ -425,7 +452,7 @@ export function VoiceInvitePanel({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>استدعاء لبثك الصوتي</p>
                 <p style={{ margin: 0, color: 'rgba(150,200,200,0.55)', fontSize: '0.66rem' }}>
-                  أي شخص أونلاين يوصله المربع حتى لو ما هو في بث
+                  {canSearchAll ? 'أي شخص أونلاين يوصله المربع حتى لو ما هو في بث' : 'استدعِ أصدقاءك المتصلين إلى هذا البث'}
                 </p>
               </div>
               <button
@@ -449,7 +476,7 @@ export function VoiceInvitePanel({
                 <input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="ابحث عن مستخدم بالاسم أو @اليوزر"
+                  placeholder={canSearchAll ? 'ابحث عن مستخدم بالاسم أو @اليوزر' : 'ابحث في أصدقائك'}
                   style={{ flex: 1, minWidth: 0, background: 'transparent', border: 'none', outline: 'none', color: '#dff6f6', fontSize: '0.82rem' }}
                 />
               </div>
@@ -599,6 +626,8 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
           hostName: String(fresh.hostName || 'User'),
           hostUsername: fresh.hostUsername ? String(fresh.hostUsername) : null,
           hostAvatar: fresh.hostAvatar ? String(fresh.hostAvatar) : null,
+          fromId: fresh.fromId ? String(fresh.fromId) : undefined,
+          fromName: fresh.fromName ? String(fresh.fromName) : null,
           ttlLeftMs: Math.max(0, Number(fresh.ttlLeftMs ?? VOICE_INVITE_TTL_MS)),
           receivedAt: Date.now(),
         };
@@ -692,7 +721,9 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
               {invite.hostUsername ? `@${invite.hostUsername}` : invite.hostName}
             </p>
             <p style={{ margin: 0, color: 'rgba(200,230,230,0.8)', fontSize: '0.78rem', textAlign: 'center', lineHeight: 1.5 }}>
-              يدعوك للانضمام إلى بثه الصوتي
+              {invite.fromId && invite.fromId !== invite.hostId && invite.fromName
+                ? `${invite.fromName} يدعوك للانضمام إلى بث ${invite.hostName} الصوتي`
+                : 'يدعوك للانضمام إلى بثه الصوتي'}
             </p>
             <p style={{ margin: 0, color: 'rgba(150,200,200,0.5)', fontSize: '0.62rem' }}>{left}s</p>
             <div style={{ display: 'flex', gap: 10, width: '100%', marginTop: 4 }}>

@@ -160,7 +160,7 @@ export default function LivePage() {
   const [voiceInvOpen, setVoiceInvOpen] = useState(false);
   const [voiceInvToast, setVoiceInvToast] = useState('');
   const voiceInvToastTimerRef = useRef<number | null>(null);
-  useVoiceInviteReplies(!!(joined && amHost && isHostRoom), (r) => {
+  useVoiceInviteReplies(!!(joined && isHostRoom), (r) => {
     setVoiceInvToast(voiceReplyText(r));
     if (voiceInvToastTimerRef.current) window.clearTimeout(voiceInvToastTimerRef.current);
     voiceInvToastTimerRef.current = window.setTimeout(() => setVoiceInvToast(''), 3200);
@@ -659,6 +659,7 @@ export default function LivePage() {
       } catch { /* ignore */ }
       await new Promise(r => setTimeout(r, 120));
     } else if (myId) {
+      try { cancelAllVoiceInvites(); } catch { /* ignore */ } // VOICE-INVITE-PATCH
       try {
         await fetch('/api/room/leave', {
           method: 'POST',
@@ -1723,7 +1724,7 @@ export default function LivePage() {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        {amHost && isHostRoom && (
+        {isHostRoom && (
           <VoiceInviteButton active={voiceInvOpen} onClick={() => setVoiceInvOpen(true)} />
         )}
         <button
@@ -2805,10 +2806,12 @@ export default function LivePage() {
         </div>
       )}
       {/* VOICE-INVITE-PATCH */}
-      {amHost && isHostRoom && (
+      {isHostRoom && (
         <VoiceInvitePanel
           open={voiceInvOpen}
           onClose={() => setVoiceInvOpen(false)}
+          canSearchAll={amHost}
+          host={{ userId: hostId, name: hostName, username: hostUsername, avatarUrl: hostAvatar }}
           me={myId ? { userId: myId, name: myName, username: myUsername, avatarUrl: myAvatar } : null}
         />
       )}
