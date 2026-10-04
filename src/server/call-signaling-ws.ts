@@ -175,12 +175,28 @@ export function attachCallSignalingWS(server: Server) {
         return;
       }
 
-      if (!target || target.readyState !== WebSocket.OPEN) {
+      const deliverOrRetry = () => {
+        const live = clients.get(to);
+        if (live && live.readyState === WebSocket.OPEN) {
+          send(live, msg);
+          return true;
+        }
+        return false;
+      };
+      if (deliverOrRetry()) return;
+      // hangup / end / answered must reach the other phone even if the socket blipped
+      const retryable = type === 'hangup' || type === 'call-end' || type === 'ended' || type === 'answered' || type === 'call-answered';
+      if (!retryable) {
         console.log(`[call-signal] target for type=${type} to=${to} not available — dropping message silently`);
         return;
       }
-
-      send(target, msg);
+      console.log(`[call-signal] ${type} to=${to} not connected — retrying for 20s`);
+      let waited = 0;
+      const retry = setInterval(() => {
+        waited += 500;
+        if (deliverOrRetry() || waited >= 20000) clearInterval(retry);
+      }, 500);
+      return;
     });
 
     ws.on('close', () => {
