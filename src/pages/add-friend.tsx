@@ -19056,6 +19056,96 @@ function hdrIconTone(active: boolean, tone: 'green' | 'orange' = 'green'): React
   };
 }
 
+function SiteVisitorsBadge({ userId }: { userId?: string | null }) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let vid = userId ? String(userId) : '';
+    if (!vid) {
+      try {
+        vid = sessionStorage.getItem('stooorna_guest_vid') || '';
+        if (!vid) {
+          vid = 'g' + Math.random().toString(36).slice(2, 10);
+          sessionStorage.setItem('stooorna_guest_vid', vid);
+        }
+      } catch {
+        vid = 'g' + String(Date.now());
+      }
+    }
+    const roomId = 'stooorna-site-visitors';
+    const post = (path: string) => {
+      try {
+        void fetch(path, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId, userId: vid, name: userId ? 'user' : 'guest' }),
+          keepalive: true,
+        }).catch(() => {});
+      } catch { /* ignore */ }
+    };
+    post('/api/room/join');
+    const beat = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      post('/api/room/heartbeat');
+    }, 4000);
+    let stop = false;
+    const pull = async () => {
+      try {
+        const r = await fetch('/api/room?id=' + encodeURIComponent(roomId), { credentials: 'include', cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json() as { members?: unknown[] };
+        const n = Array.isArray(d.members) ? d.members.length : 0;
+        if (!stop) setCount(n);
+      } catch { /* keep last real count */ }
+    };
+    void pull();
+    const poll = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void pull();
+    }, 2000);
+    const onLeave = () => post('/api/room/leave');
+    window.addEventListener('pagehide', onLeave);
+    return () => {
+      stop = true;
+      window.clearInterval(beat);
+      window.clearInterval(poll);
+      window.removeEventListener('pagehide', onLeave);
+      post('/api/room/leave');
+    };
+  }, [userId]);
+  const on = count > 0;
+  return (
+    <div
+      aria-label={'زوار الموقع ' + count}
+      title="الزوار الآن"
+      style={{
+        position: 'absolute',
+        top: 'max(6px, env(safe-area-inset-top, 0px))',
+        right: 10,
+        zIndex: 30,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 2,
+        pointerEvents: 'none',
+      }}
+    >
+      <span style={{
+        width: 24, height: 24, borderRadius: '50%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        ...hdrIconTone(on, 'orange'),
+      }}>
+        <Users size={12} strokeWidth={2.3} />
+      </span>
+      <span style={{
+        fontSize: '0.62rem', fontWeight: 800, lineHeight: 1,
+        fontVariantNumeric: 'tabular-nums',
+        color: on ? '#f97316' : 'rgba(150,200,200,0.55)',
+      }}>{count}</span>
+    </div>
+  );
+}
+
 function homeLiveSameEntries(a: HomeLiveEntry[], b: HomeLiveEntry[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -24895,6 +24985,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           backdropFilter: 'blur(14px)',
           borderBottom: `1px solid ${CLR_NAV_BORDER}`,
         }}>
+          <SiteVisitorsBadge userId={user?.id ? String(user.id) : null} />
           {/* Profile bell lives in the right icon column above Ads (not absolute top). */}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
               with everything else when the header collapses (fades out + becomes
