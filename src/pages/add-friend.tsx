@@ -22533,6 +22533,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // stories strip, new-post + inbox) like a shutter. Swiping up on the posts feed
   // also collapses it; scrolling back to the top expands it again.
   const [headerOpen, setHeaderOpen] = useState(true);
+  const [chatPageOpen, setChatPageOpen] = useState(false);
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
   const [liveScrollHidden, setLiveScrollHidden] = useState(false);
   useEffect(() => {
@@ -25252,16 +25253,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const closeBubble = () => setDockBubble(null);
   const title = dockBubble.kind === 'call' ? 'Call' : dockBubble.kind === 'chat' ? 'Chat' : dockBubble.kind === 'live' ? 'LIVE' : 'Settings';
   const primaryBtn: React.CSSProperties = { width: '100%', padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.5)', background: 'rgba(0,188,212,0.16)', color: '#7ee8f5', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
-  if (dockBubble.kind === 'chat') {
-    return (
-      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, top: 'calc(env(safe-area-inset-top, 0px) + 118px)', zIndex: 30, background: '#ffffff', display: 'flex', flexDirection: 'column', animation: 'stooornaPlusFanIn 0.22s ease-out', boxShadow: '0 -8px 24px rgba(0,0,0,0.18)' }}>
-        <button type="button" aria-label="Close" onClick={closeBubble} style={{ position: 'absolute', top: 8, right: 10, zIndex: 5, width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(7,20,22,0.88)', color: '#fff', cursor: 'pointer' }}><X size={16} /></button>
-        <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#ffffff' }}>
-          <PublicLiveCommentsPanel embedded user={user as any} headerOpen={false} onToggleHeader={closeBubble} onBusyChange={setLiveChatBusy} />
-        </div>
-      </div>
-    );
-  }
   return (
     <>
       <div onPointerDown={e => { e.preventDefault(); closeBubble(); }} style={{ position: 'fixed', inset: 0, zIndex: 10068, background: 'rgba(0,6,8,0.45)' }} />
@@ -25500,7 +25491,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
                     <button
                       type="button"
-                      onClick={(e) => openDockBubble('chat', e.currentTarget)}
+                      onClick={() => { setDockBubble(null); setChatPageOpen(true); setHeaderOpen(false); }}
                       aria-label="Chat"
                       style={{
                         width: 38, height: 38, borderRadius: '50%',
@@ -25607,6 +25598,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     whileTap={{ scale: 0.88 }}
                     onClick={() => {
                       setDockBubble(null);
+                      setChatPageOpen(false);
                       if (headerOpen) toggleHeaderOpen();
                     }}
                     aria-label="Open photos and videos"
@@ -32269,7 +32261,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           navigate('/settings');
         }}
       />
-      {/* الشات انتقل لزر Chat كصفحة مستقلة — ما ينعرض تحت أيقونة التطبيق */}
+      {chatPageOpen && pageTab === 'profile' && !isFriendManagement && !guestMode && (
+        <PublicLiveCommentsPanel user={user as any} headerOpen={false} onToggleHeader={() => { setChatPageOpen(false); setHeaderOpen(true); }} onBusyChange={setLiveChatBusy} />
+      )}
       {GuestModal}
     </>;
 }
