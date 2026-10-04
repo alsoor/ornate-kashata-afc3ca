@@ -84,8 +84,6 @@ import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
-import { CallWaitingToggle } from '@/lib/callPatch';
-import { AppMediaSheet, syncAppMedia } from '@/lib/appMediaPatch';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { usePresenceQuery } from '@/hooks/usePresence';
 import { pullLiveLocations, pullOnlineIds } from '@/lib/liveLocationSync';
@@ -14779,7 +14777,7 @@ function loadPublicLiveComments(): PublicLiveComment[] {
     const raw = JSON.parse(localStorage.getItem(PUBLIC_LIVE_COMMENTS_KEY) || '[]');
     if (!Array.isArray(raw)) return [];
     return raw
-      .filter((x: any) => x && x.id && (x.text || x.voiceUrl || x.imageUrl) && ((x.imageUrl && !/^(blob:|data:)/i.test(String(x.imageUrl))) || (Number(x.createdAt) || Date.now()) >= liveChatCycleStart()))
+      .filter((x: any) => x && x.id && (x.text || x.voiceUrl || x.imageUrl) && (Number(x.createdAt) || Date.now()) >= liveChatCycleStart())
       .map((x: any) => ({
         id: String(x.id),
         userId: String(x.userId || ''),
@@ -16353,7 +16351,7 @@ function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url:
 
 /** One tile of the public media grid (outside the chat): video autoplays muted, photo is static.
  *  Publisher avatar bottom-left, like bottom-right, comment count top-left. Tap = open (viewer with live comments). */
-function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenProfile, onDelete }: {
+function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenProfile }: {
   c: PublicLiveComment;
   liked: boolean;
   name: string;
@@ -16361,7 +16359,6 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
   onLike: () => void;
   onOpen: () => void;
   onOpenProfile: () => void;
-  onDelete?: () => void;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const isVideo = c.text !== LIVE_PHOTO_CAPTION;
@@ -16391,9 +16388,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
         ) : (
           <img src={c.imageUrl || ''} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
         )}
-        {onDelete ? (
-          <button type="button" aria-label="Delete post" onClick={e => { e.stopPropagation(); onDelete(); }} style={{ position: 'absolute', top: 6, right: 6, zIndex: 2, border: 'none', borderRadius: 999, padding: '4px 8px', background: 'rgba(0,0,0,0.62)', color: '#fff', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>حذف</button>
-        ) : isVideo ? (
+        {isVideo ? (
           <div style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.5)', borderRadius: 999, padding: 5, display: 'flex', pointerEvents: 'none' }}>
             <Play size={13} color="#fff" fill="#fff" />
           </div>
@@ -17214,15 +17209,12 @@ function PublicLiveCommentsPanel({
   user,
   headerOpen,
   onBusyChange,
-  embedded,
 }: {
   user: { id?: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null } | null | undefined;
   headerOpen: boolean;
   onToggleHeader?: () => void;
   /** true while someone is actively typing in the live chat (drives the green shimmering grabber) */
   onBusyChange?: (busy: boolean) => void;
-  /** داخل فقاعة Chat: نفس الشات السفلي بارتفاع الصفحة */
-  embedded?: boolean;
 }) {
   const [comments, setComments] = useState<PublicLiveComment[]>(() => loadPublicLiveComments());
   const [text, setText] = useState('');
@@ -17245,7 +17237,7 @@ function PublicLiveCommentsPanel({
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingVoice, setPendingVoice] = useState<{ url: string; duration: number } | null>(null);
   const [recording, setRecording] = useState(false);
-  const [chatLift, setChatLift] = useState(embedded ? 1 : 0);
+  const [chatLift, setChatLift] = useState(0);
   // true أثناء انميشن نزول الشات العام (يبقى مفتوح ~280ms ثم يتسكّر فعلياً)
   const [chatClosing, setChatClosing] = useState(false);
   const chatCloseTimerRef = useRef<number | null>(null);
@@ -17327,11 +17319,9 @@ function PublicLiveCommentsPanel({
       lastClearCycleRef.current = cs;
       liveSigRef.current = '';
       // public live-chat messages only
-      setComments(prev => {
-        const kept = prev.filter(x => !!(x.imageUrl && !/^(blob:|data:)/i.test(String(x.imageUrl))));
-        savePublicLiveComments(kept);
-        return kept;
-      });
+      savePublicLiveComments([]);
+      setComments([]);
+      void clearLiveChatOnServer();
       // intentionally NO setPosts / setMyMediaPosts / fetchPosts wipe
     }, 1000);
     return () => window.clearInterval(id);
@@ -17496,7 +17486,7 @@ function PublicLiveCommentsPanel({
         const remote = await fetchLiveChatFromServer();
         const local = loadPublicLiveComments();
         let next = remote ? mergeLiveChatLists(local, remote) : local;
-        next = next.filter(x => (x.imageUrl && !/^(blob:|data:)/i.test(String(x.imageUrl))) || x.createdAt >= liveChatCycleStart());
+        next = next.filter(x => x.createdAt >= liveChatCycleStart());
         const cleaned: PublicLiveComment[] = [];
         let blocked = false;
         for (const row of next) {
@@ -18052,7 +18042,7 @@ function PublicLiveCommentsPanel({
   // When header is forced open (e.g. after system gallery) but Saved Messages is closed,
   // keep Templates/media alive and skip the chat portal. If Saved Messages is open, fall through
   // so the public chat stays mounted underneath — closing Saved Messages returns to live chat, not "outside".
-  if (!embedded && headerOpen && !savedOpen) {
+  if (headerOpen && !savedOpen) {
     return (tplOpen || mediaViewer || mediaFeedOverlay || mediaCommentsSheet) ? (
       <>
         {tplOpen ? <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} /> : null}
@@ -18063,13 +18053,13 @@ function PublicLiveCommentsPanel({
     ) : null;
   }
 
-  const chatTree = (
+  return createPortal(
     <>
-    {!embedded && <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />}
-    {!embedded && mediaViewer}
-    {!embedded && mediaFeedOverlay}
-    {!embedded && mediaCommentsSheet}
-    {!embedded && onceViewer}
+    <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />
+    {mediaViewer}
+    {mediaFeedOverlay}
+    {mediaCommentsSheet}
+    {onceViewer}
     {roundToast ? (
       <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)', zIndex: 100003, padding: '8px 14px', borderRadius: 999, background: 'rgba(17,17,17,0.92)', color: '#fff', fontSize: '0.78rem', fontWeight: 700, pointerEvents: 'none' }}>
         {roundToast}
@@ -18081,20 +18071,20 @@ function PublicLiveCommentsPanel({
       onTouchEnd={e => e.stopPropagation()}
       onWheel={e => e.stopPropagation()}
       style={{
-        position: embedded ? 'absolute' : 'fixed',
+        position: 'fixed',
         left: 0,
         right: 0,
         bottom: 0,
         top: 0,
-        zIndex: embedded ? 2 : (chatLift === 1 ? 40 : 15),
+        zIndex: chatLift === 1 ? 40 : 15,
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: embedded ? 'flex-start' : 'flex-end',
-        background: embedded ? '#ffffff' : 'transparent',
+        justifyContent: 'flex-end',
+        background: 'transparent',
         overflow: 'hidden',
         color: '#111',
         touchAction: 'pan-y',
-        pointerEvents: embedded ? 'auto' : 'none',
+        pointerEvents: 'none',
       }}
     >
       {chatLift === 1 ? <LiveChatClearCountdown onDotClick={() => setBigEmojiOpen(v => !v)} dotActive={bigEmojiOpen} /> : null}
@@ -18134,16 +18124,15 @@ function PublicLiveCommentsPanel({
         </>
       ) : null}
       <div style={{
-        flex: embedded ? 0 : (chatLift === 0 ? 1 : undefined),
+        flex: chatLift === 0 ? 1 : undefined,
         flexShrink: 0,
-        height: embedded ? 0 : (chatLift === 1 ? 'max(8px, env(safe-area-inset-top))' : undefined),
-        minHeight: 0,
-        display: embedded ? 'none' : undefined,
+        height: chatLift === 1 ? 'max(8px, env(safe-area-inset-top))' : undefined,
+        minHeight: chatLift === 0 ? 0 : undefined,
         pointerEvents: 'none',
         background: 'transparent',
         position: 'relative',
       }}>
-        {!embedded && chatLift === 0 && mediaPosts.length > 0 ? (
+        {chatLift === 0 && mediaPosts.length > 0 ? (
           <div
             onTouchStart={e => e.stopPropagation()}
             onTouchMove={e => e.stopPropagation()}
@@ -18180,13 +18169,6 @@ function PublicLiveCommentsPanel({
                   onLike={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleLike(vc.id); }}
                   onOpen={() => { if (Date.now() - composerGuardRef.current < 700) return; if (LIVE_MEDIA_TAP_OPENS_FEED) setFeedStartId(vc.id); else setOpenMediaId(vc.id); }}
                   onOpenProfile={() => { if (Date.now() - composerGuardRef.current < 700) return; openProfileOf(vc); }}
-                  onDelete={myId && vc.userId === myId ? () => {
-                    setComments(prev => {
-                      const next = prev.filter(x => x.id !== vc.id);
-                      savePublicLiveComments(next);
-                      return next;
-                    });
-                  } : undefined}
                 />
               ))}
             </div>
@@ -18200,20 +18182,19 @@ function PublicLiveCommentsPanel({
         onTouchMove={e => e.stopPropagation()}
         onWheel={e => e.stopPropagation()}
         style={{
-          flex: (embedded || chatLift !== 0) ? 1 : '0 0 0px',
-          minHeight: 0,
-          height: !embedded && chatLift === 0 ? 0 : undefined,
-          overflowY: !embedded && chatLift === 0 ? 'hidden' : 'scroll',
-          display: !embedded && chatLift === 0 ? 'none' : 'flex',
-          flexDirection: 'column',
+          flex: chatLift === 0 ? '0 0 0px' : 1,
+          minHeight: chatLift === 0 ? 0 : 0,
+          height: chatLift === 0 ? 0 : undefined,
+          overflowY: chatLift === 0 ? 'hidden' : 'scroll',
+          display: chatLift === 0 ? 'none' : undefined,
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
-          padding: embedded ? '12px 12px 6px' : (chatLift === 1 ? '60px 12px 6px' : '4px 12px 6px'),
+          padding: chatLift === 1 ? '60px 12px 6px' : '4px 12px 6px',
           background: '#ffffff',
           touchAction: 'pan-y',
           pointerEvents: chatClosing ? 'none' : 'auto',
-          willChange: !embedded && chatLift === 1 ? 'transform' : undefined,
-          animation: embedded ? undefined : (chatLift === 1 ? (chatClosing ? 'stooornaChatFall .28s cubic-bezier(.4,0,.9,.6) both' : 'stooornaChatRise .34s cubic-bezier(.22,1,.36,1) both') : undefined),
+          willChange: chatLift === 1 ? 'transform' : undefined,
+          animation: chatLift === 1 ? (chatClosing ? 'stooornaChatFall .28s cubic-bezier(.4,0,.9,.6) both' : 'stooornaChatRise .34s cubic-bezier(.22,1,.36,1) both') : undefined,
         }}
       >
         <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
@@ -18990,10 +18971,9 @@ function PublicLiveCommentsPanel({
       userUsername={myUsername}
       userAvatar={myAvatar}
     />
-    </>
+    </>,
+    document.body
   );
-  if (embedded || typeof document === 'undefined') return chatTree;
-  return createPortal(chatTree, document.body);
 }
 
 // ── HomeLiveStack — بطاقات البث (Voice Live / Video Live) في الرئيسية فوق الشات ─────────
@@ -22546,7 +22526,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // stories strip, new-post + inbox) like a shutter. Swiping up on the posts feed
   // also collapses it; scrolling back to the top expands it again.
   const [headerOpen, setHeaderOpen] = useState(true);
-  const [chatPageOpen, setChatPageOpen] = useState(false);
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
   const [liveScrollHidden, setLiveScrollHidden] = useState(false);
   useEffect(() => {
@@ -22603,12 +22582,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // the menu (backdrop tap or picking an item) brings the "+" back.
   const [, setProfilePlusOpen] = useState(false);
   // ── Dock bubble: tapping Call / LIVE / Settings opens a speech-bubble panel above the dock, with a tail pointing at the tapped icon ──
-  const [dockBubble, setDockBubble] = useState<null | { kind: 'call' | 'chat' | 'live' | 'settings'; x: number }>(null);
+  const [dockBubble, setDockBubble] = useState<null | { kind: 'call' | 'live' | 'settings'; x: number }>(null);
   const [showPublicVoice, setShowPublicVoice] = useState(false);
   const publicVoiceStatus = usePublicVoiceRoomStatus(dockBubble?.kind === 'live');
   const [dockFriends, setDockFriends] = useState<Friend[]>([]);
   const [dockFriendsLoading, setDockFriendsLoading] = useState(false);
-  const openDockBubble = (kind: 'call' | 'chat' | 'live' | 'settings', el: HTMLElement | null) => {
+  const openDockBubble = (kind: 'call' | 'live' | 'settings', el: HTMLElement | null) => {
     const r = el?.getBoundingClientRect();
     const x = r ? r.left + r.width / 2 : (typeof window !== 'undefined' ? window.innerWidth / 2 : 180);
     setDockBubble(cur => (cur && cur.kind === kind ? null : { kind, x }));
@@ -25246,8 +25225,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   display: 'flex',
                   flexDirection: 'row',
                   alignItems: 'flex-start',
-                  gap: 8,
-                  padding: '10px 10px 8px',
+                  gap: 14,
+                  padding: '10px 16px 8px',
                   border: '1.5px solid #0f4040',
                   background: 'linear-gradient(180deg, rgba(10,31,34,0.55) 0%, rgba(6,16,18,0.55) 100%)',
                   borderRadius: 20,
@@ -25264,7 +25243,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const SIDE = 12;
   const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, dockBubble.x - SIDE)) ;
   const closeBubble = () => setDockBubble(null);
-  const title = dockBubble.kind === 'call' ? 'Call' : dockBubble.kind === 'chat' ? 'Chat' : dockBubble.kind === 'live' ? 'LIVE' : 'Settings';
+  const title = dockBubble.kind === 'call' ? 'Call' : dockBubble.kind === 'live' ? 'LIVE' : 'Settings';
   const primaryBtn: React.CSSProperties = { width: '100%', padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.5)', background: 'rgba(0,188,212,0.16)', color: '#7ee8f5', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
   return (
     <>
@@ -25274,9 +25253,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         onClick={e => e.stopPropagation()}
         style={{
           position: 'fixed', zIndex: 10075, left: SIDE, right: SIDE, bottom: 'calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
-          height: (dockBubble.kind === 'settings' || dockBubble.kind === 'chat') ? 'calc(100dvh - var(--stooorna-bottom-bar-h, 96px) - 30px - env(safe-area-inset-top, 0px))' : 'min(62dvh, 520px)',
+          height: dockBubble.kind === 'settings' ? 'calc(100dvh - var(--stooorna-bottom-bar-h, 96px) - 30px - env(safe-area-inset-top, 0px))' : 'min(62dvh, 520px)',
           display: 'flex', flexDirection: 'column',
-          borderRadius: 22, padding: (dockBubble.kind === 'settings' || dockBubble.kind === 'chat') ? '0 6px 6px' : '14px 14px 12px',
+          borderRadius: 22, padding: dockBubble.kind === 'settings' ? '0 6px 6px' : '14px 14px 12px',
           background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
           border: '1.5px solid rgba(0,188,212,0.35)',
           boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
@@ -25288,7 +25267,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {dockBubble.kind !== 'settings' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: 0 }}>
           <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,188,212,0.14)', color: '#00BCD4' }}>
-            {dockBubble.kind === 'call' ? <Phone size={15} strokeWidth={2.2} /> : dockBubble.kind === 'chat' ? <MessageCircle size={15} strokeWidth={2.2} /> : dockBubble.kind === 'live' ? <Radio size={15} strokeWidth={2.2} /> : <Settings size={15} strokeWidth={2.2} />}
+            {dockBubble.kind === 'call' ? <Phone size={15} strokeWidth={2.2} /> : dockBubble.kind === 'live' ? <Radio size={15} strokeWidth={2.2} /> : <Settings size={15} strokeWidth={2.2} />}
           </span>
           <p style={{ margin: 0, flex: 1, color: '#7ee8f5', fontWeight: 800, fontSize: '0.98rem' }}>{title}</p>
           <button type="button" aria-label="Close" onClick={closeBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
@@ -25306,7 +25285,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             <X size={16} strokeWidth={2.4} />
           </button>
         )}
-        <div style={{ flex: 1, minHeight: 0, position: 'relative', overflowY: (dockBubble.kind === 'settings' || dockBubble.kind === 'chat') ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', gap: 8, WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', borderRadius: 14 }}>
+        <div style={{ flex: 1, minHeight: 0, position: 'relative', overflowY: dockBubble.kind === 'settings' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', gap: 8, WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', borderRadius: 14 }}>
           {dockBubble.kind === 'call' && (
             <>
               {dockFriendsLoading && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}
@@ -25590,10 +25569,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     whileTap={{ scale: 0.88 }}
                     onClick={() => {
                       setDockBubble(null);
-                      setChatPageOpen(false);
                       if (headerOpen) toggleHeaderOpen();
                     }}
-                    aria-label="Open photos and videos"
+                    aria-label="Open chat and posts"
                     title="Open"
                     style={{
                       width: 54, height: 54, padding: 0, margin: '0 6px 0 0', flexShrink: 0,
@@ -30415,9 +30393,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   <X size={14} />
                 </button>
               </div>
-              <div style={{ padding: '10px 12px 0', flexShrink: 0 }}>
-                <CallWaitingToggle userId={user?.id ? String(user.id) : null} variant="dark" />
-              </div>
               <div style={{ padding: '10px 16px 2px', flexShrink: 0 }}>
                 <p style={{ margin: 0, color: CLR_TEXT_DIM, fontWeight: 800, fontSize: '0.68rem', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Recent</p>
               </div>
@@ -32253,11 +32228,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           navigate('/settings');
         }}
       />
-      {chatPageOpen && pageTab === 'profile' && !isFriendManagement && !guestMode && (
-        <PublicLiveCommentsPanel user={user as any} headerOpen={false} onToggleHeader={() => { setChatPageOpen(false); setHeaderOpen(true); }} onBusyChange={setLiveChatBusy} />
-      )}
-      {!chatPageOpen && !headerOpen && pageTab === 'profile' && !isFriendManagement && !guestMode && (
-        <PublicLiveCommentsPanel user={user as any} headerOpen={false} onToggleHeader={() => setHeaderOpen(true)} onBusyChange={setLiveChatBusy} />
+      {pageTab === 'profile' && !isFriendManagement && !guestMode && (
+        <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen || liveScrollHidden} onToggleHeader={toggleHeaderOpen} onBusyChange={setLiveChatBusy} />
       )}
       {GuestModal}
     </>;
