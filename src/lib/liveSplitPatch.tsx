@@ -49,6 +49,20 @@ async function fetchSplitToken(channel: string, userId: string): Promise<{ token
 
 /* ───────────────────────── guest session (second Agora connection) ───────────────────────── */
 
+/** A track that is switched off (setEnabled(false) / muted) cannot be published — Agora throws TRACK_IS_DISABLED. */
+function trackUsable(t: any): boolean {
+  if (!t) return false;
+  try {
+    if (t.enabled === false) return false;
+    if (t.muted === true) return false;
+  } catch { /* ignore */ }
+  return true;
+}
+
+function errText(e: any): string {
+  return String(e?.code || e?.message || e || '').slice(0, 80);
+}
+
 export type SplitGuestHandle = {
   /** uid used inside the inviter's channel */
   uid: number;
@@ -82,6 +96,7 @@ export async function startSplitGuest(opts: {
   let currentCam: any = opts.cam;
   let unsubSig: (() => void) | null = null;
   let announce: number[] = [];
+  const extra: any[] = [];
 
   const finish = async (notifyHost: boolean) => {
     if (ended) return;
@@ -94,6 +109,7 @@ export async function startSplitGuest(opts: {
     }
     try { await client.unpublish(); } catch { /* ignore */ }
     try { await client.leave(); } catch { /* ignore */ }
+    extra.forEach((t) => { try { t.stop(); } catch { /* ignore */ } try { t.close(); } catch { /* ignore */ } });
     try { onEnded(); } catch { /* ignore */ }
   };
 
@@ -128,28 +144,52 @@ export async function startSplitGuest(opts: {
   };
   client.on('stream-message', streamHandler);
 
+  let streamId: number | null = null;
   try {
   await client.join(t.appId || appIdFallback, hostChannel, t.token, myUid);
 
-  let streamId: number | null = null;
   try {
     const sid = await client.createDataStream?.({ reliable: true, ordered: true });
     if (typeof sid === 'number') streamId = sid;
   } catch { /* ignore */ }
 
-  const tracks: any[] = [opts.cam];
-  if (opts.mic) tracks.push(opts.mic);
+  // Publish the tracks my own live already uses. If the SDK refuses to share them with a second connection,
+  // fall back to independent clones of the same camera / mic so the split still works.
+  const micOk = trackUsable(opts.mic);
+  const direct: any[] = [opts.cam];
+  if (micOk) direct.push(opts.mic);
+  let publishedMine: any[] = [];
   try {
-    await client.publish(tracks);
-  } catch {
-    // some devices refuse sharing the mic on a second connection -> video only
-    await client.publish([opts.cam]);
+    await client.publish(direct);
+    publishedMine = direct;
+  } catch (e1) {
+    console.warn('[SplitPatch] direct publish failed, using clones', e1);
+    try { await client.unpublish(); } catch { /* ignore */ }
+    const camClone = AgoraRTC.createCustomVideoTrack({ mediaStreamTrack: opts.cam.getMediaStreamTrack().clone() });
+    extra.push(camClone);
+    const list: any[] = [camClone];
+    if (micOk) {
+      try {
+        const micClone = AgoraRTC.createCustomAudioTrack({ mediaStreamTrack: opts.mic.getMediaStreamTrack().clone() });
+        extra.push(micClone);
+        list.push(micClone);
+      } catch { /* video only */ }
+    }
+    try {
+      await client.publish(list);
+      publishedMine = list;
+    } catch {
+      await client.publish([camClone]); // last resort: video only
+      publishedMine = [camClone];
+    }
   }
+  currentCam = publishedMine[0];
 
   unsubSig = subscribeLiveSignals(hostChannel, onMsg as any);
   } catch (err) {
     ended = true;
     try { await client.leave(); } catch { /* ignore */ }
+    extra.forEach((x) => { try { x.stop(); } catch { /* ignore */ } try { x.close(); } catch { /* ignore */ } });
     throw err;
   }
 
@@ -172,8 +212,15 @@ export async function startSplitGuest(opts: {
     replaceCam: async (cam: any) => {
       if (ended) return;
       try { if (currentCam) await client.unpublish([currentCam]); } catch { /* ignore */ }
-      currentCam = cam;
-      try { await client.publish([cam]); } catch { /* ignore */ }
+      let next: any = cam;
+      if (extra.length) {
+        try {
+          next = AgoraRTC.createCustomVideoTrack({ mediaStreamTrack: cam.getMediaStreamTrack().clone() });
+          extra.push(next);
+        } catch { next = cam; }
+      }
+      currentCam = next;
+      try { await client.publish([next]); } catch { /* ignore */ }
     },
     leave: (notifyHost = true) => finish(notifyHost),
   };

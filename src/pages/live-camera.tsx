@@ -1918,6 +1918,15 @@ export default function LiveCameraPage() {
       });
       return;
     }
+    // the split needs my camera: switch it back on if it was turned off (a disabled track cannot be published)
+    try {
+      if (!camOnRef.current) {
+        await camRef.current.setEnabled(true);
+        camOnRef.current = true;
+        setCamOn(true);
+        window.setTimeout(() => playLocalVideo(), 40);
+      }
+    } catch { /* ignore */ }
     sendDuetSignal(camChannelForHost(inv.from.userId), {
       t: 'duet-accept', id: inv.id, to: inv.from.userId, from: duetMe, ts: Date.now(),
     });
@@ -1936,8 +1945,13 @@ export default function LiveCameraPage() {
       });
       splitRef.current = h;
       setSplitWith(inv.from);
-    } catch {
-      showDuetToast('Could not join the split screen');
+    } catch (err: any) {
+      console.error('[SplitPatch]', err);
+      // tell the inviter so he is not left waiting
+      sendDuetSignal(camChannelForHost(inv.from.userId), {
+        t: 'duet-decline', id: inv.id, to: inv.from.userId, from: duetMe, busy: true, ts: Date.now(),
+      });
+      showDuetToast(`Could not join the split screen${err?.code || err?.message ? ` (${String(err?.code || err?.message).slice(0, 60)})` : ''}`);
     }
   };
 
