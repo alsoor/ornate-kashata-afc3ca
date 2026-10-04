@@ -416,6 +416,25 @@ app.post("/api/auth/:action", auth_action_post_1);
 app.get("/api/auth/:action/:detail", auth_action_detail_get_2);
 app.post("/api/auth/:action/:detail", auth_action_detail_post_3);
 app.get("/api/call/token", call_token_get_4);
+// Cancel before answer: callee invite poll must stop ringing immediately.
+const callCancelledUntil = new Map<string, { channel: string; at: number }>();
+app.post('/api/call/cancel', (req, res) => {
+  const body = (req.body || {}) as { toUserId?: string; userId?: string; channel?: string };
+  const to = String(body.toUserId || body.userId || '');
+  const channel = String(body.channel || '');
+  if (to) callCancelledUntil.set(to, { channel, at: Date.now() });
+  if (channel) callCancelledUntil.set('ch:' + channel, { channel, at: Date.now() });
+  res.json({ ok: true, ended: true, channel });
+});
+app.get('/api/call/invite', (req, res, next) => {
+  const uid = String(req.query.userId || req.query.toUserId || '');
+  const hit = callCancelledUntil.get(uid);
+  if (hit && Date.now() - hit.at < 120000) {
+    res.json({ invite: { ended: true, clear: true, channel: hit.channel, at: hit.at }, ended: true });
+    return;
+  }
+  next();
+});
 app.get("/api/call/invite", call_invite_get);
 app.post("/api/call/invite", call_invite_post);
 app.post("/api/call/invite/clear", call_invite_clear_post);

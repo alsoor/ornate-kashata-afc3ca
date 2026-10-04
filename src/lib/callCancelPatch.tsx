@@ -26,6 +26,7 @@ export function blastCallCancel(channel: string, targets: CancelTarget[], fromId
       post('/api/call/signal', { to: id, type: 'cancel', id: `cancel2_${at}_${id}`, payload: { channel: ch, from: fromId, at, reason: 'cancelled' } });
       post('/api/call/invite', { toUserId: id, userId: id, channel: ch, ended: true, clear: true, at, hostId: fromId });
       post('/api/call/invite/clear', { toUserId: id, userId: id, channel: ch });
+      post('/api/call/cancel', { toUserId: id, userId: id, channel: ch, from: fromId, missed: true });
       post('/api/call/end', { channel: ch, userId: fromId, peerId: id, missed: true });
     }
     try {
