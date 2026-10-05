@@ -13,6 +13,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom'; // PROFILE-TAP-PATCH
 import { useNavigate, useSearchParams } from 'react-router';
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
@@ -98,11 +99,13 @@ import {
 import {
   useLiveBattle,
   BattlePlayButton,
-  BattleNameTag,
   BattleOverlay,
   BattleGiftDimStyle,
+  type BattlePerson,
 } from '@/lib/liveBattlePatch';
 import { giftUnitPrice } from '@/components/LiveCoinsDock'; // BATTLE-PATCH: gift price fallback
+// PROFILE-TAP-PATCH: the same profile sheet as the story page; loaded only when someone taps a player / supporter
+const FriendStoryProfileLazy = React.lazy(() => import('./add-friend').then((m) => ({ default: m.FriendStoryProfile })));
 import { useBattleGiftBridge } from '@/lib/liveBattleFixPatch'; // BATTLE-FIX-PATCH: line moves on every gift
 import { useLiveHearts, HeartsTapLayer, HeartsCounter } from '@/lib/liveHeartsPatch'; // HEARTS-PATCH: tap the screen = hearts (+1 on the round line per 10 taps)
 import { useSplitAnnounce, useSplitViewer, useBattleServerSync, closeAllSplitViewers } from '@/lib/liveSplitViewPatch'; // UID-CONFLICT-FIX +closeAllSplitViewers
@@ -424,6 +427,8 @@ export default function LiveCameraPage() {
     if (splitWith) window.setTimeout(attachSplitRemote, 60);
   }, [splitWith]);
   const splitActive = !!(duet || splitWith);
+  // PROFILE-TAP-PATCH: profile opened by tapping a player's picture / @username or one of the first three supporters
+  const [profilePeer, setProfilePeer] = useState<BattlePerson | null>(null);
   // SPLIT-CARD-PATCH: who I am split-screen with (sent with the live-presence heartbeat so the story page can draw one merged card)
   const presenceSplitRef = useRef<{ userId: string; name: string; username: string | null; avatarUrl: string | null; owner: boolean } | null>(null);
   {
@@ -2443,14 +2448,13 @@ export default function LiveCameraPage() {
               Camera off
             </div>
           ) : null}
-          {duet || splitWith ? <BattleNameTag name={hostName} username={hostUsername} side="left" /> : null}
+          {/* PROFILE-TAP-PATCH: the name tags are now the tappable picture + @username chips of BattleOverlay */}
         </div>
         {!duet && splitWith ? (
           <>
             <DuetDivider />
             <div style={{ flex: 1, minWidth: 0, height: '100%', position: 'relative', overflow: 'hidden' }}>
               <div ref={splitPaneRef} style={{ width: '100%', height: '100%' }} />
-              <BattleNameTag name={splitWith.name} username={splitWith.username} side="right" />
             </div>
           </>
         ) : null}
@@ -2468,7 +2472,6 @@ export default function LiveCameraPage() {
                   Camera off
                 </div>
               ) : null}
-              <BattleNameTag name={duet.name} username={duet.username} side="right" />
             </div>
           </>
         ) : null}
@@ -3728,6 +3731,15 @@ export default function LiveCameraPage() {
           heightPx={splitBottomPx}
           lineTopPx={splitTopPx}
           flip={battleMySide === 'right'}
+          players={{
+            left: { userId: String(hostId || ''), name: hostName, username: hostUsername, avatarUrl: hostAvatar || (amHost ? myAvatar : null) },
+            right: duet
+              ? { userId: String(duet.userId || ''), name: duet.name, username: duet.username, avatarUrl: duet.avatarUrl }
+              : splitWith
+                ? { userId: String(splitWith.userId || ''), name: splitWith.name, username: splitWith.username, avatarUrl: splitWith.avatarUrl }
+                : null,
+          }}
+          onOpenProfile={amHost || amGuest ? undefined : (p) => { if (p.userId && p.userId !== myId) setProfilePeer(p); }} // hosts / guests stay in their own live
         />
       ) : null}
       <BattlePlayButton
@@ -3735,7 +3747,8 @@ export default function LiveCameraPage() {
         waiting={battleApi.pending}
         incoming={!!battleApi.incoming}
         ringKey={battleApi.incomingId || battleApi.pendingId}
-        auto={battleApi.starting} // SUPPORT-LIVE-PATCH: 2s after Ok the round starts by itself
+        auto={battleApi.starting} // COUNTDOWN-START-PATCH: after Ok both phones count 5..1, then the round opens by itself
+        count={battleApi.countLeft}
         yPx={splitBottomPx != null ? Math.round((splitTopPx ?? 0) + (splitBottomPx - (splitTopPx ?? 0)) * 0.17) : null} // SUPPORT-LIVE-PATCH: top of the middle line
         topPx={splitBottomPx != null ? splitBottomPx + (splitTopPx ?? 0) : null}
         onPlay={battleApi.play}
@@ -3752,6 +3765,21 @@ export default function LiveCameraPage() {
       ) : null}
       {/* OK-BUTTON-PATCH: no Accept | Decline box any more — the Play circle turns into Ok */}
       <DuetToast text={duetToast} />
+      {/* PROFILE-TAP-PATCH: profile sheet (from there the viewer can enter the live of that user and support him with gifts) */}
+      {profilePeer && profilePeer.userId ? createPortal(
+        <React.Suspense fallback={null}>
+          <FriendStoryProfileLazy
+            authorId={profilePeer.userId}
+            authorName={profilePeer.name}
+            authorUsername={profilePeer.username}
+            authorAvatarUrl={profilePeer.avatarUrl}
+            onClose={() => setProfilePeer(null)}
+            onOpenPost={() => {}}
+            sheetMode
+          />
+        </React.Suspense>,
+        document.body,
+      ) : null}
       <LiveVipDock hostId={hostId} currentUserId={myId} />
       {/* قائمة المتحدث: دعم (هدية) + تجميد المايك لصاحب البث / كتم محلي للمشاهد */}
       {speakerMenu && (

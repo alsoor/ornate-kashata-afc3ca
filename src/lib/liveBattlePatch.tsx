@@ -61,9 +61,7 @@ const RESULT_MS = 7000;
 /** OK-BUTTON-PATCH: how long an invite stays open (red ring runs this long, then the request fails on both phones). */
 export const BATTLE_INVITE_MS = 20_000;
 /** SUPPORT-LIVE-PATCH: after the other host taps Ok the round starts by itself this long afterwards (nobody taps Play again). */
-export const BATTLE_AUTO_START_MS = 3000;
-/** ROUND-FLOW-PATCH: after the other host accepts, BOTH circles show "Ok" for this long, then "Play" for the rest of BATTLE_AUTO_START_MS, then the round starts by itself. */
-export const BATTLE_OK_HOLD_MS = 2000;
+export const BATTLE_AUTO_START_MS = 5000; // COUNTDOWN-START-PATCH: after the other host accepts, a 5..1 countdown circle on BOTH phones, then the round opens by itself
 const STATE_EVERY_MS = 2000;
 
 /** Colors requested: left = yellow, right = orange. */
@@ -129,6 +127,15 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   const [starting, setStarting] = React.useState<string | null>(null); // SUPPORT-LIVE-PATCH: Ok tapped -> auto start in 2s
   const startingIdRef = React.useRef<string | null>(null);
   const startingTimerRef = React.useRef<number | null>(null);
+  const [countEnd, setCountEnd] = React.useState<number | null>(null); // COUNTDOWN-START-PATCH: when the 5..1 countdown ends (local clock)
+  const [countLeft, setCountLeft] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (countEnd == null) { setCountLeft(null); return; }
+    const upd = () => setCountLeft(Math.min(Math.ceil(BATTLE_AUTO_START_MS / 1000), Math.max(1, Math.ceil((countEnd - Date.now()) / 1000))));
+    upd();
+    const iv = window.setInterval(upd, 120);
+    return () => window.clearInterval(iv);
+  }, [countEnd]);
   const serverIdRef = React.useRef<string | null>(null); // SERVER-TRUTH-PATCH: round whose score is driven ONLY by the server (/api/live-battle)
   const [now, setNow] = React.useState(() => Date.now());
 
@@ -204,9 +211,10 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   /** SUPPORT-LIVE-PATCH: the Play circle stays on both screens for 2s, then the round starts by itself (A = authority, B = guest). */
   const scheduleStart = React.useCallback((id: string) => {
     if (battleRef.current?.phase === 'running') return;
-    if (startingIdRef.current === id) return;
+    if (startingIdRef.current) return; // COUNTDOWN-START-PATCH: one countdown at a time, a second accept / invite never restarts it
     startingIdRef.current = id;
     setStarting(id);
+    setCountEnd(Date.now() + BATTLE_AUTO_START_MS);
     pendingRef.current = null;
     setPending(null);
     if (startingTimerRef.current) window.clearTimeout(startingTimerRef.current);
@@ -214,6 +222,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
       if (startingIdRef.current !== id) return;
       startingIdRef.current = null;
       setStarting(null);
+      setCountEnd(null);
       if (battleRef.current?.phase === 'running') return;
       if (latest.current.mySide === 'left') startAsAuthority(id); else openAsGuest(id);
     }, BATTLE_AUTO_START_MS);
@@ -298,7 +307,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         // INSTANT-OPEN-V2: both hosts tapped Play at the same time -> that is already an agreement: open at once, no box
         if (pendingRef.current) {
           emit({ t: 'battle-accept', id, side: me.mySide });
-          if (me.mySide === 'left') startAsAuthority(id); else openAsGuest(id);
+          scheduleStart(id); // COUNTDOWN-START-PATCH: same 5..1 countdown for both
           pendingRef.current = null;
           setPending(null);
           return true;
@@ -601,7 +610,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     acceptedIdRef.current = null;
     incomingRef.current = null; setIncoming(null);
     setPopups([]);
-    startingIdRef.current = null; setStarting(null); // SUPPORT-LIVE-PATCH
+    startingIdRef.current = null; setStarting(null); setCountEnd(null); // SUPPORT-LIVE-PATCH
     seenGiftsRef.current = new Set();
     serverIdRef.current = null; // SERVER-TRUTH-PATCH
   }, [active]);
@@ -609,7 +618,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   React.useEffect(() => () => { if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current); if (startingTimerRef.current) window.clearTimeout(startingTimerRef.current); }, []);
 
   const remainMs = battle?.phase === 'running' ? Math.max(0, battle.endsAt - now) : 0;
-  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, starting: !!starting, startingId: starting, popups, play, accept, decline, handleMessage, ingestGift, applyExternal };
+  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, starting: !!starting, startingId: starting, countLeft: starting ? countLeft : null, popups, play, accept, decline, handleMessage, ingestGift, applyExternal };
 }
 
 /* ───────────────────────── UI ───────────────────────── */
@@ -659,10 +668,12 @@ export function BattleGiftDimStyle({ on, topPx }: { on: boolean; topPx?: number 
  * OK-BUTTON-PATCH: there is no Accept | Decline box any more.
  */
 export function BattlePlayButton({
-  visible, waiting, incoming, auto, yPx, ringKey, ringMs = BATTLE_INVITE_MS, topPx, onPlay, onOk,
+  visible, waiting, incoming, auto, count, yPx, ringKey, ringMs = BATTLE_INVITE_MS, topPx, onPlay, onOk,
 }: {
-  /** SUPPORT-LIVE-PATCH: Ok was tapped -> the circle shows Play for 2s and presses itself */
+  /** COUNTDOWN-START-PATCH: the other host accepted -> the circle shows the 5..1 countdown, then the round opens by itself */
   auto?: boolean;
+  /** COUNTDOWN-START-PATCH: seconds left (5..1) */
+  count?: number | null;
   /** SUPPORT-LIVE-PATCH: exact centre of the circle (top of the middle line). Falls back to topPx / 2. */
   yPx?: number | null;
   visible: boolean;
@@ -677,28 +688,21 @@ export function BattlePlayButton({
   const SIZE = 46;
   const R = (SIZE - 4) / 2;
   const C = 2 * Math.PI * R;
-  // ROUND-FLOW-PATCH: after the other host accepted, BOTH phones show "Ok" for 2s, then "Play" for 1s (pressing itself), then the round starts
-  const [autoPhase, setAutoPhase] = React.useState<'ok' | 'play'>('ok');
-  React.useEffect(() => {
-    setAutoPhase('ok');
-    if (!auto) return;
-    const t = window.setTimeout(() => setAutoPhase('play'), BATTLE_OK_HOLD_MS);
-    return () => window.clearTimeout(t);
-  }, [auto]);
-  const mode: 'play' | 'waiting' | 'ok' | 'autoOk' | 'auto' = auto ? (autoPhase === 'ok' ? 'autoOk' : 'auto') : incoming ? 'ok' : waiting ? 'waiting' : 'play';
-  const dur = mode === 'auto' ? BATTLE_AUTO_START_MS - BATTLE_OK_HOLD_MS : mode === 'autoOk' ? BATTLE_OK_HOLD_MS : ringMs;
+  // COUNTDOWN-START-PATCH: Play -> (my circle disappears while I wait) -> other host taps Ok -> BOTH phones show 5..1 in the same circle -> round opens
+  const mode: 'play' | 'waiting' | 'ok' | 'auto' = auto ? 'auto' : incoming ? 'ok' : waiting ? 'waiting' : 'play';
+  const dur = mode === 'auto' ? BATTLE_AUTO_START_MS : ringMs;
+  const show = visible && mode !== 'waiting'; // the host who tapped Play sees NO circle until the other one answers
   return (
     <AnimatePresence>
-      {visible ? (
+      {show ? (
         <motion.button
           key="battle-play"
           type="button"
           onClick={mode === 'ok' ? onOk : mode === 'play' ? onPlay : undefined}
-          disabled={mode === 'waiting' || mode === 'auto' || mode === 'autoOk'}
-          aria-label={mode === 'ok' || mode === 'autoOk' ? 'Ok' : 'Start a game round'}
+          disabled={mode === 'waiting' || mode === 'auto'}
+          aria-label={mode === 'ok' ? 'Ok' : mode === 'auto' ? 'Round starting' : 'Start a game round'}
           initial={{ opacity: 0, scale: 0.6 }}
-          animate={mode === 'auto' ? { opacity: 1, scale: [1, 1, 1, 0.86, 1] } : { opacity: 1, scale: 1 }}
-          transition={mode === 'auto' ? { scale: { duration: (BATTLE_AUTO_START_MS - BATTLE_OK_HOLD_MS) / 1000, times: [0, 0.7, 0.85, 0.93, 1], ease: 'easeInOut' } } : undefined}
+          animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.6 }}
           whileTap={{ scale: 0.92 }}
           style={{
@@ -719,7 +723,7 @@ export function BattlePlayButton({
             padding: 0,
             borderRadius: '50%',
             border: (mode === 'play' || mode === 'auto') ? '2px solid rgba(255,255,255,0.9)' : '2px solid rgba(255,255,255,0.25)',
-            cursor: mode === 'waiting' || mode === 'auto' || mode === 'autoOk' ? 'default' : 'pointer',
+            cursor: mode === 'waiting' || mode === 'auto' ? 'default' : 'pointer',
             color: '#fff',
             fontWeight: 900,
             background: mode === 'waiting'
@@ -729,12 +733,22 @@ export function BattlePlayButton({
             flexDirection: 'column',
           }}
         >
-          {mode === 'play' || mode === 'auto' ? (
+          {mode === 'play' ? (
             <>
               <Play size={16} fill="#fff" strokeWidth={0} />
               <span style={{ fontSize: '0.55rem', lineHeight: 1, letterSpacing: 0.3 }}>Play</span>
             </>
-          ) : mode === 'ok' || mode === 'autoOk' ? (
+          ) : mode === 'auto' ? (
+            <motion.span
+              key={`count-${count ?? ''}`}
+              initial={{ scale: 1.5, opacity: 0.4 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.22 }}
+              style={{ fontSize: '1.35rem', lineHeight: 1, color: '#1a1200', fontWeight: 900, fontVariantNumeric: 'tabular-nums' }}
+            >
+              {count ?? Math.ceil(BATTLE_AUTO_START_MS / 1000)}
+            </motion.span>
+          ) : mode === 'ok' ? (
             <span style={{ fontSize: '0.86rem', lineHeight: 1, color: '#1a1200', fontWeight: 900 }}>Ok</span>
           ) : (
             <span style={{ fontSize: '0.7rem', fontWeight: 800 }}>…</span>
@@ -837,6 +851,54 @@ export function BattleIncomingDialog({
   );
 }
 
+/** PROFILE-TAP-PATCH: a person shown in the round (the two players, or one of the first three supporters). */
+export type BattlePerson = { userId: string; name: string; username: string | null; avatarUrl: string | null };
+
+/** PROFILE-TAP-PATCH: profile picture + @username of a player; a tap opens his profile (from there a viewer can enter his live and support him with gifts). */
+function BattlePersonChip({ person, side, onOpen }: { person: BattlePerson; side: BattleSide; onOpen?: (p: BattlePerson) => void }) {
+  const label = person.username ? `@${person.username}` : person.name;
+  const clickable = !!onOpen && !!person.userId;
+  return (
+    <button
+      type="button"
+      onClick={clickable ? (e) => { e.stopPropagation(); onOpen!(person); } : undefined}
+      aria-label={clickable ? `Open profile ${label}` : label}
+      style={{
+        position: 'absolute',
+        bottom: 40, // above the "Full Chat" button, which sits on the bottom edge of the cameras and would swallow the tap
+        [side === 'left' ? 'left' : 'right']: 8,
+        maxWidth: 'calc(50% - 84px)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 5,
+        padding: '3px 10px 3px 3px',
+        borderRadius: 999,
+        border: '1px solid rgba(255,255,255,0.22)',
+        background: 'rgba(0,0,0,0.55)',
+        color: '#fff',
+        cursor: clickable ? 'pointer' : 'default',
+        pointerEvents: clickable ? 'auto' : 'none',
+        zIndex: 7,
+      } as React.CSSProperties}
+    >
+      <span
+        style={{
+          width: 22, height: 22, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: '#1f2937', border: `1.5px solid ${BATTLE_COLORS[side]}`, fontSize: '0.62rem', fontWeight: 900,
+        }}
+      >
+        {person.avatarUrl
+          ? <img src={person.avatarUrl} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          : (person.name || '?').trim().charAt(0).toUpperCase()}
+      </span>
+      <span style={{ fontSize: '0.72rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>
+        {label}
+      </span>
+    </button>
+  );
+}
+
 /** Name tag at the BOTTOM of a user's rectangle (replaces the top tag while the split is on). */
 export function BattleNameTag({ name, username, side }: { name: string; username?: string | null; side: BattleSide }) {
   return (
@@ -875,8 +937,12 @@ export function BattleNameTag({ name, username, side }: { name: string; username
 
 /** Score line, timer, "You Win" rectangle and light support pills — drawn over the split area only. */
 export function BattleOverlay({
-  battle: battleIn, remainMs, popups: popupsIn, heightPx, flip, lineTopPx,
+  battle: battleIn, remainMs, popups: popupsIn, heightPx, flip, lineTopPx, players, onOpenProfile,
 }: {
+  /** PROFILE-TAP-PATCH: the two players by SCREEN half (left half / right half) — drawn as picture + @username, tappable. */
+  players?: { left: BattlePerson | null; right: BattlePerson | null } | null;
+  /** PROFILE-TAP-PATCH: open the profile of a player / supporter. Omit it and the chips are only shown. */
+  onOpenProfile?: (p: BattlePerson) => void;
   battle: BattleView | null;
   remainMs: number;
   popups: BattlePopup[];
@@ -987,7 +1053,15 @@ export function BattleOverlay({
         ))}
       </div>
 
-      {topSup ? (<><BattleSupCluster list={topSup.left} side="left" /><BattleSupCluster list={topSup.right} side="right" /></>) : null}
+      {topSup ? (<><BattleSupCluster list={topSup.left} side="left" onOpen={onOpenProfile} /><BattleSupCluster list={topSup.right} side="right" onOpen={onOpenProfile} /></>) : null}
+
+      {/* PROFILE-TAP-PATCH: picture + @username of each player at the bottom of his half */}
+      {players && heightPx != null ? (
+        <>
+          {players.left ? <BattlePersonChip person={players.left} side="left" onOpen={onOpenProfile} /> : null}
+          {players.right ? <BattlePersonChip person={players.right} side="right" onOpen={onOpenProfile} /> : null}
+        </>
+      ) : null}
 
       {/* result rectangles */}
       <AnimatePresence>
@@ -1027,7 +1101,7 @@ export function BattleOverlay({
 }
 
 /** SUPPORT-LIVE-PATCH: up to 3 profile pictures, stuck together, rank 1 touches the middle line. */
-function BattleSupCluster({ list, side }: { list: BattleSupporter[]; side: BattleSide }) {
+function BattleSupCluster({ list, side, onOpen }: { list: BattleSupporter[]; side: BattleSide; onOpen?: (p: BattlePerson) => void }) {
   if (!list || !list.length) return null;
   const SZ = 28;
   const ordered = side === 'left' ? [...list].reverse() : list;
@@ -1040,7 +1114,10 @@ function BattleSupCluster({ list, side }: { list: BattleSupporter[]; side: Battl
           <div
             key={sp.userId}
             title={sp.name}
+            role={onOpen ? 'button' : undefined}
+            onClick={onOpen ? (e) => { e.stopPropagation(); onOpen({ userId: sp.userId, name: sp.name, username: null, avatarUrl: sp.avatarUrl }); } : undefined} // PROFILE-TAP-PATCH: tap a supporter = open his profile
             style={{
+              pointerEvents: onOpen ? 'auto' : 'none', cursor: onOpen ? 'pointer' : 'default',
               width: SZ, height: SZ, borderRadius: '50%', marginLeft: i === 0 ? 0 : -9, overflow: 'hidden', flexShrink: 0,
               border: `2px solid ${ring}`, background: '#1f2937', zIndex: 10 - rank, display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: '#fff', fontWeight: 900, fontSize: '0.7rem', boxShadow: '0 1px 4px rgba(0,0,0,0.55)',
