@@ -17539,6 +17539,22 @@ function groupLiveChatRows(list: PublicLiveComment[]): LiveChatRowItem[] {
   return list.map(c => ({ kind: 'msg' as const, c }));
 }
 
+/** Long-press helper for the dock Templates icon (opens the publish page). */
+const tplLongPress: { timer: number; fired: boolean } = { timer: 0, fired: false };
+function tplLongPressStart(onFire: () => void) {
+  tplLongPress.fired = false;
+  if (tplLongPress.timer) window.clearTimeout(tplLongPress.timer);
+  tplLongPress.timer = window.setTimeout(() => {
+    tplLongPress.timer = 0;
+    tplLongPress.fired = true;
+    try { if (navigator.vibrate) navigator.vibrate(15); } catch { /* */ }
+    onFire();
+  }, 450);
+}
+function tplLongPressEnd() {
+  if (tplLongPress.timer) { window.clearTimeout(tplLongPress.timer); tplLongPress.timer = 0; }
+}
+
 /** Film-icon screen: video-only (the old Titanic/WW2 template tab was removed on request). */
 function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
   open: boolean;
@@ -17546,9 +17562,16 @@ function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
   userId: string;
   onPost: (caption: string, url: string) => void;
 }) {
-  if (!open || typeof document === 'undefined') return null;
+  if (typeof document === 'undefined') return null;
   return createPortal(
-    <div
+    <AnimatePresence>
+    {open ? (
+    <motion.div
+      key="templates-studio"
+      initial={{ y: '100%' }}
+      animate={{ y: 0 }}
+      exit={{ y: '100%' }}
+      transition={{ type: 'tween', ease: [0.32, 0.72, 0, 1], duration: 0.32 }}
       onClick={e => e.stopPropagation()}
       style={{
         position: 'fixed', inset: 0, zIndex: 10900, background: '#050d0f', color: '#fff',
@@ -17564,7 +17587,9 @@ function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
         }}><X size={18} /></button>
       </div>
       <LiveVideoSwapPanel onPost={onPost} userId={userId} />
-    </div>,
+    </motion.div>
+    ) : null}
+    </AnimatePresence>,
     document.body,
   );
 }
@@ -17632,6 +17657,12 @@ function PublicLiveCommentsPanel({
     };
     window.addEventListener('stooorna:templates-bubble', onBubble);
     return () => window.removeEventListener('stooorna:templates-bubble', onBubble);
+  }, []);
+  // Long-press on the dock Templates icon opens the publish page (slides up; closing slides it down)
+  useEffect(() => {
+    const onStudio = () => { setTplBubble(null); setTplOpen(true); };
+    window.addEventListener('stooorna:templates-studio', onStudio);
+    return () => window.removeEventListener('stooorna:templates-studio', onStudio);
   }, []);
   const [openMediaId, setOpenMediaId] = useState<string | null>(null);
   // ── round video / voice recorder state ──
@@ -18639,15 +18670,15 @@ function PublicLiveCommentsPanel({
   // keep Templates/media alive and skip the chat portal. If Saved Messages is open, fall through
   // so the public chat stays mounted underneath — closing Saved Messages returns to live chat, not "outside".
   if (headerOpen && !savedOpen) {
-    return (tplOpen || mediaViewer || mediaFeedOverlay || mediaCommentsSheet || templatesBubble) ? (
+    return (
       <>
-        {tplOpen ? <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} /> : null}
+        <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />
         {templatesBubble}
         {mediaViewer}
         {mediaFeedOverlay}
         {mediaCommentsSheet}
       </>
-    ) : null;
+    );
   }
 
   return createPortal(
@@ -19402,10 +19433,6 @@ function PublicLiveCommentsPanel({
                     {
                       key: 'location', label: 'Location', icon: <MapPin size={20} strokeWidth={2} />,
                       run: () => { setComposerDock('none'); setEmojiOpen(false); setLocPickerOpen(true); },
-                    },
-                    {
-                      key: 'video-ai', label: 'Video AI', icon: <Film size={20} strokeWidth={2} />,
-                      run: () => { setComposerDock('none'); setEmojiOpen(false); setTplOpen(true); },
                     },
                   ] as { key: string; label: string; icon: React.ReactNode; run: () => void }[]).filter(it => LIVE_CHAT_LOCATION_ENABLED || it.key !== 'location').map(it => (
                     <button
@@ -26319,10 +26346,22 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
 <button
                       type="button"
-                      onClick={(e) => openDockBubble('templates', e.currentTarget)}
+                      onPointerDown={() => tplLongPressStart(() => {
+                        setDockBubble(null);
+                        try { window.dispatchEvent(new CustomEvent('stooorna:templates-studio')); } catch { /* */ }
+                      })}
+                      onPointerUp={tplLongPressEnd}
+                      onPointerLeave={tplLongPressEnd}
+                      onPointerCancel={tplLongPressEnd}
+                      onContextMenu={(e) => e.preventDefault()}
+                      onClick={(e) => {
+                        if (tplLongPress.fired) { tplLongPress.fired = false; return; }
+                        openDockBubble('templates', e.currentTarget);
+                      }}
                       aria-label="Templates"
                       title="Templates"
                       style={{
+                        WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
                         width: 38, height: 38, borderRadius: '50%',
                         border: '1px solid rgba(0,188,212,0.4)',
                         background: 'rgba(6,20,22,0.96)',
