@@ -19538,6 +19538,9 @@ const HOME_LIVE_CHAT_LIFT_EVT = 'stooorna:chat-lift';
 // Many open broadcasts: list scrolls; finger up hides header + icon row, finger down shows them again.
 const HOME_LIVE_SCROLL_EVT = 'stooorna:home-live-scroll';
 const HOME_LIVE_SCROLL_MIN = 3;
+// بطاقة البث في صفحة القصة: مضغوطة (صف واحد: صورة + LIVE + الاسم + Busy + عدد المستمعين + السماعة)
+// بدل الحجم الكبير. اجعلها false لإرجاع الحجم الكبير القديم (قائمة المستمعين / معاينة الفيديو).
+const HOME_LIVE_COMPACT_CARD = true;
 
 // أيقونات صف الهيدر: خافتة قليلاً عند الخمول، وعند النشاط تتحول للأخضر (أو البرتقالي لطلبات الإضافة) مع إضاءة واضحة. (بدل النقاط)
 function hdrIconTone(active: boolean, tone: 'green' | 'orange' = 'green'): React.CSSProperties {
@@ -20182,12 +20185,12 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
                 aria-label={e.kind === 'camera' ? `Video Live — ${name}` : `Voice Live — ${name}`}
                 style={{
                   position: 'relative', width: '100%', flexShrink: 0,
-                  aspectRatio: '1080 / 514', minHeight: 150, boxSizing: 'border-box',
+                  aspectRatio: HOME_LIVE_COMPACT_CARD ? undefined : '1080 / 514', minHeight: HOME_LIVE_COMPACT_CARD ? undefined : 150, boxSizing: 'border-box',
                   borderRadius: 20, border: '2px solid transparent',
                   background: `radial-gradient(ellipse 80% 90% at 50% 100%, #0e2b30 0%, #0a1a1c 55%, #071011 100%) padding-box, ${HOME_LIVE_SILVER} border-box`,
                   boxShadow: '0 8px 22px rgba(0,0,0,0.45), 0 0 10px rgba(200,205,215,0.22)',
                   overflow: 'hidden', cursor: 'pointer', color: '#cfe8e8',
-                  display: 'flex', flexDirection: 'column', padding: '10px 12px 0',
+                  display: 'flex', flexDirection: 'column', padding: HOME_LIVE_COMPACT_CARD ? '12px 14px' : '10px 12px 0',
                   pointerEvents: lifted ? 'none' : 'auto',
                 }}
               >
@@ -20236,10 +20239,13 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
                     )}
                   </button>
                 </div>
+                {!HOME_LIVE_COMPACT_CARD && (
                 <div style={{ margin: '8px 2px 6px', color: '#e8b923', fontWeight: 700, fontSize: '0.78rem', position: 'relative', zIndex: 2 }}>
                   Tap a listener to freeze their mic
                 </div>
-                <div style={{ position: 'relative', flex: 1, minHeight: 0, marginLeft: 2, borderLeft: '1px solid rgba(0,188,212,0.18)' }}>
+                )}
+                {/* في الوضع المضغوط تبقى المعاينة موجودة في الـDOM (مخفية) حتى لا ينكسر ربط الفيديو/الصوت */}
+                <div style={{ position: 'relative', flex: 1, minHeight: 0, marginLeft: 2, borderLeft: '1px solid rgba(0,188,212,0.18)', display: HOME_LIVE_COMPACT_CARD ? 'none' : undefined }}>
                   {e.kind === 'camera' && (
                     <div ref={getVideoRef(e.id)} style={{ position: 'absolute', inset: 0, left: 8, background: '#000', borderRadius: '8px 8px 0 0', overflow: 'hidden' }} />
                   )}
