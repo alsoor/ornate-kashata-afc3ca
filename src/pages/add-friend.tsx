@@ -99,6 +99,8 @@ import { mediaAiProcessGalleryFiles, mediaAiIsBrokenHostUrl } from '@/lib/mediaA
 import { LocationPickerSheet, LocationViewSheet, LocationChatCard, encodeChatLocation, parseChatLocation } from '@/components/LocationPickerPatch';
 import { publishLiveChatRoundVideo, normalizeLiveChatMediaFields, extractLiveChatMediaUrl, makeLiveChatRoundText } from '@/lib/liveChatVideoPatch';
 import { publishLiveChatVideoDelete, onLiveChatVideoDeleted, applyLiveChatVideoTombstone, isLiveChatRoundGone, LIVE_CHAT_ROUND_GONE } from '@/lib/liveChatVideoDeletePatch';
+// Templates (الصور/الفيديو بالخارج): مخزن مستقل تماماً عن الشات العام — لا يتأثر بتنظيف الـ24 ساعة
+import { TEMPLATES_CACHE_KEY, loadTemplatesCache, saveTemplatesCache, syncTemplates, postTemplateRow, likeTemplateRow, deleteTemplateRow, markTemplatePending, markTemplateDeleted } from '@/lib/liveTemplatesStore';
 import { StoryModerationBell, StoryModerateDialog, StoryBanModal, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
 import { noteHostClosed, refreshStoryLives, startStoryLiveWatch, storyLiveStillOpen, readStoryLive } from '@/lib/liveStoryPresencePatch';
@@ -15013,8 +15015,9 @@ function loadPublicLiveComments(): PublicLiveComment[] {
   try {
     const raw = JSON.parse(localStorage.getItem(PUBLIC_LIVE_COMMENTS_KEY) || '[]');
     if (!Array.isArray(raw)) return [];
-    return raw
-      .filter((x: any) => x && x.id && (x.text || x.voiceUrl || x.imageUrl) && (Number(x.createdAt) || Date.now()) >= liveChatCycleStart())
+    const tplIds = liveTplIdSet(raw);
+    return liveCapRows(raw
+      .filter((x: any) => x && x.id && (x.text || x.voiceUrl || x.imageUrl) && ((Number(x.createdAt) || Date.now()) >= liveChatCycleStart() || liveSurvivesClear(x.text, tplIds)))
       .map((x: any) => ({
         id: String(x.id),
         userId: String(x.userId || ''),
@@ -15031,8 +15034,7 @@ function loadPublicLiveComments(): PublicLiveComment[] {
         replyToId: x.replyToId ? String(x.replyToId) : null,
         replyToName: x.replyToName ? String(x.replyToName) : null,
         replyToText: x.replyToText ? String(x.replyToText).slice(0, 120) : null,
-      }))
-      .slice(-400);
+      })));
   } catch {
     return [];
   }
@@ -15040,7 +15042,7 @@ function loadPublicLiveComments(): PublicLiveComment[] {
 
 function savePublicLiveComments(list: PublicLiveComment[]) {
   try {
-    localStorage.setItem(PUBLIC_LIVE_COMMENTS_KEY, JSON.stringify(list.slice(-400)));
+    localStorage.setItem(PUBLIC_LIVE_COMMENTS_KEY, JSON.stringify(liveCapRows(list)));
     window.dispatchEvent(new CustomEvent(PUBLIC_LIVE_COMMENTS_EVT, { detail: { list } }));
     try {
       const bc = (window as any).__stooornaPublicLiveBc as BroadcastChannel | undefined;
@@ -15067,11 +15069,50 @@ function liveChatCycleStart(now: number = Date.now()): number {
   return Math.floor((now + LIVE_CHAT_CLEAR_OFFSET_MS) / LIVE_CHAT_CLEAR_MS) * LIVE_CHAT_CLEAR_MS - LIVE_CHAT_CLEAR_OFFSET_MS;
 }
 
-/** محاولة مسح شات البث من السيرفر (اختيارية — الإخفاء يتم عند كل عميل على أي حال). */
-async function clearLiveChatOnServer(): Promise<void> {
+// ── منشورات Templates (الصور/الفيديو بالخارج) لا تتأثر بتنظيف الـ24 ساعة أبداً ─────────────
+// هي صفوف عادية في نفس مخزن الشات (تنتهي بعلامة LIVE_TPL_SUFFIX)، لذلك نستثنيها هي وتعليقاتها من:
+//   • فلتر الدورة (createdAt >= بداية الدورة)  • تصفير القائمة المحلية  • مسح السيرفر  • سقف الـ400 صف.
+// الحذف الوحيد لها: زر الحذف عند صاحب المنشور (يضع Tombstone فتختفي عند الجميع).
+function liveTplIdSet(list: Array<{ id?: unknown; text?: unknown } | null | undefined>): Set<string> {
+  const s = new Set<string>();
+  for (const x of list) { if (x && isLiveTplText(String(x.text || ''))) s.add(String(x.id)); }
+  return s;
+}
+/** true = صف يخص Templates (المنشور نفسه أو تعليق عليه) → يبقى بعد تنظيف الشات. */
+function liveSurvivesClear(text: unknown, tplIds: Set<string>): boolean {
+  const t = String(text || '');
+  if (isLiveTplText(t)) return true;
+  // علامة الحذف (Tombstone) تبقى أيضاً: تمنع رجوع منشور محذوف من نسخة قديمة عند السيرفر/جهاز آخر
+  if (t === LIVE_ROUND_GONE || (typeof isLiveChatRoundGone === 'function' && isLiveChatRoundGone(t))) return true;
+  const m = MEDIA_CMT_RE.exec(t);
+  return !!(m && tplIds.has(m[1]));
+}
+/** هل الصف ضمن الدورة الحالية للشات، أو من Templates (دائم)؟ */
+function liveRowInCycle(c: { createdAt: number; text: string }, tplIds: Set<string>): boolean {
+  return (Number(c.createdAt) || Date.now()) >= liveChatCycleStart() || liveSurvivesClear(c.text, tplIds);
+}
+/** سقف الشات (آخر 400 صف) — لكن صفوف Templates خارج السقف حتى لا تُزاحَم برسائل الشات. */
+function liveCapRows<T extends { id: string; createdAt: number; text: string }>(list: T[]): T[] {
+  if (list.length <= 400) return list;
+  const tplIds = liveTplIdSet(list);
+  const keep: T[] = [];
+  const rest: T[] = [];
+  for (const c of list) (liveSurvivesClear(c.text, tplIds) ? keep : rest).push(c);
+  return [...keep.slice(-3000), ...rest.slice(-400)].sort((a, b) => a.createdAt - b.createdAt);
+}
+
+/** مسح شات البث من السيرفر، ثم إعادة نشر صفوف Templates (`keep`) حتى لا تضيع من السيرفر.
+ *  (المسح على مستوى الغرفة كلها، لذلك نعيد رفع الباقي بنفس الـid والتاريخ.) */
+async function clearLiveChatOnServer(keep: PublicLiveComment[] = []): Promise<void> {
+  let ok = false;
   try {
-    await fetch(`/api/live-chat?room=${encodeURIComponent(LIVE_CHAT_ROOM)}`, { method: 'DELETE', credentials: 'include' });
+    const r = await fetch(`/api/live-chat?room=${encodeURIComponent(LIVE_CHAT_ROOM)}`, { method: 'DELETE', credentials: 'include' });
+    ok = r.ok;
   } catch { /* ignore */ }
+  if (!ok) return; // لم يُمسح شيء → لا حاجة لإعادة النشر
+  for (const row of keep) {
+    try { await postLiveChatToServer(row); } catch { /* ignore */ }
+  }
 }
 
 function liveChatNormalizeBad(s: string): string {
@@ -15155,7 +15196,7 @@ function normalizeLiveChatRows(raw: unknown): PublicLiveComment[] {
     : (raw && typeof raw === 'object' && Array.isArray((raw as any).comments) ? (raw as any).comments
       : (raw && typeof raw === 'object' && Array.isArray((raw as any).messages) ? (raw as any).messages
         : (raw && typeof raw === 'object' && Array.isArray((raw as any).list) ? (raw as any).list : [])));
-  return arr
+  return liveCapRows(arr
     .map((x: any) => {
       try {
         const n = normalizeLiveChatMediaFields(x);
@@ -15185,8 +15226,7 @@ function normalizeLiveChatRows(raw: unknown): PublicLiveComment[] {
         editCount: Math.max(0, Number(x.editCount || x.edits || 0) || 0),
       } as PublicLiveComment;
     })
-    .filter((x): x is PublicLiveComment => !!x && !!(x.text || x.voiceUrl || x.imageUrl))
-    .slice(-400);
+    .filter((x): x is PublicLiveComment => !!x && !!(x.text || x.voiceUrl || x.imageUrl)));
 }
 
 function mergeLiveChatLists(a: PublicLiveComment[], b: PublicLiveComment[]): PublicLiveComment[] {
@@ -15229,7 +15269,7 @@ function mergeLiveChatLists(a: PublicLiveComment[], b: PublicLiveComment[]): Pub
       replyToText: row.replyToText || prev.replyToText || null,
     });
   }
-  return [...map.values()].sort((x, y) => x.createdAt - y.createdAt).slice(-400);
+  return liveCapRows([...map.values()].sort((x, y) => x.createdAt - y.createdAt));
 }
 
 function orderLiveChatReplies(list: PublicLiveComment[]): PublicLiveComment[] {
@@ -16604,7 +16644,54 @@ function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url:
 
 /** One tile of the public media grid (outside the chat): video autoplays muted, photo is static.
  *  Publisher avatar bottom-left, like bottom-right, comment count top-left. Tap = open (viewer with live comments). */
-function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenProfile }: {
+/** Delete button for a Templates post (owner only). First tap = small "حذف نهائي؟" confirm, second tap deletes. */
+function LiveMediaDeleteBtn({ onConfirm, variant, style }: { onConfirm: () => void; variant: 'tile' | 'rail'; style?: React.CSSProperties }) {
+  const [ask, setAsk] = useState(false);
+  useEffect(() => {
+    if (!ask) return;
+    const t = window.setTimeout(() => setAsk(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [ask]);
+  const big = variant === 'rail';
+  const base: React.CSSProperties = { border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', WebkitTapHighlightColor: 'transparent' };
+  if (!ask) {
+    return (
+      <button
+        type="button"
+        aria-label="Delete"
+        title="حذف"
+        onClick={e => { e.stopPropagation(); setAsk(true); }}
+        style={{ ...base, width: big ? 40 : 28, height: big ? 40 : 28, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', padding: 0, ...style }}
+      >
+        <Trash2 size={big ? 22 : 15} color="#fff" strokeWidth={2.2} />
+      </button>
+    );
+  }
+  return (
+    <div
+      onClick={e => e.stopPropagation()}
+      style={{ display: 'flex', flexDirection: big ? 'column' : 'row', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.8)', borderRadius: 14, padding: '6px 8px', direction: 'rtl', ...style }}
+    >
+      <span style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 800, whiteSpace: 'nowrap' }}>حذف نهائي؟</span>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          type="button"
+          aria-label="Confirm delete"
+          onClick={e => { e.stopPropagation(); setAsk(false); onConfirm(); }}
+          style={{ ...base, height: 26, padding: '0 10px', borderRadius: 999, background: '#ef4444', color: '#fff', fontSize: '0.72rem', fontWeight: 800 }}
+        >حذف</button>
+        <button
+          type="button"
+          aria-label="Cancel"
+          onClick={e => { e.stopPropagation(); setAsk(false); }}
+          style={{ ...base, width: 26, height: 26, borderRadius: '50%', background: 'rgba(255,255,255,0.22)', padding: 0 }}
+        ><X size={14} color="#fff" /></button>
+      </div>
+    </div>
+  );
+}
+
+function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenProfile, canDelete = false, onDelete }: {
   c: PublicLiveComment;
   liked: boolean;
   name: string;
@@ -16612,8 +16699,11 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
   onLike: () => void;
   onOpen: () => void;
   onOpenProfile: () => void;
+  canDelete?: boolean;
+  onDelete?: (el: HTMLElement) => void;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const isVideo = liveBaseText(c.text) !== LIVE_PHOTO_CAPTION;
   useEffect(() => {
     const v = ref.current;
@@ -16633,6 +16723,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
   return (
     <div style={{ minWidth: 0 }}>
       <div
+        ref={cardRef}
         onClick={onOpen}
         style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#0b1512', aspectRatio: '3 / 4', cursor: 'pointer', border: `1px solid ${CLR_CARD_BORDER}` }}
       >
@@ -16668,6 +16759,13 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
           <Heart size={14} strokeWidth={2.2} color={liked ? '#ef4444' : '#fff'} fill={liked ? '#ef4444' : 'none'} />
           {c.likes.length > 0 ? c.likes.length : null}
         </button>
+        {canDelete && onDelete ? (
+          <LiveMediaDeleteBtn
+            variant="tile"
+            onConfirm={() => { if (cardRef.current) onDelete(cardRef.current); }}
+            style={{ position: 'absolute', top: isVideo ? 38 : 6, right: 6, zIndex: 3 }}
+          />
+        ) : null}
       </div>
       <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 800, color: CLR_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
     </div>
@@ -17117,7 +17215,7 @@ function LiveRailAvatar({ c, size, onOpenProfile, wrapperStyle }: {
 /** One full-width item of the stacked public media feed.
  *  Video: autoplays when it is on screen, pauses when it leaves; tap = pause/play (first tap unmutes if the browser forced muted autoplay).
  *  Photo: shown complete (object-fit: contain). Side buttons: profile · like · comments · favorite. */
-function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onComments, onFav, onOpenProfile }: {
+function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onComments, onFav, onOpenProfile, canDelete = false, onDelete }: {
   c: PublicLiveComment;
   liked: boolean;
   fav: boolean;
@@ -17127,7 +17225,10 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
   onComments: () => void;
   onFav: () => void;
   onOpenProfile: () => void;
+  canDelete?: boolean;
+  onDelete?: (el: HTMLElement) => void;
 }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const vref = useRef<HTMLVideoElement | null>(null);
   const [paused, setPaused] = useState(false);
   const [mutedForced, setMutedForced] = useState(false);
@@ -17176,7 +17277,7 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
   const cnt: React.CSSProperties = { fontSize: '0.78rem', fontWeight: 800, textShadow: '0 1px 3px rgba(0,0,0,0.75)', lineHeight: 1 };
   const icoShadow = 'drop-shadow(0 1px 3px rgba(0,0,0,0.65))';
   return (
-    <div style={{ position: 'relative', height: '100%', scrollSnapAlign: 'start', scrollSnapStop: 'always', background: '#000', overflow: 'hidden', borderBottom: '1px solid rgba(255,255,255,0.08)', direction: 'ltr' }}>
+    <div ref={rootRef} style={{ position: 'relative', height: '100%', scrollSnapAlign: 'start', scrollSnapStop: 'always', background: '#000', overflow: 'hidden', borderBottom: '1px solid rgba(255,255,255,0.08)', direction: 'ltr' }}>
       <div
         onClick={isVideo ? onTap : undefined}
         style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isVideo ? 'pointer' : 'default' }}
@@ -17214,6 +17315,9 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
         <button type="button" aria-label="Favorite" onClick={e => { e.stopPropagation(); onFav(); }} style={sideBtn}>
           <Bookmark size={32} strokeWidth={2} color={fav ? '#facc15' : '#fff'} fill={fav ? '#facc15' : 'rgba(255,255,255,0.92)'} style={{ filter: icoShadow }} />
         </button>
+        {canDelete && onDelete ? (
+          <LiveMediaDeleteBtn variant="rail" onConfirm={() => { if (rootRef.current) onDelete(rootRef.current); }} />
+        ) : null}
       </div>
       {isVideo ? (
         <div style={{ position: 'absolute', left: 0, bottom: 0, height: 3, width: `${Math.round(prog * 1000) / 10}%`, background: '#fff', opacity: 0.85, pointerEvents: 'none' }} />
@@ -17365,7 +17469,7 @@ function LiveMediaCommentsSheet({ post, comments, myId, myAvatar, nameOf, onLike
 
 /** Full-screen stacked feed opened by tapping a tile of the small grid: every photo/video complete, one under the other,
  *  swipe up/down to move between them, side buttons (profile · like · comments · favorite). X closes it. */
-function LiveMediaFeedOverlay({ posts, startId, favIds, nameOf, likedBy, commentCountOf, onLike, onComments, onFav, onOpenProfile, onClose }: {
+function LiveMediaFeedOverlay({ posts, startId, favIds, nameOf, likedBy, commentCountOf, onLike, onComments, onFav, onOpenProfile, onClose, canDeleteOf, onDelete }: {
   posts: PublicLiveComment[];
   startId: string;
   favIds: string[];
@@ -17377,6 +17481,8 @@ function LiveMediaFeedOverlay({ posts, startId, favIds, nameOf, likedBy, comment
   onFav: (id: string) => void;
   onOpenProfile: (c: PublicLiveComment) => void;
   onClose: () => void;
+  canDeleteOf?: (c: PublicLiveComment) => boolean;
+  onDelete?: (c: PublicLiveComment, el: HTMLElement) => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
@@ -17405,6 +17511,8 @@ function LiveMediaFeedOverlay({ posts, startId, favIds, nameOf, likedBy, comment
             onComments={() => onComments(vc.id)}
             onFav={() => onFav(vc.id)}
             onOpenProfile={() => onOpenProfile(vc)}
+            canDelete={!!canDeleteOf && canDeleteOf(vc)}
+            onDelete={onDelete ? (el => onDelete(vc, el)) : undefined}
           />
         ))}
       </div>
@@ -17565,7 +17673,7 @@ function PublicLiveCommentsPanel({
   const [, setComposerFocused] = useState(false);
 
   // كل 24 ساعة: تنظيف الشات العام فقط (نص/صور/فيديو/صوت داخل الشات)
-  // لا نمس منشورات الصفحة (photos/videos posts) — تبقى دائمة حتى يحذفها صاحبها
+  // منشورات Templates (الصور/الفيديو بالخارج) وتعليقاتها تبقى دائمة حتى يحذفها صاحبها بزر الحذف
   const lastClearCycleRef = useRef<number>(liveChatCycleStart());
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -17573,14 +17681,57 @@ function PublicLiveCommentsPanel({
       if (cs === lastClearCycleRef.current) return;
       lastClearCycleRef.current = cs;
       liveSigRef.current = '';
-      // public live-chat messages only
-      savePublicLiveComments([]);
-      setComments([]);
-      void clearLiveChatOnServer();
+      // public live-chat messages only — Templates posts (+ their comments) survive
+      const all = loadPublicLiveComments();
+      const keepIds = liveTplIdSet(all);
+      const keepLocal = all.filter(x => liveSurvivesClear(x.text, keepIds));
+      savePublicLiveComments(keepLocal);
+      setComments(keepLocal);
+      void (async () => {
+        let remote: PublicLiveComment[] | null = null;
+        try { remote = await fetchLiveChatFromServer(); } catch { /* ignore */ }
+        const merged = remote ? mergeLiveChatLists(keepLocal, remote) : keepLocal;
+        const ids = liveTplIdSet(merged);
+        await clearLiveChatOnServer(merged.filter(x => liveSurvivesClear(x.text, ids)));
+      })();
       // intentionally NO setPosts / setMyMediaPosts / fetchPosts wipe
     }, 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  // ── Templates: مخزن مستقل (لا يمر عبر الشات ولا يتأثر بتصفير الـ24 ساعة) ──
+  const [tplRows, setTplRows] = useState<PublicLiveComment[]>(() => loadTemplatesCache() as PublicLiveComment[]);
+  const tplRowsRef = useRef<PublicLiveComment[]>(tplRows);
+  tplRowsRef.current = tplRows;
+  const tplIdSet = useMemo(() => new Set(tplRows.map(r => r.id)), [tplRows]);
+  const tplCommit = (next: PublicLiveComment[]) => { tplRowsRef.current = next; saveTemplatesCache(next as any); setTplRows(next); };
+  useEffect(() => {
+    if (!myId) return;
+    let cancelled = false;
+    let busy = false;
+    const sig = (l: PublicLiveComment[]) => l.map(x => `${x.id}:${x.text}:${x.likes.length}:${x.imageUrl || ''}`).join('|');
+    const run = async () => {
+      if (busy) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      busy = true;
+      try {
+        const list = (await syncTemplates(myId)) as PublicLiveComment[];
+        if (!cancelled) setTplRows(prev => (sig(prev) === sig(list) ? prev : list));
+      } catch { /* keep cache */ } finally { busy = false; }
+    };
+    void run();
+    const iv = window.setInterval(run, 3000);
+    const onStorage = (e: StorageEvent) => { if (e.key === TEMPLATES_CACHE_KEY) setTplRows(loadTemplatesCache() as PublicLiveComment[]); };
+    const onVis = () => { if (document.visibilityState === 'visible') void run(); };
+    window.addEventListener('storage', onStorage);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      cancelled = true;
+      window.clearInterval(iv);
+      window.removeEventListener('storage', onStorage);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [myId]);
 
   // يبلّغ بطاقات البث (HomeLiveStack) برفع/إنزال الشات لتصعد معه وتنزل
   useEffect(() => {
@@ -17741,7 +17892,7 @@ function PublicLiveCommentsPanel({
         const remote = await fetchLiveChatFromServer();
         const local = loadPublicLiveComments();
         let next = remote ? mergeLiveChatLists(local, remote) : local;
-        next = next.filter(x => x.createdAt >= liveChatCycleStart());
+        { const tplIds = liveTplIdSet(next); next = next.filter(x => liveRowInCycle(x, tplIds)); }
         const cleaned: PublicLiveComment[] = [];
         let blocked = false;
         for (const row of next) {
@@ -17907,7 +18058,9 @@ function PublicLiveCommentsPanel({
             liveSigRef.current = '';
             const remote = await fetchLiveChatFromServer();
             const local = loadPublicLiveComments();
-            const merged = (remote ? mergeLiveChatLists(local, remote) : local).filter(x => x.createdAt >= liveChatCycleStart());
+            const mergedAll = remote ? mergeLiveChatLists(local, remote) : local;
+            const tplIds = liveTplIdSet(mergedAll);
+            const merged = mergedAll.filter(x => liveRowInCycle(x, tplIds));
             savePublicLiveComments(merged);
             setComments(merged);
           } catch {
@@ -18014,6 +18167,14 @@ function PublicLiveCommentsPanel({
 
   const toggleLike = (id: string) => {
     if (!myId) return;
+    if (tplIdSet.has(id)) {
+      const cur = tplRowsRef.current.find(r => r.id === id);
+      if (!cur) return;
+      const has = cur.likes.includes(myId);
+      tplCommit(tplRowsRef.current.map(r => (r.id === id ? { ...r, likes: has ? r.likes.filter(x => x !== myId) : [...r.likes, myId] } : r)));
+      void likeTemplateRow(id, !has);
+      return;
+    }
     const next = comments.map(c => {
       if (c.id !== id) return c;
       const has = c.likes.includes(myId);
@@ -18119,6 +18280,15 @@ function PublicLiveCommentsPanel({
   /** Delete = dust animation, then independent delete patch so the video disappears for everybody. */
   const deleteRound = (c: PublicLiveComment, el: HTMLElement) => {
     if (!myId || c.userId !== myId) return;
+    if (tplIdSet.has(c.id)) {
+      // منشور Templates: حذف نهائي من المخزن المستقل (مع تعليقاته) — هذا هو الحذف الوحيد له
+      liveDustDelete(el, () => {
+        markTemplateDeleted(c.id);
+        tplCommit(tplRowsRef.current.filter(r => r.id !== c.id && parseMediaComment(r.text)?.parentId !== c.id));
+        void deleteTemplateRow(c.id);
+      });
+      return;
+    }
     const oldUrl = c.imageUrl || '';
     liveDustDelete(el, () => {
       roundLocalAdd(myId, 'gone', c.id);
@@ -18237,24 +18407,47 @@ function PublicLiveCommentsPanel({
   }, [headerOpen, chatLift, tplOpen]);
   if (typeof document === 'undefined') return null;
   if (!user?.id) return null;
-  const mediaPosts = comments.filter(isLiveMediaPost).slice().reverse();
-  const commentCountOf = (id: string) => comments.reduce((n, x) => (parseMediaComment(x.text)?.parentId === id ? n + 1 : n), 0);
+  // الخارج = منشورات Templates (المخزن المستقل) + ما كان منشوراً سابقاً داخل غرفة الشات (توافق مع القديم)
+  const galleryRows = (() => {
+    const m = new Map<string, PublicLiveComment>();
+    for (const c of comments) m.set(c.id, c);
+    for (const r of tplRows) m.set(r.id, r);
+    return [...m.values()].sort((a, b) => a.createdAt - b.createdAt);
+  })();
+  const mediaPosts = galleryRows.filter(isLiveMediaPost).slice().reverse();
+  const commentCountOf = (id: string) => galleryRows.reduce((n, x) => (parseMediaComment(x.text)?.parentId === id ? n + 1 : n), 0);
+  /** تعليق على منشور: إن كان المنشور في Templates يذهب لمخزنه المستقل، وإلا (منشور قديم) يبقى كما كان */
+  const sendMediaComment = (parentId: string, body: string) => {
+    if (!myId) return;
+    if (!tplIdSet.has(parentId)) {
+      const keep = text; // pushComment clears the chat draft — restore it
+      pushComment(`↩${parentId}\u200b${body}`);
+      setText(keep);
+      return;
+    }
+    const t = body.trim().slice(0, 500);
+    if (!t || liveChatTextIsBlocked(t)) return;
+    const row: PublicLiveComment = {
+      id: `tplc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      userId: myId, name: myName, username: myUsername, avatarUrl: myAvatar,
+      text: `↩${parentId}\u200b${t}`, imageUrl: null, voiceUrl: null, voiceDuration: null, likes: [], createdAt: Date.now(),
+    };
+    markTemplatePending(row.id);
+    tplCommit([...tplRowsRef.current, row]);
+    void postTemplateRow(row as any);
+  };
   const openMedia = openMediaId ? (mediaPosts.find(m => m.id === openMediaId) || null) : null;
   const commentsMedia = commentsMediaId ? (mediaPosts.find(m => m.id === commentsMediaId) || null) : null;
   const mediaCommentsSheet = commentsMedia ? (
     <LiveMediaCommentsSheet
       key={commentsMedia.id}
       post={commentsMedia}
-      comments={comments}
+      comments={galleryRows}
       myId={myId}
       myAvatar={myAvatar}
       nameOf={displayName}
       onLikeComment={id => toggleLike(id)}
-      onSend={body => {
-        const keep = text; // pushComment clears the chat draft — restore it
-        pushComment(`↩${commentsMedia.id}\u200b${body}`);
-        setText(keep);
-      }}
+      onSend={body => sendMediaComment(commentsMedia.id, body)}
       onClose={() => setCommentsMediaId(null)}
     />
   ) : null;
@@ -18278,18 +18471,14 @@ function PublicLiveCommentsPanel({
   const mediaViewer = openMedia ? (
     <LiveMediaViewer
       post={openMedia}
-      comments={comments}
+      comments={galleryRows}
       myId={myId}
       myAvatar={myAvatar}
       nameOf={displayName}
       liked={myId ? openMedia.likes.includes(myId) : false}
       onLike={() => toggleLike(openMedia.id)}
       onLikeComment={id => toggleLike(id)}
-      onSend={body => {
-        const keep = text; // pushComment clears the chat draft — restore it
-        pushComment(`↩${openMedia.id}\u200b${body}`);
-        setText(keep);
-      }}
+      onSend={body => sendMediaComment(openMedia.id, body)}
       onClose={() => setOpenMediaId(null)}
       onOpenProfile={() => openProfileOf(openMedia)}
     />
@@ -18307,10 +18496,21 @@ function PublicLiveCommentsPanel({
       onFav={id => toggleMediaFav(id)}
       onOpenProfile={vc => openProfileOf(vc)}
       onClose={() => setFeedStartId(null)}
+      canDeleteOf={vc => !!myId && vc.userId === myId}
+      onDelete={(vc, el) => deleteRound(vc, el)}
     />
   ) : null;
   const studioPost = (caption: string, url: string) => {
-    pushComment(caption + LIVE_TPL_SUFFIX, url);
+    if (!myId) return;
+    // النشر يذهب مباشرة لمخزن Templates المستقل — لا يدخل غرفة الشات إطلاقاً
+    const row: PublicLiveComment = {
+      id: `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      userId: myId, name: myName, username: myUsername, avatarUrl: myAvatar,
+      text: caption + LIVE_TPL_SUFFIX, imageUrl: url, voiceUrl: null, voiceDuration: null, likes: [], createdAt: Date.now(),
+    };
+    markTemplatePending(row.id);
+    tplCommit([...tplRowsRef.current, row]);
+    void postTemplateRow(row as any);
     setTplOpen(false);
     setChatLift(0);
   };
@@ -18467,6 +18667,8 @@ function PublicLiveCommentsPanel({
                 onComments={() => { if (Date.now() - composerGuardRef.current < 700) return; setCommentsMediaId(vc.id); }}
                 onFav={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleMediaFav(vc.id); }}
                 onOpenProfile={() => { if (Date.now() - composerGuardRef.current < 700) return; openProfileOf(vc); }}
+                canDelete={!!myId && vc.userId === myId}
+                onDelete={el => deleteRound(vc, el)}
               />
             )) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, direction: 'ltr' }}>
@@ -18480,6 +18682,8 @@ function PublicLiveCommentsPanel({
                   onLike={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleLike(vc.id); }}
                   onOpen={() => { if (Date.now() - composerGuardRef.current < 700) return; if (LIVE_MEDIA_TAP_OPENS_FEED) setFeedStartId(vc.id); else setOpenMediaId(vc.id); }}
                   onOpenProfile={() => { if (Date.now() - composerGuardRef.current < 700) return; openProfileOf(vc); }}
+                  canDelete={!!myId && vc.userId === myId}
+                  onDelete={el => deleteRound(vc, el)}
                 />
               ))}
             </div>
@@ -18509,7 +18713,7 @@ function PublicLiveCommentsPanel({
         }}
       >
         <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-        {comments.length === 0 && (
+        {(() => { const ids = liveTplIdSet(comments); return comments.every(c => liveSurvivesClear(c.text, ids)); })() && (
           <p style={{ margin: '28px 0 0', textAlign: 'center', color: '#9ca3af', fontSize: '0.86rem', fontWeight: 600 }}>
             كن أول من يكتب تعليقاً مباشراً
           </p>
