@@ -128,6 +128,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   const startingIdRef = React.useRef<string | null>(null);
   const startingTimerRef = React.useRef<number | null>(null);
   const startedIdsRef = React.useRef<Set<string>>(new Set()); // COUNTDOWN-SYNC-PATCH: a round id never gets a second countdown
+  const peerCountIdRef = React.useRef<string | null>(null); // COUNTDOWN-SYNC-PATCH-2: the other host told me HE counts too (proof the signal arrived both ways)
   const [countEnd, setCountEnd] = React.useState<number | null>(null); // COUNTDOWN-START-PATCH: when the 5..1 countdown ends (local clock)
   const [countLeft, setCountLeft] = React.useState<number | null>(null);
   React.useEffect(() => {
@@ -286,7 +287,12 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
       scheduleStart(inv.id); // SUPPORT-LIVE-PATCH: the round opens by itself 2s after Ok (A's battle-state may open it earlier)
     }
     // keep telling A until his confirmation arrives (a lost signal must not cancel the round)
-    [800, 2000, 4000].forEach((ms) => window.setTimeout(() => { if (acceptedIdRef.current === inv.id) emit(payload); }, ms));
+    // COUNTDOWN-SYNC-PATCH-2: repeat Accept AND the countdown signal quickly until the other host confirms (so HIS circle always appears too)
+    [400, 800, 1400, 2000, 3000, 4000].forEach((ms) => window.setTimeout(() => {
+      if (acceptedIdRef.current !== inv.id || peerCountIdRef.current === inv.id) return;
+      emit(payload);
+      if (startingIdRef.current === inv.id) emit({ t: 'battle-countdown', id: inv.id, remainMs: Math.max(800, BATTLE_AUTO_START_MS - ms) });
+    }, ms));
     window.setTimeout(() => {
       if (acceptedIdRef.current !== inv.id) return;
       acceptedIdRef.current = null;
@@ -344,8 +350,8 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         return true;
       }
       case 'battle-accept': {
-        if (age > 45_000) return true;
         const id = String(msg.id || '');
+        if (age > 45_000 && pendingRef.current !== id) return true; // COUNTDOWN-SYNC-PATCH-2: an answer to MY open invite is never dropped for its age (clock skew)
         if (pendingRef.current === id) {
           // INSTANT-OPEN-V2: the other host accepted my invite -> open on my side right now (no waiting for the next battle-state)
           if (me.mySide === 'right') scheduleStart(id); // SUPPORT-LIVE-PATCH
@@ -361,11 +367,18 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         return true;
       }
       case 'battle-countdown': {
-        // COUNTDOWN-SYNC-PATCH: the other host's circle already counts -> show the same 5..1 circle here, then open together
-        if (!me.mySide || age > 45_000) return true;
+        // COUNTDOWN-SYNC-PATCH: the other host's circle already counts -> show the same 5..1 circle here, then open together.
+        // COUNTDOWN-SYNC-PATCH-2: a countdown for the round I invited / accepted is never dropped for its age; it is also answered
+        // with my own countdown signal (loop-free: scheduleStart ignores a round that already counts).
+        if (!me.mySide) return true;
         const id = String(msg.id || '');
-        if (!id || battleRef.current) return true;
-        scheduleStart(id, Number(msg.remainMs) || BATTLE_AUTO_START_MS, false);
+        if (!id) return true;
+        const known = id === pendingRef.current || id === acceptedIdRef.current || incomingRef.current?.id === id || startingIdRef.current === id;
+        if (!known && age > 45_000) return true;
+        if (battleRef.current) return true;
+        peerCountIdRef.current = id;
+        if (acceptedIdRef.current === id) acceptedIdRef.current = null; // confirmed: the other host counts too
+        scheduleStart(id, Number(msg.remainMs) || BATTLE_AUTO_START_MS, true);
         return true;
       }
       case 'battle-state': {
@@ -632,7 +645,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     acceptedIdRef.current = null;
     incomingRef.current = null; setIncoming(null);
     setPopups([]);
-    startingIdRef.current = null; setStarting(null); setCountEnd(null); startedIdsRef.current = new Set(); // SUPPORT-LIVE-PATCH
+    startingIdRef.current = null; setStarting(null); setCountEnd(null); startedIdsRef.current = new Set(); peerCountIdRef.current = null; // SUPPORT-LIVE-PATCH
     seenGiftsRef.current = new Set();
     serverIdRef.current = null; // SERVER-TRUTH-PATCH
   }, [active]);
@@ -718,7 +731,7 @@ export function BattlePlayButton({
     <AnimatePresence>
       {show ? (
         <motion.button
-          key="battle-play"
+          key={mode === 'auto' ? 'battle-count' : 'battle-play'} // COUNTDOWN-SYNC-PATCH-2: after Ok the Ok circle leaves and a NEW countdown circle appears on the middle line (both phones)
           type="button"
           onClick={mode === 'ok' ? onOk : mode === 'play' ? onPlay : undefined}
           disabled={mode === 'waiting' || mode === 'auto'}
