@@ -104,6 +104,7 @@ import {
 } from '@/lib/liveBattlePatch';
 import { giftUnitPrice } from '@/components/LiveCoinsDock'; // BATTLE-PATCH: gift price fallback
 import { useBattleGiftBridge } from '@/lib/liveBattleFixPatch'; // BATTLE-FIX-PATCH: line moves on every gift
+import { useLiveHearts, HeartsTapLayer, HeartsCounter } from '@/lib/liveHeartsPatch'; // HEARTS-PATCH: tap the screen = hearts (+1 on the round line per 10 taps)
 import { useSplitAnnounce, useSplitViewer, useBattleServerSync, closeAllSplitViewers } from '@/lib/liveSplitViewPatch'; // UID-CONFLICT-FIX +closeAllSplitViewers
 // (original import comment follows)
 // // SPLIT-VIEW-PATCH: both players visible in either room + server-side round score
@@ -2048,6 +2049,12 @@ export default function LiveCameraPage() {
     apply: battleApi.applyExternal,
   });
   const battleRunning = battleApi.battle?.phase === 'running';
+  // HEARTS-PATCH: taps on the screen -> hearts + shared counter (the server adds +1 to the round line per 10 taps)
+  const heartsApi = useLiveHearts({
+    enabled: !!(joined && isHostRoom),
+    roomHostId: String(hostId || ''),
+    amOwner: amHost,
+  });
   // GIFT-LINE-PATCH: the chat does NOT move by itself on a gift. Gift animation line:
   //  - chat compact (default): from a line in the upper part of the cameras down to the bottom of the screen
   //  - user tapped Full Chat: from the bottom of the cameras (top of the chat) down
@@ -2466,6 +2473,9 @@ export default function LiveCameraPage() {
           </>
         ) : null}
       </div>
+
+      {/* HEARTS-PATCH: invisible tap layer under every button / chat / header + the floating hearts above */}
+      <HeartsTapLayer enabled={!!(joined && isHostRoom)} bursts={heartsApi.bursts} onTap={(x, y) => heartsApi.tap(x, y)} />
 
       <div
         ref={headerBarRef}
@@ -3020,6 +3030,7 @@ export default function LiveCameraPage() {
             <div
               ref={chatCardRef}
               style={{
+                position: 'relative', // HEARTS-PATCH: the heart counter sits on the card, above Send
                 pointerEvents: 'auto',
                 background: 'rgba(4,14,16,0.82)',
                 border: '1px solid rgba(0,188,212,0.2)',
@@ -3065,6 +3076,7 @@ export default function LiveCameraPage() {
                 })}
                 <div ref={liveChatEndRef} />
               </div>
+              {isHostRoom ? <HeartsCounter count={heartsApi.total} onTap={() => heartsApi.tap()} lift={chatFull ? 60 : 50} /> : null}
               <div style={{ display: 'flex', gap: 6 }}>
                 <input
                   value={liveChatText}

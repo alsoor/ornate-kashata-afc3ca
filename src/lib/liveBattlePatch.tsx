@@ -61,7 +61,9 @@ const RESULT_MS = 7000;
 /** OK-BUTTON-PATCH: how long an invite stays open (red ring runs this long, then the request fails on both phones). */
 export const BATTLE_INVITE_MS = 20_000;
 /** SUPPORT-LIVE-PATCH: after the other host taps Ok the round starts by itself this long afterwards (nobody taps Play again). */
-export const BATTLE_AUTO_START_MS = 2000;
+export const BATTLE_AUTO_START_MS = 3000;
+/** ROUND-FLOW-PATCH: after the other host accepts, BOTH circles show "Ok" for this long, then "Play" for the rest of BATTLE_AUTO_START_MS, then the round starts by itself. */
+export const BATTLE_OK_HOLD_MS = 2000;
 const STATE_EVERY_MS = 2000;
 
 /** Colors requested: left = yellow, right = orange. */
@@ -127,6 +129,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   const [starting, setStarting] = React.useState<string | null>(null); // SUPPORT-LIVE-PATCH: Ok tapped -> auto start in 2s
   const startingIdRef = React.useRef<string | null>(null);
   const startingTimerRef = React.useRef<number | null>(null);
+  const serverIdRef = React.useRef<string | null>(null); // SERVER-TRUTH-PATCH: round whose score is driven ONLY by the server (/api/live-battle)
   const [now, setNow] = React.useState(() => Date.now());
 
   const srcRef = React.useRef(`b_${Math.random().toString(36).slice(2, 10)}`);
@@ -156,6 +159,15 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   const addPopup = (p: BattlePopup) => {
     setPopups((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p].slice(-4)));
     window.setTimeout(() => setPopups((prev) => prev.filter((x) => x.id !== p.id)), 2600);
+  };
+
+  /** SERVER-TRUTH-PATCH: a score that arrives through a signal (battle-state / battle-view) never overwrites the server score. */
+  const mergeServerTruth = (prev: BattleView | null, next: BattleView): BattleView => {
+    if (!prev || prev.id !== next.id || serverIdRef.current !== next.id) return next;
+    if (next.phase === 'running') return { ...next, left: prev.left, right: prev.right };
+    const left = Math.max(prev.left, next.left);
+    const right = Math.max(prev.right, next.right);
+    return { ...next, left, right, winner: left === right ? 'draw' : left > right ? 'left' : 'right' };
   };
 
   /* ── authority (A = left): clock, scores, state broadcast ── */
@@ -210,6 +222,9 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   const addScore = React.useCallback((side: BattleSide, coins: number) => {
     const b = battleRef.current;
     if (!b || b.phase !== 'running' || coins <= 0) return;
+    // SERVER-TRUTH-PATCH: once the server keeps this round, the phone NEVER adds coins itself (it used to add the gift on top of the
+    // server value = doubled line on some phones). Every phone just shows the server score, so all phones show the same number.
+    if (serverIdRef.current === b.id) return;
     setBattleBoth({ ...b, [side]: b[side] + coins });
   }, []);
 
@@ -347,7 +362,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
           winner: msg.winner === 'left' || msg.winner === 'right' || msg.winner === 'draw' ? msg.winner : null,
           top: parseTop(msg.top) ?? (prev?.id === id ? prev.top : undefined), // SUPPORT-LIVE-PATCH
         };
-        setBattleBoth(next);
+        setBattleBoth(mergeServerTruth(prev, next)); // SERVER-TRUTH-PATCH
         if (phase === 'ended') scheduleClear(id);
         return true;
       }
@@ -369,7 +384,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
           winner: msg.winner === 'left' || msg.winner === 'right' || msg.winner === 'draw' ? msg.winner : null,
           top: parseTop(msg.top) ?? (prev?.id === id ? prev.top : undefined), // SUPPORT-LIVE-PATCH
         };
-        setBattleBoth(next);
+        setBattleBoth(mergeServerTruth(prev, next)); // SERVER-TRUTH-PATCH
         if (phase === 'ended') scheduleClear(id);
         return true;
       }
@@ -404,16 +419,38 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   React.useEffect(() => {
     if (mySide !== 'left' || !battle || battle.phase !== 'running') return;
     const id = battle.id;
+    let finishing = false; // SERVER-TRUTH-PATCH
     const iv = window.setInterval(() => {
       const b = battleRef.current;
       if (!b || b.id !== id || b.phase !== 'running') return;
       if (Date.now() >= b.endsAt) {
-        const winner: BattleSide | 'draw' = b.left === b.right ? 'draw' : b.left > b.right ? 'left' : 'right';
-        setBattleBoth({ ...b, phase: 'ended', endsAt: Date.now(), winner });
-        broadcastState();
-        window.setTimeout(broadcastState, 400);
-        window.setTimeout(broadcastState, 1200);
-        scheduleClear(id);
+        // SERVER-TRUTH-PATCH: take the server's LAST score before the winner is decided (every phone then gets the same result)
+        if (finishing) return;
+        finishing = true;
+        void (async () => {
+          try {
+            const host = String(latest.current.roomHostId || '');
+            if (host) {
+              const ctl = new AbortController();
+              const to = window.setTimeout(() => ctl.abort(), 1200);
+              const r = await fetch(`/api/live-battle?hostId=${encodeURIComponent(host)}`, { credentials: 'include', cache: 'no-store', signal: ctl.signal });
+              window.clearTimeout(to);
+              const sv: any = r.ok ? (await r.json())?.battle : null;
+              const cur = battleRef.current;
+              if (sv && cur && cur.id === id && cur.phase === 'running' && String(sv.id) === id) {
+                setBattleBoth({ ...cur, left: Math.max(cur.left, Number(sv.left) || 0), right: Math.max(cur.right, Number(sv.right) || 0) });
+              }
+            }
+          } catch { /* ignore */ }
+          const e = battleRef.current;
+          if (!e || e.id !== id || e.phase !== 'running') return;
+          const winner: BattleSide | 'draw' = e.left === e.right ? 'draw' : e.left > e.right ? 'left' : 'right';
+          setBattleBoth({ ...e, phase: 'ended', endsAt: Date.now(), winner });
+          broadcastState();
+          window.setTimeout(broadcastState, 400);
+          window.setTimeout(broadcastState, 1200);
+          scheduleClear(id);
+        })();
       } else {
         broadcastState();
       }
@@ -539,8 +576,12 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     if (!prev && phase === 'ended') return;                          // never resurrect a finished round
     if (prev && prev.id === id && prev.phase === 'ended') return;
     const same = !!prev && prev.id === id;
-    const left = same ? Math.max(prev!.left, l) : l;
-    const right = same ? Math.max(prev!.right, r) : r;
+    // SERVER-TRUTH-PATCH: the first server answer REPLACES whatever this phone counted by itself; after that scores only grow
+    // (max only protects against an answer that arrives out of order). From now on this phone never adds coins itself.
+    const firstFromServer = serverIdRef.current !== id;
+    serverIdRef.current = id;
+    const left = same && !firstFromServer ? Math.max(prev!.left, l) : l;
+    const right = same && !firstFromServer ? Math.max(prev!.right, r) : r;
     const winner: BattleView['winner'] = phase === 'ended' ? (left === right ? 'draw' : left > right ? 'left' : 'right') : null;
     if (pendingRef.current === id) { pendingRef.current = null; setPending(null); }
     if (acceptedIdRef.current === id) acceptedIdRef.current = null;
@@ -562,6 +603,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     setPopups([]);
     startingIdRef.current = null; setStarting(null); // SUPPORT-LIVE-PATCH
     seenGiftsRef.current = new Set();
+    serverIdRef.current = null; // SERVER-TRUTH-PATCH
   }, [active]);
 
   React.useEffect(() => () => { if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current); if (startingTimerRef.current) window.clearTimeout(startingTimerRef.current); }, []);
@@ -635,8 +677,16 @@ export function BattlePlayButton({
   const SIZE = 46;
   const R = (SIZE - 4) / 2;
   const C = 2 * Math.PI * R;
-  const mode: 'play' | 'waiting' | 'ok' | 'auto' = auto ? 'auto' : incoming ? 'ok' : waiting ? 'waiting' : 'play';
-  const dur = mode === 'auto' ? BATTLE_AUTO_START_MS : ringMs;
+  // ROUND-FLOW-PATCH: after the other host accepted, BOTH phones show "Ok" for 2s, then "Play" for 1s (pressing itself), then the round starts
+  const [autoPhase, setAutoPhase] = React.useState<'ok' | 'play'>('ok');
+  React.useEffect(() => {
+    setAutoPhase('ok');
+    if (!auto) return;
+    const t = window.setTimeout(() => setAutoPhase('play'), BATTLE_OK_HOLD_MS);
+    return () => window.clearTimeout(t);
+  }, [auto]);
+  const mode: 'play' | 'waiting' | 'ok' | 'autoOk' | 'auto' = auto ? (autoPhase === 'ok' ? 'autoOk' : 'auto') : incoming ? 'ok' : waiting ? 'waiting' : 'play';
+  const dur = mode === 'auto' ? BATTLE_AUTO_START_MS - BATTLE_OK_HOLD_MS : mode === 'autoOk' ? BATTLE_OK_HOLD_MS : ringMs;
   return (
     <AnimatePresence>
       {visible ? (
@@ -644,18 +694,22 @@ export function BattlePlayButton({
           key="battle-play"
           type="button"
           onClick={mode === 'ok' ? onOk : mode === 'play' ? onPlay : undefined}
-          disabled={mode === 'waiting' || mode === 'auto'}
-          aria-label={mode === 'ok' ? 'Ok' : 'Start a game round'}
+          disabled={mode === 'waiting' || mode === 'auto' || mode === 'autoOk'}
+          aria-label={mode === 'ok' || mode === 'autoOk' ? 'Ok' : 'Start a game round'}
           initial={{ opacity: 0, scale: 0.6 }}
           animate={mode === 'auto' ? { opacity: 1, scale: [1, 1, 1, 0.86, 1] } : { opacity: 1, scale: 1 }}
-          transition={mode === 'auto' ? { scale: { duration: BATTLE_AUTO_START_MS / 1000, times: [0, 0.7, 0.85, 0.93, 1], ease: 'easeInOut' } } : undefined}
+          transition={mode === 'auto' ? { scale: { duration: (BATTLE_AUTO_START_MS - BATTLE_OK_HOLD_MS) / 1000, times: [0, 0.7, 0.85, 0.93, 1], ease: 'easeInOut' } } : undefined}
           exit={{ opacity: 0, scale: 0.6 }}
           whileTap={{ scale: 0.92 }}
           style={{
             position: 'absolute',
             left: '50%',
             top: yPx != null ? yPx : topPx != null ? topPx / 2 : '25%',
-            transform: 'translate(-50%, -50%)',
+            // CIRCLE-CENTER-PATCH: framer-motion replaces a CSS `transform` as soon as it animates `scale`, so translate(-50%,-50%)
+            // was lost and the circle sat ~23px to the right/below its point. Negative margins are never overridden: the circle
+            // is now centred exactly on the middle line.
+            marginLeft: -SIZE / 2,
+            marginTop: -SIZE / 2,
             zIndex: 93,
             display: 'flex',
             alignItems: 'center',
@@ -665,7 +719,7 @@ export function BattlePlayButton({
             padding: 0,
             borderRadius: '50%',
             border: (mode === 'play' || mode === 'auto') ? '2px solid rgba(255,255,255,0.9)' : '2px solid rgba(255,255,255,0.25)',
-            cursor: mode === 'waiting' || mode === 'auto' ? 'default' : 'pointer',
+            cursor: mode === 'waiting' || mode === 'auto' || mode === 'autoOk' ? 'default' : 'pointer',
             color: '#fff',
             fontWeight: 900,
             background: mode === 'waiting'
@@ -680,7 +734,7 @@ export function BattlePlayButton({
               <Play size={16} fill="#fff" strokeWidth={0} />
               <span style={{ fontSize: '0.55rem', lineHeight: 1, letterSpacing: 0.3 }}>Play</span>
             </>
-          ) : mode === 'ok' ? (
+          ) : mode === 'ok' || mode === 'autoOk' ? (
             <span style={{ fontSize: '0.86rem', lineHeight: 1, color: '#1a1200', fontWeight: 900 }}>Ok</span>
           ) : (
             <span style={{ fontSize: '0.7rem', fontWeight: 800 }}>…</span>

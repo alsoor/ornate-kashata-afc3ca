@@ -1314,7 +1314,7 @@ app.post("/api/live-gifts", guarded(async (req, res) => {
 // A (owner of the split) registers the round; every gift posted to /api/live-gifts is added to the right side here,
 // and every phone (hosts, supporters, viewers of both rooms) reads the same line from GET /api/live-battle.
 type BattleSup = { name: string; avatarUrl: string; coins: number; firstAt: number };
-type LiveBattleRow = { id: string; a: string; b: string; startedAt: number; endsAt: number; left: number; right: number; supL?: Map<string, BattleSup>; supR?: Map<string, BattleSup> };
+type LiveBattleRow = { id: string; a: string; b: string; startedAt: number; endsAt: number; left: number; right: number; supL?: Map<string, BattleSup>; supR?: Map<string, BattleSup>; tapL?: number; tapR?: number };
 const LIVE_BATTLE_MS = 4 * 60 * 1000;
 const LIVE_BATTLE_KEEP_MS = 12_000;
 const liveBattleMem = (): Map<string, LiveBattleRow> => {
@@ -1361,12 +1361,25 @@ function liveBattleCount(room: string, toUserId: string, coins: number, fromId =
     }
   }
 }
+// HEARTS-PATCH: every 10 taps on the screen = +1 point on that side's line (a helper for the win). Never counted as gift coins / profit.
+const bHeartBonus = (taps?: number) => Math.floor(Math.max(0, Number(taps) || 0) / 10);
+function liveBattleHearts(room: string, n: number) {
+  if (!room || !(n > 0)) return;
+  const now = Date.now();
+  for (const row of liveBattleMem().values()) {
+    if (now >= row.endsAt) continue;
+    if (bRoomOf(room, row.a)) row.tapL = (row.tapL || 0) + n; // taps in A's room -> A
+    else if (bRoomOf(room, row.b)) row.tapR = (row.tapR || 0) + n; // taps in B's room -> B
+  }
+}
 const liveBattleView = (row: LiveBattleRow) => {
   const now = Date.now();
   const running = now < row.endsAt;
   if (!running && now - row.endsAt > LIVE_BATTLE_KEEP_MS) return null;
-  const winner = running ? null : row.left === row.right ? "draw" : row.left > row.right ? "left" : "right";
-  return { id: row.id, a: row.a, b: row.b, phase: running ? "running" : "ended", left: row.left, right: row.right, remainMs: Math.max(0, row.endsAt - now), winner, top: bTop(row) };
+  const L = row.left + bHeartBonus(row.tapL); // HEARTS-PATCH: gifts + hearts bonus
+  const R = row.right + bHeartBonus(row.tapR);
+  const winner = running ? null : L === R ? "draw" : L > R ? "left" : "right";
+  return { id: row.id, a: row.a, b: row.b, phase: running ? "running" : "ended", left: L, right: R, remainMs: Math.max(0, row.endsAt - now), winner, top: bTop(row) };
 };
 app.get("/api/live-battle", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
@@ -1405,6 +1418,47 @@ app.post("/api/live-battle", guarded(async (req, res) => {
   const now = Date.now();
   mem.set(id, { id, a, b, startedAt: now, endsAt: now + LIVE_BATTLE_MS, left: 0, right: 0 });
   res.json({ ok: true });
+}));
+
+// ═══════════════ LIVE HEARTS — taps on the screen of a live: shared counter + round helper ═══════════════
+// Everybody in a live room taps the screen -> hearts. The room total is kept here (everyone sees the same number),
+// and while a round runs every 10 taps move that room's line by +1 (see liveBattleHearts / bHeartBonus above).
+const liveHeartsMem = (): Map<string, { total: number; at: number }> => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveHearts?: Map<string, { total: number; at: number }> };
+  if (!g.__stooornaLiveHearts) g.__stooornaLiveHearts = new Map();
+  return g.__stooornaLiveHearts;
+};
+app.get("/api/live-hearts", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const room = bNorm(String(req.query.room || "").slice(0, 80));
+  const row = room ? liveHeartsMem().get(room) : null;
+  res.json({ ok: true, total: row ? row.total : 0 });
+});
+app.post("/api/live-hearts", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  if (!allow(`hr:${u.id}`, 40, 10_000)) return deny(res, 429, "rate_limited");
+  const body = (req.body || {}) as Record<string, unknown>;
+  const roomRaw = String(body.room || "").slice(0, 80);
+  const room = bNorm(roomRaw);
+  if (!room) return deny(res, 400, "room required");
+  const mem = liveHeartsMem();
+  const now = Date.now();
+  if (mem.size > 500) for (const [k, v] of mem) if (now - v.at > 6 * 60 * 60 * 1000) mem.delete(k);
+  if (String(body.action || "") === "reset") {
+    // only the owner of the live starts it from zero
+    if (!session.owns(u, roomRaw)) return deny(res, 403, "forbidden");
+    mem.set(room, { total: 0, at: now });
+    return res.json({ ok: true, total: 0 });
+  }
+  const n = Math.max(1, Math.min(60, Math.floor(Number(body.n) || 0)));
+  if (!(n > 0)) return deny(res, 400, "n required");
+  const cur = mem.get(room) || { total: 0, at: now };
+  cur.total += n;
+  cur.at = now;
+  mem.set(room, cur);
+  try { liveBattleHearts(roomRaw, n); } catch { /* ignore */ }
+  res.json({ ok: true, total: cur.total });
 }));
 
 // ── سحب أرباح الدعم (بنك/PayPal): ملف مستقل server/withdrawals.ts ──
