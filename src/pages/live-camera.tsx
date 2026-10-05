@@ -402,6 +402,10 @@ export default function LiveCameraPage() {
   // SPLIT-PATCH: the split only covers the area above the chat (the yellow line); below it the page looks normal
   const chatCardRef = useRef<HTMLDivElement | null>(null);
   const [splitBottomPx, setSplitBottomPx] = useState<number | null>(null);
+  // SPLIT-TOP-PATCH: while split, the header area gets the plain app colour and the two videos start right below it
+  const headerBarRef = useRef<HTMLDivElement | null>(null);
+  const hintBarRef = useRef<HTMLParagraphElement | null>(null);
+  const [splitTopPx, setSplitTopPx] = useState<number | null>(null);
   // SPLIT-PATCH: tapping the split icon while a split is running shows / hides the exit pill
   const [splitExitOpen, setSplitExitOpen] = useState(false);
   const attachSplitRemote = () => {
@@ -415,12 +419,18 @@ export default function LiveCameraPage() {
   }, [splitWith]);
   const splitActive = !!(duet || splitWith);
   useEffect(() => {
-    if (!splitActive) { setSplitExitOpen(false); return; }
+    if (!splitActive) { setSplitExitOpen(false); setSplitTopPx(null); return; }
     const measure = () => {
       const el = chatCardRef.current;
       if (!el) { setSplitBottomPx(null); return; }
       const top = Math.round(el.getBoundingClientRect().top);
       setSplitBottomPx(prev => (prev != null && Math.abs(prev - top) < 2 ? prev : top));
+      const hb = headerBarRef.current;
+      if (hb) {
+        const hintEl = hintBarRef.current;
+        const hTop = Math.round(Math.max(hb.getBoundingClientRect().bottom, hintEl ? hintEl.getBoundingClientRect().bottom : 0));
+        setSplitTopPx(prev => (prev != null && Math.abs(prev - hTop) < 2 ? prev : hTop));
+      }
     };
     measure();
     const iv = window.setInterval(measure, 250);
@@ -1952,6 +1962,31 @@ export default function LiveCameraPage() {
   });
   handleBattleMsgRef.current = battleApi.handleMessage;
   const battleRunning = battleApi.battle?.phase === 'running';
+  // GIFT-BELOW-LINE-PATCH: during a round, any gift raises the chat by itself (same as tapping Full Chat),
+  // so the two cameras move up and the gift shows from the line under them to the bottom. Normal mode is untouched.
+  const chatAutoRaisedRef = useRef(false);
+  useEffect(() => {
+    if (!battleRunning) {
+      if (chatAutoRaisedRef.current) { chatAutoRaisedRef.current = false; setChatFull(false); }
+      return;
+    }
+    const raise = () => {
+      setChatFull(prev => {
+        if (!prev) chatAutoRaisedRef.current = true;
+        return true;
+      });
+    };
+    window.addEventListener('stooorna:gift-play', raise);
+    return () => window.removeEventListener('stooorna:gift-play', raise);
+  }, [battleRunning]);
+  const battlePopupCount = battleApi.popups.length;
+  useEffect(() => {
+    if (!battleRunning || battlePopupCount === 0) return;
+    setChatFull(prev => {
+      if (!prev) chatAutoRaisedRef.current = true;
+      return true;
+    });
+  }, [battleRunning, battlePopupCount]);
 
   const applyDuetGuest = (g: DuetGuest | null) => {
     if ((duetRef.current?.uid ?? null) === (g?.uid ?? null)) return;
@@ -2314,7 +2349,7 @@ export default function LiveCameraPage() {
       <div
         style={
           splitActive
-            ? { position: 'absolute', top: 0, left: 0, right: 0, bottom: splitBottomPx != null ? `calc(100% - ${splitBottomPx}px)` : '40%', background: '#000', zIndex: 0, display: 'flex' }
+            ? { position: 'absolute', top: splitTopPx != null ? splitTopPx : 0, left: 0, right: 0, bottom: splitBottomPx != null ? `calc(100% - ${splitBottomPx}px)` : '40%', background: '#000', zIndex: 0, display: 'flex' }
             : { position: 'absolute', inset: 0, background: '#000', zIndex: 0, display: 'flex' }
         }
       >
@@ -2361,6 +2396,7 @@ export default function LiveCameraPage() {
       </div>
 
       <div
+        ref={headerBarRef}
         style={{
           position: 'relative',
           zIndex: 2,
@@ -2369,7 +2405,7 @@ export default function LiveCameraPage() {
           gap: 10,
           padding: 'max(env(safe-area-inset-top,0px),14px) 14px 8px',
           flexShrink: 0,
-          background: 'linear-gradient(180deg, rgba(0,0,0,0.62) 0%, transparent 100%)',
+          background: splitActive ? '#060e0e' : 'linear-gradient(180deg, rgba(0,0,0,0.62) 0%, transparent 100%)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
@@ -2600,7 +2636,12 @@ export default function LiveCameraPage() {
       )}
 
       {amHost && (
-        <p style={{ position: 'relative', zIndex: 2, margin: '0 14px 4px', fontSize: '0.66rem', color: 'rgba(250,204,21,0.85)', fontWeight: 600 }}>
+        <p
+          ref={hintBarRef}
+          style={splitActive
+            ? { position: 'relative', zIndex: 2, margin: 0, padding: '0 14px 4px', background: '#060e0e', fontSize: '0.66rem', color: 'rgba(250,204,21,0.85)', fontWeight: 600 }
+            : { position: 'relative', zIndex: 2, margin: '0 14px 4px', fontSize: '0.66rem', color: 'rgba(250,204,21,0.85)', fontWeight: 600 }}
+        >
           Tap a listener to freeze their mic
         </p>
       )}
@@ -3594,7 +3635,7 @@ export default function LiveCameraPage() {
         }}
       />
       {/* BATTLE-PATCH: round overlay (line / timer / win), Play button in the middle, Accept | Decline box */}
-      <BattleGiftDimStyle on={battleRunning} />
+      <BattleGiftDimStyle on={battleRunning} topPx={splitBottomPx} />
       {splitActive ? (
         <BattleOverlay
           battle={battleApi.battle}
@@ -3607,7 +3648,7 @@ export default function LiveCameraPage() {
       <BattlePlayButton
         visible={splitActive && !!battleMySide && !battleApi.battle && !battleApi.incoming}
         waiting={battleApi.pending}
-        topPx={splitBottomPx}
+        topPx={splitBottomPx != null ? splitBottomPx + (splitTopPx ?? 0) : null}
         onPlay={battleApi.play}
       />
       {amHost ? (

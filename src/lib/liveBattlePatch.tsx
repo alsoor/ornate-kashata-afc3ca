@@ -415,10 +415,20 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
  * While a round runs, the gift animation drawn by LiveCoinsDock (wrapped in [data-live-gift-fx]) becomes light and
  * translucent so it never hides the two cameras. It is only dimmed — it still plays and finishes normally.
  */
-export function BattleGiftDimStyle({ on }: { on: boolean }) {
+export function BattleGiftDimStyle({ on, topPx }: { on: boolean; topPx?: number | null }) {
   if (!on) return null;
+  // GIFT-BELOW-LINE-PATCH: during a round the gift animation is drawn ONLY from the line under the two cameras
+  // (the green line = top of the chat card) down to the bottom of the screen, fully visible, covering everything below.
+  // Outside a round this component renders nothing, so normal gifts are untouched.
+  const top = topPx != null && topPx > 0 ? Math.round(topPx) : null;
   return (
-    <style>{`
+    <style>{top != null ? `
+[data-live-gift-fx] {
+  pointer-events: none !important;
+  clip-path: inset(${top}px 0 0 0) !important;
+  -webkit-clip-path: inset(${top}px 0 0 0) !important;
+}
+` : `
 [data-live-gift-fx] {
   opacity: 0.35 !important;
   pointer-events: none !important;
