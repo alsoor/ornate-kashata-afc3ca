@@ -15484,6 +15484,7 @@ const liveBaseText = (t: string) => (isLiveTplText(t) ? String(t).slice(0, -LIVE
 const VIDEO_SWAP_ENDPOINT = '/api/video-swap';   // (name kept so entry.ts needs no change) POST multipart {userId, kind, file} → {url}
 const VIDEO_SWAP_MAX_MB = 300;   // size cap only — video LENGTH is unlimited
 const LIVE_VIDEO_GALLERY_TOP = 'calc(max(8px, env(safe-area-inset-top)) + 72px)'; // clears the header grabber
+void LIVE_VIDEO_GALLERY_TOP; // the gallery moved into the Templates dock bubble — kept for reference
 /** Opening the system gallery blurs the page; on return `focus`/`visibilitychange` used to run snapHomeLayout()
  *  which force-opened the header → the chat panel (and this studio) unmounted = "kicked out". Call right before .click(). */
 /** Time-based hold: while it is active, the home layout snap (which pushes the user out of the chat) is skipped.
@@ -17619,6 +17620,16 @@ function PublicLiveCommentsPanel({
   const [kbInset, setKbInset] = useState(0);
   const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string; activity?: string }>>([]);
   const [tplOpen, setTplOpen] = useState(false);
+  // ── Templates bubble (dock icon between LIVE and Settings): the photos/videos gallery now lives here instead of behind the sheet ──
+  const [tplBubble, setTplBubble] = useState<null | { x: number }>(null);
+  useEffect(() => {
+    const onBubble = (e: Event) => {
+      const d = (e as CustomEvent).detail as { open?: boolean; x?: number } | undefined;
+      setTplBubble(d?.open ? { x: Number(d.x) || 0 } : null);
+    };
+    window.addEventListener('stooorna:templates-bubble', onBubble);
+    return () => window.removeEventListener('stooorna:templates-bubble', onBubble);
+  }, []);
   const [openMediaId, setOpenMediaId] = useState<string | null>(null);
   // ── round video / voice recorder state ──
   const [onceViewId, setOnceViewId] = useState<string | null>(null);   // view-once round video currently open
@@ -18514,13 +18525,106 @@ function PublicLiveCommentsPanel({
     setTplOpen(false);
     setChatLift(0);
   };
+  const closeTplBubble = () => {
+    setTplBubble(null);
+    try { window.dispatchEvent(new CustomEvent('stooorna:templates-bubble-close')); } catch { /* */ }
+  };
+  const templatesBubble = (tplBubble && typeof document !== 'undefined') ? createPortal(
+    (() => {
+      const SIDE = 12;
+      const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, tplBubble.x - SIDE));
+      return (
+        <>
+          <div onPointerDown={e => { e.preventDefault(); closeTplBubble(); }} style={{ position: 'fixed', inset: 0, zIndex: 10068, background: 'rgba(0,6,8,0.45)' }} />
+          <div
+            onClick={e => e.stopPropagation()}
+            onTouchStart={e => e.stopPropagation()}
+            onTouchMove={e => e.stopPropagation()}
+            onTouchEnd={e => e.stopPropagation()}
+            onWheel={e => e.stopPropagation()}
+            style={{
+              position: 'fixed', zIndex: 10075, left: SIDE, right: SIDE, bottom: 'calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
+              height: 'calc(100dvh - var(--stooorna-bottom-bar-h, 96px) - 30px - env(safe-area-inset-top, 0px))',
+              display: 'flex', flexDirection: 'column',
+              borderRadius: 22, padding: '14px 10px 10px',
+              background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
+              border: '1.5px solid rgba(0,188,212,0.35)',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
+              animation: 'stooornaPlusFanIn 0.22s ease-out',
+              pointerEvents: 'auto',
+            }}
+          >
+            <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: tailLeft - 9, width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
+              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,188,212,0.14)', color: '#00BCD4' }}>
+                <Film size={15} strokeWidth={2.2} />
+              </span>
+              <p style={{ margin: 0, flex: 1, color: '#7ee8f5', fontWeight: 800, fontSize: '0.98rem' }}>Templates</p>
+              <button type="button" aria-label="Close" onClick={closeTplBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <X size={15} strokeWidth={2.4} />
+              </button>
+            </div>
+            <div
+              style={{
+                flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
+                touchAction: 'pan-y', borderRadius: 14, padding: LIVE_MEDIA_STACKED ? 0 : '0 2px 6px',
+                scrollSnapType: LIVE_MEDIA_STACKED ? 'y mandatory' : undefined,
+              }}
+            >
+              {mediaPosts.length === 0 ? (
+                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No Templates yet</p>
+              ) : (
+                <>
+        {LIVE_MEDIA_STACKED ? mediaPosts.map(vc => (
+          <LiveMediaFeedItem
+            key={vc.id}
+            c={vc}
+            liked={myId ? vc.likes.includes(myId) : false}
+            fav={mediaFavIds.includes(vc.id)}
+            name={displayName(vc)}
+            commentCount={commentCountOf(vc.id)}
+            onLike={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleLike(vc.id); }}
+            onComments={() => { if (Date.now() - composerGuardRef.current < 700) return; setCommentsMediaId(vc.id); }}
+            onFav={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleMediaFav(vc.id); }}
+            onOpenProfile={() => { if (Date.now() - composerGuardRef.current < 700) return; openProfileOf(vc); }}
+            canDelete={!!myId && vc.userId === myId}
+            onDelete={el => deleteRound(vc, el)}
+          />
+        )) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, direction: 'ltr' }}>
+          {mediaPosts.map(vc => (
+            <LiveMediaTile
+              key={vc.id}
+              c={vc}
+              liked={myId ? vc.likes.includes(myId) : false}
+              name={displayName(vc)}
+              commentCount={commentCountOf(vc.id)}
+              onLike={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleLike(vc.id); }}
+              onOpen={() => { if (Date.now() - composerGuardRef.current < 700) return; if (LIVE_MEDIA_TAP_OPENS_FEED) setFeedStartId(vc.id); else setOpenMediaId(vc.id); }}
+              onOpenProfile={() => { if (Date.now() - composerGuardRef.current < 700) return; openProfileOf(vc); }}
+              canDelete={!!myId && vc.userId === myId}
+              onDelete={el => deleteRound(vc, el)}
+            />
+          ))}
+        </div>
+        )}
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      );
+    })(),
+    document.body,
+  ) : null;
   // When header is forced open (e.g. after system gallery) but Saved Messages is closed,
   // keep Templates/media alive and skip the chat portal. If Saved Messages is open, fall through
   // so the public chat stays mounted underneath — closing Saved Messages returns to live chat, not "outside".
   if (headerOpen && !savedOpen) {
-    return (tplOpen || mediaViewer || mediaFeedOverlay || mediaCommentsSheet) ? (
+    return (tplOpen || mediaViewer || mediaFeedOverlay || mediaCommentsSheet || templatesBubble) ? (
       <>
         {tplOpen ? <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} /> : null}
+        {templatesBubble}
         {mediaViewer}
         {mediaFeedOverlay}
         {mediaCommentsSheet}
@@ -18531,6 +18635,7 @@ function PublicLiveCommentsPanel({
   return createPortal(
     <>
     <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />
+    {templatesBubble}
     {mediaViewer}
     {mediaFeedOverlay}
     {mediaCommentsSheet}
@@ -18643,53 +18748,6 @@ function PublicLiveCommentsPanel({
         background: 'transparent',
         position: 'relative',
       }}>
-        {chatLift === 0 && mediaPosts.length > 0 ? (
-          <div
-            onTouchStart={e => e.stopPropagation()}
-            onTouchMove={e => e.stopPropagation()}
-            onWheel={e => e.stopPropagation()}
-            style={{
-              position: 'absolute', left: 0, right: 0, bottom: 0, top: LIVE_VIDEO_GALLERY_TOP,
-              overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
-              touchAction: 'pan-y', pointerEvents: 'auto', padding: LIVE_MEDIA_STACKED ? 0 : '0 10px 10px',
-              scrollSnapType: LIVE_MEDIA_STACKED ? 'y mandatory' : undefined,
-            }}
-          >
-            {LIVE_MEDIA_STACKED ? mediaPosts.map(vc => (
-              <LiveMediaFeedItem
-                key={vc.id}
-                c={vc}
-                liked={myId ? vc.likes.includes(myId) : false}
-                fav={mediaFavIds.includes(vc.id)}
-                name={displayName(vc)}
-                commentCount={commentCountOf(vc.id)}
-                onLike={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleLike(vc.id); }}
-                onComments={() => { if (Date.now() - composerGuardRef.current < 700) return; setCommentsMediaId(vc.id); }}
-                onFav={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleMediaFav(vc.id); }}
-                onOpenProfile={() => { if (Date.now() - composerGuardRef.current < 700) return; openProfileOf(vc); }}
-                canDelete={!!myId && vc.userId === myId}
-                onDelete={el => deleteRound(vc, el)}
-              />
-            )) : (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, direction: 'ltr' }}>
-              {mediaPosts.map(vc => (
-                <LiveMediaTile
-                  key={vc.id}
-                  c={vc}
-                  liked={myId ? vc.likes.includes(myId) : false}
-                  name={displayName(vc)}
-                  commentCount={commentCountOf(vc.id)}
-                  onLike={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleLike(vc.id); }}
-                  onOpen={() => { if (Date.now() - composerGuardRef.current < 700) return; if (LIVE_MEDIA_TAP_OPENS_FEED) setFeedStartId(vc.id); else setOpenMediaId(vc.id); }}
-                  onOpenProfile={() => { if (Date.now() - composerGuardRef.current < 700) return; openProfileOf(vc); }}
-                  canDelete={!!myId && vc.userId === myId}
-                  onDelete={el => deleteRound(vc, el)}
-                />
-              ))}
-            </div>
-            )}
-          </div>
-        ) : null}
       </div>
       <div
         ref={listRef}
@@ -23192,17 +23250,29 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // the menu (backdrop tap or picking an item) brings the "+" back.
   const [, setProfilePlusOpen] = useState(false);
   // ── Dock bubble: tapping Call / LIVE / Settings opens a speech-bubble panel above the dock, with a tail pointing at the tapped icon ──
-  const [dockBubble, setDockBubble] = useState<null | { kind: 'call' | 'live' | 'settings'; x: number }>(null);
+  const [dockBubble, setDockBubble] = useState<null | { kind: 'call' | 'live' | 'settings' | 'templates'; x: number }>(null);
   const [showPublicVoice, setShowPublicVoice] = useState(false);
   const publicVoiceStatus = usePublicVoiceRoomStatus(dockBubble?.kind === 'live');
   const [dockFriends, setDockFriends] = useState<Friend[]>([]);
   const [dockFriendsLoading, setDockFriendsLoading] = useState(false);
-  const openDockBubble = (kind: 'call' | 'live' | 'settings', el: HTMLElement | null) => {
+  const openDockBubble = (kind: 'call' | 'live' | 'settings' | 'templates', el: HTMLElement | null) => {
     const r = el?.getBoundingClientRect();
     const x = r ? r.left + r.width / 2 : (typeof window !== 'undefined' ? window.innerWidth / 2 : 180);
     setDockBubble(cur => (cur && cur.kind === kind ? null : { kind, x }));
   };
   useEffect(() => { setDockBubble(null); }, [routeLocation.pathname, routeLocation.search]);
+  // Templates bubble: the gallery itself is rendered by PublicLiveCommentsPanel (it owns the Templates store/likes/comments/delete);
+  // the dock only tells it when to open/close, and the panel tells the dock when its own backdrop/X closed it.
+  useEffect(() => {
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:templates-bubble', { detail: { open: dockBubble?.kind === 'templates', x: dockBubble?.x ?? 0 } }));
+    } catch { /* */ }
+  }, [dockBubble?.kind, dockBubble?.x]);
+  useEffect(() => {
+    const onTplClosed = () => setDockBubble(cur => (cur && cur.kind === 'templates' ? null : cur));
+    window.addEventListener('stooorna:templates-bubble-close', onTplClosed);
+    return () => window.removeEventListener('stooorna:templates-bubble-close', onTplClosed);
+  }, []);
   useEffect(() => {
     if (dockBubble?.kind !== 'call') return;
     let off = false;
@@ -25898,8 +25968,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   display: 'flex',
                   flexDirection: 'row',
                   alignItems: 'flex-start',
-                  gap: 14,
-                  padding: '10px 16px 8px',
+                  gap: 10,
+                  padding: '10px 12px 8px',
                   border: '1.5px solid #0f4040',
                   background: 'linear-gradient(180deg, rgba(10,31,34,0.55) 0%, rgba(6,16,18,0.55) 100%)',
                   borderRadius: 20,
@@ -25912,7 +25982,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   <span aria-hidden="true" className="stooorna-frame-shine" />
 
 {/* ── Speech-bubble panel: sits above the dock, tail points at the tapped icon ── */}
-{!guestMode && dockBubble && typeof document !== 'undefined' && createPortal((() => {
+{!guestMode && dockBubble && dockBubble.kind !== 'templates' && typeof document !== 'undefined' && createPortal((() => {
   const SIDE = 12;
   const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, dockBubble.x - SIDE)) ;
   const closeBubble = () => setDockBubble(null);
@@ -26221,6 +26291,29 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <Radio size={18} strokeWidth={2.2} />
                     </button>
 <span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>LIVE</span>
+</div>
+                  )}
+                  {/* Templates — صور وفيديو Templates (كانت خلف الشيت) صارت هنا بين LIVE و Settings */}
+                  {user?.id && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
+<button
+                      type="button"
+                      onClick={(e) => openDockBubble('templates', e.currentTarget)}
+                      aria-label="Templates"
+                      title="Templates"
+                      style={{
+                        width: 38, height: 38, borderRadius: '50%',
+                        border: '1px solid rgba(0,188,212,0.4)',
+                        background: 'rgba(6,20,22,0.96)',
+                        color: '#00BCD4',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                      }}
+                    >
+                      <Film size={18} strokeWidth={2.2} />
+                    </button>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Templates</span>
 </div>
                   )}
                   {/* Settings — نُقلت من الهيدر إلى هنا بجانب الأصدقاء والاتصال والبث */}
