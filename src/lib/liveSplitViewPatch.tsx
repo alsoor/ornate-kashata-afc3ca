@@ -260,12 +260,16 @@ export function useBattleServerSync(opts: {
   apply: (s: any, mirror: boolean) => void;
   /** COUNTDOWN-SERVER-PATCH: the server's shared 5..1 countdown before a round (see liveBattlePatch applyCountdown) */
   onCountdown?: (id: string, remainMs: number) => void;
+  /** STOP-GAME-SERVER-PATCH: the server says round `id` was stopped by a host -> stop it here at once */
+  onStopped?: (id: string) => void;
 }): void {
   const { enabled, roomHostId, mySide, peerUserId, battleId, battlePhase } = opts;
   const applyRef = React.useRef(opts.apply);
   applyRef.current = opts.apply;
   const cdRef = React.useRef(opts.onCountdown); // COUNTDOWN-SERVER-PATCH
   cdRef.current = opts.onCountdown;
+  const stopRef = React.useRef(opts.onStopped); // STOP-GAME-SERVER-PATCH
+  stopRef.current = opts.onStopped;
   const registeredRef = React.useRef<string>('');
 
   React.useEffect(() => {
@@ -311,6 +315,8 @@ export function useBattleServerSync(opts: {
         const r = await fetch(`/api/live-battle?hostId=${encodeURIComponent(roomHostId)}`, { credentials: 'include', cache: 'no-store' });
         if (!r.ok || stop) return;
         const d: any = await r.json();
+        // STOP-GAME-SERVER-PATCH: a host pressed Stop Game -> the round / countdown ends on this phone right now
+        if (Array.isArray(d?.stopped) && !stop) { for (const sid of d.stopped) { try { stopRef.current?.(String(sid)); } catch { /* ignore */ } } }
         // COUNTDOWN-SERVER-PATCH: both hosts start the same 5..1 circle from the server clock, whatever happened to the signals
         const cd = d?.countdown;
         if (cd && cd.id && Number(cd.remainMs) > 0 && !stop) { try { cdRef.current?.(String(cd.id), Number(cd.remainMs)); } catch { /* ignore */ } }

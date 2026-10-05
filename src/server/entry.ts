@@ -1325,6 +1325,15 @@ const liveBattleCountdownMem = (): Map<string, LiveBattleCountdown> => {
   if (!g.__stooornaLiveBattleCd) g.__stooornaLiveBattleCd = new Map();
   return g.__stooornaLiveBattleCd;
 };
+// STOP-GAME-SERVER-PATCH: "Stop Game" is kept by the SERVER. Every phone polls GET /api/live-battle every 0.5s and gets `stopped: [ids]`,
+// so the round stops on the other host, on supporters and on viewers of both rooms even if a signal between phones was lost.
+type LiveBattleStop = { id: string; a: string; b: string; at: number };
+const liveBattleStopMem = (): Map<string, LiveBattleStop> => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveBattleStop?: Map<string, LiveBattleStop> };
+  if (!g.__stooornaLiveBattleStop) g.__stooornaLiveBattleStop = new Map();
+  return g.__stooornaLiveBattleStop;
+};
+const LIVE_BATTLE_STOP_KEEP_MS = 3 * 60 * 1000;
 const LIVE_BATTLE_KEEP_MS = 12_000;
 const liveBattleMem = (): Map<string, LiveBattleRow> => {
   const g = globalThis as typeof globalThis & { __stooornaLiveBattle?: Map<string, LiveBattleRow> };
@@ -1405,7 +1414,15 @@ app.get("/api/live-battle", (req, res) => {
   for (const c of liveBattleCountdownMem().values()) {
     if ((bSameHost(c.a, hostId) || bSameHost(c.b, hostId)) && nowCd < c.startAt && (!cd || c.startAt > cd.startAt)) cd = c;
   }
-  res.json({ ok: true, battle: best ? liveBattleView(best) : null, countdown: cd ? { id: cd.id, remainMs: Math.max(0, cd.startAt - nowCd) } : null });
+  // STOP-GAME-SERVER-PATCH: rounds of this host that were stopped lately
+  const stopped: string[] = [];
+  for (const [k, st] of liveBattleStopMem()) {
+    if (nowCd - st.at > LIVE_BATTLE_STOP_KEEP_MS) { liveBattleStopMem().delete(k); continue; }
+    if (bSameHost(st.a, hostId) || bSameHost(st.b, hostId)) stopped.push(st.id);
+  }
+  if (best && stopped.includes(best.id)) best = null;
+  if (cd && stopped.includes(cd.id)) cd = null;
+  res.json({ ok: true, battle: best ? liveBattleView(best) : null, countdown: cd ? { id: cd.id, remainMs: Math.max(0, cd.startAt - nowCd) } : null, stopped });
 });
 app.post("/api/live-battle", guarded(async (req, res) => {
   const u = await needUser(req, res);
@@ -1413,8 +1430,27 @@ app.post("/api/live-battle", guarded(async (req, res) => {
   if (!allow(`lb:${u.id}`, 30, 10_000)) return deny(res, 429, "rate_limited");
   const body = (req.body || {}) as Record<string, unknown>;
   const action = String(body.action || "start");
-  if (action !== "start" && action !== "end" && action !== "ready") return deny(res, 400, "bad action");
+  if (action !== "start" && action !== "end" && action !== "ready" && action !== "stop") return deny(res, 400, "bad action");
   const id = String(body.id || "").slice(0, 60);
+  if (action === "stop") {
+    // STOP-GAME-SERVER-PATCH: either host cancels the round (or its countdown) -> gone for everybody at once, nobody leaves the split
+    if (!id) return deny(res, 400, "id required");
+    const row = liveBattleMem().get(id);
+    const cdRow0 = liveBattleCountdownMem().get(id);
+    const a0 = row?.a || cdRow0?.a || String(body.a || "").slice(0, 80);
+    const b0 = row?.b || cdRow0?.b || String(body.b || "").slice(0, 80);
+    if (!a0 || !b0) return deny(res, 400, "a and b required");
+    if (!session.owns(u, a0) && !session.owns(u, b0)) return deny(res, 403, "forbidden");
+    const smem = liveBattleStopMem();
+    const tnow0 = Date.now();
+    for (const [k, st] of smem) if (tnow0 - st.at > LIVE_BATTLE_STOP_KEEP_MS) smem.delete(k);
+    smem.set(id, { id, a: a0, b: b0, at: tnow0 });
+    liveBattleMem().delete(id);
+    liveBattleCountdownMem().delete(id);
+    return res.json({ ok: true });
+  }
+  // STOP-GAME-SERVER-PATCH: a stopped round id can never be started / counted down again (late retries)
+  if ((action === "start" || action === "ready") && liveBattleStopMem().has(id)) return res.json({ ok: true, stopped: true });
   if (action === "end") {
     // the split closed: forget the round so a later split never shows it again
     const row = liveBattleMem().get(id);

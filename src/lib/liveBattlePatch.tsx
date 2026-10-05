@@ -207,16 +207,38 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     };
     fire();
     [300, 900, 2000].forEach((ms) => window.setTimeout(fire, ms));
-    try {
-      void fetch('/api/live-battle', {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'end', id }), keepalive: true,
-      }).catch(() => { /* ignore */ });
-    } catch { /* ignore */ }
+    // STOP-GAME-SERVER-PATCH: the SERVER records the stop first (everybody reads it within 0.5s); the signals above are only a faster extra path
+    const c = latest.current;
+    const rh = String(c.roomHostId || '');
+    const peer = String(c.peerUserId || '');
+    const a = side === 'right' ? peer : rh; // a = owner of the split (left), b = invited host (right)
+    const b = side === 'right' ? rh : peer;
+    const postStop = () => {
+      try {
+        void fetch('/api/live-battle', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'stop', id, a, b }), keepalive: true,
+        }).then(() => { try { window.dispatchEvent(new CustomEvent('stooorna:battle-poke')); } catch { /* ignore */ } }).catch(() => { /* ignore */ });
+      } catch { /* ignore */ }
+    };
+    postStop();
+    window.setTimeout(postStop, 1200); // repeat is harmless (the server keeps one stop per round id)
+    window.setTimeout(postStop, 3500);
     resetRoundLocal();
     latest.current.onToast?.('Game stopped');
     return true;
   }, [emit, resetRoundLocal]);
+
+  /** STOP-GAME-SERVER-PATCH: the server reported that round `id` was stopped (by the other host or by me) -> stop it here too. */
+  const applyStopped = React.useCallback((id: string) => {
+    if (!id || stoppedIdsRef.current.has(id)) return;
+    stoppedIdsRef.current.add(id);
+    const mine = battleRef.current?.id === id || startingIdRef.current === id || pendingRef.current === id
+      || incomingRef.current?.id === id || acceptedIdRef.current === id;
+    if (!mine) return;
+    resetRoundLocal();
+    latest.current.onToast?.('Game stopped');
+  }, [resetRoundLocal]);
 
   const scheduleClear = (id: string) => {
     if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current);
@@ -739,7 +761,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   React.useEffect(() => () => { if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current); if (startingTimerRef.current) window.clearTimeout(startingTimerRef.current); }, []);
 
   const remainMs = battle?.phase === 'running' ? Math.max(0, battle.endsAt - now) : 0;
-  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, starting: !!starting, startingId: starting, countLeft: starting ? countLeft : null, popups, play, accept, decline, stop, handleMessage, ingestGift, applyExternal, applyCountdown };
+  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, starting: !!starting, startingId: starting, countLeft: starting ? countLeft : null, popups, play, accept, decline, stop, applyStopped, handleMessage, ingestGift, applyExternal, applyCountdown };
 }
 
 /* ───────────────────────── UI ───────────────────────── */

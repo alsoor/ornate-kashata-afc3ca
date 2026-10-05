@@ -2056,6 +2056,7 @@ export default function LiveCameraPage() {
     battlePhase: battleApi.battle?.phase ?? null,
     apply: battleApi.applyExternal,
     onCountdown: battleApi.applyCountdown, // COUNTDOWN-SERVER-PATCH: both hosts read the shared 5..1 countdown from the server
+    onStopped: battleApi.applyStopped, // STOP-GAME-SERVER-PATCH: Stop Game goes through the server, every phone stops within 0.5s
   });
   const battleRunning = battleApi.battle?.phase === 'running';
   // HEARTS-PATCH: taps on the screen -> hearts + shared counter (the server adds +1 to the round line per 10 taps)
