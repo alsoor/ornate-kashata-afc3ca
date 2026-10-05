@@ -18573,6 +18573,12 @@ function PublicLiveCommentsPanel({
     tplCommit([...tplRowsRef.current, row]);
     void postTemplateRow(row as any);
     setTplOpen(false);
+    // stay inside Templates: show the gallery page with the new post (newest first); X closes it
+    try {
+      const btn = document.querySelector('button[aria-label="Templates"]') as HTMLElement | null;
+      const r = btn ? btn.getBoundingClientRect() : null;
+      setTplBubble({ x: r ? r.left + r.width / 2 : window.innerWidth / 2 });
+    } catch { setTplBubble({ x: 0 }); }
   };
   const closeTplBubble = () => {
     setTplBubble(null);
@@ -18800,7 +18806,7 @@ function PublicLiveCommentsPanel({
       </div>
       <div
         ref={listRef}
-        onClick={() => { if (composerDock === 'gallery') setComposerDock('none'); }}
+        onClick={() => { /* stooorna-emoji-outside-close */ if (composerDock === 'gallery' || composerDock === 'emoji') { setComposerDock('none'); setEmojiOpen(false); } }}
         onTouchStart={e => e.stopPropagation()}
         onTouchMove={e => e.stopPropagation()}
         onWheel={e => e.stopPropagation()}
@@ -19307,7 +19313,14 @@ function PublicLiveCommentsPanel({
               value={text}
               readOnly={composerDock !== 'none'}
               inputMode={composerDock === 'none' ? 'text' : 'none'}
-              onClick={() => { if (composerDock === 'gallery') setComposerDock('none'); }}
+              onClick={() => {
+                if (composerDock === 'gallery') { setComposerDock('none'); return; }
+                if (composerDock === 'emoji') {
+                  setComposerDock('none');
+                  setEmojiOpen(false);
+                  setTimeout(() => { try { chatInputRef.current?.focus(); } catch { /* */ } }, 30);
+                }
+              }}
               onChange={e => {
                 const v = e.target.value.slice(0, 500);
                 setText(v);
