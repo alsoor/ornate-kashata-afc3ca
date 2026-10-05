@@ -101,6 +101,7 @@ import {
   BattlePlayButton,
   BattleOverlay,
   BattleGiftDimStyle,
+  SplitGameMenu, // STOP-GAME-PATCH
   type BattlePerson,
 } from '@/lib/liveBattlePatch';
 import { giftUnitPrice } from '@/components/LiveCoinsDock'; // BATTLE-PATCH: gift price fallback
@@ -417,6 +418,8 @@ export default function LiveCameraPage() {
   const [splitTopPx, setSplitTopPx] = useState<number | null>(null);
   // SPLIT-PATCH: tapping the split icon while a split is running shows / hides the exit pill
   const [splitExitOpen, setSplitExitOpen] = useState(false);
+  // STOP-GAME-PATCH: tapping the split icon during a split opens the Exit Game | Stop Game bubble
+  const [gameMenuOpen, setGameMenuOpen] = useState(false);
   const attachSplitRemote = () => {
     const el = splitPaneRef.current;
     const t = splitRemoteRef.current;
@@ -442,7 +445,7 @@ export default function LiveCameraPage() {
     try { window.dispatchEvent(new Event('stooorna:presence-poke')); } catch { /* ignore */ }
   }, [presenceSplitKey]);
   useEffect(() => {
-    if (!splitActive) { setSplitExitOpen(false); setSplitTopPx(null); return; }
+    if (!splitActive) { setSplitExitOpen(false); setGameMenuOpen(false); setSplitTopPx(null); return; }
     const measure = () => {
       const el = chatCardRef.current;
       if (!el) { setSplitBottomPx(null); return; }
@@ -2608,9 +2611,9 @@ export default function LiveCameraPage() {
           {/* SPLIT-PATCH: host-only button — list of people who are live on camera, Invite = split screen */}
           {amHost ? (
             <SplitInviteButton
-              active={duetPanelOpen || splitExitOpen}
+              active={duetPanelOpen || splitExitOpen || gameMenuOpen}
               onClick={() => {
-                if (duet || splitWith) setSplitExitOpen(v => !v); // during a split: show / hide the exit pill
+                if (duet || splitWith) setGameMenuOpen(v => !v); // STOP-GAME-PATCH: during a split: Exit Game | Stop Game bubble (was: exit pill)
                 else setDuetPanelOpen(true);
               }}
             />
@@ -3720,6 +3723,26 @@ export default function LiveCameraPage() {
           setSplitExitOpen(false);
           if (duet && amHost) endDuet();
           else void splitRef.current?.leave(true);
+        }}
+      />
+      {/* STOP-GAME-PATCH: bubble in the middle: Exit Game (the other host leaves) | Stop Game (round cancelled, nobody leaves) */}
+      <SplitGameMenu
+        open={gameMenuOpen && splitActive}
+        withName={(() => {
+          const peer = duet && amHost ? duet : splitWith;
+          if (!peer) return null;
+          return peer.username ? `@${peer.username}` : peer.name;
+        })()}
+        canStop={!!battleMySide && (battleRunning || battleApi.starting || battleApi.pending)}
+        onClose={() => setGameMenuOpen(false)}
+        onExit={() => {
+          setGameMenuOpen(false);
+          if (duet && amHost) endDuet();
+          else void splitRef.current?.leave(true);
+        }}
+        onStop={() => {
+          setGameMenuOpen(false);
+          battleApi.stop();
         }}
       />
       {/* BATTLE-PATCH: round overlay (line / timer / win), Play button in the middle, Accept | Decline box */}

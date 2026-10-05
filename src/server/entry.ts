@@ -1419,6 +1419,9 @@ app.post("/api/live-battle", guarded(async (req, res) => {
     // the split closed: forget the round so a later split never shows it again
     const row = liveBattleMem().get(id);
     if (row && (session.owns(u, row.a) || session.owns(u, row.b))) liveBattleMem().delete(id);
+    // STOP-GAME-PATCH: "Stop Game" can also hit while the 5..1 countdown is still running -> forget that countdown too
+    const cdRow = liveBattleCountdownMem().get(id);
+    if (cdRow && (session.owns(u, cdRow.a) || session.owns(u, cdRow.b))) liveBattleCountdownMem().delete(id);
     return res.json({ ok: true });
   }
   const a = String(body.a || "").slice(0, 80);

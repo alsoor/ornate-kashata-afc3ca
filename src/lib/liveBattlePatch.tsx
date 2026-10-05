@@ -179,6 +179,45 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     window.setTimeout(post, 1200);
   }, []);
 
+  /* ── STOP-GAME-PATCH: "Stop Game" cancels the round (or its countdown / invite) but nobody leaves the split ── */
+  const stoppedIdsRef = React.useRef<Set<string>>(new Set()); // a stopped round id is never shown / counted again (late signals, in-flight polls)
+
+  const resetRoundLocal = React.useCallback(() => {
+    if (clearTimerRef.current) { window.clearTimeout(clearTimerRef.current); clearTimerRef.current = null; }
+    if (startingTimerRef.current) { window.clearTimeout(startingTimerRef.current); startingTimerRef.current = null; }
+    startingIdRef.current = null; setStarting(null); setCountEnd(null);
+    pendingRef.current = null; setPending(null);
+    acceptedIdRef.current = null;
+    incomingRef.current = null; setIncoming(null);
+    setPopups([]);
+    serverIdRef.current = null;
+    setBattleBoth(null);
+  }, []);
+
+  const stop = React.useCallback(() => {
+    const id = battleRef.current?.id || startingIdRef.current || pendingRef.current || incomingRef.current?.id || acceptedIdRef.current || null;
+    if (!id) return false;
+    stoppedIdsRef.current.add(id);
+    const side = latest.current.mySide;
+    const payload = { t: 'battle-stop', id };
+    const fire = () => {
+      emit(payload);
+      // B: also tell the viewers of MY OWN room (A's viewers already get it through A's channel)
+      if (side === 'right') { try { latest.current.sendOwn?.({ ...payload, src: srcRef.current, ts: Date.now() }); } catch { /* ignore */ } }
+    };
+    fire();
+    [300, 900, 2000].forEach((ms) => window.setTimeout(fire, ms));
+    try {
+      void fetch('/api/live-battle', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'end', id }), keepalive: true,
+      }).catch(() => { /* ignore */ });
+    } catch { /* ignore */ }
+    resetRoundLocal();
+    latest.current.onToast?.('Game stopped');
+    return true;
+  }, [emit, resetRoundLocal]);
+
   const scheduleClear = (id: string) => {
     if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current);
     clearTimerRef.current = window.setTimeout(() => {
@@ -238,6 +277,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     if (battleRef.current?.phase === 'running') return;
     if (startingIdRef.current) return; // COUNTDOWN-START-PATCH: one countdown at a time, a second accept / invite never restarts it
     if (startedIdsRef.current.has(id)) return; // COUNTDOWN-SYNC-PATCH
+    if (stoppedIdsRef.current.has(id)) return; // STOP-GAME-PATCH
     startedIdsRef.current.add(id);
     const dur = Math.min(BATTLE_AUTO_START_MS, Math.max(800, ms));
     startingIdRef.current = id;
@@ -268,6 +308,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   /** COUNTDOWN-SERVER-PATCH: the server says a countdown is running for my pair -> show the same circle here (hosts only). */
   const applyCountdown = React.useCallback((id: string, remainMs: number) => {
     if (!latest.current.mySide || !id || !(remainMs > 0)) return;
+    if (stoppedIdsRef.current.has(id)) return; // STOP-GAME-PATCH
     if (battleRef.current) return;
     scheduleStart(id, remainMs, false);
   }, [scheduleStart]);
@@ -345,6 +386,21 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     const stamp = Number(msg.at) || Number(msg.ts) || 0;
     const age = stamp ? Date.now() - stamp : 0;
     const me = latest.current;
+
+    // STOP-GAME-PATCH: the host pressed "Stop Game" -> the round disappears everywhere, the split stays
+    if (msg.t === 'battle-stop') {
+      const sid = String(msg.id || '');
+      if (!sid || age > 60_000 || stoppedIdsRef.current.has(sid)) return true;
+      stoppedIdsRef.current.add(sid);
+      const mine = battleRef.current?.id === sid || startingIdRef.current === sid || pendingRef.current === sid
+        || incomingRef.current?.id === sid || acceptedIdRef.current === sid;
+      if (mine) resetRoundLocal();
+      if (me.mySide === 'left') { emit({ t: 'battle-stop', id: sid }); }                                   // A: make sure A's own viewers get it
+      else if (me.mySide === 'right') { try { me.sendOwn?.({ t: 'battle-stop', id: sid, src: srcRef.current, ts: Date.now() }); } catch { /* ignore */ } } // B: his viewers
+      if (mine && me.mySide) me.onToast?.('Game stopped');
+      return true;
+    }
+    if (msg.id && stoppedIdsRef.current.has(String(msg.id))) return true; // late signal of a stopped round
 
     switch (msg.t) {
       case 'battle-invite': {
@@ -486,7 +542,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
       default:
         return true;
     }
-  }, [addScore, startAsAuthority, openAsGuest, scheduleStart, broadcastState, emit]);
+  }, [addScore, startAsAuthority, openAsGuest, scheduleStart, broadcastState, emit, resetRoundLocal]);
 
   /* ── authority loop: finish at 0 + heartbeat ── */
   React.useEffect(() => {
@@ -640,6 +696,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   const applyExternal = React.useCallback((s: any, mirror: boolean) => {
     const id = String(s?.id || '');
     if (!id) return;
+    if (stoppedIdsRef.current.has(id)) return; // STOP-GAME-PATCH
     const phase: 'running' | 'ended' = s.phase === 'ended' ? 'ended' : 'running';
     let l = Number(s.left) || 0;
     let r = Number(s.right) || 0;
@@ -682,7 +739,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   React.useEffect(() => () => { if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current); if (startingTimerRef.current) window.clearTimeout(startingTimerRef.current); }, []);
 
   const remainMs = battle?.phase === 'running' ? Math.max(0, battle.endsAt - now) : 0;
-  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, starting: !!starting, startingId: starting, countLeft: starting ? countLeft : null, popups, play, accept, decline, handleMessage, ingestGift, applyExternal, applyCountdown };
+  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, starting: !!starting, startingId: starting, countLeft: starting ? countLeft : null, popups, play, accept, decline, stop, handleMessage, ingestGift, applyExternal, applyCountdown };
 }
 
 /* ───────────────────────── UI ───────────────────────── */
@@ -1194,5 +1251,84 @@ function BattleSupCluster({ list, side, onOpen }: { list: BattleSupporter[]; sid
         );
       })}
     </div>
+  );
+}
+
+/* ───────────────────────── STOP-GAME-PATCH: split-icon menu (Exit Game | Stop Game) ───────────────────────── */
+
+/**
+ * Bubble in the middle of the screen, opened by the split icon while a split is running.
+ *  - Exit Game: the other host leaves the round / split (same as the old "End" pill)
+ *  - Stop Game: cancels the round only; both hosts stay in the split (disabled while no round is running)
+ */
+export function SplitGameMenu({
+  open, withName, canStop, onExit, onStop, onClose,
+}: {
+  open: boolean;
+  withName?: string | null;
+  canStop: boolean;
+  onExit: () => void;
+  onStop: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <AnimatePresence>
+      {open ? (
+        <motion.div
+          key="split-game-menu"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.16 }}
+          onClick={onClose}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.45)',
+          }}
+        >
+          <motion.div
+            initial={{ scale: 0.88, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.92, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(260px, 78vw)', padding: 12, borderRadius: 22,
+              background: 'rgba(6,18,20,0.97)', border: '1px solid rgba(34,211,238,0.45)',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.6), 0 0 24px rgba(34,211,238,0.18)',
+              display: 'flex', flexDirection: 'column', gap: 8,
+            }}
+          >
+            {withName ? (
+              <div style={{ textAlign: 'center', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.6)', padding: '2px 0 4px' }}>
+                Split with {withName}
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={onExit}
+              style={{
+                height: 46, borderRadius: 14, border: '1px solid rgba(239,68,68,0.55)', background: 'rgba(239,68,68,0.16)',
+                color: '#fca5a5', fontSize: 15, fontWeight: 800, cursor: 'pointer',
+              }}
+            >
+              Exit Game
+            </button>
+            <button
+              type="button"
+              disabled={!canStop}
+              onClick={onStop}
+              style={{
+                height: 46, borderRadius: 14, border: '1px solid rgba(250,204,21,0.55)', background: 'rgba(250,204,21,0.14)',
+                color: '#fde047', fontSize: 15, fontWeight: 800, cursor: canStop ? 'pointer' : 'not-allowed',
+                opacity: canStop ? 1 : 0.38,
+              }}
+            >
+              Stop Game
+            </button>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }
