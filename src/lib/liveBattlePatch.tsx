@@ -14,7 +14,7 @@
  *  7. Last 15 seconds the timer turns red. At 0 the longer line wins -> "You Win" rectangle on his half.
  *
  * Signals (all travel on A's room channel, same transport as the duet signals):
- *   battle-invite / battle-accept / battle-decline / battle-state / battle-gift
+ *   battle-invite / battle-accept / battle-countdown / battle-decline / battle-state / battle-gift
  *
  * Authority: A (left, owner of the channel) keeps the clock + the scores and re-broadcasts `battle-state` every 2s,
  * so B, A's viewers and late joiners always see the same thing.
@@ -127,6 +127,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   const [starting, setStarting] = React.useState<string | null>(null); // SUPPORT-LIVE-PATCH: Ok tapped -> auto start in 2s
   const startingIdRef = React.useRef<string | null>(null);
   const startingTimerRef = React.useRef<number | null>(null);
+  const startedIdsRef = React.useRef<Set<string>>(new Set()); // COUNTDOWN-SYNC-PATCH: a round id never gets a second countdown
   const [countEnd, setCountEnd] = React.useState<number | null>(null); // COUNTDOWN-START-PATCH: when the 5..1 countdown ends (local clock)
   const [countLeft, setCountLeft] = React.useState<number | null>(null);
   React.useEffect(() => {
@@ -208,15 +209,28 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     setPending(null);
   }, []);
 
-  /** SUPPORT-LIVE-PATCH: the Play circle stays on both screens for 2s, then the round starts by itself (A = authority, B = guest). */
-  const scheduleStart = React.useCallback((id: string) => {
+  /** SUPPORT-LIVE-PATCH: the Play circle stays on both screens for 2s, then the round starts by itself (A = authority, B = guest).
+   *  COUNTDOWN-SYNC-PATCH: whoever starts the countdown first ALSO sends `battle-countdown`, so the other phone shows the same
+   *  5..1 circle even if its own Ok / Accept signal was lost or late. Both phones then open the round together. */
+  const scheduleStart = React.useCallback((id: string, ms: number = BATTLE_AUTO_START_MS, announce: boolean = true) => {
     if (battleRef.current?.phase === 'running') return;
     if (startingIdRef.current) return; // COUNTDOWN-START-PATCH: one countdown at a time, a second accept / invite never restarts it
+    if (startedIdsRef.current.has(id)) return; // COUNTDOWN-SYNC-PATCH
+    startedIdsRef.current.add(id);
+    const dur = Math.min(BATTLE_AUTO_START_MS, Math.max(800, ms));
     startingIdRef.current = id;
     setStarting(id);
-    setCountEnd(Date.now() + BATTLE_AUTO_START_MS);
+    setCountEnd(Date.now() + dur);
     pendingRef.current = null;
     setPending(null);
+    incomingRef.current = null;
+    setIncoming(null);
+    if (announce) {
+      const payload = { t: 'battle-countdown', id, remainMs: dur };
+      emit(payload);
+      window.setTimeout(() => { if (startingIdRef.current === id) emit({ ...payload, remainMs: Math.max(800, dur - 500) }); }, 500);
+      window.setTimeout(() => { if (startingIdRef.current === id) emit({ ...payload, remainMs: Math.max(800, dur - 1500) }); }, 1500);
+    }
     if (startingTimerRef.current) window.clearTimeout(startingTimerRef.current);
     startingTimerRef.current = window.setTimeout(() => {
       if (startingIdRef.current !== id) return;
@@ -225,8 +239,8 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
       setCountEnd(null);
       if (battleRef.current?.phase === 'running') return;
       if (latest.current.mySide === 'left') startAsAuthority(id); else openAsGuest(id);
-    }, BATTLE_AUTO_START_MS);
-  }, [startAsAuthority, openAsGuest]);
+    }, dur);
+  }, [startAsAuthority, openAsGuest, emit]);
 
   const addScore = React.useCallback((side: BattleSide, coins: number) => {
     const b = battleRef.current;
@@ -344,6 +358,14 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         } else if (me.mySide === 'left' && battleRef.current?.id === id && battleRef.current.phase === 'running') {
           broadcastState(); // BATTLE-RELIABLE: B repeated his Accept = he has not got the round yet -> send the state to him again now
         }
+        return true;
+      }
+      case 'battle-countdown': {
+        // COUNTDOWN-SYNC-PATCH: the other host's circle already counts -> show the same 5..1 circle here, then open together
+        if (!me.mySide || age > 45_000) return true;
+        const id = String(msg.id || '');
+        if (!id || battleRef.current) return true;
+        scheduleStart(id, Number(msg.remainMs) || BATTLE_AUTO_START_MS, false);
         return true;
       }
       case 'battle-state': {
@@ -610,7 +632,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     acceptedIdRef.current = null;
     incomingRef.current = null; setIncoming(null);
     setPopups([]);
-    startingIdRef.current = null; setStarting(null); setCountEnd(null); // SUPPORT-LIVE-PATCH
+    startingIdRef.current = null; setStarting(null); setCountEnd(null); startedIdsRef.current = new Set(); // SUPPORT-LIVE-PATCH
     seenGiftsRef.current = new Set();
     serverIdRef.current = null; // SERVER-TRUTH-PATCH
   }, [active]);
