@@ -59,3 +59,48 @@ export function useBattleGiftBridge(ingest: (room: string, event: any) => void, 
     return () => window.removeEventListener(EVT, onSeen);
   }, [enabled]);
 }
+
+/* ───────────────────────── FIX 3: viewers of the invited host see BOTH players ─────────────────────────
+ *
+ * The split picture (A left, B right) exists only in the room of the OWNER (A): B's second connection publishes
+ * into A's channel. Someone who entered B's own room saw B alone, and the other host alone in his room.
+ *
+ * While B is in a split, B now keeps telling his own room "follow me to A's room" (the existing `duet-moved`
+ * signal that live-camera already handles: viewers leave B's room and open A's room, where both cameras, the
+ * round line, the chat and the gifts are). It repeats every 2.5s, so people who enter B's room later are moved too.
+ * Nothing is sent when there is no split, and B's own live is never touched.
+ */
+export function useSplitViewersFollow(opts: {
+  /** I am the INVITED host and the split is running (splitWith != null) */
+  enabled: boolean;
+  /** id of MY room (the room whose viewers must be moved) */
+  roomHostId: string;
+  /** the owner of the split (A) = where my viewers must go */
+  owner: { userId: string; name: string; username: string | null; avatarUrl: string | null } | null;
+  /** live-camera's sendDataPayload (sends into MY own room) */
+  send: (payload: object) => unknown;
+}): void {
+  const { enabled, roomHostId, owner, send } = opts;
+  const sendRef = React.useRef(send);
+  sendRef.current = send;
+  const ownerId = owner?.userId || '';
+  const ownerName = owner?.name || '';
+  const ownerUsername = owner?.username || '';
+  const ownerAvatar = owner?.avatarUrl || '';
+  React.useEffect(() => {
+    if (!enabled || !roomHostId || !ownerId) return;
+    const push = () => {
+      try {
+        void sendRef.current({
+          t: 'duet-moved', split: true, hostId: roomHostId,
+          toHostId: ownerId, toName: ownerName, toUsername: ownerUsername, toAvatar: ownerAvatar,
+          ts: Date.now(),
+        });
+      } catch { /* ignore */ }
+    };
+    push();
+    const t1 = window.setTimeout(push, 700);
+    const iv = window.setInterval(push, 2500);
+    return () => { window.clearTimeout(t1); window.clearInterval(iv); };
+  }, [enabled, roomHostId, ownerId, ownerName, ownerUsername, ownerAvatar]);
+}

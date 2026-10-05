@@ -103,7 +103,7 @@ import {
   BattleGiftDimStyle,
 } from '@/lib/liveBattlePatch';
 import { giftUnitPrice } from '@/components/LiveCoinsDock'; // BATTLE-PATCH: gift price fallback
-import { useBattleGiftBridge } from '@/lib/liveBattleFixPatch'; // BATTLE-FIX-PATCH: line moves on every gift
+import { useBattleGiftBridge, useSplitViewersFollow } from '@/lib/liveBattleFixPatch'; // BATTLE-FIX-PATCH: line moves on every gift + viewers see both
 // VOICE-INVITE-PATCH (video): anyone in the room invites ONLINE people (not only people who are live); they get the Accept / Decline box anywhere in the app
 import {
   VoiceInviteButton,
@@ -1979,6 +1979,13 @@ export default function LiveCameraPage() {
   });
   handleBattleMsgRef.current = battleApi.handleMessage;
   useBattleGiftBridge(battleApi.ingestGift, !!battleMySide); // BATTLE-FIX-PATCH
+  // BATTLE-FIX-PATCH: viewers of the INVITED host are moved to the owner's room, where both players are on screen
+  useSplitViewersFollow({
+    enabled: !!(joined && amHost && splitWith && !duet),
+    roomHostId: String(hostId || myId || ''),
+    owner: splitWith,
+    send: sendDataPayload,
+  });
   const battleRunning = battleApi.battle?.phase === 'running';
   // GIFT-LINE-PATCH: the chat does NOT move by itself on a gift. Gift animation line:
   //  - chat compact (default): from a line in the upper part of the cameras down to the bottom of the screen
