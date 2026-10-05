@@ -98,7 +98,6 @@ import {
 import {
   useLiveBattle,
   BattlePlayButton,
-  BattleIncomingDialog,
   BattleNameTag,
   BattleOverlay,
   BattleGiftDimStyle,
@@ -1958,35 +1957,17 @@ export default function LiveCameraPage() {
         if (peerId) sendDuetSignal(camChannelForHost(peerId), payload as any);
       } catch { /* ignore */ }
     },
+    sendOwn: (payload) => { void sendDataPayload(payload); }, // LINE-FOR-ALL-PATCH: relay the round to my own viewers
     onToast: showDuetToast,
   });
   handleBattleMsgRef.current = battleApi.handleMessage;
   const battleRunning = battleApi.battle?.phase === 'running';
-  // GIFT-BELOW-LINE-PATCH: during a round, any gift raises the chat by itself (same as tapping Full Chat),
-  // so the two cameras move up and the gift shows from the line under them to the bottom. Normal mode is untouched.
-  const chatAutoRaisedRef = useRef(false);
-  useEffect(() => {
-    if (!battleRunning) {
-      if (chatAutoRaisedRef.current) { chatAutoRaisedRef.current = false; setChatFull(false); }
-      return;
-    }
-    const raise = () => {
-      setChatFull(prev => {
-        if (!prev) chatAutoRaisedRef.current = true;
-        return true;
-      });
-    };
-    window.addEventListener('stooorna:gift-play', raise);
-    return () => window.removeEventListener('stooorna:gift-play', raise);
-  }, [battleRunning]);
-  const battlePopupCount = battleApi.popups.length;
-  useEffect(() => {
-    if (!battleRunning || battlePopupCount === 0) return;
-    setChatFull(prev => {
-      if (!prev) chatAutoRaisedRef.current = true;
-      return true;
-    });
-  }, [battleRunning, battlePopupCount]);
+  // GIFT-LINE-PATCH: the chat does NOT move by itself on a gift. Gift animation line:
+  //  - chat compact (default): from a line in the upper part of the cameras down to the bottom of the screen
+  //  - user tapped Full Chat: from the bottom of the cameras (top of the chat) down
+  const giftLineTopPx = splitBottomPx != null
+    ? (chatFull ? splitBottomPx : Math.round((splitTopPx ?? 0) + (splitBottomPx - (splitTopPx ?? 0)) * 0.3))
+    : null;
 
   const applyDuetGuest = (g: DuetGuest | null) => {
     if ((duetRef.current?.uid ?? null) === (g?.uid ?? null)) return;
@@ -3635,7 +3616,7 @@ export default function LiveCameraPage() {
         }}
       />
       {/* BATTLE-PATCH: round overlay (line / timer / win), Play button in the middle, Accept | Decline box */}
-      <BattleGiftDimStyle on={battleRunning} topPx={splitBottomPx} />
+      <BattleGiftDimStyle on={battleRunning} topPx={giftLineTopPx} />
       {splitActive ? (
         <BattleOverlay
           battle={battleApi.battle}
@@ -3646,18 +3627,24 @@ export default function LiveCameraPage() {
         />
       ) : null}
       <BattlePlayButton
-        visible={splitActive && !!battleMySide && !battleApi.battle && !battleApi.incoming}
+        visible={splitActive && !!battleMySide && !battleApi.battle}
         waiting={battleApi.pending}
+        incoming={!!battleApi.incoming}
+        ringKey={battleApi.incomingId || battleApi.pendingId}
         topPx={splitBottomPx != null ? splitBottomPx + (splitTopPx ?? 0) : null}
         onPlay={battleApi.play}
+        onOk={battleApi.accept}
       />
-      {amHost ? (
-        <BattleIncomingDialog
-          invite={battleApi.incoming}
-          onAccept={battleApi.accept}
-          onDecline={battleApi.decline}
+      {/* LINE-FOR-ALL-PATCH: viewers of the invited host's own room (no split picture there) still see the line + timer */}
+      {!splitActive && battleApi.battle ? (
+        <BattleOverlay
+          battle={battleApi.battle}
+          remainMs={battleApi.remainMs}
+          popups={battleApi.popups}
+          heightPx={null}
         />
       ) : null}
+      {/* OK-BUTTON-PATCH: no Accept | Decline box any more — the Play circle turns into Ok */}
       <DuetToast text={duetToast} />
       <LiveVipDock hostId={hostId} currentUserId={myId} />
       {/* قائمة المتحدث: دعم (هدية) + تجميد المايك لصاحب البث / كتم محلي للمشاهد */}

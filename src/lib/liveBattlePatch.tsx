@@ -45,6 +45,8 @@ type Incoming = { id: string; fromSide: BattleSide; fromName: string; at: number
 export const BATTLE_DURATION_MS = 4 * 60 * 1000;
 export const BATTLE_RED_MS = 15 * 1000;
 const RESULT_MS = 7000;
+/** OK-BUTTON-PATCH: how long an invite stays open (red ring runs this long, then the request fails on both phones). */
+export const BATTLE_INVITE_MS = 20_000;
 const STATE_EVERY_MS = 2000;
 
 /** Colors requested: left = yellow, right = orange. */
@@ -90,11 +92,13 @@ export type UseLiveBattleOpts = {
   priceOf?: (giftId: string) => number;
   /** send a signal to everybody in the split room (A's channel). */
   send: (payload: Record<string, unknown>) => void;
+  /** LINE-FOR-ALL-PATCH: send a signal into MY OWN room (so the viewers of the invited host B can see the line too). */
+  sendOwn?: (payload: Record<string, unknown>) => void;
   onToast?: (text: string) => void;
 };
 
 export function useLiveBattle(opts: UseLiveBattleOpts) {
-  const { active, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf, send, onToast } = opts;
+  const { active, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf, send, sendOwn, onToast } = opts;
 
   const [battle, setBattle] = React.useState<BattleView | null>(null);
   const battleRef = React.useRef<BattleView | null>(null);
@@ -110,8 +114,8 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   const seenMsgRef = React.useRef<Set<string>>(new Set());
   const clearTimerRef = React.useRef<number | null>(null);
   const acceptedIdRef = React.useRef<string | null>(null); // INSTANT-OPEN: invite I accepted as B, until A confirms it with battle-state
-  const latest = React.useRef({ send, onToast, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf });
-  latest.current = { send, onToast, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf };
+  const latest = React.useRef({ send, sendOwn, onToast, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf });
+  latest.current = { send, sendOwn, onToast, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf };
 
   const setBattleBoth = (b: BattleView | null) => {
     battleRef.current = b;
@@ -188,7 +192,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         setPending(null);
         latest.current.onToast?.('No answer');
       }
-    }, 30_000);
+    }, BATTLE_INVITE_MS);
   }, [emit]);
 
   const accept = React.useCallback(() => {
@@ -252,7 +256,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         setIncoming(inv);
         window.setTimeout(() => {
           if (incomingRef.current?.id === id) { incomingRef.current = null; setIncoming(null); }
-        }, 30_000);
+        }, BATTLE_INVITE_MS);
         return true;
       }
       case 'battle-decline': {
@@ -286,7 +290,9 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         const id = String(msg.id || '');
         if (!id) return true;
         const expected = id === pendingRef.current || id === acceptedIdRef.current; // INSTANT-OPEN: round I just invited / accepted
-        if (age > 10_000 && !expected) return true; // old replayed state
+        // LINE-FOR-ALL-PATCH: a round I already know is never dropped for its age (phone clocks can differ by many seconds)
+        const known = battleRef.current?.id === id;
+        if (!known && age > 30_000 && !expected) return true; // old replayed state
         const phase = msg.phase === 'ended' ? 'ended' : 'running';
         const prev = battleRef.current;
         if (phase === 'ended' && !prev) return true; // do not resurrect a finished round
@@ -296,6 +302,27 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         if (acceptedIdRef.current === id) acceptedIdRef.current = null; // confirmed by A
         incomingRef.current = null;
         setIncoming(null);
+        const next: BattleView = {
+          id, phase,
+          left: Number(msg.left) || 0,
+          right: Number(msg.right) || 0,
+          endsAt: Date.now() + Math.max(0, Number(msg.remainMs) || 0),
+          winner: msg.winner === 'left' || msg.winner === 'right' || msg.winner === 'draw' ? msg.winner : null,
+        };
+        setBattleBoth(next);
+        if (phase === 'ended') scheduleClear(id);
+        return true;
+      }
+      case 'battle-view': {
+        // LINE-FOR-ALL-PATCH: B relays the round into his own room so HIS viewers see the line + timer too (already mirrored: left = B)
+        if (me.mySide) return true;
+        const id = String(msg.id || '');
+        if (!id) return true;
+        const prev = battleRef.current;
+        if (!prev && age > 30_000) return true;
+        const phase = msg.phase === 'ended' ? 'ended' : 'running';
+        if (phase === 'ended' && !prev) return true;
+        if (phase === 'running' && prev?.id === id && prev.phase === 'ended') return true;
         const next: BattleView = {
           id, phase,
           left: Number(msg.left) || 0,
@@ -345,6 +372,35 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     return () => window.clearInterval(iv);
   }, [mySide, battle?.id, battle?.phase, broadcastState]);
 
+  /* ── LINE-FOR-ALL-PATCH: the authority broadcasts the moment a score changes (not only every 2s) ── */
+  React.useEffect(() => {
+    if (mySide !== 'left' || !battle || battle.phase !== 'running') return;
+    const tm = window.setTimeout(broadcastState, 120);
+    return () => window.clearTimeout(tm);
+  }, [mySide, battle?.id, battle?.phase, battle?.left, battle?.right, broadcastState]);
+
+  /* ── LINE-FOR-ALL-PATCH: B relays the round into his own room for his viewers ── */
+  React.useEffect(() => {
+    if (mySide !== 'right' || !battle) return;
+    const mirrorW = (w: BattleView['winner']) => (w === 'left' ? 'right' : w === 'right' ? 'left' : w);
+    const relay = () => {
+      const b = battleRef.current;
+      if (!b) return;
+      try {
+        latest.current.sendOwn?.({
+          t: 'battle-view', id: b.id, phase: b.phase,
+          left: b.right, right: b.left,
+          remainMs: b.phase === 'running' ? Math.max(0, b.endsAt - Date.now()) : 0,
+          winner: mirrorW(b.winner), ts: Date.now(),
+        });
+      } catch { /* ignore */ }
+    };
+    relay();
+    if (battle.phase !== 'running') return;
+    const iv = window.setInterval(relay, 2000);
+    return () => window.clearInterval(iv);
+  }, [mySide, battle?.id, battle?.phase, battle?.left, battle?.right]);
+
   /* ── display clock ── */
   React.useEffect(() => {
     if (!battle || battle.phase !== 'running') return;
@@ -388,7 +444,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
 
     const tick = () => { if (!stop) latest.current.giftRooms.filter(Boolean).forEach((room) => void pollRoom(room)); };
     tick();
-    const iv = window.setInterval(tick, 2000);
+    const iv = window.setInterval(tick, 1000); // LINE-FOR-ALL-PATCH: 1s (was 2s)
     return () => { stop = true; window.clearInterval(iv); };
   }, [mySide, battle?.id, battle?.phase, addScore, emit]);
 
@@ -406,7 +462,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   React.useEffect(() => () => { if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current); }, []);
 
   const remainMs = battle?.phase === 'running' ? Math.max(0, battle.endsAt - now) : 0;
-  return { battle, remainMs, pending: !!pending, incoming, popups, play, accept, decline, handleMessage };
+  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, popups, play, accept, decline, handleMessage };
 }
 
 /* ───────────────────────── UI ───────────────────────── */
@@ -438,19 +494,38 @@ export function BattleGiftDimStyle({ on, topPx }: { on: boolean; topPx?: number 
   );
 }
 
-/** Round "Play" button in the middle of the split (hosts only). */
+/**
+ * Round button in the middle of the split (hosts only).
+ *  - play:    small "Play" circle.
+ *  - waiting: I sent the request ("…"), a red ring runs down; at the end the request fails.
+ *  - ok:      the other host asked -> the SAME circle turns into "Ok" with a moving red ring; one tap = both enter the round.
+ * OK-BUTTON-PATCH: there is no Accept | Decline box any more.
+ */
 export function BattlePlayButton({
-  visible, waiting, topPx, onPlay,
-}: { visible: boolean; waiting: boolean; topPx: number | null; onPlay: () => void }) {
+  visible, waiting, incoming, ringKey, ringMs = BATTLE_INVITE_MS, topPx, onPlay, onOk,
+}: {
+  visible: boolean;
+  waiting: boolean;
+  incoming?: boolean;
+  ringKey?: string | null;
+  ringMs?: number;
+  topPx: number | null;
+  onPlay: () => void;
+  onOk?: () => void;
+}) {
+  const SIZE = 46;
+  const R = (SIZE - 4) / 2;
+  const C = 2 * Math.PI * R;
+  const mode: 'play' | 'waiting' | 'ok' = incoming ? 'ok' : waiting ? 'waiting' : 'play';
   return (
     <AnimatePresence>
       {visible ? (
         <motion.button
           key="battle-play"
           type="button"
-          onClick={onPlay}
-          disabled={waiting}
-          aria-label="Start a game round"
+          onClick={mode === 'ok' ? onOk : mode === 'play' ? onPlay : undefined}
+          disabled={mode === 'waiting'}
+          aria-label={mode === 'ok' ? 'Ok' : 'Start a game round'}
           initial={{ opacity: 0, scale: 0.6 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.6 }}
@@ -464,31 +539,54 @@ export function BattlePlayButton({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 5,
-            minWidth: 64,
-            height: 64,
-            padding: waiting ? '0 12px' : 0,
-            borderRadius: 999,
-            border: '2px solid rgba(255,255,255,0.9)',
-            cursor: waiting ? 'default' : 'pointer',
+            width: SIZE,
+            height: SIZE,
+            padding: 0,
+            borderRadius: '50%',
+            border: mode === 'play' ? '2px solid rgba(255,255,255,0.9)' : '2px solid rgba(255,255,255,0.25)',
+            cursor: mode === 'waiting' ? 'default' : 'pointer',
             color: '#fff',
             fontWeight: 900,
-            fontSize: '0.78rem',
-            background: waiting
+            background: mode === 'waiting'
               ? 'linear-gradient(135deg, rgba(71,85,105,0.95), rgba(51,65,85,0.95))'
               : 'linear-gradient(135deg, #facc15 0%, #fb923c 100%)',
-            boxShadow: '0 4px 18px rgba(251,146,60,0.55)',
+            boxShadow: '0 3px 14px rgba(251,146,60,0.55)',
             flexDirection: 'column',
           }}
         >
-          {waiting ? (
-            <span style={{ fontSize: '0.7rem', fontWeight: 800 }}>…</span>
-          ) : (
+          {mode === 'play' ? (
             <>
-              <Play size={22} fill="#fff" strokeWidth={0} />
-              <span style={{ fontSize: '0.66rem', lineHeight: 1, letterSpacing: 0.4 }}>Play</span>
+              <Play size={16} fill="#fff" strokeWidth={0} />
+              <span style={{ fontSize: '0.55rem', lineHeight: 1, letterSpacing: 0.3 }}>Play</span>
             </>
+          ) : mode === 'ok' ? (
+            <span style={{ fontSize: '0.86rem', lineHeight: 1, color: '#1a1200', fontWeight: 900 }}>Ok</span>
+          ) : (
+            <span style={{ fontSize: '0.7rem', fontWeight: 800 }}>…</span>
           )}
+          {mode !== 'play' ? (
+            <svg
+              key={`ring-${mode}-${ringKey || ''}`}
+              width={SIZE}
+              height={SIZE}
+              viewBox={`0 0 ${SIZE} ${SIZE}`}
+              style={{ position: 'absolute', inset: -2, transform: 'rotate(-90deg)', pointerEvents: 'none' }}
+            >
+              <motion.circle
+                cx={SIZE / 2}
+                cy={SIZE / 2}
+                r={R}
+                fill="none"
+                stroke="#ef4444"
+                strokeWidth={3}
+                strokeLinecap="round"
+                strokeDasharray={C}
+                initial={{ strokeDashoffset: 0 }}
+                animate={{ strokeDashoffset: C }}
+                transition={{ duration: ringMs / 1000, ease: 'linear' }}
+              />
+            </svg>
+          ) : null}
         </motion.button>
       ) : null}
     </AnimatePresence>
