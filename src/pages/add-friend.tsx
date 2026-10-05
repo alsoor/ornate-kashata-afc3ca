@@ -18785,6 +18785,7 @@ function PublicLiveCommentsPanel({
       </div>
       <div
         ref={listRef}
+        onClick={() => { if (composerDock === 'gallery') setComposerDock('none'); }}
         onTouchStart={e => e.stopPropagation()}
         onTouchMove={e => e.stopPropagation()}
         onWheel={e => e.stopPropagation()}
@@ -19291,6 +19292,7 @@ function PublicLiveCommentsPanel({
               value={text}
               readOnly={composerDock !== 'none'}
               inputMode={composerDock === 'none' ? 'text' : 'none'}
+              onClick={() => { if (composerDock === 'gallery') setComposerDock('none'); }}
               onChange={e => {
                 const v = e.target.value.slice(0, 500);
                 setText(v);
@@ -19333,7 +19335,7 @@ function PublicLiveCommentsPanel({
             <input
               ref={fileRef}
               type="file"
-              accept="image/*,video/*"
+              accept="image/*"
               hidden
               onChange={e => {
                 const file = e.target.files?.[0];
@@ -26434,14 +26436,21 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     {/* دائرة مقصوصة: نكبّر الصورة ونقصّها بدائرة عشان يختفي المربع/المعيّن خلف الأيقونة */}
                     <span aria-hidden="true" style={{ width: 46, height: 46, borderRadius: '50%', overflow: 'hidden', display: 'block', flexShrink: 0, background: 'transparent', clipPath: 'circle(50% at 50% 50%)' }}>
                       <span style={{ display: 'block', width: '100%', height: '100%', transform: 'scale(1.4)' }}>
-                        <motion.img
-                          src="/icons/icon-192.png"
-                          alt=""
-                          draggable={false}
+                        <motion.span
+                          aria-hidden="true"
                           animate={{ rotate: 360 }}
                           transition={{ duration: 16, repeat: Infinity, ease: 'linear' }}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', borderRadius: '50%', pointerEvents: 'none', userSelect: 'none' }}
-                        />
+                          style={{ display: 'block', width: '100%', height: '100%', pointerEvents: 'none', userSelect: 'none' }}
+                        >
+                          <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ display: 'block' }} focusable="false">
+                            <defs><clipPath id="stooornaGlobeClip"><circle cx="50" cy="50" r="31" /></clipPath></defs>
+                            <circle cx="50" cy="50" r="31" fill="#22282a" />
+                            <g clipPath="url(#stooornaGlobeClip)" fill="none" stroke="#facc15" strokeWidth="5.4" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M14.0 43.0 C16.0 43.1 22.8 43.5 26.0 43.5 C29.2 43.5 30.8 44.4 33.0 43.0 C35.2 41.6 36.2 36.9 39.2 35.3 C42.2 33.7 48.0 34.5 50.9 33.4 C53.8 32.3 55.8 32.0 56.8 28.8 C57.8 25.6 56.8 16.5 56.8 14.0" /><path d="M14.0 57.1 C16.2 57.2 23.5 57.6 27.0 57.7 C30.5 57.9 33.0 57.1 35.0 58.0 C37.0 58.9 38.5 58.3 39.2 63.0 C39.9 67.7 39.2 82.2 39.2 86.0" /><path d="M84.0 32.0 C82.0 32.5 75.0 34.0 72.0 35.0 C69.0 36.0 67.8 36.3 66.3 38.2 C64.8 40.1 65.1 44.5 62.7 46.5 C60.3 48.5 54.5 48.4 52.1 50.0 C49.8 51.6 48.6 53.9 48.6 55.9 C48.6 57.9 50.1 60.0 52.1 61.8 C54.1 63.6 58.4 64.3 60.4 66.5 C62.4 68.7 63.0 71.5 63.9 74.8 C64.8 78.0 65.7 84.1 66.0 86.0" />
+                            </g>
+                            <circle cx="50" cy="50" r="30.4" fill="none" stroke="#facc15" strokeWidth="4.8" />
+                          </svg>
+                        </motion.span>
                       </span>
                     </span>
                   </motion.button>
