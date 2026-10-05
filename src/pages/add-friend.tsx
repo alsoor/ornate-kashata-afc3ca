@@ -3164,11 +3164,23 @@ function HeaderStoryCircle({
   if (isSplit && !hasStory && splitPartner && !splitPartner.owner && stripIds?.has(splitPartner.userId)) return null;
   // BATTLE-FIX-PATCH: server `owner` = THIS host owns the room that shows the split (the old test was inverted -> the circle opened the guest's own room = one user only)
   const splitOwnerIsMe = !splitPartner || !!splitPartner.owner;
-  const splitTarget = isSplit && splitPartner && !splitPartner.owner
+  // SPLIT-ENTER-BOTH-PATCH: nobody is redirected any more. The merged card has two halves: the left half enters the room owner's live,
+  // the right half enters the guest's live; a plain circle always enters ITS OWN host. Both rooms show both players.
+  const meP = { id: userId, name: name || '', username, avatar: avatarUrl };
+  const partnerP = splitPartner
     ? { id: splitPartner.userId, name: splitPartner.name, username: splitPartner.username, avatar: splitPartner.avatarUrl }
-    : { id: userId, name: name || '', username, avatar: avatarUrl };
+    : null;
+  const splitLeftP = isSplit && partnerP ? (splitOwnerIsMe ? meP : partnerP) : null;
+  const splitRightP = isSplit && partnerP ? (splitOwnerIsMe ? partnerP : meP) : null;
+  const sideOfClick = (e?: React.MouseEvent): 'left' | 'right' | null => {
+    if (!isSplit || !e) return null;
+    const rect = (e.currentTarget as HTMLElement | null)?.getBoundingClientRect?.();
+    if (!rect) return null;
+    return e.clientX < rect.left + rect.width / 2 ? 'left' : 'right';
+  };
 
-  const goLive = () => {
+  const goLive = (side?: 'left' | 'right' | null) => {
+    const splitTarget = (side === 'left' ? splitLeftP : side === 'right' ? splitRightP : null) || meP;
     const qs = new URLSearchParams({ hostId: splitTarget.id, hostName: splitTarget.name || splitTarget.username || 'Host' });
     if (splitTarget.username) qs.set('hostUsername', splitTarget.username);
     if (splitTarget.avatar) qs.set('hostAvatar', splitTarget.avatar);
@@ -3187,13 +3199,15 @@ function HeaderStoryCircle({
     setChoiceOpen(true);
   };
 
-  const handleClick = () => {
+  const handleClick = (e?: React.MouseEvent) => {
+    const side = sideOfClick(e);
+    try { btnRef.current?.setAttribute('data-split-side', side || ''); } catch { /* ignore */ }
     if (liveActive && hasStory) {
       if (choiceOpen) { setChoiceOpen(false); return; }
       openChoiceMenu();
       return;
     }
-    if (liveActive) { goLive(); return; }
+    if (liveActive) { goLive(side); return; }
     onOpenStory();
   };
 
@@ -3289,7 +3303,7 @@ function HeaderStoryCircle({
             </button>
             <button
               type="button"
-              onClick={() => { setChoiceOpen(false); goLive(); }}
+              onClick={() => { setChoiceOpen(false); const sd = btnRef.current?.getAttribute('data-split-side'); goLive(sd === 'left' || sd === 'right' ? sd : null); }}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', border: 'none', borderRadius: 8, background: 'transparent', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem', textAlign: 'left' }}
             >
               <Radio size={15} strokeWidth={2.3} color="#ef4444" />

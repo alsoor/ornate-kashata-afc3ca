@@ -104,7 +104,9 @@ import {
 } from '@/lib/liveBattlePatch';
 import { giftUnitPrice } from '@/components/LiveCoinsDock'; // BATTLE-PATCH: gift price fallback
 import { useBattleGiftBridge } from '@/lib/liveBattleFixPatch'; // BATTLE-FIX-PATCH: line moves on every gift
-import { useSplitAnnounce, useSplitViewer, useBattleServerSync } from '@/lib/liveSplitViewPatch'; // SPLIT-VIEW-PATCH: both players visible in either room + server-side round score
+import { useSplitAnnounce, useSplitViewer, useBattleServerSync, closeAllSplitViewers } from '@/lib/liveSplitViewPatch'; // UID-CONFLICT-FIX +closeAllSplitViewers
+// (original import comment follows)
+// // SPLIT-VIEW-PATCH: both players visible in either room + server-side round score
 // VOICE-INVITE-PATCH (video): anyone in the room invites ONLINE people (not only people who are live); they get the Accept / Decline box anywhere in the app
 import {
   VoiceInviteButton,
@@ -184,6 +186,8 @@ export default function LiveCameraPage() {
   const [livePageClosing, setLivePageClosing] = useState(false);
   const [enterGateDone, setEnterGateDone] = useState(false);
   const [joining, setJoining] = useState(false);
+  const joinLockRef = useRef(false); // UID-CONFLICT-FIX: never two joins at the same time (two clients with the same uid = UID_CONFLICT)
+  const joinNotBeforeRef = useRef(0); // UID-CONFLICT-FIX: pause between failed attempts (no instant retry loop)
   const [micOn, setMicOn] = useState(true);
   const micOnRef = useRef(true);
   const [camOn, setCamOn] = useState(true);
@@ -814,6 +818,7 @@ export default function LiveCameraPage() {
     forceEndRef.current = forced || forceEndRef.current;
     try { cancelAllVoiceInvites(); } catch { /* ignore */ } // VOICE-INVITE-PATCH (video)
     try { void splitRef.current?.leave(true); } catch { /* ignore */ } // SPLIT-PATCH
+    try { void closeAllSplitViewers(); } catch { /* ignore */ } // UID-CONFLICT-FIX: release the other half's view-only connection
 
     // DUET-PATCH: a guest leaving tells the room so the split screen closes right away
     if (amGuest && !forced && myUidRef.current != null) {
@@ -1006,11 +1011,19 @@ export default function LiveCameraPage() {
       setError('Camera live requires a host account room.');
       return;
     }
+    if (joinLockRef.current) return; // UID-CONFLICT-FIX
+    joinLockRef.current = true;
     leftRef.current = false;
     setJoining(true);
     setError('');
     setStatus('Connecting...');
     try {
+      // UID-CONFLICT-FIX: wait after a failed attempt and release leftovers of the previous room (view-only half connections)
+      {
+        const wait = joinNotBeforeRef.current - Date.now();
+        if (wait > 0) await new Promise((r) => window.setTimeout(r, wait));
+        await closeAllSplitViewers();
+      }
       const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
       AgoraRTC.setLogLevel(3);
 
@@ -1217,7 +1230,27 @@ export default function LiveCameraPage() {
       }
       myUidRef.current = uid;
       setStatus('Joining channel...');
-      await client.join(appId, channelName, token, uid);
+      // UID-CONFLICT-FIX: Agora keeps the previous session of the same uid for a few seconds -> retry instead of failing.
+      // A pure viewer (nothing depends on his uid) gets a private uid on the later attempts.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await client.join(appId, channelName, token, uid);
+          break;
+        } catch (je: any) {
+          const code = String(je?.code || je?.message || je);
+          if (!code.includes('UID_CONFLICT') || attempt >= 4 || leftRef.current) throw je;
+          setStatus(`Reconnecting... (${attempt + 1})`);
+          try { await client.leave(); } catch { /* ignore */ }
+          try { await closeAllSplitViewers(); } catch { /* ignore */ }
+          if (attempt >= 1 && !amHost && !amGuest) {
+            try {
+              const t2 = await fetchToken(channelName, `${myId}~v${Math.random().toString(36).slice(2, 7)}`);
+              if (t2?.token && t2?.uid) { token = t2.token; uid = t2.uid; appId = t2.appId || appId; myUidRef.current = uid; }
+            } catch { /* keep the normal uid */ }
+          }
+          await new Promise((r) => window.setTimeout(r, 1200 * (attempt + 1)));
+        }
+      }
 
       try {
         const streamId = await (client as any).createDataStream?.({ reliable: true, ordered: true });
@@ -1382,6 +1415,9 @@ export default function LiveCameraPage() {
       setError(String(err?.message ?? err));
       setJoining(false);
       setStatus('');
+      joinNotBeforeRef.current = Date.now() + 4000; // UID-CONFLICT-FIX
+    } finally {
+      joinLockRef.current = false; // UID-CONFLICT-FIX
     }
   }, [
     myId,
@@ -1991,6 +2027,7 @@ export default function LiveCameraPage() {
   const splitViewApi = useSplitViewer({
     enabled: !!(joined && isHostRoom && !amHost && !amGuest),
     me: duetMe,
+    roomHostId: String(hostId || ''), // UID-CONFLICT-FIX
     appIdFallback: AGORA_APP_ID,
     setSplitWith,
     onRemoteVideo: (track) => {

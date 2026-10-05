@@ -38,6 +38,27 @@ async function fetchViewToken(channel: string, userId: string): Promise<{ token:
   }
 }
 
+/* UID-CONFLICT-FIX: a view-only connection must never share an Agora uid with a main connection of the same person. */
+async function fetchViewTokenStrict(channel: string, userId: string): Promise<{ token: string; uid: number; appId: string | null } | null> {
+  try {
+    const r = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(userId)}`, { credentials: 'include' });
+    if (!r.ok) return null;
+    const d: any = await r.json();
+    if (!d?.token || !Number(d.uid)) return null;
+    return { token: String(d.token), uid: Number(d.uid), appId: d.appId ?? null };
+  } catch { return null; }
+}
+
+/** Every open view-only connection of this page session (module level: survives a route change). */
+const openSplitViewers = new Set<() => Promise<void>>();
+
+/** UID-CONFLICT-FIX: close all view-only connections (called before the main join and when leaving a room). */
+export async function closeAllSplitViewers(): Promise<void> {
+  const list = [...openSplitViewers];
+  openSplitViewers.clear();
+  await Promise.all(list.map((f) => f().catch(() => { /* ignore */ })));
+}
+
 /* ───────────────────────── PART 1: view-only second connection ───────────────────────── */
 
 export type SplitViewHandle = { leave: () => Promise<void>; setMuted: (m: boolean) => void };
@@ -48,9 +69,12 @@ export async function startSplitViewer(opts: {
   appIdFallback: string;
   onRemoteVideo: (track: any | null) => void;
   onEnded: () => void;
+  /** UID-CONFLICT-FIX: channel of the room I am already in with my main connection (never join it a second time) */
+  mainChannel?: string;
 }): Promise<SplitViewHandle> {
   const { owner, me, appIdFallback, onRemoteVideo, onEnded } = opts;
   const channel = camChannelForHost(owner.userId);
+  if (opts.mainChannel && opts.mainChannel === channel) throw new Error('split-view: same channel as my main connection');
   const ownerUid = uidFromString(owner.userId);
   const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
   const client: any = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
@@ -61,6 +85,7 @@ export async function startSplitViewer(opts: {
   const finish = async () => {
     if (ended) return;
     ended = true;
+    openSplitViewers.delete(finish); // UID-CONFLICT-FIX
     try { onRemoteVideo(null); } catch { /* ignore */ }
     try { audio?.stop(); } catch { /* ignore */ }
     try { await client.leave(); } catch { /* ignore */ }
@@ -82,11 +107,15 @@ export async function startSplitViewer(opts: {
   client.on('user-left', (u: any) => { if (Number(u.uid) === ownerUid) onRemoteVideo(null); });
   client.on('connection-state-change', (cur: string) => { if (cur === 'DISCONNECTED') void finish(); });
 
-  const t = await fetchViewToken(channel, me.userId);
+  openSplitViewers.add(finish); // UID-CONFLICT-FIX
+  // UID-CONFLICT-FIX: own uid for the view-only connection (falls back to the normal one if the server refuses the id)
+  const uniq = await fetchViewTokenStrict(channel, `${me.userId}~sv${Math.random().toString(36).slice(2, 7)}`);
+  const t = uniq || (await fetchViewToken(channel, me.userId));
   try {
     await client.join(t.appId || appIdFallback, channel, t.token, t.uid);
   } catch (err) {
     ended = true;
+    openSplitViewers.delete(finish);
     try { await client.leave(); } catch { /* ignore */ }
     throw err;
   }
@@ -143,6 +172,8 @@ export function useSplitViewer(opts: {
   setSplitWith: (p: DuetPerson | null) => void;
   onRemoteVideo: (track: any | null) => void;
   muted: boolean;
+  /** UID-CONFLICT-FIX: host of the room this page is in (its channel is already joined by the main connection) */
+  roomHostId?: string;
 }): { handleMessage: (msg: any) => void } {
   const optsRef = React.useRef(opts);
   optsRef.current = opts;
@@ -167,6 +198,7 @@ export function useSplitViewer(opts: {
     if (!ow || !ow.userId) { if (sessionRef.current || ownerRef.current) void stop(); return; }
     const ownerId = String(ow.userId);
     if (norm(ownerId) === norm(o.me.userId)) return; // I am the owner myself
+    if (o.roomHostId && norm(ownerId) === norm(o.roomHostId)) return; // UID-CONFLICT-FIX: this IS the room I am in
     lastSeenRef.current = Date.now();
     if (ownerRef.current === ownerId || startingRef.current) return;
     startingRef.current = true;
@@ -179,6 +211,7 @@ export function useSplitViewer(opts: {
         if (sessionRef.current) await stop();
         const h = await startSplitViewer({
           owner: person, me: o.me, appIdFallback: o.appIdFallback,
+          mainChannel: o.roomHostId ? camChannelForHost(o.roomHostId) : undefined, // UID-CONFLICT-FIX
           onRemoteVideo: (t) => optsRef.current.onRemoteVideo(t),
           onEnded: () => { if (ownerRef.current === ownerId) { sessionRef.current = null; ownerRef.current = ''; optsRef.current.setSplitWith(null); } },
         });
