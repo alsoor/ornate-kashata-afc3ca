@@ -84,6 +84,7 @@ import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
+import { selectMapPins, locateLiveGpsUser, useLiveGpsBackgroundPublisher, rememberLiveGpsShare } from '@/lib/liveGpsAllUsersPatch'; // GPS-ALL-USERS-PATCH: GPS Live shows every user
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { usePresenceQuery } from '@/hooks/usePresence';
 import { pullLiveLocations, pullOnlineIds } from '@/lib/liveLocationSync';
@@ -3425,6 +3426,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     return !!(at && Date.now() - Number(at) < 2 * 60 * 1000);
   };
   useEffect(() => { livePinsRef.current = livePins; }, [livePins]);
+  // GPS-ALL-USERS-PATCH: toggle shown as ON while the map is open = explicit choice (lets the background publisher keep my last spot fresh)
+  useEffect(() => { if (liveMapOpen && liveShareOn) rememberLiveGpsShare(); }, [liveMapOpen, liveShareOn]);
   const [livePlace, setLivePlace] = useState('');
   const [liveZoom, setLiveZoom] = useState(16);
   const [liveFocus, setLiveFocus] = useState<{ lat: number; lng: number } | null>(null);
@@ -3740,7 +3743,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
       const filtered = friendIdSet.size
         ? bucket.filter(p => p && friendIdSet.has(String(p.id)))
         : bucket;
-      mergePins(filtered);
+      mergePins(selectMapPins(bucket, filtered)); // GPS-ALL-USERS-PATCH: every user on the map (was: friends only)
     };
     mergePins(readLiveGpsLastSeen());
     void readPins();
@@ -4983,6 +4986,15 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                           setLiveMsgPeer(null);
                         } else {
                           setLiveHighlightId(null);
+                          // GPS-ALL-USERS-PATCH: no pin loaded yet -> ask the server for his last place and zoom there at once
+                          void locateLiveGpsUser(hit).then(found => {
+                            if (!found) return;
+                            setLivePins(prev => [found, ...prev.filter(p => String(p.id) !== String(found.id))]);
+                            setLiveHighlightId(hit.id);
+                            setLiveFocus({ lat: found.lat, lng: found.lng });
+                            setLiveZoom(19);
+                            setLiveMsgPeer(null);
+                          });
                         }
                       }}
                       style={{
@@ -20095,6 +20107,8 @@ export default function AddFriendPage() {
   const routeLocation = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isPending } = useSession();
+  // GPS-ALL-USERS-PATCH: while I am online with the map toggle ON, my last place stays fresh for everybody
+  useLiveGpsBackgroundPublisher({ id: user?.id ?? null, name: user?.name ?? null, username: (user as any)?.username ?? null, avatarUrl: (user as any)?.avatarUrl ?? (user as any)?.image ?? null });
   const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
   useEffect(() => {
     const uid = user?.id;
