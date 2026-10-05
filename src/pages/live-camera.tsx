@@ -3764,7 +3764,8 @@ export default function LiveCameraPage() {
                 ? { userId: String(splitWith.userId || ''), name: splitWith.name, username: splitWith.username, avatarUrl: splitWith.avatarUrl }
                 : null,
           }}
-          onOpenProfile={amHost || amGuest ? undefined : (p) => { if (p.userId && p.userId !== myId) setProfilePeer(p); }} // hosts / guests stay in their own live
+          selfId={amHost ? myId : null} // OPPONENT-CIRCLE-PATCH: host sees only the opponent's picture circle, not his own
+          onOpenProfile={amGuest ? undefined : (p) => { if (p.userId && p.userId !== myId) setProfilePeer(p); }} // OPPONENT-CIRCLE-PATCH: hosts can open the opponent's profile too (guests stay in their own live)
         />
       ) : null}
       <BattlePlayButton

@@ -998,9 +998,31 @@ export function BattleIncomingDialog({
 export type BattlePerson = { userId: string; name: string; username: string | null; avatarUrl: string | null };
 
 /** PROFILE-TAP-PATCH: profile picture + @username of a player; a tap opens his profile (from there a viewer can enter his live and support him with gifts). */
-function BattlePersonChip({ person, side, onOpen }: { person: BattlePerson; side: BattleSide; onOpen?: (p: BattlePerson) => void }) {
+function BattlePersonChip({ person, side, onOpen, compact }: { person: BattlePerson; side: BattleSide; onOpen?: (p: BattlePerson) => void; compact?: boolean }) {
   const label = person.username ? `@${person.username}` : person.name;
   const clickable = !!onOpen && !!person.userId;
+  // OPPONENT-CIRCLE-PATCH: host view of a split -> only the opponent's profile picture (no @username), on the same level as the supporters' pictures
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={clickable ? (e) => { e.stopPropagation(); onOpen!(person); } : undefined}
+        aria-label={clickable ? `Open profile ${label}` : label}
+        style={{
+          position: 'absolute', bottom: 6, [side === 'left' ? 'left' : 'right']: 8,
+          width: 30, height: 30, padding: 0, borderRadius: '50%', overflow: 'hidden',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: '#1f2937', border: `2px solid ${BATTLE_COLORS[side]}`, color: '#fff', fontSize: '0.7rem', fontWeight: 900,
+          boxShadow: '0 1px 4px rgba(0,0,0,0.55)',
+          cursor: clickable ? 'pointer' : 'default', pointerEvents: clickable ? 'auto' : 'none', zIndex: 7,
+        } as React.CSSProperties}
+      >
+        {person.avatarUrl
+          ? <img src={person.avatarUrl} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          : (person.name || '?').trim().charAt(0).toUpperCase()}
+      </button>
+    );
+  }
   return (
     <button
       type="button"
@@ -1080,8 +1102,10 @@ export function BattleNameTag({ name, username, side }: { name: string; username
 
 /** Score line, timer, "You Win" rectangle and light support pills — drawn over the split area only. */
 export function BattleOverlay({
-  battle: battleIn, remainMs, popups: popupsIn, heightPx, flip, lineTopPx, players, onOpenProfile,
+  battle: battleIn, remainMs, popups: popupsIn, heightPx, flip, lineTopPx, players, onOpenProfile, selfId,
 }: {
+  /** OPPONENT-CIRCLE-PATCH: my own id (host). My own chip is hidden and the opponent shows as a picture-only circle. Omit it (viewers) = both chips as before. */
+  selfId?: string | null;
   /** PROFILE-TAP-PATCH: the two players by SCREEN half (left half / right half) — drawn as picture + @username, tappable. */
   players?: { left: BattlePerson | null; right: BattlePerson | null } | null;
   /** PROFILE-TAP-PATCH: open the profile of a player / supporter. Omit it and the chips are only shown. */
@@ -1201,8 +1225,8 @@ export function BattleOverlay({
       {/* PROFILE-TAP-PATCH: picture + @username of each player at the bottom of his half */}
       {players && heightPx != null ? (
         <>
-          {players.left ? <BattlePersonChip person={players.left} side="left" onOpen={onOpenProfile} /> : null}
-          {players.right ? <BattlePersonChip person={players.right} side="right" onOpen={onOpenProfile} /> : null}
+          {players.left && !(selfId && sameId(players.left.userId, selfId)) ? <BattlePersonChip person={players.left} side="left" onOpen={onOpenProfile} compact={!!selfId} /> : null}
+          {players.right && !(selfId && sameId(players.right.userId, selfId)) ? <BattlePersonChip person={players.right} side="right" onOpen={onOpenProfile} compact={!!selfId} /> : null}
         </>
       ) : null}
 
