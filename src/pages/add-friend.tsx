@@ -85,6 +85,7 @@ import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 import { useSession } from '@/lib/auth/auth-client';
 import { selectMapPins, locateLiveGpsUser, useLiveGpsBackgroundPublisher, rememberLiveGpsShare } from '@/lib/liveGpsAllUsersPatch'; // GPS-ALL-USERS-PATCH: GPS Live shows every user
+import { useLiveGpsRoute, useRouteCountdown, haversineM, fitZoomFor, formatEta, formatClock, formatDist } from '@/lib/liveGpsNavigatePatch'; // GPS-NAVIGATE-PATCH: distance / car time / blue line / Go countdown
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { usePresenceQuery } from '@/hooks/usePresence';
 import { pullLiveLocations, pullOnlineIds } from '@/lib/liveLocationSync';
@@ -3433,6 +3434,31 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const [livePlace, setLivePlace] = useState('');
   const [liveZoom, setLiveZoom] = useState(16);
   const [liveFocus, setLiveFocus] = useState<{ lat: number; lng: number } | null>(null);
+  // GPS-NAVIGATE-PATCH: black info box (distance, car time, Go) replaces the chat box on the GPS Live map
+  const [liveNav, setLiveNav] = useState<{ id: string; name: string; username: string; avatarUrl: string | null; lat: number; lng: number } | null>(null);
+  const [liveNavGo, setLiveNavGo] = useState(false);
+  const liveNavPin = liveNav ? (livePins.find(p => String(p.id) === String(liveNav.id)) || null) : null;
+  const liveNavPos = liveNav ? { lat: liveNavPin ? liveNavPin.lat : liveNav.lat, lng: liveNavPin ? liveNavPin.lng : liveNav.lng } : null;
+  const liveRoute = useLiveGpsRoute(liveNav ? liveCenter : null, liveNavPos, liveNavGo ? 15000 : 30000);
+  const liveNavLeft = useRouteCountdown(liveRoute, liveNavGo);
+  const liveNavSelect = (t: { id: string; name: string; username: string; avatarUrl: string | null; lat: number; lng: number }) => {
+    if (String(t.id) === String(myId || '')) return;
+    setLiveMsgPeer(null);
+    setLiveNavGo(false);
+    setLiveNav(t);
+    setLiveHighlightId(t.id);
+    if (liveCenter) {
+      const fit = fitZoomFor(liveCenter, { lat: t.lat, lng: t.lng }, Math.max(240, (typeof window !== 'undefined' ? window.innerWidth : 360) - 80), 280);
+      setLiveFocus(fit.center);
+      setLiveZoom(fit.zoom);
+    } else {
+      setLiveFocus({ lat: t.lat, lng: t.lng });
+      setLiveZoom(17);
+    }
+  };
+  useEffect(() => { if (!liveMapOpen) { setLiveNav(null); setLiveNavGo(false); } }, [liveMapOpen]);
+  // Go mode: the map follows me while I drive to him
+  useEffect(() => { if (liveNav && liveNavGo && liveCenter) setLiveFocus(liveCenter); }, [liveNav, liveNavGo, liveCenter]);
   const [, setLiveMapSrc] = useState('');
   const liveDragRef = useRef<{
     pts: Record<number, { x: number; y: number }>;
@@ -4986,6 +5012,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                           setLiveFocus({ lat: hit.lat, lng: hit.lng });
                           setLiveZoom(19);
                           setLiveMsgPeer(null);
+                          liveNavSelect({ id: hit.id, name: hit.name, username: hit.username, avatarUrl: hit.avatarUrl, lat: hit.lat as number, lng: hit.lng as number });
                         } else {
                           setLiveHighlightId(null);
                           // GPS-ALL-USERS-PATCH: no pin loaded yet -> ask the server for his last place and zoom there at once
@@ -4996,6 +5023,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                             setLiveFocus({ lat: found.lat, lng: found.lng });
                             setLiveZoom(19);
                             setLiveMsgPeer(null);
+                            liveNavSelect({ id: hit.id, name: hit.name, username: hit.username, avatarUrl: hit.avatarUrl, lat: found.lat, lng: found.lng });
                           });
                         }
                       }}
@@ -5162,6 +5190,21 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                         </div>
                       </div>
                     )}
+                    {liveNav && liveCenter && liveNavPos && !globe && (() => {
+                      const road = liveRoute && liveRoute.road && liveRoute.coords.length > 1;
+                      const raw: { lat: number; lng: number }[] = [
+                        liveCenter,
+                        ...(road ? liveRoute!.coords.map(c => ({ lat: c[0], lng: c[1] })) : []),
+                        liveNavPos,
+                      ];
+                      const pts = raw.map(p => { const q = pinXY(p); return `${q.px.toFixed(1)},${q.py.toFixed(1)}`; }).join(' ');
+                      return (
+                        <svg width="1" height="1" style={{ position: 'absolute', left: '50%', top: '50%', overflow: 'visible', pointerEvents: 'none', zIndex: 1 }}>
+                          <polyline points={pts} fill="none" stroke="#ffffff" strokeWidth={9} strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
+                          <polyline points={pts} fill="none" stroke="#1d6bff" strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      );
+                    })()}
                     {pins.map(pin => {
                       const { px, py, hide } = pinXY(pin);
                       if (hide) return null;
@@ -5195,7 +5238,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                               liveMeToastTimerRef.current = setTimeout(() => setLiveMeToast(false), 2200);
                               return;
                             }
-                            setLiveMsgPeer({ id: pin.id, name: pin.username || pin.name });
+                            liveNavSelect({ id: pin.id, name: pin.name, username: pin.username, avatarUrl: pin.avatarUrl, lat: pin.lat, lng: pin.lng });
                           }} style={{
                             pointerEvents: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
@@ -5238,7 +5281,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                   setLiveMsgPeer(null);
                 }}
                 style={{
-                  position: 'absolute', right: 14, bottom: liveMsgPeer ? 168 : 18, zIndex: 3,
+                  position: 'absolute', right: 14, bottom: liveNav ? 226 : (liveMsgPeer ? 168 : 18), zIndex: 3,
                   width: 44, height: 44, borderRadius: '50%', border: 'none',
                   background: '#fff', boxShadow: '0 2px 10px rgba(0,0,0,0.18)', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -5258,6 +5301,95 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                   it's Me ☺️
                 </div>
               )}
+              {liveNav && (() => {
+                const online = isLiveUserOnline(String(liveNav.id), liveNavPin ? liveNavPin.at : undefined);
+                const arrived = !!(liveNavGo && liveCenter && liveNavPos && haversineM(liveCenter, liveNavPos) < 40);
+                const cell: React.CSSProperties = { flex: 1, borderRadius: 12, background: '#141414', border: '1px solid rgba(255,255,255,0.1)', padding: '8px 10px' };
+                const cap: React.CSSProperties = { margin: 0, color: 'rgba(255,255,255,0.55)', fontSize: '0.66rem', fontWeight: 700 };
+                const val: React.CSSProperties = { margin: '2px 0 0', color: '#fff', fontSize: '1.02rem', fontWeight: 800 };
+                return (
+                  <div
+                    onPointerDown={e => e.stopPropagation()}
+                    style={{ position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                      <div style={{ position: 'relative', width: 38, height: 38, flexShrink: 0 }}>
+                        <div style={{ width: 38, height: 38, borderRadius: '50%', overflow: 'hidden', background: '#111', border: `2px solid ${online ? '#22c55e' : '#ef4444'}` }}>
+                          {liveNav.avatarUrl
+                            ? <img src={liveNav.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            : <span style={{ color: '#fff', fontSize: 13, display: 'flex', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}>{(liveNav.name || '?').slice(0, 1)}</span>}
+                        </div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontWeight: 800, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {liveNavGo ? 'Heading to ' : ''}@{liveNav.username || liveNav.name}
+                        </p>
+                        <p style={{ margin: 0, color: online ? '#4ade80' : '#f87171', fontSize: '0.7rem', fontWeight: 700 }}>
+                          {online ? 'Online' : 'Offline · last location'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Close"
+                        onClick={() => { setLiveNav(null); setLiveNavGo(false); setLiveHighlightId(null); }}
+                        style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                    {!liveCenter ? (
+                      <p style={{ margin: '4px 0 10px', color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem' }}>Getting your location…</p>
+                    ) : !liveNavGo ? (
+                      <>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                          <div style={cell}>
+                            <p style={cap}>Distance</p>
+                            <p style={val}>{liveRoute ? `${liveRoute.road ? '' : '~'}${formatDist(liveRoute.distM)}` : '…'}</p>
+                          </div>
+                          <div style={cell}>
+                            <p style={cap}>By car</p>
+                            <p style={val}>{liveRoute ? `${liveRoute.road ? '' : '~'}${formatEta(liveRoute.durS)}` : '…'}</p>
+                          </div>
+                        </div>
+                      </>
+                    ) : arrived ? (
+                      <p style={{ margin: '4px 0 12px', textAlign: 'center', color: '#4ade80', fontWeight: 800, fontSize: '1.05rem' }}>You have arrived ✅</p>
+                    ) : (
+                      <div style={{ marginBottom: 10, textAlign: 'center' }}>
+                        <p style={{ margin: 0, color: 'rgba(255,255,255,0.55)', fontSize: '0.66rem', fontWeight: 700 }}>Time to arrive by car</p>
+                        <p style={{ margin: '2px 0', color: '#fff', fontSize: '2.1rem', fontWeight: 800, letterSpacing: 1, fontVariantNumeric: 'tabular-nums' }}>{formatClock(liveNavLeft)}</p>
+                        <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: '0.74rem', fontWeight: 700 }}>
+                          {liveRoute ? `${liveRoute.road ? '' : '~'}${formatDist(liveRoute.distM)} left` : '…'}
+                          {' · '}Arrive {new Date(Date.now() + liveNavLeft * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    )}
+                    {!liveNavGo ? (
+                      <button
+                        type="button"
+                        disabled={!liveCenter}
+                        onClick={() => {
+                          if (!liveCenter) return;
+                          setLiveNavGo(true);
+                          setLiveFocus(liveCenter);
+                          setLiveZoom(17);
+                        }}
+                        style={{ width: '100%', borderRadius: 12, border: 'none', padding: '12px 10px', cursor: liveCenter ? 'pointer' : 'default', background: liveCenter ? '#22c55e' : '#3f3f46', color: '#04130a', fontWeight: 900, fontSize: '1.05rem', letterSpacing: 0.5 }}
+                      >
+                        Go
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setLiveNav(null); setLiveNavGo(false); setLiveHighlightId(null); }}
+                        style={{ width: '100%', borderRadius: 12, border: 'none', padding: '11px 10px', cursor: 'pointer', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: '0.95rem' }}
+                      >
+                        {arrived ? 'Done' : 'Stop'}
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               {liveMsgPeer && String(liveMsgPeer.id) !== String(myId || '') && (
                 <div style={{ position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 4, borderRadius: 14, overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
                   <div style={{ background: '#111', color: '#fff', fontWeight: 800, fontSize: '0.84rem', padding: '10px 12px' }}>
