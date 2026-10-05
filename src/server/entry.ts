@@ -897,7 +897,7 @@ app.post("/api/live-location", liveGpsPost);
 
 // ── Live gifts: بث الهدايا لكل من في البث (ذاكرة السيرفر، نفس أسلوب live-chat / room-signal) ──
 const liveGiftMem = () => {
-  const g = globalThis as typeof globalThis & { __stooornaLiveGifts?: Map<string, Array<{ at: number; id: string; giftId: string; fromId: string; toUserId: string; toName: string; toAvatar: string; fromKey: string; count: number; price?: number }>> };
+  const g = globalThis as typeof globalThis & { __stooornaLiveGifts?: Map<string, Array<{ at: number; id: string; giftId: string; fromId: string; toUserId: string; toName: string; toAvatar: string; fromKey: string; count: number; price?: number; fromName?: string; fromAvatar?: string }>> };
   if (!g.__stooornaLiveGifts) g.__stooornaLiveGifts = new Map();
   return g.__stooornaLiveGifts;
 };
@@ -1290,7 +1290,11 @@ app.post("/api/live-gifts", guarded(async (req, res) => {
   const at = Math.max(now, lastAt + 1);
   const list = prev.filter((e) => now - e.at < 60000);
   const eventId = String(body.id || `lg_${at}`).slice(0, 60);
-  list.push({ at, id: eventId, giftId: c.giftId, fromId, toUserId: c.toUserId, toName, toAvatar, fromKey: String(body.fromKey || "").slice(0, 60), count, price: Number.isFinite(c.price) ? c.price : undefined });
+  // SUPPORT-LIVE-PATCH: who sent the gift (name + picture) travels with every gift event
+  const fromNameEv = String(body.fromName || "").slice(0, 60);
+  const fromAvatarRaw = String((fromId === u.id ? ((u as any).avatarUrl || (u as any).image || "") : "") || body.fromAvatar || "");
+  const fromAvatarEv = fromAvatarRaw.length <= 300 ? fromAvatarRaw : "";
+  list.push({ at, id: eventId, giftId: c.giftId, fromId, fromName: fromNameEv, fromAvatar: fromAvatarEv, toUserId: c.toUserId, toName, toAvatar, fromKey: String(body.fromKey || "").slice(0, 60), count, price: Number.isFinite(c.price) ? c.price : undefined });
   mem.set(room, list.slice(-120));
   // ترتيب الداعمين — الآن مبني على خصم مؤكد فقط
   const sup = liveSupportMem();
@@ -1302,14 +1306,15 @@ app.post("/api/live-gifts", guarded(async (req, res) => {
   rec.map.set(fromId, cur);
   rec.at = now;
   sup.set(room, rec);
-  try { liveBattleCount(room, c.toUserId, (Number.isFinite(c.price) ? c.price : 0) * count); } catch { /* ignore */ } // LIVE-BATTLE: round score kept by the server
+  try { liveBattleCount(room, c.toUserId, (Number.isFinite(c.price) ? c.price : 0) * count, fromId, fromNameEv, fromAvatarEv); } catch { /* ignore */ } // LIVE-BATTLE: round score kept by the server
   res.json({ ok: true, at });
 }));
 
 // ═══════════════ LIVE BATTLE — game round between two split hosts: the SERVER keeps the score ═══════════════
 // A (owner of the split) registers the round; every gift posted to /api/live-gifts is added to the right side here,
 // and every phone (hosts, supporters, viewers of both rooms) reads the same line from GET /api/live-battle.
-type LiveBattleRow = { id: string; a: string; b: string; startedAt: number; endsAt: number; left: number; right: number };
+type BattleSup = { name: string; avatarUrl: string; coins: number; firstAt: number };
+type LiveBattleRow = { id: string; a: string; b: string; startedAt: number; endsAt: number; left: number; right: number; supL?: Map<string, BattleSup>; supR?: Map<string, BattleSup> };
 const LIVE_BATTLE_MS = 4 * 60 * 1000;
 const LIVE_BATTLE_KEEP_MS = 12_000;
 const liveBattleMem = (): Map<string, LiveBattleRow> => {
@@ -1325,16 +1330,34 @@ const liveBattlePurge = () => {
   const now = Date.now();
   for (const [k, v] of liveBattleMem()) if (now - v.endsAt > 10 * 60 * 1000) liveBattleMem().delete(k);
 };
-function liveBattleCount(room: string, toUserId: string, coins: number) {
+// SUPPORT-LIVE-PATCH: first three supporters of each side for the running round
+function bAddSup(row: LiveBattleRow, side: "left" | "right", fromId: string, name: string, avatar: string, coins: number) {
+  if (!fromId || !(coins > 0)) return;
+  const key = side === "left" ? "supL" : "supR";
+  const m = (row[key] = row[key] || new Map<string, BattleSup>());
+  const cur = m.get(fromId) || { name: "", avatarUrl: "", coins: 0, firstAt: Date.now() };
+  cur.coins += coins;
+  if (name) cur.name = name;
+  if (avatar) cur.avatarUrl = avatar;
+  m.set(fromId, cur);
+}
+function bTop(row: LiveBattleRow) {
+  const pick = (m?: Map<string, BattleSup>) => [...(m || new Map<string, BattleSup>()).entries()]
+    .sort((x, y) => y[1].coins - x[1].coins || x[1].firstAt - y[1].firstAt)
+    .slice(0, 3)
+    .map(([userId, v]) => ({ userId, name: v.name, avatarUrl: v.avatarUrl || null, coins: v.coins }));
+  return { left: pick(row.supL), right: pick(row.supR) };
+}
+function liveBattleCount(room: string, toUserId: string, coins: number, fromId = "", fromName = "", fromAvatar = "") {
   if (!room || !(coins > 0)) return;
   const now = Date.now();
   for (const row of liveBattleMem().values()) {
     if (now >= row.endsAt) continue;
     if (bRoomOf(room, row.a)) {
       // gift in A's room: addressed to the guest B -> B, everything else -> A
-      if (bSameHost(toUserId, row.b)) row.right += coins; else row.left += coins;
+      if (bSameHost(toUserId, row.b)) { row.right += coins; bAddSup(row, "right", fromId, fromName, fromAvatar, coins); } else { row.left += coins; bAddSup(row, "left", fromId, fromName, fromAvatar, coins); }
     } else if (bRoomOf(room, row.b)) {
-      row.right += coins; // gift in B's room -> B
+      row.right += coins; bAddSup(row, "right", fromId, fromName, fromAvatar, coins); // gift in B's room -> B
     }
   }
 }
@@ -1343,7 +1366,7 @@ const liveBattleView = (row: LiveBattleRow) => {
   const running = now < row.endsAt;
   if (!running && now - row.endsAt > LIVE_BATTLE_KEEP_MS) return null;
   const winner = running ? null : row.left === row.right ? "draw" : row.left > row.right ? "left" : "right";
-  return { id: row.id, a: row.a, b: row.b, phase: running ? "running" : "ended", left: row.left, right: row.right, remainMs: Math.max(0, row.endsAt - now), winner };
+  return { id: row.id, a: row.a, b: row.b, phase: running ? "running" : "ended", left: row.left, right: row.right, remainMs: Math.max(0, row.endsAt - now), winner, top: bTop(row) };
 };
 app.get("/api/live-battle", (req, res) => {
   res.setHeader("Cache-Control", "no-store");

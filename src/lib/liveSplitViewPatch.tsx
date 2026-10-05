@@ -314,8 +314,24 @@ export function useBattleServerSync(opts: {
         applyRef.current(b, mirror);
       } catch { /* ignore */ }
     };
-    void tick();
-    const iv = window.setInterval(tick, 1200);
-    return () => { stop = true; window.clearInterval(iv); };
+    // SUPPORT-LIVE-PATCH: score refresh is instant — poll every 0.5s AND right away when a gift is sent / seen (no overlapping requests)
+    let busy = false;
+    let again = false;
+    const run = async () => {
+      if (stop) return;
+      if (busy) { again = true; return; }
+      busy = true;
+      try { await tick(); } finally { busy = false; if (again && !stop) { again = false; void run(); } }
+    };
+    const poke = () => { void run(); };
+    void run();
+    const iv = window.setInterval(poke, 500);
+    window.addEventListener('stooorna:battle-poke', poke);
+    window.addEventListener('stooorna:live-gifts-seen', poke);
+    return () => {
+      stop = true; window.clearInterval(iv);
+      window.removeEventListener('stooorna:battle-poke', poke);
+      window.removeEventListener('stooorna:live-gifts-seen', poke);
+    };
   }, [enabled, roomHostId, mySide]);
 }

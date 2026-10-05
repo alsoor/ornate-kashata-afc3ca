@@ -36,9 +36,22 @@ export type BattleView = {
   /** local wall-clock time when the round ends (running only) */
   endsAt: number;
   winner: BattleSide | 'draw' | null;
+  /** SUPPORT-LIVE-PATCH: first three supporters of each side (server orientation: left = A) */
+  top?: BattleTop;
 };
 
-export type BattlePopup = { id: string; side: BattleSide; coins: number; count: number; label: string };
+/* SUPPORT-LIVE-PATCH: one of the first three supporters of a side (kept by the server for the running round) */
+export type BattleSupporter = { userId: string; name: string; avatarUrl: string | null; coins: number };
+export type BattleTop = { left: BattleSupporter[]; right: BattleSupporter[] };
+function parseTop(x: any): BattleTop | undefined {
+  if (!x || typeof x !== 'object') return undefined;
+  const one = (l: any): BattleSupporter[] => (Array.isArray(l) ? l : []).slice(0, 3)
+    .map((s: any) => ({ userId: String(s?.userId || ''), name: String(s?.name || ''), avatarUrl: typeof s?.avatarUrl === 'string' && s.avatarUrl ? s.avatarUrl : null, coins: Number(s?.coins) || 0 }))
+    .filter((s) => s.userId);
+  return { left: one(x.left), right: one(x.right) };
+}
+
+export type BattlePopup = { id: string; side: BattleSide; coins: number; count: number; label: string; avatar?: string | null };
 
 type Incoming = { id: string; fromSide: BattleSide; fromName: string; at: number };
 
@@ -47,6 +60,8 @@ export const BATTLE_RED_MS = 15 * 1000;
 const RESULT_MS = 7000;
 /** OK-BUTTON-PATCH: how long an invite stays open (red ring runs this long, then the request fails on both phones). */
 export const BATTLE_INVITE_MS = 20_000;
+/** SUPPORT-LIVE-PATCH: after the other host taps Ok the round starts by itself this long afterwards (nobody taps Play again). */
+export const BATTLE_AUTO_START_MS = 2000;
 const STATE_EVERY_MS = 2000;
 
 /** Colors requested: left = yellow, right = orange. */
@@ -109,6 +124,9 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   const [incoming, setIncoming] = React.useState<Incoming | null>(null);
   const incomingRef = React.useRef<Incoming | null>(null);
   const [popups, setPopups] = React.useState<BattlePopup[]>([]);
+  const [starting, setStarting] = React.useState<string | null>(null); // SUPPORT-LIVE-PATCH: Ok tapped -> auto start in 2s
+  const startingIdRef = React.useRef<string | null>(null);
+  const startingTimerRef = React.useRef<number | null>(null);
   const [now, setNow] = React.useState(() => Date.now());
 
   const srcRef = React.useRef(`b_${Math.random().toString(36).slice(2, 10)}`);
@@ -146,7 +164,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     if (!b) return;
     emit({
       t: 'battle-state', id: b.id, phase: b.phase, left: b.left, right: b.right,
-      remainMs: Math.max(0, b.endsAt - Date.now()), winner: b.winner,
+      remainMs: Math.max(0, b.endsAt - Date.now()), winner: b.winner, top: b.top,
     });
   }, [emit]);
 
@@ -170,6 +188,24 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     pendingRef.current = null;
     setPending(null);
   }, []);
+
+  /** SUPPORT-LIVE-PATCH: the Play circle stays on both screens for 2s, then the round starts by itself (A = authority, B = guest). */
+  const scheduleStart = React.useCallback((id: string) => {
+    if (battleRef.current?.phase === 'running') return;
+    if (startingIdRef.current === id) return;
+    startingIdRef.current = id;
+    setStarting(id);
+    pendingRef.current = null;
+    setPending(null);
+    if (startingTimerRef.current) window.clearTimeout(startingTimerRef.current);
+    startingTimerRef.current = window.setTimeout(() => {
+      if (startingIdRef.current !== id) return;
+      startingIdRef.current = null;
+      setStarting(null);
+      if (battleRef.current?.phase === 'running') return;
+      if (latest.current.mySide === 'left') startAsAuthority(id); else openAsGuest(id);
+    }, BATTLE_AUTO_START_MS);
+  }, [startAsAuthority, openAsGuest]);
 
   const addScore = React.useCallback((side: BattleSide, coins: number) => {
     const b = battleRef.current;
@@ -205,12 +241,11 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     const side = latest.current.mySide;
     const payload = { t: 'battle-accept', id: inv.id, side };
     emit(payload);
-    if (side === 'left') { startAsAuthority(inv.id); return; }
+    if (side === 'left') { scheduleStart(inv.id); return; } // SUPPORT-LIVE-PATCH: starts 2s after Ok
     // INSTANT-OPEN (B / right): open the round on my side the moment I tap Accept; A confirms + syncs it with battle-state.
     if (battleRef.current?.phase !== 'running') {
       acceptedIdRef.current = inv.id;
-      seenGiftsRef.current = new Set();
-      setBattleBoth({ id: inv.id, phase: 'running', left: 0, right: 0, endsAt: Date.now() + BATTLE_DURATION_MS, winner: null });
+      scheduleStart(inv.id); // SUPPORT-LIVE-PATCH: the round opens by itself 2s after Ok (A's battle-state may open it earlier)
     }
     // keep telling A until his confirmation arrives (a lost signal must not cancel the round)
     [800, 2000, 4000].forEach((ms) => window.setTimeout(() => { if (acceptedIdRef.current === inv.id) emit(payload); }, ms));
@@ -220,7 +255,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
       if (battleRef.current?.id === inv.id && battleRef.current.phase === 'running') setBattleBoth(null);
       latest.current.onToast?.('Could not start the round');
     }, 12_000);
-  }, [emit, startAsAuthority]);
+  }, [emit, scheduleStart]);
 
   const decline = React.useCallback(() => {
     const inv = incomingRef.current;
@@ -275,13 +310,13 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         const id = String(msg.id || '');
         if (pendingRef.current === id) {
           // INSTANT-OPEN-V2: the other host accepted my invite -> open on my side right now (no waiting for the next battle-state)
-          if (me.mySide === 'right') openAsGuest(id);
+          if (me.mySide === 'right') scheduleStart(id); // SUPPORT-LIVE-PATCH
           pendingRef.current = null;
           setPending(null);
         }
         if (me.mySide === 'left' && id && !seenMsgRef.current.has(`a:${id}`)) {
           seenMsgRef.current.add(`a:${id}`);
-          startAsAuthority(id);
+          scheduleStart(id); // SUPPORT-LIVE-PATCH
         } else if (me.mySide === 'left' && battleRef.current?.id === id && battleRef.current.phase === 'running') {
           broadcastState(); // BATTLE-RELIABLE: B repeated his Accept = he has not got the round yet -> send the state to him again now
         }
@@ -310,6 +345,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
           right: Number(msg.right) || 0,
           endsAt: Date.now() + Math.max(0, Number(msg.remainMs) || 0),
           winner: msg.winner === 'left' || msg.winner === 'right' || msg.winner === 'draw' ? msg.winner : null,
+          top: parseTop(msg.top) ?? (prev?.id === id ? prev.top : undefined), // SUPPORT-LIVE-PATCH
         };
         setBattleBoth(next);
         if (phase === 'ended') scheduleClear(id);
@@ -331,6 +367,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
           right: Number(msg.right) || 0,
           endsAt: Date.now() + Math.max(0, Number(msg.remainMs) || 0),
           winner: msg.winner === 'left' || msg.winner === 'right' || msg.winner === 'draw' ? msg.winner : null,
+          top: parseTop(msg.top) ?? (prev?.id === id ? prev.top : undefined), // SUPPORT-LIVE-PATCH
         };
         setBattleBoth(next);
         if (phase === 'ended') scheduleClear(id);
@@ -345,14 +382,14 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         seenGiftsRef.current.add(gid);
         // the authority sums the other host's gifts (its own are summed from its own polling)
         if (me.mySide === 'left' && side === 'right') addScore('right', coins);
-        addPopup({ id: gid, side, coins, count: Number(msg.count) || 1, label: String(msg.label || '') });
+        addPopup({ id: gid, side, coins, count: Number(msg.count) || 1, label: String(msg.label || ''), avatar: typeof msg.fx?.fromAvatar === 'string' && msg.fx.fromAvatar ? msg.fx.fromAvatar : null }); // SUPPORT-LIVE-PATCH
         // GIFT-FX-ALL-PATCH: a gift sent in the OTHER host's room is also played here (hosts, viewers, supporter see it).
         // Animation only: the coins/profit of that gift are handled by the room it was really sent in.
         try {
           const fx: any = msg.fx;
           if (fx && fx.giftId && String(fx.hostId || '') !== String(me.roomHostId || '')) {
             window.dispatchEvent(new CustomEvent('stooorna:gift-play', {
-              detail: { giftId: fx.giftId, fromId: fx.fromId, hostId: me.roomHostId, count: Math.max(1, Number(fx.count) || 1), remote: true },
+              detail: { giftId: fx.giftId, fromId: fx.fromId, fromName: fx.fromName, fromAvatar: fx.fromAvatar ?? null, hostId: me.roomHostId, count: Math.max(1, Number(fx.count) || 1), remote: true },
             }));
           }
         } catch { /* ignore */ }
@@ -361,7 +398,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
       default:
         return true;
     }
-  }, [addScore, startAsAuthority, openAsGuest, broadcastState, emit]);
+  }, [addScore, startAsAuthority, openAsGuest, scheduleStart, broadcastState, emit]);
 
   /* ── authority loop: finish at 0 + heartbeat ── */
   React.useEffect(() => {
@@ -403,7 +440,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
           t: 'battle-view', id: b.id, phase: b.phase,
           left: b.right, right: b.left,
           remainMs: b.phase === 'running' ? Math.max(0, b.endsAt - Date.now()) : 0,
-          winner: mirrorW(b.winner), ts: Date.now(),
+          winner: mirrorW(b.winner), top: b.top ? { left: b.top.right, right: b.top.left } : undefined, ts: Date.now(),
         });
       } catch { /* ignore */ }
     };
@@ -447,12 +484,12 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
           const forGuest = cur.mySide === 'left' && cur.peerUserId && sameId(e.toUserId, cur.peerUserId);
           const side: BattleSide = cur.mySide === 'right' ? 'right' : forGuest ? 'right' : 'left';
           if (cur.mySide === 'left') addScore(side, coins);
-          addPopup({ id: gid, side, coins, count: Number(e.count) || 1, label: String(e.toName || '') });
+          addPopup({ id: gid, side, coins, count: Number(e.count) || 1, label: String(e.fromName || e.toName || ''), avatar: typeof e.fromAvatar === 'string' && e.fromAvatar ? e.fromAvatar : null }); // SUPPORT-LIVE-PATCH
           // tell the other host + the viewers (authority re-broadcasts the totals anyway)
           const avatar = typeof e.toAvatar === 'string' && e.toAvatar.length <= 200 ? e.toAvatar : null;
           emit({
-            t: 'battle-gift', id, gid: cur.mySide === 'right' ? gid : `${gid}#l`, side, coins, count: Number(e.count) || 1, label: String(e.toName || ''),
-            fx: { giftId: String(e.giftId || ''), fromId: String(e.fromId || ''), toName: String(e.toName || ''), toAvatar: avatar, count: Math.max(1, Number(e.count) || 1), hostId: String(cur.roomHostId || '') },
+            t: 'battle-gift', id, gid: cur.mySide === 'right' ? gid : `${gid}#l`, side, coins, count: Number(e.count) || 1, label: String(e.fromName || e.toName || ''),
+            fx: { giftId: String(e.giftId || ''), fromId: String(e.fromId || ''), fromName: String(e.fromName || ''), fromAvatar: typeof e.fromAvatar === 'string' && e.fromAvatar.length <= 300 ? e.fromAvatar : null, toName: String(e.toName || ''), toAvatar: avatar, count: Math.max(1, Number(e.count) || 1), hostId: String(cur.roomHostId || '') },
           });
         }
       } catch { /* ignore */ }
@@ -479,11 +516,11 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     const forGuest = cur.mySide === 'left' && cur.peerUserId && sameId(e.toUserId, cur.peerUserId);
     const side: BattleSide = cur.mySide === 'right' ? 'right' : forGuest ? 'right' : 'left';
     if (cur.mySide === 'left') addScore(side, coins);
-    addPopup({ id: gid, side, coins, count: Number(e.count) || 1, label: String(e.toName || '') });
+    addPopup({ id: gid, side, coins, count: Number(e.count) || 1, label: String(e.fromName || e.toName || ''), avatar: typeof e.fromAvatar === 'string' && e.fromAvatar ? e.fromAvatar : null }); // SUPPORT-LIVE-PATCH
     const avatar = typeof e.toAvatar === 'string' && e.toAvatar.length <= 200 ? e.toAvatar : null;
     emit({
-      t: 'battle-gift', id: b.id, gid: cur.mySide === 'right' ? gid : `${gid}#l`, side, coins, count: Number(e.count) || 1, label: String(e.toName || ''),
-      fx: { giftId: String(e.giftId || ''), fromId: String(e.fromId || ''), toName: String(e.toName || ''), toAvatar: avatar, count: Math.max(1, Number(e.count) || 1), hostId: String(cur.roomHostId || '') },
+      t: 'battle-gift', id: b.id, gid: cur.mySide === 'right' ? gid : `${gid}#l`, side, coins, count: Number(e.count) || 1, label: String(e.fromName || e.toName || ''),
+      fx: { giftId: String(e.giftId || ''), fromId: String(e.fromId || ''), fromName: String(e.fromName || ''), fromAvatar: typeof e.fromAvatar === 'string' && e.fromAvatar.length <= 300 ? e.fromAvatar : null, toName: String(e.toName || ''), toAvatar: avatar, count: Math.max(1, Number(e.count) || 1), hostId: String(cur.roomHostId || '') },
     });
   }, [addScore, emit]);
 
@@ -509,7 +546,9 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     if (acceptedIdRef.current === id) acceptedIdRef.current = null;
     incomingRef.current = null;
     setIncoming(null);
-    setBattleBoth({ id, phase, left, right, endsAt: Date.now() + Math.max(0, Number(s.remainMs) || 0), winner });
+    const pt = parseTop(s?.top); // SUPPORT-LIVE-PATCH
+    const top = pt ? (mirror ? { left: pt.right, right: pt.left } : pt) : (same ? prev!.top : undefined);
+    setBattleBoth({ id, phase, left, right, endsAt: Date.now() + Math.max(0, Number(s.remainMs) || 0), winner, top });
     if (phase === 'ended') scheduleClear(id);
   }, []);
 
@@ -521,13 +560,14 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     acceptedIdRef.current = null;
     incomingRef.current = null; setIncoming(null);
     setPopups([]);
+    startingIdRef.current = null; setStarting(null); // SUPPORT-LIVE-PATCH
     seenGiftsRef.current = new Set();
   }, [active]);
 
-  React.useEffect(() => () => { if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current); }, []);
+  React.useEffect(() => () => { if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current); if (startingTimerRef.current) window.clearTimeout(startingTimerRef.current); }, []);
 
   const remainMs = battle?.phase === 'running' ? Math.max(0, battle.endsAt - now) : 0;
-  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, popups, play, accept, decline, handleMessage, ingestGift, applyExternal };
+  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, starting: !!starting, startingId: starting, popups, play, accept, decline, handleMessage, ingestGift, applyExternal };
 }
 
 /* ───────────────────────── UI ───────────────────────── */
@@ -555,9 +595,11 @@ export function BattleGiftDimStyle({ on, topPx }: { on: boolean; topPx?: number 
   }
   const from = Math.max(0, top - 34);
   const to = top + 96;
+  const chipTop = top + 10; // SUPPORT-LIVE-PATCH: supporter name chip sits right under the line where the gift animation starts
   const grad = `linear-gradient(to bottom, transparent 0, transparent ${from}px, rgba(0,0,0,0.35) ${Math.round((from + to) / 2)}px, #000 ${to}px, #000 100%)`;
   return (
     <style>{`
+:root { --stooorna-gift-chip-top: ${chipTop}px; }
 [data-live-gift-fx] {
   pointer-events: none !important;
   -webkit-mask-image: ${grad} !important;
@@ -575,8 +617,12 @@ export function BattleGiftDimStyle({ on, topPx }: { on: boolean; topPx?: number 
  * OK-BUTTON-PATCH: there is no Accept | Decline box any more.
  */
 export function BattlePlayButton({
-  visible, waiting, incoming, ringKey, ringMs = BATTLE_INVITE_MS, topPx, onPlay, onOk,
+  visible, waiting, incoming, auto, yPx, ringKey, ringMs = BATTLE_INVITE_MS, topPx, onPlay, onOk,
 }: {
+  /** SUPPORT-LIVE-PATCH: Ok was tapped -> the circle shows Play for 2s and presses itself */
+  auto?: boolean;
+  /** SUPPORT-LIVE-PATCH: exact centre of the circle (top of the middle line). Falls back to topPx / 2. */
+  yPx?: number | null;
   visible: boolean;
   waiting: boolean;
   incoming?: boolean;
@@ -589,7 +635,8 @@ export function BattlePlayButton({
   const SIZE = 46;
   const R = (SIZE - 4) / 2;
   const C = 2 * Math.PI * R;
-  const mode: 'play' | 'waiting' | 'ok' = incoming ? 'ok' : waiting ? 'waiting' : 'play';
+  const mode: 'play' | 'waiting' | 'ok' | 'auto' = auto ? 'auto' : incoming ? 'ok' : waiting ? 'waiting' : 'play';
+  const dur = mode === 'auto' ? BATTLE_AUTO_START_MS : ringMs;
   return (
     <AnimatePresence>
       {visible ? (
@@ -597,16 +644,17 @@ export function BattlePlayButton({
           key="battle-play"
           type="button"
           onClick={mode === 'ok' ? onOk : mode === 'play' ? onPlay : undefined}
-          disabled={mode === 'waiting'}
+          disabled={mode === 'waiting' || mode === 'auto'}
           aria-label={mode === 'ok' ? 'Ok' : 'Start a game round'}
           initial={{ opacity: 0, scale: 0.6 }}
-          animate={{ opacity: 1, scale: 1 }}
+          animate={mode === 'auto' ? { opacity: 1, scale: [1, 1, 1, 0.86, 1] } : { opacity: 1, scale: 1 }}
+          transition={mode === 'auto' ? { scale: { duration: BATTLE_AUTO_START_MS / 1000, times: [0, 0.7, 0.85, 0.93, 1], ease: 'easeInOut' } } : undefined}
           exit={{ opacity: 0, scale: 0.6 }}
           whileTap={{ scale: 0.92 }}
           style={{
             position: 'absolute',
             left: '50%',
-            top: topPx != null ? topPx / 2 : '25%',
+            top: yPx != null ? yPx : topPx != null ? topPx / 2 : '25%',
             transform: 'translate(-50%, -50%)',
             zIndex: 93,
             display: 'flex',
@@ -616,8 +664,8 @@ export function BattlePlayButton({
             height: SIZE,
             padding: 0,
             borderRadius: '50%',
-            border: mode === 'play' ? '2px solid rgba(255,255,255,0.9)' : '2px solid rgba(255,255,255,0.25)',
-            cursor: mode === 'waiting' ? 'default' : 'pointer',
+            border: (mode === 'play' || mode === 'auto') ? '2px solid rgba(255,255,255,0.9)' : '2px solid rgba(255,255,255,0.25)',
+            cursor: mode === 'waiting' || mode === 'auto' ? 'default' : 'pointer',
             color: '#fff',
             fontWeight: 900,
             background: mode === 'waiting'
@@ -627,7 +675,7 @@ export function BattlePlayButton({
             flexDirection: 'column',
           }}
         >
-          {mode === 'play' ? (
+          {mode === 'play' || mode === 'auto' ? (
             <>
               <Play size={16} fill="#fff" strokeWidth={0} />
               <span style={{ fontSize: '0.55rem', lineHeight: 1, letterSpacing: 0.3 }}>Play</span>
@@ -656,7 +704,7 @@ export function BattlePlayButton({
                 strokeDasharray={C}
                 initial={{ strokeDashoffset: 0 }}
                 animate={{ strokeDashoffset: C }}
-                transition={{ duration: ringMs / 1000, ease: 'linear' }}
+                transition={{ duration: dur / 1000, ease: 'linear' }}
               />
             </svg>
           ) : null}
@@ -795,6 +843,8 @@ export function BattleOverlay({
   const total = battle ? battle.left + battle.right : 0;
   const leftPct = battle && total > 0 ? Math.min(92, Math.max(8, (battle.left / total) * 100)) : 50;
   const red = running && remainMs <= BATTLE_RED_MS;
+  // SUPPORT-LIVE-PATCH: first three supporters of each half, pictures stuck together next to the middle line (follows the screen halves)
+  const topSup = battle?.top && heightPx != null ? (flip ? { left: battle.top.right, right: battle.top.left } : battle.top) : null;
 
   return (
     <div
@@ -814,7 +864,7 @@ export function BattleOverlay({
         >
           {/* the line: yellow (left) | orange (right) */}
           <div style={{ width: '100%', position: 'relative', height: 20, display: 'flex' }}>
-            <div style={{ width: `${leftPct}%`, background: BATTLE_COLORS.left, transition: 'width 600ms ease', position: 'relative' }}>
+            <div style={{ width: `${leftPct}%`, background: BATTLE_COLORS.left, transition: 'width 350ms ease', position: 'relative' }}>
               <span style={{ position: 'absolute', left: 8, top: 0, lineHeight: '20px', fontWeight: 900, fontSize: '0.8rem', color: '#2b2000' }}>
                 {fmtCoins(battle.left)}
               </span>
@@ -874,13 +924,16 @@ export function BattleOverlay({
                     maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                   }}
                 >
-                  🎁{p.count > 1 ? ` ×${p.count}` : ''} +{fmtCoins(p.coins)}{p.label ? ` · ${p.label}` : ''}
+                  {p.avatar ? <img src={p.avatar} alt="" referrerPolicy="no-referrer" style={{ width: 14, height: 14, borderRadius: '50%', objectFit: 'cover', verticalAlign: 'middle', marginRight: 4 }} /> : null}
+                  {p.label ? `${p.label} · ` : ''}🎁{p.count > 1 ? ` ×${p.count}` : ''} +{fmtCoins(p.coins)}
                 </motion.div>
               ))}
             </AnimatePresence>
           </div>
         ))}
       </div>
+
+      {topSup ? (<><BattleSupCluster list={topSup.left} side="left" /><BattleSupCluster list={topSup.right} side="right" /></>) : null}
 
       {/* result rectangles */}
       <AnimatePresence>
@@ -915,6 +968,36 @@ export function BattleOverlay({
           </motion.div>
         ) : null}
       </AnimatePresence>
+    </div>
+  );
+}
+
+/** SUPPORT-LIVE-PATCH: up to 3 profile pictures, stuck together, rank 1 touches the middle line. */
+function BattleSupCluster({ list, side }: { list: BattleSupporter[]; side: BattleSide }) {
+  if (!list || !list.length) return null;
+  const SZ = 28;
+  const ordered = side === 'left' ? [...list].reverse() : list;
+  return (
+    <div style={{ position: 'absolute', bottom: 6, [side === 'left' ? 'right' : 'left']: 'calc(50% + 3px)', display: 'flex', flexDirection: 'row', alignItems: 'center', pointerEvents: 'none', zIndex: 6 } as React.CSSProperties}>
+      {ordered.map((sp, i) => {
+        const rank = side === 'left' ? list.length - i : i + 1;
+        const ring = rank === 1 ? '#facc15' : rank === 2 ? '#e5e7eb' : '#d97706';
+        return (
+          <div
+            key={sp.userId}
+            title={sp.name}
+            style={{
+              width: SZ, height: SZ, borderRadius: '50%', marginLeft: i === 0 ? 0 : -9, overflow: 'hidden', flexShrink: 0,
+              border: `2px solid ${ring}`, background: '#1f2937', zIndex: 10 - rank, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontWeight: 900, fontSize: '0.7rem', boxShadow: '0 1px 4px rgba(0,0,0,0.55)',
+            }}
+          >
+            {sp.avatarUrl
+              ? <img src={sp.avatarUrl} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              : (sp.name || '?').trim().charAt(0).toUpperCase()}
+          </div>
+        );
+      })}
     </div>
   );
 }

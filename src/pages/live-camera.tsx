@@ -3723,6 +3723,8 @@ export default function LiveCameraPage() {
         waiting={battleApi.pending}
         incoming={!!battleApi.incoming}
         ringKey={battleApi.incomingId || battleApi.pendingId}
+        auto={battleApi.starting} // SUPPORT-LIVE-PATCH: 2s after Ok the round starts by itself
+        yPx={splitBottomPx != null ? Math.round((splitTopPx ?? 0) + (splitBottomPx - (splitTopPx ?? 0)) * 0.17) : null} // SUPPORT-LIVE-PATCH: top of the middle line
         topPx={splitBottomPx != null ? splitBottomPx + (splitTopPx ?? 0) : null}
         onPlay={battleApi.play}
         onOk={battleApi.accept}
@@ -3783,7 +3785,7 @@ export default function LiveCameraPage() {
           </div>
         </div>
       )}
-      <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} />
+      <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} currentUserAvatar={myAvatar} />
     </div>
   );
 }
