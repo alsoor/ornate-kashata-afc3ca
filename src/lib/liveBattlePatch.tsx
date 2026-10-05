@@ -487,6 +487,32 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     });
   }, [addScore, emit]);
 
+  /* ── BATTLE-SERVER-PATCH: apply the round kept by the SERVER (see liveSplitViewPatch / entry.ts /api/live-battle) ──
+   * Scores only ever grow, so each side takes the larger of what I already counted and what the server counted
+   * (the same gift can never be added twice). `mirror` = this phone shows the round with B on the left. */
+  const applyExternal = React.useCallback((s: any, mirror: boolean) => {
+    const id = String(s?.id || '');
+    if (!id) return;
+    const phase: 'running' | 'ended' = s.phase === 'ended' ? 'ended' : 'running';
+    let l = Number(s.left) || 0;
+    let r = Number(s.right) || 0;
+    if (mirror) { const t = l; l = r; r = t; }
+    const prev = battleRef.current;
+    if (prev && prev.id !== id && prev.phase === 'running') return; // another round is still on screen
+    if (!prev && phase === 'ended') return;                          // never resurrect a finished round
+    if (prev && prev.id === id && prev.phase === 'ended') return;
+    const same = !!prev && prev.id === id;
+    const left = same ? Math.max(prev!.left, l) : l;
+    const right = same ? Math.max(prev!.right, r) : r;
+    const winner: BattleView['winner'] = phase === 'ended' ? (left === right ? 'draw' : left > right ? 'left' : 'right') : null;
+    if (pendingRef.current === id) { pendingRef.current = null; setPending(null); }
+    if (acceptedIdRef.current === id) acceptedIdRef.current = null;
+    incomingRef.current = null;
+    setIncoming(null);
+    setBattleBoth({ id, phase, left, right, endsAt: Date.now() + Math.max(0, Number(s.remainMs) || 0), winner });
+    if (phase === 'ended') scheduleClear(id);
+  }, []);
+
   /* ── reset when the split ends ── */
   React.useEffect(() => {
     if (active) return;
@@ -501,7 +527,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   React.useEffect(() => () => { if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current); }, []);
 
   const remainMs = battle?.phase === 'running' ? Math.max(0, battle.endsAt - now) : 0;
-  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, popups, play, accept, decline, handleMessage, ingestGift };
+  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, popups, play, accept, decline, handleMessage, ingestGift, applyExternal };
 }
 
 /* ───────────────────────── UI ───────────────────────── */

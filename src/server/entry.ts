@@ -1302,7 +1302,86 @@ app.post("/api/live-gifts", guarded(async (req, res) => {
   rec.map.set(fromId, cur);
   rec.at = now;
   sup.set(room, rec);
+  try { liveBattleCount(room, c.toUserId, (Number.isFinite(c.price) ? c.price : 0) * count); } catch { /* ignore */ } // LIVE-BATTLE: round score kept by the server
   res.json({ ok: true, at });
+}));
+
+// ═══════════════ LIVE BATTLE — game round between two split hosts: the SERVER keeps the score ═══════════════
+// A (owner of the split) registers the round; every gift posted to /api/live-gifts is added to the right side here,
+// and every phone (hosts, supporters, viewers of both rooms) reads the same line from GET /api/live-battle.
+type LiveBattleRow = { id: string; a: string; b: string; startedAt: number; endsAt: number; left: number; right: number };
+const LIVE_BATTLE_MS = 4 * 60 * 1000;
+const LIVE_BATTLE_KEEP_MS = 12_000;
+const liveBattleMem = (): Map<string, LiveBattleRow> => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveBattle?: Map<string, LiveBattleRow> };
+  if (!g.__stooornaLiveBattle) g.__stooornaLiveBattle = new Map();
+  return g.__stooornaLiveBattle;
+};
+const bNorm = (s: unknown) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const bSameHost = (a: unknown, b: unknown) => !!bNorm(a) && bNorm(a) === bNorm(b);
+/** gift room keys look like `gifts-<hostId>` */
+const bRoomOf = (room: string, hostId: string) => { const r = bNorm(room); const h = bNorm(hostId); return !!r && !!h && (r === h || r.endsWith(h)); };
+const liveBattlePurge = () => {
+  const now = Date.now();
+  for (const [k, v] of liveBattleMem()) if (now - v.endsAt > 10 * 60 * 1000) liveBattleMem().delete(k);
+};
+function liveBattleCount(room: string, toUserId: string, coins: number) {
+  if (!room || !(coins > 0)) return;
+  const now = Date.now();
+  for (const row of liveBattleMem().values()) {
+    if (now >= row.endsAt) continue;
+    if (bRoomOf(room, row.a)) {
+      // gift in A's room: addressed to the guest B -> B, everything else -> A
+      if (bSameHost(toUserId, row.b)) row.right += coins; else row.left += coins;
+    } else if (bRoomOf(room, row.b)) {
+      row.right += coins; // gift in B's room -> B
+    }
+  }
+}
+const liveBattleView = (row: LiveBattleRow) => {
+  const now = Date.now();
+  const running = now < row.endsAt;
+  if (!running && now - row.endsAt > LIVE_BATTLE_KEEP_MS) return null;
+  const winner = running ? null : row.left === row.right ? "draw" : row.left > row.right ? "left" : "right";
+  return { id: row.id, a: row.a, b: row.b, phase: running ? "running" : "ended", left: row.left, right: row.right, remainMs: Math.max(0, row.endsAt - now), winner };
+};
+app.get("/api/live-battle", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const hostId = String(req.query.hostId || "").slice(0, 80);
+  if (!hostId) return res.json({ ok: true, battle: null });
+  liveBattlePurge();
+  let best: LiveBattleRow | null = null;
+  for (const row of liveBattleMem().values()) {
+    if ((bSameHost(row.a, hostId) || bSameHost(row.b, hostId)) && (!best || row.startedAt > best.startedAt)) best = row;
+  }
+  res.json({ ok: true, battle: best ? liveBattleView(best) : null });
+});
+app.post("/api/live-battle", guarded(async (req, res) => {
+  const u = await needUser(req, res);
+  if (!u) return;
+  if (!allow(`lb:${u.id}`, 30, 10_000)) return deny(res, 429, "rate_limited");
+  const body = (req.body || {}) as Record<string, unknown>;
+  const action = String(body.action || "start");
+  if (action !== "start" && action !== "end") return deny(res, 400, "bad action");
+  const id = String(body.id || "").slice(0, 60);
+  if (action === "end") {
+    // the split closed: forget the round so a later split never shows it again
+    const row = liveBattleMem().get(id);
+    if (row && (session.owns(u, row.a) || session.owns(u, row.b))) liveBattleMem().delete(id);
+    return res.json({ ok: true });
+  }
+  const a = String(body.a || "").slice(0, 80);
+  const b = String(body.b || "").slice(0, 80);
+  if (!id || !a || !b || bSameHost(a, b)) return deny(res, 400, "id, a and b required");
+  if (!session.owns(u, a) && !session.owns(u, b)) return deny(res, 403, "forbidden");
+  const mem = liveBattleMem();
+  if (mem.has(id)) return res.json({ ok: true, duplicate: true });
+  for (const [k, row] of mem) {
+    if (bSameHost(row.a, a) || bSameHost(row.b, a) || bSameHost(row.a, b) || bSameHost(row.b, b)) mem.delete(k);
+  }
+  const now = Date.now();
+  mem.set(id, { id, a, b, startedAt: now, endsAt: now + LIVE_BATTLE_MS, left: 0, right: 0 });
+  res.json({ ok: true });
 }));
 
 // ── سحب أرباح الدعم (بنك/PayPal): ملف مستقل server/withdrawals.ts ──

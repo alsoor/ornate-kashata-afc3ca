@@ -103,7 +103,8 @@ import {
   BattleGiftDimStyle,
 } from '@/lib/liveBattlePatch';
 import { giftUnitPrice } from '@/components/LiveCoinsDock'; // BATTLE-PATCH: gift price fallback
-import { useBattleGiftBridge, useSplitViewersFollow } from '@/lib/liveBattleFixPatch'; // BATTLE-FIX-PATCH: line moves on every gift + viewers see both
+import { useBattleGiftBridge } from '@/lib/liveBattleFixPatch'; // BATTLE-FIX-PATCH: line moves on every gift
+import { useSplitAnnounce, useSplitViewer, useBattleServerSync } from '@/lib/liveSplitViewPatch'; // SPLIT-VIEW-PATCH: both players visible in either room + server-side round score
 // VOICE-INVITE-PATCH (video): anyone in the room invites ONLINE people (not only people who are live); they get the Accept / Decline box anywhere in the app
 import {
   VoiceInviteButton,
@@ -472,6 +473,7 @@ export default function LiveCameraPage() {
   const duetSeenRef = useRef<Set<string>>(new Set());
   const handleDuetMsgRef = useRef<(msg: any) => boolean>(() => false);
   const handleBattleMsgRef = useRef<(msg: any) => boolean>(() => false); // BATTLE-PATCH
+  const splitViewMsgRef = useRef<(msg: any) => void>(() => {}); // SPLIT-VIEW-PATCH
 
   const playLocalVideo = useCallback(() => {
     const track = photoRef.current?.track || camRef.current; // PHOTO-PATCH
@@ -1979,12 +1981,34 @@ export default function LiveCameraPage() {
   });
   handleBattleMsgRef.current = battleApi.handleMessage;
   useBattleGiftBridge(battleApi.ingestGift, !!battleMySide); // BATTLE-FIX-PATCH
-  // BATTLE-FIX-PATCH: viewers of the INVITED host are moved to the owner's room, where both players are on screen
-  useSplitViewersFollow({
+  // SPLIT-VIEW-PATCH: nobody is moved. B tells HIS room who he is split with; a viewer of B's room opens the other half himself.
+  useSplitAnnounce({
     enabled: !!(joined && amHost && splitWith && !duet),
     roomHostId: String(hostId || myId || ''),
     owner: splitWith,
     send: sendDataPayload,
+  });
+  const splitViewApi = useSplitViewer({
+    enabled: !!(joined && isHostRoom && !amHost && !amGuest),
+    me: duetMe,
+    appIdFallback: AGORA_APP_ID,
+    setSplitWith,
+    onRemoteVideo: (track) => {
+      splitRemoteRef.current = track;
+      if (track) window.setTimeout(attachSplitRemote, 40);
+    },
+    muted: speakerMuted,
+  });
+  splitViewMsgRef.current = splitViewApi.handleMessage;
+  // SPLIT-VIEW-PATCH: the round score is kept by the server, every phone (host, supporter, viewer of either room) reads it
+  useBattleServerSync({
+    enabled: !!(joined && isHostRoom && (splitActive || battleApi.battle)),
+    roomHostId: String(hostId || myId || ''),
+    mySide: battleMySide,
+    peerUserId: battleMySide === 'left' ? (duet?.userId || null) : (splitWith?.userId || null),
+    battleId: battleApi.battle?.id ?? null,
+    battlePhase: battleApi.battle?.phase ?? null,
+    apply: battleApi.applyExternal,
   });
   const battleRunning = battleApi.battle?.phase === 'running';
   // GIFT-LINE-PATCH: the chat does NOT move by itself on a gift. Gift animation line:
@@ -2218,6 +2242,11 @@ export default function LiveCameraPage() {
             void sendDataPayload({ t: 'duet-set', guest: null, ts: t2 });
           }
         }
+        return true;
+      }
+      case 'duet-split': {
+        // SPLIT-VIEW-PATCH: the invited host announces his split to the viewers of his own room
+        if (String(msg.hostId || '') === String(hostId || '')) splitViewMsgRef.current(msg);
         return true;
       }
       case 'duet-moved': {
