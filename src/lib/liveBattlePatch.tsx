@@ -464,6 +464,29 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     return () => { stop = true; window.clearInterval(iv); };
   }, [mySide, battle?.id, battle?.phase, addScore, emit]);
 
+  /* ── BATTLE-FIX-PATCH: feed ONE gift event (seen by LiveCoinsDock's own polling) into the round ──
+   * Same maths as the polling above (same `gid`, so a gift is never counted twice). Used by liveBattleFixPatch,
+   * so the line moves whenever the gift animation plays, whatever room key the dock uses. */
+  const ingestGift = React.useCallback((room: string, e: any) => {
+    const b = battleRef.current;
+    const cur = latest.current;
+    if (!b || b.phase !== 'running' || !cur.mySide || !e || e.id == null) return;
+    const gid = `${room}:${e.id}`;
+    if (seenGiftsRef.current.has(gid)) return;
+    seenGiftsRef.current.add(gid);
+    const unit = Number(e.price) > 0 ? Number(e.price) : (cur.priceOf?.(String(e.giftId || '')) || 1);
+    const coins = Math.max(1, unit) * Math.max(1, Number(e.count) || 1);
+    const forGuest = cur.mySide === 'left' && cur.peerUserId && sameId(e.toUserId, cur.peerUserId);
+    const side: BattleSide = cur.mySide === 'right' ? 'right' : forGuest ? 'right' : 'left';
+    if (cur.mySide === 'left') addScore(side, coins);
+    addPopup({ id: gid, side, coins, count: Number(e.count) || 1, label: String(e.toName || '') });
+    const avatar = typeof e.toAvatar === 'string' && e.toAvatar.length <= 200 ? e.toAvatar : null;
+    emit({
+      t: 'battle-gift', id: b.id, gid: cur.mySide === 'right' ? gid : `${gid}#l`, side, coins, count: Number(e.count) || 1, label: String(e.toName || ''),
+      fx: { giftId: String(e.giftId || ''), fromId: String(e.fromId || ''), toName: String(e.toName || ''), toAvatar: avatar, count: Math.max(1, Number(e.count) || 1), hostId: String(cur.roomHostId || '') },
+    });
+  }, [addScore, emit]);
+
   /* ── reset when the split ends ── */
   React.useEffect(() => {
     if (active) return;
@@ -478,7 +501,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   React.useEffect(() => () => { if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current); }, []);
 
   const remainMs = battle?.phase === 'running' ? Math.max(0, battle.endsAt - now) : 0;
-  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, popups, play, accept, decline, handleMessage };
+  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, popups, play, accept, decline, handleMessage, ingestGift };
 }
 
 /* ───────────────────────── UI ───────────────────────── */

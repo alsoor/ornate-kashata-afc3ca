@@ -3162,8 +3162,9 @@ function HeaderStoryCircle({
   // the owner's circle draws the card; the guest's circle is hidden when the owner's circle is already in this strip.
   const isSplit = liveActive && liveKind === 'camera' && !!splitPartner;
   if (isSplit && !hasStory && splitPartner && !splitPartner.owner && stripIds?.has(splitPartner.userId)) return null;
-  const splitOwnerIsMe = !splitPartner || !splitPartner.owner;
-  const splitTarget = isSplit && splitPartner && splitPartner.owner
+  // BATTLE-FIX-PATCH: server `owner` = THIS host owns the room that shows the split (the old test was inverted -> the circle opened the guest's own room = one user only)
+  const splitOwnerIsMe = !splitPartner || !!splitPartner.owner;
+  const splitTarget = isSplit && splitPartner && !splitPartner.owner
     ? { id: splitPartner.userId, name: splitPartner.name, username: splitPartner.username, avatar: splitPartner.avatarUrl }
     : { id: userId, name: name || '', username, avatar: avatarUrl };
 
