@@ -267,6 +267,10 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
   } else if (!PACKS.some(p => p.coins === pack.coins)) {
     return { ok: false, error: 'Choose one of the available packs' };
   }
+  // polar-official-direct-open: open the official checkout in a real browser page (Polar cannot be embedded in an iframe).
+  // The tab is opened now, at the tap, so popup blockers allow it; it is pointed at the checkout URL once the server answers.
+  let pre: Window | null = null;
+  try { pre = window.open('about:blank', '_blank'); } catch { pre = null; }
   try {
     const r = await fetch('/api/polar/checkout', {
       method: 'POST',
@@ -279,13 +283,15 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
     });
     const d = await r.json().catch(() => ({})) as { url?: string; error?: string };
     if (!r.ok || !d.url) {
+      try { if (pre) pre.close(); } catch { /* ignore */ }
       const msg = isCustomPack && typeof d.error === 'string' && d.error.length > 0 && d.error.length < 140 ? d.error : 'Payment is not available right now';
       return { ok: false, error: msg };
     }
     try { localStorage.setItem(`stooorna_polar_pending_${userId}`, String(Date.now())); } catch { /* ignore */ }
-    openPolarCheckout(d.url, userId);   // slide-up page inside the app (no page navigation → the room stays open)
+    openPolarCheckout(d.url, userId, pre);   // slide-up page inside the app (no page navigation → the room stays open)
     return { ok: true, redirected: true };
   } catch {
+    try { if (pre) pre.close(); } catch { /* ignore */ }
     return { ok: false, error: 'Network error' };
   }
 }
@@ -295,13 +301,15 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
 // was kicked out ("Entering…"). Now it opens as a page that slides up over the room with an X on top; closing it just slides
 // it down. The room, the mic and the stream are never touched. Coins are still credited by the server webhook and picked up
 // by watchPolarCredit.
+/** true = if the browser blocks the new page, the in-app sheet shows an "Open checkout" button instead of the (blocked) iframe. */
+const POLAR_FALLBACK_BUTTON = true;
 let polarRoot: Root | null = null;
 let polarHost: HTMLDivElement | null = null;
 let polarStopWatch: (() => void) | null = null;
 
 function PolarCheckoutSheet({ url, onDone }: { url: string; onDone: () => void }) {
   const [shown, setShown] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(true);
   const [slow, setSlow] = useState(false);
   const [paid, setPaid] = useState(false);
   const closingRef = useRef(false);
@@ -369,6 +377,18 @@ function PolarCheckoutSheet({ url, onDone }: { url: string; onDone: () => void }
           </button>
         </div>
         <div style={{ position: 'relative', flex: 1, minHeight: 0, background: '#fff' }}>
+          {POLAR_FALLBACK_BUTTON ? (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24, background: '#0b0b0f', color: '#fff', textAlign: 'center' }}>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: '0.92rem', color: 'rgba(255,255,255,0.8)' }}>Continue to the official secure checkout</p>
+              <button
+                type="button"
+                onClick={() => { try { window.open(url, '_blank'); } catch { /* ignore */ } close(); }}
+                style={{ border: 'none', background: '#7c3aed', color: '#fff', borderRadius: 14, padding: '14px 26px', fontWeight: 800, fontSize: '1rem', cursor: 'pointer' }}
+              >
+                Open checkout
+              </button>
+            </div>
+          ) : (
           <iframe
             title="Checkout"
             src={src}
@@ -376,6 +396,7 @@ function PolarCheckoutSheet({ url, onDone }: { url: string; onDone: () => void }
             onLoad={() => setLoaded(true)}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#fff' }}
           />
+          )}
           {!loaded ? (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0b0f', color: 'rgba(255,255,255,0.7)', fontWeight: 700, fontSize: '0.86rem', pointerEvents: 'none' }}>
               Loading checkout…
@@ -403,11 +424,25 @@ function PolarCheckoutSheet({ url, onDone }: { url: string; onDone: () => void }
   );
 }
 
-function openPolarCheckout(url: string, userId: string) {
+function openPolarCheckout(url: string, userId: string, pre?: Window | null) {
   if (typeof document === 'undefined') return;
   try { polarStopWatch?.(); } catch { /* ignore */ }
   // keep watching after the sheet closes: the server credits the coins by webhook
   polarStopWatch = watchPolarCredit(userId, () => { polarStopWatch = null; });
+  // Official Polar site opens directly (real browser page). The live room stays open underneath.
+  if (url) {
+    let opened = false;
+    try {
+      if (pre && !pre.closed) {
+        try { pre.opener = null; } catch { /* ignore */ }
+        pre.location.href = url;
+        opened = true;
+      } else {
+        opened = !!window.open(url, '_blank');
+      }
+    } catch { opened = false; }
+    if (opened) return;
+  }
   if (polarRoot) { try { polarRoot.unmount(); } catch { /* ignore */ } polarRoot = null; }
   if (polarHost) { try { polarHost.remove(); } catch { /* ignore */ } polarHost = null; }
   const host = document.createElement('div');
@@ -686,7 +721,7 @@ export function grantAppCoins(targetUserId: string, coins: number): { ok: boolea
   return { ok: true, id };
 }
 
-export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRight = YELLOW_DOT_RIGHT }: { hostId?: string; currentUserId?: string; currentUserName?: string; yellowRight?: number }) {
+export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentUserAvatar, yellowRight = YELLOW_DOT_RIGHT }: { hostId?: string; currentUserId?: string; currentUserName?: string; currentUserAvatar?: string | null; yellowRight?: number }) {
   const uid = String(currentUserId || '');
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [coinsOpen, setCoinsOpen] = useState(false);
@@ -697,7 +732,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
   const [payError, setPayError] = useState('');
   const [paidToast, setPaidToast] = useState(false);
   const [appGiftNotice, setAppGiftNotice] = useState<{ id: string; coins: number; text: string } | null>(null);
-  const [playing, setPlaying] = useState<{ gift: GiftDefinition; key: number } | null>(null);
+  const [playing, setPlaying] = useState<{ gift: GiftDefinition; key: number; fromName?: string; fromAvatar?: string | null } | null>(null); // SUPPORT-LIVE-PATCH
   const [giftMsg, setGiftMsg] = useState('');
   const [customText, setCustomText] = useState('');
   const [tap, setTap] = useState<{ id: string; n: number } | null>(null);
@@ -706,7 +741,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
   const tapRef = useRef<{ id: string; n: number } | null>(null);
   const tapTimerRef = useRef<number>(0);
   const busyRef = useRef(false);
-  const queueRef = useRef<{ gift: GiftDefinition; toUserId?: string; toName?: string; toAvatar?: string | null }[]>([]);
+  const queueRef = useRef<{ gift: GiftDefinition; toUserId?: string; toName?: string; toAvatar?: string | null; fromName?: string; fromAvatar?: string | null }[]>([]);
   const [giftTarget, setGiftTarget] = useState<{ userId: string; name: string; avatarUrl?: string | null } | null>(null);
   const giftTargetRef = useRef<{ userId: string; name: string; avatarUrl?: string | null } | null>(null);
   const tagRestoreRef = useRef<(() => void) | null>(null);
@@ -846,7 +881,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
           const url = `/api/live-gifts?room=${encodeURIComponent(giftRoom)}` + (since === null ? '' : `&since=${since}`);
           const r = await fetch(url, { credentials: 'include', cache: 'no-store' });
           if (r.ok) {
-            const d = await r.json() as { events?: { at: number; giftId: string; fromId?: string; toUserId?: string; toName?: string; toAvatar?: string | null; fromKey?: string; count?: number; price?: number }[]; now?: number; leaders?: SupportLeader[] };
+            const d = await r.json() as { events?: { at: number; giftId: string; fromId?: string; toUserId?: string; toName?: string; toAvatar?: string | null; fromKey?: string; count?: number; price?: number; fromName?: string; fromAvatar?: string }[]; now?: number; leaders?: SupportLeader[] };
             if (typeof d.now === 'number') since = d.now;
             if (Array.isArray(d.leaders)) {
               const key = JSON.stringify(d.leaders);
@@ -870,7 +905,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
                 }
               }
               if (ev.fromKey === clientKeyRef.current) continue; // هديتي أنا تشتغل محلياً أصلاً
-              window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: ev.giftId, fromId: ev.fromId, toUserId: ev.toUserId, toName: ev.toName, toAvatar: ev.toAvatar, hostId, count: ev.count || 1, remote: true } }));
+              window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: ev.giftId, fromId: ev.fromId, toUserId: ev.toUserId, toName: ev.toName, toAvatar: ev.toAvatar, fromName: ev.fromName, fromAvatar: ev.fromAvatar || null, hostId, count: ev.count || 1, remote: true } }));
             }
           }
         } catch { /* ignore */ }
@@ -884,11 +919,11 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
   // تشغيل أنميشن هدية (يستقبل الحدث المحلي، وأي بث مستقبلي لباقي الحضور يرسل نفس الحدث)
   useEffect(() => {
     const onPlay = (e: Event) => {
-      const d = (e as CustomEvent).detail as { giftId?: string; count?: number; toUserId?: string; toName?: string; toAvatar?: string | null } | undefined;
+      const d = (e as CustomEvent).detail as { giftId?: string; count?: number; toUserId?: string; toName?: string; toAvatar?: string | null; fromName?: string; fromAvatar?: string | null } | undefined;
       const g = ALL_GIFTS.find(x => x.id === d?.giftId);
       if (!g) return;
       const n = Math.max(1, Math.min(COMBO_MAX, Math.floor(Number(d?.count) || 1)));
-      for (let i = 0; i < n; i++) queueRef.current.push({ gift: g, toUserId: d?.toUserId ? String(d.toUserId) : undefined, toName: d?.toName, toAvatar: d?.toAvatar ?? null });
+      for (let i = 0; i < n; i++) queueRef.current.push({ gift: g, toUserId: d?.toUserId ? String(d.toUserId) : undefined, toName: d?.toName, toAvatar: d?.toAvatar ?? null, fromName: d?.fromName, fromAvatar: d?.fromAvatar ?? null });
       // إذا ما في هدية شغالة الحين، ابدأ أول واحدة
       if (!playingRef.current) startNext();
     };
@@ -901,7 +936,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     const next = queueRef.current.shift();
     playingRef.current = !!next;
     applyGiftTarget(next?.toUserId, next?.toName, next?.toAvatar);
-    setPlaying(next ? { gift: next.gift, key: ++playKeyRef.current } : null);
+    setPlaying(next ? { gift: next.gift, key: ++playKeyRef.current, fromName: next.fromName, fromAvatar: next.fromAvatar ?? null } : null);
   }
 
   // يوجّه الأنميشن (التاج/الشبح) على صورة المتحدث المستلم بدل صاحب البث: يعلّم صورته بـ data-gift-host مؤقتاً
@@ -1036,7 +1071,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
     flashGiftMsg(`تم خصم ${fmtCoins(price * sent)} من رصيدك`);
     setGiftsOpen(false);
     // تشغيل الأنميشن عندي (بعدد المرات). الإرسال لباقي الحضور يتم تحت عبر /api/live-gifts.
-    window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: gift.id, fromId: uid, hostId, toUserId: target.userId, toName: target.name, toAvatar: target.avatarUrl ?? null, count: sent } }));
+    window.dispatchEvent(new CustomEvent('stooorna:gift-play', { detail: { giftId: gift.id, fromId: uid, hostId, toUserId: target.userId, toName: target.name, toAvatar: target.avatarUrl ?? null, fromName: String(currentUserName || ''), fromAvatar: currentUserAvatar ?? null, count: sent } }));
     // 50/50 once (same stable key as remote pollers): half recipient, half app Profits
     const total = price * sent;
     const ckStable = `split_${uid}_${target.userId}_${gift.id}_${sent}_${price}`;
@@ -1058,6 +1093,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
         price,
         fromId: uid,
         fromName: String(currentUserName || ''),
+        fromAvatar: currentUserAvatar ?? null, // SUPPORT-LIVE-PATCH
         toUserId: target.userId,
         toName: target.name,
         toAvatar: target.avatarUrl ?? null,
@@ -1067,7 +1103,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
         alreadyDeducted: true,
         supportPatch: true,
       }),
-    }).catch(() => { /* ignore */ });
+    }).then(() => { try { window.dispatchEvent(new CustomEvent('stooorna:battle-poke')); } catch { /* ignore */ } }) // SUPPORT-LIVE-PATCH: score refreshes the moment the server has the gift
+      .catch(() => { /* ignore */ });
   }
 
   // كل نقرة على الهدية تزيد العداد 1 2 3 ... وبعد ما يوقف النقر تنرسل
@@ -1478,6 +1515,23 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, yellowRi
       {playing ? (
         <div data-live-gift-fx="1" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 9500 }}>
           <playing.gift.Animation key={playing.key} onDone={onGiftDone} />
+        </div>
+      ) : null}
+      {/* SUPPORT-LIVE-PATCH: the supporter's name (+ picture) right next to the gift that is playing */}
+      {playing?.fromName ? (
+        <div
+          data-live-gift-from="1"
+          style={{
+            position: 'fixed', left: '50%', transform: 'translateX(-50%)', top: 'var(--stooorna-gift-chip-top, 24%)', zIndex: 9501,
+            pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 6, padding: '3px 12px 3px 3px', maxWidth: '82%',
+            borderRadius: 999, background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.28)', color: '#fff',
+            fontWeight: 800, fontSize: '0.78rem', boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
+          }}
+        >
+          {playing.fromAvatar
+            ? <img src={playing.fromAvatar} alt="" referrerPolicy="no-referrer" style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+            : <span style={{ width: 22, height: 22, borderRadius: '50%', background: '#334155', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.68rem', flexShrink: 0 }}>{playing.fromName.trim().charAt(0).toUpperCase()}</span>}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{playing.fromName} 🎁</span>
         </div>
       ) : null}
 
