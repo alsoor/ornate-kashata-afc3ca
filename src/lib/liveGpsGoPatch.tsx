@@ -35,15 +35,18 @@ export type GoPerson = { id: string; name?: string | null; username?: string | n
 
 const GO_URL = '/api/live-gps-go';
 
-async function goPost(body: Record<string, unknown>): Promise<any | null> {
+type GoPostResult = { ok: boolean; status: number; data: any };
+async function goPost(body: Record<string, unknown>): Promise<GoPostResult> {
   try {
     const r = await fetch(GO_URL, {
       method: 'POST', credentials: 'include', cache: 'no-store',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
-    if (!r.ok) return null;
-    return await r.json().catch(() => ({}));
-  } catch { return null; }
+    const ct = r.headers.get('content-type') || '';
+    const data = ct.includes('json') ? await r.json().catch(() => ({})) : {};
+    // an HTML page (index.html fallback) instead of JSON = the server route does not exist
+    return { ok: r.ok && ct.includes('json'), status: r.status, data };
+  } catch { return { ok: false, status: 0, data: {} }; }
 }
 
 /* ───────────────────────────── store ───────────────────────────── */
@@ -55,9 +58,11 @@ type GoState = {
   incomingActive: GoReq | null;   // somebody I accepted is on the way to me
   acceptedPrompt: GoReq | null;   // "You want Go GPS Live" + Ok
   declinedNotice: GoReq | null;   // my request was declined
+  sending: boolean;               // Go pressed, waiting for the server to take the request
+  sendError: string | null;       // why the request could not be sent
 };
 
-let state: GoState = { me: '', outgoing: null, incomingPending: null, incomingActive: null, acceptedPrompt: null, declinedNotice: null };
+let state: GoState = { me: '', outgoing: null, incomingPending: null, incomingActive: null, acceptedPrompt: null, declinedNotice: null, sending: false, sendError: null };
 const listeners = new Set<() => void>();
 const setState = (p: Partial<GoState>) => { state = { ...state, ...p }; listeners.forEach(l => l()); };
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
@@ -148,15 +153,24 @@ function alertSound() {
 export async function sendGoRequest(
   me: GoPerson, to: GoPerson & { lat: number; lng: number }, myPos: LL | null,
 ): Promise<GoReq | null> {
+  if (state.sending) return null;
+  setState({ sending: true, sendError: null, declinedNotice: null });
   const res = await goPost({
     action: 'request',
     from: { id: String(me.id), name: me.name || me.username || 'User', username: String(me.username || '').replace(/^@/, ''), avatarUrl: me.avatarUrl ?? null },
     to: { id: String(to.id), name: to.name || to.username || 'User', username: String(to.username || '').replace(/^@/, ''), avatarUrl: to.avatarUrl ?? null, lat: to.lat, lng: to.lng },
     fromLat: myPos?.lat, fromLng: myPos?.lng,
   });
-  const req: GoReq | undefined = res?.request;
-  if (req) setState({ outgoing: req, declinedNotice: null });
-  return req || null;
+  const req: GoReq | undefined = res.data?.request;
+  if (res.ok && req) {
+    setState({ sending: false, outgoing: req, sendError: null });
+    return req;
+  }
+  const why = res.status === 0 ? 'no connection'
+    : (res.status === 404 || res.status === 405 || !res.ok && res.status === 200) ? 'server route /api/live-gps-go is not installed'
+    : `server error ${res.status}`;
+  setState({ sending: false, sendError: `Could not send the request (${why}). Try again.` });
+  return null;
 }
 
 /** Cancel a pending request / end a running trip (X, Stop, Done, map closed). */
@@ -182,6 +196,7 @@ export function pushGoPosition(lat: number, lng: number) {
 }
 
 export function ackGoDeclined() { if (state.declinedNotice) setState({ declinedNotice: null }); }
+export function clearGoSendError() { if (state.sendError) setState({ sendError: null }); }
 
 async function respondGo(req: GoReq, accept: boolean) {
   handledIncoming.add(req.id);
@@ -215,6 +230,7 @@ export function useLiveGpsGo() {
     cancelScheduledFinish,
     pushPosition: pushGoPosition,
     ackDeclined: ackGoDeclined,
+    clearSendError: clearGoSendError,
   };
 }
 

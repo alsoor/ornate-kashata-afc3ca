@@ -3480,9 +3480,10 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   const liveRoute = useLiveGpsRoute(liveNav && !goOut ? liveCenter : null, liveNavPos, liveNavGo ? 15000 : 30000);
   const liveNavLeft = useRouteCountdown(liveRoute, liveNavGo);
   const goLeftS = goOut ? goOutRoute.leftS : liveNavLeft;   // GPS-GO-APPROVAL-PATCH: time left measured along the road
-  const liveNavClear = () => { gpsGo.finish(); setLiveNav(null); setLiveNavGo(false); setLiveHighlightId(null); };
+  const liveNavClear = () => { gpsGo.clearSendError(); gpsGo.finish(); setLiveNav(null); setLiveNavGo(false); setLiveHighlightId(null); };
   const liveNavSelect = (t: { id: string; name: string; username: string; avatarUrl: string | null; lat: number; lng: number }) => {
     if (String(t.id) === String(myId || '')) return;
+    gpsGo.clearSendError();
     // GPS-GO-APPROVAL-PATCH: same person again = keep the request; another person = the old request ends
     if (gpsGo.outgoing) {
       if (String(gpsGo.outgoing.toId) === String(t.id)) { setLiveHighlightId(t.id); return; }
@@ -5450,9 +5451,14 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                             <p style={val}>{liveRoute ? `${liveRoute.road ? '' : '~'}${formatEta(liveRoute.durS)}` : '…'}</p>
                           </div>
                         </div>
-                        {goWait && String(goWait.toId) === String(liveNav.id) && (
+                        {(gpsGo.sending || (goWait && String(goWait.toId) === String(liveNav.id))) && (
                           <p style={{ margin: '0 0 10px', textAlign: 'center', color: '#fbbf24', fontSize: '0.78rem', fontWeight: 700 }}>
                             Waiting for @{liveNav.username || liveNav.name} to accept…
+                          </p>
+                        )}
+                        {gpsGo.sendError && (
+                          <p style={{ margin: '0 0 10px', textAlign: 'center', color: '#f87171', fontSize: '0.74rem', fontWeight: 800 }}>
+                            {gpsGo.sendError}
                           </p>
                         )}
                         {gpsGo.declinedNotice && String(gpsGo.declinedNotice.toId) === String(liveNav.id) && (
@@ -5474,7 +5480,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                       </div>
                     )}
                     {!liveNavGo ? (
-                      goWait && String(goWait.toId) === String(liveNav.id) ? (
+                      (gpsGo.sending || (goWait && String(goWait.toId) === String(liveNav.id))) ? (
                         <button
                           type="button"
                           disabled
