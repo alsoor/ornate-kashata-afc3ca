@@ -17650,6 +17650,9 @@ function PublicLiveCommentsPanel({
   const [tplOpen, setTplOpen] = useState(false);
   // ── Templates bubble (dock icon between LIVE and Settings): the photos/videos gallery now lives here instead of behind the sheet ──
   const [tplBubble, setTplBubble] = useState<null | { x: number }>(null);
+  // templates-favorites-bubble: yellow-framed Favorites page that opens on top of the Templates page
+  const [tplFavOpen, setTplFavOpen] = useState(false);
+  useEffect(() => { if (!tplBubble) setTplFavOpen(false); }, [tplBubble]);
   useEffect(() => {
     const onBubble = (e: Event) => {
       const d = (e as CustomEvent).detail as { open?: boolean; x?: number } | undefined;
@@ -18476,6 +18479,7 @@ function PublicLiveCommentsPanel({
     return [...m.values()].sort((a, b) => a.createdAt - b.createdAt);
   })();
   const mediaPosts = galleryRows.filter(isLiveMediaPost).slice().reverse();
+  const favPosts = mediaPosts.filter(vc => mediaFavIds.includes(vc.id));
   const commentCountOf = (id: string) => galleryRows.reduce((n, x) => (parseMediaComment(x.text)?.parentId === id ? n + 1 : n), 0);
   /** تعليق على منشور: إن كان المنشور في Templates يذهب لمخزنه المستقل، وإلا (منشور قديم) يبقى كما كان */
   const sendMediaComment = (parentId: string, body: string) => {
@@ -18544,9 +18548,9 @@ function PublicLiveCommentsPanel({
       onOpenProfile={() => openProfileOf(openMedia)}
     />
   ) : null;
-  const mediaFeedOverlay = (feedStartId && mediaPosts.length > 0) ? (
+  const mediaFeedOverlay = (feedStartId && (tplFavOpen ? favPosts : mediaPosts).length > 0) ? (
     <LiveMediaFeedOverlay
-      posts={mediaPosts}
+      posts={tplFavOpen ? favPosts : mediaPosts}
       startId={feedStartId}
       favIds={mediaFavIds}
       nameOf={displayName}
@@ -18581,6 +18585,7 @@ function PublicLiveCommentsPanel({
     } catch { setTplBubble({ x: 0 }); }
   };
   const closeTplBubble = () => {
+    setTplFavOpen(false);
     setTplBubble(null);
     try { window.dispatchEvent(new CustomEvent('stooorna:templates-bubble-close')); } catch { /* */ }
   };
@@ -18615,6 +18620,9 @@ function PublicLiveCommentsPanel({
                 <Film size={15} strokeWidth={2.2} />
               </span>
               <p style={{ margin: 0, flex: 1, color: '#7ee8f5', fontWeight: 800, fontSize: '0.98rem' }}>Templates</p>
+              <button type="button" aria-label="Favorites" onClick={() => setTplFavOpen(true)} style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(250,204,21,0.14)', color: '#facc15', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <Bookmark size={15} strokeWidth={2.2} fill={favPosts.length > 0 ? '#facc15' : 'none'} />
+              </button>
               <button type="button" aria-label="Close" onClick={closeTplBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <X size={15} strokeWidth={2.4} />
               </button>
@@ -18672,6 +18680,76 @@ function PublicLiveCommentsPanel({
     })(),
     document.body,
   ) : null;
+  const closeFavBubble = () => setTplFavOpen(false);
+  const favoritesBubble = (tplBubble && tplFavOpen && typeof document !== 'undefined') ? createPortal(
+    (() => {
+      const SIDE = 12;
+      const YEL = 'rgba(250,204,21,0.8)';
+      const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, tplBubble.x - SIDE));
+      return (
+        <>
+          <div onPointerDown={e => { e.preventDefault(); closeFavBubble(); }} style={{ position: 'fixed', inset: 0, zIndex: 10080, background: 'rgba(0,6,8,0.3)' }} />
+          <div
+            onClick={e => e.stopPropagation()}
+            onTouchStart={e => e.stopPropagation()}
+            onTouchMove={e => e.stopPropagation()}
+            onTouchEnd={e => e.stopPropagation()}
+            onWheel={e => e.stopPropagation()}
+            style={{
+              position: 'fixed', zIndex: 10085, left: SIDE, right: SIDE, bottom: 'calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
+              height: 'calc(100dvh - var(--stooorna-bottom-bar-h, 96px) - 30px - env(safe-area-inset-top, 0px))',
+              display: 'flex', flexDirection: 'column',
+              borderRadius: 22, padding: '14px 10px 10px',
+              background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
+              border: `1.5px solid ${YEL}`,
+              boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(250,204,21,0.14)',
+              animation: 'stooornaPlusFanIn 0.22s ease-out',
+              pointerEvents: 'auto',
+            }}
+          >
+            <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: tailLeft - 9, width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: `1.5px solid ${YEL}`, borderBottom: `1.5px solid ${YEL}`, borderBottomRightRadius: 4 }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
+              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(250,204,21,0.14)', color: '#facc15' }}>
+                <Bookmark size={15} strokeWidth={2.2} fill="#facc15" />
+              </span>
+              <p style={{ margin: 0, flex: 1, color: '#facc15', fontWeight: 800, fontSize: '0.98rem' }}>Favorites</p>
+              <button type="button" aria-label="Close favorites" onClick={closeFavBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <X size={15} strokeWidth={2.4} />
+              </button>
+            </div>
+            <div
+              style={{
+                flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
+                touchAction: 'pan-y', borderRadius: 14, padding: '0 2px 6px',
+              }}
+            >
+              {favPosts.length === 0 ? (
+                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No favorites yet</p>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, direction: 'ltr' }}>
+                  {favPosts.map(vc => (
+                    <LiveMediaTile
+                      key={vc.id}
+                      c={vc}
+                      liked={myId ? vc.likes.includes(myId) : false}
+                      name={displayName(vc)}
+                      commentCount={commentCountOf(vc.id)}
+                      onLike={() => { if (Date.now() - composerGuardRef.current < 700) return; toggleLike(vc.id); }}
+                      onOpen={() => { if (Date.now() - composerGuardRef.current < 700) return; setFeedStartId(vc.id); }}
+                      onOpenProfile={() => { if (Date.now() - composerGuardRef.current < 700) return; openProfileOf(vc); }}
+                      canDelete={!!myId && vc.userId === myId}
+                      onDelete={el => deleteRound(vc, el)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      );
+    })(),
+    document.body,
+  ) : null;
   // When header is forced open (e.g. after system gallery) but Saved Messages is closed,
   // keep Templates/media alive and skip the chat portal. If Saved Messages is open, fall through
   // so the public chat stays mounted underneath — closing Saved Messages returns to live chat, not "outside".
@@ -18680,6 +18758,7 @@ function PublicLiveCommentsPanel({
       <>
         <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />
         {templatesBubble}
+        {favoritesBubble}
         {mediaViewer}
         {mediaFeedOverlay}
         {mediaCommentsSheet}
@@ -18691,6 +18770,7 @@ function PublicLiveCommentsPanel({
     <>
     <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />
     {templatesBubble}
+    {favoritesBubble}
     {mediaViewer}
     {mediaFeedOverlay}
     {mediaCommentsSheet}
