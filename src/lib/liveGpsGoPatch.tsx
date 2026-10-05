@@ -37,16 +37,19 @@ const GO_URL = '/api/live-gps-go';
 
 type GoPostResult = { ok: boolean; status: number; data: any };
 async function goPost(body: Record<string, unknown>): Promise<GoPostResult> {
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const killer = window.setTimeout(() => { try { ctl?.abort(); } catch { /* ignore */ } }, 12000);
   try {
     const r = await fetch(GO_URL, {
       method: 'POST', credentials: 'include', cache: 'no-store',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      signal: ctl ? ctl.signal : undefined,
     });
     const ct = r.headers.get('content-type') || '';
     const data = ct.includes('json') ? await r.json().catch(() => ({})) : {};
     // an HTML page (index.html fallback) instead of JSON = the server route does not exist
     return { ok: r.ok && ct.includes('json'), status: r.status, data };
-  } catch { return { ok: false, status: 0, data: {} }; }
+  } catch { return { ok: false, status: 0, data: {} }; } finally { window.clearTimeout(killer); }
 }
 
 /* ───────────────────────────── store ───────────────────────────── */

@@ -895,6 +895,128 @@ app.post("/api/live-gps", liveGpsPost);
 app.get("/api/live-location", liveGpsGet);
 app.post("/api/live-location", liveGpsPost);
 
+// ── GPS Live "Go": طلب موافقة قبل الذهاب (ذاكرة السيرفر) — GET/POST /api/live-gps-go ──
+type GoGpsStatus = "pending" | "accepted" | "declined" | "cancelled" | "ended" | "expired";
+type GoGpsReq = {
+  id: string;
+  fromId: string; fromName: string; fromUsername: string; fromAvatar: string | null;
+  toId: string; toName: string; toUsername: string; toAvatar: string | null;
+  status: GoGpsStatus; at: number; updatedAt: number;
+  fromLat?: number; fromLng?: number; fromAt?: number; toLat?: number; toLng?: number;
+};
+const GOGPS_PENDING_TTL = 90_000;
+const GOGPS_ACCEPTED_TTL = 6 * 60 * 60 * 1000;
+const GOGPS_STALE_DRIVER_MS = 5 * 60 * 1000;
+const GOGPS_DONE_KEEP = 3 * 60 * 1000;
+const goGpsStore = (): Map<string, GoGpsReq> => {
+  const g = globalThis as typeof globalThis & { __stooornaGoReqStore?: Map<string, GoGpsReq> };
+  if (!g.__stooornaGoReqStore) g.__stooornaGoReqStore = new Map<string, GoGpsReq>();
+  return g.__stooornaGoReqStore;
+};
+const goStr = (v: unknown, max = 200) => String(v ?? "").slice(0, max);
+const goNum = (v: unknown): number | undefined => {
+  if (v === null || v === undefined || v === "") return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+};
+const goValidLL = (lat?: number, lng?: number) =>
+  lat !== undefined && lng !== undefined && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+const goGpsSweep = () => {
+  const store = goGpsStore();
+  const now = Date.now();
+  for (const [id, r] of store) {
+    if (r.status === "pending" && now - r.at > GOGPS_PENDING_TTL) { r.status = "expired"; r.updatedAt = now; }
+    if (r.status === "accepted") {
+      const last = Math.max(r.updatedAt, r.fromAt || 0);
+      if (now - r.at > GOGPS_ACCEPTED_TTL || now - last > GOGPS_STALE_DRIVER_MS) { r.status = "ended"; r.updatedAt = now; }
+    }
+    if (r.status !== "pending" && r.status !== "accepted" && now - r.updatedAt > GOGPS_DONE_KEEP) store.delete(id);
+  }
+};
+const liveGpsGoGet: RequestHandler = async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const u = await session.user(req).catch(() => null);
+  if (!u) return res.status(401).json({ error: "unauthorized", incoming: [], outgoing: [] });
+  const userId = String(req.query.userId || "").trim();
+  if (!userId) return res.status(400).json({ error: "userId required" });
+  if (!session.owns(u, userId)) return res.status(403).json({ error: "forbidden" });
+  goGpsSweep();
+  const incoming: GoGpsReq[] = [];
+  const outgoing: GoGpsReq[] = [];
+  for (const r of goGpsStore().values()) {
+    if (r.toId === userId && (r.status === "pending" || r.status === "accepted")) incoming.push(r);
+    if (r.fromId === userId) outgoing.push(r);
+  }
+  res.json({ incoming, outgoing });
+};
+const liveGpsGoPost: RequestHandler = async (req, res) => {
+  const u = await session.user(req).catch(() => null);
+  if (!u) return res.status(401).json({ error: "unauthorized" });
+  const body = (req.body || {}) as any;
+  goGpsSweep();
+  const store = goGpsStore();
+  const action = goStr(body.action, 20);
+  const now = Date.now();
+
+  if (action === "request") {
+    const f = body.from || {};
+    const t = body.to || {};
+    const fromId = goStr(f.id, 80);
+    const toId = goStr(t.id, 80);
+    if (!fromId || !toId || fromId === toId) return res.status(400).json({ error: "bad request" });
+    if (!session.owns(u, fromId)) return res.status(403).json({ error: "forbidden" });
+    // طلب واحد حيّ لكل سائق: أي طلب أقدم منه ينتهي الآن
+    for (const r of store.values()) {
+      if (r.fromId === fromId && (r.status === "pending" || r.status === "accepted")) {
+        r.status = r.status === "pending" ? "cancelled" : "ended";
+        r.updatedAt = now;
+      }
+    }
+    const fromLat = goNum(body.fromLat); const fromLng = goNum(body.fromLng);
+    const toLat = goNum(t.lat); const toLng = goNum(t.lng);
+    const rq: GoGpsReq = {
+      id: `go_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      fromId, fromName: goStr(f.name || f.username || "User", 80), fromUsername: goStr(f.username, 80), fromAvatar: f.avatarUrl ? goStr(f.avatarUrl, 2000) : null,
+      toId, toName: goStr(t.name || t.username || "User", 80), toUsername: goStr(t.username, 80), toAvatar: t.avatarUrl ? goStr(t.avatarUrl, 2000) : null,
+      status: "pending", at: now, updatedAt: now,
+    };
+    if (goValidLL(fromLat, fromLng)) { rq.fromLat = fromLat; rq.fromLng = fromLng; rq.fromAt = now; }
+    if (goValidLL(toLat, toLng)) { rq.toLat = toLat; rq.toLng = toLng; }
+    store.set(rq.id, rq);
+    return res.json({ request: rq });
+  }
+
+  const r = store.get(goStr(body.id, 80));
+  if (!r) return res.status(404).json({ error: "not found" });
+  const userId = goStr(body.userId, 80);
+  if (!userId || !session.owns(u, userId)) return res.status(403).json({ error: "forbidden" });
+
+  if (action === "respond") {
+    if (userId !== r.toId) return res.status(403).json({ error: "not allowed" });
+    if (r.status !== "pending") return res.json({ request: r });
+    r.status = body.accept ? "accepted" : "declined";
+    r.updatedAt = now;
+    return res.json({ request: r });
+  }
+  if (action === "cancel" || action === "end") {
+    if (userId !== r.fromId && userId !== r.toId) return res.status(403).json({ error: "not allowed" });
+    if (r.status === "pending") r.status = "cancelled";
+    else if (r.status === "accepted") r.status = "ended";
+    r.updatedAt = now;
+    return res.json({ request: r });
+  }
+  if (action === "position") {
+    if (userId !== r.fromId) return res.status(403).json({ error: "not allowed" });
+    const lat = goNum(body.lat); const lng = goNum(body.lng);
+    if (!goValidLL(lat, lng)) return res.status(400).json({ error: "bad position" });
+    r.fromLat = lat; r.fromLng = lng; r.fromAt = now;
+    return res.json({ request: r });
+  }
+  return res.status(400).json({ error: "unknown action" });
+};
+app.get("/api/live-gps-go", liveGpsGoGet);
+app.post("/api/live-gps-go", liveGpsGoPost);
+
 // ── Live gifts: بث الهدايا لكل من في البث (ذاكرة السيرفر، نفس أسلوب live-chat / room-signal) ──
 const liveGiftMem = () => {
   const g = globalThis as typeof globalThis & { __stooornaLiveGifts?: Map<string, Array<{ at: number; id: string; giftId: string; fromId: string; toUserId: string; toName: string; toAvatar: string; fromKey: string; count: number; price?: number; fromName?: string; fromAvatar?: string }>> };
