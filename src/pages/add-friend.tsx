@@ -17570,6 +17570,7 @@ function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
 function PublicLiveCommentsPanel({
   user,
   headerOpen,
+  onToggleHeader,
   onBusyChange,
 }: {
   user: { id?: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null } | null | undefined;
@@ -18416,6 +18417,22 @@ function PublicLiveCommentsPanel({
   useEffect(() => {
     if (headerOpen && chatLift !== 0 && !tplOpen) setChatLift(0);
   }, [headerOpen, chatLift, tplOpen]);
+  // الشات دايم مرفوع: أول ما الشيت يرتفع (الهيدر ينغلق) يطلع الشات مباشرة. النزول فقط من خط الشيت الأسود بأعلى الشات.
+  useEffect(() => {
+    if (!headerOpen) setChatLift(1);
+  }, [headerOpen]);
+  /** خط الشيت الأسود (أعلى الشات): ينزّل الشات بانميشن الهبوط ثم يفتح الشيت = رجوع لصفحة القصة */
+  const dropChatToStory = () => {
+    if (chatClosing) return;
+    if (chatCloseTimerRef.current) { window.clearTimeout(chatCloseTimerRef.current); chatCloseTimerRef.current = null; }
+    setChatClosing(true);
+    chatCloseTimerRef.current = window.setTimeout(() => {
+      chatCloseTimerRef.current = null;
+      setChatLift(0);
+      setChatClosing(false);
+      onToggleHeader?.();
+    }, 280);
+  };
   if (typeof document === 'undefined') return null;
   if (!user?.id) return null;
   // الخارج = منشورات Templates (المخزن المستقل) + ما كان منشوراً سابقاً داخل غرفة الشات (توافق مع القديم)
@@ -18523,7 +18540,6 @@ function PublicLiveCommentsPanel({
     tplCommit([...tplRowsRef.current, row]);
     void postTemplateRow(row as any);
     setTplOpen(false);
-    setChatLift(0);
   };
   const closeTplBubble = () => {
     setTplBubble(null);
@@ -18703,6 +18719,24 @@ function PublicLiveCommentsPanel({
         pointerEvents: 'none',
       }}
     >
+      {chatLift === 1 ? (
+        <button
+          type="button"
+          aria-label="Show story page"
+          onPointerDown={e => { e.stopPropagation(); }}
+          onClick={e => { e.stopPropagation(); dropChatToStory(); }}
+          style={{
+            position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+            top: 'calc(max(8px, env(safe-area-inset-top)) - 10px)',
+            zIndex: 8, pointerEvents: 'auto',
+            background: 'none', border: 'none', cursor: 'pointer',
+            padding: '10px 44px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            WebkitTapHighlightColor: 'transparent',
+          }}
+        >
+          <span aria-hidden="true" style={{ display: 'block', width: 36, height: 4, borderRadius: 2, background: '#000' }} />
+        </button>
+      ) : null}
       {chatLift === 1 ? <LiveChatClearCountdown onDotClick={() => setBigEmojiOpen(v => !v)} dotActive={bigEmojiOpen} /> : null}
       {chatLift === 1 && bigEmojiOpen ? (
         <>
@@ -19428,6 +19462,7 @@ function PublicLiveCommentsPanel({
                 pushComment(text, pendingImage, pendingVoice);
                 return;
               }
+              if (chatLift === 1) return; // الشات دايم مرفوع — النزول فقط من خط الشيت الأسود بأعلى الشات
               toggleChatLift();
             }}
             aria-label={(text.trim() || pendingImage || pendingVoice) ? 'إرسال' : 'ارتفاع الشات'}
