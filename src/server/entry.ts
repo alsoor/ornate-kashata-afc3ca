@@ -1316,6 +1316,15 @@ app.post("/api/live-gifts", guarded(async (req, res) => {
 type BattleSup = { name: string; avatarUrl: string; coins: number; firstAt: number };
 type LiveBattleRow = { id: string; a: string; b: string; startedAt: number; endsAt: number; left: number; right: number; supL?: Map<string, BattleSup>; supR?: Map<string, BattleSup>; tapL?: number; tapR?: number };
 const LIVE_BATTLE_MS = 4 * 60 * 1000;
+// COUNTDOWN-SERVER-PATCH: the 5..1 countdown before a round is kept by the SERVER too (a signal between the two phones can be lost;
+// two plain HTTP calls to the same server cannot disagree). Whoever taps Ok posts `ready`; BOTH phones read `countdown.remainMs`.
+const LIVE_BATTLE_COUNTDOWN_MS = 5000;
+type LiveBattleCountdown = { id: string; a: string; b: string; startAt: number };
+const liveBattleCountdownMem = (): Map<string, LiveBattleCountdown> => {
+  const g = globalThis as typeof globalThis & { __stooornaLiveBattleCd?: Map<string, LiveBattleCountdown> };
+  if (!g.__stooornaLiveBattleCd) g.__stooornaLiveBattleCd = new Map();
+  return g.__stooornaLiveBattleCd;
+};
 const LIVE_BATTLE_KEEP_MS = 12_000;
 const liveBattleMem = (): Map<string, LiveBattleRow> => {
   const g = globalThis as typeof globalThis & { __stooornaLiveBattle?: Map<string, LiveBattleRow> };
@@ -1390,7 +1399,13 @@ app.get("/api/live-battle", (req, res) => {
   for (const row of liveBattleMem().values()) {
     if ((bSameHost(row.a, hostId) || bSameHost(row.b, hostId)) && (!best || row.startedAt > best.startedAt)) best = row;
   }
-  res.json({ ok: true, battle: best ? liveBattleView(best) : null });
+  // COUNTDOWN-SERVER-PATCH: a countdown that has not reached zero yet for a round of this host
+  let cd: LiveBattleCountdown | null = null;
+  const nowCd = Date.now();
+  for (const c of liveBattleCountdownMem().values()) {
+    if ((bSameHost(c.a, hostId) || bSameHost(c.b, hostId)) && nowCd < c.startAt && (!cd || c.startAt > cd.startAt)) cd = c;
+  }
+  res.json({ ok: true, battle: best ? liveBattleView(best) : null, countdown: cd ? { id: cd.id, remainMs: Math.max(0, cd.startAt - nowCd) } : null });
 });
 app.post("/api/live-battle", guarded(async (req, res) => {
   const u = await needUser(req, res);
@@ -1398,7 +1413,7 @@ app.post("/api/live-battle", guarded(async (req, res) => {
   if (!allow(`lb:${u.id}`, 30, 10_000)) return deny(res, 429, "rate_limited");
   const body = (req.body || {}) as Record<string, unknown>;
   const action = String(body.action || "start");
-  if (action !== "start" && action !== "end") return deny(res, 400, "bad action");
+  if (action !== "start" && action !== "end" && action !== "ready") return deny(res, 400, "bad action");
   const id = String(body.id || "").slice(0, 60);
   if (action === "end") {
     // the split closed: forget the round so a later split never shows it again
@@ -1410,6 +1425,19 @@ app.post("/api/live-battle", guarded(async (req, res) => {
   const b = String(body.b || "").slice(0, 80);
   if (!id || !a || !b || bSameHost(a, b)) return deny(res, 400, "id, a and b required");
   if (!session.owns(u, a) && !session.owns(u, b)) return deny(res, 403, "forbidden");
+  if (action === "ready") {
+    // COUNTDOWN-SERVER-PATCH: the other host tapped Ok -> one shared 5s countdown for this pair (first call wins, repeats are ignored)
+    const cmem = liveBattleCountdownMem();
+    const tnow = Date.now();
+    for (const [k, c] of cmem) if (tnow - c.startAt > 60_000) cmem.delete(k);
+    if (!cmem.has(id)) {
+      for (const [k, c] of cmem) {
+        if (bSameHost(c.a, a) || bSameHost(c.b, a) || bSameHost(c.a, b) || bSameHost(c.b, b)) cmem.delete(k);
+      }
+      cmem.set(id, { id, a, b, startAt: tnow + LIVE_BATTLE_COUNTDOWN_MS });
+    }
+    return res.json({ ok: true, remainMs: Math.max(0, cmem.get(id)!.startAt - tnow) });
+  }
   const mem = liveBattleMem();
   if (mem.has(id)) return res.json({ ok: true, duplicate: true });
   for (const [k, row] of mem) {

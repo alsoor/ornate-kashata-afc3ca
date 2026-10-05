@@ -258,10 +258,14 @@ export function useBattleServerSync(opts: {
   battleId: string | null;
   battlePhase: 'running' | 'ended' | null;
   apply: (s: any, mirror: boolean) => void;
+  /** COUNTDOWN-SERVER-PATCH: the server's shared 5..1 countdown before a round (see liveBattlePatch applyCountdown) */
+  onCountdown?: (id: string, remainMs: number) => void;
 }): void {
   const { enabled, roomHostId, mySide, peerUserId, battleId, battlePhase } = opts;
   const applyRef = React.useRef(opts.apply);
   applyRef.current = opts.apply;
+  const cdRef = React.useRef(opts.onCountdown); // COUNTDOWN-SERVER-PATCH
+  cdRef.current = opts.onCountdown;
   const registeredRef = React.useRef<string>('');
 
   React.useEffect(() => {
@@ -307,6 +311,9 @@ export function useBattleServerSync(opts: {
         const r = await fetch(`/api/live-battle?hostId=${encodeURIComponent(roomHostId)}`, { credentials: 'include', cache: 'no-store' });
         if (!r.ok || stop) return;
         const d: any = await r.json();
+        // COUNTDOWN-SERVER-PATCH: both hosts start the same 5..1 circle from the server clock, whatever happened to the signals
+        const cd = d?.countdown;
+        if (cd && cd.id && Number(cd.remainMs) > 0 && !stop) { try { cdRef.current?.(String(cd.id), Number(cd.remainMs)); } catch { /* ignore */ } }
         const b = d?.battle;
         if (!b || stop) return;
         // a viewer of B's room sees B on the left half -> mirror; hosts keep A = left (B's overlay flips itself)

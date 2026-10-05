@@ -158,6 +158,27 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     try { latest.current.send({ ...payload, src: srcRef.current, ts: Date.now() }); } catch { /* ignore */ }
   }, []);
 
+  /** COUNTDOWN-SERVER-PATCH: tell the SERVER the countdown of round `id` starts now. Both phones read it back from
+   *  /api/live-battle (see useBattleServerSync) and show the same 5..1 circle. The server keeps the first call, repeats are harmless. */
+  const postReady = React.useCallback((id: string) => {
+    const c = latest.current;
+    const rh = String(c.roomHostId || '');
+    const peer = String(c.peerUserId || '');
+    if (!c.mySide || !rh || !peer) return;
+    const a = c.mySide === 'left' ? rh : peer; // a = owner of the split (left), b = invited host (right)
+    const b = c.mySide === 'left' ? peer : rh;
+    const post = () => {
+      try {
+        void fetch('/api/live-battle', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'ready', id, a, b }),
+        }).catch(() => { /* ignore */ });
+      } catch { /* ignore */ }
+    };
+    post();
+    window.setTimeout(post, 1200);
+  }, []);
+
   const scheduleClear = (id: string) => {
     if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current);
     clearTimerRef.current = window.setTimeout(() => {
@@ -227,6 +248,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
     incomingRef.current = null;
     setIncoming(null);
     if (announce) {
+      postReady(id); // COUNTDOWN-SERVER-PATCH
       const payload = { t: 'battle-countdown', id, remainMs: dur };
       emit(payload);
       window.setTimeout(() => { if (startingIdRef.current === id) emit({ ...payload, remainMs: Math.max(800, dur - 500) }); }, 500);
@@ -241,7 +263,14 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
       if (battleRef.current?.phase === 'running') return;
       if (latest.current.mySide === 'left') startAsAuthority(id); else openAsGuest(id);
     }, dur);
-  }, [startAsAuthority, openAsGuest, emit]);
+  }, [startAsAuthority, openAsGuest, emit, postReady]);
+
+  /** COUNTDOWN-SERVER-PATCH: the server says a countdown is running for my pair -> show the same circle here (hosts only). */
+  const applyCountdown = React.useCallback((id: string, remainMs: number) => {
+    if (!latest.current.mySide || !id || !(remainMs > 0)) return;
+    if (battleRef.current) return;
+    scheduleStart(id, remainMs, false);
+  }, [scheduleStart]);
 
   const addScore = React.useCallback((side: BattleSide, coins: number) => {
     const b = battleRef.current;
@@ -653,7 +682,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   React.useEffect(() => () => { if (clearTimerRef.current) window.clearTimeout(clearTimerRef.current); if (startingTimerRef.current) window.clearTimeout(startingTimerRef.current); }, []);
 
   const remainMs = battle?.phase === 'running' ? Math.max(0, battle.endsAt - now) : 0;
-  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, starting: !!starting, startingId: starting, countLeft: starting ? countLeft : null, popups, play, accept, decline, handleMessage, ingestGift, applyExternal };
+  return { battle, remainMs, pending: !!pending, pendingId: pending, incoming, incomingId: incoming?.id ?? null, starting: !!starting, startingId: starting, countLeft: starting ? countLeft : null, popups, play, accept, decline, handleMessage, ingestGift, applyExternal, applyCountdown };
 }
 
 /* ───────────────────────── UI ───────────────────────── */

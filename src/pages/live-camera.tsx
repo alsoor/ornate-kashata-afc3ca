@@ -2052,6 +2052,7 @@ export default function LiveCameraPage() {
     battleId: battleApi.battle?.id ?? null,
     battlePhase: battleApi.battle?.phase ?? null,
     apply: battleApi.applyExternal,
+    onCountdown: battleApi.applyCountdown, // COUNTDOWN-SERVER-PATCH: both hosts read the shared 5..1 countdown from the server
   });
   const battleRunning = battleApi.battle?.phase === 'running';
   // HEARTS-PATCH: taps on the screen -> hearts + shared counter (the server adds +1 to the round line per 10 taps)
