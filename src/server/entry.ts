@@ -744,6 +744,8 @@ type LivePresenceRow = {
   hostName?: string;
   hostUsername?: string;
   hostAvatar?: string | null;
+  /** SPLIT-CARD-PATCH: the other live host this host is split-screen with right now (null/undefined = none) */
+  split?: { userId: string; name: string; username: string | null; avatarUrl: string | null; owner: boolean } | null;
   at: number;
 };
 const LIVE_PRESENCE_TTL_MS = 180_000;
@@ -791,6 +793,19 @@ app.post("/api/live-presence", (req, res) => {
     hostName: body.hostName != null ? String(body.hostName).slice(0, 80) : undefined,
     hostUsername: body.hostUsername != null ? String(body.hostUsername).slice(0, 80) : undefined,
     hostAvatar: body.hostAvatar != null ? String(body.hostAvatar).slice(0, 400) : null,
+    split: (() => {
+      const sp = body.split as Record<string, unknown> | null | undefined;
+      if (!sp || typeof sp !== "object") return null;
+      const uid = String(sp.userId || "").trim().slice(0, 80);
+      if (!uid || uid.toLowerCase() === hostId.toLowerCase()) return null;
+      return {
+        userId: uid,
+        name: String(sp.name || "").slice(0, 80),
+        username: sp.username != null && String(sp.username) ? String(sp.username).replace(/^@/, "").slice(0, 80) : null,
+        avatarUrl: sp.avatarUrl != null && String(sp.avatarUrl) ? String(sp.avatarUrl).slice(0, 400) : null,
+        owner: sp.owner === true, // true = this host owns the room that shows the split (the merged card opens THAT room)
+      };
+    })(),
     at: Date.now(),
   };
   mem.set(hostId, row);

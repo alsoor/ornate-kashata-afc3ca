@@ -94,11 +94,13 @@ export type UseLiveBattleOpts = {
   send: (payload: Record<string, unknown>) => void;
   /** LINE-FOR-ALL-PATCH: send a signal into MY OWN room (so the viewers of the invited host B can see the line too). */
   sendOwn?: (payload: Record<string, unknown>) => void;
+  /** GIFT-FX-ALL-PATCH: id of the host whose room THIS page is in (viewers too) — a gift from the OTHER host's room is replayed here. */
+  roomHostId?: string;
   onToast?: (text: string) => void;
 };
 
 export function useLiveBattle(opts: UseLiveBattleOpts) {
-  const { active, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf, send, sendOwn, onToast } = opts;
+  const { active, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf, send, sendOwn, roomHostId, onToast } = opts;
 
   const [battle, setBattle] = React.useState<BattleView | null>(null);
   const battleRef = React.useRef<BattleView | null>(null);
@@ -114,8 +116,8 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
   const seenMsgRef = React.useRef<Set<string>>(new Set());
   const clearTimerRef = React.useRef<number | null>(null);
   const acceptedIdRef = React.useRef<string | null>(null); // INSTANT-OPEN: invite I accepted as B, until A confirms it with battle-state
-  const latest = React.useRef({ send, sendOwn, onToast, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf });
-  latest.current = { send, sendOwn, onToast, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf };
+  const latest = React.useRef({ send, sendOwn, roomHostId, onToast, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf });
+  latest.current = { send, sendOwn, roomHostId, onToast, mySide, myId, myName, peerName, peerUserId, giftRooms, priceOf };
 
   const setBattleBoth = (b: BattleView | null) => {
     battleRef.current = b;
@@ -335,7 +337,7 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         return true;
       }
       case 'battle-gift': {
-        if (age > 20_000) return true;
+        if (age > 30_000) return true;
         const gid = String(msg.gid || '');
         const side: BattleSide = msg.side === 'right' ? 'right' : 'left';
         const coins = Number(msg.coins) || 0;
@@ -344,6 +346,16 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
         // the authority sums the other host's gifts (its own are summed from its own polling)
         if (me.mySide === 'left' && side === 'right') addScore('right', coins);
         addPopup({ id: gid, side, coins, count: Number(msg.count) || 1, label: String(msg.label || '') });
+        // GIFT-FX-ALL-PATCH: a gift sent in the OTHER host's room is also played here (hosts, viewers, supporter see it).
+        // Animation only: the coins/profit of that gift are handled by the room it was really sent in.
+        try {
+          const fx: any = msg.fx;
+          if (fx && fx.giftId && String(fx.hostId || '') !== String(me.roomHostId || '')) {
+            window.dispatchEvent(new CustomEvent('stooorna:gift-play', {
+              detail: { giftId: fx.giftId, fromId: fx.fromId, hostId: me.roomHostId, count: Math.max(1, Number(fx.count) || 1), remote: true },
+            }));
+          }
+        } catch { /* ignore */ }
         return true;
       }
       default:
@@ -437,7 +449,11 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
           if (cur.mySide === 'left') addScore(side, coins);
           addPopup({ id: gid, side, coins, count: Number(e.count) || 1, label: String(e.toName || '') });
           // tell the other host + the viewers (authority re-broadcasts the totals anyway)
-          emit({ t: 'battle-gift', id, gid: cur.mySide === 'right' ? gid : `${gid}#l`, side, coins, count: Number(e.count) || 1, label: String(e.toName || '') });
+          const avatar = typeof e.toAvatar === 'string' && e.toAvatar.length <= 200 ? e.toAvatar : null;
+          emit({
+            t: 'battle-gift', id, gid: cur.mySide === 'right' ? gid : `${gid}#l`, side, coins, count: Number(e.count) || 1, label: String(e.toName || ''),
+            fx: { giftId: String(e.giftId || ''), fromId: String(e.fromId || ''), toName: String(e.toName || ''), toAvatar: avatar, count: Math.max(1, Number(e.count) || 1), hostId: String(cur.roomHostId || '') },
+          });
         }
       } catch { /* ignore */ }
     };
@@ -473,22 +489,30 @@ export function useLiveBattle(opts: UseLiveBattleOpts) {
  */
 export function BattleGiftDimStyle({ on, topPx }: { on: boolean; topPx?: number | null }) {
   if (!on) return null;
-  // GIFT-BELOW-LINE-PATCH: during a round the gift animation is drawn ONLY from the line under the two cameras
-  // (the green line = top of the chat card) down to the bottom of the screen, fully visible, covering everything below.
+  // GIFT-FADE-PATCH: during a round the gift animation shows from a line near the cameras down to the bottom of the screen,
+  // but NOT as a hard-cut box: its top edge fades out softly and bleeds a little over the two cameras.
   // Outside a round this component renders nothing, so normal gifts are untouched.
   const top = topPx != null && topPx > 0 ? Math.round(topPx) : null;
-  return (
-    <style>{top != null ? `
-[data-live-gift-fx] {
-  pointer-events: none !important;
-  clip-path: inset(${top}px 0 0 0) !important;
-  -webkit-clip-path: inset(${top}px 0 0 0) !important;
-}
-` : `
+  if (top == null) {
+    return (
+      <style>{`
 [data-live-gift-fx] {
   opacity: 0.35 !important;
   pointer-events: none !important;
   transition: opacity 200ms ease;
+}
+`}</style>
+    );
+  }
+  const from = Math.max(0, top - 34);
+  const to = top + 96;
+  const grad = `linear-gradient(to bottom, transparent 0, transparent ${from}px, rgba(0,0,0,0.35) ${Math.round((from + to) / 2)}px, #000 ${to}px, #000 100%)`;
+  return (
+    <style>{`
+[data-live-gift-fx] {
+  pointer-events: none !important;
+  -webkit-mask-image: ${grad} !important;
+  mask-image: ${grad} !important;
 }
 `}</style>
   );
@@ -700,13 +724,15 @@ export function BattleNameTag({ name, username, side }: { name: string; username
 
 /** Score line, timer, "You Win" rectangle and light support pills — drawn over the split area only. */
 export function BattleOverlay({
-  battle: battleIn, remainMs, popups: popupsIn, heightPx, flip,
+  battle: battleIn, remainMs, popups: popupsIn, heightPx, flip, lineTopPx,
 }: {
   battle: BattleView | null;
   remainMs: number;
   popups: BattlePopup[];
   mySide?: BattleSide | null;
   heightPx: number | null;
+  /** exact top of the score line (= top of the two cameras). Falls back to the old fixed offset. */
+  lineTopPx?: number | null;
   /** B's own screen shows B on the left and A on the right: mirror the data so colors follow the SCREEN halves. */
   flip?: boolean;
 }) {
@@ -733,7 +759,7 @@ export function BattleOverlay({
         <div
           style={{
             position: 'absolute', left: 0, right: 0,
-            top: 'calc(max(env(safe-area-inset-top,0px),14px) + 64px)',
+            top: lineTopPx != null && lineTopPx > 0 ? lineTopPx : 'calc(max(env(safe-area-inset-top,0px),14px) + 64px)',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
           }}
         >

@@ -417,6 +417,18 @@ export default function LiveCameraPage() {
     if (splitWith) window.setTimeout(attachSplitRemote, 60);
   }, [splitWith]);
   const splitActive = !!(duet || splitWith);
+  // SPLIT-CARD-PATCH: who I am split-screen with (sent with the live-presence heartbeat so the story page can draw one merged card)
+  const presenceSplitRef = useRef<{ userId: string; name: string; username: string | null; avatarUrl: string | null; owner: boolean } | null>(null);
+  {
+    const other = duet || splitWith;
+    presenceSplitRef.current = other
+      ? { userId: String(other.userId || ''), name: String(other.name || ''), username: other.username ?? null, avatarUrl: other.avatarUrl ?? null, owner: !!duet }
+      : null;
+  }
+  const presenceSplitKey = presenceSplitRef.current?.userId || '';
+  useEffect(() => {
+    try { window.dispatchEvent(new Event('stooorna:presence-poke')); } catch { /* ignore */ }
+  }, [presenceSplitKey]);
   useEffect(() => {
     if (!splitActive) { setSplitExitOpen(false); setSplitTopPx(null); return; }
     const measure = () => {
@@ -1460,6 +1472,7 @@ export default function LiveCameraPage() {
             hostName: typeof hostName !== 'undefined' ? hostName : undefined,
             hostUsername: typeof hostUsername !== 'undefined' ? hostUsername : undefined,
             hostAvatar: typeof hostAvatar !== 'undefined' ? hostAvatar : undefined,
+            split: presenceSplitRef.current || undefined, // SPLIT-CARD-PATCH: the other live host I am split-screen with
           }),
           keepalive: true,
         }).catch(() => {});
@@ -1469,9 +1482,11 @@ export default function LiveCameraPage() {
     const id = window.setInterval(() => post(true), 8000);
     const onVis = () => { if (document.visibilityState === 'visible') post(true); };
     document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('stooorna:presence-poke', onVis); // SPLIT-CARD-PATCH: re-post right away when the split starts / ends
     return () => {
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('stooorna:presence-poke', onVis);
       post(false);
     };
   }, [joined, hostId, myId]);
@@ -1958,6 +1973,7 @@ export default function LiveCameraPage() {
       } catch { /* ignore */ }
     },
     sendOwn: (payload) => { void sendDataPayload(payload); }, // LINE-FOR-ALL-PATCH: relay the round to my own viewers
+    roomHostId: String(hostId || myId || ''), // GIFT-FX-ALL-PATCH
     onToast: showDuetToast,
   });
   handleBattleMsgRef.current = battleApi.handleMessage;
@@ -3623,6 +3639,7 @@ export default function LiveCameraPage() {
           remainMs={battleApi.remainMs}
           popups={battleApi.popups}
           heightPx={splitBottomPx}
+          lineTopPx={splitTopPx}
           flip={battleMySide === 'right'}
         />
       ) : null}

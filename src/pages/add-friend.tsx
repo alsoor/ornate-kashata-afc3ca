@@ -3051,6 +3051,60 @@ function storyRingColor(items: StoryItem[], unseenColor: string, seenColor: stri
   return hasUnseen ? unseenColor : seenColor;
 }
 
+// ── SPLIT-CARD-PATCH: who this live host is split-screen with right now (from the server live-presence row) ──
+type LiveSplitPartner = { userId: string; name: string; username: string | null; avatarUrl: string | null; owner: boolean };
+function useLiveSplitPartner(hostId: string | null | undefined, enabled: boolean): LiveSplitPartner | null {
+  const [partner, setPartner] = useState<LiveSplitPartner | null>(null);
+  useEffect(() => {
+    if (!hostId || !enabled) { setPartner(null); return; }
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const r = await fetch(`/api/live-presence?hostId=${encodeURIComponent(String(hostId))}`, { credentials: 'include', cache: 'no-store' });
+        if (!r.ok || cancelled) return;
+        const d = await r.json() as { active?: boolean; split?: { userId?: string; name?: string; username?: string | null; avatarUrl?: string | null; owner?: boolean } | null };
+        if (cancelled) return;
+        const sp = d?.active ? d.split : null;
+        if (sp && sp.userId) {
+          const next: LiveSplitPartner = { userId: String(sp.userId), name: String(sp.name || ''), username: sp.username ?? null, avatarUrl: sp.avatarUrl ?? null, owner: !!sp.owner };
+          setPartner(prev => (prev && prev.userId === next.userId && prev.owner === next.owner && prev.avatarUrl === next.avatarUrl ? prev : next));
+        } else {
+          setPartner(prev => (prev ? null : prev));
+        }
+      } catch { /* ignore */ }
+    };
+    void check();
+    const iv = window.setInterval(check, 2500);
+    return () => { cancelled = true; window.clearInterval(iv); };
+  }, [hostId, enabled]);
+  return partner;
+}
+
+/** SPLIT-CARD-PATCH: ids of every circle the header strip draws (same filters as the strip itself). */
+function splitStripIds(
+  groups: { userId: string; username?: string | null; name?: string | null }[],
+  friendList: { friendId?: string | null; username?: string | null; name?: string | null }[],
+  myId: string | null | undefined,
+  companyList: unknown,
+  isCompany: (a: { id: string; username?: string | null; name?: string | null }, c: any) => boolean,
+): Set<string> {
+  const ids = new Set<string>();
+  try {
+    for (const g of groups) {
+      if (g.userId === myId) continue;
+      if (isCompany({ id: g.userId, username: g.username, name: g.name }, companyList)) continue;
+      ids.add(String(g.userId));
+    }
+    for (const f of friendList) {
+      if (!f.friendId || f.friendId === myId) continue;
+      if (groups.some(g => g.userId === f.friendId)) continue;
+      if (isCompany({ id: f.friendId, username: f.username, name: f.name }, companyList)) continue;
+      ids.add(String(f.friendId));
+    }
+  } catch { /* ignore */ }
+  return ids;
+}
+
 // ── HeaderStoryCircle — دائرة واحدة في شريط قصص الهيدر تدعم حالة البث المباشر ──
 // تُستخدم لكل من: (أ) المستخدمين الذين نشروا ستوري (items غير فارغة)، و
 // (ب) الأصدقاء المباشرين بدون أي ستوري منشورة (items فارغة) — تظهر فقط إن
@@ -3058,7 +3112,7 @@ function storyRingColor(items: StoryItem[], unseenColor: string, seenColor: stri
 // - بث بدون ستوري: نقرة واحدة تفتح البث مباشرة.
 // - ستوري + بث معاً: نقرة تفتح قائمة اختيار (مشاهدة الستوري / الدخول للبث).
 function HeaderStoryCircle({
-  userId, name, username, avatarUrl, items, onOpenStory, extraButtonStyle,
+  userId, name, username, avatarUrl, items, onOpenStory, extraButtonStyle, stripIds,
 }: {
   userId: string;
   name: string | null;
@@ -3067,10 +3121,13 @@ function HeaderStoryCircle({
   items: StoryItem[];
   onOpenStory: () => void;
   extraButtonStyle?: React.CSSProperties;
+  /** SPLIT-CARD-PATCH: ids of every circle drawn in this strip (to show a split pair only once) */
+  stripIds?: Set<string>;
 }) {
   const navigate = useNavigate();
   const liveKind = useLiveBroadcastKind(userId, true);
   const liveActive = liveKind != null;
+  const splitPartner = useLiveSplitPartner(userId, liveKind === 'camera'); // SPLIT-CARD-PATCH
   const hasStory = items.length > 0;
   const hasUnseen = items.some(it => !it.seen);
   const [choiceOpen, setChoiceOpen] = useState(false);
@@ -3101,10 +3158,19 @@ function HeaderStoryCircle({
   // لا شيء لعرضه: لا ستوري ولا بث مباشر
   if (!hasStory && !liveActive) return null;
 
+  // SPLIT-CARD-PATCH: two lives in a split screen = ONE merged card (half / half). The room that shows the split is the OWNER's room:
+  // the owner's circle draws the card; the guest's circle is hidden when the owner's circle is already in this strip.
+  const isSplit = liveActive && liveKind === 'camera' && !!splitPartner;
+  if (isSplit && !hasStory && splitPartner && !splitPartner.owner && stripIds?.has(splitPartner.userId)) return null;
+  const splitOwnerIsMe = !splitPartner || !splitPartner.owner;
+  const splitTarget = isSplit && splitPartner && splitPartner.owner
+    ? { id: splitPartner.userId, name: splitPartner.name, username: splitPartner.username, avatar: splitPartner.avatarUrl }
+    : { id: userId, name: name || '', username, avatar: avatarUrl };
+
   const goLive = () => {
-    const qs = new URLSearchParams({ hostId: userId, hostName: name || username || 'Host' });
-    if (username) qs.set('hostUsername', username);
-    if (avatarUrl) qs.set('hostAvatar', avatarUrl);
+    const qs = new URLSearchParams({ hostId: splitTarget.id, hostName: splitTarget.name || splitTarget.username || 'Host' });
+    if (splitTarget.username) qs.set('hostUsername', splitTarget.username);
+    if (splitTarget.avatar) qs.set('hostAvatar', splitTarget.avatar);
     const path = liveKind === 'camera' ? '/live-camera' : '/live';
     navigate(`${path}?${qs.toString()}`);
   };
@@ -3160,14 +3226,42 @@ function HeaderStoryCircle({
             />
           ))}
           <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'hsl(var(--card))' }}>
-            <VipAvatarFrame userId={userId} size={53}>
-              <UserAvatar name={name ?? ''} avatarUrl={avatarUrl} size={53} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
-            </VipAvatarFrame>
+            {isSplit && splitPartner ? (
+              /* SPLIT-CARD-PATCH: one circle, left half = the room owner, right half = the guest */
+              (() => {
+                const owner = splitOwnerIsMe
+                  ? { name: name ?? '', avatarUrl }
+                  : { name: splitPartner.name, avatarUrl: splitPartner.avatarUrl };
+                const guest = splitOwnerIsMe
+                  ? { name: splitPartner.name, avatarUrl: splitPartner.avatarUrl }
+                  : { name: name ?? '', avatarUrl };
+                const half = (side: 'left' | 'right', p: { name: string; avatarUrl: string | null }) => (
+                  <div style={{ position: 'absolute', top: 0, bottom: 0, [side]: 0, width: '50%', overflow: 'hidden' } as React.CSSProperties}>
+                    <div style={{ position: 'absolute', top: 0, [side]: 0, width: 53, height: 53 } as React.CSSProperties}>
+                      <UserAvatar name={p.name} avatarUrl={p.avatarUrl} size={53} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: 0, display: 'block' }} />
+                    </div>
+                  </div>
+                );
+                return (
+                  <>
+                    {half('left', owner)}
+                    {half('right', guest)}
+                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: 'calc(50% - 1px)', width: 2, background: '#facc15' }} />
+                  </>
+                );
+              })()
+            ) : (
+              <VipAvatarFrame userId={userId} size={53}>
+                <UserAvatar name={name ?? ''} avatarUrl={avatarUrl} size={53} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+              </VipAvatarFrame>
+            )}
           </div>
         </div>
       </motion.button>
-      <span style={{ fontSize: '0.55rem', color: CLR_TEXT_DIM, maxWidth: 60, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {username ? `@${username}` : name}
+      <span style={{ fontSize: '0.55rem', color: CLR_TEXT_DIM, maxWidth: isSplit ? 78 : 60, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {isSplit && splitPartner
+          ? `${username ? `@${username}` : name} ⚔ ${splitPartner.username ? `@${splitPartner.username}` : splitPartner.name}`
+          : (username ? `@${username}` : name)}
       </span>
 
       {choiceOpen && menuPos && typeof document !== 'undefined' && createPortal(
@@ -25453,6 +25547,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       avatarUrl={g.avatarUrl}
                       items={g.items}
                       onOpenStory={() => setViewerGroupIdx(realIdx)}
+                      stripIds={splitStripIds(storyGroups, friends, user?.id, companies, isCompanyUserAccount)}
                       extraButtonStyle={{
                         transform: storyPullProgress > 0 ? `scale(${1 + storyPullProgress * 0.28})` : undefined,
                         transformOrigin: 'center center',
@@ -25479,6 +25574,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     avatarUrl={f.avatarUrl ?? null}
                     items={[]}
                     onOpenStory={() => {}}
+                    stripIds={splitStripIds(storyGroups, friends, user?.id, companies, isCompanyUserAccount)}
                   />
                 ))}
               </div>
