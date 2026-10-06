@@ -79,7 +79,7 @@ import { LiveVipDock } from '@/components/LiveVipDock';
 import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -19921,15 +19921,23 @@ function loadPdfJsForAds(): Promise<any> {
 
 function AdPdfPages({ src }: { src: string }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const pdfRef = useRef<any>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  // Zoom يكبّر الكتابة (يعيد رسم الصفحات بدقة أعلى): 1x → 1.5x → 2x → 3x → 1x
+  const ZOOMS = [1, 1.5, 2, 3];
+  const [zoomIdx, setZoomIdx] = useState(0);
+  const zoom = ZOOMS[zoomIdx];
+  useEffect(() => { pdfRef.current = null; }, [src]);
   useEffect(() => {
     let dead = false;
-    setStatus('loading');
     void (async () => {
       try {
-        const lib = await loadPdfJsForAds();
-        const buf = await (await fetch(src)).arrayBuffer();
-        const pdf = await lib.getDocument({ data: buf }).promise;
+        if (!pdfRef.current) {
+          const lib = await loadPdfJsForAds();
+          const buf = await (await fetch(src)).arrayBuffer();
+          pdfRef.current = await lib.getDocument({ data: buf }).promise;
+        }
+        const pdf = pdfRef.current;
         const host = hostRef.current;
         if (!host || dead) return;
         host.innerHTML = '';
@@ -19940,7 +19948,8 @@ function AdPdfPages({ src }: { src: string }) {
           if (dead) return;
           const page = await pdf.getPage(i);
           const base = page.getViewport({ scale: 1 });
-          const vp = page.getViewport({ scale: (width / Math.max(base.width, 1)) * dpr });
+          const pxW = Math.min(width * dpr, 2400);
+          const vp = page.getViewport({ scale: pxW / Math.max(base.width, 1) });
           const c = document.createElement('canvas');
           c.width = Math.floor(vp.width);
           c.height = Math.floor(vp.height);
@@ -19957,18 +19966,36 @@ function AdPdfPages({ src }: { src: string }) {
       }
     })();
     return () => { dead = true; };
-  }, [src]);
+  }, [src, zoom]);
   return (
-    <div style={{
-      position: 'absolute', inset: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', boxSizing: 'border-box',
-      paddingTop: 'calc(max(12px, env(safe-area-inset-top)) + 48px)', paddingBottom: 'env(safe-area-inset-bottom)', background: '#111',
-    }}>
-      {status === 'loading' && <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.6)', marginTop: 40, fontWeight: 700 }}>Loading…</p>}
-      {status === 'error' && (
-        <iframe title="PDF" src={src} style={{ width: '100%', height: 'calc(100% - 4px)', minHeight: '80vh', border: 'none', background: '#111' }} />
+    <>
+      <div style={{
+        position: 'absolute', inset: 0, overflow: 'auto', WebkitOverflowScrolling: 'touch', boxSizing: 'border-box',
+        paddingTop: 'calc(max(12px, env(safe-area-inset-top)) + 48px)', paddingBottom: 'env(safe-area-inset-bottom)', background: '#111',
+      }}>
+        {status === 'loading' && <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.6)', marginTop: 40, fontWeight: 700 }}>Loading…</p>}
+        {status === 'error' && (
+          <iframe title="PDF" src={src} style={{ width: '100%', height: 'calc(100% - 4px)', minHeight: '80vh', border: 'none', background: '#111' }} />
+        )}
+        <div ref={hostRef} style={{ width: `${zoom * 100}%` }} />
+      </div>
+      {status !== 'error' && (
+        <button
+          type="button"
+          aria-label="Zoom"
+          onClick={e => { e.stopPropagation(); setZoomIdx(i => (i + 1) % ZOOMS.length); }}
+          style={{
+            position: 'absolute', right: 16, bottom: 'calc(20px + env(safe-area-inset-bottom))', zIndex: 3,
+            display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', borderRadius: 999,
+            border: '2px solid #eab308', background: 'rgba(10,26,26,0.92)', color: '#eab308',
+            fontWeight: 900, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          }}
+        >
+          <ZoomIn size={18} strokeWidth={2.4} />
+          Zoom {zoom}x
+        </button>
       )}
-      <div ref={hostRef} />
-    </div>
+    </>
   );
 }
 
