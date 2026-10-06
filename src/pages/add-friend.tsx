@@ -20229,12 +20229,14 @@ function BottomHeaderPortal({ enabled, children }: { enabled: boolean; children:
   return createPortal(<>{children}</>, document.body);
 }
 
-function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGuestTap, onOpenAd, onDeleteAd }: {
+function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible = true, guest, onGuestTap, onOpenAd, onDeleteAd }: {
   myId: string;
   hosts: HomeLiveHost[];
   enabled: boolean;
   showCards: boolean;
   collapsed?: boolean;
+  /** هيد الأقسام السفلي ظاهر؟ إذا لا (الهيدر مرفوع) القائمة تمتد لأسفل الشاشة */
+  dockVisible?: boolean;
   guest?: boolean;
   onGuestTap?: () => void;
   /** يفتح إعلان Ads كاملاً (الفيديو/الصورة/PDF) عند النقر على بطاقته */
@@ -20763,7 +20765,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
           position: 'fixed', left: 0, right: 0, top: topPx, zIndex: 16,
           display: 'flex', flexDirection: 'column', gap: 10,
           padding: (visible.length || homeAds.length) ? '8px 26px' : 0,
-          maxHeight: (collapsed || dockHiddenByScroll) ? `calc(100dvh - ${topPx}px - 12px)` : `calc(100dvh - ${topPx}px - 66px - env(safe-area-inset-bottom, 0px))`,
+          maxHeight: (collapsed || dockHiddenByScroll || !dockVisible) ? `calc(100dvh - ${topPx}px - 12px)` : `calc(100dvh - ${topPx}px - 66px - env(safe-area-inset-bottom, 0px))`,
           overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none',
           WebkitOverflowScrolling: 'touch', touchAction: 'pan-y',
           background: liveScrollMode && collapsed ? PAGE_BG : 'transparent',
@@ -32951,8 +32953,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           myId={user?.id ? String(user.id) : (guestMode ? 'guest' : '')}
           hosts={homeLiveHosts}
           enabled={!isLiveRoute && !!user?.id}
-          showCards={pageTab === 'profile' && (headerOpen || liveScrollHidden) && !isLiveRoute}
+          showCards={pageTab === 'profile' && (headerOpen || liveScrollHidden || !guestMode) && !isLiveRoute}
           collapsed={liveScrollHidden}
+          dockVisible={headerOpen && !chatLifted}
           guest={guestMode}
           onGuestTap={() => {
             try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
