@@ -12,6 +12,7 @@ import { COIN_PACKS, createCheckout, handlePolarEvent, polarConfigured, verifyPo
 import { createSession, makeLimiter, markSeen, normId, pickKey, recordPaid, seenRecently, takePaid } from "./gift-guard.js";
 import { mapEarningsAdapter, privateAssetsGuard, registerWithdrawalRoutes } from "./withdrawals.js";
 import { registerLiveBurstRoutes } from "./live-burst.js"; // EMOJI-BURST-PATCH
+import { compressMiddleware } from "./compress.js"; // PERF-GZIP-PATCH: gzip/brotli for JSON + JS/CSS
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -292,6 +293,7 @@ const app = express();
 // existing trust-proxy config; direct header reads would let a client spoof
 // the sitemap origin in robots.txt.
 app.set("trust proxy", true);
+app.use(compressMiddleware()); // PERF-GZIP-PATCH
 
 // Raw binary parser for binary upload routes — MUST come before express.json().
 // Uses a custom middleware that matches paths with regex so :id params work correctly.

@@ -1,3 +1,4 @@
+import '@/lib/perfBoost'; // PERF-BOOST-PATCH: dedupe identical GETs + calmer timers when tab is hidden
 import { add_friend } from 'virtual:content';
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';

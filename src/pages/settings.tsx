@@ -1,3 +1,4 @@
+import '@/lib/perfBoost'; // PERF-BOOST-PATCH: dedupe identical GETs + calmer timers when tab is hidden
 import React, { useState, useEffect, useRef, useMemo, useCallback, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from "react-router";
