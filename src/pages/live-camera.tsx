@@ -12,7 +12,6 @@
  * Token from /api/call/token
  */
 
-import '@/lib/perfBoost'; // PERF-BOOST-PATCH: dedupe identical GETs + calmer timers when tab is hidden
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom'; // PROFILE-TAP-PATCH
 import HostProfileSheet from './HostProfileSheet';

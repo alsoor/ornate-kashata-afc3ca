@@ -14,7 +14,6 @@
  * Token from /api/call/token
  */
 
-import '@/lib/perfBoost'; // PERF-BOOST-PATCH: dedupe identical GETs + calmer timers when tab is hidden
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Helmet } from '@dr.pogodin/react-helmet';
