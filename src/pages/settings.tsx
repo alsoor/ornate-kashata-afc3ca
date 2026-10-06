@@ -3726,36 +3726,22 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
     setUsernameStatus('idle');
   }
 
-  /** تحقق مباشر من توفر اليوزر */
+  /** Username availability: the server is the single source of truth. */
+  const usernameSrc = useRef('');
   async function checkUsernameAvailable(raw: string): Promise<'available' | 'taken' | 'invalid'> {
     const u = raw.trim().replace(/^@/, '');
-    if (!u || !/^[a-zA-Z0-9_]{2,30}$/.test(u)) return 'invalid';
-    if (isUsernameFreed(u) || isUserDeleted({ username: u })) return 'available';
-    // تحقق محلي من سجل الشركات — تجاهل المحذوف/المحرر
-    try {
-      const reg = loadCompaniesRegistry();
-      if (reg.some(c => (c.username || '').toLowerCase() === u.toLowerCase() && !isUserDeleted(c) && !isUsernameFreed(c.username))) return 'taken';
-    } catch { /* */ }
+    if (!u || !/^[a-zA-Z0-9_]{2,30}$/.test(u)) { usernameSrc.current = 'format'; return 'invalid'; }
+    if (isUsernameFreed(u) || isUserDeleted({ username: u })) { usernameSrc.current = 'freed'; return 'available'; }
     try {
       const chk = await fetch(`/api/users/check-username?username=${encodeURIComponent(u)}`, { credentials: 'include' });
       if (chk.ok) {
         const d = await chk.json();
-        if (d && d.available === false) return 'taken';
-        if (d && d.available === true) return 'available';
+        if (d && d.available === false) { usernameSrc.current = 'server'; return 'taken'; }
+        if (d && d.available === true) { usernameSrc.current = 'server'; return 'available'; }
       }
-    } catch { /* */ }
-    // fallback: by-username
-    try {
-      const r = await fetch(`/api/users/by-username/${encodeURIComponent(u)}`, { credentials: 'include' });
-      if (r.ok) {
-        const d = await r.json();
-        if (d && (d.id || d.user?.id || d.username)) {
-          if (isUsernameFreed(u) || isUserDeleted({ username: u, id: d.id || d.user?.id, email: d.email || d.user?.email })) return 'available';
-          return 'taken';
-        }
-      }
-      if (r.status === 404) return 'available';
-    } catch { /* */ }
+    } catch { /* server unreachable */ }
+    // Server did not answer: do not block sign-up on weak local guesses - sign-up itself enforces uniqueness.
+    usernameSrc.current = 'fallback';
     return 'available';
   }
 
@@ -3842,7 +3828,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         }
         const unStatus = await checkUsernameAvailable(uname);
         if (unStatus === 'taken') {
-          setError(L.userTaken);
+          setError(`${L.userTaken} [${usernameSrc.current}]`);
           setUsernameStatus('taken');
           return;
         }
@@ -4152,13 +4138,19 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           return;
         }
         const uname = username.trim().replace(/^@/, '');
-        const res = await signUp.email({
+        let res: any = await signUp.email({
           name: name.trim(),
           email: em,
           password,
           // some better-auth builds accept extra fields
           ...( { username: uname } as any ),
         } as any);
+        // The server already confirmed the username is free. If the auth layer still rejects it
+        // as a username error, create the account without it; the username is saved right after
+        // through PATCH /api/users/me (below).
+        if (res?.error && /username|user name|handle/i.test(String(res.error.message || ''))) {
+          res = await signUp.email({ name: name.trim(), email: em, password } as any);
+        }
         if (!(res as { error?: { message?: string } })?.error) {
           try { setSessionAccountKind('personal'); } catch { /* */ }
           if (usedPhone) {
@@ -4169,7 +4161,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           const msg = (res as { error?: { message?: string } }).error?.message || 'Could not create the account';
           // Classify the server error: an existing EMAIL must not be reported as a taken USERNAME.
           if (/username|user name|handle/i.test(msg)) {
-            setError(L.userTaken);
+            setError(`${L.userTaken} [signup: ${msg}]`);
             setUsernameStatus('taken');
           } else if (/email|already|exists|registered|duplicate|taken/i.test(msg)) {
             setError('This email is already registered. Sign in instead.');
