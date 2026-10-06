@@ -17755,10 +17755,16 @@ function PublicLiveCommentsPanel({
   headerOpen,
   onToggleHeader,
   onBusyChange,
+  overlayOpen = false,
+  onOverlayClose,
 }: {
   user: { id?: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null } | null | undefined;
   headerOpen: boolean;
   onToggleHeader?: () => void;
+  /** الشات مفتوح كطبقة كاملة فوق كل الصفحات (ضغطة مطوّلة على Call) — منفصل عن الشيت/الهيدر */
+  overlayOpen?: boolean;
+  /** يُنادى عند النقر على الخط العلوي لإغلاق الطبقة (بدون لمس الشيت) */
+  onOverlayClose?: () => void;
   /** true while someone is actively typing in the live chat (drives the green shimmering grabber) */
   onBusyChange?: (busy: boolean) => void;
 }) {
@@ -18608,8 +18614,18 @@ function PublicLiveCommentsPanel({
   // الشات بالأسفل: ينتقل من الرئيسية إلى ما بعد نقر الخط (الهيدر مرفوع/مخفي).
   // عند إنزال الهيدر (الرئيسية) يختفي الشات ويرجع لوضعه المصغّر، بنفس آلياته كاملة.
   useEffect(() => {
-    if (headerOpen && chatLift !== 0 && !tplOpen) setChatLift(0);
-  }, [headerOpen, chatLift, tplOpen]);
+    if (headerOpen && chatLift !== 0 && !tplOpen && !overlayOpen) setChatLift(0);
+  }, [headerOpen, chatLift, tplOpen, overlayOpen]);
+  // طبقة الشات الكاملة: تفتح مباشرة بدون المرور بالشيت، وتنزل عند الإغلاق
+  const overlayOpenRef = useRef(false);
+  overlayOpenRef.current = !!overlayOpen;
+  useEffect(() => {
+    if (overlayOpen) {
+      if (chatCloseTimerRef.current) { window.clearTimeout(chatCloseTimerRef.current); chatCloseTimerRef.current = null; }
+      setChatClosing(false);
+      setChatLift(1);
+    }
+  }, [overlayOpen]);
   // الشات دايم مرفوع: أول ما الشيت يرتفع (الهيدر ينغلق) يطلع الشات مباشرة. النزول فقط بالنقر على هيد توقيت التنظيف بأعلى الشات.
   useEffect(() => {
     if (!headerOpen) setChatLift(1);
@@ -18619,11 +18635,14 @@ function PublicLiveCommentsPanel({
     if (chatClosing) return;
     if (chatCloseTimerRef.current) { window.clearTimeout(chatCloseTimerRef.current); chatCloseTimerRef.current = null; }
     setChatClosing(true);
+    const asOverlay = overlayOpenRef.current;
     chatCloseTimerRef.current = window.setTimeout(() => {
       chatCloseTimerRef.current = null;
       setChatLift(0);
       setChatClosing(false);
-      onToggleHeader?.();
+      // طبقة الشات: نرجع للصفحة كما كانت (الشيت ما تحرّك). الوضع العادي: يفتح الشيت مثل قبل.
+      if (asOverlay) onOverlayClose?.();
+      else onToggleHeader?.();
     }, 280);
   };
   if (typeof document === 'undefined') return null;
@@ -18984,7 +19003,7 @@ function PublicLiveCommentsPanel({
         right: 0,
         bottom: 0,
         top: 0,
-        zIndex: chatLift === 1 ? 40 : 15,
+        zIndex: overlayOpen ? 10700 : (chatLift === 1 ? 40 : 15),
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'flex-end',
@@ -23586,6 +23605,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
   const [liveScrollHidden, setLiveScrollHidden] = useState(false);
   const [bottomBarHidden, setBottomBarHidden] = useState(false);
+  // الشات كطبقة كاملة فوق الصفحات (ضغطة مطوّلة على Call) — لا يرفع الشيت
+  const [chatOverlayOpen, setChatOverlayOpen] = useState(false);
+  useEffect(() => { if (!headerOpen) setChatOverlayOpen(false); }, [headerOpen]);
   useEffect(() => {
     const on = (e: Event) => setBottomBarHidden(!!(e as CustomEvent).detail?.hidden);
     window.addEventListener(HOME_BOTTOM_BAR_EVT, on);
@@ -23636,7 +23658,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const bottomHeaderShown = !guestMode && headerOpen && !chatLifted && !isFriendManagement && !visitorProfileOpen;
   useEffect(() => {
     try {
-      document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(96px + env(safe-area-inset-bottom, 0px))' : '0px');
+      document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(80px + env(safe-area-inset-bottom, 0px))' : '0px');
     } catch { /* */ }
     return () => { try { document.documentElement.style.setProperty('--stooorna-bottom-bar-h', '0px'); } catch { /* */ } };
   }, [bottomHeaderShown]);
@@ -26351,14 +26373,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             // تحت مربعات الأقسام (الأصدقاء 10080، الاتصال، البث) عشان ما تتضارب معه، وفوق الشات (15/40)
             zIndex: 10070,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '8px 14px calc(8px + env(safe-area-inset-bottom, 0px)) 12px',
-            background: 'rgba(4,12,12,0.96)',
-            backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
-            borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
+            padding: '5px 10px calc(5px + env(safe-area-inset-bottom, 0px)) 10px',
+            background: 'rgba(4,12,12,0.72)',
+            backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+            borderTop: '1px solid rgba(0,188,212,0.1)',
             transform: bottomBarHidden ? 'translateY(110%)' : 'translateY(0)',
             transition: 'transform 0.25s ease',
           } : { display: 'flex', justifyContent: 'center', padding: '8px 0 10px', position: 'relative' }}>
-                <div style={{
+                <div style={guestMode ? {
                   position: 'relative',
                   display: 'flex',
                   flexDirection: 'row',
@@ -26370,11 +26392,23 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   borderRadius: 20,
                   zIndex: 10620,
                   animation: 'stooornaPlusFanIn 0.28s ease-out',
+                } : {
+                  // بدون إطار/هيد: الأقسام الأربعة موزّعة بعرض الشاشة كاملاً من اليمين لليسار
+                  position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-around',
+                  width: '100%',
+                  gap: 0,
+                  padding: '2px 0',
+                  zIndex: 10620,
+                  animation: 'stooornaPlusFanIn 0.28s ease-out',
                 }}>
                   <style>{`@property --stooorna-frame-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes stooornaFrameShine { to { --stooorna-frame-angle: 360deg; } }
 .stooorna-frame-shine { position: absolute; inset: -1px; border-radius: 20px; padding: 1px; pointer-events: none; background: conic-gradient(from var(--stooorna-frame-angle), rgba(215,222,228,0) 0deg, rgba(215,222,228,0) 290deg, rgba(215,222,228,0.4) 325deg, rgba(232,238,242,1) 345deg, rgba(215,222,228,0) 360deg); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; filter: drop-shadow(0 0 3px rgba(215,222,228,0.7)); animation: stooornaFrameShine 16s linear infinite; }`}</style>
-                  <span aria-hidden="true" className="stooorna-frame-shine" />
+                  {guestMode && <span aria-hidden="true" className="stooorna-frame-shine" />}
 
 {/* ── Speech-bubble panel: sits above the dock, tail points at the tapped icon ── */}
 {!guestMode && dockBubble && dockBubble.kind !== 'templates' && typeof document !== 'undefined' && createPortal((() => {
@@ -26599,8 +26633,20 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
 <button
                       type="button"
+                      onContextMenu={(e) => e.preventDefault()}
                       onPointerDown={() => {
-                        if (!profilePlusIncomingCallUi.ringing) return;
+                        if (!profilePlusIncomingCallUi.ringing) {
+                          // ضغطة مطوّلة على Call = فتح الشات كطبقة كاملة فوق الصفحات (بدون رفع الشيت)
+                          profilePlusCallPressRef.current.long = false;
+                          if (profilePlusCallPressRef.current.timer) clearTimeout(profilePlusCallPressRef.current.timer);
+                          profilePlusCallPressRef.current.timer = setTimeout(() => {
+                            profilePlusCallPressRef.current.long = true;
+                            profilePlusCallPressRef.current.timer = null;
+                            setDockBubble(null);
+                            setChatOverlayOpen(true);
+                          }, 550);
+                          return;
+                        }
                         profilePlusCallPressRef.current.long = false;
                         if (profilePlusCallPressRef.current.timer) clearTimeout(profilePlusCallPressRef.current.timer);
                         profilePlusCallPressRef.current.timer = setTimeout(() => {
@@ -26653,7 +26699,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       }}
                       aria-label={profilePlusIncomingCallUi.ringing ? 'Answer call' : 'Call'}
                       style={{
-                        width: 38, height: 38, borderRadius: '50%',
+                        width: 34, height: 34, borderRadius: '50%',
                         border: '1px solid rgba(0,188,212,0.4)',
                         background: 'rgba(6,20,22,0.96)',
                         color: '#00BCD4',
@@ -26674,7 +26720,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       onClick={(e) => openDockBubble('live', e.currentTarget)}
                       aria-label="Live broadcast"
                       style={{
-                        width: 38, height: 38, borderRadius: '50%',
+                        width: 34, height: 34, borderRadius: '50%',
                         border: '1px solid rgba(0,188,212,0.4)',
                         background: 'rgba(6,20,22,0.96)',
                         color: '#00BCD4',
@@ -26709,7 +26755,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       title="Templates"
                       style={{
                         WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
-                        width: 38, height: 38, borderRadius: '50%',
+                        width: 34, height: 34, borderRadius: '50%',
                         border: '1px solid rgba(0,188,212,0.4)',
                         background: 'rgba(6,20,22,0.96)',
                         color: '#00BCD4',
@@ -26736,7 +26782,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   aria-label={GUEST_SIGNIN_LABEL[guestLang]}
   title={GUEST_SIGNIN_LABEL[guestLang]}
   style={{
-    width: 38, height: 38, borderRadius: '50%',
+    width: 34, height: 34, borderRadius: '50%',
     border: '1px solid rgba(0,188,212,0.4)',
     background: 'rgba(6,20,22,0.96)',
     color: '#00BCD4',
@@ -26763,7 +26809,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     aria-label="Settings"
                     title="Settings"
                     style={{
-                      width: 38, height: 38, borderRadius: '50%',
+                      width: 34, height: 34, borderRadius: '50%',
                       border: '1px solid rgba(0,188,212,0.4)',
                       background: 'rgba(6,20,22,0.96)',
                       color: '#00BCD4',
@@ -26785,46 +26831,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 </div>
 )}
                 </div>
-                {/* ── أيقونة التطبيق: بدون إطار، تدور ببطء. النقر عليها هو الوحيد الذي يرفع الشيت ويفتح صفحة الشات/الصور/الفيديوهات ── */}
-                {!guestMode && (
-                  <motion.button
-                    type="button"
-                    whileTap={{ scale: 0.88 }}
-                    onClick={() => {
-                      setDockBubble(null);
-                      if (headerOpen) toggleHeaderOpen();
-                    }}
-                    aria-label="Open chat and posts"
-                    title="Open"
-                    style={{
-                      width: 54, height: 54, padding: 0, margin: '0 6px 0 0', flexShrink: 0,
-                      border: 'none', background: 'transparent', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      WebkitTapHighlightColor: 'transparent',
-                    }}
-                  >
-                    {/* دائرة مقصوصة: نكبّر الصورة ونقصّها بدائرة عشان يختفي المربع/المعيّن خلف الأيقونة */}
-                    <span aria-hidden="true" style={{ width: 46, height: 46, borderRadius: '50%', overflow: 'hidden', display: 'block', flexShrink: 0, background: 'transparent', clipPath: 'circle(50% at 50% 50%)' }}>
-                      <span style={{ display: 'block', width: '100%', height: '100%', transform: 'scale(1.4)' }}>
-                        <motion.span
-                          aria-hidden="true"
-                          animate={{ rotate: 360 }}
-                          transition={{ duration: 16, repeat: Infinity, ease: 'linear' }}
-                          style={{ display: 'block', width: '100%', height: '100%', pointerEvents: 'none', userSelect: 'none' }}
-                        >
-                          <svg viewBox="0 0 100 100" width="100%" height="100%" style={{ display: 'block' }} focusable="false">
-                            <defs><clipPath id="stooornaGlobeClip"><circle cx="50" cy="50" r="31" /></clipPath></defs>
-                            <circle cx="50" cy="50" r="31" fill="#22282a" />
-                            <g clipPath="url(#stooornaGlobeClip)" fill="none" stroke="#24b4ce" strokeWidth="5.4" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M14.0 43.0 C16.0 43.1 22.8 43.5 26.0 43.5 C29.2 43.5 30.8 44.4 33.0 43.0 C35.2 41.6 36.2 36.9 39.2 35.3 C42.2 33.7 48.0 34.5 50.9 33.4 C53.8 32.3 55.8 32.0 56.8 28.8 C57.8 25.6 56.8 16.5 56.8 14.0" /><path d="M14.0 57.1 C16.2 57.2 23.5 57.6 27.0 57.7 C30.5 57.9 33.0 57.1 35.0 58.0 C37.0 58.9 38.5 58.3 39.2 63.0 C39.9 67.7 39.2 82.2 39.2 86.0" /><path d="M84.0 32.0 C82.0 32.5 75.0 34.0 72.0 35.0 C69.0 36.0 67.8 36.3 66.3 38.2 C64.8 40.1 65.1 44.5 62.7 46.5 C60.3 48.5 54.5 48.4 52.1 50.0 C49.8 51.6 48.6 53.9 48.6 55.9 C48.6 57.9 50.1 60.0 52.1 61.8 C54.1 63.6 58.4 64.3 60.4 66.5 C62.4 68.7 63.0 71.5 63.9 74.8 C64.8 78.0 65.7 84.1 66.0 86.0" />
-                            </g>
-                            <circle cx="50" cy="50" r="30.4" fill="none" stroke="#24b4ce" strokeWidth="4.8" />
-                          </svg>
-                        </motion.span>
-                      </span>
-                    </span>
-                  </motion.button>
-                )}
           </div>
           </BottomHeaderPortal>
         )}
@@ -32951,7 +32957,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         }}
       />
       {pageTab === 'profile' && !isFriendManagement && !guestMode && (
-        <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen || liveScrollHidden} onToggleHeader={toggleHeaderOpen} onBusyChange={setLiveChatBusy} />
+        <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen || liveScrollHidden} onToggleHeader={toggleHeaderOpen} onBusyChange={setLiveChatBusy} overlayOpen={chatOverlayOpen} onOverlayClose={() => setChatOverlayOpen(false)} />
       )}
       {GuestModal}
     </>;
