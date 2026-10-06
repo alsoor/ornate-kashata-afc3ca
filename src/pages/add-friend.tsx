@@ -20690,20 +20690,8 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
   const handleLiveListScroll = (ev: React.UIEvent<HTMLDivElement>) => {
     livePinnedRef.current = '';
     recomputeActiveLive();
-    if (!liveScrollMode) return;
-    const cur = ev.currentTarget.scrollTop;
-    const delta = cur - liveScrollLastTopRef.current;
-    liveScrollLastTopRef.current = cur;
-    // ignore the scroll jitter caused by the header/list resizing right after a toggle
-    if (Date.now() < liveScrollLockRef.current) return;
-    let hide: boolean | null = null;
-    if (cur <= 4) hide = false;          // back at the top -> show
-    else if (delta > 6) hide = true;     // finger up -> hide header + icons
-    else if (delta < -6) hide = false;   // finger down -> show them
-    if (hide === null || hide === liveScrollHiddenRef.current) return;
-    liveScrollHiddenRef.current = hide;
-    liveScrollLockRef.current = Date.now() + 550;
-    try { window.dispatchEvent(new CustomEvent(HOME_LIVE_SCROLL_EVT, { detail: { hidden: hide } })); } catch { /* */ }
+    // الهيد ثابت دائماً: التمرير يحرّك بطاقات اللايف وAds فقط، وتختفي تحت حافة الهيد (لا إخفاء للهيد ولا للأيقونات)
+    liveScrollLastTopRef.current = ev.currentTarget.scrollTop;
   };
 
   return createPortal(
