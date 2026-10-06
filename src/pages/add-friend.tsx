@@ -10170,8 +10170,10 @@ export interface FriendStoryProfileProps {
   isCompanyProfile?: boolean;
   /** Settings-style right sheet: slides from the right, leaves a left strip to dismiss */
   sheetMode?: boolean;
+  /** Full-screen profile that rises straight up from the bottom (used by the live rooms' host avatar) */
+  riseFromBottom?: boolean;
 }
-export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, isCompanyProfile = false, sheetMode = false }: FriendStoryProfileProps) {
+export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, isCompanyProfile = false, sheetMode = false, riseFromBottom = false }: FriendStoryProfileProps) {
   const navigate = useNavigate();
   const { user } = useSession();
   const liveKind = useLiveBroadcastKind(authorId);
@@ -10410,10 +10412,12 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         },
       }
     : {
-        initial: { opacity: 0, scale: 0.94, y: 20, borderRadius: 28 },
-        animate: { opacity: 1, scale: 1, y: 0, borderRadius: 0 },
-        exit: { opacity: 0, scale: 0.96, y: 12, borderRadius: 22 },
-        transition: { type: 'tween' as const, duration: 0.32, ease: 'easeIn' as const },
+        initial: riseFromBottom ? { y: '100%' } : { opacity: 0, scale: 0.94, y: 20, borderRadius: 28 },
+        animate: riseFromBottom ? { y: 0 } : { opacity: 1, scale: 1, y: 0, borderRadius: 0 },
+        exit: riseFromBottom ? { y: '100%' } : { opacity: 0, scale: 0.96, y: 12, borderRadius: 22 },
+        transition: riseFromBottom
+          ? { type: 'tween' as const, duration: 0.3, ease: [0.32, 0.72, 0, 1] as const }
+          : { type: 'tween' as const, duration: 0.32, ease: 'easeIn' as const },
         style: {
           position: 'fixed' as const,
           inset: 0,

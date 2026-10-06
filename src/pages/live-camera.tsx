@@ -14,6 +14,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom'; // PROFILE-TAP-PATCH
+import HostProfileSheet from './HostProfileSheet';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
@@ -25,7 +26,6 @@ import {
   Users,
   Snowflake,
   LogOut,
-  ChevronDown,
   Video,
   VideoOff,
   SwitchCamera,
@@ -190,6 +190,7 @@ export default function LiveCameraPage() {
   const [joined, setJoined] = useState(false);
   const [livePageClosing, setLivePageClosing] = useState(false);
   const [enterGateDone, setEnterGateDone] = useState(false);
+  const [hostProfileOpen, setHostProfileOpen] = useState(false);
   const [joining, setJoining] = useState(false);
   const joinLockRef = useRef(false); // UID-CONFLICT-FIX: never two joins at the same time (two clients with the same uid = UID_CONFLICT)
   const joinNotBeforeRef = useRef(0); // UID-CONFLICT-FIX: pause between failed attempts (no instant retry loop)
@@ -230,149 +231,6 @@ export default function LiveCameraPage() {
   const [roomEndedOverlay, setRoomEndedOverlay] = useState(false);
   const liveChatEndRef = useRef<HTMLDivElement | null>(null);
 
-  type HostPost = {
-    id: number;
-    text?: string | null;
-    mediaUrl?: string | null;
-    mediaType?: string | null;
-    mediaUrls?: string[] | null;
-    mediaTypes?: string[] | null;
-    authorId?: string;
-    authorName?: string | null;
-    authorUsername?: string | null;
-    authorAvatarUrl?: string | null;
-    createdAt?: string;
-    commentsCount?: number;
-    likesCount?: number;
-  };
-  const [hostPostsOpen, setHostPostsOpen] = useState(false);
-  const [hostPosts, setHostPosts] = useState<HostPost[]>([]);
-  const [hostPostsLoading, setHostPostsLoading] = useState(false);
-  const [viewPost, setViewPost] = useState<HostPost | null>(null);
-  const [productDetailsOpen, setProductDetailsOpen] = useState(false);
-  const [postComments, setPostComments] = useState<
-    { id: number; authorName?: string; authorAvatarUrl?: string | null; body?: string; text?: string; createdAt?: string }[]
-  >([]);
-  const [postCommentText, setPostCommentText] = useState('');
-  const [postCommentSending, setPostCommentSending] = useState(false);
-
-  function extractProductFields(text: string | null | undefined): {
-    title: string;
-    details: string;
-    price: string;
-    extras: string[];
-  } {
-    const raw = (text || '').trim();
-    const clean = raw.replace(/⟦stooorna-product:[A-Za-z0-9+/=]+⟧\s*$/u, '').trim();
-    const lines = clean.split(/\n+/).map(l => l.trim()).filter(Boolean);
-    let title = lines[0] || 'Product';
-    let price = '';
-    let details = '';
-    const extras: string[] = [];
-    for (const line of lines.slice(1)) {
-      if (/price|KD|KWD/i.test(line) && !price) price = line;
-      else if (!details) details = line;
-      else extras.push(line);
-    }
-    if (raw.startsWith('{')) {
-      try {
-        const o = JSON.parse(raw.split('\n')[0]);
-        if (o && o.__productAd === 1) {
-          title = o.title || title;
-          details = o.details || details;
-          price = o.price ? String(o.price) : price;
-          if (Array.isArray(o.extras)) extras.push(...o.extras.map(String));
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    return { title, details, price, extras };
-  }
-
-  function parseProductTitle(text: string | null | undefined): string {
-    if (!text) return 'Post';
-    const first = text.trim().split(/\n\n+/)[0]?.trim() || text.trim();
-    return first.slice(0, 80) || 'Post';
-  }
-
-  async function loadHostPosts() {
-    if (!hostId) return;
-    setHostPostsLoading(true);
-    try {
-      const r = await fetch('/api/posts?audience=text', { credentials: 'include' });
-      if (!r.ok) {
-        const r2 = await fetch('/api/posts?audience=public', { credentials: 'include' });
-        if (!r2.ok) throw new Error('fail');
-        const d2 = await r2.json();
-        const list = (d2.posts ?? d2 ?? []) as HostPost[];
-        setHostPosts(list.filter(p => String(p.authorId) === String(hostId)));
-      } else {
-        const d = await r.json();
-        const list = (d.posts ?? d ?? []) as HostPost[];
-        setHostPosts(list.filter(p => String(p.authorId) === String(hostId)));
-      }
-    } catch {
-      setHostPosts([]);
-    } finally {
-      setHostPostsLoading(false);
-    }
-  }
-
-  function openHostPosts() {
-    if (!isHostRoom || !hostId) return;
-    setHostPostsOpen(true);
-    void loadHostPosts();
-  }
-
-  async function openPostDetail(post: HostPost) {
-    setViewPost(post);
-    setProductDetailsOpen(false);
-    setPostComments([]);
-    setPostCommentText('');
-    try {
-      const r = await fetch(`/api/posts/${post.id}/comments`, { credentials: 'include' });
-      if (r.ok) {
-        const d = await r.json();
-        setPostComments(d.comments ?? d ?? []);
-      }
-    } catch {
-      /* silent */
-    }
-  }
-
-  async function sendPostComment() {
-    if (!viewPost || !postCommentText.trim() || postCommentSending) return;
-    const body = postCommentText.trim();
-    setPostCommentSending(true);
-    try {
-      const r = await fetch(`/api/posts/${viewPost.id}/comments`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body, parentCommentId: null }),
-      });
-      if (r.ok) {
-        setPostCommentText('');
-        const r2 = await fetch(`/api/posts/${viewPost.id}/comments`, { credentials: 'include' });
-        if (r2.ok) {
-          const d = await r2.json();
-          setPostComments(d.comments ?? d ?? []);
-        }
-      }
-    } catch {
-      /* silent */
-    } finally {
-      setPostCommentSending(false);
-    }
-  }
-
-  function postThumb(post: HostPost): { url: string; type: string } | null {
-    const urls = post.mediaUrls?.length ? post.mediaUrls : post.mediaUrl ? [post.mediaUrl] : [];
-    const types = post.mediaTypes?.length ? post.mediaTypes : post.mediaType ? [post.mediaType] : [];
-    if (!urls[0]) return null;
-    return { url: urls[0], type: types[0] || 'image' };
-  }
 
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const micRef = useRef<IMicrophoneAudioTrack | null>(null);
@@ -2336,7 +2194,7 @@ export default function LiveCameraPage() {
   }, [joined, amHost, duet?.uid, sendDataPayload]);
 
   useEffect(() => {
-    const id = window.setTimeout(() => setEnterGateDone(true), 5000);
+    const id = window.setTimeout(() => setEnterGateDone(true), 2000);
     return () => window.clearTimeout(id);
   }, []);
 
@@ -2512,8 +2370,8 @@ export default function LiveCameraPage() {
               <>
                 <button
                   type="button"
-                  onClick={openHostPosts}
-                  aria-label="Host posts"
+                  onClick={() => { if (hostId) setHostProfileOpen(true); }}
+                  aria-label="Host profile"
                   data-gift-host="1"
                   style={{
                     padding: 0,
@@ -3432,257 +3290,6 @@ export default function LiveCameraPage() {
         </div>
       )}
 
-      <AnimatePresence>
-        {hostPostsOpen && !viewPost && (
-          <motion.div
-            key="host-posts-sheet"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setHostPostsOpen(false)}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              zIndex: 40,
-              background: 'rgba(0,0,0,0.45)',
-              display: 'flex',
-              alignItems: 'flex-end',
-            }}
-          >
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', stiffness: 380, damping: 36 }}
-              onClick={e => e.stopPropagation()}
-              style={{
-                width: '100%',
-                maxHeight: '78vh',
-                background: 'rgba(6,16,18,0.98)',
-                borderRadius: '18px 18px 0 0',
-                border: '1px solid rgba(0,188,212,0.2)',
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 12px', borderBottom: '1px solid rgba(0,188,212,0.12)', position: 'relative' }}>
-                <UserAvatar name={hostName} avatarUrl={hostAvatar} size={32} style={{ borderRadius: '50%' }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: '0.88rem' }}>{hostName}</p>
-                  <p style={{ margin: 0, color: 'rgba(150,200,200,0.55)', fontSize: '0.68rem' }}>Products · live continues</p>
-                </div>
-                <button type="button" onClick={() => setHostPostsOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(200,230,230,0.8)', cursor: 'pointer', padding: 6 }}>
-                  <ChevronDown size={20} />
-                </button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: 10, WebkitOverflowScrolling: 'touch' }}>
-                {hostPostsLoading && (
-                  <p style={{ textAlign: 'center', color: 'rgba(150,200,200,0.5)', fontSize: '0.8rem', marginTop: 24 }}>Loading…</p>
-                )}
-                {!hostPostsLoading && hostPosts.length === 0 && (
-                  <p style={{ textAlign: 'center', color: 'rgba(150,200,200,0.5)', fontSize: '0.8rem', marginTop: 24 }}>No posts yet</p>
-                )}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                  {hostPosts.map(post => {
-                    const thumb = postThumb(post);
-                    return (
-                      <button
-                        key={post.id}
-                        type="button"
-                        onClick={() => void openPostDetail(post)}
-                        style={{
-                          aspectRatio: '1',
-                          borderRadius: 10,
-                          overflow: 'hidden',
-                          border: '1px solid rgba(0,188,212,0.2)',
-                          background: '#0a1416',
-                          padding: 0,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {thumb ? (
-                          thumb.type === 'video' || (thumb.url && /\.(mp4|webm|mov)/i.test(thumb.url)) ? (
-                            <video src={thumb.url} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          ) : /\.pdf(\?|$)/i.test(thumb.url) ? (
-                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00BCD4', fontSize: '0.7rem', fontWeight: 700 }}>PDF</div>
-                          ) : (
-                            <img src={thumb.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          )
-                        ) : (
-                          <div style={{ width: '100%', height: '100%', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <span style={{ color: 'rgba(200,230,230,0.85)', fontSize: '0.62rem', fontWeight: 700, textAlign: 'center', lineHeight: 1.3 }}>
-                              {parseProductTitle(post.text)}
-                            </span>
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {viewPost && (
-          <motion.div
-            key="view-post-live"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            style={{ position: 'absolute', inset: 0, zIndex: 50, background: '#000', display: 'flex', flexDirection: 'column' }}
-          >
-            <div
-              style={{
-                position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5,
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: 'max(env(safe-area-inset-top,0px),12px) 12px 10px',
-                background: 'linear-gradient(180deg, rgba(0,0,0,0.65) 0%, transparent 100%)',
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => { setViewPost(null); setProductDetailsOpen(false); }}
-                style={{
-                  width: 36, height: 36, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.2)',
-                  background: 'rgba(0,0,0,0.35)', color: '#fff', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <ChevronDown size={18} style={{ transform: 'rotate(90deg)' }} />
-              </button>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, color: '#fff', fontWeight: 800, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {parseProductTitle(viewPost.text)}
-                </p>
-                <p style={{ margin: 0, color: 'rgba(200,230,230,0.55)', fontSize: '0.62rem' }}>Live continues</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setViewPost(null); setHostPostsOpen(false); setProductDetailsOpen(false); }}
-                style={{
-                  padding: '7px 12px', borderRadius: 20, border: '1px solid rgba(0,188,212,0.4)',
-                  background: 'rgba(0,188,212,0.15)', color: '#00BCD4', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer',
-                }}
-              >
-                LIVE
-              </button>
-            </div>
-
-            <div style={{ flex: 1, position: 'relative', minHeight: 0, background: '#000' }}>
-              {(() => {
-                const thumb = postThumb(viewPost);
-                if (!thumb) {
-                  return (
-                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-                      <p style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, textAlign: 'center' }}>{parseProductTitle(viewPost.text)}</p>
-                    </div>
-                  );
-                }
-                if (thumb.type === 'video' || /\.(mp4|webm|mov)/i.test(thumb.url)) {
-                  return <video src={thumb.url} autoPlay muted loop playsInline style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />;
-                }
-                if (/\.pdf(\?|$)/i.test(thumb.url)) {
-                  return <iframe title="PDF" src={thumb.url} style={{ width: '100%', height: '100%', border: 'none', background: '#111' }} />;
-                }
-                return <img src={thumb.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />;
-              })()}
-
-              <button
-                type="button"
-                onClick={() => setProductDetailsOpen(true)}
-                aria-label="Product details"
-                style={{
-                  position: 'absolute',
-                  left: '50%',
-                  bottom: 'max(24px, env(safe-area-inset-bottom, 0px))',
-                  transform: 'translateX(-50%)',
-                  width: 56,
-                  height: 36,
-                  borderRadius: 12,
-                  border: '1px solid rgba(255,255,255,0.25)',
-                  background: 'rgba(0,0,0,0.45)',
-                  backdropFilter: 'blur(8px)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 4,
-                  cursor: 'pointer',
-                  padding: 0,
-                  zIndex: 4,
-                }}
-              >
-                <span style={{ width: 22, height: 2, borderRadius: 1, background: 'rgba(255,255,255,0.9)' }} />
-                <span style={{ width: 22, height: 2, borderRadius: 1, background: 'rgba(255,255,255,0.9)' }} />
-                <span style={{ width: 22, height: 2, borderRadius: 1, background: 'rgba(255,255,255,0.9)' }} />
-              </button>
-            </div>
-
-            <AnimatePresence>
-              {productDetailsOpen && (
-                <motion.div
-                  key="product-details-sheet"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  onClick={() => setProductDetailsOpen(false)}
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    zIndex: 10,
-                    background: 'rgba(0,0,0,0.45)',
-                    display: 'flex',
-                    alignItems: 'flex-end',
-                  }}
-                >
-                  <motion.div
-                    initial={{ y: '100%' }}
-                    animate={{ y: 0 }}
-                    exit={{ y: '100%' }}
-                    transition={{ type: 'spring', stiffness: 380, damping: 36 }}
-                    onClick={e => e.stopPropagation()}
-                    style={{
-                      width: '100%',
-                      maxHeight: '70vh',
-                      background: 'rgba(8,18,20,0.98)',
-                      borderRadius: '18px 18px 0 0',
-                      border: '1px solid rgba(0,188,212,0.25)',
-                      padding: '10px 18px max(env(safe-area-inset-bottom,0px),20px)',
-                      overflowY: 'auto',
-                    }}
-                  >
-                    <div style={{ width: 40, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.25)', margin: '0 auto 14px' }} />
-                    {(() => {
-                      const f = extractProductFields(viewPost.text);
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                          <p style={{ margin: 0, color: '#fff', fontSize: '1.05rem', fontWeight: 800 }}>{f.title}</p>
-                          {f.price ? <p style={{ margin: 0, color: '#00BCD4', fontSize: '0.95rem', fontWeight: 700 }}>{f.price}</p> : null}
-                          {f.details ? (
-                            <p style={{ margin: 0, color: 'rgba(200,230,230,0.9)', fontSize: '0.88rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{f.details}</p>
-                          ) : null}
-                          {f.extras.map((ex, i) => (
-                            <p key={i} style={{ margin: 0, color: 'rgba(180,220,220,0.8)', fontSize: '0.85rem', lineHeight: 1.45 }}>{ex}</p>
-                          ))}
-                          {!f.details && !f.price && f.extras.length === 0 && viewPost.text ? (
-                            <p style={{ margin: 0, color: 'rgba(200,230,230,0.9)', fontSize: '0.88rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                              {(viewPost.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()}
-                            </p>
-                          ) : null}
-                        </div>
-                      );
-                    })()}
-                  </motion.div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-        )}
-      </AnimatePresence>
       {/* DUET-PATCH overlays */}
       {/* SPLIT-PATCH: the old always-visible End button is replaced by the exit pill that the split icon shows */}
       {isHostRoom ? (
@@ -3805,6 +3412,15 @@ export default function LiveCameraPage() {
           />
         </React.Suspense>,
         document.body,
+      ) : null}
+      {hostProfileOpen && hostId ? (
+        <HostProfileSheet
+          authorId={hostId}
+          authorName={hostName}
+          authorUsername={hostUsername}
+          authorAvatarUrl={hostAvatar}
+          onClose={() => setHostProfileOpen(false)}
+        />
       ) : null}
       <LiveVipDock hostId={hostId} currentUserId={myId} />
       {/* قائمة المتحدث: دعم (هدية) + تجميد المايك لصاحب البث / كتم محلي للمشاهد */}
