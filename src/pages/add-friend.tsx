@@ -3,9 +3,28 @@ import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, use
 import { createPortal } from 'react-dom';
 import React from 'react';
 // Full Settings page, rendered directly inside the dock bubble (no route change → no slide-in sheet, no red close X).
-const EmbeddedSettingsPage = React.lazy(() => import('./settings'));
-const EmbeddedPrivacyPage = React.lazy(() => import('./privacy'));
-const EmbeddedProfilePage = React.lazy(() => import('./profile'));
+const importEmbeddedSettings = () => import('./settings');
+const importEmbeddedPrivacy = () => import('./privacy');
+const importEmbeddedProfile = () => import('./profile');
+const EmbeddedSettingsPage = React.lazy(importEmbeddedSettings);
+const EmbeddedPrivacyPage = React.lazy(importEmbeddedPrivacy);
+const EmbeddedProfilePage = React.lazy(importEmbeddedProfile);
+// PERF: download these chunks in the background once the app is idle, so tapping "Settings" in the dock
+// doesn't have to wait for the network + parse. (Only fetches the code; nothing is rendered until the tap.)
+if (typeof window !== 'undefined') {
+  const warmEmbeddedPages = () => {
+    importEmbeddedSettings().catch(() => { /* ignore */ });
+    importEmbeddedPrivacy().catch(() => { /* ignore */ });
+    importEmbeddedProfile().catch(() => { /* ignore */ });
+  };
+  const kickWarm = () => {
+    const w = window as any;
+    if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(warmEmbeddedPages, { timeout: 6000 });
+    else window.setTimeout(warmEmbeddedPages, 3000);
+  };
+  if (document.readyState === 'complete') kickWarm();
+  else window.addEventListener('load', kickWarm, { once: true });
+}
 
 /**
  * Tiny in-memory router for the dock bubble. Settings / Privacy / Profile call useNavigate(), so we give them
@@ -16864,6 +16883,18 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
   const ref = useRef<HTMLVideoElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const isVideo = liveBaseText(c.text) !== LIVE_PHOTO_CAPTION;
+  // PERF: don't create every <video> at once (that froze the Templates bubble and showed empty tiles).
+  // A tile only gets its <video> once it is close to the visible area.
+  const [near, setNear] = useState(() => typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!isVideo || near || !el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(entries => {
+      if (entries.some(en => en.isIntersecting)) { setNear(true); io.disconnect(); }
+    }, { rootMargin: '240px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [isVideo, near]);
   useEffect(() => {
     const v = ref.current;
     if (!v || typeof IntersectionObserver === 'undefined') return;
@@ -16874,7 +16905,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
     }, { threshold: 0.35 });
     io.observe(v);
     return () => io.disconnect();
-  }, [c.imageUrl]);
+  }, [c.imageUrl, near]);
   const chip: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 999,
     padding: '4px 8px', color: '#fff', fontSize: '0.68rem', fontWeight: 800,
@@ -16887,9 +16918,11 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
         style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#0b1512', aspectRatio: '3 / 4', cursor: 'pointer', border: `1px solid ${CLR_CARD_BORDER}` }}
       >
         {isVideo ? (
-          <video ref={ref} src={c.imageUrl || ''} autoPlay loop muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+          near
+            ? <video ref={ref} src={c.imageUrl || ''} autoPlay loop muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+            : <div aria-hidden="true" style={{ width: '100%', height: '100%', background: 'linear-gradient(160deg, #10201c 0%, #0b1512 100%)' }} />
         ) : (
-          <img src={c.imageUrl || ''} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+          <img src={c.imageUrl || ''} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
         )}
         {isVideo ? (
           <div style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.5)', borderRadius: 999, padding: 5, display: 'flex', pointerEvents: 'none' }}>
@@ -21225,6 +21258,289 @@ function usePublicVoiceRoomStatus(enabled: boolean): { present: boolean; count: 
   return enabled ? st : { present: false, count: 0, talking: false };
 }
 
+// ───────────────────────────────────────────────────────────────────────────────────────────
+// PERF — Dock bubble (Call / LIVE / Templates / Settings)
+// The bubble state used to be a useState inside AddFriendPage, so EVERY tap re-rendered the whole page
+// before the bubble could paint. It now lives in this tiny external store; only <DockBubbleHost/> reads it.
+// ───────────────────────────────────────────────────────────────────────────────────────────
+type DockKind = 'call' | 'live' | 'settings' | 'templates';
+type DockState = null | { kind: DockKind; x: number };
+let dockState: DockState = null;
+const dockSubs = new Set<() => void>();
+function dockGet(): DockState { return dockState; }
+function dockSubscribe(f: () => void) { dockSubs.add(f); return () => { dockSubs.delete(f); }; }
+function dockSet(n: DockState | ((cur: DockState) => DockState)) {
+  const next = typeof n === 'function' ? (n as (cur: DockState) => DockState)(dockState) : n;
+  if (next === dockState) return;
+  const prev = dockState;
+  dockState = next;
+  dockSubs.forEach(f => f());
+  // Templates gallery lives in PublicLiveCommentsPanel — tell it synchronously (same event as before, no extra effect hop).
+  if (prev?.kind === 'templates' || next?.kind === 'templates') {
+    try { window.dispatchEvent(new CustomEvent('stooorna:templates-bubble', { detail: { open: next?.kind === 'templates', x: next?.x ?? 0 } })); } catch { /* */ }
+  }
+}
+
+// Friends list for the Call bubble: cached + refreshed in the background (no more "Loading…" on every open).
+const dockFriendsCache: { list: Friend[] | null; p: Promise<Friend[] | null> | null } = { list: null, p: null };
+function refreshDockFriends(): Promise<Friend[] | null> {
+  if (dockFriendsCache.p) return dockFriendsCache.p;
+  const p = (async () => {
+    try {
+      const r = await fetch('/api/friends', { credentials: 'include' });
+      if (!r.ok) return dockFriendsCache.list;
+      const d = await r.json();
+      dockFriendsCache.list = Array.isArray(d?.accepted) ? d.accepted : [];
+      return dockFriendsCache.list;
+    } catch { return dockFriendsCache.list; }
+  })();
+  dockFriendsCache.p = p;
+  void p.finally(() => { if (dockFriendsCache.p === p) dockFriendsCache.p = null; });
+  return p;
+}
+
+function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setProfilePlusOpen, setShowPublicVoice }: {
+  guestMode: boolean;
+  user: any;
+  navigate: (to: string) => void;
+  myLiveBroadcastKind: any;
+  setProfilePlusOpen: (v: boolean) => void;
+  setShowPublicVoice: (v: boolean) => void;
+}) {
+  const dockBubble = useSyncExternalStore(dockSubscribe, dockGet, dockGet);
+  const publicVoiceStatus = usePublicVoiceRoomStatus(dockBubble?.kind === 'live');
+  const [dockFriends, setDockFriends] = useState<Friend[]>(() => dockFriendsCache.list ?? []);
+  const [dockFriendsLoading, setDockFriendsLoading] = useState(false);
+  const bubbleKind = dockBubble?.kind;
+  useEffect(() => {
+    if (bubbleKind !== 'call') return;
+    let off = false;
+    if (dockFriendsCache.list) setDockFriends(dockFriendsCache.list); // show cached friends instantly
+    else setDockFriendsLoading(true);
+    void refreshDockFriends().then(list => { if (!off && list) setDockFriends(list); }).finally(() => { if (!off) setDockFriendsLoading(false); });
+    return () => { off = true; };
+  }, [bubbleKind]);
+  if (guestMode || !dockBubble || dockBubble.kind === 'templates' || typeof document === 'undefined') return null;
+  return createPortal((() => {
+  const SIDE = 12;
+  const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, dockBubble.x - SIDE)) ;
+  const closeBubble = () => dockSet(null);
+  const title = dockBubble.kind === 'call' ? 'Call' : dockBubble.kind === 'live' ? 'LIVE' : 'Settings';
+  const primaryBtn: React.CSSProperties = { width: '100%', padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.5)', background: 'rgba(0,188,212,0.16)', color: '#7ee8f5', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
+  return (
+    <>
+      <div onPointerDown={e => { e.preventDefault(); closeBubble(); }} style={{ position: 'fixed', inset: 0, zIndex: 10068, background: 'rgba(0,6,8,0.45)' }} />
+      <div
+        key={dockBubble.kind}
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'fixed', zIndex: 10075, left: SIDE, right: SIDE, bottom: 'calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
+          height: dockBubble.kind === 'settings' ? 'calc(100dvh - var(--stooorna-bottom-bar-h, 96px) - 30px - env(safe-area-inset-top, 0px))' : 'min(62dvh, 520px)',
+          display: 'flex', flexDirection: 'column',
+          borderRadius: 22, padding: dockBubble.kind === 'settings' ? '0 6px 6px' : '14px 14px 12px',
+          background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
+          border: '1.5px solid rgba(0,188,212,0.35)',
+          boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
+          animation: 'stooornaPlusFanIn 0.22s ease-out',
+        }}
+      >
+        {/* tail → points at the tapped icon */}
+        <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: tailLeft - 9, width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
+        {dockBubble.kind !== 'settings' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: 0 }}>
+          <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,188,212,0.14)', color: '#00BCD4' }}>
+            {dockBubble.kind === 'call' ? <Phone size={15} strokeWidth={2.2} /> : dockBubble.kind === 'live' ? <Radio size={15} strokeWidth={2.2} /> : <Settings size={15} strokeWidth={2.2} />}
+          </span>
+          <p style={{ margin: 0, flex: 1, color: '#7ee8f5', fontWeight: 800, fontSize: '0.98rem' }}>{title}</p>
+          <button type="button" aria-label="Close" onClick={closeBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <X size={15} strokeWidth={2.4} />
+          </button>
+        </div>
+        )}
+        {dockBubble.kind === 'settings' && (
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={closeBubble}
+            style={{ position: 'absolute', top: 14, left: 16, zIndex: 20, width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            <X size={16} strokeWidth={2.4} />
+          </button>
+        )}
+        <div style={{ flex: 1, minHeight: 0, position: 'relative', overflowY: dockBubble.kind === 'settings' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', gap: 8, WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', borderRadius: 14 }}>
+          {dockBubble.kind === 'call' && (
+            <>
+              {dockFriendsLoading && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}
+              {!dockFriendsLoading && dockFriends.length === 0 && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No friends to call yet</p>}
+              {dockFriends.map(f => (
+                <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.18)', background: 'rgba(0,188,212,0.05)' }}>
+                  <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: 'none' }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', color: '#d7eeee', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
+                    {f.username ? <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(150,200,200,0.65)' }}>@{f.username}</span> : null}
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Call ${f.name || f.username || 'friend'}`}
+                    onClick={() => {
+                      closeBubble();
+                      try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
+                    }}
+                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid rgba(34,197,94,0.55)', background: 'rgba(34,197,94,0.16)', color: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                  >
+                    <Phone size={16} strokeWidth={2.3} />
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+          {dockBubble.kind === 'live' && (() => {
+            // Same routes the app already uses to start a live (/live = voice, /live-camera = video), host = me.
+            const startLive = (path: '/live' | '/live-camera') => {
+              closeBubble();
+              setProfilePlusOpen(false);
+              try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
+              const qs = new URLSearchParams({
+                hostId: String(user?.id ?? ''),
+                hostName: String((user as any)?.name || (user as any)?.username || 'Host'),
+              });
+              if ((user as any)?.username) qs.set('hostUsername', String((user as any).username));
+              const av = (user as any)?.avatarUrl || (user as any)?.image;
+              if (av) qs.set('hostAvatar', String(av));
+              navigate(`${path}?${qs.toString()}`);
+            };
+            return (
+              <>
+                <style>{`
+                  @keyframes stooornaLiveChoiceShake {
+                    0%,100% { transform: translateX(0) rotate(0deg) scale(1); }
+                    15% { transform: translateX(-1.5px) rotate(-7deg) scale(1.06); }
+                    30% { transform: translateX(1.5px) rotate(7deg) scale(1.1); }
+                    45% { transform: translateX(-1px) rotate(-5deg) scale(1.06); }
+                    60% { transform: translateX(1px) rotate(5deg) scale(1.1); }
+                    80% { transform: translateX(0) rotate(0deg) scale(1.03); }
+                  }
+                  @keyframes stooornaLiveChoiceRing {
+                    0% { transform: scale(0.85); opacity: 0.7; }
+                    100% { transform: scale(1.75); opacity: 0; }
+                  }
+                `}</style>
+                <div style={{ display: 'flex', justifyContent: 'space-evenly', alignItems: 'flex-start', gap: 18, padding: '8px 6px 4px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <button
+                      type="button"
+                      aria-label="Video Live"
+                      onClick={() => startLive('/live-camera')}
+                      style={{
+                        position: 'relative', width: 64, height: 64, borderRadius: '50%', cursor: 'pointer',
+                        background: 'rgba(0,188,212,0.14)', border: '1.5px solid rgba(0,188,212,0.75)', color: '#00BCD4',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                        boxShadow: myLiveBroadcastKind === 'camera' ? '0 0 18px rgba(0,188,212,0.55)' : '0 0 10px rgba(0,188,212,0.28)',
+                      }}
+                    >
+                      {myLiveBroadcastKind === 'camera' && (
+                        <>
+                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(0,188,212,0.75)', animation: 'stooornaLiveChoiceRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
+                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(0,188,212,0.5)', animation: 'stooornaLiveChoiceRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
+                        </>
+                      )}
+                      <span style={{ display: 'flex', animation: myLiveBroadcastKind === 'camera' ? 'stooornaLiveChoiceShake 0.7s ease-in-out infinite' : 'none' }}>
+                        <Video size={26} strokeWidth={2.3} color="#00BCD4" />
+                      </span>
+                    </button>
+                    <span style={{ color: '#67e8f9', fontWeight: 800, fontSize: '0.78rem' }}>Video Live</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <button
+                      type="button"
+                      aria-label="Voice Live"
+                      onClick={() => startLive('/live')}
+                      style={{
+                        position: 'relative', width: 64, height: 64, borderRadius: '50%', cursor: 'pointer',
+                        background: 'rgba(250,204,21,0.14)', border: '1.5px solid rgba(250,204,21,0.8)', color: '#facc15',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                        boxShadow: myLiveBroadcastKind === 'voice' ? '0 0 18px rgba(250,204,21,0.55)' : '0 0 10px rgba(250,204,21,0.28)',
+                      }}
+                    >
+                      {myLiveBroadcastKind === 'voice' && (
+                        <>
+                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(250,204,21,0.8)', animation: 'stooornaLiveChoiceRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
+                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(250,204,21,0.5)', animation: 'stooornaLiveChoiceRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
+                        </>
+                      )}
+                      <span style={{ display: 'flex', animation: myLiveBroadcastKind === 'voice' ? 'stooornaLiveChoiceShake 0.7s ease-in-out infinite' : 'none' }}>
+                        <Mic size={26} strokeWidth={2.3} color="#facc15" />
+                      </span>
+                    </button>
+                    <span style={{ color: '#facc15', fontWeight: 800, fontSize: '0.78rem' }}>Voice Live</span>
+                  </div>
+                </div>
+                {/* ── Public LIVE: مايك كبير — ضغطة وحدة تفتح اللايف العام. برتقالي + ذبذبات لو في أحد داخل الغرفة أو يتكلم ── */}
+                {(() => {
+                  const hot = publicVoiceStatus.present || publicVoiceStatus.talking;
+                  const c = hot ? '#f97316' : '#ef4444';
+                  const rgb = hot ? '249,115,22' : '239,68,68';
+                  return (
+                    <div style={{ marginTop: 'auto', paddingTop: 18, paddingBottom: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                      <style>{`
+                        @keyframes stooornaPubMicShake {
+                          0%,100% { transform: translateX(0) rotate(0deg) scale(1); }
+                          15% { transform: translateX(-1.5px) rotate(-7deg) scale(1.06); }
+                          30% { transform: translateX(1.5px) rotate(7deg) scale(1.1); }
+                          45% { transform: translateX(-1px) rotate(-5deg) scale(1.06); }
+                          60% { transform: translateX(1px) rotate(5deg) scale(1.1); }
+                          80% { transform: translateX(0) rotate(0deg) scale(1.03); }
+                        }
+                        @keyframes stooornaPubMicRing {
+                          0% { transform: scale(0.85); opacity: 0.65; }
+                          100% { transform: scale(1.75); opacity: 0; }
+                        }
+                      `}</style>
+                      <button
+                        type="button"
+                        aria-label="Public LIVE"
+                        title="Public LIVE"
+                        onClick={() => {
+                          if (!user?.id) return;
+                          closeBubble();
+                          setProfilePlusOpen(false);
+                          setShowPublicVoice(true);
+                        }}
+                        style={{
+                          position: 'relative', width: 64, height: 64, borderRadius: '50%', cursor: 'pointer',
+                          background: `rgba(${rgb},0.14)`, border: `1.5px solid rgba(${rgb},0.6)`, color: c,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: `0 0 ${hot ? 20 : 12}px rgba(${rgb},${hot ? 0.5 : 0.3})`,
+                          transition: 'background 0.25s, border-color 0.25s, color 0.25s, box-shadow 0.25s',
+                        }}
+                      >
+                        {hot && (
+                          <>
+                            <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: `2px solid rgba(${rgb},0.7)`, animation: 'stooornaPubMicRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
+                            <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: `2px solid rgba(${rgb},0.55)`, animation: 'stooornaPubMicRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
+                          </>
+                        )}
+                        <span style={{ display: 'flex', animation: hot ? 'stooornaPubMicShake 0.7s ease-in-out infinite' : 'none' }}>
+                          <Mic size={28} strokeWidth={2.3} />
+                        </span>
+                      </button>
+                      <span style={{ color: hot ? '#fdba74' : '#fca5a5', fontWeight: 800, fontSize: '0.8rem', letterSpacing: '0.02em' }}>Public LIVE</span>
+                    </div>
+                  );
+                })()}
+              </>
+            );
+          })()}
+          {dockBubble.kind === 'settings' && (
+            <DockEmbeddedApp onExit={(to) => { closeBubble(); navigate(to); }} />
+          )}
+        </div>
+      </div>
+    </>
+  );
+  })(), document.body);
+}
+
 export default function AddFriendPage() {
   const navigate = useNavigate();
   const routeLocation = useLocation();
@@ -23969,43 +24285,34 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // the menu (backdrop tap or picking an item) brings the "+" back.
   const [, setProfilePlusOpen] = useState(false);
   // ── Dock bubble: tapping Call / LIVE / Settings opens a speech-bubble panel above the dock, with a tail pointing at the tapped icon ──
-  const [dockBubble, setDockBubble] = useState<null | { kind: 'call' | 'live' | 'settings' | 'templates'; x: number }>(null);
   const [showPublicVoice, setShowPublicVoice] = useState(false);
-  const publicVoiceStatus = usePublicVoiceRoomStatus(dockBubble?.kind === 'live');
-  const [dockFriends, setDockFriends] = useState<Friend[]>([]);
-  const [dockFriendsLoading, setDockFriendsLoading] = useState(false);
+  // PERF: bubble state lives in an external store (dockSet/dockGet) — this page does NOT subscribe to it,
+  // so opening/closing the bubble no longer re-renders this ~12k-line component.
   const openDockBubble = (kind: 'call' | 'live' | 'settings' | 'templates', el: HTMLElement | null) => {
     const r = el?.getBoundingClientRect();
     const x = r ? r.left + r.width / 2 : (typeof window !== 'undefined' ? window.innerWidth / 2 : 180);
-    setDockBubble(cur => (cur && cur.kind === kind ? null : { kind, x }));
+    dockSet(cur => (cur && cur.kind === kind ? null : { kind, x }));
   };
-  useEffect(() => { setDockBubble(null); }, [routeLocation.pathname, routeLocation.search]);
-  // Templates bubble: the gallery itself is rendered by PublicLiveCommentsPanel (it owns the Templates store/likes/comments/delete);
-  // the dock only tells it when to open/close, and the panel tells the dock when its own backdrop/X closed it.
+  useEffect(() => { dockSet(null); }, [routeLocation.pathname, routeLocation.search]);
+  // The Templates gallery itself is rendered by PublicLiveCommentsPanel; dockSet() tells it to open/close
+  // synchronously, and the panel tells us here when its own backdrop/X closed it.
   useEffect(() => {
-    try {
-      window.dispatchEvent(new CustomEvent('stooorna:templates-bubble', { detail: { open: dockBubble?.kind === 'templates', x: dockBubble?.x ?? 0 } }));
-    } catch { /* */ }
-  }, [dockBubble?.kind, dockBubble?.x]);
-  useEffect(() => {
-    const onTplClosed = () => setDockBubble(cur => (cur && cur.kind === 'templates' ? null : cur));
+    const onTplClosed = () => dockSet(cur => (cur && cur.kind === 'templates' ? null : cur));
     window.addEventListener('stooorna:templates-bubble-close', onTplClosed);
     return () => window.removeEventListener('stooorna:templates-bubble-close', onTplClosed);
   }, []);
+  // PERF: warm the friends list in the background so the Call bubble opens with data already there.
   useEffect(() => {
-    if (dockBubble?.kind !== 'call') return;
-    let off = false;
-    setDockFriendsLoading(true);
-    (async () => {
-      try {
-        const r = await fetch('/api/friends', { credentials: 'include' });
-        if (!r.ok) return;
-        const d = await r.json();
-        if (!off) setDockFriends(Array.isArray(d?.accepted) ? d.accepted : []);
-      } catch { /* keep empty */ } finally { if (!off) setDockFriendsLoading(false); }
-    })();
-    return () => { off = true; };
-  }, [dockBubble?.kind]);
+    if (!user?.id) { dockFriendsCache.list = null; return; }
+    const run = () => { void refreshDockFriends(); };
+    const w = window as any;
+    if (typeof w.requestIdleCallback === 'function') {
+      const id = w.requestIdleCallback(run, { timeout: 3000 });
+      return () => { try { w.cancelIdleCallback(id); } catch { /* */ } };
+    }
+    const id = window.setTimeout(run, 1200);
+    return () => window.clearTimeout(id);
+  }, [user?.id]);
   const profilePlusCallPressRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; long: boolean }>({ timer: null, long: false });
   const profilePlusIncomingCallUi = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
   const lastFeedScrollTopRef = useRef(0);
@@ -26723,224 +27030,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   {guestMode && <span aria-hidden="true" className="stooorna-frame-shine" />}
 
 {/* ── Speech-bubble panel: sits above the dock, tail points at the tapped icon ── */}
-{!guestMode && dockBubble && dockBubble.kind !== 'templates' && typeof document !== 'undefined' && createPortal((() => {
-  const SIDE = 12;
-  const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, dockBubble.x - SIDE)) ;
-  const closeBubble = () => setDockBubble(null);
-  const title = dockBubble.kind === 'call' ? 'Call' : dockBubble.kind === 'live' ? 'LIVE' : 'Settings';
-  const primaryBtn: React.CSSProperties = { width: '100%', padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.5)', background: 'rgba(0,188,212,0.16)', color: '#7ee8f5', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
-  return (
-    <>
-      <div onPointerDown={e => { e.preventDefault(); closeBubble(); }} style={{ position: 'fixed', inset: 0, zIndex: 10068, background: 'rgba(0,6,8,0.45)' }} />
-      <div
-        key={dockBubble.kind}
-        onClick={e => e.stopPropagation()}
-        style={{
-          position: 'fixed', zIndex: 10075, left: SIDE, right: SIDE, bottom: 'calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
-          height: dockBubble.kind === 'settings' ? 'calc(100dvh - var(--stooorna-bottom-bar-h, 96px) - 30px - env(safe-area-inset-top, 0px))' : 'min(62dvh, 520px)',
-          display: 'flex', flexDirection: 'column',
-          borderRadius: 22, padding: dockBubble.kind === 'settings' ? '0 6px 6px' : '14px 14px 12px',
-          background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
-          border: '1.5px solid rgba(0,188,212,0.35)',
-          boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
-          animation: 'stooornaPlusFanIn 0.22s ease-out',
-        }}
-      >
-        {/* tail → points at the tapped icon */}
-        <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: tailLeft - 9, width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
-        {dockBubble.kind !== 'settings' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: 0 }}>
-          <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,188,212,0.14)', color: '#00BCD4' }}>
-            {dockBubble.kind === 'call' ? <Phone size={15} strokeWidth={2.2} /> : dockBubble.kind === 'live' ? <Radio size={15} strokeWidth={2.2} /> : <Settings size={15} strokeWidth={2.2} />}
-          </span>
-          <p style={{ margin: 0, flex: 1, color: '#7ee8f5', fontWeight: 800, fontSize: '0.98rem' }}>{title}</p>
-          <button type="button" aria-label="Close" onClick={closeBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <X size={15} strokeWidth={2.4} />
-          </button>
-        </div>
-        )}
-        {dockBubble.kind === 'settings' && (
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={closeBubble}
-            style={{ position: 'absolute', top: 14, left: 16, zIndex: 20, width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-          >
-            <X size={16} strokeWidth={2.4} />
-          </button>
-        )}
-        <div style={{ flex: 1, minHeight: 0, position: 'relative', overflowY: dockBubble.kind === 'settings' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', gap: 8, WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', borderRadius: 14 }}>
-          {dockBubble.kind === 'call' && (
-            <>
-              {dockFriendsLoading && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}
-              {!dockFriendsLoading && dockFriends.length === 0 && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No friends to call yet</p>}
-              {dockFriends.map(f => (
-                <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.18)', background: 'rgba(0,188,212,0.05)' }}>
-                  <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: 'none' }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', color: '#d7eeee', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
-                    {f.username ? <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(150,200,200,0.65)' }}>@{f.username}</span> : null}
-                  </div>
-                  <button
-                    type="button"
-                    aria-label={`Call ${f.name || f.username || 'friend'}`}
-                    onClick={() => {
-                      closeBubble();
-                      try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
-                    }}
-                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid rgba(34,197,94,0.55)', background: 'rgba(34,197,94,0.16)', color: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
-                  >
-                    <Phone size={16} strokeWidth={2.3} />
-                  </button>
-                </div>
-              ))}
-            </>
-          )}
-          {dockBubble.kind === 'live' && (() => {
-            // Same routes the app already uses to start a live (/live = voice, /live-camera = video), host = me.
-            const startLive = (path: '/live' | '/live-camera') => {
-              closeBubble();
-              setProfilePlusOpen(false);
-              try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
-              const qs = new URLSearchParams({
-                hostId: String(user?.id ?? ''),
-                hostName: String((user as any)?.name || (user as any)?.username || 'Host'),
-              });
-              if ((user as any)?.username) qs.set('hostUsername', String((user as any).username));
-              const av = (user as any)?.avatarUrl || (user as any)?.image;
-              if (av) qs.set('hostAvatar', String(av));
-              navigate(`${path}?${qs.toString()}`);
-            };
-            return (
-              <>
-                <style>{`
-                  @keyframes stooornaLiveChoiceShake {
-                    0%,100% { transform: translateX(0) rotate(0deg) scale(1); }
-                    15% { transform: translateX(-1.5px) rotate(-7deg) scale(1.06); }
-                    30% { transform: translateX(1.5px) rotate(7deg) scale(1.1); }
-                    45% { transform: translateX(-1px) rotate(-5deg) scale(1.06); }
-                    60% { transform: translateX(1px) rotate(5deg) scale(1.1); }
-                    80% { transform: translateX(0) rotate(0deg) scale(1.03); }
-                  }
-                  @keyframes stooornaLiveChoiceRing {
-                    0% { transform: scale(0.85); opacity: 0.7; }
-                    100% { transform: scale(1.75); opacity: 0; }
-                  }
-                `}</style>
-                <div style={{ display: 'flex', justifyContent: 'space-evenly', alignItems: 'flex-start', gap: 18, padding: '8px 6px 4px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                    <button
-                      type="button"
-                      aria-label="Video Live"
-                      onClick={() => startLive('/live-camera')}
-                      style={{
-                        position: 'relative', width: 64, height: 64, borderRadius: '50%', cursor: 'pointer',
-                        background: 'rgba(0,188,212,0.14)', border: '1.5px solid rgba(0,188,212,0.75)', color: '#00BCD4',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-                        boxShadow: myLiveBroadcastKind === 'camera' ? '0 0 18px rgba(0,188,212,0.55)' : '0 0 10px rgba(0,188,212,0.28)',
-                      }}
-                    >
-                      {myLiveBroadcastKind === 'camera' && (
-                        <>
-                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(0,188,212,0.75)', animation: 'stooornaLiveChoiceRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
-                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(0,188,212,0.5)', animation: 'stooornaLiveChoiceRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
-                        </>
-                      )}
-                      <span style={{ display: 'flex', animation: myLiveBroadcastKind === 'camera' ? 'stooornaLiveChoiceShake 0.7s ease-in-out infinite' : 'none' }}>
-                        <Video size={26} strokeWidth={2.3} color="#00BCD4" />
-                      </span>
-                    </button>
-                    <span style={{ color: '#67e8f9', fontWeight: 800, fontSize: '0.78rem' }}>Video Live</span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                    <button
-                      type="button"
-                      aria-label="Voice Live"
-                      onClick={() => startLive('/live')}
-                      style={{
-                        position: 'relative', width: 64, height: 64, borderRadius: '50%', cursor: 'pointer',
-                        background: 'rgba(250,204,21,0.14)', border: '1.5px solid rgba(250,204,21,0.8)', color: '#facc15',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-                        boxShadow: myLiveBroadcastKind === 'voice' ? '0 0 18px rgba(250,204,21,0.55)' : '0 0 10px rgba(250,204,21,0.28)',
-                      }}
-                    >
-                      {myLiveBroadcastKind === 'voice' && (
-                        <>
-                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(250,204,21,0.8)', animation: 'stooornaLiveChoiceRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
-                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(250,204,21,0.5)', animation: 'stooornaLiveChoiceRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
-                        </>
-                      )}
-                      <span style={{ display: 'flex', animation: myLiveBroadcastKind === 'voice' ? 'stooornaLiveChoiceShake 0.7s ease-in-out infinite' : 'none' }}>
-                        <Mic size={26} strokeWidth={2.3} color="#facc15" />
-                      </span>
-                    </button>
-                    <span style={{ color: '#facc15', fontWeight: 800, fontSize: '0.78rem' }}>Voice Live</span>
-                  </div>
-                </div>
-                {/* ── Public LIVE: مايك كبير — ضغطة وحدة تفتح اللايف العام. برتقالي + ذبذبات لو في أحد داخل الغرفة أو يتكلم ── */}
-                {(() => {
-                  const hot = publicVoiceStatus.present || publicVoiceStatus.talking;
-                  const c = hot ? '#f97316' : '#ef4444';
-                  const rgb = hot ? '249,115,22' : '239,68,68';
-                  return (
-                    <div style={{ marginTop: 'auto', paddingTop: 18, paddingBottom: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                      <style>{`
-                        @keyframes stooornaPubMicShake {
-                          0%,100% { transform: translateX(0) rotate(0deg) scale(1); }
-                          15% { transform: translateX(-1.5px) rotate(-7deg) scale(1.06); }
-                          30% { transform: translateX(1.5px) rotate(7deg) scale(1.1); }
-                          45% { transform: translateX(-1px) rotate(-5deg) scale(1.06); }
-                          60% { transform: translateX(1px) rotate(5deg) scale(1.1); }
-                          80% { transform: translateX(0) rotate(0deg) scale(1.03); }
-                        }
-                        @keyframes stooornaPubMicRing {
-                          0% { transform: scale(0.85); opacity: 0.65; }
-                          100% { transform: scale(1.75); opacity: 0; }
-                        }
-                      `}</style>
-                      <button
-                        type="button"
-                        aria-label="Public LIVE"
-                        title="Public LIVE"
-                        onClick={() => {
-                          if (!user?.id) return;
-                          closeBubble();
-                          setProfilePlusOpen(false);
-                          setShowPublicVoice(true);
-                        }}
-                        style={{
-                          position: 'relative', width: 64, height: 64, borderRadius: '50%', cursor: 'pointer',
-                          background: `rgba(${rgb},0.14)`, border: `1.5px solid rgba(${rgb},0.6)`, color: c,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          boxShadow: `0 0 ${hot ? 20 : 12}px rgba(${rgb},${hot ? 0.5 : 0.3})`,
-                          transition: 'background 0.25s, border-color 0.25s, color 0.25s, box-shadow 0.25s',
-                        }}
-                      >
-                        {hot && (
-                          <>
-                            <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: `2px solid rgba(${rgb},0.7)`, animation: 'stooornaPubMicRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
-                            <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: `2px solid rgba(${rgb},0.55)`, animation: 'stooornaPubMicRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
-                          </>
-                        )}
-                        <span style={{ display: 'flex', animation: hot ? 'stooornaPubMicShake 0.7s ease-in-out infinite' : 'none' }}>
-                          <Mic size={28} strokeWidth={2.3} />
-                        </span>
-                      </button>
-                      <span style={{ color: hot ? '#fdba74' : '#fca5a5', fontWeight: 800, fontSize: '0.8rem', letterSpacing: '0.02em' }}>Public LIVE</span>
-                    </div>
-                  );
-                })()}
-              </>
-            );
-          })()}
-          {dockBubble.kind === 'settings' && (
-            <DockEmbeddedApp onExit={(to) => { closeBubble(); navigate(to); }} />
-          )}
-        </div>
-      </div>
-    </>
-  );
-})(), document.body)}
+{/* PERF: the dock bubble is its own component now — tapping an icon re-renders only the bubble, not this whole page */}
+<DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
                   {user?.id && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
 <button
@@ -26954,7 +27045,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           profilePlusCallPressRef.current.timer = setTimeout(() => {
                             profilePlusCallPressRef.current.long = true;
                             profilePlusCallPressRef.current.timer = null;
-                            setDockBubble(null);
+                            dockSet(null);
                             setChatOverlayOpen(true);
                           }, 550);
                           return;
@@ -27055,7 +27146,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 <button
                       type="button"
                       onPointerDown={() => tplLongPressStart(() => {
-                        setDockBubble(null);
+                        dockSet(null);
                         try { window.dispatchEvent(new CustomEvent('stooorna:templates-studio')); } catch { /* */ }
                       })}
                       onPointerUp={tplLongPressEnd}
@@ -27133,14 +27224,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
                     }}
                   >
-                    <motion.span
+                    <style>{`@keyframes stooornaDockGearSpin { to { transform: rotate(360deg); } }`}</style>
+                    <span
                       aria-hidden="true"
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 9, repeat: Infinity, ease: 'linear' }}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'stooornaDockGearSpin 9s linear infinite', willChange: 'transform' }}
                     >
                       <Settings size={18} strokeWidth={2.2} />
-                    </motion.span>
+                    </span>
                   </motion.button>
 <span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Settings</span>
 </div>
