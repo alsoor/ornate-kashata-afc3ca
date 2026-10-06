@@ -19921,6 +19921,7 @@ function loadPdfJsForAds(): Promise<any> {
 
 function AdPdfPages({ src }: { src: string }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const pdfRef = useRef<any>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   // Zoom يكبّر الكتابة (يعيد رسم الصفحات بدقة أعلى): 1x → 1.5x → 2x → 3x → 1x
@@ -19941,7 +19942,13 @@ function AdPdfPages({ src }: { src: string }) {
         const host = hostRef.current;
         if (!host || dead) return;
         host.innerHTML = '';
-        const width = host.clientWidth || window.innerWidth;
+        // عرض ثابت بالبكسل (زوم × عرض الشاشة) ومعطّل عنه أي max-width عام يقصّه
+        const baseW = scrollRef.current?.clientWidth || window.innerWidth;
+        const width = Math.round(baseW * zoom);
+        host.style.width = `${width}px`;
+        host.style.minWidth = `${width}px`;
+        host.style.maxWidth = 'none';
+        host.style.flex = 'none';
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         const total = Math.min(pdf.numPages, 40);
         for (let i = 1; i <= total; i++) {
@@ -19953,7 +19960,7 @@ function AdPdfPages({ src }: { src: string }) {
           const c = document.createElement('canvas');
           c.width = Math.floor(vp.width);
           c.height = Math.floor(vp.height);
-          c.style.cssText = 'width:100%;height:auto;display:block;margin-bottom:8px;background:#fff;';
+          c.style.cssText = 'width:100%;max-width:none;height:auto;display:block;margin-bottom:8px;background:#fff;';
           host.appendChild(c);
           const ctx = c.getContext('2d');
           if (!ctx) continue;
@@ -19969,15 +19976,15 @@ function AdPdfPages({ src }: { src: string }) {
   }, [src, zoom]);
   return (
     <>
-      <div style={{
-        position: 'absolute', inset: 0, overflow: 'auto', WebkitOverflowScrolling: 'touch', boxSizing: 'border-box',
+      <div ref={scrollRef} style={{
+        position: 'absolute', inset: 0, overflow: 'auto', WebkitOverflowScrolling: 'touch', boxSizing: 'border-box', touchAction: 'pan-x pan-y',
         paddingTop: 'calc(max(12px, env(safe-area-inset-top)) + 48px)', paddingBottom: 'env(safe-area-inset-bottom)', background: '#111',
       }}>
         {status === 'loading' && <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.6)', marginTop: 40, fontWeight: 700 }}>Loading…</p>}
         {status === 'error' && (
           <iframe title="PDF" src={src} style={{ width: '100%', height: 'calc(100% - 4px)', minHeight: '80vh', border: 'none', background: '#111' }} />
         )}
-        <div ref={hostRef} style={{ width: `${zoom * 100}%` }} />
+        <div ref={hostRef} />
       </div>
       {status !== 'error' && (
         <button
