@@ -20394,7 +20394,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
       setAnchorTop(prev => (Math.abs(prev - b) < 1 ? prev : b));
     };
     measure();
-    const id = window.setInterval(measure, 150);
+    const id = window.setInterval(() => { if (document.visibilityState === 'visible') measure(); }, 400);
     window.addEventListener('resize', measure);
     return () => { window.clearInterval(id); window.removeEventListener('resize', measure); };
   }, [showCards]);
@@ -20516,7 +20516,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
     const iv = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       void tick();
-    }, 1000);
+    }, 2500);
     const onEvt = (e?: Event) => {
       try {
         const d = e ? (e as CustomEvent).detail as { hostId?: string; active?: boolean } | undefined : undefined;
@@ -20945,7 +20945,7 @@ function usePublicVoiceRoomStatus(enabled: boolean): { present: boolean; count: 
       } catch { /* ignore */ }
     };
     void pull();
-    const id = window.setInterval(pull, 2500);
+    const id = window.setInterval(() => { if (document.visibilityState === 'visible') void pull(); }, 4000);
     return () => { stop = true; window.clearInterval(id); };
   }, [enabled]);
   return enabled ? st : { present: false, count: 0, talking: false };
@@ -21373,6 +21373,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [feedAdViewer, setFeedAdViewer] = useState<any | null>(null);
   const [feedAdsTick, setFeedAdsTick] = useState(0);
   const [adClockTick, setAdClockTick] = useState(0);
+  // العدّاد كان يعيد رسم صفحة القصة كاملة كل ثانية — الحين يتحدّث فقط لما واجهة إعلانات ظاهرة
+  const adUiOpenRef = useRef(false);
   const [adDetailOpen, setAdDetailOpen] = useState<any | null>(null);
   useEffect(() => {
     const onAds = () => setFeedAdsTick(x => x + 1);
@@ -21382,7 +21384,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Countdown + auto republish cycle (24h live → 4h wait → auto Publish)
   useEffect(() => {
     const tick = () => {
-      setAdClockTick(x => x + 1);
+      if (adUiOpenRef.current) setAdClockTick(x => x + 1);
       try {
         const { list, changed } = processAdAutoRepublish(loadFeedAdsMeta(), Date.now());
         if (changed) {
@@ -21392,7 +21394,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       } catch { /* */ }
     };
     tick();
-    const id = window.setInterval(tick, 1000);
+    const id = window.setInterval(() => { if (document.visibilityState === 'visible') tick(); }, 1000);
     return () => window.clearInterval(id);
   }, []);
   // Restore media blobs from IndexedDB so video/image survive refresh
@@ -23579,7 +23581,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       } catch { /* silent */ }
     };
     fetchPending();
-    const iv = setInterval(fetchPending, 5000);
+    const iv = setInterval(() => { if (document.visibilityState === 'visible') void fetchPending(); }, 30000);
     return () => clearInterval(iv);
   }, [user]);
 
@@ -23935,6 +23937,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     } catch { /* ignore */ }
     return !user || searchParams.get('openTextPosts') === '1';
   });
+  adUiOpenRef.current = !!(myAdsHubOpen || adDetailOpen || textPostsPageOpen);
   // true when the panel was opened via URL navigation (no flash animation needed)
   const textPostsOpenedFromUrl = useRef((() => {
     try {
