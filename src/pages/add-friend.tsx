@@ -20077,6 +20077,7 @@ function HomeAdCard({ ad, lifted, onOpen, onDelete }: { ad: any; lifted: boolean
           overflow: 'hidden', cursor: 'pointer', color: '#cfe8e8',
           display: 'flex', flexDirection: 'column', padding: '12px 14px',
           pointerEvents: lifted ? 'none' : 'auto',
+          contentVisibility: 'auto', containIntrinsicSize: 'auto 78px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative', zIndex: 2 }}>
@@ -20269,6 +20270,11 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
   // ── scroll-to-hide state (used when there are many open broadcasts) ──
   const liveScrollLastTopRef = useRef(0);
   const liveScrollLockRef = useRef(0);
+  // [perf] موضع القائمة يُحدَّث مباشرة كل إطار أثناء حركة الشيت (بدون إعادة رسم React) حتى تلتصق البطاقات بالشيت بلا تأخير
+  const anchorTopRef = useRef(0);
+  const dockVisibleRef = useRef(true);
+  dockVisibleRef.current = dockVisible;
+  const liveScrollRafRef = useRef(0);
   const liveScrollHiddenRef = useRef(false);
   // الهيد السفلي (الأقسام) مخفي بسبب التمرير → القائمة تمتد لأسفل الشاشة بدل ما تترك فراغ مكانه
   const [dockHiddenByScroll, setDockHiddenByScroll] = useState(false);
@@ -20386,17 +20392,67 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
   // ── موضع البداية: مباشرة تحت الهيدر (تحت زر إظهار/إخفاء الهيدر) ──
   useEffect(() => {
     if (!showCards) return;
-    const measure = () => {
+    const readBottom = (): number | null => {
       // تحت صف الأيقونات (Friends/Call/Live/Settings) إن وُجد، وإلا تحت الخط. حافة الحاوية هي اللي تقصّ البطاقات عند التمرير.
       const el = (document.querySelector('[data-stooorna-header-icons]:not([data-stooorna-icons-bottom])') || document.querySelector('[data-stooorna-header-grabber]')) as HTMLElement | null;
-      if (!el) return;
-      const b = Math.round(el.getBoundingClientRect().bottom);
-      setAnchorTop(prev => (Math.abs(prev - b) < 1 ? prev : b));
+      if (!el) return null;
+      return Math.round(el.getBoundingClientRect().bottom);
+    };
+    // [perf] يكتب الموضع مباشرة على عنصر القائمة (top + maxHeight) — نفس معادلات الـ render — بدون setState
+    const apply = (b: number): boolean => {
+      if (Math.abs(anchorTopRef.current - b) < 1) return false;
+      anchorTopRef.current = b;
+      const box = liveListRef.current;
+      if (box) {
+        box.style.top = `${b}px`;
+        box.style.maxHeight = dockVisibleRef.current
+          ? `calc(100dvh - ${b}px - 66px - env(safe-area-inset-bottom, 0px))`
+          : `calc(100dvh - ${b}px - 12px)`;
+      }
+      return true;
+    };
+    const settle = () => {
+      const b = anchorTopRef.current;
+      if (b) setAnchorTop(prev => (Math.abs(prev - b) < 1 ? prev : b));
+    };
+    const measure = () => {
+      const b = readBottom();
+      if (b == null) return;
+      apply(b);
+      settle();
+    };
+    // أثناء حركة الشيت: نتبع حافة الشيت كل إطار حتى تثبت (ولا ننتظر الفحص الدوري)
+    let raf = 0;
+    let running = false;
+    let startAt = 0;
+    let lastChange = 0;
+    const frame = () => {
+      const now = performance.now();
+      const b = readBottom();
+      if (b != null && apply(b)) lastChange = now;
+      if ((now - lastChange > 160 && now - startAt > 360) || now - startAt > 2200) {
+        running = false; raf = 0; settle(); return;
+      }
+      raf = requestAnimationFrame(frame);
+    };
+    const follow = () => {
+      startAt = performance.now();
+      lastChange = startAt;
+      if (!running) { running = true; raf = requestAnimationFrame(frame); }
     };
     measure();
-    const id = window.setInterval(() => { if (document.visibilityState === 'visible') measure(); }, 400);
+    follow();
+    const id = window.setInterval(() => { if (document.visibilityState === 'visible' && !running) measure(); }, 400);
     window.addEventListener('resize', measure);
-    return () => { window.clearInterval(id); window.removeEventListener('resize', measure); };
+    window.addEventListener('stooorna:feed-scroll', follow);
+    window.addEventListener(HOME_LIVE_SCROLL_EVT, follow);
+    return () => {
+      window.clearInterval(id);
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('stooorna:feed-scroll', follow);
+      window.removeEventListener(HOME_LIVE_SCROLL_EVT, follow);
+    };
   }, [showCards]);
 
   // ── اكتشاف البثوث الشغّالة الآن (صوتي/مرئي) ──
@@ -20735,10 +20791,13 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
   if (typeof document === 'undefined') return null;
 
   const visible = liveVisibleList;
-  const topPx = anchorTop || 120;
+  const topPx = anchorTopRef.current || anchorTop || 120;
   const handleLiveListScroll = (ev: React.UIEvent<HTMLDivElement>) => {
     livePinnedRef.current = '';
-    recomputeActiveLive();
+    // [perf] مرة واحدة كل إطار بدل كل حدث تمرير (كانت تقيس كل البطاقات عند كل حدث)
+    if (!liveScrollRafRef.current) {
+      liveScrollRafRef.current = requestAnimationFrame(() => { liveScrollRafRef.current = 0; recomputeActiveLive(); });
+    }
     // الهيد ثابت دائماً: التمرير يحرّك بطاقات اللايف وAds فقط، وتختفي تحت حافة الهيد (لا إخفاء للهيد ولا للأيقونات)
     const cur = ev.currentTarget.scrollTop;
     const delta = cur - liveScrollLastTopRef.current;
@@ -20819,6 +20878,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
                   overflow: 'hidden', cursor: 'pointer', color: '#cfe8e8',
                   display: 'flex', flexDirection: 'column', padding: HOME_LIVE_COMPACT_CARD ? '12px 14px' : '10px 12px 0',
                   pointerEvents: lifted ? 'none' : 'auto',
+                  contentVisibility: 'auto', containIntrinsicSize: HOME_LIVE_COMPACT_CARD ? 'auto 78px' : 'auto 150px',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative', zIndex: 2 }}>
