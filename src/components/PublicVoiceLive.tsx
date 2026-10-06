@@ -57,6 +57,10 @@ export default function PublicVoiceLive({
   const [coolMs, setCoolMs] = useState(0);
   const [mutedIds, setMutedIds] = useState<Set<string>>(new Set());
   const [speakerMuted, setSpeakerMuted] = useState(false);
+  const [chimeOff, setChimeOff] = useState(() => {
+    try { return localStorage.getItem('pubVoiceChimeOff') === '1'; } catch { return false; }
+  });
+  const [chimeFlash, setChimeFlash] = useState<'orange' | 'green' | null>(null);
   const [chatOpen, setChatOpen] = useState(true);
   const [membersOpen, setMembersOpen] = useState(false);
   const [chatText, setChatText] = useState('');
@@ -73,6 +77,9 @@ export default function PublicVoiceLive({
   const talkingRef = useRef(false);
   const playedChimesRef = useRef<Set<string>>(new Set());
   const lastChimeAtRef = useRef(0);
+  const chimeOffRef = useRef(false);
+  const pressTimerRef = useRef<number | null>(null);
+  const longPressedRef = useRef(false);
   const chimeAudioRef = useRef<HTMLAudioElement | null>(null);
   const prevTalkingRef = useRef<Map<string, boolean>>(new Map());
   const peersLoadedRef = useRef(false);
@@ -121,6 +128,7 @@ export default function PublicVoiceLive({
   }, []);
 
   const playMicSound = useCallback((id: string) => {
+    if (chimeOffRef.current) return;
     if (playedChimesRef.current.has(id)) return;
     if (Date.now() - lastChimeAtRef.current < 4000) return;
     playedChimesRef.current.add(id);
@@ -159,6 +167,38 @@ export default function PublicVoiceLive({
     evs.forEach(e => window.addEventListener(e, unlock));
     unlock();
     return cleanup;
+  }, []);
+
+  useEffect(() => { chimeOffRef.current = chimeOff; }, [chimeOff]);
+
+  const toggleChime = useCallback(() => {
+    const next = !chimeOffRef.current;
+    chimeOffRef.current = next;
+    setChimeOff(next);
+    try { localStorage.setItem('pubVoiceChimeOff', next ? '1' : '0'); } catch { /* ignore */ }
+    setChimeFlash(next ? 'orange' : 'green');
+    window.setTimeout(() => setChimeFlash(null), 1100);
+    if (!next) {
+      // رجوع النغمة: نشغلها مرة للتأكيد
+      try {
+        if (!chimeAudioRef.current) chimeAudioRef.current = new Audio(MIC_SOUND_URL);
+        chimeAudioRef.current.currentTime = 0;
+        void chimeAudioRef.current.play().catch(() => {});
+      } catch { /* ignore */ }
+    }
+  }, []);
+
+  const pressStart = useCallback(() => {
+    longPressedRef.current = false;
+    if (pressTimerRef.current) window.clearTimeout(pressTimerRef.current);
+    pressTimerRef.current = window.setTimeout(() => {
+      longPressedRef.current = true;
+      toggleChime();
+    }, 600);
+  }, [toggleChime]);
+
+  const pressEnd = useCallback(() => {
+    if (pressTimerRef.current) { window.clearTimeout(pressTimerRef.current); pressTimerRef.current = null; }
   }, []);
 
   const sendMicSound = useCallback(async () => {
@@ -602,7 +642,15 @@ export default function PublicVoiceLive({
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
           <button
             type="button"
-            onClick={() => (talking ? stopMic() : startMic())}
+            onClick={() => {
+              if (longPressedRef.current) { longPressedRef.current = false; return; }
+              if (talking) stopMic(); else startMic();
+            }}
+            onPointerDown={pressStart}
+            onPointerUp={pressEnd}
+            onPointerLeave={pressEnd}
+            onPointerCancel={pressEnd}
+            onContextMenu={e => e.preventDefault()}
             disabled={coolMs > 0}
             style={{
               position: 'relative',
@@ -616,6 +664,17 @@ export default function PublicVoiceLive({
               overflow: 'hidden',
             }}
           >
+            {chimeFlash && (
+              <span
+                style={{
+                  position: 'absolute', inset: 0, borderRadius: '50%', zIndex: 2, pointerEvents: 'none',
+                  background: chimeFlash === 'orange' ? 'rgba(249,115,22,0.6)' : 'rgba(34,197,94,0.6)',
+                  border: `2px solid ${chimeFlash === 'orange' ? '#f97316' : '#22c55e'}`,
+                  animation: 'pubVoiceChimeFlash 1.1s ease-out forwards',
+                }}
+              />
+            )}
+            <style>{'@keyframes pubVoiceChimeFlash{0%{opacity:1}60%{opacity:1}100%{opacity:0}}'}</style>
             {talking && (
               <>
                 <span style={{ position: 'absolute', inset: 4, borderRadius: '50%', border: '2px solid rgba(239,68,68,0.55)', animation: 'pubVoicePulse 1s ease-out infinite' }} />
