@@ -18929,7 +18929,7 @@ function PublicLiveCommentsPanel({
   // When header is forced open (e.g. after system gallery) but Saved Messages is closed,
   // keep Templates/media alive and skip the chat portal. If Saved Messages is open, fall through
   // so the public chat stays mounted underneath — closing Saved Messages returns to live chat, not "outside".
-  if (headerOpen && !savedOpen) {
+  if (headerOpen && !savedOpen && !overlayOpen) {
     return (
       <>
         <LiveChatVideoStudio open={tplOpen} userId={myId} onClose={() => setTplOpen(false)} onPost={studioPost} />
@@ -20260,6 +20260,17 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
   const liveScrollLastTopRef = useRef(0);
   const liveScrollLockRef = useRef(0);
   const liveScrollHiddenRef = useRef(false);
+  // الهيد السفلي (الأقسام) مخفي بسبب التمرير → القائمة تمتد لأسفل الشاشة بدل ما تترك فراغ مكانه
+  const [dockHiddenByScroll, setDockHiddenByScroll] = useState(false);
+  const dockToggleAtRef = useRef(0);
+  useEffect(() => {
+    const on = (e: Event) => {
+      dockToggleAtRef.current = Date.now();
+      setDockHiddenByScroll(!!(e as CustomEvent).detail?.hidden);
+    };
+    window.addEventListener(HOME_BOTTOM_BAR_EVT, on);
+    return () => window.removeEventListener(HOME_BOTTOM_BAR_EVT, on);
+  }, []);
   const bottomBarHiddenRef = useRef(false);
   // لو انتهت القائمة/خرجنا من الصفحة نرجّع الشريط السفلي
   useEffect(() => () => {
@@ -20722,6 +20733,8 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
     const cur = ev.currentTarget.scrollTop;
     const delta = cur - liveScrollLastTopRef.current;
     liveScrollLastTopRef.current = cur;
+    // بعد إخفاء/إظهار الهيد السفلي يتغيّر ارتفاع القائمة فيتحرك السكرول تلقائياً — نتجاهل هالحركة عشان ما يصير وميض
+    if (Date.now() - dockToggleAtRef.current < 500) return;
     let hideBar: boolean | null = null;
     if (cur <= 4) hideBar = false;         // رجعنا لأول القائمة -> يظهر الشريط
     else if (delta > 6) hideBar = true;    // تمرير للأعلى -> يختفي الشريط السفلي
@@ -20742,7 +20755,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
           position: 'fixed', left: 0, right: 0, top: topPx, zIndex: 16,
           display: 'flex', flexDirection: 'column', gap: 10,
           padding: (visible.length || homeAds.length) ? '8px 26px' : 0,
-          maxHeight: `calc(100dvh - ${topPx}px - ${collapsed ? 12 : 104}px)`,
+          maxHeight: `calc(100dvh - ${topPx}px - ${(collapsed || dockHiddenByScroll) ? 12 : 104}px)`,
           overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none',
           WebkitOverflowScrolling: 'touch', touchAction: 'pan-y',
           background: liveScrollMode && collapsed ? PAGE_BG : 'transparent',
@@ -26316,12 +26329,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           <div data-stooorna-header-grabber="1" style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
             <motion.button
               whileTap={{ scale: 0.9 }}
-              onClick={() => { if (!headerOpen) toggleHeaderOpen(); }}
-              aria-label={headerOpen ? 'Header grabber' : 'Show header'}
+              onClick={() => toggleHeaderOpen()}
+              aria-label={headerOpen ? 'Lift header' : 'Show header'}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
-                padding: '8px 30px',
+                padding: '16px 90px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
+                touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent',
               }}
             >
               <style>{`@keyframes stooornaGrabberShine { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }`}</style>
@@ -26662,7 +26676,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           profilePlusCallPressRef.current.timer = null;
                         }
                       }}
-                      onPointerLeave={() => {
+                      onPointerLeave={(e) => {
+                        // اللمس: ما نلغي المؤقت عند المغادرة (الأندرويد يطلقها مع أي حركة بسيطة) — الإلغاء عند الرفع فقط
+                        if ((e as any).pointerType === 'touch') return;
                         if (profilePlusCallPressRef.current.timer) {
                           clearTimeout(profilePlusCallPressRef.current.timer);
                           profilePlusCallPressRef.current.timer = null;
@@ -26706,6 +26722,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                        touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none', WebkitUserSelect: 'none',
                       }}
                     >
                       <Phone size={18} strokeWidth={2.2} />
