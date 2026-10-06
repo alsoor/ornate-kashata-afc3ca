@@ -255,6 +255,197 @@ async function fetchWithdrawals(userId: string): Promise<WithdrawReq[]> {
   }
 }
 
+// ── Google Play Billing (الطريقة الثانية للدفع) ──────────────────────────────────────────────
+// يعمل فقط داخل تطبيق الأندرويد المنشور على Google Play (Trusted Web Activity) عبر Digital Goods API.
+// في المتصفح العادي أو الآيفون يظهر الخيار معطّلاً ويبقى Polar هو الطريقة المتاحة.
+// كل باقة لها منتج في Play Console بالمعرّف: coins_50 ، coins_125 ، coins_400 ... (نوع: Consumable).
+const GOOGLE_PLAY_ENABLED = true;
+const GOOGLE_PLAY_SERVICE_URL = 'https://play.google.com/billing';
+const googlePlaySku = (coins: number) => `coins_${coins}`;
+
+function googlePlayAvailable(): boolean {
+  try {
+    return GOOGLE_PLAY_ENABLED
+      && typeof (window as any).getDigitalGoodsService === 'function'
+      && typeof (window as any).PaymentRequest === 'function';
+  } catch { return false; }
+}
+
+type GooglePlayResult = { ok: boolean; balance?: number; error?: string; cancelled?: boolean };
+
+/** يرسل رمز الشراء للسيرفر ليتحقق منه عند Google ويضيف العملات (انظر google-play.server.ts). */
+async function verifyGooglePlayPurchase(userId: string, sku: string, purchaseToken: string): Promise<GooglePlayResult> {
+  try {
+    const r = await fetch('/api/google-play/verify', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, sku, purchaseToken }),
+    });
+    const d = await r.json().catch(() => ({})) as { ok?: boolean; balance?: number; error?: string };
+    if (!r.ok || !d.ok) return { ok: false, error: typeof d.error === 'string' && d.error.length < 140 ? d.error : 'Could not verify the Google Play purchase' };
+    return { ok: true, balance: Math.floor(Number(d.balance) || 0) };
+  } catch {
+    return { ok: false, error: 'Network error' };
+  }
+}
+
+async function payWithGooglePlay(pack: { id: string; coins: number; usd: number }, userId: string): Promise<GooglePlayResult> {
+  if (!googlePlayAvailable()) return { ok: false, error: 'Google Play payment is available in the Android app only' };
+  if (pack.id === CUSTOM_ID) return { ok: false, error: 'Google Play supports the fixed packs only' };
+  const sku = googlePlaySku(pack.coins);
+  try {
+    const service = await (window as any).getDigitalGoodsService(GOOGLE_PLAY_SERVICE_URL);
+    const details = await service.getDetails([sku]);
+    if (!details || !details.length) return { ok: false, error: 'This pack is not available on Google Play yet' };
+    const request = new (window as any).PaymentRequest(
+      [{ supportedMethods: GOOGLE_PLAY_SERVICE_URL, data: { sku } }],
+      { total: { label: `${fmtCoins(pack.coins)} Coins`, amount: { currency: 'USD', value: '0' } } },
+    );
+    let response: any;
+    try {
+      response = await request.show();
+    } catch (e: any) {
+      // المستخدم أغلق نافذة Google Play = إلغاء هادئ بدون رسالة خطأ
+      const name = String(e?.name || '');
+      if (name === 'AbortError' || name === 'NotAllowedError') return { ok: true, cancelled: true };
+      return { ok: false, error: 'Google Play payment failed' };
+    }
+    const purchaseToken = String(response?.details?.purchaseToken || '');
+    if (!purchaseToken) {
+      try { await response.complete('fail'); } catch { /* ignore */ }
+      return { ok: false, error: 'Google Play payment failed' };
+    }
+    const verified = await verifyGooglePlayPurchase(userId, sku, purchaseToken);
+    try { await response.complete(verified.ok ? 'success' : 'fail'); } catch { /* ignore */ }
+    if (verified.ok && typeof verified.balance === 'number' && verified.balance > 0) writeBalance(userId, verified.balance);
+    return verified;
+  } catch {
+    return { ok: false, error: 'Google Play payment failed' };
+  }
+}
+
+/** مشتريات دُفعت عند Google لكن لم تُضف عملاتها (انقطاع النت مثلاً): نعيد إرسالها للسيرفر. آمنة لأن السيرفر لا يضيف نفس الرمز مرتين. */
+let googleRecoverRan = false;
+async function recoverGooglePlayPurchases(userId: string) {
+  if (googleRecoverRan || !userId || !googlePlayAvailable()) return;
+  googleRecoverRan = true;
+  try {
+    const service = await (window as any).getDigitalGoodsService(GOOGLE_PLAY_SERVICE_URL);
+    const owned = await service.listPurchases();
+    for (const it of (owned || [])) {
+      const sku = String(it?.itemId || '');
+      const tok = String(it?.purchaseToken || '');
+      if (!/^coins_\d+$/.test(sku) || !tok) continue;
+      const v = await verifyGooglePlayPurchase(userId, sku, tok);
+      if (v.ok && typeof v.balance === 'number' && v.balance > 0) writeBalance(userId, v.balance);
+    }
+  } catch { /* ignore */ }
+}
+
+// ── مربع اختيار طريقة الدفع (Polar | Google Play) ────────────────────────────────────────────
+type PayMethod = 'polar' | 'google';
+let payMethodRoot: Root | null = null;
+let payMethodHost: HTMLDivElement | null = null;
+
+function PaymentMethodSheet({ pack, googleOk, onPick }: { pack: { id: string; coins: number }; googleOk: boolean; onPick: (m: PayMethod | null) => void }) {
+  const [shown, setShown] = useState(false);
+  const doneRef = useRef(false);
+  const pick = React.useCallback((m: PayMethod | null) => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    if (m) { onPick(m); return; }          // الاختيار فوري حتى يبقى النقر ضمن لمسة المستخدم (فتح صفحة الدفع)
+    setShown(false);
+    window.setTimeout(() => onPick(null), 240);
+  }, [onPick]);
+  useEffect(() => {
+    const t = requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
+    return () => cancelAnimationFrame(t);
+  }, []);
+  const isCustom = pack.id === CUSTOM_ID;
+  const googleEnabled = googleOk && !isCustom;
+  const googleNote = isCustom ? 'Fixed packs only' : (googleOk ? 'Pay with your Google Play account' : 'Available in the Android app only');
+  const row = (enabled: boolean): React.CSSProperties => ({
+    display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
+    padding: '14px 14px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.12)',
+    background: enabled ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)',
+    color: '#fff', cursor: enabled ? 'pointer' : 'not-allowed', opacity: enabled ? 1 : 0.5,
+  });
+  return (
+    <div
+      onClick={() => pick(null)}
+      style={{ position: 'fixed', inset: 0, zIndex: 200001, background: shown ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0)', transition: 'background .24s ease', direction: 'ltr' }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0, background: '#0b0b0f', color: '#fff',
+          borderRadius: '18px 18px 0 0', padding: '14px 16px calc(18px + env(safe-area-inset-bottom, 0px))',
+          transform: shown ? 'translateY(0)' : 'translateY(100%)', transition: 'transform .26s cubic-bezier(.2,.8,.2,1)',
+          boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span style={{ fontWeight: 800, fontSize: '1rem' }}>Choose payment method</span>
+          <button type="button" aria-label="Close" onClick={() => pick(null)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', width: 30, height: 30, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <X size={16} />
+          </button>
+        </div>
+        <div style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.6)', marginBottom: 12 }}>
+          {fmtCoins(pack.coins)} Coins
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button type="button" onClick={() => pick('polar')} style={row(true)}>
+            <CreditCard size={22} />
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Card · Polar</span>
+              <span style={{ fontSize: '0.76rem', color: 'rgba(255,255,255,0.6)' }}>Secure hosted checkout</span>
+            </span>
+          </button>
+          <button type="button" disabled={!googleEnabled} onClick={() => { if (googleEnabled) pick('google'); }} style={row(googleEnabled)}>
+            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3.5v17c0 .7.8 1.1 1.4.7l14-8.5c.5-.3.5-1.1 0-1.4l-14-8.5C5.8 2.4 5 2.8 5 3.5z" fill="#34d399" /></svg>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Google Play</span>
+              <span style={{ fontSize: '0.76rem', color: 'rgba(255,255,255,0.6)' }}>{googleNote}</span>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** يعرض مربع الاختيار ويرجع الطريقة المختارة (أو null لو أغلقه المستخدم). */
+function askPaymentMethod(pack: { id: string; coins: number }, userId?: string): Promise<PayMethod | null> {
+  return new Promise(resolve => {
+    try {
+      if (payMethodRoot) { try { payMethodRoot.unmount(); } catch { /* ignore */ } payMethodRoot = null; }
+      if (payMethodHost) { try { payMethodHost.remove(); } catch { /* ignore */ } payMethodHost = null; }
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      payMethodHost = host;
+      const root = createRoot(host);
+      payMethodRoot = root;
+      const googleOk = googlePlayAvailable();
+      if (googleOk && userId) void recoverGooglePlayPurchases(userId);
+      const finish = (m: PayMethod | null) => {
+        window.setTimeout(() => {
+          try { root.unmount(); } catch { /* ignore */ }
+          try { host.remove(); } catch { /* ignore */ }
+          if (payMethodRoot === root) payMethodRoot = null;
+          if (payMethodHost === host) payMethodHost = null;
+        }, 0);
+        resolve(m);
+      };
+      root.render(<PaymentMethodSheet pack={pack} googleOk={googleOk} onPick={finish} />);
+    } catch {
+      resolve('polar');   // لو فشل المربع لأي سبب نكمل بالطريقة القديمة (Polar) كما كان
+    }
+  });
+}
+
 // ── الدفع ───────────────────────────────────────────────────────────────
 // نقطة الربط ببوابة الدفع. لا ترسل بيانات البطاقة الخام لسيرفرك؛ استخدم توكن من البوابة.
 async function processVisaPayment(pack: { id: string; coins: number; usd: number }, userId?: string): Promise<{ ok: boolean; balance?: number; redirected?: boolean; error?: string }> {
@@ -266,6 +457,14 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
     if (customCoinsN > CUSTOM_MAX_COINS) return { ok: false, error: `Maximum ${fmtUsd(CUSTOM_MAX_COINS * CUSTOM_CENTS_PER_COIN / 100)} per payment` };
   } else if (!PACKS.some(p => p.coins === pack.coins)) {
     return { ok: false, error: 'Choose one of the available packs' };
+  }
+  // اختيار طريقة الدفع: Polar (كما كان) أو Google Play. إغلاق المربع = إلغاء بدون أي رسالة (ok + redirected حتى لا يظهر خطأ).
+  const method = await askPaymentMethod(pack, userId);
+  if (!method) return { ok: true, redirected: true };
+  if (method === 'google') {
+    const g = await payWithGooglePlay(pack, userId);
+    if (g.cancelled) return { ok: true, redirected: true };
+    return g.ok ? { ok: true, balance: g.balance } : { ok: false, error: g.error };
   }
   // polar-official-direct-open: open the official checkout in a real browser page (Polar cannot be embedded in an iframe).
   // The tab is opened now, at the tap, so popup blockers allow it; it is pointed at the checkout URL once the server answers.
