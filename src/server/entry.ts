@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 // import() rejecting when the export is missing.
 import * as dbClientModule from "./db/client.js";
 import { COIN_PACKS, createCheckout, handlePolarEvent, polarConfigured, verifyPolarSignature } from "./polar.js";
+import { googlePlayConfigured, verifyAndCreditGooglePlay } from "./google-play.js";
 import { createSession, makeLimiter, markSeen, normId, pickKey, recordPaid, seenRecently, takePaid } from "./gift-guard.js";
 import { mapEarningsAdapter, privateAssetsGuard, registerWithdrawalRoutes } from "./withdrawals.js";
 import { registerLiveBurstRoutes } from "./live-burst.js"; // EMOJI-BURST-PATCH
@@ -1289,6 +1290,32 @@ app.post("/api/polar/checkout", guarded(async (req, res) => {
     console.error("[polar] checkout failed", e);
     deny(res, 502, "checkout failed");
   }
+}));
+
+// ── شراء Coins عبر Google Play: الهوية من الجلسة فقط (وليس userId من العميل)، والتحقق من رمز الشراء عند Google، ونفس رصيد/دفتر Polar ──
+app.post("/api/google-play/verify", guarded(async (req, res) => {
+  if (!googlePlayConfigured()) return deny(res, 503, "google play not configured");
+  const u = await needUser(req, res);
+  if (!u) return;
+  if (!allow(`gp:${u.id}`, 20, 10 * 60_000)) return deny(res, 429, "rate_limited");
+  const body = (req.body || {}) as Record<string, unknown>;
+  const mem = giftProfitMem();
+  const out = await verifyAndCreditGooglePlay(
+    { userId: u.id, sku: String(body.sku || "").slice(0, 40), purchaseToken: String(body.purchaseToken || "") },
+    {
+      alreadyProcessed: (k) => mem.done.has(k),
+      creditCoins: ({ userId, coins, key }) => {
+        mem.done.add(key);
+        const next = Math.max(0, (mem.balances.get(userId) || 0) + coins);
+        mem.balances.set(userId, next);
+        giftProfitTouch();
+        return next;
+      },
+      getBalance: (userId) => mem.balances.get(userId) || 0,
+    },
+  );
+  if (!out.ok) return deny(res, out.status, out.error);
+  res.json({ ok: true, balance: readOwn(u).balance, coins: out.coins });
 }));
 
 // ── منح Coins: للأدمن فقط (كانت مفتوحة لأي زائر) ──

@@ -290,39 +290,60 @@ async function verifyGooglePlayPurchase(userId: string, sku: string, purchaseTok
   }
 }
 
+/** خدمة Google Play Billing: تتأكد فعلاً أن التطبيق يعمل داخل تطبيق Google Play (وجود الدالة وحدها لا يكفي — تُرفض خارج TWA). */
+let googlePlayServicePromise: Promise<any | null> | null = null;
+function getGooglePlayService(): Promise<any | null> {
+  if (!googlePlayAvailable()) return Promise.resolve(null);
+  if (!googlePlayServicePromise) {
+    googlePlayServicePromise = Promise.resolve()
+      .then(() => (window as any).getDigitalGoodsService(GOOGLE_PLAY_SERVICE_URL))
+      .then((svc: any) => svc || null)
+      .catch((e: any) => { console.warn('[google-play] billing service unavailable:', e?.name, e?.message); return null; });
+  }
+  return googlePlayServicePromise;
+}
+
 async function payWithGooglePlay(pack: { id: string; coins: number; usd: number }, userId: string): Promise<GooglePlayResult> {
-  if (!googlePlayAvailable()) return { ok: false, error: 'Google Play payment is available in the Android app only' };
   if (pack.id === CUSTOM_ID) return { ok: false, error: 'Google Play supports the fixed packs only' };
   const sku = googlePlaySku(pack.coins);
+  // كل مرحلة لها رسالة واضحة + تفاصيل في console (chrome://inspect) لمعرفة سبب الفشل بدقة
+  const service = await getGooglePlayService();
+  if (!service) return { ok: false, error: 'Google Play billing is not available here — open the app installed from Google Play' };
+  let details: any[] = [];
   try {
-    const service = await (window as any).getDigitalGoodsService(GOOGLE_PLAY_SERVICE_URL);
-    const details = await service.getDetails([sku]);
-    if (!details || !details.length) return { ok: false, error: 'This pack is not available on Google Play yet' };
+    details = await service.getDetails([sku]);
+  } catch (e: any) {
+    console.error('[google-play] getDetails failed', sku, e?.name, e?.message);
+    return { ok: false, error: `Google Play could not load "${sku}" — create it in Play Console and publish the app to a testing track` };
+  }
+  if (!details || !details.length) {
+    console.error('[google-play] product not found in Play Console:', sku);
+    return { ok: false, error: `Product "${sku}" was not found in Google Play Console` };
+  }
+  let response: any;
+  try {
     const request = new (window as any).PaymentRequest(
       [{ supportedMethods: GOOGLE_PLAY_SERVICE_URL, data: { sku } }],
       { total: { label: `${fmtCoins(pack.coins)} Coins`, amount: { currency: 'USD', value: '0' } } },
     );
-    let response: any;
-    try {
-      response = await request.show();
-    } catch (e: any) {
-      // المستخدم أغلق نافذة Google Play = إلغاء هادئ بدون رسالة خطأ
-      const name = String(e?.name || '');
-      if (name === 'AbortError' || name === 'NotAllowedError') return { ok: true, cancelled: true };
-      return { ok: false, error: 'Google Play payment failed' };
-    }
-    const purchaseToken = String(response?.details?.purchaseToken || '');
-    if (!purchaseToken) {
-      try { await response.complete('fail'); } catch { /* ignore */ }
-      return { ok: false, error: 'Google Play payment failed' };
-    }
-    const verified = await verifyGooglePlayPurchase(userId, sku, purchaseToken);
-    try { await response.complete(verified.ok ? 'success' : 'fail'); } catch { /* ignore */ }
-    if (verified.ok && typeof verified.balance === 'number' && verified.balance > 0) writeBalance(userId, verified.balance);
-    return verified;
-  } catch {
-    return { ok: false, error: 'Google Play payment failed' };
+    response = await request.show();
+  } catch (e: any) {
+    const name = String(e?.name || '');
+    console.error('[google-play] payment sheet failed', sku, name, e?.message);
+    // المستخدم أغلق نافذة Google Play = إلغاء هادئ بدون رسالة خطأ
+    if (name === 'AbortError' || name === 'NotAllowedError') return { ok: true, cancelled: true };
+    return { ok: false, error: `Google Play payment sheet failed${name ? ` (${name})` : ''}` };
   }
+  const purchaseToken = String(response?.details?.purchaseToken || '');
+  if (!purchaseToken) {
+    console.error('[google-play] no purchaseToken in response');
+    try { await response.complete('fail'); } catch { /* ignore */ }
+    return { ok: false, error: 'Google Play did not return a purchase' };
+  }
+  const verified = await verifyGooglePlayPurchase(userId, sku, purchaseToken);
+  try { await response.complete(verified.ok ? 'success' : 'fail'); } catch { /* ignore */ }
+  if (verified.ok && typeof verified.balance === 'number' && verified.balance > 0) writeBalance(userId, verified.balance);
+  return verified;
 }
 
 /** مشتريات دُفعت عند Google لكن لم تُضف عملاتها (انقطاع النت مثلاً): نعيد إرسالها للسيرفر. آمنة لأن السيرفر لا يضيف نفس الرمز مرتين. */
@@ -331,7 +352,8 @@ async function recoverGooglePlayPurchases(userId: string) {
   if (googleRecoverRan || !userId || !googlePlayAvailable()) return;
   googleRecoverRan = true;
   try {
-    const service = await (window as any).getDigitalGoodsService(GOOGLE_PLAY_SERVICE_URL);
+    const service = await getGooglePlayService();
+    if (!service) return;
     const owned = await service.listPurchases();
     for (const it of (owned || [])) {
       const sku = String(it?.itemId || '');
@@ -348,8 +370,15 @@ type PayMethod = 'polar' | 'google';
 let payMethodRoot: Root | null = null;
 let payMethodHost: HTMLDivElement | null = null;
 
-function PaymentMethodSheet({ pack, googleOk, onPick }: { pack: { id: string; coins: number }; googleOk: boolean; onPick: (m: PayMethod | null) => void }) {
+function PaymentMethodSheet({ pack, googleCheck, onPick }: { pack: { id: string; coins: number }; googleCheck: Promise<boolean>; onPick: (m: PayMethod | null) => void }) {
   const [shown, setShown] = useState(false);
+  const [googleState, setGoogleState] = useState<'checking' | 'ok' | 'no'>('checking');
+  useEffect(() => {
+    let dead = false;
+    googleCheck.then(ok => { if (!dead) setGoogleState(ok ? 'ok' : 'no'); }).catch(() => { if (!dead) setGoogleState('no'); });
+    return () => { dead = true; };
+  }, [googleCheck]);
+  const googleOk = googleState === 'ok';
   const doneRef = useRef(false);
   const pick = React.useCallback((m: PayMethod | null) => {
     if (doneRef.current) return;
@@ -364,7 +393,7 @@ function PaymentMethodSheet({ pack, googleOk, onPick }: { pack: { id: string; co
   }, []);
   const isCustom = pack.id === CUSTOM_ID;
   const googleEnabled = googleOk && !isCustom;
-  const googleNote = isCustom ? 'Fixed packs only' : (googleOk ? 'Pay with your Google Play account' : 'Available in the Android app only');
+  const googleNote = isCustom ? 'Fixed packs only' : (googleState === 'checking' ? 'Checking…' : (googleOk ? 'Pay with your Google Play account' : 'Available in the app installed from Google Play only'));
   const row = (enabled: boolean): React.CSSProperties => ({
     display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
     padding: '14px 14px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.12)',
@@ -428,8 +457,8 @@ function askPaymentMethod(pack: { id: string; coins: number }, userId?: string):
       payMethodHost = host;
       const root = createRoot(host);
       payMethodRoot = root;
-      const googleOk = googlePlayAvailable();
-      if (googleOk && userId) void recoverGooglePlayPurchases(userId);
+      const googleCheck = getGooglePlayService().then(svc => !!svc);
+      if (userId) void googleCheck.then(ok => { if (ok) void recoverGooglePlayPurchases(userId); });
       const finish = (m: PayMethod | null) => {
         window.setTimeout(() => {
           try { root.unmount(); } catch { /* ignore */ }
@@ -439,7 +468,7 @@ function askPaymentMethod(pack: { id: string; coins: number }, userId?: string):
         }, 0);
         resolve(m);
       };
-      root.render(<PaymentMethodSheet pack={pack} googleOk={googleOk} onPick={finish} />);
+      root.render(<PaymentMethodSheet pack={pack} googleCheck={googleCheck} onPick={finish} />);
     } catch {
       resolve('polar');   // لو فشل المربع لأي سبب نكمل بالطريقة القديمة (Polar) كما كان
     }
