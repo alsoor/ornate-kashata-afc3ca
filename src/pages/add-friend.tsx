@@ -76,7 +76,7 @@ function DockEmbeddedApp({ onExit }: { onExit: (to: string) => void }) {
             className="stooorna-dock-embed"
             style={{
               position: 'absolute', inset: 0, overflowY: 'auto', overflowX: 'hidden',
-              WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y', scrollBehavior: 'smooth',
+              WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y',
             }}
           >
             <React.Suspense fallback={<p style={{ margin: '24px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}>
@@ -16935,7 +16935,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
       >
         {isVideo ? (
           near
-            ? <video ref={ref} src={c.imageUrl || ''} loop muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+            ? <video ref={ref} src={(c.imageUrl || '') + ((c.imageUrl || '').indexOf('#') < 0 ? '#t=0.1' : '')} loop muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
             : <div aria-hidden="true" style={{ width: '100%', height: '100%', background: 'linear-gradient(160deg, #10201c 0%, #0b1512 100%)' }} />
         ) : (
           <img src={c.imageUrl || ''} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
@@ -18838,11 +18838,8 @@ function PublicLiveCommentsPanel({
   const tplShown = !!tplBubble;
   const templatesBubble = ((tplBubble || tplWarm) && typeof document !== 'undefined') ? createPortal(
     (() => {
-      const SIDE = 12;
-      const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, (tplBubble?.x ?? tplLastX.current) - SIDE));
       return (
         <>
-          <div onPointerDown={e => { e.preventDefault(); closeTplBubble(); }} style={{ position: 'fixed', inset: 0, zIndex: 10068, background: 'rgba(0,6,8,0.45)', opacity: tplShown ? 1 : 0, visibility: tplShown ? 'visible' : 'hidden', pointerEvents: tplShown ? 'auto' : 'none', transition: tplShown ? 'opacity 140ms ease-out' : 'opacity 110ms ease-in, visibility 0s linear 110ms' }} />
           <div
             aria-hidden={!tplShown}
             onClick={e => e.stopPropagation()}
@@ -18851,22 +18848,16 @@ function PublicLiveCommentsPanel({
             onTouchEnd={e => e.stopPropagation()}
             onWheel={e => e.stopPropagation()}
             style={{
-              position: 'fixed', zIndex: 10075, left: SIDE, right: SIDE, bottom: 'calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
-              height: 'calc(100dvh - var(--stooorna-bottom-bar-h, 96px) - 30px - env(safe-area-inset-top, 0px))',
+              // FULL PAGE: flat + opaque, no shadow/tail/backdrop/animation. Kept with visibility (not content-visibility) so the
+              // first tiles' videos can still be pre-loaded while it is hidden → no empty tiles when it opens.
+              position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
               display: 'flex', flexDirection: 'column',
-              borderRadius: 22, padding: '14px 10px 10px',
-              background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
-              border: '1.5px solid rgba(0,188,212,0.35)',
-              boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
-              animation: tplShown ? 'stooornaPlusFanIn 0.18s cubic-bezier(0.22,1,0.36,1)' : 'none',
-              opacity: tplShown ? 1 : 0,
-              transform: tplShown ? 'none' : 'translateY(10px)',
+              padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 10px 0',
+              background: '#071214',
               visibility: tplShown ? 'visible' : 'hidden',
               pointerEvents: tplShown ? 'auto' : 'none',
-              transition: tplShown ? 'none' : 'opacity 110ms ease-in, transform 110ms ease-in, visibility 0s linear 110ms',
             }}
           >
-            <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: tailLeft - 9, width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
               <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,188,212,0.14)', color: '#00BCD4' }}>
                 <Film size={15} strokeWidth={2.2} />
@@ -18882,7 +18873,7 @@ function PublicLiveCommentsPanel({
             <div
               style={{
                 flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
-                touchAction: 'pan-y', borderRadius: 14, padding: LIVE_MEDIA_STACKED ? 0 : '0 2px 6px',
+                touchAction: 'pan-y', padding: LIVE_MEDIA_STACKED ? 0 : '0 2px 12px',
                 scrollSnapType: LIVE_MEDIA_STACKED ? 'y mandatory' : undefined,
               }}
             >
@@ -18935,12 +18926,8 @@ function PublicLiveCommentsPanel({
   const closeFavBubble = () => setTplFavOpen(false);
   const favoritesBubble = (tplBubble && tplFavOpen && typeof document !== 'undefined') ? createPortal(
     (() => {
-      const SIDE = 12;
-      const YEL = 'rgba(250,204,21,0.8)';
-      const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, tplBubble.x - SIDE));
       return (
         <>
-          <div onPointerDown={e => { e.preventDefault(); closeFavBubble(); }} style={{ position: 'fixed', inset: 0, zIndex: 10080, background: 'rgba(0,6,8,0.3)' }} />
           <div
             onClick={e => e.stopPropagation()}
             onTouchStart={e => e.stopPropagation()}
@@ -18948,18 +18935,15 @@ function PublicLiveCommentsPanel({
             onTouchEnd={e => e.stopPropagation()}
             onWheel={e => e.stopPropagation()}
             style={{
-              position: 'fixed', zIndex: 10085, left: SIDE, right: SIDE, bottom: 'calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
-              height: 'calc(100dvh - var(--stooorna-bottom-bar-h, 96px) - 30px - env(safe-area-inset-top, 0px))',
+              // FULL PAGE (yellow accent line on top) over the Templates page, down to the dock
+              position: 'fixed', zIndex: 10085, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
               display: 'flex', flexDirection: 'column',
-              borderRadius: 22, padding: '14px 10px 10px',
-              background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
-              border: `1.5px solid ${YEL}`,
-              boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(250,204,21,0.14)',
-              animation: 'stooornaPlusFanIn 0.22s ease-out',
+              padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 10px 0',
+              background: '#071214',
+              borderTop: '2px solid rgba(250,204,21,0.8)',
               pointerEvents: 'auto',
             }}
           >
-            <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: tailLeft - 9, width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: `1.5px solid ${YEL}`, borderBottom: `1.5px solid ${YEL}`, borderBottomRightRadius: 4 }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
               <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(250,204,21,0.14)', color: '#facc15' }}>
                 <Bookmark size={15} strokeWidth={2.2} fill="#facc15" />
@@ -18972,7 +18956,7 @@ function PublicLiveCommentsPanel({
             <div
               style={{
                 flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
-                touchAction: 'pan-y', borderRadius: 14, padding: '0 2px 6px',
+                touchAction: 'pan-y', padding: '0 2px 12px',
               }}
             >
               {favPosts.length === 0 ? (
@@ -21399,35 +21383,27 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
   if (guestMode || typeof document === 'undefined') return null;
   const renderBubble = (kind: Exclude<DockKind, 'templates'>, active: boolean) => {
   const dockBubble = { kind, x: lastX.current };
-  const SIDE = 12;
-  const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, dockBubble.x - SIDE)) ;
   const closeBubble = () => dockSet(null);
   const title = dockBubble.kind === 'call' ? 'Call' : dockBubble.kind === 'live' ? 'LIVE' : 'Settings';
   const primaryBtn: React.CSSProperties = { width: '100%', padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.5)', background: 'rgba(0,188,212,0.16)', color: '#7ee8f5', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
   return (
+      // FULL PAGE (light): a flat, opaque page from the top of the screen down to the dock. No blur/shadow/tail/backdrop and no
+      // animation → the browser has nothing expensive to paint, and it opens in the very same frame as the tap.
+      // While hidden (kept alive) content-visibility:hidden skips ALL its layout + paint work, so a closed page costs ~nothing.
       <div
         key={dockBubble.kind}
         aria-hidden={!active}
         onClick={e => e.stopPropagation()}
         style={{
-          position: 'fixed', zIndex: 10075, left: SIDE, right: SIDE, bottom: 'calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
-          height: dockBubble.kind === 'settings' ? 'calc(100dvh - var(--stooorna-bottom-bar-h, 96px) - 30px - env(safe-area-inset-top, 0px))' : 'min(62dvh, 520px)',
+          position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
           display: 'flex', flexDirection: 'column',
-          borderRadius: 22, padding: dockBubble.kind === 'settings' ? '0 6px 6px' : '14px 14px 12px',
-          background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
-          border: '1.5px solid rgba(0,188,212,0.35)',
-          boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
-          // open = quick keyframe fade/slide (works on first mount too); close = transition. Opacity/transform only → stays on the GPU.
-          animation: active ? 'stooornaPlusFanIn 0.18s cubic-bezier(0.22,1,0.36,1)' : 'none',
-          opacity: active ? 1 : 0,
-          transform: active ? 'none' : 'translateY(10px)',
+          padding: dockBubble.kind === 'settings' ? 'env(safe-area-inset-top, 0px) 0 0' : 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 0',
+          background: '#071214',
           visibility: active ? 'visible' : 'hidden',
           pointerEvents: active ? 'auto' : 'none',
-          transition: active ? 'none' : 'opacity 110ms ease-in, transform 110ms ease-in, visibility 0s linear 110ms',
+          ...({ contentVisibility: active ? 'visible' : 'hidden' } as React.CSSProperties),
         }}
       >
-        {/* tail → points at the tapped icon */}
-        <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: tailLeft - 9, width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
         {dockBubble.kind !== 'settings' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: 0 }}>
           <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,188,212,0.14)', color: '#00BCD4' }}>
@@ -21444,12 +21420,12 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
             type="button"
             aria-label="Close"
             onClick={closeBubble}
-            style={{ position: 'absolute', top: 14, left: 16, zIndex: 20, width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', left: 16, zIndex: 20, width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
           >
             <X size={16} strokeWidth={2.4} />
           </button>
         )}
-        <div style={{ flex: 1, minHeight: 0, position: 'relative', overflowY: dockBubble.kind === 'settings' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', gap: 8, WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', borderRadius: 14 }}>
+        <div style={{ flex: 1, minHeight: 0, position: 'relative', overflowY: dockBubble.kind === 'settings' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: dockBubble.kind === 'settings' ? 0 : 12, WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
           {dockBubble.kind === 'call' && (
             <>
               {friendsLoadingView && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}
@@ -21507,7 +21483,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
                     100% { transform: scale(1.75); opacity: 0; }
                   }
                 `}</style>
-                <div style={{ display: 'flex', justifyContent: 'space-evenly', alignItems: 'flex-start', gap: 18, padding: '8px 6px 4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-evenly', alignItems: 'flex-start', gap: 18, padding: '7dvh 6px 4px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                     <button
                       type="button"
@@ -21622,18 +21598,9 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
       </div>
   );
   };
-  const showBackdrop = active === 'call' || active === 'live' || active === 'settings';
   const kinds: Array<Exclude<DockKind, 'templates'>> = ['call', 'live', 'settings'];
   return createPortal(
     <>
-      <div
-        onPointerDown={e => { e.preventDefault(); dockSet(null); }}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 10068, background: 'rgba(0,6,8,0.45)',
-          opacity: showBackdrop ? 1 : 0, visibility: showBackdrop ? 'visible' : 'hidden', pointerEvents: showBackdrop ? 'auto' : 'none',
-          transition: showBackdrop ? 'opacity 140ms ease-out' : 'opacity 110ms ease-in, visibility 0s linear 110ms',
-        }}
-      />
       {kinds.map(k => ((k === active || (k === 'settings' ? settingsMounted : warmRef.current.has(k))) ? renderBubble(k, k === active) : null))}
     </>,
     document.body,
