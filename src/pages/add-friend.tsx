@@ -31266,45 +31266,42 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {storyRequestsBoxOpen && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
-            onClick={() => setStoryRequestsBoxOpen(false)}
             style={{
               position: 'fixed', inset: 0, zIndex: 20050,
-              background: 'rgba(0,0,0,0.45)',
-              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-              padding: '12px 12px calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
+              background: 'rgba(6,14,16,1)',
+              display: 'flex', alignItems: 'stretch', justifyContent: 'center',
+              padding: 0,
               boxSizing: 'border-box',
             }}
           >
             <motion.div
               onClick={e => e.stopPropagation()}
-              initial={{ opacity: 0, scale: 0.88 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
+              initial={{ opacity: 0, y: 36 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 36 }}
               transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.8 }}
               style={{
                 position: 'relative',
-                width: '100%', maxWidth: 520,
-                height: 'min(36vh, 262px)',
-                maxHeight: 'min(36vh, 262px)',
+                width: '100%', maxWidth: 'none',
+                height: '100%',
+                maxHeight: '100%',
                 display: 'flex',
                 flexDirection: 'column',
                 background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
-                border: '1.5px solid rgba(0,188,212,0.35)',
-                borderRadius: 22,
-                boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
-                overflow: 'visible',
+                border: 'none',
+                borderRadius: 0,
+                boxShadow: 'none',
+                overflow: 'hidden',
                 boxSizing: 'border-box',
               }}
             >
-              {/* tail — نفس ذيل فقاعة الأقسام */}
-              <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: 'calc(50% - 9px)', width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
               {/* Header inside card: Requests + close — same pill/border style as the Friends panel */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: 8,
-                padding: '12px 12px 10px',
+                padding: 'calc(env(safe-area-inset-top, 0px) + 12px) 12px 10px',
                 flexShrink: 0,
                 borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
                 boxSizing: 'border-box',
@@ -31342,7 +31339,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               </div>
               <div style={{
                 display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0,
-                padding: '12px 16px 14px', boxSizing: 'border-box',
+                padding: '12px 16px calc(env(safe-area-inset-bottom, 0px) + 14px)', boxSizing: 'border-box',
               }}>
               <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
                 <button type="button" onClick={() => setStoryReqTab('search')} style={{
