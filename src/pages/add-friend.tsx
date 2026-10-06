@@ -18628,7 +18628,13 @@ function PublicLiveCommentsPanel({
   }, [overlayOpen]);
   // الشات دايم مرفوع: أول ما الشيت يرتفع (الهيدر ينغلق) يطلع الشات مباشرة. النزول فقط بالنقر على هيد توقيت التنظيف بأعلى الشات.
   useEffect(() => {
-    if (!headerOpen) setChatLift(1);
+    if (!headerOpen) {
+      // رفع الهيدر بنقر خط الشيت: ما يفتح الشات العام (الشات يفتح بالضغط المطوّل على Call فقط)
+      try {
+        if ((window as any).__stooornaGrabberLift) { (window as any).__stooornaGrabberLift = false; return; }
+      } catch { /* */ }
+      setChatLift(1);
+    }
   }, [headerOpen]);
   /** النقر على هيد توقيت تنظيف الشات: ينزّل الشات بانميشن الهبوط ثم يفتح الشيت = رجوع لصفحة القصة */
   const dropChatToStory = () => {
@@ -20755,7 +20761,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
           position: 'fixed', left: 0, right: 0, top: topPx, zIndex: 16,
           display: 'flex', flexDirection: 'column', gap: 10,
           padding: (visible.length || homeAds.length) ? '8px 26px' : 0,
-          maxHeight: `calc(100dvh - ${topPx}px - ${(collapsed || dockHiddenByScroll) ? 12 : 104}px)`,
+          maxHeight: (collapsed || dockHiddenByScroll) ? `calc(100dvh - ${topPx}px - 12px)` : `calc(100dvh - ${topPx}px - 66px - env(safe-area-inset-bottom, 0px))`,
           overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none',
           WebkitOverflowScrolling: 'touch', touchAction: 'pan-y',
           background: liveScrollMode && collapsed ? PAGE_BG : 'transparent',
@@ -26329,7 +26335,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           <div data-stooorna-header-grabber="1" style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
             <motion.button
               whileTap={{ scale: 0.9 }}
-              onClick={() => toggleHeaderOpen()}
+              onClick={() => {
+                if (headerOpen) {
+                  try {
+                    (window as any).__stooornaGrabberLift = true;
+                    window.setTimeout(() => { (window as any).__stooornaGrabberLift = false; }, 800);
+                  } catch { /* */ }
+                }
+                toggleHeaderOpen();
+              }}
               aria-label={headerOpen ? 'Lift header' : 'Show header'}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
