@@ -20765,7 +20765,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
           position: 'fixed', left: 0, right: 0, top: topPx, zIndex: 16,
           display: 'flex', flexDirection: 'column', gap: 10,
           padding: (visible.length || homeAds.length) ? '8px 26px' : 0,
-          maxHeight: (collapsed || dockHiddenByScroll || !dockVisible) ? `calc(100dvh - ${topPx}px - 12px)` : `calc(100dvh - ${topPx}px - 66px - env(safe-area-inset-bottom, 0px))`,
+          maxHeight: (!dockVisible) ? `calc(100dvh - ${topPx}px - 12px)` : `calc(100dvh - ${topPx}px - 66px - env(safe-area-inset-bottom, 0px))`,
           overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none',
           WebkitOverflowScrolling: 'touch', touchAction: 'pan-y',
           background: liveScrollMode && collapsed ? PAGE_BG : 'transparent',
@@ -23628,6 +23628,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
   const [liveScrollHidden, setLiveScrollHidden] = useState(false);
   const [bottomBarHidden, setBottomBarHidden] = useState(false);
+  void bottomBarHidden; // الهيد السفلي ثابت — الحالة محفوظة فقط للتوافق
   // الشات كطبقة كاملة فوق الصفحات (ضغطة مطوّلة على Call) — لا يرفع الشيت
   const [chatOverlayOpen, setChatOverlayOpen] = useState(false);
   useEffect(() => { if (!headerOpen) setChatOverlayOpen(false); }, [headerOpen]);
@@ -23678,7 +23679,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     return () => window.removeEventListener('stooorna:chat-lift', onLift as EventListener);
   }, []);
   // الهيدر السفلي (الأيقونات الأربع) للمسجّلين: نعرّف ارتفاعه كمتغير CSS ليتجنبه أي مربع/لوحة (اتصال، أصدقاء، بث)
-  const bottomHeaderShown = !guestMode && headerOpen && !chatLifted && !isFriendManagement && !visitorProfileOpen;
+  const bottomHeaderShown = !guestMode && !chatLifted && !isFriendManagement && !visitorProfileOpen;
   useEffect(() => {
     try {
       document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(80px + env(safe-area-inset-bottom, 0px))' : '0px');
@@ -26398,7 +26399,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {/* الأيقونات (Friends / Call / Live / Settings) تظهر دائماً تحت الخط: عند الدخول مباشرة، وعند رفع الهيدر أو إنزاله. */}
         {/* الأيقونات الأربع: تظهر في الرئيسية (الهيدر مفتوح) فقط، وتختفي بعد رفع الشيت ليبقى الشات وحده.
             الزائر يبقى عنده الصف (زر Sign in و Ar/En) لأن الهيدر عنده مقفل دائماً. */}
-        {!isFriendManagement && !visitorProfileOpen && !chatLifted && (headerOpen || guestMode) && (
+        {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
           <BottomHeaderPortal enabled={!guestMode}>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
             position: 'fixed', left: 0, right: 0, bottom: 0,
@@ -26409,7 +26410,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             background: 'rgba(4,12,12,0.72)',
             backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
             borderTop: '1px solid rgba(0,188,212,0.1)',
-            transform: bottomBarHidden ? 'translateY(110%)' : 'translateY(0)',
+            // هيد الأقسام السفلي ثابت دايم: لا يختفي بالتمرير ولا برفع الهيدر
+            transform: 'translateY(0)',
             transition: 'transform 0.25s ease',
           } : { display: 'flex', justifyContent: 'center', padding: '8px 0 10px', position: 'relative' }}>
                 <div style={guestMode ? {
@@ -32955,7 +32957,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           enabled={!isLiveRoute && !!user?.id}
           showCards={pageTab === 'profile' && (headerOpen || liveScrollHidden || !guestMode) && !isLiveRoute}
           collapsed={liveScrollHidden}
-          dockVisible={headerOpen && !chatLifted}
+          dockVisible={!chatLifted}
           guest={guestMode}
           onGuestTap={() => {
             try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
