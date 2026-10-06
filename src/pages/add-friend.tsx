@@ -95,7 +95,6 @@ import { VipBadge, VipAvatarFrame } from '@/components/VipBadge';
 import { hydrateVipDirectory } from '@/lib/vipPatch';
 
 import { LiveVipDock } from '@/components/LiveVipDock';
-import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
 import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
@@ -106,7 +105,7 @@ import { useSession } from '@/lib/auth/auth-client';
 import { selectMapPins, locateLiveGpsUser, useLiveGpsBackgroundPublisher, rememberLiveGpsShare } from '@/lib/liveGpsAllUsersPatch'; // GPS-ALL-USERS-PATCH: GPS Live shows every user
 import { useLiveGpsRoute, useRouteCountdown, haversineM, fitZoomFor, formatEta, formatClock, formatDist } from '@/lib/liveGpsNavigatePatch'; // GPS-NAVIGATE-PATCH: distance / car time / blue line / Go countdown
 import { useLiveGpsGo, useGoRoute, useSmoothLL, setLiveGpsGoIdentity } from '@/lib/liveGpsGoPatch'; // GPS-GO-APPROVAL-PATCH: Go asks first (Please Wait -> Accept | Decline), accurate road line, live movement
-import { motion, AnimatePresence, useDragControls } from 'framer-motion';
+import { motion, AnimatePresence, useDragControls } from 'motion/react'; // PERF: same lib as live/live-camera/settings (was framer-motion = bundled twice)
 import { usePresenceQuery } from '@/hooks/usePresence';
 import { pullLiveLocations, pullOnlineIds } from '@/lib/liveLocationSync';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
@@ -117,16 +116,32 @@ import { GuestLiveStack, GUEST_SIGNIN_LABEL, GUEST_HEADER_LOCKED, readGuestLang,
 import PostTextMore from '@/components/PostTextMore';
 import { publishFeedPost, uploadPostMedia, deleteStoryInstant } from '@/lib/postStoryPatch';
 import { mediaAiProcessGalleryFiles, mediaAiIsBrokenHostUrl } from '@/lib/mediaAiPatch';
-import { LocationPickerSheet, LocationViewSheet, LocationChatCard, encodeChatLocation, parseChatLocation } from '@/components/LocationPickerPatch';
+import { LocationChatCard, encodeChatLocation, parseChatLocation } from '@/components/LocationPickerPatch';
 import { publishLiveChatRoundVideo, normalizeLiveChatMediaFields, extractLiveChatMediaUrl, makeLiveChatRoundText } from '@/lib/liveChatVideoPatch';
 import { publishLiveChatVideoDelete, onLiveChatVideoDeleted, applyLiveChatVideoTombstone, isLiveChatRoundGone, LIVE_CHAT_ROUND_GONE } from '@/lib/liveChatVideoDeletePatch';
 // Templates (الصور/الفيديو بالخارج): مخزن مستقل تماماً عن الشات العام — لا يتأثر بتنظيف الـ24 ساعة
 import { useLiveEmojiBurstSync } from '@/lib/liveEmojiBurst'; // EMOJI-BURST-PATCH
 import { TEMPLATES_CACHE_KEY, loadTemplatesCache, saveTemplatesCache, syncTemplates, postTemplateRow, likeTemplateRow, deleteTemplateRow, markTemplatePending, markTemplateDeleted } from '@/lib/liveTemplatesStore';
-import { StoryModerationBell, StoryModerateDialog, StoryBanModal, StoryModerationWatcher } from '@/components/StoryModeration';
+import { StoryModerationBell, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
 import { noteHostClosed, refreshStoryLives, startStoryLiveWatch, storyLiveStillOpen, readStoryLive } from '@/lib/liveStoryPresencePatch';
 import { VoiceInviteGlobalWatcher } from '@/lib/liveVoiceInvite'; // VOICE-INVITE-PATCH
+
+// ── PERF: code splitting — these are only drawn after a tap, so their code is downloaded on first use (not at app start) ──
+const PublicVoiceLive = React.lazy(() => import('@/components/PublicVoiceLive'));
+const LocationPickerSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationPickerSheet })));
+const LocationViewSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationViewSheet })));
+const StoryModerateDialog = React.lazy(() => import('@/components/StoryModeration').then(m => ({ default: m.StoryModerateDialog })));
+const StoryBanModal = React.lazy(() => import('@/components/StoryModeration').then(m => ({ default: m.StoryBanModal })));
+
+// ── PERF: polling that only matters while the screen is visible. A hidden/backgrounded app stops hitting the server and
+//    stops re-rendering (heartbeats / calls / ringing / timers are NOT switched to this — they keep their own intervals). ──
+function setVisibleInterval(fn: () => void, ms: number): number {
+  return window.setInterval(() => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') fn(); }, ms);
+}
+function setVisibleIntervalRef(fn: () => void, ms: number): ReturnType<typeof setInterval> {
+  return setVisibleInterval(fn, ms) as unknown as ReturnType<typeof setInterval>;
+}
 
 // Refresh / coming back to this page: RootLayout's bottom bar (with the "+") used to flash for a moment until this page mounted and
 // told it to hide. Announce it as early as possible (module load), and again when the browser restores the page from cache.
@@ -455,8 +470,8 @@ function useLiveBroadcastKind(hostId: string | null | undefined, sticky = false)
     };
 
     checkRoom();
-    // تحديث حالة البث كل ثانية — خفيف: فقط فحص /api/room، بدون إعادة تحميل الصفحة
-    const interval = window.setInterval(checkRoom, 1000);
+    // تحديث حالة البث — فقط فحص /api/room (كل ثانيتين وبس والشاشة ظاهرة)، بدون إعادة تحميل الصفحة
+    const interval = setVisibleInterval(checkRoom, 2000);
 
     const onEvt = (e: Event) => {
       const d = (e as CustomEvent).detail as { hostId?: string; active?: boolean; kind?: string } | undefined;
@@ -2959,7 +2974,7 @@ function useLiveSplitPartner(hostId: string | null | undefined, enabled: boolean
       } catch { /* ignore */ }
     };
     void check();
-    const iv = window.setInterval(check, 2500);
+    const iv = setVisibleInterval(check, 2500);
     return () => { cancelled = true; window.clearInterval(iv); };
   }, [hostId, enabled]);
   return partner;
@@ -3743,7 +3758,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     };
     mergePins(readLiveGpsLastSeen());
     void readPins();
-    const iv = window.setInterval(() => { void readPins(); }, 5000);
+    const iv = setVisibleInterval(() => { void readPins(); }, 5000);
     let lastOwnPin: any = null;
     // Heartbeat: keeps my pin "fresh" while the map is open even when I am standing still.
     const hb = window.setInterval(() => {
@@ -11060,7 +11075,7 @@ function useProfileVisitors(ownerId: string | null): GlobeVoiceMember[] {
       } catch {}
     };
     void poll();
-    const interval = window.setInterval(poll, 4000);
+    const interval = setVisibleInterval(poll, 4000);
     return () => { cancelled = true; window.clearInterval(interval); };
   }, [ownerId]);
   return visitors;
@@ -12433,7 +12448,7 @@ function DirectMessageSyncWatcher({ myUserId }: { myUserId: string | null }) {
       } catch { /* offline — try again next tick */ }
     }
     poll();
-    const interval = window.setInterval(poll, 5000);
+    const interval = setVisibleInterval(poll, 5000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -12596,7 +12611,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
 
   useEffect(() => {
     void fetchRoom();
-    const interval = window.setInterval(() => { void fetchRoom(); }, 3000);
+    const interval = setVisibleInterval(() => { void fetchRoom(); }, 3000);
     return () => window.clearInterval(interval);
   }, [fetchRoom]);
 
@@ -14985,8 +15000,8 @@ function SavedMessagesScreen({
             ))}
           </div>
 
-          {locPickerOpen ? <LocationPickerSheet onClose={() => setLocPickerOpen(false)} onSend={sendPickedLocation} /> : null}
-          {locView ? <LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} senderName={userName || userUsername} senderAvatar={userAvatar} onClose={() => setLocView(null)} /> : null}
+          {locPickerOpen ? <React.Suspense fallback={null}><LocationPickerSheet onClose={() => setLocPickerOpen(false)} onSend={sendPickedLocation} /></React.Suspense> : null}
+          {locView ? <React.Suspense fallback={null}><LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} senderName={userName || userUsername} senderAvatar={userAvatar} onClose={() => setLocView(null)} /></React.Suspense> : null}
 
           {/* Full-screen media: first tap opened it; second tap anywhere closes */}
           {mediaView ? (
@@ -19935,8 +19950,8 @@ function PublicLiveCommentsPanel({
         sheetMode
       />
     ) : null}
-    {locPickerOpen ? <LocationPickerSheet onClose={() => setLocPickerOpen(false)} onSend={sendLocation} /> : null}
-    {locView ? <LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} senderName={(locView as any).name} senderAvatar={(locView as any).avatar} onClose={() => setLocView(null)} /> : null}
+    {locPickerOpen ? <React.Suspense fallback={null}><LocationPickerSheet onClose={() => setLocPickerOpen(false)} onSend={sendLocation} /></React.Suspense> : null}
+    {locView ? <React.Suspense fallback={null}><LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} senderName={(locView as any).name} senderAvatar={(locView as any).avatar} onClose={() => setLocView(null)} /></React.Suspense> : null}
     <SavedMessagesScreen
       open={savedOpen}
       onClose={() => {
@@ -25119,7 +25134,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     let cancelled = false;
     const pull = () => { if (!cancelled) void syncDirectThreadDown(user.id, friendChatPeer.friendId); };
     pull();
-    const iv = window.setInterval(pull, 2000);
+    const iv = setVisibleInterval(pull, 2000);
     return () => {
       cancelled = true;
       window.clearInterval(iv);
@@ -25131,7 +25146,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     if (!user?.id || !friendChatPeer?.friendId) return;
     const tick = () => setFriendChatTypingTick(n => n + 1);
     tick();
-    const iv = window.setInterval(tick, 1200);
+    const iv = setVisibleInterval(tick, 1200);
     const onTyping = (e: Event) => {
       const d = (e as CustomEvent).detail as { fromId?: string; toId?: string } | undefined;
       if (!d) return;
@@ -25822,10 +25837,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     loadFriends();
     loadHighlights();
     // Poll highlights every 10s — also re-runs on tick (every 3s from useAutoRefresh)
-    const interval = setInterval(loadHighlights, 10_000);
+    const interval = setVisibleIntervalRef(loadHighlights, 10_000);
     // Friend requests must arrive without a refresh: poll and ping the requests icon.
     let lastIncoming = -1;
-    const pollReq = window.setInterval(async () => {
+    const pollReq = setVisibleInterval(async () => {
       try {
         const r = await fetch('/api/friends', { credentials: 'include' });
         if (!r.ok) return;
@@ -25887,7 +25902,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         } catch {/* silent */}
       }
     }
-    scBgPollRef.current = setInterval(bgPollAll, 6000);
+    scBgPollRef.current = setVisibleIntervalRef(bgPollAll, 6000);
     return () => {
       if (scBgPollRef.current) clearInterval(scBgPollRef.current);
     };
@@ -25981,8 +25996,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         setScTypingNames(data.typing ?? []);
       } catch {/* silent */}
     }
-    scPollRef.current = setInterval(pollMessages, 3000);
-    scTypingRef.current = setInterval(pollTyping, 2000);
+    scPollRef.current = setVisibleIntervalRef(pollMessages, 3000);
+    scTypingRef.current = setVisibleIntervalRef(pollTyping, 2000);
     return () => {
       if (scPollRef.current) clearInterval(scPollRef.current);
       if (scTypingRef.current) clearInterval(scTypingRef.current);
@@ -32020,7 +32035,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       {/* قائمة Photo/Video للقصة أُلغيت — الفتح مباشرة من المعرض أو الكاميرا */}
 
       {modReq && storyCanModerate && (
-        <StoryModerateDialog
+        <React.Suspense fallback={null}><StoryModerateDialog
           story={modReq.story}
           target={modReq.target}
           onClose={() => setModReq(null)}
@@ -32034,9 +32049,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             void deleteStoryInstant(id);
             void deleteStoryOnServer(id, mediaUrl);
           }}
-        />
+        /></React.Suspense>
       )}
-      {storyBanOpen && <StoryBanModal userId={user?.id} onClose={() => setStoryBanOpen(false)} />}
+      {storyBanOpen && <React.Suspense fallback={null}><StoryBanModal userId={user?.id} onClose={() => setStoryBanOpen(false)} /></React.Suspense>}
 
       {/* ── Story Viewer ── */}
       <AnimatePresence>
@@ -33370,13 +33385,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       {showPublicVoice && user?.id && (
         <>
           <LiveVipDock hostId={String(user.id)} currentUserId={user.id} />
-          <PublicVoiceLive
+          <React.Suspense fallback={null}><PublicVoiceLive
             userId={String(user.id)}
             userName={(user as any)?.name || (user as any)?.username || 'Me'}
             userUsername={(user as any)?.username || null}
             userAvatar={(user as any)?.avatarUrl || (user as any)?.image || null}
             onClose={() => setShowPublicVoice(false)}
-          />
+          /></React.Suspense>
         </>
       )}
 

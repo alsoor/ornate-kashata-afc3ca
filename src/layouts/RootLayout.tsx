@@ -2,6 +2,34 @@ import { Helmet } from '@dr.pogodin/react-helmet';
 import { type ReactElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ScrollRestoration, useLocation, useNavigate } from "react-router";
 
+// ── PERF: identical GET requests that are in flight at the same moment share ONE network call ──
+// (the home page polls /api/room, /api/friends ... from several components at once — each of them used to hit the server separately).
+// Only plain same-origin /api/ GETs without an abort signal are shared; every caller still gets its own readable copy of the response.
+if (typeof window !== 'undefined' && !(window as any).__stooornaFetchDedupe) {
+  (window as any).__stooornaFetchDedupe = true;
+  const nativeFetch = window.fetch.bind(window);
+  const inflight = new Map<string, Promise<Response>>();
+  window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    try {
+      if (typeof input === 'string' && input.startsWith('/api/') && !/stream|events|sse|download/i.test(input)) {
+        const method = String(init?.method || 'GET').toUpperCase();
+        if (method === 'GET' && !init?.signal && !init?.body) {
+          const key = `${input}|${init?.credentials || ''}|${init?.cache || ''}|${init?.headers ? JSON.stringify(init.headers) : ''}`;
+          const shared = inflight.get(key);
+          const req: Promise<Response> = shared ?? nativeFetch(input, init);
+          if (!shared) {
+            inflight.set(key, req);
+            const clear = () => { if (inflight.get(key) === req) inflight.delete(key); };
+            req.then(clear, clear);
+          }
+          return req.then(r => r.clone());
+        }
+      }
+    } catch { /* fall through to the normal fetch */ }
+    return nativeFetch(input as any, init);
+  }) as typeof window.fetch;
+}
+
 // True on the profile/story tab of /add-friend (the "+" lives inline there, so the bottom nav bar must never show).
 // Works from the URL alone so the very first render (refresh / coming back) is already correct — no flash of the bar.
 // الصفحة الرئيسية = "/" (وما زال /add-friend يعمل كمسار قديم لنفس الصفحة)

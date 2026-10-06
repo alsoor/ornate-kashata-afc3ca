@@ -18,7 +18,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, MicOff, Volume2, VolumeX, X, Users, Radio, Snowflake, LogOut, Hand } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, X, Users, Snowflake, LogOut, Hand } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import UserAvatar from '@/components/UserAvatar';
 import HostProfileSheet from './HostProfileSheet';
@@ -150,7 +150,9 @@ export default function LivePage() {
   const [micRequests, setMicRequests] = useState<MicRequest[]>([]);
   const [requestsOpen, setRequestsOpen] = useState(false);
   const [micRequested, setMicRequested] = useState(false);
-  const [status, setStatus] = useState('');
+  // PERF: the join-progress text was never shown anywhere, but every update re-rendered this whole page (6+ times while joining).
+  // Same calls as before, just no state behind them.
+  const setStatus = useCallback((_text: string) => { /* intentionally empty */ }, []);
   const [error, setError] = useState('');
   const [liveChatMsgs, setLiveChatMsgs] = useState<LiveChatMsg[]>([]);
   const [liveChatText, setLiveChatText] = useState('');
@@ -749,7 +751,7 @@ export default function LivePage() {
             if (!amHost) {
               const set = new Set(msg.uids.map(Number));
               frozenUidsRef.current = set;
-              setFrozenUids(set);
+              setFrozenUids(prev => (prev.size === set.size && [...set].every(u => prev.has(u)) ? prev : set)); // PERF: no re-render when the list did not change
             }
           } else if (msg.t === 'chat') {
             const cm = parseIncomingChat(msg);
@@ -801,7 +803,10 @@ export default function LivePage() {
       client.enableAudioVolumeIndicator();
       client.on('volume-indicator', (vols: Array<{ uid: number; level: number }>) => {
         // Slightly lower threshold for faster speaking detection
-        setSpeakingUids(new Set(vols.filter(v => v.level > 5).map(v => v.uid)));
+        setSpeakingUids(prev => { // PERF: re-render only when who is speaking really changed (was: a new Set = a full page re-render on every Agora tick)
+          const next = new Set<number>(vols.filter(v => v.level > 5).map(v => v.uid));
+          return prev.size === next.size && [...next].every(u => prev.has(u)) ? prev : next;
+        });
       });
 
       setStatus('Fetching token...');
@@ -832,11 +837,15 @@ export default function LivePage() {
       }
       // Host rebroadcasts freeze list every 2s so all clients receive it
       if (amHost) {
+        let freezeTick = 0;
         const freezeBroadcast = window.setInterval(() => {
           if (leftRef.current || !clientRef.current) {
             window.clearInterval(freezeBroadcast);
             return;
           }
+          // PERF: nothing frozen → re-announce only every 3rd tick (6s). Freeze / unfreeze are still sent instantly (sendFreezeCmd).
+          freezeTick += 1;
+          if (frozenUidsRef.current.size === 0 && freezeTick % 3 !== 0) return;
           void sendDataPayload({
             t: 'freeze-set',
             uids: [...frozenUidsRef.current],
@@ -1168,7 +1177,7 @@ export default function LivePage() {
       if (!amHost) {
         const set = new Set(msg.uids.map(Number));
         frozenUidsRef.current = set;
-        setFrozenUids(set);
+        setFrozenUids(prev => (prev.size === set.size && [...set].every(u => prev.has(u)) ? prev : set)); // PERF: no re-render when the list did not change
       }
     } else if (msg.t === 'chat') {
       const cm = parseIncomingChat(msg);
@@ -1323,7 +1332,7 @@ export default function LivePage() {
       window.dispatchEvent(new CustomEvent('stooorna:live-speakers', { detail: { userIds: ids } }));
     };
     publish();
-    const iv = window.setInterval(publish, 2000);
+    const iv = window.setInterval(() => { if (document.visibilityState !== 'hidden') publish(); }, 2000); // PERF: idle while the app is hidden
     return () => window.clearInterval(iv);
   }, [members, speakingUids, frozenUids]);
 
