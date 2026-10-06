@@ -15,13 +15,9 @@ const POLL_MS = 700;
 
 let liveParticles = 0;
 
-function reducedMotion(): boolean {
-  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
-}
-
 /** يشغّل التأثير فوق الشاشة انطلاقاً من مركز (x, y). */
 export function playEmojiBurst(emoji: string, x: number, y: number, count = 14) {
-  if (typeof document === 'undefined' || reducedMotion()) return;
+  if (typeof document === 'undefined') return;
   const n = Math.min(count, MAX_PARTICLES - liveParticles);
   if (n <= 0) return;
   const layer = document.createElement('div');
@@ -46,9 +42,9 @@ export function playEmojiBurst(emoji: string, x: number, y: number, count = 14) 
     liveParticles++;
     const anim = el.animate(
       [
-        { transform: 'translate(-50%,-50%) scale(.2) rotate(0deg)', opacity: 0 },
-        { transform: `translate(calc(-50% + ${dx * 0.45}px), calc(-50% + ${dy * 0.45}px)) scale(1.1) rotate(${rot * 0.5}deg)`, opacity: 1, offset: 0.35 },
-        { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy + 70}px)) scale(.8) rotate(${rot}deg)`, opacity: 0 },
+        { transform: 'translate(-50%,-50%) translate(0px,0px) scale(.2) rotate(0deg)', opacity: 0 },
+        { transform: `translate(-50%,-50%) translate(${dx * 0.45}px,${dy * 0.45}px) scale(1.1) rotate(${rot * 0.5}deg)`, opacity: 1, offset: 0.35 },
+        { transform: `translate(-50%,-50%) translate(${dx}px,${dy + 70}px) scale(.8) rotate(${rot}deg)`, opacity: 0 },
       ],
       { duration: dur, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' },
     );
@@ -60,7 +56,7 @@ export function playEmojiBurst(emoji: string, x: number, y: number, count = 14) 
 
 /** نبضة تكبير سريعة على الإيموجي المنقورة نفسها. */
 function pulse(el: Element | null) {
-  if (!el || reducedMotion()) return;
+  if (!el) return;
   try {
     (el as HTMLElement).animate(
       [{ transform: 'scale(1)' }, { transform: 'scale(1.45)' }, { transform: 'scale(.94)' }, { transform: 'scale(1)' }],
@@ -73,8 +69,8 @@ function findMsgEl(msgId: string): HTMLElement | null {
   try { return document.querySelector(`[data-live-big-emoji="${CSS.escape(msgId)}"]`) as HTMLElement | null; } catch { return null; }
 }
 
-function playOn(msgId: string, emoji: string) {
-  const el = findMsgEl(msgId);
+function playOn(msgId: string, emoji: string, direct?: Element | null) {
+  const el = (direct as HTMLElement | null) || findMsgEl(msgId);
   if (el) {
     const r = el.getBoundingClientRect();
     // لو الرسالة خارج الشاشة لا نزعج المستخدم بتأثير عشوائي
@@ -88,7 +84,7 @@ function playOn(msgId: string, emoji: string) {
  * الاستخدام داخل PublicLiveCommentsPanel:
  *   const burst = useLiveEmojiBurstSync(LIVE_CHAT_ROOM, myId, chatLift === 1);
  *   ...
- *   onClick={e => { e.stopPropagation(); burst(c.id, stripLiveBigEmojiMark(c.text)); }}
+ *   onClick={e => { e.stopPropagation(); burst(c.id, stripLiveBigEmojiMark(c.text), e.currentTarget); }}
  */
 export function useLiveEmojiBurstSync(room: string, myId: string | undefined | null, enabled: boolean) {
   const cursorRef = useRef<number>(-1);          // آخر seq رأيناه (-1 = لم نتزامن بعد)
@@ -117,9 +113,9 @@ export function useLiveEmojiBurstSync(room: string, myId: string | undefined | n
     return () => { stopped = true; window.clearInterval(id); };
   }, [room, myId, enabled]);
 
-  return useCallback((msgId: string, emoji: string) => {
+  return useCallback((msgId: string, emoji: string, el?: Element | null) => {
     if (!myId) return;
-    playOn(msgId, emoji);                         // فوري محلياً
+    playOn(msgId, emoji, el);                     // فوري محلياً
     const now = Date.now();
     if (now - lastSendRef.current < SEND_THROTTLE_MS) return;
     lastSendRef.current = now;
