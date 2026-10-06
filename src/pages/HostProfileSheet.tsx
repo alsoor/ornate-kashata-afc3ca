@@ -68,6 +68,7 @@ export default function HostProfileSheet({
           onClose={handleClose}
           onOpenPost={() => {}}
           riseFromBottom
+          hideLiveButton
         />
       </React.Suspense>
     </div>,

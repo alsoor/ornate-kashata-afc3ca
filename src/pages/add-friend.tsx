@@ -1967,159 +1967,12 @@ interface PostItem {
   authorIsPrivate?: boolean;
 }
 
-// ── Product ad — plain Arabic text only (server rejected JSON / special markers) ──
-// Format stored in post.text:
-//   LINE1: title
-//   optional "السعر: …"
-//   then details + extra paragraphs separated by blank lines
-interface ProductAdData {
-  __productAd: 1;
-  title: string;
-  details: string;
-  price: string;
-  extras: string[];
-}
-function buildProductPostText(data: { title: string; details: string; price: string; extras: string[] }): string {
-  // Order must match the composer: Title → Details → Price (price always last).
-  // NOTE: no default title here — an empty title must stay empty.
-  const title = (data.title || '').trim();
-  const price = (data.price || '').trim();
-  const details = (data.details || '').trim();
-  const extras = (data.extras || []).map(s => s.trim()).filter(Boolean);
-  const parts: string[] = [];
-  if (title) parts.push(title);
-  if (details) parts.push(details);
-  for (const ex of extras) parts.push(ex);
-  if (price) parts.push(`السعر: ${price}`);
-  return parts.join('\n\n');
-}
-function parseProductAd(text: string | null | undefined): ProductAdData | null {
-  if (!text) return null;
-  const trimmed = text.trim();
-  // legacy JSON / marker formats from earlier builds
-  if (trimmed.startsWith('{')) {
-    try {
-      const first = trimmed.split('\n')[0];
-      const o = JSON.parse(first.startsWith('{') ? first : trimmed) as ProductAdData;
-      if (o && (o as any).__productAd === 1) return o;
-    } catch { /* ignore */ }
-    try {
-      const o = JSON.parse(trimmed) as ProductAdData;
-      if (o && (o as any).__productAd === 1) return o;
-    } catch { /* ignore */ }
-  }
-  const marker = trimmed.match(/⟦stooorna-product:([A-Za-z0-9+/=]+)⟧\s*$/);
-  if (marker) {
-    try {
-      const json = decodeURIComponent(escape(atob(marker[1])));
-      const o = JSON.parse(json) as ProductAdData;
-      if (o && o.__productAd === 1) return o;
-    } catch { /* ignore */ }
-  }
-  // plain format produced by buildProductPostText
-  const body = trimmed.replace(/\n*⟦stooorna-product:[A-Za-z0-9+/=]+⟧\s*$/, '').trim();
-  if (!body) return null;
-  const blocks = body.split(/\n\n+/).map(b => b.trim()).filter(Boolean);
-  if (blocks.length === 0) return null;
-  const title = blocks[0];
-  let price = '';
-  const rest: string[] = [];
-  for (let i = 1; i < blocks.length; i++) {
-    const b = blocks[i];
-    if (!price && /^السعر\s*:/.test(b)) {
-      price = b.replace(/^السعر\s*:\s*/, '').trim();
-    } else {
-      rest.push(b);
-    }
-  }
-  return {
-    __productAd: 1,
-    title,
-    price,
-    details: rest[0] || '',
-    extras: rest.slice(1),
-  };
-}
-function productAdDisplayTitle(post: PostItem): string {
-  const ad = parseProductAd(post.text);
-  if (ad?.title?.trim()) return ad.title.trim();
-  return (post.text || '').split('\n')[0]?.trim().slice(0, 80) || 'إعلان';
-}
-
 /** True when post has real caption text (not media-only). Used to enable three-lines. */
 function postHasVisibleCaption(post: PostItem | null | undefined): boolean {
   if (!post) return false;
-  const raw = (post.text || '').trim();
-  if (!raw) return false;
-  const ad = parseProductAd(raw);
-  if (ad) {
-    if ((ad.title || '').trim()) return true;
-    if ((ad.details || '').trim()) return true;
-    if ((ad.price || '').trim()) return true;
-    if ((ad.extras || []).some(x => (x || '').trim())) return true;
-    return false;
-  }
-  const cleaned = raw.replace(/\n*\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
-  return cleaned.length > 0;
+  return (post.text || '').trim().length > 0;
 }
 
-
-/** استفسار عن منتج — يُرسل كرسالة شات للشركة ويظهر في صندوق شات الشركات */
-const PRODUCT_INQUIRY_PREFIX = '__PRODUCT_INQUIRY__';
-export type ProductInquiryPayload = {
-  postId: number;
-  title: string;
-  price: string;
-  details: string;
-  imageUrl: string;
-  question: string;
-  companyId: string;
-  companyName: string;
-  companyUsername?: string | null;
-  companyAvatar?: string | null;
-};
-export function buildProductInquiryBody(data: ProductInquiryPayload): string {
-  return PRODUCT_INQUIRY_PREFIX + JSON.stringify(data);
-}
-export function parseProductInquiry(body: string | null | undefined): ProductInquiryPayload | null {
-  if (!body || typeof body !== 'string' || !body.startsWith(PRODUCT_INQUIRY_PREFIX)) return null;
-  try {
-    const o = JSON.parse(body.slice(PRODUCT_INQUIRY_PREFIX.length)) as ProductInquiryPayload;
-    if (o && o.postId && o.companyId) return o;
-  } catch { /* ignore */ }
-  return null;
-}
-const PRODUCT_INQUIRY_THREADS_KEY = 'stooorna_product_inquiry_threads';
-/** خيوط استفسار نشطة عند المستخدم — لمصفرة أيقونة الشير عند رد الشركة */
-function loadProductInquiryThreads(): Record<string, { companyId: string; hasReply: boolean; postId: number }> {
-  try {
-    const raw = localStorage.getItem(PRODUCT_INQUIRY_THREADS_KEY);
-    const o = raw ? JSON.parse(raw) : {};
-    return o && typeof o === 'object' ? o : {};
-  } catch { return {}; }
-}
-function saveProductInquiryThread(postId: number, companyId: string, hasReply = false) {
-  try {
-    const all = loadProductInquiryThreads();
-    all[String(postId)] = { companyId, hasReply, postId };
-    localStorage.setItem(PRODUCT_INQUIRY_THREADS_KEY, JSON.stringify(all));
-    window.dispatchEvent(new CustomEvent('stooorna:product-inquiry', { detail: all }));
-  } catch { /* */ }
-}
-function productInquiryShareAlert(postId: number): boolean {
-  const t = loadProductInquiryThreads()[String(postId)];
-  return !!(t && t.hasReply);
-}
-function clearProductInquiryReplyFlag(postId: number) {
-  try {
-    const all = loadProductInquiryThreads();
-    if (all[String(postId)]) {
-      all[String(postId)] = { ...all[String(postId)], hasReply: false };
-      localStorage.setItem(PRODUCT_INQUIRY_THREADS_KEY, JSON.stringify(all));
-      window.dispatchEvent(new CustomEvent('stooorna:product-inquiry', { detail: all }));
-    }
-  } catch { /* */ }
-}
 
 const USER_SHARE_INBOX_KEY = (uid: string) => `stooorna_user_share_inbox_${uid}`;
 type UserShareInboxItem = {
@@ -8508,8 +8361,6 @@ function PostCard({
   isPinned,
   onTogglePin,
   likeBurstKey = 0,
-  onProductShareMenu,
-  productShareAlert = false,
   isCompanyAuthor = false,
   isBusinessHidden = false,
 }: {
@@ -8531,11 +8382,6 @@ function PostCard({
   onToggleFavorite: (post: PostItem) => void;
   isFavorited: (postId: number) => boolean;
   onShare: (post: PostItem) => void;
-  /** قائمة شير المنتج: خارجي أو استفسار */
-  onProductShareMenu?: (post: PostItem) => void;
-  /** شير أصفر عند وجود رد من الشركة على استفسار */
-  productShareAlert?: boolean;
-  /** منشور شركة — نفس شريط المنتج بالخارج */
   isCompanyAuthor?: boolean;
   onRepost: (post: PostItem) => void;
   onDownload: (post: PostItem) => void;
@@ -8618,16 +8464,11 @@ function PostCard({
   const cardLiked = pageEng ? pageEng.likedByMe : post.likedByMe;
   const cardLikes = pageEng ? pageEng.likesCount : post.likesCount;
   const cardComments = pageEng ? (pageEng.comments?.length || 0) : post.commentsCount;
-  const productAd = parseProductAd(post.text);
-  // Product UI (hamburger + details sheet) is only for company/business authors
-  const isProductAd = !!productAd && !!isCompanyAuthor;
 
   useEffect(() => {
     recordPostView(post.id, post.authorId);
   }, [post.id, post.authorId]);
-  // روابط X داخل نص المنشور — نص إعلان/منشور المنتج مخفي في الفييد، فنعرض وسائط الرابط مباشرة
-  const postXUrls = isProductAd ? extractLinkMediaUrls(post.text) : [];
-  const [productDetailsOpen, setProductDetailsOpen] = useState(false);
+  const [captionSheetOpen, setCaptionSheetOpen] = useState(false);
 
   return (
     <>
@@ -8844,38 +8685,9 @@ function PostCard({
         </div>
 
         {/* Text-only posts (no media): show caption on the card */}
-        {/* Business product: Title (thin) → Details (normal) → Price (thin, last) */}
-        {!hasMedia && post.text && (isProductAd || (isCompanyAuthor && productAd)) && productAd && (
-          <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {productAd.title ? (
-              <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.02rem', fontWeight: 400, lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>
-                {productAd.title}
-              </p>
-            ) : null}
-            {productAd.details ? (
-              <p style={{ margin: 0, color: '#1a1a1a', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                {productAd.details}
-              </p>
-            ) : null}
-            {(productAd.extras || []).map((ex, i) => {
-              const cleaned = String(ex || '').trim();
-              if (!cleaned) return null;
-              return (
-                <p key={i} style={{ margin: 0, color: '#333', fontSize: '0.9rem', fontWeight: 500, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                  {cleaned}
-                </p>
-              );
-            })}
-            {productAd.price ? (
-              <p style={{ margin: 0, color: '#536471', fontSize: '0.92rem', fontWeight: 400, lineHeight: 1.4 }}>
-                {/^السعر\s*:/.test(productAd.price) ? productAd.price : `السعر: ${productAd.price}`}
-              </p>
-            ) : null}
-          </div>
-        )}
-        {!hasMedia && post.text && !(isProductAd || (isCompanyAuthor && productAd)) && (
+        {!hasMedia && post.text && (
           <div style={{ background: 'transparent', border: 'none', borderRadius: 0, padding: 0, margin: 0, display: 'flex', flexDirection: 'column' }}>
-            <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => setProductDetailsOpen(true)} />
+            <PostText text={post.text} color="hsl(var(--primary))" textColor="#000000" bold onHashtag={onHashtag} embedMediaLinks collapseLong onMore={() => setCaptionSheetOpen(true)} />
           </div>
         )}
 
@@ -8984,195 +8796,18 @@ function PostCard({
           </div>
         )}
 
-        {/* رابط X داخل نص المنشور (مستخدم أو شركة): الصورة/الفيديو تظهر كاملة مباشرة بدون ضغطة */}
-        {postXUrls.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingInline: hasMedia ? 14 : 0, paddingTop: hasMedia ? 10 : 0 }}>
-            {postXUrls.map(u => <LinkMediaPreview key={u} url={u} />)}
-          </div>
-        )}
-
         {/* Actions — منتج أو شركة: لايك → تعليقات → شير | تفاصيل (نفس داخل البوست) */}
         {/* Hidden on the feed card (outside view): the card shows only the post box.
             Everything below is unchanged and fully available inside the full-screen
             post view once opened — only the outside preview hides these buttons. */}
-        {false && ((isProductAd || isCompanyAuthor) ? (
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            paddingTop: 12, paddingInline: hasMedia ? 14 : 0, gap: 8,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 72 }}>
-              <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post, multiMedia ? mediaPage : undefined); }} style={{
-                position: 'relative', display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
-                color: cardLiked ? '#ef4444' : '#000000',
-              }}>
-                <Heart size={18} strokeWidth={2} fill={cardLiked ? '#ef4444' : 'none'} />
-                <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardLikes > 0 ? cardLikes : ''}</span>
-              </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.88 }}
-                onClick={e => { e.stopPropagation(); if (onOpenComments) onOpenComments(post, multiMedia ? mediaPage : undefined); else onOpenPost(post); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}
-              >
-                <MessageCircle size={18} strokeWidth={2} />
-                <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardComments > 0 ? cardComments : ''}</span>
-              </motion.button>
-              <span
-                aria-label="Views"
-                title="Views"
-                style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#000000', flexShrink: 0 }}
-              >
-                <Eye size={16} strokeWidth={2} />
-                <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{(() => { const v = resolvePostViewsCount(post); return v > 0 ? formatCompactCount(v) : ''; })()}</span>
-              </span>
-              <motion.button
-                whileTap={{ scale: 0.88 }}
-                onClick={e => {
-                  e.stopPropagation();
-                  if (onProductShareMenu) onProductShareMenu(post);
-                  else onShare(post);
-                }}
-                aria-label="مشاركة"
-                style={{
-                  display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer',
-                  color: productShareAlert ? '#eab308' : '#000000',
-                }}
-              >
-                <Send size={17} strokeWidth={2} color={productShareAlert ? '#eab308' : undefined} />
-              </motion.button>
-            </div>
-
-            <motion.button
-              whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
-              onClick={e => { e.stopPropagation(); if (postHasVisibleCaption(post)) setProductDetailsOpen(true); }}
-              aria-label="Details"
-              disabled={!postHasVisibleCaption(post)}
-              style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
-                background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
-                borderRadius: 10, width: 44, height: 36,
-                cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
-                padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
-              }}
-            >
-              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
-              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
-              <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
-            </motion.button>
-
-            {/* موازنة المساحة بعد نقل التعليقات بين اللايك والشير */}
-            <div style={{ minWidth: 72 }} />
-          </div>
-        ) : (
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          paddingTop: 12, paddingInline: hasMedia ? 14 : 0, gap: 8,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 72 }}>
-            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); onToggleLike(post, multiMedia ? mediaPage : undefined); }} style={{
-              position: 'relative', display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer',
-              color: cardLiked ? '#ef4444' : '#000000', overflow: 'visible',
-            }}>
-              <span style={{ position: 'relative', width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                <motion.span
-                  key={likeBurstKey}
-                  animate={likeBurstKey ? { scale: [1, 1.35, 0.92, 1] } : { scale: 1 }}
-                  transition={{ duration: 0.42, ease: 'easeOut' }}
-                  style={{ display: 'inline-flex' }}
-                >
-                  <Heart size={16} strokeWidth={2} fill={cardLiked ? '#ef4444' : 'none'} />
-                </motion.span>
-                <AnimatePresence>
-                  {likeBurstKey > 0 && (
-                    <motion.span
-                      key={`bubble-${likeBurstKey}`}
-                      initial={{ opacity: 0.95, scale: 0.25 }}
-                      animate={{ opacity: 0, scale: 2.6 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.55, ease: 'easeOut' }}
-                      aria-hidden
-                      style={{
-                        position: 'absolute', left: '50%', top: '50%', width: 18, height: 18,
-                        marginLeft: -9, marginTop: -9, borderRadius: '50%',
-                        border: '2px solid #ef4444',
-                        boxShadow: '0 0 12px rgba(239,68,68,0.55)',
-                        pointerEvents: 'none',
-                      }}
-                    />
-                  )}
-                </AnimatePresence>
-                <AnimatePresence>
-                  {likeBurstKey > 0 && (
-                    <motion.span
-                      key={`bubble2-${likeBurstKey}`}
-                      initial={{ opacity: 0.7, scale: 0.4 }}
-                      animate={{ opacity: 0, scale: 3.4 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.7, ease: 'easeOut', delay: 0.05 }}
-                      aria-hidden
-                      style={{
-                        position: 'absolute', left: '50%', top: '50%', width: 14, height: 14,
-                        marginLeft: -7, marginTop: -7, borderRadius: '50%',
-                        background: 'rgba(239,68,68,0.25)',
-                        pointerEvents: 'none',
-                      }}
-                    />
-                  )}
-                </AnimatePresence>
-              </span>
-              <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardLikes > 0 ? cardLikes : ''}</span>
-            </motion.button>
-            <motion.button whileTap={{ scale: 0.88 }} onClick={e => { e.stopPropagation(); if (onOpenComments) onOpenComments(post, multiMedia ? mediaPage : undefined); else onOpenPost(post); }} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}>
-              <MessageCircle size={15} strokeWidth={2} />
-              <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{cardComments > 0 ? cardComments : ''}</span>
-            </motion.button>
-            <span
-              aria-label="Views"
-              title="Views"
-              style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#000000', flexShrink: 0 }}
-            >
-              <Eye size={15} strokeWidth={2} />
-              <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{(() => { const v = resolvePostViewsCount(post); return v > 0 ? formatCompactCount(v) : ''; })()}</span>
-            </span>
-            <motion.button
-              whileTap={{ scale: 0.88 }}
-              onClick={e => { e.stopPropagation(); onShare(post); }}
-              aria-label="Share"
-              style={{ display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: '#000000' }}
-            >
-              <Send size={15} strokeWidth={2} />
-            </motion.button>
-          </div>
-
-          <motion.button
-            whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
-            onClick={e => { e.stopPropagation(); if (postHasVisibleCaption(post)) setProductDetailsOpen(true); }}
-            aria-label="Details"
-            disabled={!postHasVisibleCaption(post)}
-            style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
-              background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.12)',
-              borderRadius: 10, width: 44, height: 36,
-              cursor: postHasVisibleCaption(post) ? 'pointer' : 'default',
-              padding: 0, opacity: postHasVisibleCaption(post) ? 1 : 0.28,
-            }}
-          >
-            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
-            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
-            <span style={{ width: 16, height: 2, borderRadius: 1, background: '#111' }} />
-          </motion.button>
-
-          <div style={{ minWidth: 72 }} />
-        </div>
-        ))}
-
-        {/* Caption / product details sheet — three lines only, does not open post page */}
+        {/* Caption sheet — three lines only, does not open post page */}
         <AnimatePresence>
-          {productDetailsOpen && (
+          {captionSheetOpen && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={e => { e.stopPropagation(); setProductDetailsOpen(false); }}
+              onClick={e => { e.stopPropagation(); setCaptionSheetOpen(false); }}
               style={{
                 position: 'fixed', inset: 0, zIndex: 10600, background: 'rgba(0,0,0,0.45)',
                 display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
@@ -9191,40 +8826,12 @@ function PostCard({
                 }}
               >
                                 <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)', margin: '0 auto 14px' }} />
-                {!isCompanyAuthor ? (
-                  <p style={{ margin: 0, color: '#0a0a0a', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                    {(post.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim()}
-                  </p>
-                ) : (
-                  <>
-                    <p style={{ margin: 0, color: '#0a0a0a', fontSize: '1.05rem', fontWeight: 400, lineHeight: 1.35 }}>
-                      {productAd?.title || productAdDisplayTitle(post) || post.authorName || 'تفاصيل'}
-                    </p>
-                    {productAd?.details ? (
-                      <p style={{ margin: '12px 0 0', color: '#1a1a1a', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{productAd.details}</p>
-                    ) : null}
-                    {productAd?.price ? (
-                      <p style={{ margin: '12px 0 0', color: '#536471', fontSize: '0.92rem', fontWeight: 400 }}>
-                        {/^السعر\s*:/.test(productAd.price) ? productAd.price : `السعر: ${productAd.price}`}
-                      </p>
-                    ) : null}
-                  </>
-                )}
-                {isCompanyAuthor && (productAd?.extras ?? []).map((ex, i) => {
-                  const cleaned = ex.replace(URL_IN_TEXT_RE, (match) => {
-                    const raw = match.replace(/[.,;:!?،؛]+$/, '');
-                    const resolved = composerLookupOriginalUrl(raw);
-                    if (parseXStatusId(resolved) || classifyMediaUrl(resolved) || classifyDirectMediaUrl(resolved)) return '';
-                    return match;
-                  }).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-                  if (!cleaned) return null;
-                  return (
-                    <p key={i} style={{ margin: '10px 0 0', color: '#333', fontSize: '0.86rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.06)' }}>{cleaned}</p>
-                  );
-                })}
+                <p style={{ margin: 0, color: '#0a0a0a', fontSize: '0.95rem', fontWeight: 600, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                  {(post.text || '').trim()}
+                </p>
                 <button
                   type="button"
-                  onClick={() => setProductDetailsOpen(false)}
+                  onClick={() => setCaptionSheetOpen(false)}
                   style={{
                     marginTop: 18, width: '100%', height: 44, borderRadius: 12, border: 'none',
                     background: '#0f1419', color: '#fff', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer',
@@ -9411,7 +9018,7 @@ function PostCard({
             </div>
             <motion.button
               whileTap={{ scale: postHasVisibleCaption(post) ? 0.92 : 1 }}
-              onClick={() => { if (!postHasVisibleCaption(post)) return; setMediaLightbox(null); setProductDetailsOpen(true); }}
+              onClick={() => { if (!postHasVisibleCaption(post)) return; setMediaLightbox(null); setCaptionSheetOpen(true); }}
               aria-label="Details"
               disabled={!postHasVisibleCaption(post)}
               style={{
@@ -10172,8 +9779,10 @@ export interface FriendStoryProfileProps {
   sheetMode?: boolean;
   /** Full-screen profile that rises straight up from the bottom (used by the live rooms' host avatar) */
   riseFromBottom?: boolean;
+  /** يُخفي زر «Voice Live / Video Live» — يُستخدم عند فتح البروفايل من داخل البث نفسه (المشاهد أصلاً داخل البث) */
+  hideLiveButton?: boolean;
 }
-export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, isCompanyProfile = false, sheetMode = false, riseFromBottom = false }: FriendStoryProfileProps) {
+export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, isCompanyProfile = false, sheetMode = false, riseFromBottom = false, hideLiveButton = false }: FriendStoryProfileProps) {
   const navigate = useNavigate();
   const { user } = useSession();
   const liveKind = useLiveBroadcastKind(authorId);
@@ -10347,7 +9956,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             const body = (p.text && String(p.text).trim()) || '';
             const hasMedia = !!(p.mediaUrl || (p.mediaUrls && p.mediaUrls.length));
             if (!body && !hasMedia) continue;
-            if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0 || hasMedia) {
+            if (p.audience === 'text' || p.destination === 'text' || body.length > 0 || hasMedia) {
               collected.push(p);
             }
           }
@@ -10440,7 +10049,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
       onClick={sheetMode ? (e) => e.stopPropagation() : undefined}
       style={panelMotion.style}
     >
-      {/* Fixed profile chrome — compact so logo/stats/Products sit higher, more room for posts */}
+      {/* Fixed profile chrome — compact so logo/stats sit higher, more room for posts */}
       <div style={{ flexShrink: 0, position: 'relative', zIndex: 3 }}>
         {/* Top bar: close + optional cover strip (short when no cover) */}
         <div style={{
@@ -10574,7 +10183,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 </>
               )
             )}
-{liveActive && (
+{liveActive && !hideLiveButton && (
                         <motion.button
               type="button"
               whileTap={{ scale: 0.95 }}
@@ -21245,7 +20854,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [businessAdTitle, setBusinessAdTitle] = useState('');
   const [businessAdBody, setBusinessAdBody] = useState('');
   const [businessAdMedia, setBusinessAdMedia] = useState<{ name: string; dataUrl: string; type: 'image' | 'video' | 'pdf'; mime: string } | null>(null);
-  const [composerBizHint] = useState(false);
   const [myAdsHubOpen, setMyAdsHubOpen] = useState(false);
   const [myAdsHubTab, setMyAdsHubTab] = useState<'video' | 'photo' | 'pdf'>('video');
   const [feedAdViewer, setFeedAdViewer] = useState<any | null>(null);
@@ -21307,11 +20915,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // وضع النشر: اختيار فقط (لا يفتح المعرض) — Text | Photo | Video
   const [, setComposerDestination] = useState<'text' | 'photos' | 'videos'>('text');
   const [, setComposerText] = useState('');
-  // ── Product ad composer fields (title bold + details + price + dynamic + boxes) ──
-  const [composerProductTitle, setComposerProductTitle] = useState('');
-  const [composerProductDetails, setComposerProductDetails] = useState('');
-  const [composerProductPrice, setComposerProductPrice] = useState('');
-  const [composerProductExtras, setComposerProductExtras] = useState<string[]>([]);
+  // ── Post composer caption ──
+  const [composerCaption, setComposerCaption] = useState('');
   const [composerMediaFiles, setComposerMediaFiles] = useState<{ file: File; type: 'image' | 'video' | 'pdf'; preview: string }[]>([]);
   const [composerPosting, setComposerPosting] = useState(false);
   const [composerStatus, setComposerStatus] = useState('');
@@ -21329,10 +20934,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [composerXText, setComposerXText] = useState('');
   useEffect(() => {
     const t = window.setTimeout(() => {
-      setComposerXText([composerProductTitle, composerProductDetails, ...composerProductExtras].join('\n'));
+      setComposerXText(composerCaption);
     }, 250);
     return () => window.clearTimeout(t);
-  }, [composerProductTitle, composerProductDetails, composerProductExtras]);
+  }, [composerCaption]);
   // ── مستطيل «Paste»: الرابط المُلصق (composerLinkInput) يُعرض كاملًا فورًا مع النص ──
   const [composerLinkPreviewUrl, setComposerLinkPreviewUrl] = useState('');
   const [composerSiteViewerUrl, setComposerSiteViewerUrl] = useState<string | null>(null);
@@ -21387,7 +20992,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   function closePostDetail() {
     setOpenComments(null); setOpenCommentsMediaIndex(null);
   }
-  // ── Single post view — full-screen product ad page (media fills screen; bottom bar:
+  // ── Single post view — full-screen post page (media fills screen; bottom bar:
   // like+share | details sheet | comments chat sheet). No repost / favorites. ──
   const [singlePostView, setSinglePostView] = useState<PostItem | null>(null);
   /** عند فتح بوست من داخل البروفايل — البوست فوق البروفايل؛ عند فتح بروفايل من البوست — البروفايل فوق البوست */
@@ -21483,18 +21088,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [deletingPostId, setDeletingPostId] = useState<number | null>(null);
   const [hashtagView, setHashtagView] = useState<{ tag: string; posts: PostItem[] } | null>(null);
   const [sharePost, setSharePost] = useState<PostItem | null>(null);
-  /** قائمة شير المنتج: خارجي | استفسار */
-  const [productShareMenuPost, setProductShareMenuPost] = useState<PostItem | null>(null);
-  const [productInquiryPost, setProductInquiryPost] = useState<PostItem | null>(null);
-  const [productInquiryText, setProductInquiryText] = useState('');
-  const [productInquirySending, setProductInquirySending] = useState(false);
-  const [productInquiryError, setProductInquiryError] = useState('');
-  const [inquiryAlertTick, setInquiryAlertTick] = useState(0);
-  useEffect(() => {
-    const onInq = () => setInquiryAlertTick(t => t + 1);
-    window.addEventListener('stooorna:product-inquiry', onInq);
-    return () => window.removeEventListener('stooorna:product-inquiry', onInq);
-  }, []);
+  /** قائمة المشاركة (نشر بالخارج) */
+  const [shareMenuPost, setShareMenuPost] = useState<PostItem | null>(null);
 
 
   function openShareMiniChat(peer: { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; post?: PostItem | null; note?: string | null }) {
@@ -21536,126 +21131,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     } catch { /* */ }
   }
 
-  async function sendProductInquiry(post: PostItem, question: string) {
-    if (!user?.id) {
-      navigate('/settings');
-      return;
-    }
-    const ad = parseProductAd(post.text);
-    const media = PostMediaItems(post);
-    const imageUrl = media.find(m => m.type === 'image')?.url || media[0]?.url || post.mediaUrl || '';
-    const payload: ProductInquiryPayload = {
-      postId: post.id,
-      title: ad?.title || productAdDisplayTitle(post),
-      price: ad?.price || '',
-      details: ad?.details || '',
-      imageUrl,
-      question: question.trim(),
-      companyId: post.authorId,
-      companyName: post.authorName || post.authorUsername || 'الشركة',
-      companyUsername: post.authorUsername,
-      companyAvatar: post.authorAvatarUrl,
-    };
-    const body = buildProductInquiryBody(payload);
-    // الشات السري القديم لم يعد مستخدماً — الميني شات المحلي فقط
-    try {
-      const dm = await fetch('/api/secret-chat/dm', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ peerId: post.authorId }),
-      });
-      if (dm.ok) {
-        const dmData = await dm.json();
-        const chatId = dmData.chatId || dmData.id;
-        if (chatId) {
-          await fetch('/api/secret-chat/messages', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chatId, body }),
-          }).catch(() => {});
-        }
-      }
-    } catch { /* تجاهل الشات القديم */ }
-    const previewText = `🛒 ${payload.title}${payload.price ? ` · ${payload.price}` : ''}: ${question.trim()}`;
-    try {
-      pushShareThreadMsg(user.id, post.authorId, post.id, { fromId: user.id, type: 'text', body: question.trim() });
-    } catch { /* */ }
-    // صندوق شات الشركات (RootLayout يقرأ stooorna_company_inbox_*)
-    try {
-      if (String(user.id) === String(post.authorId)) throw new Error('self');
-      const key = `stooorna_company_inbox_${post.authorId}`;
-      const prev = JSON.parse(localStorage.getItem(key) || '[]');
-      const list = Array.isArray(prev) ? prev : [];
-      const next = {
-        id: user.id,
-        name: user.name ?? null,
-        username: (user as any).username ?? null,
-        avatarUrl: (user as any).avatarUrl ?? null,
-        lastMessage: previewText,
-        at: Date.now(),
-        unread: 1,
-        note: question.trim(),
-        post,
-        postId: post.id,
-      };
-      const merged = [next, ...list.filter((x: any) => x.id !== user.id)].slice(0, 200);
-      localStorage.setItem(key, JSON.stringify(merged));
-      window.dispatchEvent(new CustomEvent('stooorna:company-inbox', { detail: { userId: post.authorId, list: merged } }));
-    } catch { /* non-blocking */ }
-    // صندوق شات المستخدم مع الشركات (أيقونة بين الهوم والمايك)
-    try {
-      const ukey = `stooorna_user_product_chats_${user.id}`;
-      const uprev = JSON.parse(localStorage.getItem(ukey) || '[]');
-      const ulist = Array.isArray(uprev) ? uprev : [];
-      const unext = {
-        id: post.authorId,
-        name: payload.companyName || post.authorName,
-        username: post.authorUsername,
-        avatarUrl: post.authorAvatarUrl,
-        lastMessage: previewText,
-        at: Date.now(),
-        unread: 0,
-        postId: post.id,
-        postText: (post.text || '').slice(0, 800),
-        note: question.trim(),
-        post,
-      };
-      const umerged = [unext, ...ulist.filter((x: any) => x.id !== post.authorId)].slice(0, 200);
-      localStorage.setItem(ukey, JSON.stringify(umerged));
-      window.dispatchEvent(new CustomEvent('stooorna:user-product-chats', { detail: { userId: user.id, list: umerged } }));
-    } catch { /* non-blocking */ }
-    saveProductInquiryThread(post.id, post.authorId, false);
-    clearProductInquiryReplyFlag(post.id);
-    // إشعار فوري لأيقونة شات الشركات في الشريط السفلي (وميض أصفر)
-    try {
-      localStorage.setItem(`stooorna_company_chat_blink_${post.authorId}`, String(Date.now()));
-      localStorage.setItem('stooorna_company_inbox_unread', '1');
-      window.dispatchEvent(new CustomEvent('stooorna:company-inbox-unread', {
-        detail: { companyId: post.authorId, fromUserId: user.id, at: Date.now() },
-      }));
-      window.dispatchEvent(new CustomEvent('stooorna:bottom-chat-blink', {
-        detail: { target: 'company', userId: post.authorId, yellow: true },
-      }));
-    } catch { /* non-blocking */ }
-    openShareMiniChat({
-      id: post.authorId,
-      name: payload.companyName,
-      username: post.authorUsername,
-      avatarUrl: post.authorAvatarUrl,
-      post,
-      note: question.trim(),
-    });
-  }
-
   /** مشاركة خارجية فقط — بدون قائمة الأصدقاء / الشات */
   function externalSharePost(post: PostItem) {
-    const ad = parseProductAd(post.text);
-    const title = ad?.title || productAdDisplayTitle(post) || 'منشور';
-    const textBody = ad
-      ? [ad.title, ad.details, ad.price ? (`السعر: ${ad.price}`.replace(/^السعر:\s*السعر:\s*/i, 'السعر: ')) : ''].filter(Boolean).join('\n')
-      : (post.text || title);
+    const title = (post.text || '').split('\n')[0]?.trim().slice(0, 80) || 'منشور';
+    const textBody = post.text || title;
     const url = typeof window !== 'undefined' ? window.location.href : '';
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
       void navigator.share({ title, text: textBody, url }).catch(() => {
@@ -21759,7 +21238,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           const hasMedia = !!(p.mediaUrl || (p.mediaUrls && p.mediaUrls.length));
           // Include text posts and media-only posts (image/video without caption)
           if (!body && !hasMedia) continue;
-          if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0 || hasMedia) {
+          if (p.audience === 'text' || p.destination === 'text' || body.length > 0 || hasMedia) {
             collected.push(p);
           }
         }
@@ -21937,7 +21416,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             const body = (p.text && String(p.text).trim()) || '';
             const hasMedia = !!(p.mediaUrl || (p.mediaUrls && p.mediaUrls.length));
             if (!body && !hasMedia) continue;
-            if (parseProductAd(body) || p.audience === 'text' || p.destination === 'text' || body.length > 0 || hasMedia) {
+            if (p.audience === 'text' || p.destination === 'text' || body.length > 0 || hasMedia) {
               collected.push(p);
             }
           }
@@ -22287,10 +21766,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
      * بدون وسائط: إنشاء منشور نصي مباشرة.
      */
     destination = 'text';
-    const title = (composerProductTitle || '').trim();
-    const details = (composerProductDetails || '').trim();
-    const price = (composerProductPrice || '').trim();
-    const extras = (composerProductExtras || []).map(s => String(s).trim()).filter(Boolean);
+    const details = (composerCaption || '').trim();
     const linkRaw = (composerLinkInput || '').trim();
     const linkCandidates = linkRaw
       ? linkRaw.split(/[\s\n]+/).map(s => s.trim()).filter(Boolean).map(s => {
@@ -22317,9 +21793,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const linkNormalized = linkCandidates[0] || '';
     const hasGalleryMedia = composerLinkMediaItems.length > 0 || composerMediaFiles.length > 0 || !!linkNormalized;
 
-    // Allow publish with media/link only — text/title/details are optional
-    if (!title && !details && !price && extras.length === 0 && !hasGalleryMedia) {
-      setComposerError('أضف عنوان المنتج أو تفاصيل أو وسائط قبل النشر');
+    // Allow publish with media/link only — text is optional
+    if (!details && !hasGalleryMedia) {
+      setComposerError('أضف نصاً أو وسائط قبل النشر');
       return;
     }
 
@@ -22327,7 +21803,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     setComposerError('');
     setComposerStatus('جاري النشر…');
     try {
-      // Do not store image/video/X preview URLs inside product text
+      // Do not store image/video/X preview URLs inside the post text
       const nonMediaLinks: string[] = [];
       for (const u of linkCandidates) {
         const resolved = composerLookupOriginalUrl(u);
@@ -22338,15 +21814,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         if (!isMediaPreview) nonMediaLinks.push(u);
       }
       const detailsWithLink = [details, ...nonMediaLinks].filter(Boolean).join('\n');
-      // Company accounts: product ad format. Regular users: plain caption (no default "منتج")
-      let finalText = isCompanyPublisher
-        ? buildProductPostText({
-            title,
-            details: detailsWithLink,
-            price,
-            extras,
-          })
-        : (detailsWithLink || title || '').trim();
+      const finalText = detailsWithLink.trim();
       const postHashtags = extractHashtagsFromText(finalText);
 
       // ── رفع الوسائط (صور / فيديو / PDF) ──
@@ -22896,10 +22364,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       try { void fetchPosts(); } catch { /* */ }
       try { void fetchMyMediaPosts(); } catch { /* */ }
       setComposerText('');
-      setComposerProductTitle('');
-      setComposerProductDetails('');
-      setComposerProductPrice('');
-      setComposerProductExtras([]);
+      setComposerCaption('');
       setComposerLinkInput('');
       setComposerLinkMediaItems([]);
       setComposerLinkPreviewUrl('');
@@ -24269,11 +23734,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const bump = () => setCompanyInboxTick(x => x + 1);
     window.addEventListener('stooorna:company-inbox', bump);
     window.addEventListener('stooorna:company-inbox-unread', bump);
-    window.addEventListener('stooorna:user-product-chats', bump);
     return () => {
       window.removeEventListener('stooorna:company-inbox', bump);
       window.removeEventListener('stooorna:company-inbox-unread', bump);
-      window.removeEventListener('stooorna:user-product-chats', bump);
     };
   }, []);
   function closeShareMiniChat() {
@@ -29001,7 +28464,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <span style={{ width: 36 }} />
             </div>
 
-            {/* Body: company keeps title+details; regular user = single text area */}
+            {/* Body: single caption text area */}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 16px 8px' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
                 <UserAvatar
@@ -29009,51 +28472,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   avatarUrl={(user as any)?.avatarUrl || (user as any)?.image || null}
                   size={40}
                 />
-                {!isCompanyPublisher ? (
-                  <p style={{ margin: '8px 0 0', color: '#536471', fontSize: '1.05rem', fontWeight: 500 }}>What's happening?</p>
-                ) : (
-                  <p style={{ margin: '8px 0 0', color: '#536471', fontSize: '0.95rem', fontWeight: 700 }}>Product</p>
-                )}
+                <p style={{ margin: '8px 0 0', color: '#536471', fontSize: '1.05rem', fontWeight: 500 }}>What's happening?</p>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {isCompanyPublisher ? (
-                <>
-                <div>
-                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>Title</label>
-                  <input
-                    value={composerProductTitle}
-                    onChange={e => setComposerProductTitle(e.target.value)}
-                    placeholder=""
-                    style={{
-                      width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
-                      padding: '12px 14px', fontSize: '1.05rem', fontWeight: 800, color: '#0a0a0a',
-                      background: '#f7f9f9', outline: 'none', fontFamily: 'inherit',
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>Details</label>
-                  <textarea
-                    value={composerProductDetails}
-                    onChange={e => setComposerProductDetails(e.target.value)}
-                    placeholder=""
-                    rows={5}
-                    style={{
-                      width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
-                      padding: '12px 14px', fontSize: '0.92rem', color: '#1a1a1a', lineHeight: 1.5,
-                      background: '#f7f9f9', outline: 'none', fontFamily: 'inherit', resize: 'vertical', minHeight: 100,
-                    }}
-                  />
-                </div>
-                </>
-                ) : (
                 <div>
                   <textarea
-                    value={composerProductDetails}
-                    onChange={e => {
-                      setComposerProductDetails(e.target.value);
-                      setComposerProductTitle('');
-                    }}
+                    value={composerCaption}
+                    onChange={e => setComposerCaption(e.target.value)}
                     placeholder="Add a caption..."
                     rows={10}
                     autoFocus
@@ -29065,7 +28490,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     }}
                   />
                 </div>
-                )}
 {/* paste link box */}
                 <div>
                   <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>
@@ -29162,21 +28586,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <LinkMediaPreview key={u} url={u} failedNote="No media found on this link" onOpenSite={(href) => openInAppSite(href)} />
                     ))}
                   </div>
-                )}
-{isCompanyPublisher && (
-                <div>
-                  <label style={{ display: 'block', color: '#0a0a0a', fontSize: '0.72rem', fontWeight: 800, marginBottom: 6 }}>Price</label>
-                  <input
-                    value={composerProductPrice}
-                    onChange={e => setComposerProductPrice(e.target.value)}
-                    placeholder="Price"
-                    style={{
-                      width: '100%', boxSizing: 'border-box', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 12,
-                      padding: '12px 14px', fontSize: '0.95rem', fontWeight: 700, color: '#0a0a0a',
-                      background: '#f7f9f9', outline: 'none', fontFamily: 'inherit',
-                    }}
-                  />
-                </div>
                 )}
 
 
@@ -29336,25 +28745,19 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.98 }}
-                disabled={composerPosting || !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerLinkMediaItems.length > 0 || composerMediaFiles.length)}
+                disabled={composerPosting || !(composerCaption.trim() || composerLinkInput.trim() || composerLinkMediaItems.length > 0 || composerMediaFiles.length)}
                 onClick={() => void submitPost('text')}
                 style={{
                   width: '100%', height: 48, borderRadius: 999, border: 'none',
-                  background: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerLinkMediaItems.length > 0 || composerMediaFiles.length)
+                  background: !(composerCaption.trim() || composerLinkInput.trim() || composerLinkMediaItems.length > 0 || composerMediaFiles.length)
                     ? '#94a3b8' : '#2563eb',
                   color: '#fff', fontWeight: 800, fontSize: '1rem',
-                  cursor: !(composerProductTitle.trim() || composerProductDetails.trim() || composerProductPrice.trim() || composerProductExtras.some(s => s.trim()) || composerLinkInput.trim() || composerLinkMediaItems.length > 0 || composerMediaFiles.length) ? 'default' : 'pointer',
+                  cursor: !(composerCaption.trim() || composerLinkInput.trim() || composerLinkMediaItems.length > 0 || composerMediaFiles.length) ? 'default' : 'pointer',
                 }}
               >
                 {composerPosting ? (composerStatus || 'جاري النشر…') : 'Share'}
               </motion.button>
             </div>
-            {composerBizHint && isBusinessUser && (
-
-              <p style={{ margin: '0 14px 10px', color: '#1d9bf0', fontSize: '0.72rem', fontWeight: 700 }}>
-                Tip: use + Product Ad to place a paid ad between posts (5 KD / month).
-              </p>
-            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -29975,12 +29378,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         )}
       </AnimatePresence>
 
-      {/* ── Full-screen product ad — tap any profile grid post opens this exact-screen page.
+      {/* ── Full-screen post — tap any profile grid post opens this exact-screen page.
           Bottom: Like + external share | Details (three lines) | Comments chat.
           No repost / favorites. Video: autoplay only; tap pauses; leave page stops. ── */}
       <AnimatePresence>
         {singlePostView && (() => {
-          const ad = parseProductAd(singlePostView.text);
           const mediaItems = PostMediaItems(singlePostView);
           const xUrls = extractLinkMediaUrls(singlePostView.text);
           const livePost = posts.find(p => p.id === singlePostView.id) ?? singlePostView;
@@ -30095,7 +29497,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 ) : (
                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
                     <p style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 800, textAlign: 'center', lineHeight: 1.5 }}>
-                      {ad?.title || productAdDisplayTitle(singlePostView)}
+                      {(singlePostView.text || '').split('\n')[0]?.trim().slice(0, 80)}
                     </p>
                   </div>
                 )}
@@ -30141,20 +29543,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     whileTap={{ scale: 0.9 }}
                     onClick={() => {
                       if (guestGuard()) return;
-                      if (productInquiryShareAlert(livePost.id)) {
-                        clearProductInquiryReplyFlag(livePost.id);
-                        openShareMiniChat({ id: livePost.authorId, name: livePost.authorName, username: livePost.authorUsername, avatarUrl: livePost.authorAvatarUrl, post: livePost });
-                        return;
-                      }
-                      setProductShareMenuPost(livePost);
+                      setShareMenuPost(livePost);
                     }}
-                    aria-label="مشاركة الإعلان"
+                    aria-label="مشاركة"
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer', display: 'flex', padding: 4,
-                      color: productInquiryShareAlert(livePost.id) ? '#eab308' : '#fff',
+                      color: '#fff',
                     }}
                   >
-                    <Send size={20} strokeWidth={2} color={productInquiryShareAlert(livePost.id) ? '#eab308' : undefined} />
+                    <Send size={20} strokeWidth={2} />
                   </motion.button>
                 </div>
 
@@ -30270,38 +29667,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       }}
                     >
                                             <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.25)', margin: '0 auto 14px' }} />
-                      {(() => {
-                        const isCo = !!(
-                          companies.some(c => String(c.id) === String(singlePostView.authorId))
-                          || isCompanyUserAccount({ id: singlePostView.authorId, username: singlePostView.authorUsername, name: singlePostView.authorName }, companies)
-                          || (singlePostView as any).publisherType === 'company'
-                          || (singlePostView as any).authorIsCompany === true
-                          || (singlePostView as any).isCompanyPost === true
-                        );
-                        const plain = (singlePostView.text || '').replace(/\u27E6stooorna-product:[A-Za-z0-9+/=]+\u27E7\s*$/u, '').trim();
-                        if (!isCo) {
-                          return (
-                            <PostText text={plain} color={CLR_PRIMARY} textColor={CLR_TEXT} onHashtag={openHashtag} />
-                          );
-                        }
-                        return (
-                          <>
-                            <p style={{ margin: 0, color: CLR_TEXT, fontSize: '1.05rem', fontWeight: 400, lineHeight: 1.35 }}>
-                              {ad?.title || productAdDisplayTitle(singlePostView)}
-                            </p>
-                            {ad?.details ? (
-                              <div style={{ marginTop: 12 }}>
-                                <PostText text={ad.details} color={CLR_PRIMARY} textColor={CLR_TEXT} onHashtag={openHashtag} />
-                              </div>
-                            ) : null}
-                            {ad?.price ? (
-                              <p style={{ margin: '12px 0 0', color: 'rgba(200,230,230,0.75)', fontSize: '0.92rem', fontWeight: 400 }}>
-                                {/^السعر\s*:/.test(String(ad.price)) ? ad.price : `السعر: ${ad.price}`}
-                              </p>
-                            ) : null}
-                          </>
-                        );
-                      })()}
+                      <PostText text={(singlePostView.text || '').trim()} color={CLR_PRIMARY} textColor={CLR_TEXT} onHashtag={openHashtag} />
                       <button
                         type="button"
                         onClick={() => setAdDetailsOpen(false)}
@@ -30590,7 +29956,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             >
               {(() => {
                 // فصل صارم: شركات فقط في تبويب الشركات — أفراد في تبويب التطبيق
-                // لا نعتمد على parseProductAd وحده (المستخدمون الأفراد ينشرون بنفس صيغة العنوان/التفاصيل)
                 const isCompanyPost = (p: PostItem) => {
                   const anyP = p as PostItem & { publisherType?: string; isCompanyPost?: boolean; authorIsCompany?: boolean };
                   if (anyP.publisherType === 'company' || anyP.isCompanyPost === true || anyP.authorIsCompany === true) return true;
@@ -30783,7 +30148,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           isCompanyUserAccount({ id: p.authorId, username: p.authorUsername, name: p.authorName })
                         );
                         const hasMedia = PostMediaItems(p).length > 0;
-                        if (hasMedia || parseProductAd(p.text) || companyAuthor) openSinglePostView(p);
+                        if (hasMedia || companyAuthor) openSinglePostView(p);
                         else openTextPostDetail(p);
                       }}
                       onOpenComments={loadComments}
@@ -30794,26 +30159,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       isFavorited={isPostFavorited}
                       onShare={post => {
                         if (guestGuard()) return;
-                        const companyAuthor = companies.some(c => String(c.id) === String(post.authorId)) ||
-                          isCompanyUserAccount({ id: post.authorId, username: post.authorUsername, name: post.authorName }) ||
-                          !!parseProductAd(post.text);
-                        if (companyAuthor) {
-                          setProductShareMenuPost(post);
-                        } else {
-                          setProductShareMenuPost(post); // same sheet; second action differs below
-                        }
+                        setShareMenuPost(post);
                       }}
-                      onProductShareMenu={post => {
-                        if (guestGuard()) return;
-                        void inquiryAlertTick;
-                        if (productInquiryShareAlert(post.id)) {
-                          clearProductInquiryReplyFlag(post.id);
-                          openShareMiniChat({ id: post.authorId, name: post.authorName, username: post.authorUsername, avatarUrl: post.authorAvatarUrl, post });
-                          return;
-                        }
-                        setProductShareMenuPost(post);
-                      }}
-                      productShareAlert={productInquiryShareAlert(post.id)}
                       isCompanyAuthor={
                         !!post.authorId && (
                           companies.some(c => String(c.id) === String(post.authorId)) ||
@@ -32760,57 +32107,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             onToggleLike={toggleLike}
             onRepost={toggleRepost}
           />
-          {!userShareChatPeer && user && String(viewingProfile.id) !== String(user.id) && (!!viewingProfile.isCompany || isCompanyUserAccount(viewingProfile, companies)) && (() => {
-            let saved: any = null;
-            try {
-              const list = JSON.parse(localStorage.getItem(`stooorna_user_product_chats_${user.id}`) || '[]');
-              saved = Array.isArray(list) ? list.find((x: any) => String(x.id) === String(viewingProfile.id)) : null;
-            } catch { saved = null; }
-            if (!saved) return null;
-            return (
-              <motion.button
-                key="company-chat-fab"
-                type="button"
-                initial={{ scale: 0.7, opacity: 0 }}
-                animate={{ scale: [1, 1.08, 1], opacity: 1 }}
-                transition={{ scale: { duration: 1.4, repeat: Infinity, ease: 'easeInOut' }, opacity: { duration: 0.2 } }}
-                onClick={() => {
-                  if (user && String(user.id) === String(viewingProfile.id)) {
-                    setCompanyInboxOpen(true);
-                    return;
-                  }
-                  openShareMiniChat({
-                    id: viewingProfile.id,
-                    name: saved.name || viewingProfile.name,
-                    username: saved.username || viewingProfile.username,
-                    avatarUrl: saved.avatarUrl || viewingProfile.avatarUrl,
-                    post: saved.post || (saved.postId ? { id: saved.postId, text: saved.postText, authorId: viewingProfile.id, authorName: viewingProfile.name, authorUsername: viewingProfile.username, authorAvatarUrl: viewingProfile.avatarUrl } as any : undefined),
-                    note: saved.note || saved.lastMessage || '',
-                  });
-                }}
-                aria-label="فتح شات الشركة"
-                style={{
-                  position: 'fixed',
-                  top: 'max(10px, env(safe-area-inset-top))',
-                  right: 12,
-                  zIndex: 10890,
-                  width: 34, height: 34, borderRadius: '50%',
-                  background: (() => {
-                    try {
-                      return localStorage.getItem('stooorna_company_inbox_unread') === '1' ? 'linear-gradient(145deg, #facc15 0%, #ca8a04 100%)' : 'linear-gradient(145deg, #00BCD4 0%, #00838f 100%)';
-                    } catch { return 'linear-gradient(145deg, #00BCD4 0%, #00838f 100%)'; }
-                  })(),
-                  border: '1.5px solid rgba(255,255,255,0.18)',
-                  color: '#041018', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 4px 14px rgba(0,188,212,0.4)',
-                  padding: 0,
-                }}
-              >
-                <MessageCircle size={16} strokeWidth={2.3} />
-              </motion.button>
-            );
-          })()}
           </>
         )}
       </AnimatePresence>
@@ -32910,15 +32206,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         )}
       </AnimatePresence>
 
-      {/* ── شير المنتج: خارجي | استفسار عن المنتج ── */}
+      {/* ── قائمة المشاركة ── */}
       <AnimatePresence>
-        {productShareMenuPost && (
+        {shareMenuPost && (
           <motion.div
-            key="product-share-menu"
+            key="share-menu"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setProductShareMenuPost(null)}
+            onClick={() => setShareMenuPost(null)}
             style={{
               position: 'fixed', inset: 0, zIndex: 12350,
               background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
@@ -32940,14 +32236,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               }}
             >
               <p style={{ margin: '0 0 12px', color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.92rem', textAlign: 'center' }}>
-                مشاركة / استفسار
+                مشاركة
               </p>
               <motion.button
                 whileTap={{ scale: 0.97 }}
                 type="button"
                 onClick={() => {
-                  const p = productShareMenuPost;
-                  setProductShareMenuPost(null);
+                  const p = shareMenuPost;
+                  setShareMenuPost(null);
                   if (p) externalSharePost(p);
                 }}
                 style={{
@@ -32960,44 +32256,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 <Send size={16} strokeWidth={2.2} />
                 نشر بالخارج
               </motion.button>
-              {(() => {
-                const p = productShareMenuPost;
-                // شركة فقط → استفسار عن المنتج | مستخدم → نشر الى صديق
-                const isCo = !!(p && (
-                  (p as any).publisherType === 'company'
-                  || (p as any).isCompanyPost === true
-                  || (p as any).authorIsCompany === true
-                  || companies.some(c => String(c.id) === String(p.authorId))
-                  || isCompanyUserAccount({ id: p.authorId, username: p.authorUsername, name: p.authorName }, companies)
-                ));
-                if (isCo) {
-                  return (
-                    <motion.button
-                      whileTap={{ scale: 0.97 }}
-                      type="button"
-                      onClick={() => {
-                        setProductShareMenuPost(null);
-                        setProductInquiryText('');
-                        setProductInquiryError('');
-                        setProductInquiryPost(p);
-                      }}
-                      style={{
-                        width: '100%', padding: '14px 16px', borderRadius: 14, marginBottom: 8,
-                        background: 'rgba(234,179,8,0.12)', border: '1px solid rgba(234,179,8,0.4)',
-                        color: '#eab308', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                      }}
-                    >
-                      <MessageCircle size={16} strokeWidth={2.2} />
-                      استفسار عن المنتج
-                    </motion.button>
-                  );
-                }
-                return null;
-              })()}
               <button
                 type="button"
-                onClick={() => setProductShareMenuPost(null)}
+                onClick={() => setShareMenuPost(null)}
                 style={{
                   width: '100%', padding: '12px', borderRadius: 12, border: 'none',
                   background: 'transparent', color: CLR_TEXT_DIM, fontWeight: 600, cursor: 'pointer',
@@ -33009,118 +32270,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* ── نموذج استفسار المنتج → شات الشركة ── */}
-      <AnimatePresence>
-        {productInquiryPost && (() => {
-          const ad = parseProductAd(productInquiryPost.text);
-          const media = PostMediaItems(productInquiryPost);
-          const img = media.find(m => m.type === 'image')?.url || media[0]?.url || productInquiryPost.mediaUrl;
-          return (
-            <motion.div
-              key="product-inquiry-form"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              style={{
-                position: 'fixed', inset: 0, zIndex: 10660,
-                background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(8px)',
-                display: 'flex', flexDirection: 'column',
-              }}
-            >
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
-                borderBottom: '1px solid rgba(0,188,212,0.25)',
-                background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
-              }}>
-                <button type="button" onClick={() => setProductInquiryPost(null)} style={{ background: 'none', border: 'none', color: CLR_PRIMARY, cursor: 'pointer', padding: 2 }}>
-                  <X size={20} />
-                </button>
-                <p style={{ margin: 0, flex: 1, color: CLR_PRIMARY, fontWeight: 800, fontSize: '0.95rem' }}>
-                  استفسار عن المنتج
-                </p>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {img && (
-                  <img src={img} alt="" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 14, border: `1px solid ${CLR_PRIMARY_BORDER}` }} />
-                )}
-                <div style={{
-                  background: 'rgba(0,188,212,0.08)', border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                  borderRadius: 14, padding: '12px 14px',
-                }}>
-                  <p style={{ margin: 0, color: CLR_PRIMARY, fontWeight: 800, fontSize: '1rem' }}>
-                    {ad?.title || productAdDisplayTitle(productInquiryPost)}
-                  </p>
-                  {ad?.details ? (
-                    <p style={{ margin: '8px 0 0', color: CLR_TEXT_DIM, fontSize: '0.8rem', lineHeight: 1.45, fontWeight: 600 }}>{ad.details}</p>
-                  ) : null}
-                  {ad?.price ? (
-                    <p style={{ margin: '6px 0 0', color: '#eab308', fontWeight: 400, fontSize: '0.9rem' }}>
-                      {/^السعر\s*:/.test(String(ad.price)) ? ad.price : `السعر: ${ad.price}`}
-                    </p>
-                  ) : null}
-                  <p style={{ margin: '10px 0 0', color: CLR_TEXT_DIM, fontSize: '0.72rem' }}>
-                    الشركة: {productInquiryPost.authorName || productInquiryPost.authorUsername || '—'}
-                  </p>
-                </div>
-                <textarea
-                  value={productInquiryText}
-                  onChange={e => setProductInquiryText(e.target.value.slice(0, 500))}
-                  placeholder="اكتب سؤالك عن المنتج (مثال: هل السعر نهائي؟ هل متوفر؟)…"
-                  rows={4}
-                  style={{
-                    width: '100%', boxSizing: 'border-box', resize: 'vertical',
-                    borderRadius: 14, padding: '12px 14px',
-                    background: CLR_INPUT_BG, border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                    color: CLR_TEXT, fontSize: '0.88rem', outline: 'none', fontFamily: 'inherit',
-                  }}
-                />
-                {productInquiryError && (
-                  <p style={{ margin: 0, color: '#ef4444', fontSize: '0.78rem', textAlign: 'center' }}>{productInquiryError}</p>
-                )}
-              </div>
-              <div style={{
-                padding: '12px 16px max(16px, env(safe-area-inset-bottom))',
-                borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
-                background: 'rgba(6,14,14,0.96)',
-              }}>
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  type="button"
-                  disabled={productInquirySending || !productInquiryText.trim()}
-                  onClick={async () => {
-                    if (!productInquiryPost || !productInquiryText.trim()) return;
-                    setProductInquirySending(true);
-                    setProductInquiryError('');
-                    try {
-                      await sendProductInquiry(productInquiryPost, productInquiryText);
-                      setProductInquiryPost(null);
-                      setProductInquiryText('');
-                      closeSinglePostView();
-                    } catch (err) {
-                      setProductInquiryError(String(err instanceof Error ? err.message : err));
-                    } finally {
-                      setProductInquirySending(false);
-                    }
-                  }}
-                  style={{
-                    width: '100%', padding: '14px', borderRadius: 14, border: 'none',
-                    background: productInquiryText.trim() ? CLR_PRIMARY : CLR_PRIMARY_FAINT,
-                    color: productInquiryText.trim() ? '#041018' : CLR_TEXT_DIM,
-                    fontWeight: 800, fontSize: '0.9rem',
-                    cursor: productInquiryText.trim() ? 'pointer' : 'default',
-                    opacity: productInquirySending ? 0.7 : 1,
-                  }}
-                >
-                  {productInquirySending ? 'جاري الإرسال…' : 'إرسال الاستفسار وفتح الشات'}
-                </motion.button>
-              </div>
-            </motion.div>
-          );
-        })()}
-      </AnimatePresence>
-
       {/* ── نشر الى صديق: اختيار صديق + ملاحظة ── */}
       <AnimatePresence>
         {userSharePickPost && (
