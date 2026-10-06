@@ -29113,20 +29113,58 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         )}
       </AnimatePresence>
 
-      {/* Feed Ad fullscreen viewer (ad-style, not like normal posts) */}
+      {/* Feed Ad fullscreen viewer — full-screen, tap anywhere to close (slides down) */}
       <AnimatePresence>
         {feedAdViewer && (
           <motion.div
             key="feed-ad-viewer"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+            transition={{ type: 'tween', duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            onClick={() => setFeedAdViewer(null)}
             style={{
-              position: 'fixed', inset: 0, zIndex: 12250, background: 'rgba(0,0,0,0.92)',
-              display: 'flex', flexDirection: 'column',
+              position: 'fixed', inset: 0, zIndex: 12250, background: '#000',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
             }}
           >
+            {(() => {
+              const src = feedAdViewer.mediaUrl || feedAdViewer.pdfUrl || '';
+              if (feedAdViewer.mediaType === 'video' && src) {
+                return (
+                  <video
+                    src={src} autoPlay loop playsInline
+                    disablePictureInPicture disableRemotePlayback
+                    controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000', pointerEvents: 'none' }}
+                  />
+                );
+              }
+              if (feedAdViewer.mediaType === 'image' && src) {
+                return <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />;
+              }
+              if (feedAdViewer.mediaType === 'pdf' || feedAdViewer.pdfUrl) {
+                return (
+                  <div style={{ padding: 24, textAlign: 'center' }}>
+                    <FileText size={64} color="#eab308" />
+                    <p style={{ color: '#fff', marginTop: 12, fontWeight: 700 }}>{feedAdViewer.mediaName || feedAdViewer.pdfName || 'PDF'}</p>
+                    {src ? (
+                      <a href={src} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{
+                        display: 'inline-block', marginTop: 14, padding: '10px 18px', borderRadius: 10,
+                        background: '#eab308', color: '#0a0a0a', fontWeight: 900, textDecoration: 'none',
+                      }}>Open PDF</a>
+                    ) : null}
+                  </div>
+                );
+              }
+              return <p style={{ color: 'rgba(255,255,255,0.5)' }}>No media</p>;
+            })()}
+
+            {/* Header overlay */}
             <div style={{
+              position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2,
               display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
-              paddingTop: 'max(12px, env(safe-area-inset-top))', borderBottom: '1px solid rgba(234,179,8,0.35)',
+              paddingTop: 'max(12px, env(safe-area-inset-top))',
+              background: 'linear-gradient(180deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 100%)',
+              pointerEvents: 'none',
             }}>
               <div style={{
                 width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: '2px solid #eab308', flexShrink: 0, background: '#111',
@@ -29140,13 +29178,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.9rem' }}>@{String(feedAdViewer.authorUsername || 'business').replace(/^@/, '')}</span>
                   <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#0a0a0a', background: '#eab308', borderRadius: 4, padding: '2px 6px' }}>Ads</span>
                 </div>
-                {feedAdViewer.title ? <p style={{ margin: '2px 0 0', color: 'rgba(255,255,255,0.75)', fontSize: '0.75rem' }}>{feedAdViewer.title}</p> : null}
               </div>
               {user?.id && String(feedAdViewer.userId) === String(user.id) && (
                 <button
                   type="button"
                   aria-label="Delete ad"
-                  onClick={() => {
+                  onClick={e => {
+                    e.stopPropagation();
                     if (!window.confirm('Delete this ad?')) return;
                     const id = String(feedAdViewer.id);
                     void (async () => {
@@ -29159,7 +29197,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   }}
                   style={{
                     border: '1px solid rgba(239,68,68,0.55)', background: 'rgba(239,68,68,0.18)', color: '#ef4444',
-                    width: 36, height: 36, minWidth: 36, borderRadius: '50%', cursor: 'pointer',
+                    width: 36, height: 36, minWidth: 36, borderRadius: '50%', cursor: 'pointer', pointerEvents: 'auto',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
                   }}
                 >
@@ -29168,51 +29206,30 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               )}
               <button
                 type="button"
-                onClick={() => setFeedAdViewer(null)}
+                onClick={e => { e.stopPropagation(); setFeedAdViewer(null); }}
                 aria-label="Close"
                 style={{
                   border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff',
-                  width: 36, height: 36, minWidth: 36, borderRadius: '50%', cursor: 'pointer',
+                  width: 36, height: 36, minWidth: 36, borderRadius: '50%', cursor: 'pointer', pointerEvents: 'auto',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
                 }}
               >
                 <X size={18} strokeWidth={2.4} />
               </button>
             </div>
-            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', minHeight: 220 }}>
-                {(() => {
-                  const src = feedAdViewer.mediaUrl || feedAdViewer.pdfUrl || '';
-                  if (feedAdViewer.mediaType === 'video' && src) {
-                    return <video src={src} controls autoPlay playsInline style={{ width: '100%', maxHeight: '55vh', background: '#000' }} />;
-                  }
-                  if (feedAdViewer.mediaType === 'image' && src) {
-                    return <img src={src} alt="" style={{ width: '100%', maxHeight: '55vh', objectFit: 'contain' }} />;
-                  }
-                  if (feedAdViewer.mediaType === 'pdf' || feedAdViewer.pdfUrl) {
-                    return (
-                      <div style={{ padding: 24, textAlign: 'center' }}>
-                        <FileText size={48} color="#eab308" />
-                        <p style={{ color: '#fff', marginTop: 12, fontWeight: 700 }}>{feedAdViewer.mediaName || feedAdViewer.pdfName || 'PDF'}</p>
-                        {src ? (
-                          <a href={src} target="_blank" rel="noopener noreferrer" style={{
-                            display: 'inline-block', marginTop: 14, padding: '10px 18px', borderRadius: 10,
-                            background: '#eab308', color: '#0a0a0a', fontWeight: 900, textDecoration: 'none',
-                          }}>Open PDF</a>
-                        ) : null}
-                      </div>
-                    );
-                  }
-                  return <p style={{ color: 'rgba(255,255,255,0.5)' }}>No media</p>;
-                })()}
+
+            {/* Title / text overlay */}
+            {(feedAdViewer.title || feedAdViewer.body) && (
+              <div style={{
+                position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 2,
+                padding: '40px 18px calc(20px + env(safe-area-inset-bottom))',
+                background: 'linear-gradient(0deg, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0) 100%)',
+                pointerEvents: 'none',
+              }}>
+                {feedAdViewer.title ? <p style={{ margin: '0 0 6px', color: '#eab308', fontWeight: 900, fontSize: '1rem' }}>{feedAdViewer.title}</p> : null}
+                {feedAdViewer.body ? <p style={{ margin: 0, color: 'rgba(255,255,255,0.9)', fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', maxHeight: '28vh', overflow: 'hidden' }}>{feedAdViewer.body}</p> : null}
               </div>
-              {(feedAdViewer.title || feedAdViewer.body) && (
-                <div style={{ padding: '16px 18px calc(20px + env(safe-area-inset-bottom))', background: 'linear-gradient(180deg, #111 0%, #0a0a0a 100%)', borderTop: '1px solid rgba(234,179,8,0.3)' }}>
-                  {feedAdViewer.title ? <p style={{ margin: '0 0 8px', color: '#eab308', fontWeight: 900, fontSize: '1rem' }}>{feedAdViewer.title}</p> : null}
-                  {feedAdViewer.body ? <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{feedAdViewer.body}</p> : null}
-                </div>
-              )}
-            </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
