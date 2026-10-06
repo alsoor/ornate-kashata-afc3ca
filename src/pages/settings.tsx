@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback, startTransition } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, startTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
@@ -10,6 +10,8 @@ import LiveLocationMap from '@/components/LiveLocationMap';
 import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
+// Owner-only paid Ads panel (feed ads) — loaded on demand
+const OwnerAdsPanelLazy = React.lazy(() => import('./add-friend').then((m) => ({ default: m.OwnerAdsPanel })));
 import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, hydrateVipDirectory, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown, ownerGrantEightMics, getVipFeats } from '@/lib/vipPatch';
 import { getAppProfitsSnapshot, syncAppProfitsFromServer, syncEarningsFromServer, readUserEarnings, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
 import { readOwnerSupportProfit, syncOwnerSupportProfit } from '@/lib/ownerSupportProfitPatch';
@@ -5434,6 +5436,8 @@ export default function SettingsPage() {
   const [ownerBizTick, setOwnerBizTick] = useState(0);
   // ── Owner-only: VIP manager ──
   const [showOwnerVip, setShowOwnerVip] = useState(false);
+  // ── Owner-only: Ads (paid feed ads) ──
+  const [showOwnerAds, setShowOwnerAds] = useState(false);
   const [ownerVipQuery, setOwnerVipQuery] = useState('');
   const [ownerVipSel, setOwnerVipSel] = useState<{ id: string; username: string | null; email: string } | null>(null);
   const [ownerVipColor, setOwnerVipColor] = useState<string>('gold');
@@ -9624,6 +9628,39 @@ export default function SettingsPage() {
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   type="button"
+                  onClick={() => startTransition(() => setShowOwnerAds(true))}
+                  className="flex items-center justify-between"
+                  style={{
+                    width: '100%',
+                    background: T.surface,
+                    border: `1px solid ${T.surfaceBorder}`,
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    color: T.text,
+                    cursor: 'pointer',
+                  }}
+                  aria-label="Ads"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center" style={{
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
+                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308', fontWeight: 900, fontSize: '0.72rem',
+                    }}>
+                      Ads
+                    </span>
+                    <span style={{ textAlign: 'left' }}>
+                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Ads</span>
+                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
+                        Publish an ad between feed posts · Video · Image · PDF
+                      </span>
+                    </span>
+                  </div>
+                  <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
+                </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
                   onClick={() => {
                     setOwnerBizMsg('');
                     setOwnerBizSel(null);
@@ -11749,6 +11786,18 @@ export default function SettingsPage() {
       </AnimatePresence>
 
 
+
+      {/* ── Owner: Ads — paid feed ads (owner only) ── */}
+      <AnimatePresence>
+        {showOwnerAds && isSupportOwnerAccount(
+          user as { email?: string | null; username?: string | null; name?: string | null },
+          profileUsername,
+        ) && (
+          <React.Suspense fallback={null}>
+            <OwnerAdsPanelLazy onClose={() => setShowOwnerAds(false)} />
+          </React.Suspense>
+        )}
+      </AnimatePresence>
 
       {/* ── Owner: VIP manager — give any user VIP (frame + color + VIP header) ── */}
       <AnimatePresence>

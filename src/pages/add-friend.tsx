@@ -9761,6 +9761,236 @@ const MiniProfileModal = ({
   );
 }
 
+/** نظام «Ads» (إعلان مدفوع بين منشورات الفيد) — للأونر فقط، يُفتح من Settings › Company › Ads */
+export function OwnerAdsPanel({ onClose }: { onClose: () => void }) {
+  const { user } = useSession();
+  const [businessAdTitle, setBusinessAdTitle] = useState('');
+  const [businessAdBody, setBusinessAdBody] = useState('');
+  const [businessAdMedia, setBusinessAdMedia] = useState<{ name: string; dataUrl: string; type: 'image' | 'video' | 'pdf'; mime: string } | null>(null);
+  const [adPublishing, setAdPublishing] = useState(false);
+  const [adPublishProgress, setAdPublishProgress] = useState(0);
+  return (
+      <motion.div
+        key="owner-ads"
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        style={{ position: 'fixed', inset: 0, zIndex: 13500, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+        onClick={() => onClose()}
+      >
+        <motion.div
+          initial={{ y: 40 }} animate={{ y: 0 }} exit={{ y: 60 }}
+          onClick={e => e.stopPropagation()}
+          style={{
+            width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto',
+            background: '#fff', borderRadius: '18px 18px 0 0', padding: '16px 16px calc(20px + env(safe-area-inset-bottom))',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <p style={{ margin: 0, fontWeight: 900, fontSize: '1.05rem', color: '#0a0a0a' }}>Ads</p>
+            <button type="button" onClick={() => onClose()} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} /></button>
+          </div>
+          <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Subject</p>
+          <input
+            value={businessAdTitle}
+            onChange={e => setBusinessAdTitle(e.target.value.slice(0, 120))}
+            style={{
+              width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,0,0,0.18)', borderRadius: 12,
+              padding: '12px 14px', fontSize: '0.95rem', marginBottom: 12, outline: 'none',
+              color: '#0a0a0a', background: '#ffffff', caretColor: '#0a0a0a',
+              WebkitTextFillColor: '#0a0a0a',
+            }}
+          />
+          <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Ad text</p>
+          <textarea
+            value={businessAdBody}
+            onChange={e => setBusinessAdBody(e.target.value.slice(0, 2000))}
+            rows={5}
+            style={{
+              width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,0,0,0.18)', borderRadius: 12,
+              padding: '12px 14px', fontSize: '0.85rem', fontWeight: 400, marginBottom: 12, outline: 'none',
+              resize: 'vertical', color: '#0a0a0a', background: '#ffffff', caretColor: '#0a0a0a',
+              WebkitTextFillColor: '#0a0a0a',
+            }}
+          />
+          <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Media attachment</p>
+          <p style={{ margin: '0 0 10px', color: '#999', fontSize: '0.68rem', lineHeight: 1.4 }}>
+            Video (MP4, MOV) · Image (JPG, PNG, WebP) · PDF
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+            <label style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
+              border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer',
+            }}>
+              <Video size={18} />
+              Video (MP4, MOV)
+              <input type="file" accept="video/mp4,video/quicktime,video/*,.mp4,.mov,.m4v" hidden onChange={e => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (!f) return;
+                const reader = new FileReader();
+                reader.onload = () => setBusinessAdMedia({ name: f.name, dataUrl: String(reader.result || ''), type: 'video', mime: f.type || 'video/mp4' });
+                reader.readAsDataURL(f);
+              }} />
+            </label>
+            <label style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
+              border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer',
+            }}>
+              <ImageIcon size={18} />
+              Image (JPG, PNG, WebP)
+              <input type="file" accept="image/jpeg,image/png,image/webp,image/*,.jpg,.jpeg,.png,.webp" hidden onChange={e => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (!f) return;
+                const reader = new FileReader();
+                reader.onload = () => setBusinessAdMedia({ name: f.name, dataUrl: String(reader.result || ''), type: 'image', mime: f.type || 'image/jpeg' });
+                reader.readAsDataURL(f);
+              }} />
+            </label>
+            <label style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
+              border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer',
+            }}>
+              <FileText size={18} />
+              PDF file
+              <input type="file" accept="application/pdf,.pdf" hidden onChange={e => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (!f) return;
+                const reader = new FileReader();
+                reader.onload = () => setBusinessAdMedia({ name: f.name, dataUrl: String(reader.result || ''), type: 'pdf', mime: f.type || 'application/pdf' });
+                reader.readAsDataURL(f);
+              }} />
+            </label>
+          </div>
+          {businessAdMedia && (
+            <div style={{
+              marginBottom: 12, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(0,0,0,0.1)',
+              display: 'flex', alignItems: 'center', gap: 10, background: '#f7f9f9',
+            }}>
+              {businessAdMedia.type === 'image' && (
+                <img src={businessAdMedia.dataUrl} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
+              )}
+              {businessAdMedia.type === 'video' && (
+                <video src={businessAdMedia.dataUrl} muted style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
+              )}
+              {businessAdMedia.type === 'pdf' && <FileText size={22} color="#1d9bf0" />}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, color: '#0a0a0a', fontWeight: 700, fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{businessAdMedia.name}</p>
+                <p style={{ margin: '2px 0 0', color: '#888', fontSize: '0.68rem', textTransform: 'uppercase' }}>{businessAdMedia.type}</p>
+              </div>
+              <button type="button" onClick={() => setBusinessAdMedia(null)} style={{ border: 'none', background: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 8, width: 32, height: 32, cursor: 'pointer' }}>
+                <X size={16} />
+              </button>
+            </div>
+          )}
+          <p style={{ margin: '0 0 12px', color: '#888', fontSize: '0.72rem', lineHeight: 1.45 }}>
+            Owner ad · shown between feed posts
+          </p>
+          <button
+            type="button"
+            disabled={adPublishing || !businessAdMedia}
+            onClick={() => {
+              if (!user?.id || adPublishing) return;
+              if (!businessAdMedia) return;
+              const title = businessAdTitle.trim();
+              const body = businessAdBody.trim();
+              setAdPublishing(true);
+              setAdPublishProgress(0);
+              const steps = [12, 28, 45, 62, 78, 90, 100];
+              let si = 0;
+              const timer = window.setInterval(() => {
+                if (si < steps.length) {
+                  setAdPublishProgress(steps[si]);
+                  si += 1;
+                } else {
+                  window.clearInterval(timer);
+                }
+              }, 90);
+              window.setTimeout(() => {
+                void (async () => {
+                  try {
+                    const list = loadFeedAdsMeta();
+                    const uname = String((user as any).username || (user as any).name || 'stooorna').replace(/^@/, '');
+                    const now = Date.now();
+                    const endsAt = new Date(now + 24 * 3600 * 1000).toISOString();
+                    const nextEligibleAt = new Date(now + 24 * 3600 * 1000 + 4 * 3600 * 1000).toISOString();
+                    let campaignEndsAt = new Date(now + 30 * 24 * 3600 * 1000).toISOString();
+                    try {
+                      const ck = `stooorna_ad_campaign_${user.id}`;
+                      const existing = localStorage.getItem(ck);
+                      if (existing && new Date(existing).getTime() > now) campaignEndsAt = existing;
+                      else localStorage.setItem(ck, campaignEndsAt);
+                    } catch { /* */ }
+                    const adId = `ad-${now}-${Math.random().toString(36).slice(2, 8)}`;
+                    const dataUrl = businessAdMedia?.dataUrl || null;
+                    if (dataUrl) {
+                      await stooornaAdMediaPut(adId, dataUrl);
+                    }
+                    const ad = {
+                      id: adId,
+                      userId: String(user.id),
+                      authorName: (user as any).name || uname || 'Business',
+                      authorUsername: uname,
+                      authorAvatarUrl: (user as any).image || (user as any).avatarUrl || null,
+                      title, body,
+                      mediaUrl: dataUrl,
+                      mediaType: businessAdMedia?.type || (businessAdMedia ? 'image' : null),
+                      mediaName: businessAdMedia?.name || null,
+                      mediaMime: businessAdMedia?.mime || null,
+                      pdfUrl: businessAdMedia?.type === 'pdf' ? dataUrl : null,
+                      pdfName: businessAdMedia?.type === 'pdf' ? (businessAdMedia.name || null) : null,
+                      createdAt: new Date(now).toISOString(),
+                      endsAt,
+                      expiresAt: endsAt,
+                      nextEligibleAt,
+                      campaignEndsAt,
+                    };
+                    const next = [ad, ...list.filter(a => isAdLive(a, now))].slice(0, 80);
+                    saveFeedAdsMeta(next);
+                                            setAdPublishProgress(100);
+                    setBusinessAdTitle('');
+                    setBusinessAdBody('');
+                    setBusinessAdMedia(null);
+                    window.setTimeout(() => {
+                      onClose();
+                      setAdPublishing(false);
+                      setAdPublishProgress(0);
+                    }, 280);
+                  } catch (err) {
+                    console.error('[Ads] publish failed', err);
+                    setAdPublishing(false);
+                    setAdPublishProgress(0);
+                  }
+                  window.clearInterval(timer);
+                })();
+              }, 720);
+            }}
+            style={{
+              position: 'relative', width: '100%', padding: 14, borderRadius: 12, border: 'none',
+              background: '#1d9bf0', color: '#fff', fontWeight: 900, fontSize: '0.92rem',
+              cursor: (adPublishing || !businessAdMedia) ? 'default' : 'pointer', overflow: 'hidden',
+              opacity: (adPublishing || !businessAdMedia) ? 0.45 : 1,
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                position: 'absolute', left: 0, top: 0, bottom: 0,
+                width: `${adPublishProgress}%`,
+                background: 'linear-gradient(90deg, #eab308 0%, #facc15 100%)',
+                transition: 'width 0.12s linear',
+                borderRadius: 12,
+              }}
+            />
+            <span style={{ position: 'relative', zIndex: 1, color: adPublishProgress > 45 ? '#0a0a0a' : '#fff' }}>
+              {adPublishing ? (adPublishProgress >= 100 ? 'Published' : 'Publishing…') : 'Publish Ad'}
+            </span>
+          </button>
+        </motion.div>
+      </motion.div>
+  );
+}
+
 // ── FriendStoryProfile — profile for another user: avatar, stats, and ONLY their posts.
 //    Video/Photo tabs removed; cover has no dark overlay. Posts (text + media alike) render
 //    three-per-row below, tapping any tile opens the full post page like a text post. ──
@@ -20854,16 +21084,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }, []);
   const [showComposer, setShowComposer] = useState(false);
   const [composerCameraForPost, setComposerCameraForPost] = useState(false);
-  const [businessAdsOpen, setBusinessAdsOpen] = useState(false);
-  const [businessAdTitle, setBusinessAdTitle] = useState('');
-  const [businessAdBody, setBusinessAdBody] = useState('');
-  const [businessAdMedia, setBusinessAdMedia] = useState<{ name: string; dataUrl: string; type: 'image' | 'video' | 'pdf'; mime: string } | null>(null);
   const [myAdsHubOpen, setMyAdsHubOpen] = useState(false);
   const [myAdsHubTab, setMyAdsHubTab] = useState<'video' | 'photo' | 'pdf'>('video');
   const [feedAdViewer, setFeedAdViewer] = useState<any | null>(null);
   const [feedAdsTick, setFeedAdsTick] = useState(0);
-  const [adPublishing, setAdPublishing] = useState(false);
-  const [adPublishProgress, setAdPublishProgress] = useState(0);
   const [adClockTick, setAdClockTick] = useState(0);
   const [adDetailOpen, setAdDetailOpen] = useState<any | null>(null);
   useEffect(() => {
@@ -20915,7 +21139,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     })();
     return () => { cancelled = true; };
   }, [feedAdsTick === 0]);
-  const isBusinessUser = !!(user?.id && (() => { try { const raw = localStorage.getItem('stooorna_business_registry'); const list = raw ? JSON.parse(raw) : []; return Array.isArray(list) && list.some((x: any) => String(x.userId) === String(user.id) && x.status === 'approved'); } catch { return false; } })());
   // وضع النشر: اختيار فقط (لا يفتح المعرض) — Text | Photo | Video
   const [, setComposerDestination] = useState<'text' | 'photos' | 'videos'>('text');
   const [, setComposerText] = useState('');
@@ -28729,21 +28952,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     }}
                   />
                 </label>
-                {(isCompanyPublisher || isBusinessUser) && (
-                  <button
-                    type="button"
-                    title="Ads"
-                    onClick={() => { setBusinessAdsOpen(true); }}
-                    style={{
-                      width: 44, height: 44, borderRadius: 12, border: 'none',
-                      background: '#eab308', color: '#0a0a0a', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 900, fontSize: '0.72rem',
-                    }}
-                  >
-                    Ads
-                  </button>
-                )}
               </div>
               <p style={{ margin: 0, textAlign: 'center', color: '#536471', fontSize: '0.72rem', fontWeight: 700 }}>No Limits</p>
               <motion.button
@@ -29134,236 +29342,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
       {/* Business Ads composer sheet */}
       <AnimatePresence>
-        {businessAdsOpen && (
-          <motion.div
-            key="biz-ads"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{ position: 'fixed', inset: 0, zIndex: 12140, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
-            onClick={() => setBusinessAdsOpen(false)}
-          >
-            <motion.div
-              initial={{ y: 40 }} animate={{ y: 0 }} exit={{ y: 60 }}
-              onClick={e => e.stopPropagation()}
-              style={{
-                width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto',
-                background: '#fff', borderRadius: '18px 18px 0 0', padding: '16px 16px calc(20px + env(safe-area-inset-bottom))',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <p style={{ margin: 0, fontWeight: 900, fontSize: '1.05rem', color: '#0a0a0a' }}>Ads</p>
-                <button type="button" onClick={() => setBusinessAdsOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} /></button>
-              </div>
-              <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Subject</p>
-              <input
-                value={businessAdTitle}
-                onChange={e => setBusinessAdTitle(e.target.value.slice(0, 120))}
-                style={{
-                  width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,0,0,0.18)', borderRadius: 12,
-                  padding: '12px 14px', fontSize: '0.95rem', marginBottom: 12, outline: 'none',
-                  color: '#0a0a0a', background: '#ffffff', caretColor: '#0a0a0a',
-                  WebkitTextFillColor: '#0a0a0a',
-                }}
-              />
-              <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Ad text</p>
-              <textarea
-                value={businessAdBody}
-                onChange={e => setBusinessAdBody(e.target.value.slice(0, 2000))}
-                rows={5}
-                style={{
-                  width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,0,0,0.18)', borderRadius: 12,
-                  padding: '12px 14px', fontSize: '0.85rem', fontWeight: 400, marginBottom: 12, outline: 'none',
-                  resize: 'vertical', color: '#0a0a0a', background: '#ffffff', caretColor: '#0a0a0a',
-                  WebkitTextFillColor: '#0a0a0a',
-                }}
-              />
-              <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Media attachment</p>
-              <p style={{ margin: '0 0 10px', color: '#999', fontSize: '0.68rem', lineHeight: 1.4 }}>
-                Video (MP4, MOV) · Image (JPG, PNG, WebP) · PDF
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-                <label style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
-                  border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer',
-                }}>
-                  <Video size={18} />
-                  Video (MP4, MOV)
-                  <input type="file" accept="video/mp4,video/quicktime,video/*,.mp4,.mov,.m4v" hidden onChange={e => {
-                    const f = e.target.files?.[0];
-                    e.target.value = '';
-                    if (!f) return;
-                    const reader = new FileReader();
-                    reader.onload = () => setBusinessAdMedia({ name: f.name, dataUrl: String(reader.result || ''), type: 'video', mime: f.type || 'video/mp4' });
-                    reader.readAsDataURL(f);
-                  }} />
-                </label>
-                <label style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
-                  border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer',
-                }}>
-                  <ImageIcon size={18} />
-                  Image (JPG, PNG, WebP)
-                  <input type="file" accept="image/jpeg,image/png,image/webp,image/*,.jpg,.jpeg,.png,.webp" hidden onChange={e => {
-                    const f = e.target.files?.[0];
-                    e.target.value = '';
-                    if (!f) return;
-                    const reader = new FileReader();
-                    reader.onload = () => setBusinessAdMedia({ name: f.name, dataUrl: String(reader.result || ''), type: 'image', mime: f.type || 'image/jpeg' });
-                    reader.readAsDataURL(f);
-                  }} />
-                </label>
-                <label style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
-                  border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer',
-                }}>
-                  <FileText size={18} />
-                  PDF file
-                  <input type="file" accept="application/pdf,.pdf" hidden onChange={e => {
-                    const f = e.target.files?.[0];
-                    e.target.value = '';
-                    if (!f) return;
-                    const reader = new FileReader();
-                    reader.onload = () => setBusinessAdMedia({ name: f.name, dataUrl: String(reader.result || ''), type: 'pdf', mime: f.type || 'application/pdf' });
-                    reader.readAsDataURL(f);
-                  }} />
-                </label>
-              </div>
-              {businessAdMedia && (
-                <div style={{
-                  marginBottom: 12, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(0,0,0,0.1)',
-                  display: 'flex', alignItems: 'center', gap: 10, background: '#f7f9f9',
-                }}>
-                  {businessAdMedia.type === 'image' && (
-                    <img src={businessAdMedia.dataUrl} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
-                  )}
-                  {businessAdMedia.type === 'video' && (
-                    <video src={businessAdMedia.dataUrl} muted style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
-                  )}
-                  {businessAdMedia.type === 'pdf' && <FileText size={22} color="#1d9bf0" />}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, color: '#0a0a0a', fontWeight: 700, fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{businessAdMedia.name}</p>
-                    <p style={{ margin: '2px 0 0', color: '#888', fontSize: '0.68rem', textTransform: 'uppercase' }}>{businessAdMedia.type}</p>
-                  </div>
-                  <button type="button" onClick={() => setBusinessAdMedia(null)} style={{ border: 'none', background: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 8, width: 32, height: 32, cursor: 'pointer' }}>
-                    <X size={16} />
-                  </button>
-                </div>
-              )}
-              <p style={{ margin: '0 0 12px', color: '#888', fontSize: '0.72rem', lineHeight: 1.45 }}>
-                Paid placement between feed posts · 5 KD / month · deducted from Business balance
-              </p>
-              <button
-                type="button"
-                disabled={adPublishing || !businessAdMedia}
-                onClick={() => {
-                  if (!user?.id || adPublishing) return;
-                  if (!businessAdMedia) return;
-                  const title = businessAdTitle.trim();
-                  const body = businessAdBody.trim();
-                  setAdPublishing(true);
-                  setAdPublishProgress(0);
-                  const steps = [12, 28, 45, 62, 78, 90, 100];
-                  let si = 0;
-                  const timer = window.setInterval(() => {
-                    if (si < steps.length) {
-                      setAdPublishProgress(steps[si]);
-                      si += 1;
-                    } else {
-                      window.clearInterval(timer);
-                    }
-                  }, 90);
-                  window.setTimeout(() => {
-                    void (async () => {
-                      try {
-                        const balKey = `stooorna_biz_balance_${user.id}`;
-                        let bal = Number(localStorage.getItem(balKey) || '0') || 0;
-                        if (bal >= 5) {
-                          bal = Math.max(0, bal - 5);
-                          localStorage.setItem(balKey, String(bal));
-                          window.dispatchEvent(new CustomEvent('stooorna:biz-balance', { detail: { userId: user.id, balance: bal } }));
-                        }
-                        const list = loadFeedAdsMeta();
-                        const uname = String(myUsername || (user as any).username || (user as any).name || 'business').replace(/^@/, '');
-                        const now = Date.now();
-                        const endsAt = new Date(now + 24 * 3600 * 1000).toISOString();
-                        const nextEligibleAt = new Date(now + 24 * 3600 * 1000 + 4 * 3600 * 1000).toISOString();
-                        let campaignEndsAt = new Date(now + 30 * 24 * 3600 * 1000).toISOString();
-                        try {
-                          const ck = `stooorna_ad_campaign_${user.id}`;
-                          const existing = localStorage.getItem(ck);
-                          if (existing && new Date(existing).getTime() > now) campaignEndsAt = existing;
-                          else localStorage.setItem(ck, campaignEndsAt);
-                        } catch { /* */ }
-                        const adId = `ad-${now}-${Math.random().toString(36).slice(2, 8)}`;
-                        const dataUrl = businessAdMedia?.dataUrl || null;
-                        if (dataUrl) {
-                          await stooornaAdMediaPut(adId, dataUrl);
-                        }
-                        const ad = {
-                          id: adId,
-                          userId: String(user.id),
-                          authorName: (user as any).name || uname || 'Business',
-                          authorUsername: uname,
-                          authorAvatarUrl: (user as any).image || (user as any).avatarUrl || null,
-                          title, body,
-                          mediaUrl: dataUrl,
-                          mediaType: businessAdMedia?.type || (businessAdMedia ? 'image' : null),
-                          mediaName: businessAdMedia?.name || null,
-                          mediaMime: businessAdMedia?.mime || null,
-                          pdfUrl: businessAdMedia?.type === 'pdf' ? dataUrl : null,
-                          pdfName: businessAdMedia?.type === 'pdf' ? (businessAdMedia.name || null) : null,
-                          createdAt: new Date(now).toISOString(),
-                          endsAt,
-                          expiresAt: endsAt,
-                          nextEligibleAt,
-                          campaignEndsAt,
-                        };
-                        const next = [ad, ...list.filter(a => isAdLive(a, now))].slice(0, 80);
-                        saveFeedAdsMeta(next);
-                        setFeedAdsTick(x => x + 1);
-                        setAdPublishProgress(100);
-                        setBusinessAdTitle('');
-                        setBusinessAdBody('');
-                        setBusinessAdMedia(null);
-                        window.setTimeout(() => {
-                          setBusinessAdsOpen(false);
-                          setShowComposer(false);
-                          setAdPublishing(false);
-                          setAdPublishProgress(0);
-                          try { setTextPostsPageOpen(true); } catch { /* */ }
-                        }, 280);
-                      } catch (err) {
-                        console.error('[Ads] publish failed', err);
-                        setAdPublishing(false);
-                        setAdPublishProgress(0);
-                      }
-                      window.clearInterval(timer);
-                    })();
-                  }, 720);
-                }}
-                style={{
-                  position: 'relative', width: '100%', padding: 14, borderRadius: 12, border: 'none',
-                  background: '#1d9bf0', color: '#fff', fontWeight: 900, fontSize: '0.92rem',
-                  cursor: (adPublishing || !businessAdMedia) ? 'default' : 'pointer', overflow: 'hidden',
-                  opacity: (adPublishing || !businessAdMedia) ? 0.45 : 1,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    position: 'absolute', left: 0, top: 0, bottom: 0,
-                    width: `${adPublishProgress}%`,
-                    background: 'linear-gradient(90deg, #eab308 0%, #facc15 100%)',
-                    transition: 'width 0.12s linear',
-                    borderRadius: 12,
-                  }}
-                />
-                <span style={{ position: 'relative', zIndex: 1, color: adPublishProgress > 45 ? '#0a0a0a' : '#fff' }}>
-                  {adPublishing ? (adPublishProgress >= 100 ? 'Published' : 'Publishing…') : 'Publish Ad · 5 KD'}
-                </span>
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
       </AnimatePresence>
 
       {/* ── Comments sheet (Instagram-style white bottom sheet) — opens only via comment icon ── */}
