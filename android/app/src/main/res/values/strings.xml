@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Stooorna</string>
+    <string name="title_activity_main">Stooorna</string>
+    <string name="package_name">com.stooorna.app</string>
+    <string name="custom_url_scheme">com.stooorna.app</string>
+</resources>

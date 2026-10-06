@@ -155,8 +155,9 @@ export default function HomeCallHost({ user }: { user: { id: string; name?: stri
     try { window.dispatchEvent(new CustomEvent('stooorna:home-call-ended', { detail: { channel: ch, at: stamp } })); } catch { /* */ }
     if (!remote && other?.id && me) {
       const blast = () => {
-        send({ type: 'hangup', to: other.id, from: me, channel: ch, at: Date.now() });
-        send({ type: 'ended', to: other.id, from: me, channel: ch, at: Date.now() });
+        // at ثابت في كل الدفعات: وإلا تُسجَّل آخر دفعة كوقت الإنهاء وتُرفض إعادة اتصال سريعة.
+        send({ type: 'hangup', to: other.id, from: me, channel: ch, at: stamp });
+        send({ type: 'ended', to: other.id, from: me, channel: ch, at: stamp });
         void clearInvite(other.id, ch);
       };
       blast();
