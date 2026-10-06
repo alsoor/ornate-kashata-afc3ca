@@ -1967,6 +1967,13 @@ interface PostItem {
   authorIsPrivate?: boolean;
 }
 
+/** منشورات المنتجات القديمة (عنوان/تفاصيل/«السعر: …») — لم تعد تُعرض */
+function isLegacyProductPost(post: { text?: string | null } | null | undefined): boolean {
+  const t = (post?.text || '').trim();
+  if (!t) return false;
+  return /(^|\n)\s*السعر\s*:/.test(t) || t.includes('⟦stooorna-product:') || (t.startsWith('{') && t.includes('"__productAd"'));
+}
+
 /** True when post has real caption text (not media-only). Used to enable three-lines. */
 function postHasVisibleCaption(post: PostItem | null | undefined): boolean {
   if (!post) return false;
@@ -3181,13 +3188,12 @@ function HeaderStoryCircle({
 // نقرتان متتاليتان على الشاشة = تبديل الكاميرا الأمامية/الخلفية، وأزرار التحكم
 // الوحيدة هي: فلاش وفلاتر متقدمة. بعد التصوير تظهر ثلاثة خيارات نصية:
 // نشر القصة / إعادة التصوير / إغلاق الكاميرا. الإغلاق ينزل الشاشة بأنيميشن للأسفل.
-type CameraFilterId = 'none' | 'ai' | 'beauty' | 'makeup' | 'product' | 'glow' | 'warm' | 'cool' | 'vivid' | 'dramatic' | 'vintage' | 'fade' | 'bw';
+type CameraFilterId = 'none' | 'ai' | 'beauty' | 'makeup' | 'glow' | 'warm' | 'cool' | 'vivid' | 'dramatic' | 'vintage' | 'fade' | 'bw';
 const CAMERA_FILTERS: { id: CameraFilterId; label: string; css: string }[] = [
   { id: 'none', label: 'Original', css: 'none' },
   { id: 'ai', label: 'AI Beauty', css: 'brightness(1.08) contrast(0.96) saturate(1.08)' },
   { id: 'beauty', label: 'Beauty', css: 'brightness(1.08) contrast(0.94) saturate(1.08) blur(0.15px)' },
   { id: 'makeup', label: 'Makeup', css: 'brightness(1.1) contrast(1.04) saturate(1.22) hue-rotate(-6deg)' },
-  { id: 'product', label: 'Product', css: 'contrast(1.08) saturate(1.12) brightness(1.04)' },
   { id: 'glow', label: 'Glow', css: 'brightness(1.14) contrast(0.96) saturate(1.18)' },
   { id: 'warm', label: 'Warm', css: 'sepia(0.22) saturate(1.28) contrast(1.06) brightness(1.04)' },
   { id: 'cool', label: 'Cool', css: 'hue-rotate(168deg) saturate(1.12) brightness(1.04)' },
@@ -4115,7 +4121,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
             ctx.drawImage(video, srcX, srcY, srcW, srcH, dx, dy, dw, dh);
           }
           ctx.restore();
-          const aiMode = filter === 'ai' || filter === 'beauty' ? 'beauty' : filter === 'makeup' ? 'makeup' : filter === 'product' ? 'product' : 'off';
+          const aiMode = filter === 'ai' || filter === 'beauty' ? 'beauty' : filter === 'makeup' ? 'makeup' : 'off';
           if (aiMode !== 'off') {
             const ai = (window as any).__stooornaAiBeauty as { applyAiBeautyFrame?: Function } | undefined;
             let applied = false;
@@ -4126,9 +4132,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               ctx.save();
               ctx.filter = aiMode === 'makeup'
                 ? 'brightness(1.12) contrast(1.06) saturate(1.22) blur(0.35px)'
-                : aiMode === 'product'
-                  ? 'contrast(1.14) saturate(1.18) brightness(1.06)'
-                  : 'brightness(1.1) contrast(1.04) saturate(1.12) blur(0.45px)';
+                : 'brightness(1.1) contrast(1.04) saturate(1.12) blur(0.45px)';
               ctx.globalAlpha = 0.55;
               ctx.drawImage(canvas, 0, 0);
               ctx.restore();
@@ -4475,8 +4479,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
               ? `scaleX(${zoom === 0.5 ? -1 : -(1 / 0.7)}) scaleY(${zoom === 0.5 ? 1 : 1 / 0.7})`
               : zoom === 0.5 ? 'none' : `scale(${1 / 0.7})`,
             transformOrigin: 'center center',
-            filter: (filter === 'ai' || filter === 'beauty' || filter === 'makeup' || filter === 'product') ? 'none' : (activeFilterCss === 'none' ? 'none' : activeFilterCss),
-            opacity: (filter === 'ai' || filter === 'beauty' || filter === 'makeup' || filter === 'product') ? 0 : 1,
+            filter: (filter === 'ai' || filter === 'beauty' || filter === 'makeup') ? 'none' : (activeFilterCss === 'none' ? 'none' : activeFilterCss),
+            opacity: (filter === 'ai' || filter === 'beauty' || filter === 'makeup') ? 0 : 1,
             transition: 'transform 0.2s ease',
           }}
         />
@@ -4485,7 +4489,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
           style={{
             position: 'absolute', inset: 0, width: '100%', height: '100%',
             objectFit: 'cover', pointerEvents: 'none',
-            opacity: (filter === 'ai' || filter === 'beauty' || filter === 'makeup' || filter === 'product') ? 1 : 0,
+            opacity: (filter === 'ai' || filter === 'beauty' || filter === 'makeup') ? 1 : 0,
           }}
         />
         <div style={{
@@ -9964,7 +9968,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         if (cancelled) return;
         const byId = new Map<number, PostItem>();
         for (const p of collected) {
-          if (String(p.authorId) === String(authorId)) byId.set(p.id, p);
+          if (String(p.authorId) === String(authorId) && !isLegacyProductPost(p)) byId.set(p.id, p);
         }
         setAuthorPosts(Array.from(byId.values()).sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -21257,7 +21261,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         }
       } catch { /* optional own-posts merge */ }
       const byId = new Map<number, PostItem>();
-      for (const p of collected) byId.set(p.id, p);
+      for (const p of collected) if (!isLegacyProductPost(p)) byId.set(p.id, p);
       const merged = Array.from(byId.values()).sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
@@ -21422,7 +21426,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           }
         } catch { /* optional */ }
         const byId = new Map<number, PostItem>();
-        for (const p of collected) byId.set(p.id, p);
+        for (const p of collected) if (!isLegacyProductPost(p)) byId.set(p.id, p);
         const fresh = Array.from(byId.values()).sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
@@ -29967,9 +29971,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   if (user && String(p.authorId) === String(user.id) && !isCompanyPublisher) return false;
                   return isCompanyUserAccount({ id: p.authorId, username: p.authorUsername, name: p.authorName }, companies);
                 };
-                const feedPostsBase = combinedFeedPosts.filter(p =>
+                const feedPostsBase = combinedFeedPosts.filter(p => !isLegacyProductPost(p) && (
                   textFeedTab === 'companies' ? isCompanyPost(p) : !isCompanyPost(p)
-                );
+                ));
                 const feedPosts = (() => {
                   const q = textFeedSearchQuery.trim().toLowerCase();
                   if (!q) return feedPostsBase;
