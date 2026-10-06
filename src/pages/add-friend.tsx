@@ -9773,52 +9773,56 @@ export function OwnerAdsPanel({ onClose }: { onClose: () => void }) {
       <motion.div
         key="owner-ads"
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        style={{ position: 'fixed', inset: 0, zIndex: 13500, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+        style={{ position: 'fixed', inset: 0, zIndex: 13500, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
         onClick={() => onClose()}
       >
         <motion.div
-          initial={{ y: 40 }} animate={{ y: 0 }} exit={{ y: 60 }}
+          initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
           onClick={e => e.stopPropagation()}
           style={{
-            width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto',
-            background: '#fff', borderRadius: '18px 18px 0 0', padding: '16px 16px calc(20px + env(safe-area-inset-bottom))',
+            width: 'min(92vw, 380px)', maxHeight: '85vh', overflowY: 'auto', boxSizing: 'border-box',
+            background: 'radial-gradient(ellipse 90% 70% at 50% 0%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)',
+            border: '2px solid #eab308', borderRadius: 18,
+            boxShadow: '0 0 0 1px rgba(234,179,8,0.2), 0 20px 50px rgba(0,0,0,0.55)',
+            padding: '16px 16px 18px', color: '#cfe8e8',
+            scrollbarWidth: 'thin', scrollbarColor: 'rgba(234,179,8,0.55) transparent',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <p style={{ margin: 0, fontWeight: 900, fontSize: '1.05rem', color: '#0a0a0a' }}>Ads</p>
-            <button type="button" onClick={() => onClose()} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} /></button>
+            <p style={{ margin: 0, fontWeight: 900, fontSize: '1.05rem', color: '#eab308' }}>Ads</p>
+            <button type="button" onClick={() => onClose()} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#eab308' }}><X size={20} /></button>
           </div>
-          <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Subject</p>
+          <p style={{ margin: '0 0 8px', color: 'rgba(150,200,200,0.75)', fontSize: '0.75rem', fontWeight: 700 }}>Subject</p>
           <input
             value={businessAdTitle}
             onChange={e => setBusinessAdTitle(e.target.value.slice(0, 120))}
             style={{
-              width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,0,0,0.18)', borderRadius: 12,
+              width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,188,212,0.25)', borderRadius: 12,
               padding: '12px 14px', fontSize: '0.95rem', marginBottom: 12, outline: 'none',
-              color: '#0a0a0a', background: '#ffffff', caretColor: '#0a0a0a',
-              WebkitTextFillColor: '#0a0a0a',
+              color: '#e6f4f4', background: 'rgba(0,30,35,0.8)', caretColor: '#eab308',
+              WebkitTextFillColor: '#e6f4f4',
             }}
           />
-          <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Ad text</p>
+          <p style={{ margin: '0 0 8px', color: 'rgba(150,200,200,0.75)', fontSize: '0.75rem', fontWeight: 700 }}>Ad text</p>
           <textarea
             value={businessAdBody}
             onChange={e => setBusinessAdBody(e.target.value.slice(0, 2000))}
             rows={5}
             style={{
-              width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,0,0,0.18)', borderRadius: 12,
+              width: '100%', boxSizing: 'border-box', border: '1px solid rgba(0,188,212,0.25)', borderRadius: 12,
               padding: '12px 14px', fontSize: '0.85rem', fontWeight: 400, marginBottom: 12, outline: 'none',
-              resize: 'vertical', color: '#0a0a0a', background: '#ffffff', caretColor: '#0a0a0a',
-              WebkitTextFillColor: '#0a0a0a',
+              resize: 'vertical', color: '#e6f4f4', background: 'rgba(0,30,35,0.8)', caretColor: '#eab308',
+              WebkitTextFillColor: '#e6f4f4',
             }}
           />
-          <p style={{ margin: '0 0 8px', color: '#666', fontSize: '0.75rem', fontWeight: 700 }}>Media attachment</p>
-          <p style={{ margin: '0 0 10px', color: '#999', fontSize: '0.68rem', lineHeight: 1.4 }}>
+          <p style={{ margin: '0 0 8px', color: 'rgba(150,200,200,0.75)', fontSize: '0.75rem', fontWeight: 700 }}>Media attachment</p>
+          <p style={{ margin: '0 0 10px', color: 'rgba(150,200,200,0.5)', fontSize: '0.68rem', lineHeight: 1.4 }}>
             Video (MP4, MOV) · Image (JPG, PNG, WebP) · PDF
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
             <label style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
-              border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer',
+              border: '1.5px dashed rgba(234,179,8,0.55)', color: '#eab308', background: 'rgba(234,179,8,0.05)', fontWeight: 800, cursor: 'pointer',
             }}>
               <Video size={18} />
               Video (MP4, MOV)
@@ -9833,7 +9837,7 @@ export function OwnerAdsPanel({ onClose }: { onClose: () => void }) {
             </label>
             <label style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
-              border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer',
+              border: '1.5px dashed rgba(234,179,8,0.55)', color: '#eab308', background: 'rgba(234,179,8,0.05)', fontWeight: 800, cursor: 'pointer',
             }}>
               <ImageIcon size={18} />
               Image (JPG, PNG, WebP)
@@ -9848,7 +9852,7 @@ export function OwnerAdsPanel({ onClose }: { onClose: () => void }) {
             </label>
             <label style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
-              border: '1.5px dashed rgba(29,155,240,0.5)', color: '#1d9bf0', fontWeight: 800, cursor: 'pointer',
+              border: '1.5px dashed rgba(234,179,8,0.55)', color: '#eab308', background: 'rgba(234,179,8,0.05)', fontWeight: 800, cursor: 'pointer',
             }}>
               <FileText size={18} />
               PDF file
@@ -9864,8 +9868,8 @@ export function OwnerAdsPanel({ onClose }: { onClose: () => void }) {
           </div>
           {businessAdMedia && (
             <div style={{
-              marginBottom: 12, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(0,0,0,0.1)',
-              display: 'flex', alignItems: 'center', gap: 10, background: '#f7f9f9',
+              marginBottom: 12, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(234,179,8,0.35)',
+              display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(234,179,8,0.07)',
             }}>
               {businessAdMedia.type === 'image' && (
                 <img src={businessAdMedia.dataUrl} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
@@ -9873,17 +9877,17 @@ export function OwnerAdsPanel({ onClose }: { onClose: () => void }) {
               {businessAdMedia.type === 'video' && (
                 <video src={businessAdMedia.dataUrl} muted style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
               )}
-              {businessAdMedia.type === 'pdf' && <FileText size={22} color="#1d9bf0" />}
+              {businessAdMedia.type === 'pdf' && <FileText size={22} color="#eab308" />}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, color: '#0a0a0a', fontWeight: 700, fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{businessAdMedia.name}</p>
-                <p style={{ margin: '2px 0 0', color: '#888', fontSize: '0.68rem', textTransform: 'uppercase' }}>{businessAdMedia.type}</p>
+                <p style={{ margin: 0, color: '#e6f4f4', fontWeight: 700, fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{businessAdMedia.name}</p>
+                <p style={{ margin: '2px 0 0', color: 'rgba(150,200,200,0.6)', fontSize: '0.68rem', textTransform: 'uppercase' }}>{businessAdMedia.type}</p>
               </div>
               <button type="button" onClick={() => setBusinessAdMedia(null)} style={{ border: 'none', background: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 8, width: 32, height: 32, cursor: 'pointer' }}>
                 <X size={16} />
               </button>
             </div>
           )}
-          <p style={{ margin: '0 0 12px', color: '#888', fontSize: '0.72rem', lineHeight: 1.45 }}>
+          <p style={{ margin: '0 0 12px', color: 'rgba(150,200,200,0.55)', fontSize: '0.72rem', lineHeight: 1.45 }}>
             Owner ad · shown between feed posts
           </p>
           <button
@@ -9967,7 +9971,7 @@ export function OwnerAdsPanel({ onClose }: { onClose: () => void }) {
             }}
             style={{
               position: 'relative', width: '100%', padding: 14, borderRadius: 12, border: 'none',
-              background: '#1d9bf0', color: '#fff', fontWeight: 900, fontSize: '0.92rem',
+              background: '#eab308', color: '#0a0a0a', fontWeight: 900, fontSize: '0.92rem',
               cursor: (adPublishing || !businessAdMedia) ? 'default' : 'pointer', overflow: 'hidden',
               opacity: (adPublishing || !businessAdMedia) ? 0.45 : 1,
             }}
@@ -9977,12 +9981,12 @@ export function OwnerAdsPanel({ onClose }: { onClose: () => void }) {
               style={{
                 position: 'absolute', left: 0, top: 0, bottom: 0,
                 width: `${adPublishProgress}%`,
-                background: 'linear-gradient(90deg, #eab308 0%, #facc15 100%)',
+                background: 'linear-gradient(90deg, #16a34a 0%, #22c55e 100%)',
                 transition: 'width 0.12s linear',
                 borderRadius: 12,
               }}
             />
-            <span style={{ position: 'relative', zIndex: 1, color: adPublishProgress > 45 ? '#0a0a0a' : '#fff' }}>
+            <span style={{ position: 'relative', zIndex: 1, color: '#0a0a0a' }}>
               {adPublishing ? (adPublishProgress >= 100 ? 'Published' : 'Publishing…') : 'Publish Ad'}
             </span>
           </button>
@@ -19897,6 +19901,101 @@ const HOME_LIVE_SCROLL_MIN = 3;
 // بدل الحجم الكبير. اجعلها false لإرجاع الحجم الكبير القديم (قائمة المستمعين / معاينة الفيديو).
 const HOME_LIVE_COMPACT_CARD = true;
 
+// ── بطاقة Ads في صفحة القصة: نفس حجم وشكل بطاقة اللايف، بإطار أصفر وأسهم يمين/يسار — النقر يفتحها كاملة ──
+function HomeAdCard({ ad, lifted, onOpen, onDelete }: { ad: any; lifted: boolean; onOpen: (ad: any) => void; onDelete?: (ad: any) => void }) {
+  const isPdf = ad.mediaType === 'pdf' || (!ad.mediaType && !!ad.pdfUrl);
+  const [thumb, setThumb] = useState<string | null>(() => (isPdf ? null : (ad.mediaUrl || null)));
+  useEffect(() => {
+    if (thumb || isPdf || !ad.id) return;
+    let dead = false;
+    void stooornaAdMediaGet(String(ad.id)).then(m => { if (!dead && m) setThumb(m); }).catch(() => {});
+    return () => { dead = true; };
+  }, [ad.id, isPdf, thumb]);
+  const uname = String(ad.authorUsername || 'business').replace(/^@/, '');
+  const typeLabel = ad.mediaType === 'video' ? 'Video' : isPdf ? 'PDF' : 'Photo';
+  const arrowStyle: React.CSSProperties = { position: 'absolute', top: '50%', marginTop: -13, width: 22, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#eab308', filter: 'drop-shadow(0 0 5px rgba(234,179,8,0.85))', pointerEvents: 'none', zIndex: 3 };
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: -46, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -30, scale: 0.96 }}
+      transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+      style={{ position: 'relative', width: '100%', flexShrink: 0 }}
+    >
+      <motion.span aria-hidden animate={{ x: [0, 3, 0], opacity: [0.75, 1, 0.75] }} transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut' }} style={{ ...arrowStyle, left: -24 }}>
+        <ChevronRight size={24} strokeWidth={3.2} />
+      </motion.span>
+      <motion.span aria-hidden animate={{ x: [0, -3, 0], opacity: [0.75, 1, 0.75] }} transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut' }} style={{ ...arrowStyle, right: -24 }}>
+        <ChevronLeft size={24} strokeWidth={3.2} />
+      </motion.span>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`Ads — ${uname}`}
+        onClick={() => onOpen(ad)}
+        onKeyDown={ev => { if (ev.key === 'Enter') onOpen(ad); }}
+        style={{
+          position: 'relative', width: '100%', flexShrink: 0, boxSizing: 'border-box',
+          borderRadius: 20, border: '2px solid #eab308',
+          background: 'radial-gradient(ellipse 80% 90% at 50% 100%, #0e2b30 0%, #0a1a1c 55%, #071011 100%)',
+          boxShadow: '0 8px 22px rgba(0,0,0,0.45), 0 0 12px rgba(234,179,8,0.35)',
+          overflow: 'hidden', cursor: 'pointer', color: '#cfe8e8',
+          display: 'flex', flexDirection: 'column', padding: '12px 14px',
+          pointerEvents: lifted ? 'none' : 'auto',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative', zIndex: 2 }}>
+          <div style={{ position: 'relative', width: 46, height: 46, flexShrink: 0 }}>
+            <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid #eab308', boxShadow: '0 0 10px rgba(234,179,8,0.55)', boxSizing: 'border-box', overflow: 'hidden' }}>
+              <UserAvatar name={ad.authorName ?? ''} avatarUrl={ad.authorAvatarUrl} size={40} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+            </div>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 9px', borderRadius: 10, background: '#eab308', color: '#0a0a0a', fontWeight: 900, fontSize: '0.7rem', letterSpacing: '0.04em', flexShrink: 0 }}>Ads</span>
+              <span style={{ fontWeight: 800, fontSize: '1rem', color: '#d3ecec', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {String(ad.title || ad.authorName || `@${uname}`)}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, fontSize: '0.72rem', minWidth: 0 }}>
+              <span style={{ color: 'rgba(150,200,200,0.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{uname}</span>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#eab308', flexShrink: 0 }} />
+              <span style={{ color: '#eab308', fontWeight: 700, flexShrink: 0 }}>{typeLabel}</span>
+            </div>
+          </div>
+          <div style={{ position: 'relative', width: 42, height: 42, borderRadius: 12, overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(234,179,8,0.55)', background: 'rgba(234,179,8,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {ad.mediaType === 'image' && thumb ? (
+              <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : ad.mediaType === 'video' && thumb ? (
+              <video src={thumb} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : isPdf ? (
+              <FileText size={20} color="#eab308" />
+            ) : (
+              <ImageIcon size={20} color="#eab308" />
+            )}
+            {ad.mediaType === 'video' && (
+              <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.25)' }}>
+                <Play size={16} color="#fff" fill="#fff" />
+              </span>
+            )}
+          </div>
+          {onDelete && (
+            <button
+              type="button"
+              aria-label="Delete ad"
+              onClick={ev => { ev.stopPropagation(); onDelete(ad); }}
+              style={{ width: 42, height: 42, borderRadius: '50%', border: '1px solid rgba(239,68,68,0.55)', background: 'rgba(239,68,68,0.16)', boxShadow: '0 0 12px rgba(239,68,68,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+            >
+              <Trash2 size={18} strokeWidth={2.2} color="#ef4444" />
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 // أيقونات صف الهيدر: خافتة قليلاً عند الخمول، وعند النشاط تتحول للأخضر (أو البرتقالي لطلبات الإضافة) مع إضاءة واضحة. (بدل النقاط)
 function hdrIconTone(active: boolean, tone: 'green' | 'orange' = 'green'): React.CSSProperties {
   if (!active) {
@@ -19996,7 +20095,7 @@ function BottomHeaderPortal({ enabled, children }: { enabled: boolean; children:
   return createPortal(<>{children}</>, document.body);
 }
 
-function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGuestTap }: {
+function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGuestTap, onOpenAd, onDeleteAd }: {
   myId: string;
   hosts: HomeLiveHost[];
   enabled: boolean;
@@ -20004,6 +20103,10 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
   collapsed?: boolean;
   guest?: boolean;
   onGuestTap?: () => void;
+  /** يفتح إعلان Ads كاملاً (الفيديو/الصورة/PDF) عند النقر على بطاقته */
+  onOpenAd?: (ad: any) => void;
+  /** حذف إعلان Ads — يظهر زر الحذف فقط لصاحب الإعلان */
+  onDeleteAd?: (ad: any) => void;
 }) {
   const navigate = useNavigate();
   const [entries, setEntries] = useState<HomeLiveEntry[]>(() => (homeLiveCache.uid === myId ? homeLiveCache.entries : []));
@@ -20034,7 +20137,22 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
   liveScrollHiddenRef.current = !!collapsed;
   const liveVisibleList = showCards ? entries.filter(e => !dismissed.has(e.id) && liveSharedIsHeld(e.id)) : [];
   const liveCount = liveVisibleList.length;
-  const liveScrollMode = liveCount >= HOME_LIVE_SCROLL_MIN;
+  // ── بطاقات Ads (فيديو / صورة / PDF) تظهر مع بطاقات اللايف بنفس الحجم ──
+  const [adsTick, setAdsTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setAdsTick(x => x + 1);
+    window.addEventListener('stooorna:feed-ads', bump);
+    const id = window.setInterval(bump, 5000);
+    return () => { window.removeEventListener('stooorna:feed-ads', bump); window.clearInterval(id); };
+  }, []);
+  const homeAds: any[] = showCards ? (() => {
+    void adsTick;
+    try {
+      const now = Date.now();
+      return loadFeedAdsMeta().filter((a: any) => isAdLive(a, now) && (a.mediaType === 'video' || a.mediaType === 'image' || a.mediaType === 'pdf' || !!a.pdfUrl));
+    } catch { return []; }
+  })() : [];
+  const liveScrollMode = (liveCount + homeAds.length) >= HOME_LIVE_SCROLL_MIN;
   // ── Active broadcast: only ONE home live plays sound at a time (the one showing the side arrows).
   //    Scrolling the list moves the arrows (and the sound) to the broadcast now at the top. ──
   const liveListRef = useRef<HTMLDivElement | null>(null);
@@ -20492,7 +20610,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
         style={{
           position: 'fixed', left: 0, right: 0, top: topPx, zIndex: 16,
           display: 'flex', flexDirection: 'column', gap: 10,
-          padding: visible.length ? '8px 26px' : 0,
+          padding: (visible.length || homeAds.length) ? '8px 26px' : 0,
           maxHeight: `calc(100dvh - ${topPx}px - ${collapsed ? 12 : 104}px)`,
           overflowY: 'auto', overscrollBehavior: 'contain', scrollbarWidth: 'none',
           WebkitOverflowScrolling: 'touch', touchAction: 'pan-y',
@@ -20621,6 +20739,18 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
               </motion.div>
             );
           })}
+        </AnimatePresence>
+        {/* بطاقات Ads — نفس حجم كرت اللايف، إطار أصفر + أسهم، والنقر يفتحها كاملة */}
+        <AnimatePresence initial={false}>
+          {homeAds.map(ad => (
+            <HomeAdCard
+              key={`home-ad-${ad.id}`}
+              ad={ad}
+              lifted={lifted}
+              onOpen={a => { if (onOpenAd) onOpenAd(a); }}
+              onDelete={onDeleteAd && myId && String(ad.userId) === String(myId) ? onDeleteAd : undefined}
+            />
+          ))}
         </AnimatePresence>
       </motion.div>
 
@@ -29012,6 +29142,30 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 </div>
                 {feedAdViewer.title ? <p style={{ margin: '2px 0 0', color: 'rgba(255,255,255,0.75)', fontSize: '0.75rem' }}>{feedAdViewer.title}</p> : null}
               </div>
+              {user?.id && String(feedAdViewer.userId) === String(user.id) && (
+                <button
+                  type="button"
+                  aria-label="Delete ad"
+                  onClick={() => {
+                    if (!window.confirm('Delete this ad?')) return;
+                    const id = String(feedAdViewer.id);
+                    void (async () => {
+                      try { await stooornaAdMediaDelete(id); } catch { /* */ }
+                      saveFeedAdsMeta(loadFeedAdsMeta().filter((x: any) => String(x.id) !== id));
+                      setFeedAdsTick(t => t + 1);
+                      setFeedAdViewer(null);
+                      setAdDetailOpen((v: any) => (v && String(v.id) === id ? null : v));
+                    })();
+                  }}
+                  style={{
+                    border: '1px solid rgba(239,68,68,0.55)', background: 'rgba(239,68,68,0.18)', color: '#ef4444',
+                    width: 36, height: 36, minWidth: 36, borderRadius: '50%', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+                  }}
+                >
+                  <Trash2 size={17} strokeWidth={2.2} />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setFeedAdViewer(null)}
@@ -32638,6 +32792,27 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           onGuestTap={() => {
             try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
             navigate('/settings');
+          }}
+          onDeleteAd={(ad: any) => {
+            if (!window.confirm('Delete this ad?')) return;
+            void (async () => {
+              const id = String(ad.id);
+              try { await stooornaAdMediaDelete(id); } catch { /* */ }
+              saveFeedAdsMeta(loadFeedAdsMeta().filter((x: any) => String(x.id) !== id));
+              setFeedAdsTick(t => t + 1);
+              setFeedAdViewer((v: any) => (v && String(v.id) === id ? null : v));
+              setAdDetailOpen((v: any) => (v && String(v.id) === id ? null : v));
+            })();
+          }}
+          onOpenAd={(ad: any) => {
+            void (async () => {
+              let full = { ...ad };
+              if (!full.mediaUrl && !full.pdfUrl) {
+                const m = await stooornaAdMediaGet(String(ad.id));
+                if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
+              }
+              setFeedAdViewer(full);
+            })();
           }}
         />
       )}
