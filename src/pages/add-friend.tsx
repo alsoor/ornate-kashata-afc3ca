@@ -19522,7 +19522,7 @@ function PublicLiveCommentsPanel({
           @keyframes stooornaChatBarRise { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
           @keyframes stooornaChatBarFall { from { transform: translateY(0); opacity: 1; } to { transform: translateY(30px); opacity: 0; } }
         `}</style>
-        <div style={{
+        <div data-live-emoji-bar style={{
           display: chatLift === 0 ? 'none' : 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
