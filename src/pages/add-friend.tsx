@@ -18633,7 +18633,7 @@ function PublicLiveCommentsPanel({
       try {
         if ((window as any).__stooornaGrabberLift) { (window as any).__stooornaGrabberLift = false; return; }
       } catch { /* */ }
-      setChatLift(1);
+      React.startTransition(() => { setChatLift(1); });
     }
   }, [headerOpen]);
   /** النقر على هيد توقيت تنظيف الشات: ينزّل الشات بانميشن الهبوط ثم يفتح الشيت = رجوع لصفحة القصة */
@@ -23629,6 +23629,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [headerOpen, setHeaderOpen] = useState(true);
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
   const [liveScrollHidden, setLiveScrollHidden] = useState(false);
+  // [perf] نسخة مؤجّلة من حالة الشيت للوحة الشات الثقيلة (تُحمَّل بعد بدء حركة الشيت لا قبلها)
+  const panelHeaderOpen = React.useDeferredValue(headerOpen || liveScrollHidden);
   const [bottomBarHidden, setBottomBarHidden] = useState(false);
   void bottomBarHidden; // الهيد السفلي ثابت — الحالة محفوظة فقط للتوافق
   // الشات كطبقة كاملة فوق الصفحات (ضغطة مطوّلة على Call) — لا يرفع الشيت
@@ -23899,16 +23901,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }
 
   function toggleHeaderOpen() {
-    setHeaderOpen(prev => {
-      const next = !prev;
-      setHeaderHintSeen(true);
-      try {
-        window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', {
-          detail: { dir: next ? 'up' : 'down' },
-        }));
-      } catch { /* ignore */ }
-      return next;
-    });
+    // [perf] الحدث يُرسل فوراً (خارج updater) والتغيير الثقيل نفسه يجري كـ transition حتى لا يُجمّد حركة الشيت
+    const next = !headerOpen;
+    setHeaderHintSeen(true);
+    try {
+      window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', {
+        detail: { dir: next ? 'up' : 'down' },
+      }));
+    } catch { /* ignore */ }
+    React.startTransition(() => { setHeaderOpen(next); });
   }
 
   // Keep bottom nav in sync with header shutter (scroll or grabber)
@@ -26016,9 +26017,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               {/* Fog overlay */}
               <div aria-hidden style={{
                 position: 'absolute', inset: 0, zIndex: 6,
-                background: 'rgba(4,8,8,0.95)',
-                backdropFilter: 'blur(22px)',
-                WebkitBackdropFilter: 'blur(22px)',
+                background: 'rgba(4,8,8,0.97)',
+                willChange: 'opacity',
+                transform: 'translateZ(0)',
                 opacity: headerOpen ? 0 : 1,
                 pointerEvents: headerOpen ? 'none' : 'auto',
                 transition: headerOpen
@@ -32998,7 +32999,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         }}
       />
       {pageTab === 'profile' && !isFriendManagement && !guestMode && (
-        <PublicLiveCommentsPanel user={user as any} headerOpen={headerOpen || liveScrollHidden} onToggleHeader={toggleHeaderOpen} onBusyChange={setLiveChatBusy} overlayOpen={chatOverlayOpen} onOverlayClose={() => setChatOverlayOpen(false)} />
+        <PublicLiveCommentsPanel user={user as any} headerOpen={panelHeaderOpen} onToggleHeader={toggleHeaderOpen} onBusyChange={setLiveChatBusy} overlayOpen={chatOverlayOpen} onOverlayClose={() => setChatOverlayOpen(false)} />
       )}
       {GuestModal}
     </>;
