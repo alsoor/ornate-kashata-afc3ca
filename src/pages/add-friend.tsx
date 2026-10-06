@@ -19896,6 +19896,8 @@ const HOME_LIVE_SILVER = 'linear-gradient(135deg,#f4f6f9 0%,#9ba3ae 28%,#e6e9ee 
 const HOME_LIVE_CHAT_LIFT_EVT = 'stooorna:chat-lift';
 // Many open broadcasts: list scrolls; finger up hides header + icon row, finger down shows them again.
 const HOME_LIVE_SCROLL_EVT = 'stooorna:home-live-scroll';
+// الشريط السفلي (Call | LIVE | Templates | Settings): يختفي عند التمرير للأعلى ويرجع عند النزول
+const HOME_BOTTOM_BAR_EVT = 'stooorna:home-bottom-bar';
 const HOME_LIVE_SCROLL_MIN = 3;
 // بطاقة البث في صفحة القصة: مضغوطة (صف واحد: صورة + LIVE + الاسم + Busy + عدد المستمعين + السماعة)
 // بدل الحجم الكبير. اجعلها false لإرجاع الحجم الكبير القديم (قائمة المستمعين / معاينة الفيديو).
@@ -20239,6 +20241,13 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
   const liveScrollLastTopRef = useRef(0);
   const liveScrollLockRef = useRef(0);
   const liveScrollHiddenRef = useRef(false);
+  const bottomBarHiddenRef = useRef(false);
+  // لو انتهت القائمة/خرجنا من الصفحة نرجّع الشريط السفلي
+  useEffect(() => () => {
+    if (bottomBarHiddenRef.current) {
+      try { window.dispatchEvent(new CustomEvent(HOME_BOTTOM_BAR_EVT, { detail: { hidden: false } })); } catch { /* */ }
+    }
+  }, []);
   liveScrollHiddenRef.current = !!collapsed;
   const liveVisibleList = showCards ? entries.filter(e => !dismissed.has(e.id) && liveSharedIsHeld(e.id)) : [];
   const liveCount = liveVisibleList.length;
@@ -20691,7 +20700,17 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, guest, onGu
     livePinnedRef.current = '';
     recomputeActiveLive();
     // الهيد ثابت دائماً: التمرير يحرّك بطاقات اللايف وAds فقط، وتختفي تحت حافة الهيد (لا إخفاء للهيد ولا للأيقونات)
-    liveScrollLastTopRef.current = ev.currentTarget.scrollTop;
+    const cur = ev.currentTarget.scrollTop;
+    const delta = cur - liveScrollLastTopRef.current;
+    liveScrollLastTopRef.current = cur;
+    let hideBar: boolean | null = null;
+    if (cur <= 4) hideBar = false;         // رجعنا لأول القائمة -> يظهر الشريط
+    else if (delta > 6) hideBar = true;    // تمرير للأعلى -> يختفي الشريط السفلي
+    else if (delta < -6) hideBar = false;  // تمرير للأسفل -> يرجع
+    if (hideBar !== null && hideBar !== bottomBarHiddenRef.current) {
+      bottomBarHiddenRef.current = hideBar;
+      try { window.dispatchEvent(new CustomEvent(HOME_BOTTOM_BAR_EVT, { detail: { hidden: hideBar } })); } catch { /* */ }
+    }
   };
 
   return createPortal(
@@ -23566,6 +23585,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [headerOpen, setHeaderOpen] = useState(true);
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
   const [liveScrollHidden, setLiveScrollHidden] = useState(false);
+  const [bottomBarHidden, setBottomBarHidden] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => setBottomBarHidden(!!(e as CustomEvent).detail?.hidden);
+    window.addEventListener(HOME_BOTTOM_BAR_EVT, on);
+    return () => window.removeEventListener(HOME_BOTTOM_BAR_EVT, on);
+  }, []);
   useEffect(() => {
     const on = (e: Event) => {
       const hide = !!(e as CustomEvent).detail?.hidden;
@@ -26330,6 +26355,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             background: 'rgba(4,12,12,0.96)',
             backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
             borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
+            transform: bottomBarHidden ? 'translateY(110%)' : 'translateY(0)',
+            transition: 'transform 0.25s ease',
           } : { display: 'flex', justifyContent: 'center', padding: '8px 0 10px', position: 'relative' }}>
                 <div style={{
                   position: 'relative',
