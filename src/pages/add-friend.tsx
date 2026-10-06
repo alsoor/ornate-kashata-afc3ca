@@ -19380,6 +19380,8 @@ function PublicLiveCommentsPanel({
         background: !chatUiLifted ? '#060e0e' : '#fff',
         paddingBottom: kbInset > 0 ? kbInset + 6 : 'max(8px, env(safe-area-inset-bottom))',
         flexShrink: 0,
+        // الشات مقفول (رفع الهيدر بنقر الخط): ما يظهر شريط التعليق تحت — يظهر فقط لما الشات ينفتح بالضغط المطوّل على Call
+        display: (chatLift === 0 && !overlayOpen) ? 'none' : undefined,
       }}>
         <style>{`
           @keyframes stooornaTypeDots { 0%,20%{opacity:.2} 50%{opacity:1} 100%{opacity:.2} }
