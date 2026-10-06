@@ -16869,6 +16869,13 @@ function LiveMediaDeleteBtn({ onConfirm, variant, style }: { onConfirm: () => vo
   );
 }
 
+// True while the Templates gallery bubble is actually on screen (it now stays mounted, hidden, so videos must pause when it is hidden).
+let tplGalleryVisible = false;
+function setTplGalleryVisible(v: boolean) {
+  if (tplGalleryVisible === v) return;
+  tplGalleryVisible = v;
+  try { window.dispatchEvent(new CustomEvent('stooorna:templates-gallery-visible', { detail: { open: v } })); } catch { /* */ }
+}
 function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenProfile, canDelete = false, onDelete }: {
   c: PublicLiveComment;
   liked: boolean;
@@ -16895,9 +16902,18 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
     io.observe(el);
     return () => io.disconnect();
   }, [isVideo, near]);
+  const [shown, setShown] = useState(() => tplGalleryVisible);
+  useEffect(() => {
+    const f = (e: Event) => setShown(!!(e as CustomEvent).detail?.open);
+    window.addEventListener('stooorna:templates-gallery-visible', f);
+    setShown(tplGalleryVisible);
+    return () => window.removeEventListener('stooorna:templates-gallery-visible', f);
+  }, []);
   useEffect(() => {
     const v = ref.current;
-    if (!v || typeof IntersectionObserver === 'undefined') return;
+    if (!v) return;
+    if (!shown) { v.pause(); return; }          // gallery hidden (kept alive) → no playback, no decoding work
+    if (typeof IntersectionObserver === 'undefined') { void v.play().catch(() => { /* */ }); return; }
     const io = new IntersectionObserver(entries => {
       entries.forEach(en => {
         if (en.isIntersecting) { void v.play().catch(() => { /* autoplay blocked */ }); } else { v.pause(); }
@@ -16905,7 +16921,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
     }, { threshold: 0.35 });
     io.observe(v);
     return () => io.disconnect();
-  }, [c.imageUrl, near]);
+  }, [c.imageUrl, near, shown]);
   const chip: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 999,
     padding: '4px 8px', color: '#fff', fontSize: '0.68rem', fontWeight: 800,
@@ -16919,7 +16935,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
       >
         {isVideo ? (
           near
-            ? <video ref={ref} src={c.imageUrl || ''} autoPlay loop muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+            ? <video ref={ref} src={c.imageUrl || ''} loop muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
             : <div aria-hidden="true" style={{ width: '100%', height: '100%', background: 'linear-gradient(160deg, #10201c 0%, #0b1512 100%)' }} />
         ) : (
           <img src={c.imageUrl || ''} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
@@ -17845,6 +17861,21 @@ function PublicLiveCommentsPanel({
   const [tplOpen, setTplOpen] = useState(false);
   // ── Templates bubble (dock icon between LIVE and Settings): the photos/videos gallery now lives here instead of behind the sheet ──
   const [tplBubble, setTplBubble] = useState<null | { x: number }>(null);
+  // KEEP-ALIVE: once built (on first open, or pre-built at idle) the Templates bubble stays mounted and is only hidden.
+  const [tplWarm, setTplWarm] = useState(false);
+  const tplLastX = useRef(0);
+  if (tplBubble) tplLastX.current = tplBubble.x;
+  useEffect(() => { setTplGalleryVisible(!!tplBubble); if (tplBubble) setTplWarm(true); }, [tplBubble]);
+  useEffect(() => {
+    if (tplWarm) return;
+    const w = window as any;
+    let idle: any = null;
+    const t = window.setTimeout(() => {
+      if (typeof w.requestIdleCallback === 'function') idle = w.requestIdleCallback(() => setTplWarm(true), { timeout: 4000 });
+      else setTplWarm(true);
+    }, 3500);
+    return () => { window.clearTimeout(t); if (idle != null && typeof w.cancelIdleCallback === 'function') w.cancelIdleCallback(idle); };
+  }, [tplWarm]);
   // templates-favorites-bubble: yellow-framed Favorites page that opens on top of the Templates page
   const [tplFavOpen, setTplFavOpen] = useState(false);
   useEffect(() => { if (!tplBubble) setTplFavOpen(false); }, [tplBubble]);
@@ -18804,14 +18835,16 @@ function PublicLiveCommentsPanel({
     setTplBubble(null);
     try { window.dispatchEvent(new CustomEvent('stooorna:templates-bubble-close')); } catch { /* */ }
   };
-  const templatesBubble = (tplBubble && typeof document !== 'undefined') ? createPortal(
+  const tplShown = !!tplBubble;
+  const templatesBubble = ((tplBubble || tplWarm) && typeof document !== 'undefined') ? createPortal(
     (() => {
       const SIDE = 12;
-      const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, tplBubble.x - SIDE));
+      const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, (tplBubble?.x ?? tplLastX.current) - SIDE));
       return (
         <>
-          <div onPointerDown={e => { e.preventDefault(); closeTplBubble(); }} style={{ position: 'fixed', inset: 0, zIndex: 10068, background: 'rgba(0,6,8,0.45)' }} />
+          <div onPointerDown={e => { e.preventDefault(); closeTplBubble(); }} style={{ position: 'fixed', inset: 0, zIndex: 10068, background: 'rgba(0,6,8,0.45)', opacity: tplShown ? 1 : 0, visibility: tplShown ? 'visible' : 'hidden', pointerEvents: tplShown ? 'auto' : 'none', transition: tplShown ? 'opacity 140ms ease-out' : 'opacity 110ms ease-in, visibility 0s linear 110ms' }} />
           <div
+            aria-hidden={!tplShown}
             onClick={e => e.stopPropagation()}
             onTouchStart={e => e.stopPropagation()}
             onTouchMove={e => e.stopPropagation()}
@@ -18825,8 +18858,12 @@ function PublicLiveCommentsPanel({
               background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
               border: '1.5px solid rgba(0,188,212,0.35)',
               boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
-              animation: 'stooornaPlusFanIn 0.22s ease-out',
-              pointerEvents: 'auto',
+              animation: tplShown ? 'stooornaPlusFanIn 0.18s cubic-bezier(0.22,1,0.36,1)' : 'none',
+              opacity: tplShown ? 1 : 0,
+              transform: tplShown ? 'none' : 'translateY(10px)',
+              visibility: tplShown ? 'visible' : 'hidden',
+              pointerEvents: tplShown ? 'auto' : 'none',
+              transition: tplShown ? 'none' : 'opacity 110ms ease-in, transform 110ms ease-in, visibility 0s linear 110ms',
             }}
           >
             <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: tailLeft - 9, width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
@@ -21281,6 +21318,10 @@ function dockSet(n: DockState | ((cur: DockState) => DockState)) {
   }
 }
 
+// Settings is a big page with many polling timers, so we do NOT keep it alive forever: it stays mounted this long after the
+// bubble is closed (re-opening inside that window = instant, no reload), then it is unmounted to stop its background work.
+const DOCK_SETTINGS_KEEP_MS = 60_000;
+
 // Friends list for the Call bubble: cached + refreshed in the background (no more "Loading…" on every open).
 const dockFriendsCache: { list: Friend[] | null; p: Promise<Friend[] | null> | null } = { list: null, p: null };
 function refreshDockFriends(): Promise<Friend[] | null> {
@@ -21312,26 +21353,61 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
   const [dockFriends, setDockFriends] = useState<Friend[]>(() => dockFriendsCache.list ?? []);
   const [dockFriendsLoading, setDockFriendsLoading] = useState(false);
   const bubbleKind = dockBubble?.kind;
+  const friendsTried = useRef(false);
   useEffect(() => {
     if (bubbleKind !== 'call') return;
     let off = false;
     if (dockFriendsCache.list) setDockFriends(dockFriendsCache.list); // show cached friends instantly
     else setDockFriendsLoading(true);
-    void refreshDockFriends().then(list => { if (!off && list) setDockFriends(list); }).finally(() => { if (!off) setDockFriendsLoading(false); });
+    void refreshDockFriends().then(list => { if (!off && list) setDockFriends(list); }).finally(() => { friendsTried.current = true; if (!off) setDockFriendsLoading(false); });
     return () => { off = true; };
   }, [bubbleKind]);
-  if (guestMode || !dockBubble || dockBubble.kind === 'templates' || typeof document === 'undefined') return null;
-  return createPortal((() => {
+  // Render straight from the cache (no empty "No friends" flash on the first frame after tapping Call).
+  const friendsView: Friend[] = dockFriends.length ? dockFriends : (dockFriendsCache.list ?? []);
+  const friendsLoadingView = dockFriendsLoading || (dockFriendsCache.list === null && !friendsTried.current);
+  // ── KEEP-ALIVE: bubbles are never torn down on close — they are only hidden (opacity/visibility), so re-opening is instant and
+  //    nothing reloads. Call/LIVE are pre-built at idle; Settings builds its shell instantly and mounts the page on the next frame.
+  const [, bump] = useState(0);
+  const warmRef = useRef<Set<DockKind>>(new Set());
+  const lastX = useRef(180);
+  if (dockBubble) lastX.current = dockBubble.x;
+  const active: DockKind | null = dockBubble?.kind ?? null;
+  if (active === 'call' || active === 'live') warmRef.current.add(active);
+  const [settingsMounted, setSettingsMounted] = useState(false);
+  useEffect(() => {
+    if (guestMode || !user?.id) return;
+    const w = window as any;
+    let idle: any = null;
+    const t = window.setTimeout(() => {
+      const run = () => { warmRef.current.add('call'); warmRef.current.add('live'); bump(v => v + 1); };
+      if (typeof w.requestIdleCallback === 'function') idle = w.requestIdleCallback(run, { timeout: 4000 });
+      else run();
+    }, 2500);
+    return () => { window.clearTimeout(t); if (idle != null && typeof w.cancelIdleCallback === 'function') w.cancelIdleCallback(idle); };
+  }, [guestMode, user?.id]);
+  useEffect(() => {
+    if (active === 'settings') {
+      if (settingsMounted) return;
+      let r2 = 0;
+      const r1 = requestAnimationFrame(() => { r2 = requestAnimationFrame(() => setSettingsMounted(true)); });
+      return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); };
+    }
+    if (!settingsMounted) return;
+    const t = window.setTimeout(() => setSettingsMounted(false), DOCK_SETTINGS_KEEP_MS);
+    return () => window.clearTimeout(t);
+  }, [active, settingsMounted]);
+  if (guestMode || typeof document === 'undefined') return null;
+  const renderBubble = (kind: Exclude<DockKind, 'templates'>, active: boolean) => {
+  const dockBubble = { kind, x: lastX.current };
   const SIDE = 12;
   const tailLeft = Math.max(22, Math.min((typeof window !== 'undefined' ? window.innerWidth : 360) - SIDE * 2 - 22, dockBubble.x - SIDE)) ;
   const closeBubble = () => dockSet(null);
   const title = dockBubble.kind === 'call' ? 'Call' : dockBubble.kind === 'live' ? 'LIVE' : 'Settings';
   const primaryBtn: React.CSSProperties = { width: '100%', padding: '12px 14px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.5)', background: 'rgba(0,188,212,0.16)', color: '#7ee8f5', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 };
   return (
-    <>
-      <div onPointerDown={e => { e.preventDefault(); closeBubble(); }} style={{ position: 'fixed', inset: 0, zIndex: 10068, background: 'rgba(0,6,8,0.45)' }} />
       <div
         key={dockBubble.kind}
+        aria-hidden={!active}
         onClick={e => e.stopPropagation()}
         style={{
           position: 'fixed', zIndex: 10075, left: SIDE, right: SIDE, bottom: 'calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
@@ -21341,7 +21417,13 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
           background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
           border: '1.5px solid rgba(0,188,212,0.35)',
           boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
-          animation: 'stooornaPlusFanIn 0.22s ease-out',
+          // open = quick keyframe fade/slide (works on first mount too); close = transition. Opacity/transform only → stays on the GPU.
+          animation: active ? 'stooornaPlusFanIn 0.18s cubic-bezier(0.22,1,0.36,1)' : 'none',
+          opacity: active ? 1 : 0,
+          transform: active ? 'none' : 'translateY(10px)',
+          visibility: active ? 'visible' : 'hidden',
+          pointerEvents: active ? 'auto' : 'none',
+          transition: active ? 'none' : 'opacity 110ms ease-in, transform 110ms ease-in, visibility 0s linear 110ms',
         }}
       >
         {/* tail → points at the tapped icon */}
@@ -21370,9 +21452,9 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
         <div style={{ flex: 1, minHeight: 0, position: 'relative', overflowY: dockBubble.kind === 'settings' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', gap: 8, WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', borderRadius: 14 }}>
           {dockBubble.kind === 'call' && (
             <>
-              {dockFriendsLoading && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}
-              {!dockFriendsLoading && dockFriends.length === 0 && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No friends to call yet</p>}
-              {dockFriends.map(f => (
+              {friendsLoadingView && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}
+              {!friendsLoadingView && friendsView.length === 0 && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No friends to call yet</p>}
+              {friendsView.map(f => (
                 <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.18)', background: 'rgba(0,188,212,0.05)' }}>
                   <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: 'none' }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -21532,13 +21614,30 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
             );
           })()}
           {dockBubble.kind === 'settings' && (
-            <DockEmbeddedApp onExit={(to) => { closeBubble(); navigate(to); }} />
+            settingsMounted
+              ? <DockEmbeddedApp onExit={(to) => { closeBubble(); navigate(to); }} />
+              : <p style={{ margin: '48px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>
           )}
         </div>
       </div>
-    </>
   );
-  })(), document.body);
+  };
+  const showBackdrop = active === 'call' || active === 'live' || active === 'settings';
+  const kinds: Array<Exclude<DockKind, 'templates'>> = ['call', 'live', 'settings'];
+  return createPortal(
+    <>
+      <div
+        onPointerDown={e => { e.preventDefault(); dockSet(null); }}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 10068, background: 'rgba(0,6,8,0.45)',
+          opacity: showBackdrop ? 1 : 0, visibility: showBackdrop ? 'visible' : 'hidden', pointerEvents: showBackdrop ? 'auto' : 'none',
+          transition: showBackdrop ? 'opacity 140ms ease-out' : 'opacity 110ms ease-in, visibility 0s linear 110ms',
+        }}
+      />
+      {kinds.map(k => ((k === active || (k === 'settings' ? settingsMounted : warmRef.current.has(k))) ? renderBubble(k, k === active) : null))}
+    </>,
+    document.body,
+  );
 }
 
 export default function AddFriendPage() {
