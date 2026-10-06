@@ -322,10 +322,13 @@ async function payWithGooglePlay(pack: { id: string; coins: number; usd: number 
   }
   let response: any;
   try {
+    const item = details[0] || {};
+    const title = String(item.title || item.name || `${fmtCoins(pack.coins)} Coins`);
     const request = new (window as any).PaymentRequest(
       [{ supportedMethods: GOOGLE_PLAY_SERVICE_URL, data: { sku } }],
-      { total: { label: `${fmtCoins(pack.coins)} Coins`, amount: { currency: 'USD', value: '0' } } },
+      { total: { label: title, amount: { currency: 'USD', value: '0' } } },
     );
+    // Must stay in the tap's user gesture — this is the native Play "1-tap buy" sheet.
     response = await request.show();
   } catch (e: any) {
     const name = String(e?.name || '');
@@ -393,7 +396,7 @@ function PaymentMethodSheet({ pack, googleCheck, onPick }: { pack: { id: string;
   }, []);
   const isCustom = pack.id === CUSTOM_ID;
   const googleEnabled = googleOk && !isCustom;
-  const googleNote = isCustom ? 'Fixed packs only' : (googleState === 'checking' ? 'Checking…' : (googleOk ? 'Pay with your Google Play account' : 'Available in the app installed from Google Play only'));
+  const googleNote = isCustom ? 'Fixed packs only' : (googleState === 'checking' ? 'Checking…' : (googleOk ? '1-tap buy · card saved in Google Play' : 'Available in the app installed from Google Play only'));
   const row = (enabled: boolean): React.CSSProperties => ({
     display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
     padding: '14px 14px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.12)',
@@ -487,7 +490,7 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
   } else if (!PACKS.some(p => p.coins === pack.coins)) {
     return { ok: false, error: 'Choose one of the available packs' };
   }
-  // اختيار طريقة الدفع: Polar (كما كان) أو Google Play. إغلاق المربع = إلغاء بدون أي رسالة (ok + redirected حتى لا يظهر خطأ).
+  // الطريقتان: Polar كما هي، أو Google Play (ورقة 1-tap buy). إغلاق المربع = إلغاء بدون رسالة.
   const method = await askPaymentMethod(pack, userId);
   if (!method) return { ok: true, redirected: true };
   if (method === 'google') {
@@ -951,6 +954,8 @@ export function grantAppCoins(targetUserId: string, coins: number): { ok: boolea
 
 export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentUserAvatar, yellowRight = YELLOW_DOT_RIGHT }: { hostId?: string; currentUserId?: string; currentUserName?: string; currentUserAvatar?: string | null; yellowRight?: number }) {
   const uid = String(currentUserId || '');
+  // Warm Play Billing so the first coin tap can open the native 1-tap sheet inside the user gesture.
+  useEffect(() => { void getGooglePlayService(); }, []);
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [coinsOpen, setCoinsOpen] = useState(false);
   const [giftsOpen, setGiftsOpen] = useState(false);
