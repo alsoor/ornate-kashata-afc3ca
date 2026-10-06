@@ -3853,6 +3853,18 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         }
       }
 
+      // Email must not already be registered (checked on the server, case-insensitive)
+      try {
+        const ec = await fetch(`/api/users/check-username?email=${encodeURIComponent(em)}`, { credentials: 'include' });
+        if (ec.ok) {
+          const ed = await ec.json();
+          if (ed && ed.emailAvailable === false) {
+            setError('This email is already registered. Sign in instead.');
+            return;
+          }
+        }
+      } catch { /* server check unavailable - let sign-up decide */ }
+
       if (accountKind === 'company') {
         if (!companyName.trim()) {
           setError(L.needCompanyName);
