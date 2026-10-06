@@ -181,11 +181,19 @@ export default function PublicVoiceLive({
     function unlock() {
       init();
       const ctx = audioCtxRef.current;
-      if (!ctx) return;
-      void ctx.resume().then(() => { if (ctx.state === 'running') cleanup(); }).catch(() => {});
+      if (ctx && ctx.state !== 'running') void ctx.resume().catch(() => {});
+      // Android WebView (APK): also unlock the <audio> fallback inside this real tap so it may play later
+      try {
+        if (!chimeAudioRef.current) {
+          const a = new Audio(MIC_SOUND_URL);
+          a.muted = true;
+          void a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; chimeAudioRef.current = a; }).catch(() => {});
+        }
+      } catch { /* ignore */ }
     }
     init();
-    evs.forEach(e => window.addEventListener(e, unlock));
+    // listeners stay for the whole session: the WebView can suspend audio again after the mic starts
+    evs.forEach(e => window.addEventListener(e, unlock, { passive: true }));
     return () => {
       cleanup();
       try { void audioCtxRef.current?.close(); } catch { /* ignore */ }
@@ -231,10 +239,10 @@ export default function PublicVoiceLive({
     if (pressTimerRef.current) { window.clearTimeout(pressTimerRef.current); pressTimerRef.current = null; }
   }, []);
 
-  const sendMicSound = useCallback(async () => {
+  const sendMicSound = useCallback(async (presetId?: string) => {
     // Chime is off: do not play it locally and do not broadcast it to listeners
     if (chimeOffRef.current) return;
-    const payload = { t: 'mic-sound', id: `ms-${userId}-${Date.now()}`, userId: String(userId || ''), at: Date.now() };
+    const payload = { t: 'mic-sound', id: presetId || `ms-${userId}-${Date.now()}`, userId: String(userId || ''), at: Date.now() };
     playMicSound(payload.id);
     try {
       const bytes = new TextEncoder().encode(JSON.stringify(payload));
@@ -268,13 +276,16 @@ export default function PublicVoiceLive({
     if (coolMs > 0 || talkingRef.current || !userId) return;
     const mic = micRef.current;
     if (!mic) return;
+    // Play the chime right now, inside the user's tap (Android WebView blocks sound after an await)
+    const chimeId = `ms-${userId}-${Date.now()}`;
+    if (!chimeOffRef.current) playMicSound(chimeId);
     try {
       await mic.setEnabled(true);
       try { mic.setMuted(false); } catch { /* ignore */ }
       talkingRef.current = true;
       setTalking(true);
       setLeftMs(TALK_MS);
-      void sendMicSound();
+      void sendMicSound(chimeId);
       await fetch('/api/room/floor', {
         method: 'POST',
         credentials: 'include',
@@ -285,7 +296,7 @@ export default function PublicVoiceLive({
       talkingRef.current = false;
       setTalking(false);
     }
-  }, [coolMs, userId, sendMicSound]);
+  }, [coolMs, userId, sendMicSound, playMicSound]);
 
   useEffect(() => {
     if (!talking) return;
