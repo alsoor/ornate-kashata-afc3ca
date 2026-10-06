@@ -3825,6 +3825,10 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         setError(L.pwShort);
         return;
       }
+      if (em !== confirmEmail.trim().toLowerCase()) {
+        setError('Email and confirm email do not match');
+        return;
+      }
       // اليوزرنيم مطلوب للأفراد والشركات عند التسجيل
       {
         const uname = username.trim().replace(/^@/, '');
@@ -4150,10 +4154,13 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           }
         }
         if ((res as { error?: { message?: string } })?.error) {
-          const msg = (res as { error?: { message?: string } }).error?.message || 'فشل إنشاء الحساب';
-          if (/username|user name|already|taken|exists|موجود|مستخدم/i.test(msg)) {
+          const msg = (res as { error?: { message?: string } }).error?.message || 'Could not create the account';
+          // Classify the server error: an existing EMAIL must not be reported as a taken USERNAME.
+          if (/username|user name|handle/i.test(msg)) {
             setError(L.userTaken);
             setUsernameStatus('taken');
+          } else if (/email|already|exists|registered|duplicate|taken/i.test(msg)) {
+            setError('This email is already registered. Sign in instead.');
           } else {
             setError(msg);
           }
@@ -4749,16 +4756,9 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             dir="ltr"
           />
         </div>
-        {isRegister && !isCompany && (
-          <p style={{ margin: '-8px 0 0', fontSize: 11, color: T.textDim, textAlign: 'center' }}>
-            {authLang === 'en'
-              ? 'Create account with email · sign in the same way'
-              : 'إنشاء الحساب بالبريد الإلكتروني · وتسجيل الدخول بنفس الطريقة'}
-          </p>
-        )}
 
-        {/* Confirm email — company register only */}
-        {isRegister && isCompany && (
+        {/* Confirm email — shown on every register form (same behaviour as confirm password) */}
+        {isRegister && (
           <div style={{ position: 'relative' }}>
             <Mail size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
             <input
