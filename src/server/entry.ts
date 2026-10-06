@@ -461,6 +461,20 @@ const liveChatVoiceMem = () => {
   if (!g.__stooornaLiveChatVoice) g.__stooornaLiveChatVoice = new Map();
   return g.__stooornaLiveChatVoice;
 };
+// MEM-PATCH: voice notes are kept in RAM — keep only the newest ones (max 120 notes / 40MB) so the server memory stops growing.
+const LIVE_VOICE_MAX_ITEMS = 120;
+const LIVE_VOICE_MAX_BYTES = 40 * 1024 * 1024;
+const trimLiveVoiceMem = () => {
+  const m = liveChatVoiceMem();
+  let bytes = 0;
+  for (const v of m.values()) bytes += v.buf.length;
+  for (const k of m.keys()) {
+    if (m.size <= LIVE_VOICE_MAX_ITEMS && bytes <= LIVE_VOICE_MAX_BYTES) break;
+    const v = m.get(k);
+    bytes -= v ? v.buf.length : 0;
+    m.delete(k);
+  }
+};
 const liveChatRow = (m: { at: number; payload: any }) => {
   const p = (m.payload || m) as any;
   const id = String(p.id || `lc_${m.at}`);
@@ -523,6 +537,7 @@ app.post("/api/live-chat/voice", (req, res) => {
   const mime = (meta.split(";")[0] || "audio/webm");
   const buf = Buffer.from(audio.slice(comma + 1), "base64");
   liveChatVoiceMem().set(id, { mime, buf, duration: Number(body.duration || body.voiceDuration) || 1 });
+  trimLiveVoiceMem(); // MEM-PATCH
   res.json({ ok: true, id, url: `/api/live-chat/voice?id=${encodeURIComponent(id)}`, voiceUrl: `/api/live-chat/voice?id=${encodeURIComponent(id)}` });
 });
 app.get("/api/live-chat/voice", (req, res) => {
