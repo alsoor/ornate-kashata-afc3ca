@@ -136,9 +136,13 @@ export default function PublicVoiceLive({
     } catch { /* ignore */ }
   }, []);
 
-  // تهيئة الصوت وفتحه عند أول لمسة من المستخدم (حتى يسمعه المستمعون مباشرة)
+  // تهيئة الصوت وفتحه عند أي لمسة (حتى يسمعه المستمعون مباشرة)
   useEffect(() => {
-    const unlock = () => {
+    let done = false;
+    const evs = ['pointerdown', 'touchstart', 'click', 'keydown'];
+    const cleanup = () => evs.forEach(e => window.removeEventListener(e, unlock));
+    function unlock() {
+      if (done) return;
       try {
         if (!chimeAudioRef.current) {
           chimeAudioRef.current = new Audio(MIC_SOUND_URL);
@@ -146,11 +150,15 @@ export default function PublicVoiceLive({
         }
         const a = chimeAudioRef.current;
         a.muted = true;
-        void a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
+        void a.play().then(() => {
+          a.pause(); a.currentTime = 0; a.muted = false;
+          done = true; cleanup();
+        }).catch(() => { a.muted = false; });
       } catch { /* ignore */ }
-    };
-    window.addEventListener('pointerdown', unlock, { once: true });
-    return () => window.removeEventListener('pointerdown', unlock);
+    }
+    evs.forEach(e => window.addEventListener(e, unlock));
+    unlock();
+    return cleanup;
   }, []);
 
   const sendMicSound = useCallback(async () => {
@@ -261,6 +269,11 @@ export default function PublicVoiceLive({
               applyMute();
             }
           } catch { /* ignore */ }
+        });
+        client.on('user-info-updated', (remoteUid: any, msg: string) => {
+          if (msg === 'unmute-audio' && !speakerOffRef.current && String(remoteUid) !== String(myUidRef.current)) {
+            playMicSound(`agora-${remoteUid}-${Date.now()}`);
+          }
         });
         client.on('user-unpublished', (remoteUser: IAgoraRTCRemoteUser, mediaType: string) => {
           if (mediaType === 'audio') {
