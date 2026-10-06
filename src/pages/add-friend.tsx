@@ -102,6 +102,7 @@ import { LocationPickerSheet, LocationViewSheet, LocationChatCard, encodeChatLoc
 import { publishLiveChatRoundVideo, normalizeLiveChatMediaFields, extractLiveChatMediaUrl, makeLiveChatRoundText } from '@/lib/liveChatVideoPatch';
 import { publishLiveChatVideoDelete, onLiveChatVideoDeleted, applyLiveChatVideoTombstone, isLiveChatRoundGone, LIVE_CHAT_ROUND_GONE } from '@/lib/liveChatVideoDeletePatch';
 // Templates (الصور/الفيديو بالخارج): مخزن مستقل تماماً عن الشات العام — لا يتأثر بتنظيف الـ24 ساعة
+import { useLiveEmojiBurstSync } from '@/lib/liveEmojiBurst'; // EMOJI-BURST-PATCH
 import { TEMPLATES_CACHE_KEY, loadTemplatesCache, saveTemplatesCache, syncTemplates, postTemplateRow, likeTemplateRow, deleteTemplateRow, markTemplatePending, markTemplateDeleted } from '@/lib/liveTemplatesStore';
 import { StoryModerationBell, StoryModerateDialog, StoryBanModal, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
@@ -18304,6 +18305,7 @@ function PublicLiveCommentsPanel({
     };
   }, [comments.length, chatLift]);
 
+  const burst = useLiveEmojiBurstSync(LIVE_CHAT_ROOM, myId, chatLift === 1); // EMOJI-BURST-PATCH
   const pushComment = (body: string, imageUrl?: string | null, voice?: { url: string; duration: number } | null) => {
     const trimmed = body.trim().slice(0, 500);
     if (!trimmed && !imageUrl && !voice?.url) return;
@@ -19352,8 +19354,11 @@ function PublicLiveCommentsPanel({
                 ) : null}
                 {bigEmoji ? (
                   <div
+                    data-live-big-emoji={c.id}
+                    onPointerDown={e => e.stopPropagation()}
+                    onClick={e => { e.stopPropagation(); burst(c.id, stripLiveBigEmojiMark(c.text), e.currentTarget); }}
                     className={c.createdAt > Date.now() - 4000 ? 'stooorna-big-emoji' : undefined}
-                    style={{ marginTop: 2, fontSize: '3.6rem', lineHeight: 1.15, display: 'inline-block' }}
+                    style={{ marginTop: 2, fontSize: '3.6rem', lineHeight: 1.15, display: 'inline-block', cursor: 'pointer', userSelect: 'none', touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
                   >
                     {stripLiveBigEmojiMark(c.text)}
                   </div>

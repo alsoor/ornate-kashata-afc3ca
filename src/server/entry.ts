@@ -11,6 +11,7 @@ import * as dbClientModule from "./db/client.js";
 import { COIN_PACKS, createCheckout, handlePolarEvent, polarConfigured, verifyPolarSignature } from "./polar.js";
 import { createSession, makeLimiter, markSeen, normId, pickKey, recordPaid, seenRecently, takePaid } from "./gift-guard.js";
 import { mapEarningsAdapter, privateAssetsGuard, registerWithdrawalRoutes } from "./withdrawals.js";
+import { registerLiveBurstRoutes } from "./live-burst.js"; // EMOJI-BURST-PATCH
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -1127,6 +1128,7 @@ const creditRecipientEarnings = (toUserId: string, amount: number) => {
 // ═══════════════════════════ اقتصاد الهدايا — نسخة محميّة ═══════════════════════════
 // القاعدة: الهوية من الجلسة فقط، والأرباح لا تُنشأ إلا مقابل خصم فعلي من رصيد السيرفر.
 const session = createSession(users_me_get_148 as unknown as RequestHandler, OWNER_IDS);
+registerLiveBurstRoutes(app, { getUserId: async (req) => (await session.user(req))?.id ?? null }); // EMOJI-BURST-PATCH
 const allow = makeLimiter();
 const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });
 const needUser = async (req: Request, res: Response) => {
