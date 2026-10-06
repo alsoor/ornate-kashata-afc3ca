@@ -19901,6 +19901,77 @@ const HOME_LIVE_SCROLL_MIN = 3;
 // بدل الحجم الكبير. اجعلها false لإرجاع الحجم الكبير القديم (قائمة المستمعين / معاينة الفيديو).
 const HOME_LIVE_COMPACT_CARD = true;
 
+// ── عرض PDF الإعلان مباشرة داخل الشاشة (كل الصفحات تحت بعض بعرض الشاشة) — بدون زر Open PDF ──
+function loadPdfJsForAds(): Promise<any> {
+  const w = window as any;
+  if (w.pdfjsLib) return Promise.resolve(w.pdfjsLib);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => {
+      const lib = (window as any).pdfjsLib;
+      if (!lib) { reject(new Error('pdf.js missing')); return; }
+      lib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      resolve(lib);
+    };
+    s.onerror = () => reject(new Error('pdf.js load failed'));
+    document.head.appendChild(s);
+  });
+}
+
+function AdPdfPages({ src }: { src: string }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  useEffect(() => {
+    let dead = false;
+    setStatus('loading');
+    void (async () => {
+      try {
+        const lib = await loadPdfJsForAds();
+        const buf = await (await fetch(src)).arrayBuffer();
+        const pdf = await lib.getDocument({ data: buf }).promise;
+        const host = hostRef.current;
+        if (!host || dead) return;
+        host.innerHTML = '';
+        const width = host.clientWidth || window.innerWidth;
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const total = Math.min(pdf.numPages, 40);
+        for (let i = 1; i <= total; i++) {
+          if (dead) return;
+          const page = await pdf.getPage(i);
+          const base = page.getViewport({ scale: 1 });
+          const vp = page.getViewport({ scale: (width / Math.max(base.width, 1)) * dpr });
+          const c = document.createElement('canvas');
+          c.width = Math.floor(vp.width);
+          c.height = Math.floor(vp.height);
+          c.style.cssText = 'width:100%;height:auto;display:block;margin-bottom:8px;background:#fff;';
+          host.appendChild(c);
+          const ctx = c.getContext('2d');
+          if (!ctx) continue;
+          await page.render({ canvasContext: ctx, viewport: vp }).promise;
+          if (i === 1 && !dead) setStatus('ready');
+        }
+        if (!dead) setStatus('ready');
+      } catch {
+        if (!dead) setStatus('error');
+      }
+    })();
+    return () => { dead = true; };
+  }, [src]);
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', boxSizing: 'border-box',
+      paddingTop: 'calc(max(12px, env(safe-area-inset-top)) + 48px)', paddingBottom: 'env(safe-area-inset-bottom)', background: '#111',
+    }}>
+      {status === 'loading' && <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.6)', marginTop: 40, fontWeight: 700 }}>Loading…</p>}
+      {status === 'error' && (
+        <iframe title="PDF" src={src} style={{ width: '100%', height: 'calc(100% - 4px)', minHeight: '80vh', border: 'none', background: '#111' }} />
+      )}
+      <div ref={hostRef} />
+    </div>
+  );
+}
+
 // ── بطاقة Ads في صفحة القصة: نفس حجم وشكل بطاقة اللايف، بإطار أصفر وأسهم يمين/يسار — النقر يفتحها كاملة ──
 function HomeAdCard({ ad, lifted, onOpen, onDelete }: { ad: any; lifted: boolean; onOpen: (ad: any) => void; onDelete?: (ad: any) => void }) {
   const isPdf = ad.mediaType === 'pdf' || (!ad.mediaType && !!ad.pdfUrl);
@@ -29134,26 +29205,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     src={src} autoPlay loop playsInline
                     disablePictureInPicture disableRemotePlayback
                     controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000', pointerEvents: 'none' }}
+                    style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 'calc(max(12px, env(safe-area-inset-top)) + 48px)', width: '100%', height: 'calc(100% - calc(max(12px, env(safe-area-inset-top)) + 48px))', objectFit: 'contain', background: '#000', pointerEvents: 'none' }}
                   />
                 );
               }
               if (feedAdViewer.mediaType === 'image' && src) {
-                return <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />;
+                return <img src={src} alt="" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 'calc(max(12px, env(safe-area-inset-top)) + 48px)', width: '100%', height: 'calc(100% - calc(max(12px, env(safe-area-inset-top)) + 48px))', objectFit: 'contain' }} />;
               }
-              if (feedAdViewer.mediaType === 'pdf' || feedAdViewer.pdfUrl) {
-                return (
-                  <div style={{ padding: 24, textAlign: 'center' }}>
-                    <FileText size={64} color="#eab308" />
-                    <p style={{ color: '#fff', marginTop: 12, fontWeight: 700 }}>{feedAdViewer.mediaName || feedAdViewer.pdfName || 'PDF'}</p>
-                    {src ? (
-                      <a href={src} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{
-                        display: 'inline-block', marginTop: 14, padding: '10px 18px', borderRadius: 10,
-                        background: '#eab308', color: '#0a0a0a', fontWeight: 900, textDecoration: 'none',
-                      }}>Open PDF</a>
-                    ) : null}
-                  </div>
-                );
+              if ((feedAdViewer.mediaType === 'pdf' || feedAdViewer.pdfUrl) && src) {
+                return <AdPdfPages src={src} />;
               }
               return <p style={{ color: 'rgba(255,255,255,0.5)' }}>No media</p>;
             })()}
@@ -29163,7 +29223,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2,
               display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px',
               paddingTop: 'max(12px, env(safe-area-inset-top))',
-              background: 'linear-gradient(180deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 100%)',
+              background: '#000',
               pointerEvents: 'none',
             }}>
               <div style={{
