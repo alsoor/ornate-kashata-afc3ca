@@ -2271,6 +2271,8 @@ if (import.meta.env.PROD) {
 		});
 		process.exit(1);
 	}
+	// permissions sheet (location / camera / mic / notifications) for the installed app
+	if (!template.includes("/permissions.js")) template = template.replace("</body>", '<script src="/permissions.js" defer></script></body>');
 	const fallbackShell = template
 		.replace("<!--app-head-->", "")
 		.replace("<!--app-html-->", "");
