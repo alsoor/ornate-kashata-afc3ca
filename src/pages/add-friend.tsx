@@ -20035,9 +20035,221 @@ function AdPdfPages({ src }: { src: string }) {
   );
 }
 
+// Ads card delete effect: the card is rebuilt on a canvas (shapes, texts, avatar, thumbnail), cut into small tiles
+// that break away from left to right, drift up and out, and fade, while gold sparks fly with them.
+// Pure canvas drawImage (never reads pixels), so cross-origin avatar / thumbnail images are fine.
+function homeAdDustDelete(el: HTMLElement, done: () => void): void {
+  let finished = false;
+  const finishOnce = () => { if (finished) return; finished = true; done(); };
+  try {
+    const reduce = (() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } })();
+    const base = el.getBoundingClientRect();
+    if (reduce || base.width < 8 || base.height < 8) { finishOnce(); return; }
+    const pad = 120;
+    const W = Math.round(base.width);
+    const H = Math.round(base.height);
+    const dpr = Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)));
+    const canvas = document.createElement('canvas');
+    canvas.width = (W + pad * 2) * dpr;
+    canvas.height = (H + pad * 2) * dpr;
+    const cst = canvas.style;
+    cst.position = 'fixed';
+    cst.left = Math.round(base.left - pad) + 'px';
+    cst.top = Math.round(base.top - pad) + 'px';
+    cst.width = (W + pad * 2) + 'px';
+    cst.height = (H + pad * 2) + 'px';
+    cst.pointerEvents = 'none';
+    cst.zIndex = '2147483000';
+    const ctx = canvas.getContext('2d');
+    const src = document.createElement('canvas');
+    src.width = W * dpr;
+    src.height = H * dpr;
+    const sctx = src.getContext('2d');
+    if (!ctx || !sctx) { finishOnce(); return; }
+
+    // ---- 1) snapshot of the card ----
+    sctx.scale(dpr, dpr);
+    const rrPath = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+      const k = Math.max(0, Math.min(r, w / 2, h / 2));
+      c.beginPath();
+      c.moveTo(x + k, y);
+      c.arcTo(x + w, y, x + w, y + h, k);
+      c.arcTo(x + w, y + h, x, y + h, k);
+      c.arcTo(x, y + h, x, y, k);
+      c.arcTo(x, y, x + w, y, k);
+      c.closePath();
+    };
+    const radiusOf = (cs: CSSStyleDeclaration, w: number, h: number) => {
+      const v = cs.borderTopLeftRadius || '0';
+      const n = parseFloat(v) || 0;
+      return v.indexOf('%') >= 0 ? (n / 100) * Math.min(w, h) : n;
+    };
+    const bg = sctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#071011');
+    bg.addColorStop(1, '#0e2b30');
+    rrPath(sctx, 0, 0, W, H, 20);
+    sctx.fillStyle = bg;
+    sctx.fill();
+    rrPath(sctx, 1, 1, W - 2, H - 2, 19);
+    sctx.lineWidth = 2;
+    sctx.strokeStyle = '#eab308';
+    sctx.stroke();
+    try {
+      el.querySelectorAll('*').forEach(node => {
+        if (node instanceof SVGElement) return;
+        const n = node as HTMLElement;
+        const r = n.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1) return;
+        const cs = getComputedStyle(n);
+        if (cs.display === 'none' || cs.visibility === 'hidden') return;
+        const x = r.left - base.left;
+        const y = r.top - base.top;
+        const rad = radiusOf(cs, r.width, r.height);
+        const fill = cs.backgroundColor;
+        if (fill && fill !== 'transparent' && fill !== 'rgba(0, 0, 0, 0)') {
+          rrPath(sctx, x, y, r.width, r.height, rad);
+          sctx.fillStyle = fill;
+          sctx.fill();
+        }
+        if (n instanceof HTMLImageElement || n instanceof HTMLVideoElement) {
+          const nw = n instanceof HTMLImageElement ? n.naturalWidth : n.videoWidth;
+          const nh = n instanceof HTMLImageElement ? n.naturalHeight : n.videoHeight;
+          const ready = n instanceof HTMLImageElement ? (n.complete && nw > 0) : (n.readyState >= 2 && nw > 0);
+          if (ready) {
+            const pr = n.parentElement ? radiusOf(getComputedStyle(n.parentElement), r.width, r.height) : 0;
+            sctx.save();
+            rrPath(sctx, x, y, r.width, r.height, Math.max(rad, pr));
+            sctx.clip();
+            const k = Math.max(r.width / nw, r.height / nh);
+            sctx.drawImage(n, x + (r.width - nw * k) / 2, y + (r.height - nh * k) / 2, nw * k, nh * k);
+            sctx.restore();
+          }
+        }
+        const bw = parseFloat(cs.borderTopWidth) || 0;
+        if (bw > 0 && cs.borderTopStyle !== 'none') {
+          rrPath(sctx, x + bw / 2, y + bw / 2, r.width - bw, r.height - bw, Math.max(0, rad - bw / 2));
+          sctx.lineWidth = bw;
+          sctx.strokeStyle = cs.borderTopColor;
+          sctx.stroke();
+        }
+      });
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const t = walker.currentNode as Text;
+        const str = (t.nodeValue || '').replace(/\s+/g, ' ').trim();
+        const pe = t.parentElement;
+        if (!str || !pe || pe instanceof SVGElement) continue;
+        const range = document.createRange();
+        range.selectNodeContents(t);
+        const tr = range.getBoundingClientRect();
+        if (tr.width < 1 || tr.height < 1) continue;
+        const cs = getComputedStyle(pe);
+        if (cs.visibility === 'hidden') continue;
+        const pr = pe.getBoundingClientRect();
+        sctx.save();
+        sctx.beginPath();
+        sctx.rect(pr.left - base.left, pr.top - base.top, pr.width, pr.height);
+        sctx.clip();
+        sctx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+        sctx.fillStyle = cs.color;
+        sctx.textBaseline = 'middle';
+        const rtl = cs.direction === 'rtl';
+        sctx.textAlign = rtl ? 'right' : 'left';
+        sctx.fillText(str, (rtl ? tr.right : tr.left) - base.left, tr.top - base.top + tr.height / 2);
+        sctx.restore();
+      }
+    } catch { /* keep the plain card snapshot */ }
+
+    // ---- 2) particles ----
+    const s = 5;
+    type Tile = { sx: number; sy: number; x0: number; y0: number; delay: number; life: number; vx: number; vy: number; ph: number; amp: number };
+    const tiles: Tile[] = [];
+    for (let y = 0; y < H; y += s) {
+      for (let x = 0; x < W; x += s) {
+        tiles.push({
+          sx: x, sy: y, x0: x + s / 2, y0: y + s / 2,
+          delay: (x / W) * 0.55 + Math.random() * 0.15,
+          life: 0.75 + Math.random() * 0.55,
+          vx: 30 + Math.random() * 130,
+          vy: -(20 + Math.random() * 110),
+          ph: Math.random() * 6.28,
+          amp: 3 + Math.random() * 7,
+        });
+      }
+    }
+    type Spark = { x0: number; y0: number; delay: number; life: number; vx: number; vy: number; r: number; c: string };
+    const sparks: Spark[] = [];
+    for (let i = 0; i < 70; i++) {
+      sparks.push({
+        x0: Math.random() * W, y0: Math.random() * H,
+        delay: Math.random() * 0.8, life: 0.7 + Math.random() * 0.7,
+        vx: -20 + Math.random() * 160, vy: -(30 + Math.random() * 120),
+        r: 0.8 + Math.random() * 1.6, c: Math.random() < 0.7 ? '#eab308' : '#4dd0e1',
+      });
+    }
+
+    // ---- 3) play ----
+    ctx.scale(dpr, dpr);
+    document.body.appendChild(canvas);
+    const t0 = performance.now();
+    const stop = () => { try { canvas.remove(); } catch { /* */ } finishOnce(); };
+    const frame = (now: number) => {
+      if (finished) return;
+      const t = (now - t0) / 1000;
+      ctx.clearRect(0, 0, W + pad * 2, H + pad * 2);
+      let alive = false;
+      for (const p of tiles) {
+        const lt = t - p.delay;
+        if (lt < 0) {
+          alive = true;
+          ctx.globalAlpha = 1;
+          ctx.drawImage(src, p.sx * dpr, p.sy * dpr, s * dpr, s * dpr, p.sx + pad, p.sy + pad, s, s);
+          continue;
+        }
+        if (lt > p.life) continue;
+        alive = true;
+        const k = lt / p.life;
+        const px = p.x0 + p.vx * lt + Math.sin(lt * 7 + p.ph) * p.amp * k;
+        const py = p.y0 + p.vy * lt - 30 * lt * lt;
+        const sz = s * (1 - 0.6 * k);
+        ctx.globalAlpha = Math.max(0, 1 - k * k);
+        ctx.drawImage(src, p.sx * dpr, p.sy * dpr, s * dpr, s * dpr, px + pad - sz / 2, py + pad - sz / 2, sz, sz);
+      }
+      for (const q of sparks) {
+        const lt = t - q.delay;
+        if (lt < 0) { alive = true; continue; }
+        if (lt > q.life) continue;
+        alive = true;
+        const k = lt / q.life;
+        ctx.globalAlpha = Math.min(1, lt * 10) * (1 - k);
+        ctx.fillStyle = q.c;
+        ctx.fillRect(q.x0 + q.vx * lt + pad, q.y0 + q.vy * lt - 20 * lt * lt + pad, q.r * 2, q.r * 2);
+      }
+      ctx.globalAlpha = 1;
+      if (alive) requestAnimationFrame(frame);
+      else stop();
+    };
+    frame(t0); // first frame is painted at once, so there is no flicker when the real card is hidden
+    window.setTimeout(stop, 4000); // safety net
+  } catch {
+    finishOnce();
+  }
+}
+
 // ── بطاقة Ads في صفحة القصة: نفس حجم وشكل بطاقة اللايف، بإطار أصفر وأسهم يمين/يسار — النقر يفتحها كاملة ──
-function HomeAdCard({ ad, lifted, onOpen, onDelete }: { ad: any; lifted: boolean; onOpen: (ad: any) => void; onDelete?: (ad: any) => void }) {
+function HomeAdCard({ ad, lifted, onOpen, onDelete }: { ad: any; lifted: boolean; onOpen: (ad: any) => void; onDelete?: (ad: any, playFx?: (finish: () => void) => void) => void }) {
   const isPdf = ad.mediaType === 'pdf' || (!ad.mediaType && !!ad.pdfUrl);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [bursting, setBursting] = useState(false);
+  // Delete effect: the card crumbles into dust, then finish() really removes the ad
+  const playFx = (finish: () => void) => {
+    const el = cardRef.current;
+    if (!el) { finish(); return; }
+    setBursting(true);
+    homeAdDustDelete(el, finish);
+    // safety net: if the card is somehow still mounted after the effect, show it again
+    window.setTimeout(() => setBursting(false), 4500);
+  };
   const [thumb, setThumb] = useState<string | null>(() => (isPdf ? null : (ad.mediaUrl || null)));
   useEffect(() => {
     if (thumb || isPdf || !ad.id) return;
@@ -20047,7 +20259,7 @@ function HomeAdCard({ ad, lifted, onOpen, onDelete }: { ad: any; lifted: boolean
   }, [ad.id, isPdf, thumb]);
   const uname = String(ad.authorUsername || 'business').replace(/^@/, '');
   const typeLabel = ad.mediaType === 'video' ? 'Video' : isPdf ? 'PDF' : 'Photo';
-  const arrowStyle: React.CSSProperties = { position: 'absolute', top: '50%', marginTop: -13, width: 22, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#eab308', filter: 'drop-shadow(0 0 5px rgba(234,179,8,0.85))', pointerEvents: 'none', zIndex: 3 };
+  const arrowStyle: React.CSSProperties = { position: 'absolute', top: '50%', marginTop: -13, width: 22, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#eab308', filter: 'drop-shadow(0 0 5px rgba(234,179,8,0.85))', pointerEvents: 'none', zIndex: 3, visibility: bursting ? 'hidden' : 'visible' };
   return (
     <motion.div
       layout
@@ -20067,6 +20279,7 @@ function HomeAdCard({ ad, lifted, onOpen, onDelete }: { ad: any; lifted: boolean
         role="button"
         tabIndex={0}
         aria-label={`Ads — ${uname}`}
+        ref={cardRef}
         onClick={() => onOpen(ad)}
         onKeyDown={ev => { if (ev.key === 'Enter') onOpen(ad); }}
         style={{
@@ -20077,6 +20290,7 @@ function HomeAdCard({ ad, lifted, onOpen, onDelete }: { ad: any; lifted: boolean
           overflow: 'hidden', cursor: 'pointer', color: '#cfe8e8',
           display: 'flex', flexDirection: 'column', padding: '12px 14px',
           pointerEvents: lifted ? 'none' : 'auto',
+          visibility: bursting ? 'hidden' : 'visible',
           contentVisibility: 'auto', containIntrinsicSize: 'auto 78px',
         }}
       >
@@ -20119,7 +20333,7 @@ function HomeAdCard({ ad, lifted, onOpen, onDelete }: { ad: any; lifted: boolean
             <button
               type="button"
               aria-label="Delete ad"
-              onClick={ev => { ev.stopPropagation(); onDelete(ad); }}
+              onClick={ev => { ev.stopPropagation(); if (bursting) return; onDelete(ad, playFx); }}
               style={{ width: 42, height: 42, borderRadius: '50%', border: '1px solid rgba(239,68,68,0.55)', background: 'rgba(239,68,68,0.16)', boxShadow: '0 0 12px rgba(239,68,68,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}
             >
               <Trash2 size={18} strokeWidth={2.2} color="#ef4444" />
@@ -20243,7 +20457,7 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
   /** يفتح إعلان Ads كاملاً (الفيديو/الصورة/PDF) عند النقر على بطاقته */
   onOpenAd?: (ad: any) => void;
   /** حذف إعلان Ads — يظهر زر الحذف فقط لصاحب الإعلان */
-  onDeleteAd?: (ad: any) => void;
+  onDeleteAd?: (ad: any, playFx?: (finish: () => void) => void) => void;
 }) {
   const navigate = useNavigate();
   const [entries, setEntries] = useState<HomeLiveEntry[]>(() => (homeLiveCache.uid === myId ? homeLiveCache.entries : []));
@@ -33027,16 +33241,19 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             try { window.dispatchEvent(new CustomEvent('stooorna:open-settings-over-posts')); } catch { /* */ }
             navigate('/settings');
           }}
-          onDeleteAd={(ad: any) => {
+          onDeleteAd={(ad: any, playFx?: (finish: () => void) => void) => {
             if (!window.confirm('Delete this ad?')) return;
-            void (async () => {
-              const id = String(ad.id);
-              try { await stooornaAdMediaDelete(id); } catch { /* */ }
-              saveFeedAdsMeta(loadFeedAdsMeta().filter((x: any) => String(x.id) !== id));
-              setFeedAdsTick(t => t + 1);
-              setFeedAdViewer((v: any) => (v && String(v.id) === id ? null : v));
-              setAdDetailOpen((v: any) => (v && String(v.id) === id ? null : v));
-            })();
+            const removeNow = () => {
+              void (async () => {
+                const id = String(ad.id);
+                try { await stooornaAdMediaDelete(id); } catch { /* */ }
+                saveFeedAdsMeta(loadFeedAdsMeta().filter((x: any) => String(x.id) !== id));
+                setFeedAdsTick(t => t + 1);
+                setFeedAdViewer((v: any) => (v && String(v.id) === id ? null : v));
+                setAdDetailOpen((v: any) => (v && String(v.id) === id ? null : v));
+              })();
+            };
+            if (playFx) playFx(removeNow); else removeNow();
           }}
           onOpenAd={(ad: any) => {
             void (async () => {
