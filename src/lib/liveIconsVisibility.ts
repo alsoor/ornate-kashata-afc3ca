@@ -1,69 +1,83 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Global switch (owner only) that shows / hides the Coins ($) icon and the Gifts icon
- * inside every video LIVE and voice LIVE. One value for the whole app, stored on the server,
- * so when the owner turns it off nobody can see the two icons.
+ * Owner switches (Settings → Company → App Upload). One value for the whole app, stored on the server,
+ * so when the owner turns a switch off nobody can see that item.
  *
- * Server routes (see server/app-settings/live-icons/GET.ts and POST.ts):
- *   GET  /api/app-settings/live-icons  -> { visible: boolean }   (everyone)
- *   POST /api/app-settings/live-icons  { visible: boolean }      (owner only)
+ *   gifts   → the Gifts icon inside video LIVE and voice LIVE
+ *   coins   → the Coins ($) icon inside video LIVE and voice LIVE
+ *   deposit → the "Deposit" box inside the Wallet page (live $ icon AND the user's Settings $ page)
+ *
+ * Server routes (see entry.ts, LIVE-ICONS-PATCH):
+ *   GET  /api/app-settings/live-icons  -> { ok, gifts, coins, deposit }          (everyone)
+ *   POST /api/app-settings/live-icons  { gifts?, coins?, deposit? } (booleans)   (owner only)
  */
+export type LiveSwitchKey = 'gifts' | 'coins' | 'deposit';
+export type LiveSwitches = Record<LiveSwitchKey, boolean>;
+
 const URL_ = '/api/app-settings/live-icons';
-const CACHE_KEY = 'stooorna_live_icons_visible';
-export const LIVE_ICONS_EVENT = 'stooorna:live-icons-visible';
+const CACHE_KEY = 'stooorna_live_switches';
+export const LIVE_ICONS_EVENT = 'stooorna:live-switches';
+const ALL_ON: LiveSwitches = { gifts: true, coins: true, deposit: true };
 
-function readCache(): boolean {
-  try { return localStorage.getItem(CACHE_KEY) !== '0'; } catch { return true; }
+function normalize(d: unknown): LiveSwitches {
+  const o = (d && typeof d === 'object' ? d : {}) as Record<string, unknown>;
+  return { gifts: o.gifts !== false, coins: o.coins !== false, deposit: o.deposit !== false };
 }
-function writeCache(v: boolean) {
-  try { localStorage.setItem(CACHE_KEY, v ? '1' : '0'); } catch { /* ignore */ }
+function readCache(): LiveSwitches {
+  try { return normalize(JSON.parse(localStorage.getItem(CACHE_KEY) || '{}')); } catch { return { ...ALL_ON }; }
+}
+function writeCache(v: LiveSwitches) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(v)); } catch { /* ignore */ }
 }
 
-/** Reads the server value. Returns null when the server cannot be reached (caller keeps the last known value). */
-export async function fetchLiveIconsVisible(): Promise<boolean | null> {
+/** Reads the server values. Returns null when the server cannot be reached (caller keeps the last known value). */
+export async function fetchLiveSwitches(): Promise<LiveSwitches | null> {
   try {
     const r = await fetch(URL_, { credentials: 'include', cache: 'no-store' });
     if (!r.ok) return null;
     const d = await r.json();
-    if (typeof d?.visible !== 'boolean') return null;
-    writeCache(d.visible);
-    return d.visible;
+    if (!d || d.ok === false) return null;
+    const v = normalize(d);
+    writeCache(v);
+    return v;
   } catch {
     return null;
   }
 }
 
-/** Owner only. Returns true when the server accepted the change. */
-export async function setLiveIconsVisible(visible: boolean): Promise<boolean> {
+/** Owner only. Returns the saved values, or null when the server refused. */
+export async function setLiveSwitch(key: LiveSwitchKey, value: boolean): Promise<LiveSwitches | null> {
   try {
     const r = await fetch(URL_, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ visible }),
+      body: JSON.stringify({ [key]: value }),
     });
-    if (!r.ok) return false;
-    writeCache(visible);
-    window.dispatchEvent(new CustomEvent(LIVE_ICONS_EVENT, { detail: { visible } }));
-    return true;
+    if (!r.ok) return null;
+    const d = await r.json();
+    const v = normalize(d);
+    writeCache(v);
+    window.dispatchEvent(new CustomEvent(LIVE_ICONS_EVENT, { detail: v }));
+    return v;
   } catch {
-    return false;
+    return null;
   }
 }
 
-/** React hook: current value (default = shown), refreshed on mount, on focus and every 20s so users see the change quickly. */
-export function useLiveIconsVisible(): boolean {
-  const [visible, setVisible] = useState<boolean>(readCache);
+/** React hook: current switches (default = all shown), refreshed on mount, on focus and every 20s so users see changes quickly. */
+export function useLiveSwitches(): LiveSwitches {
+  const [sw, setSw] = useState<LiveSwitches>(readCache);
   useEffect(() => {
     let alive = true;
     const pull = async () => {
-      const v = await fetchLiveIconsVisible();
-      if (alive && v !== null) setVisible(v);
+      const v = await fetchLiveSwitches();
+      if (alive && v) setSw(v);
     };
     const onEvt = (e: Event) => {
-      const v = (e as CustomEvent<{ visible?: boolean }>).detail?.visible;
-      if (typeof v === 'boolean') setVisible(v);
+      const d = (e as CustomEvent<LiveSwitches>).detail;
+      if (d) setSw(normalize(d));
     };
     const onVis = () => { if (document.visibilityState === 'visible') void pull(); };
     void pull();
@@ -77,5 +91,5 @@ export function useLiveIconsVisible(): boolean {
       document.removeEventListener('visibilitychange', onVis);
     };
   }, []);
-  return visible;
+  return sw;
 }

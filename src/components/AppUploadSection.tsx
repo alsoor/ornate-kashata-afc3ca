@@ -1,61 +1,74 @@
 import { useEffect, useState } from 'react';
 import { Upload } from 'lucide-react';
 import AppReleasesOwnerCard from '@/components/AppReleasesOwnerCard';
-import { fetchLiveIconsVisible, setLiveIconsVisible } from '@/lib/liveIconsVisibility';
+import { fetchLiveSwitches, setLiveSwitch, type LiveSwitchKey, type LiveSwitches } from '@/lib/liveIconsVisibility';
 
 type Theme = Record<string, string>;
 
-/** Owner switch: show / hide the Coins ($) and Gifts icons in video LIVE + voice LIVE for everyone. */
-function LiveIconsSwitch({ T }: { T: Theme }) {
-  const [visible, setVisible] = useState(true);
-  const [busy, setBusy] = useState(false);
+const SWITCH_ROWS: { key: LiveSwitchKey; title: string; hint: string }[] = [
+  { key: 'gifts', title: 'Gifts icon', hint: 'Gift icon in video LIVE and voice LIVE · off = hidden for all users' },
+  { key: 'coins', title: 'Coins ($) icon', hint: 'Charge icon in video LIVE and voice LIVE · off = hidden for all users' },
+  { key: 'deposit', title: 'Deposit box', hint: 'Deposit (+) inside the Wallet page, in LIVE and in user Settings · off = hidden' },
+];
+
+/** Owner switches: each one is independent. Visible (green) = shown to users, Hidden (white) = removed for everyone. */
+function LiveSwitchesCard({ T }: { T: Theme }) {
+  const [sw, setSw] = useState<LiveSwitches>({ gifts: true, coins: true, deposit: true });
+  const [busy, setBusy] = useState<LiveSwitchKey | null>(null);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     let alive = true;
-    void fetchLiveIconsVisible().then(v => { if (alive && v !== null) setVisible(v); });
+    void fetchLiveSwitches().then(v => { if (alive && v) setSw(v); });
     return () => { alive = false; };
   }, []);
 
-  async function onToggle() {
+  async function onToggle(key: LiveSwitchKey) {
     if (busy) return;
-    const next = !visible;
-    setBusy(true);
+    const next = !sw[key];
+    setBusy(key);
     setErr('');
-    setVisible(next);
-    const ok = await setLiveIconsVisible(next);
-    if (!ok) { setVisible(!next); setErr('Could not save — try again'); }
-    setBusy(false);
+    setSw(o => ({ ...o, [key]: next }));
+    const saved = await setLiveSwitch(key, next);
+    if (saved) setSw(saved);
+    else { setSw(o => ({ ...o, [key]: !next })); setErr('Could not save — try again'); }
+    setBusy(null);
   }
 
   return (
-    <div
-      data-testid="live-icons-switch"
-      style={{ background: T.surface, border: `1px solid ${T.surfaceBorder}`, borderRadius: 14, padding: '14px 16px', color: T.text }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: '0.86rem', fontWeight: 800 }}>Live Coins &amp; Gifts icons</div>
-          <div style={{ marginTop: 2, fontSize: '0.68rem', color: T.textMuted }}>
-            $ and gift icons in video LIVE and voice LIVE · off = hidden for all users
+    <>
+      {SWITCH_ROWS.map(r => {
+        const visible = sw[r.key];
+        return (
+          <div
+            key={r.key}
+            data-testid={`live-switch-${r.key}`}
+            style={{ background: T.surface, border: `1px solid ${T.surfaceBorder}`, borderRadius: 14, padding: '14px 16px', color: T.text }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '0.86rem', fontWeight: 800 }}>{r.title}</div>
+                <div style={{ marginTop: 2, fontSize: '0.68rem', color: T.textMuted }}>{r.hint}</div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={visible}
+                aria-label={`${visible ? 'Hide' : 'Show'} ${r.title}`}
+                onClick={() => onToggle(r.key)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: T.textMuted, fontSize: '0.68rem', fontWeight: 700, opacity: busy === r.key ? 0.7 : 1 }}
+              >
+                <span>{visible ? 'Visible' : 'Hidden'}</span>
+                <span style={{ width: 44, height: 26, borderRadius: 999, position: 'relative', flexShrink: 0, background: visible ? (T.switchOn || '#22c55e') : '#ffffff', boxShadow: 'inset 0 0 0 2px #22c55e', transition: 'background .2s' }}>
+                  <span style={{ position: 'absolute', top: 3, left: visible ? 21 : 3, width: 20, height: 20, borderRadius: '50%', background: '#ffffff', boxShadow: '0 1px 4px rgba(0,0,0,0.25)', transition: 'left .2s' }} />
+                </span>
+              </button>
+            </div>
           </div>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={visible}
-          aria-label={visible ? 'Hide coins and gifts icons' : 'Show coins and gifts icons'}
-          onClick={onToggle}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: T.textMuted, fontSize: '0.68rem', fontWeight: 700, opacity: busy ? 0.7 : 1 }}
-        >
-          <span>{visible ? 'Visible' : 'Hidden'}</span>
-          <span style={{ width: 44, height: 26, borderRadius: 999, position: 'relative', flexShrink: 0, background: visible ? (T.switchOn || '#22c55e') : '#ffffff', boxShadow: 'inset 0 0 0 2px #22c55e', transition: 'background .2s' }}>
-            <span style={{ position: 'absolute', top: 3, left: visible ? 21 : 3, width: 20, height: 20, borderRadius: '50%', background: '#ffffff', boxShadow: '0 1px 4px rgba(0,0,0,0.25)', transition: 'left .2s' }} />
-          </span>
-        </button>
-      </div>
-      {err && <div style={{ marginTop: 8, fontSize: '0.72rem', color: '#ef4444' }}>{err}</div>}
-    </div>
+        );
+      })}
+      {err && <div style={{ fontSize: '0.72rem', color: '#ef4444', padding: '0 4px' }}>{err}</div>}
+    </>
   );
 }
 
@@ -88,7 +101,7 @@ export default function AppUploadSection({ T }: { T: Theme }) {
           <span style={{ textAlign: 'left' }}>
             <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>App Upload</span>
             <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-              Android · iOS · Live icons switch
+              Android · iOS · Gifts / Coins / Deposit switches
             </span>
           </span>
         </div>
@@ -97,7 +110,7 @@ export default function AppUploadSection({ T }: { T: Theme }) {
       {open && (
         <div className="flex flex-col gap-3">
           <AppReleasesOwnerCard T={T} />
-          <LiveIconsSwitch T={T} />
+          <LiveSwitchesCard T={T} />
         </div>
       )}
     </>

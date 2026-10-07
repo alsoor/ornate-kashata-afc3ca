@@ -18,7 +18,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, CreditCard, Lock, Pencil, ExternalLink, Gift as GiftIcon, DollarSign } from 'lucide-react';
 import { GIFTS, TOP_GIFTS, ALL_GIFTS } from '@/lib/index';
-import { useLiveIconsVisible } from '@/lib/liveIconsVisibility';
+import { useLiveSwitches } from '@/lib/liveIconsVisibility';
 import type { GiftDefinition } from '@/lib/types';
 import { supportSpend } from '@/lib/supportCoinsPatch';
 import { deductGiftSupport, giftBalanceOrLocked } from '@/lib/giftDeductPatch';
@@ -946,8 +946,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
   const uid = String(currentUserId || '');
   // Warm Play Billing so the first coin tap can open the native 1-tap sheet inside the user gesture.
   useEffect(() => { void getGooglePlayService(); }, []);
-  // Owner switch (Settings → App Upload): when off, the $ and gift icons are hidden for everyone in video + voice LIVE.
-  const iconsVisible = useLiveIconsVisible();
+  // Owner switches (Settings → App Upload): when off, the Coins ($) icon / Gifts icon are hidden for everyone in video + voice LIVE.
+  const liveSw = useLiveSwitches();
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [coinsOpen, setCoinsOpen] = useState(false);
   const [giftsOpen, setGiftsOpen] = useState(false);
@@ -961,7 +961,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
   const [giftMsg, setGiftMsg] = useState('');
   const [customText, setCustomText] = useState('');
   const [tap, setTap] = useState<{ id: string; n: number } | null>(null);
-  useEffect(() => { if (!iconsVisible) { setCoinsOpen(false); setGiftsOpen(false); } }, [iconsVisible]);
+  useEffect(() => { if (!liveSw.coins) setCoinsOpen(false); }, [liveSw.coins]);
+  useEffect(() => { if (!liveSw.gifts) setGiftsOpen(false); }, [liveSw.gifts]);
 
   // تكرار الهدية + طابور التشغيل
   const tapRef = useRef<{ id: string; n: number } | null>(null);
@@ -1437,8 +1438,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
 
   return (
     <>
-      {iconsVisible && dot(yellowRight + (BTN - 36), '#facc15', 'Coins', <DollarSign size={ICON + 1} color="#facc15" strokeWidth={2.6} />, () => { setGiftsOpen(false); setCoinsOpen(true); })}
-      {iconsVisible && dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', <GiftIcon size={ICON} color="#1d7cf2" strokeWidth={2.2} />, () => {
+      {liveSw.coins && dot(yellowRight + (BTN - 36), '#facc15', 'Coins', <DollarSign size={ICON + 1} color="#facc15" strokeWidth={2.6} />, () => { setGiftsOpen(false); setCoinsOpen(true); })}
+      {liveSw.gifts && dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', <GiftIcon size={ICON} color="#1d7cf2" strokeWidth={2.2} />, () => {
         setCoinsOpen(false);
         if (appGiftNotice) {
           try { localStorage.removeItem(giftNoticeKey(uid)); } catch { /* ignore */ }
@@ -1801,6 +1802,7 @@ function parseCents(t: string): number {
 
 /** allowWithdraw: زر السحب إلى PayPal يظهر فقط حيث تمرّره true (الإعدادات). داخل البث يبقى مخفي. */
 export function WalletSheet({ open, onClose, userId, allowWithdraw = false }: { open: boolean; onClose: () => void; userId?: string; allowWithdraw?: boolean }) {
+  const showDeposit = useLiveSwitches().deposit; // owner switch: hides the Deposit (+) box in live and in user Settings
   const uid = String(userId || '');
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [earnings, setEarnings] = useState<number>(() => readEarnings(uid));
@@ -2039,8 +2041,8 @@ export function WalletSheet({ open, onClose, userId, allowWithdraw = false }: { 
             <span style={{ color: '#4ade80', fontWeight: 800, fontSize: 13 }}>{fmtUsd(earningsUsd)}</span>
             <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10.5, textAlign: 'center' }}>وصلك من الدعم</span>
           </div>
-          <div style={{ width: 1, background: 'rgba(255,255,255,0.1)', margin: '10px 0' }} />
-          <div style={half}>
+          {showDeposit && <div style={{ width: 1, background: 'rgba(255,255,255,0.1)', margin: '10px 0' }} />}
+          {showDeposit && <div style={half}>
             <span style={label}>Deposit</span>
             <button type="button" onClick={openDeposit} aria-label="Deposit"
               style={{
@@ -2054,7 +2056,7 @@ export function WalletSheet({ open, onClose, userId, allowWithdraw = false }: { 
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'rgba(255,255,255,0.7)', fontWeight: 800, fontSize: 12.5 }}>
               <CoinIcon size={14} /> {fmtCoins(balance)}
             </span>
-          </div>
+          </div>}
         </div>
 
         {/* Withdrawal تحت Balance → PayPal (بالإعدادات فقط — مخفي داخل البث) */}

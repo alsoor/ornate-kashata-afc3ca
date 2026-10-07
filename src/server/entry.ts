@@ -1173,46 +1173,57 @@ const maxOf = (m: Map<string, number>, keys: string[]) => {
   return v;
 };
 
-// ── LIVE-ICONS-PATCH: owner switch that shows / hides the Coins ($) + Gifts icons in video & voice LIVE for everyone ──
-// GET  /api/app-settings/live-icons -> { ok, visible }  (public, never cached)
-// POST /api/app-settings/live-icons { visible: boolean } (owner/admin only) — saved to disk so it survives restarts/redeploys
+// ── LIVE-ICONS-PATCH: owner switches (independent): gifts icon / coins ($) icon in video & voice LIVE, and the Deposit box in the Wallet page ──
+// GET  /api/app-settings/live-icons -> { ok, gifts, coins, deposit }  (public, never cached)
+// POST /api/app-settings/live-icons { gifts?, coins?, deposit? } booleans (owner/admin only) — saved to disk so it survives restarts/redeploys
+type AppSwitches = { gifts: boolean; coins: boolean; deposit: boolean };
 const APP_SETTINGS_FILE = () => join(ASSETS_DIR, "stooorna-app-settings.json");
-const loadAppSettings = (): { liveIconsVisible: boolean } => {
-  const g = globalThis as typeof globalThis & { __stooornaAppSettings?: { liveIconsVisible: boolean } };
-  if (!g.__stooornaAppSettings) {
-    let visible = true;
+const appSwitches = (): AppSwitches => {
+  const g = globalThis as typeof globalThis & { __stooornaAppSwitches?: AppSwitches };
+  if (!g.__stooornaAppSwitches) {
+    const sw: AppSwitches = { gifts: true, coins: true, deposit: true };
     try {
       const p = APP_SETTINGS_FILE();
       if (existsSync(p)) {
         const raw = JSON.parse(readFileSync(p, "utf-8"));
-        if (raw && raw.liveIconsVisible === false) visible = false;
+        if (raw?.gifts === false) sw.gifts = false;
+        if (raw?.coins === false) sw.coins = false;
+        if (raw?.deposit === false) sw.deposit = false;
       }
     } catch (e) {
       console.error("[app-settings] load failed", e);
     }
-    g.__stooornaAppSettings = { liveIconsVisible: visible };
+    g.__stooornaAppSwitches = sw;
   }
-  return g.__stooornaAppSettings;
+  return g.__stooornaAppSwitches;
 };
-const saveAppSettings = () => {
+const saveAppSwitches = () => {
   try {
     if (!existsSync(ASSETS_DIR)) mkdirSync(ASSETS_DIR, { recursive: true });
-    writeFileSync(APP_SETTINGS_FILE(), JSON.stringify({ ...loadAppSettings(), updatedAt: Date.now() }), "utf-8");
+    writeFileSync(APP_SETTINGS_FILE(), JSON.stringify({ ...appSwitches(), updatedAt: Date.now() }), "utf-8");
   } catch (e) {
     console.error("[app-settings] save failed", e);
   }
 };
 app.get("/api/app-settings/live-icons", (_req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-  res.json({ ok: true, visible: loadAppSettings().liveIconsVisible });
+  res.json({ ok: true, ...appSwitches() });
 });
 app.post("/api/app-settings/live-icons", guarded(async (req, res) => {
   if (!(await needAdmin(req, res))) return;
-  const v = (req.body as { visible?: unknown } | undefined)?.visible;
-  if (typeof v !== "boolean") return deny(res, 400, "visible_must_be_boolean");
-  loadAppSettings().liveIconsVisible = v;
-  saveAppSettings();
-  res.json({ ok: true, visible: v });
+  const body = (req.body || {}) as Record<string, unknown>;
+  const sw = appSwitches();
+  let touched = false;
+  for (const k of ["gifts", "coins", "deposit"] as const) {
+    if (k in body) {
+      if (typeof body[k] !== "boolean") return deny(res, 400, `${k}_must_be_boolean`);
+      sw[k] = body[k] as boolean;
+      touched = true;
+    }
+  }
+  if (!touched) return deny(res, 400, "nothing_to_update");
+  saveAppSwitches();
+  res.json({ ok: true, ...sw });
 }));
 
 app.get("/api/gifts/profits", guarded(async (req, res) => {
