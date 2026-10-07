@@ -5273,7 +5273,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                   setLiveMsgPeer(null);
                 }}
                 style={{
-                  position: 'absolute', right: 14, bottom: liveNav ? 226 : ((goIn && goInHidden !== goIn.id) ? 168 : (liveMsgPeer ? 168 : 18)), zIndex: 3,
+                  position: 'absolute', right: 14, bottom: liveNav ? 'calc(env(safe-area-inset-bottom, 0px) + 270px)' : ((goIn && goInHidden !== goIn.id) ? 'calc(env(safe-area-inset-bottom, 0px) + 212px)' : (liveMsgPeer ? 'calc(env(safe-area-inset-bottom, 0px) + 212px)' : 'calc(env(safe-area-inset-bottom, 0px) + 24px)')), zIndex: 3,
                   width: 44, height: 44, borderRadius: '50%', border: 'none',
                   background: '#fff', boxShadow: '0 2px 10px rgba(0,0,0,0.18)', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -5302,7 +5302,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 return (
                   <div
                     onPointerDown={e => e.stopPropagation()}
-                    style={{ position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
+                    style={{ position: 'absolute', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 56px)', zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                       <div style={{ position: 'relative', width: 38, height: 38, flexShrink: 0 }}>
@@ -5420,7 +5420,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 return (
                   <div
                     onPointerDown={e => e.stopPropagation()}
-                    style={{ position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
+                    style={{ position: 'absolute', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 56px)', zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                       <div style={{ width: 38, height: 38, borderRadius: '50%', overflow: 'hidden', background: '#111', border: '2px solid #22c55e', flexShrink: 0 }}>
@@ -5455,7 +5455,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 );
               })()}
               {liveMsgPeer && String(liveMsgPeer.id) !== String(myId || '') && (
-                <div style={{ position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 4, borderRadius: 14, overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
+                <div style={{ position: 'absolute', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 56px)', zIndex: 4, borderRadius: 14, overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
                   <div style={{ background: '#111', color: '#fff', fontWeight: 800, fontSize: '0.84rem', padding: '10px 12px' }}>
                     @{liveMsgPeer.name}
                   </div>

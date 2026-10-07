@@ -490,16 +490,7 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
   } else if (!PACKS.some(p => p.coins === pack.coins)) {
     return { ok: false, error: 'Choose one of the available packs' };
   }
-  // الطريقتان: Polar كما هي، أو Google Play (ورقة 1-tap buy). إغلاق المربع = إلغاء بدون رسالة.
-  const method = await askPaymentMethod(pack, userId);
-  if (!method) return { ok: true, redirected: true };
-  if (method === 'google') {
-    const g = await payWithGooglePlay(pack, userId);
-    if (g.cancelled) return { ok: true, redirected: true };
-    return g.ok ? { ok: true, balance: g.balance } : { ok: false, error: g.error };
-  }
-  // STAY-IN-LIVE: never open an external browser tab. Polar checkout opens as an in-app
-  // slide-up sheet over the live room. Closing with X only dismisses the sheet — mic/stream stay.
+  // Polar only — no Google Play option, no payment-method sheet.
   try {
     const r = await fetch('/api/polar/checkout', {
       method: 'POST',
@@ -540,10 +531,14 @@ async function openPolarOfficialInApp(url: string): Promise<boolean> {
   if (!url) return false;
   const w = window as any;
 
-  // 1) Capacitor Browser plugin (@capacitor/browser)
+  // 1) Capacitor Browser plugin (@capacitor/browser) — Chrome Custom Tabs / SFSafariViewController
   try {
     const Cap = w.Capacitor;
-    const Browser = Cap?.Plugins?.Browser || w.Browser || Cap?.Plugins?.CapacitorBrowser;
+    const Browser =
+      Cap?.Plugins?.Browser ||
+      w.Browser ||
+      Cap?.Plugins?.CapacitorBrowser ||
+      (Cap?.isPluginAvailable?.('Browser') ? Cap.Plugins.Browser : null);
     if (Browser && typeof Browser.open === 'function') {
       await Browser.open({
         url,
@@ -556,20 +551,43 @@ async function openPolarOfficialInApp(url: string): Promise<boolean> {
     console.warn('[polar] Capacitor Browser failed', e);
   }
 
-  // 2) Cordova InAppBrowser
+  // 2) Dynamic import of @capacitor/browser (bundled as separate chunk in some builds)
+  try {
+    const mod = await import('@capacitor/browser').catch(() => null) as any;
+    const Browser = mod?.Browser;
+    if (Browser && typeof Browser.open === 'function') {
+      await Browser.open({ url, presentationStyle: 'popover', toolbarColor: '#0b0b0f' });
+      return true;
+    }
+  } catch (e) {
+    console.warn('[polar] @capacitor/browser import failed', e);
+  }
+
+  // 3) Cordova InAppBrowser
   try {
     if (typeof w.cordova !== 'undefined' && w.cordova?.InAppBrowser?.open) {
-      const ref = w.cordova.InAppBrowser.open(url, '_blank', 'location=yes,hideurlbar=no,toolbar=yes,closebuttoncaption=Close,clearcache=no,clearsessioncache=no');
+      const ref = w.cordova.InAppBrowser.open(
+        url,
+        '_blank',
+        'location=yes,hideurlbar=no,toolbar=yes,closebuttoncaption=Close,clearcache=no,clearsessioncache=no,fullscreen=no',
+      );
       return !!ref;
     }
   } catch (e) {
     console.warn('[polar] Cordova InAppBrowser failed', e);
   }
 
-  // 3) Android Chrome Custom Tabs intent (some TWAs expose this)
+  // 4) Android bridge / TWA custom tab helper if the shell exposes it
   try {
     if (typeof w.Android !== 'undefined' && typeof w.Android.openCustomTab === 'function') {
       w.Android.openCustomTab(url);
+      return true;
+    }
+  } catch { /* ignore */ }
+
+  try {
+    if (typeof w.webkit?.messageHandlers?.openUrl?.postMessage === 'function') {
+      w.webkit.messageHandlers.openUrl.postMessage({ url });
       return true;
     }
   } catch { /* ignore */ }
@@ -758,23 +776,29 @@ function PolarCheckoutSheet({ url, onDone }: { url: string; onDone: () => void }
 function openPolarCheckout(url: string, userId: string, _pre?: Window | null) {
   if (typeof document === 'undefined') return;
   try { polarStopWatch?.(); } catch { /* ignore */ }
-  // keep watching after the sheet closes: the server credits the coins by webhook
   polarStopWatch = watchPolarCredit(userId, () => { polarStopWatch = null; });
-  // Show the in-app sheet; it auto-launches Polar's ORIGINAL url via Capacitor Browser (no iframe, no external Chrome kick-out).
-  if (polarRoot) { try { polarRoot.unmount(); } catch { /* ignore */ } polarRoot = null; }
-  if (polarHost) { try { polarHost.remove(); } catch { /* ignore */ } polarHost = null; }
-  const host = document.createElement('div');
-  ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach(t => host.addEventListener(t, ev => ev.stopPropagation()));
-  document.body.appendChild(host);
-  polarHost = host;
-  polarRoot = createRoot(host);
-  const done = () => {
-    try { polarRoot?.unmount(); } catch { /* ignore */ }
-    polarRoot = null;
-    try { host.remove(); } catch { /* ignore */ }
-    if (polarHost === host) polarHost = null;
-  };
-  polarRoot.render(<PolarCheckoutSheet url={url} onDone={done} />);
+
+  // Open Polar's official page immediately — no intermediate sheet.
+  void (async () => {
+    const ok = await openPolarOfficialInApp(url);
+    if (ok) return; // Capacitor/Cordova browser opened over the live room
+
+    // Fallback sheet only if in-app browser is unavailable
+    if (polarRoot) { try { polarRoot.unmount(); } catch { /* ignore */ } polarRoot = null; }
+    if (polarHost) { try { polarHost.remove(); } catch { /* ignore */ } polarHost = null; }
+    const host = document.createElement('div');
+    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach(t => host.addEventListener(t, ev => ev.stopPropagation()));
+    document.body.appendChild(host);
+    polarHost = host;
+    polarRoot = createRoot(host);
+    const done = () => {
+      try { polarRoot?.unmount(); } catch { /* ignore */ }
+      polarRoot = null;
+      try { host.remove(); } catch { /* ignore */ }
+      if (polarHost === host) polarHost = null;
+    };
+    polarRoot.render(<PolarCheckoutSheet url={url} onDone={done} />);
+  })();
 }
 
 /** After a hosted checkout: poll the server balance (credited by the payment webhook) and hand it to the caller once it is higher. */
