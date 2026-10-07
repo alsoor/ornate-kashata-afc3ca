@@ -18863,14 +18863,14 @@ function PublicLiveCommentsPanel({
             onTouchEnd={e => e.stopPropagation()}
             onWheel={e => e.stopPropagation()}
             style={{
-              // FULL PAGE: flat + opaque, no shadow/tail/backdrop/animation. Kept with visibility (not content-visibility) so the
-              // first tiles' videos can still be pre-loaded while it is hidden → no empty tiles when it opens.
               position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
               display: 'flex', flexDirection: 'column',
               padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 10px 0',
               background: '#071214',
               visibility: tplShown ? 'visible' : 'hidden',
               pointerEvents: tplShown ? 'auto' : 'none',
+              transform: tplShown ? 'translateY(0)' : 'translateY(100%)',
+              transition: 'transform .32s cubic-bezier(.2,.8,.2,1), visibility 0s linear ' + (tplShown ? '0s' : '.32s'),
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
@@ -20435,6 +20435,27 @@ function hdrIconTone(active: boolean, tone: 'green' | 'orange' = 'green'): React
   };
 }
 
+/** Profile panel icons on white: always black ring so buttons stay visible; active color fills the center. */
+function hdrIconTonePanel(active: boolean, tone: 'green' | 'orange' = 'green'): React.CSSProperties {
+  if (!active) {
+    return {
+      border: '2px solid #111111',
+      background: 'rgba(0,0,0,0.04)',
+      color: '#333333',
+      boxShadow: 'none',
+      transition: 'color 200ms ease, border-color 200ms ease, background 200ms ease',
+    };
+  }
+  const rgb = tone === 'orange' ? '249,115,22' : '34,197,94';
+  return {
+    border: '2px solid #111111',
+    background: `rgba(${rgb},0.22)`,
+    color: tone === 'orange' ? '#ea580c' : '#16a34a',
+    boxShadow: `0 0 8px rgba(${rgb},0.45)`,
+    transition: 'color 200ms ease, border-color 200ms ease, background 200ms ease, box-shadow 200ms ease',
+  };
+}
+
 function useSiteVisitorCount(userId?: string | null) {
   const [count, setCount] = useState(0);
   useEffect(() => {
@@ -21416,6 +21437,8 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
           background: '#071214',
           visibility: active ? 'visible' : 'hidden',
           pointerEvents: active ? 'auto' : 'none',
+          transform: active ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform .32s cubic-bezier(.2,.8,.2,1), visibility 0s linear ' + (active ? '0s' : '.32s'),
           ...({ contentVisibility: active ? 'visible' : 'hidden' } as React.CSSProperties),
         }}
       >
@@ -26908,8 +26931,26 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     ))}
                   </div>
 
-                  {/* Five section buttons under the purple dots */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, flexWrap: 'wrap', marginTop: 4 }}>
+                  {/* Five section buttons under the purple dots — black frame + slow silver shine */}
+                  <style>{`
+                    @keyframes stooornaPanelBarShine {
+                      0% { transform: translateX(-120%); }
+                      100% { transform: translateX(220%); }
+                    }
+                  `}</style>
+                  <div style={{
+                    position: 'relative', overflow: 'hidden',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, flexWrap: 'wrap',
+                    marginTop: 8, padding: '12px 18px',
+                    borderRadius: 16,
+                    border: '2px solid #111111',
+                    background: '#fafafa',
+                  }}>
+                    <span aria-hidden style={{
+                      pointerEvents: 'none', position: 'absolute', top: 0, bottom: 0, left: 0, width: '35%',
+                      background: 'linear-gradient(90deg, transparent, rgba(192,192,192,0.55), rgba(255,255,255,0.75), rgba(192,192,192,0.45), transparent)',
+                      animation: 'stooornaPanelBarShine 3.8s ease-in-out infinite',
+                    }} />
                     <motion.button
                       whileTap={{ scale: 0.94 }}
                       onClick={() => { setFollowersModalOpen(true); setProfileSlideOpen(false); }}
@@ -26919,7 +26960,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <span style={{
                         width: 28, height: 28, borderRadius: '50%',
-                        ...hdrIconTone(!!(anyFriendOnlineFast || friends.some(f => !!(presence[f.friendId] as any)?.online))),
+                        ...hdrIconTonePanel(!!(anyFriendOnlineFast || friends.some(f => !!(presence[f.friendId] as any)?.online))),
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       }}>
                         {!followersVisible ? <Lock size={13} strokeWidth={2.2} /> : <Users size={13} strokeWidth={2.3} />}
@@ -26933,7 +26974,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       title="Call history"
                       style={{
                         width: 28, height: 28, borderRadius: '50%',
-                        ...hdrIconTone(!!(callHistoryDotState.joined || anyInCall)),
+                        ...hdrIconTonePanel(!!(callHistoryDotState.joined || anyInCall)),
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
                       }}
@@ -26946,7 +26987,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       title={(myLiveBroadcastKind || anyLiveBroadcast) ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
                       style={{
                         width: 28, height: 28, borderRadius: '50%',
-                        ...hdrIconTone(!!(myLiveBroadcastKind || anyLiveBroadcast)),
+                        ...hdrIconTonePanel(!!(myLiveBroadcastKind || anyLiveBroadcast)),
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       }}
                     >
@@ -26960,7 +27001,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       title={anyFriendOnMap ? 'يوجد أشخاص على الخريطة' : 'الخريطة'}
                       style={{
                         width: 28, height: 28, borderRadius: '50%',
-                        ...hdrIconTone(!!anyFriendOnMap),
+                        ...hdrIconTonePanel(!!anyFriendOnMap),
                         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0, cursor: 'pointer',
                       }}
                     >
@@ -26981,7 +27022,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         title={hasUnseenFriendReq ? 'يوجد طلبات إضافة جديدة' : 'طلبات الإضافة'}
                         style={{
                           width: 28, height: 28, borderRadius: '50%',
-                          ...hdrIconTone(!!hasUnseenFriendReq, 'orange'),
+                          ...hdrIconTonePanel(!!hasUnseenFriendReq, 'orange'),
                           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0, cursor: 'pointer',
                         }}
                       >
@@ -32170,8 +32211,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 whileTap={{ scale: 0.97 }}
                 onClick={() => {
                   setPublishMenuOpen(false);
-                  // فتح المعرض مباشرة (صورة أو فيديو) بدون قائمة Photo/Video
-                  requestAnimationFrame(() => storyFileRef.current?.click());
+                  // Stay on the same page: open in-app camera/editor (no system file picker kick-out)
+                  setCameraStartWithLiveMap(false);
+                  setCameraCaptureOpen(true);
                 }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px',
