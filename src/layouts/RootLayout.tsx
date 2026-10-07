@@ -2,34 +2,6 @@ import { Helmet } from '@dr.pogodin/react-helmet';
 import { type ReactElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ScrollRestoration, useLocation, useNavigate } from "react-router";
 
-// ── PERF: identical GET requests that are in flight at the same moment share ONE network call ──
-// (the home page polls /api/room, /api/friends ... from several components at once — each of them used to hit the server separately).
-// Only plain same-origin /api/ GETs without an abort signal are shared; every caller still gets its own readable copy of the response.
-if (typeof window !== 'undefined' && !(window as any).__stooornaFetchDedupe) {
-  (window as any).__stooornaFetchDedupe = true;
-  const nativeFetch = window.fetch.bind(window);
-  const inflight = new Map<string, Promise<Response>>();
-  window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    try {
-      if (typeof input === 'string' && input.startsWith('/api/') && !/stream|events|sse|download/i.test(input)) {
-        const method = String(init?.method || 'GET').toUpperCase();
-        if (method === 'GET' && !init?.signal && !init?.body) {
-          const key = `${input}|${init?.credentials || ''}|${init?.cache || ''}|${init?.headers ? JSON.stringify(init.headers) : ''}`;
-          const shared = inflight.get(key);
-          const req: Promise<Response> = shared ?? nativeFetch(input, init);
-          if (!shared) {
-            inflight.set(key, req);
-            const clear = () => { if (inflight.get(key) === req) inflight.delete(key); };
-            req.then(clear, clear);
-          }
-          return req.then(r => r.clone());
-        }
-      }
-    } catch { /* fall through to the normal fetch */ }
-    return nativeFetch(input as any, init);
-  }) as typeof window.fetch;
-}
-
 // True on the profile/story tab of /add-friend (the "+" lives inline there, so the bottom nav bar must never show).
 // Works from the URL alone so the very first render (refresh / coming back) is already correct — no flash of the bar.
 // الصفحة الرئيسية = "/" (وما زال /add-friend يعمل كمسار قديم لنفس الصفحة)
@@ -53,6 +25,7 @@ import { playNotificationSound } from '@/lib/notificationSound';
 import SplashScreen from '@/components/SplashScreen';
 import WelcomeGuide from '@/components/WelcomeGuide';
 import { startPublicBadgeSync } from '@/lib/publicVisibility';
+import PwaInstallBanner from '@/components/PwaInstallBanner';
 import OwnerControlDock from '@/components/OwnerControlDock';
 // Welcome guide + splash are DISABLED (files kept). Set to true to bring them back.
 const WELCOME_SPLASH_ENABLED: boolean = false;
@@ -5353,9 +5326,12 @@ export default function RootLayout({
   const location = useLocation();
   const navigate = useNavigate();
   useEffect(() => {
-    try { navigator.vibrate?.(16); } catch { /* */ }
+    /* haptic disabled: try { navigator.vibrate?.(16); } catch {} */
   }, []);
+  // Global button haptic DISABLED (user request: phone vibration on every tap was annoying).
+  // Incoming-call / gift haptics elsewhere are left intact.
   useEffect(() => {
+    /* haptic-off
     const buzz = (e: Event) => {
       const el = e.target as HTMLElement | null;
       if (!el || !el.closest('button, [role="button"], a')) return;
@@ -5364,6 +5340,7 @@ export default function RootLayout({
     };
     document.addEventListener('pointerdown', buzz, true);
     return () => document.removeEventListener('pointerdown', buzz, true);
+    */
   }, []);
   const [showWelcome, setShowWelcome] = useState(() => {
     if (!WELCOME_SPLASH_ENABLED) return false;
@@ -5626,6 +5603,7 @@ export default function RootLayout({
         ) : children}
       </div>
       <LiveJoinBanner />
+      <PwaInstallBanner onEnablePush={async () => { await subscribe(); }} />
       <OwnerControlDock />
       <GlobalBottomNavigation />
       <style>{`@keyframes stooornaPlusFanIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaStoryPlusFanIn { from { opacity: 0; transform: translateY(-10px) translateX(-50%); } to { opacity: 1; transform: translateY(0) translateX(-50%); } } @keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeIncomingSheetIn { from { transform: translateY(-100%); opacity: 0.6; } to { transform: translateY(0); opacity: 1; } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } } @keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } } @keyframes stooornaLiveBannerIn { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaTextPostSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>

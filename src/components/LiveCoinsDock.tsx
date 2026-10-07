@@ -498,10 +498,8 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
     if (g.cancelled) return { ok: true, redirected: true };
     return g.ok ? { ok: true, balance: g.balance } : { ok: false, error: g.error };
   }
-  // polar-official-direct-open: open the official checkout in a real browser page (Polar cannot be embedded in an iframe).
-  // The tab is opened now, at the tap, so popup blockers allow it; it is pointed at the checkout URL once the server answers.
-  let pre: Window | null = null;
-  try { pre = window.open('about:blank', '_blank'); } catch { pre = null; }
+  // STAY-IN-LIVE: never open an external browser tab. Polar checkout opens as an in-app
+  // slide-up sheet over the live room. Closing with X only dismisses the sheet — mic/stream stay.
   try {
     const r = await fetch('/api/polar/checkout', {
       method: 'POST',
@@ -514,68 +512,150 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
     });
     const d = await r.json().catch(() => ({})) as { url?: string; error?: string };
     if (!r.ok || !d.url) {
-      try { if (pre) pre.close(); } catch { /* ignore */ }
       const msg = isCustomPack && typeof d.error === 'string' && d.error.length > 0 && d.error.length < 140 ? d.error : 'Payment is not available right now';
       return { ok: false, error: msg };
     }
     try { localStorage.setItem(`stooorna_polar_pending_${userId}`, String(Date.now())); } catch { /* ignore */ }
-    openPolarCheckout(d.url, userId, pre);   // slide-up page inside the app (no page navigation → the room stays open)
+    openPolarCheckout(d.url, userId);   // in-app sheet only — live room stays open
     return { ok: true, redirected: true };
   } catch {
-    try { if (pre) pre.close(); } catch { /* ignore */ }
     return { ok: false, error: 'Network error' };
   }
 }
 
-// ── Hosted checkout INSIDE the app ───────────────────────────────────────────────────────────
-// The Polar checkout used to replace the whole page (window.location.assign) → the live room was unloaded and the user
-// was kicked out ("Entering…"). Now it opens as a page that slides up over the room with an X on top; closing it just slides
-// it down. The room, the mic and the stream are never touched. Coins are still credited by the server webhook and picked up
-// by watchPolarCredit.
-/** true = if the browser blocks the new page, the in-app sheet shows an "Open checkout" button instead of the (blocked) iframe. */
-const POLAR_FALLBACK_BUTTON = true;
+// ── Hosted checkout INSIDE the app (NO iframe) ───────────────────────────────────────────────
+// Polar's real checkout page cannot be embedded in an iframe (X-Frame-Options).
+// We open their ORIGINAL URL via an in-app browser overlay so the live room never unloads:
+//   1) Capacitor Browser (Chrome Custom Tabs / SFSafariViewController) — preferred in the APK
+//   2) Cordova InAppBrowser if present
+//   3) A slide-up sheet with a single button that still uses the same in-app browser APIs
+// Closing the overlay / pressing X returns to the exact same live room (mic + stream intact).
+// Coins are credited by the server webhook and picked up by watchPolarCredit.
 let polarRoot: Root | null = null;
 let polarHost: HTMLDivElement | null = null;
 let polarStopWatch: (() => void) | null = null;
 
+/** Open Polar's real site in an in-app browser overlay. Returns true if something opened. */
+async function openPolarOfficialInApp(url: string): Promise<boolean> {
+  if (!url) return false;
+  const w = window as any;
+
+  // 1) Capacitor Browser plugin (@capacitor/browser)
+  try {
+    const Cap = w.Capacitor;
+    const Browser = Cap?.Plugins?.Browser || w.Browser || Cap?.Plugins?.CapacitorBrowser;
+    if (Browser && typeof Browser.open === 'function') {
+      await Browser.open({
+        url,
+        presentationStyle: 'popover',
+        toolbarColor: '#0b0b0f',
+      });
+      return true;
+    }
+  } catch (e) {
+    console.warn('[polar] Capacitor Browser failed', e);
+  }
+
+  // 2) Cordova InAppBrowser
+  try {
+    if (typeof w.cordova !== 'undefined' && w.cordova?.InAppBrowser?.open) {
+      const ref = w.cordova.InAppBrowser.open(url, '_blank', 'location=yes,hideurlbar=no,toolbar=yes,closebuttoncaption=Close,clearcache=no,clearsessioncache=no');
+      return !!ref;
+    }
+  } catch (e) {
+    console.warn('[polar] Cordova InAppBrowser failed', e);
+  }
+
+  // 3) Android Chrome Custom Tabs intent (some TWAs expose this)
+  try {
+    if (typeof w.Android !== 'undefined' && typeof w.Android.openCustomTab === 'function') {
+      w.Android.openCustomTab(url);
+      return true;
+    }
+  } catch { /* ignore */ }
+
+  return false;
+}
+
 function PolarCheckoutSheet({ url, onDone }: { url: string; onDone: () => void }) {
   const [shown, setShown] = useState(false);
-  const [loaded, setLoaded] = useState(true);
-  const [slow, setSlow] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const [opened, setOpened] = useState(false);
+  const [err, setErr] = useState('');
   const [paid, setPaid] = useState(false);
   const closingRef = useRef(false);
-
-  const src = useMemo(() => {
-    try {
-      const u = new URL(url);
-      u.searchParams.set('embed', 'true');
-      u.searchParams.set('embed_origin', window.location.origin);
-      u.searchParams.set('theme', 'dark');
-      return u.toString();
-    } catch { return url; }
-  }, [url]);
+  const autoTried = useRef(false);
 
   const close = React.useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
     setShown(false);
+    // Best-effort: close Capacitor Browser if still open
+    try {
+      const Browser = (window as any).Capacitor?.Plugins?.Browser || (window as any).Browser;
+      if (Browser?.close) void Browser.close();
+    } catch { /* ignore */ }
     window.setTimeout(onDone, 280);
   }, [onDone]);
 
+  const launch = React.useCallback(async () => {
+    if (!url || opening) return;
+    setOpening(true);
+    setErr('');
+    const ok = await openPolarOfficialInApp(url);
+    setOpening(false);
+    if (ok) {
+      setOpened(true);
+    } else {
+      setErr('تعذّر فتح صفحة الدفع داخل التطبيق. تأكد أن إضافة Browser مفعّلة في الـ APK.');
+    }
+  }, [url, opening]);
+
   useEffect(() => {
     const t = requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
-    const slowT = window.setTimeout(() => setSlow(true), 9000);
+    // Auto-open Polar's official page once the sheet is visible
+    const auto = window.setTimeout(() => {
+      if (!autoTried.current) {
+        autoTried.current = true;
+        void launch();
+      }
+    }, 320);
+
+    // Listen for Capacitor Browser close → stay on this sheet until user taps X
+    let removeFinished: (() => void) | null = null;
+    try {
+      const Browser = (window as any).Capacitor?.Plugins?.Browser || (window as any).Browser;
+      if (Browser?.addListener) {
+        const handle = Browser.addListener('browserFinished', () => {
+          // User closed Polar — coins may still be processing; keep sheet so they can reopen or X
+          setOpened(false);
+        });
+        removeFinished = () => {
+          try {
+            if (handle?.remove) handle.remove();
+            else if (Browser.removeAllListeners) Browser.removeAllListeners();
+          } catch { /* ignore */ }
+        };
+      }
+    } catch { /* ignore */ }
+
     const onMsg = (e: MessageEvent) => {
       let d: any = e.data;
       if (typeof d === 'string') { try { d = JSON.parse(d); } catch { return; } }
       const ev = String(d?.event || d?.type || '');
-      if (!ev) return;
-      if (ev === 'loaded') setLoaded(true);
-      else if (ev === 'close') close();
-      else if (ev === 'success' || ev === 'confirmed') { setPaid(true); window.setTimeout(close, 1800); }
+      if (ev === 'success' || ev === 'confirmed' || ev === 'checkout.completed') {
+        setPaid(true);
+        window.setTimeout(close, 1800);
+      }
     };
     window.addEventListener('message', onMsg);
-    return () => { cancelAnimationFrame(t); window.clearTimeout(slowT); window.removeEventListener('message', onMsg); };
+    return () => {
+      cancelAnimationFrame(t);
+      window.clearTimeout(auto);
+      window.removeEventListener('message', onMsg);
+      try { removeFinished?.(); } catch { /* ignore */ }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [close]);
 
   return (
@@ -589,95 +669,101 @@ function PolarCheckoutSheet({ url, onDone }: { url: string; onDone: () => void }
         role="dialog"
         aria-modal="true"
         style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0, top: 'max(22px, env(safe-area-inset-top, 0px))',
+          position: 'absolute', left: 0, right: 0, bottom: 0,
+          top: 'max(22px, env(safe-area-inset-top, 0px))',
           background: '#0b0b0f', borderRadius: '18px 18px 0 0', overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
-          transform: shown ? 'translateY(0)' : 'translateY(100%)', transition: 'transform .3s cubic-bezier(.2,.8,.2,1)',
+          transform: shown ? 'translateY(0)' : 'translateY(100%)',
+          transition: 'transform .3s cubic-bezier(.2,.8,.2,1)',
           boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', flexShrink: 0, color: '#fff' }}>
-          <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Checkout</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', flexShrink: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Checkout · Polar</span>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={close}
+            style={{
+              width: 36, height: 36, borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '28px 22px', gap: 16, textAlign: 'center' }}>
+          {paid ? (
+            <>
+              <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#22c55e' }}>Payment received ✅</p>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>Coins are being added…</p>
+            </>
+          ) : (
+            <>
+              <div style={{
+                width: 64, height: 64, borderRadius: 18,
+                background: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 28, boxShadow: '0 8px 24px rgba(124,58,237,0.35)',
+              }}>🔒</div>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: '1.05rem', color: '#fff' }}>
+                Secure Polar checkout
+              </p>
+              <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.5, maxWidth: 320 }}>
+                صفحة الدفع الرسمية من Polar تفتح فوق التطبيق. بعد ما تخلّص اضغط X ترجع للبث مباشرة بدون ما تنطرد.
+              </p>
+              {err ? (
+                <p style={{ margin: 0, fontSize: '0.78rem', color: '#f87171', fontWeight: 600 }}>{err}</p>
+              ) : null}
+              <button
+                type="button"
+                disabled={opening}
+                onClick={() => { void launch(); }}
+                style={{
+                  marginTop: 6, border: 'none', borderRadius: 14, padding: '14px 28px',
+                  background: opening ? 'rgba(124,58,237,0.5)' : '#7c3aed',
+                  color: '#fff', fontWeight: 800, fontSize: '0.95rem', cursor: opening ? 'wait' : 'pointer',
+                  minWidth: 220,
+                }}
+              >
+                {opening ? 'Opening Polar…' : opened ? 'Re-open Polar checkout' : 'Open Polar checkout'}
+              </button>
+              <p style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>
+                يفتح موقع Polar الأصلي · بدون iframe · البث يبقى شغّال
+              </p>
+            </>
+          )}
+        </div>
+
+        <div style={{ flexShrink: 0, padding: '10px 14px calc(12px + env(safe-area-inset-bottom, 0px))', textAlign: 'center' }}>
           <button
             type="button"
             onClick={close}
-            aria-label="Close"
-            style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{
+              border: '1px solid rgba(255,255,255,0.2)', background: 'transparent',
+              color: 'rgba(255,255,255,0.75)', borderRadius: 12, padding: '10px 20px',
+              fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+            }}
           >
-            <X size={18} />
+            إغلاق والرجوع للبث
           </button>
         </div>
-        <div style={{ position: 'relative', flex: 1, minHeight: 0, background: '#fff' }}>
-          {POLAR_FALLBACK_BUTTON ? (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24, background: '#0b0b0f', color: '#fff', textAlign: 'center' }}>
-              <p style={{ margin: 0, fontWeight: 700, fontSize: '0.92rem', color: 'rgba(255,255,255,0.8)' }}>Continue to the official secure checkout</p>
-              <button
-                type="button"
-                onClick={() => { try { window.open(url, '_blank'); } catch { /* ignore */ } close(); }}
-                style={{ border: 'none', background: '#7c3aed', color: '#fff', borderRadius: 14, padding: '14px 26px', fontWeight: 800, fontSize: '1rem', cursor: 'pointer' }}
-              >
-                Open checkout
-              </button>
-            </div>
-          ) : (
-          <iframe
-            title="Checkout"
-            src={src}
-            allow="payment *; clipboard-write"
-            onLoad={() => setLoaded(true)}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#fff' }}
-          />
-          )}
-          {!loaded ? (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0b0f', color: 'rgba(255,255,255,0.7)', fontWeight: 700, fontSize: '0.86rem', pointerEvents: 'none' }}>
-              Loading checkout…
-            </div>
-          ) : null}
-          {paid ? (
-            <div style={{ position: 'absolute', left: 12, right: 12, bottom: 16, padding: '12px 14px', borderRadius: 14, background: '#16a34a', color: '#fff', fontWeight: 800, textAlign: 'center' }}>
-              Payment received ✅ Coins are being added…
-            </div>
-          ) : null}
-        </div>
-        {slow && !paid ? (
-          <div style={{ flexShrink: 0, padding: '8px 14px calc(8px + env(safe-area-inset-bottom, 0px))', background: '#0b0b0f', textAlign: 'center' }}>
-            <button
-              type="button"
-              onClick={() => { try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ } }}
-              style={{ border: '1px solid rgba(255,255,255,0.25)', background: 'transparent', color: '#fff', borderRadius: 10, padding: '7px 14px', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
-            >
-              Not loading? Open in a new tab
-            </button>
-          </div>
-        ) : null}
       </div>
     </div>
   );
 }
 
-function openPolarCheckout(url: string, userId: string, pre?: Window | null) {
+function openPolarCheckout(url: string, userId: string, _pre?: Window | null) {
   if (typeof document === 'undefined') return;
   try { polarStopWatch?.(); } catch { /* ignore */ }
   // keep watching after the sheet closes: the server credits the coins by webhook
   polarStopWatch = watchPolarCredit(userId, () => { polarStopWatch = null; });
-  // Official Polar site opens directly (real browser page). The live room stays open underneath.
-  if (url) {
-    let opened = false;
-    try {
-      if (pre && !pre.closed) {
-        try { pre.opener = null; } catch { /* ignore */ }
-        pre.location.href = url;
-        opened = true;
-      } else {
-        opened = !!window.open(url, '_blank');
-      }
-    } catch { opened = false; }
-    if (opened) return;
-  }
+  // Show the in-app sheet; it auto-launches Polar's ORIGINAL url via Capacitor Browser (no iframe, no external Chrome kick-out).
   if (polarRoot) { try { polarRoot.unmount(); } catch { /* ignore */ } polarRoot = null; }
   if (polarHost) { try { polarHost.remove(); } catch { /* ignore */ } polarHost = null; }
   const host = document.createElement('div');
-  // The sheet lives in its own React root: keep taps from reaching "tap outside to close" listeners of the sheets under it.
   ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach(t => host.addEventListener(t, ev => ev.stopPropagation()));
   document.body.appendChild(host);
   polarHost = host;

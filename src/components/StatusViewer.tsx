@@ -157,8 +157,9 @@ export default function StatusViewer({ groups, startGroupIndex, myId, onClose, o
 
       {/* ── Header ── */}
       <div style={{
-        position: 'absolute', top: 20, left: 0, right: 0, zIndex: 10,
+        position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 12px)', left: 0, right: 0, zIndex: 10,
         display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px',
+        pointerEvents: 'none',
       }}>
         {group.avatarUrl ? (
           <img src={group.avatarUrl} alt={group.name}
@@ -194,13 +195,13 @@ export default function StatusViewer({ groups, startGroupIndex, myId, onClose, o
         {/* Delete (owner only) */}
         {isOwner && (
           <motion.button whileTap={{ scale: 0.85 }} onClick={handleDelete}
-            style={{ background: 'rgba(255,60,60,0.25)', border: '1px solid rgba(255,60,60,0.4)', borderRadius: 8, padding: '5px 8px', color: '#ff6b6b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem' }}>
-            <Trash2 size={13} />
+            style={{ pointerEvents: 'auto', background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,60,60,0.5)', borderRadius: '50%', width: 34, height: 34, padding: 0, color: '#ff6b6b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Trash2 size={15} />
           </motion.button>
         )}
 
         <motion.button whileTap={{ scale: 0.85 }} onClick={onClose}
-          style={{ background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
+          style={{ pointerEvents: 'auto', background: 'rgba(0,0,0,0.45)', border: 'none', borderRadius: '50%', width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
           <X size={16} />
         </motion.button>
       </div>
