@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { Readable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 // Same persistent storage the app already uses (the _private folder is blocked from public URLs by privateAssetsGuard).
@@ -76,6 +76,53 @@ function download(r: Rel): Response {
   });
 }
 
+
+export type UploadMeta = { platform: string; version: string; name: string; declared: number };
+export type UploadResult =
+  | { ok: true; release: Omit<Rel, 'stored'> }
+  | { ok: false; status: number; error: string };
+
+/** Validate + stream an uploaded APK/IPA into DIR and register it. Works with any Node Readable (Express req or Web body). */
+export async function storeUpload(src: Readable, m: UploadMeta): Promise<UploadResult> {
+  const platform = m.platform;
+  const version = (m.version || '').trim();
+  const name = (m.name || '').toLowerCase();
+  if (platform !== 'android' && platform !== 'ios') return { ok: false, status: 400, error: 'Bad platform' };
+  if (!name.endsWith(platform === 'android' ? '.apk' : '.ipa')) {
+    return { ok: false, status: 400, error: 'File type does not match platform' };
+  }
+  if (!/^[0-9A-Za-z][0-9A-Za-z._+-]{0,31}$/.test(version)) return { ok: false, status: 400, error: 'Bad version' };
+  if (m.declared > MAX_BYTES) return { ok: false, status: 413, error: 'File too large' };
+
+  const id = crypto.randomBytes(8).toString('hex');
+  const stored = `${id}.${platform === 'android' ? 'apk' : 'ipa'}`;
+  const full = path.join(DIR, stored);
+  let size = 0;
+  try {
+    fs.mkdirSync(DIR, { recursive: true });
+    const counter = new Transform({
+      transform(chunk, _enc, cb) {
+        size += chunk.length;
+        if (size > MAX_BYTES) cb(new Error('File too large'));
+        else cb(null, chunk);
+      },
+    });
+    await pipeline(src, counter, fs.createWriteStream(full));
+  } catch (e) {
+    fs.rmSync(full, { force: true });
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[app-releases] upload failed:', msg, { DIR, size });
+    return { ok: false, status: msg === 'File too large' ? 413 : 500, error: `Upload failed: ${msg}` };
+  }
+  if (size === 0) {
+    fs.rmSync(full, { force: true });
+    return { ok: false, status: 400, error: 'Empty body (file was not received)' };
+  }
+  const rel: Rel = { id, platform, version, fileName: path.basename(name), size, createdAt: new Date().toISOString(), stored };
+  writeAll([...readAll(), rel]);
+  return { ok: true, release: pub(rel) };
+}
+
 export async function handleAppReleases(req: Request, ctx: Ctx): Promise<Response | null> {
   const url = new URL(req.url);
   const p = url.pathname.replace(/\/+$/, '');
@@ -114,45 +161,14 @@ export async function handleAppReleases(req: Request, ctx: Ctx): Promise<Respons
 
   if (req.method === 'PUT' && rest === '/upload') {
     if (!(await ctx.isOwner(req))) return json({ error: 'Owner only' }, 403);
-    const platform = url.searchParams.get('platform');
-    const version = (url.searchParams.get('version') || '').trim();
-    const name = (url.searchParams.get('name') || '').toLowerCase();
-    if (platform !== 'android' && platform !== 'ios') return json({ error: 'Bad platform' }, 400);
-    if (!name.endsWith(platform === 'android' ? '.apk' : '.ipa')) {
-      return json({ error: 'File type does not match platform' }, 400);
-    }
-    if (!/^[0-9A-Za-z][0-9A-Za-z._+-]{0,31}$/.test(version)) return json({ error: 'Bad version' }, 400);
     if (!req.body) return json({ error: 'Empty body' }, 400);
-    const declared = Number(req.headers.get('content-length') || 0);
-    if (declared > MAX_BYTES) return json({ error: 'File too large' }, 413);
-
-    fs.mkdirSync(DIR, { recursive: true });
-    const id = crypto.randomBytes(8).toString('hex');
-    const stored = `${id}.${platform === 'android' ? 'apk' : 'ipa'}`;
-    const full = path.join(DIR, stored);
-    let size = 0;
-    try {
-      const src = Readable.fromWeb(req.body as unknown as import('node:stream/web').ReadableStream);
-      src.on('data', (c: Buffer) => {
-        size += c.length;
-        if (size > MAX_BYTES) src.destroy(new Error('too large'));
-      });
-      await pipeline(src, fs.createWriteStream(full));
-    } catch {
-      fs.rmSync(full, { force: true });
-      return json({ error: 'Upload failed' }, 500);
-    }
-    const rel: Rel = {
-      id,
-      platform,
-      version,
-      fileName: path.basename(name),
-      size,
-      createdAt: new Date().toISOString(),
-      stored,
-    };
-    writeAll([...readAll(), rel]);
-    return json({ release: pub(rel) });
+    const out = await storeUpload(Readable.fromWeb(req.body as unknown as import('node:stream/web').ReadableStream), {
+      platform: url.searchParams.get('platform') || '',
+      version: url.searchParams.get('version') || '',
+      name: url.searchParams.get('name') || '',
+      declared: Number(req.headers.get('content-length') || 0),
+    });
+    return out.ok ? json({ release: out.release }) : json({ error: out.error }, out.status);
   }
 
   m = rest.match(/^\/([a-f0-9]{16})$/);

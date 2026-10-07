@@ -99,6 +99,14 @@ export async function loadProducts(force = false) {
   return productCache;
 }
 
+/** أصل الموقع الذي سيعرض صفحة الدفع داخله: EMBED_ORIGIN أو PUBLIC_APP_URL أو أصل success_url. */
+function embedOrigin(successUrl: string): string | undefined {
+  for (const v of [process.env.POLAR_EMBED_ORIGIN, process.env.PUBLIC_APP_URL, successUrl]) {
+    try { if (v) return new URL(v).origin; } catch { /* try next */ }
+  }
+  return undefined;
+}
+
 export async function createCheckout(opts: { coins: number; userId: string; successUrl: string }): Promise<{ url: string; id: string }> {
   if (!COIN_PACKS.includes(opts.coins)) throw new Error("invalid pack");
   let prods = await loadProducts();
@@ -110,6 +118,8 @@ export async function createCheckout(opts: { coins: number; userId: string; succ
     body: JSON.stringify({
       products: [productId],
       success_url: opts.successUrl,
+      // يسمح بفتح صفحة الدفع داخل الموقع/التطبيق (iframe)؛ بدونه Polar يرجّع ERR_BLOCKED_BY_RESPONSE
+      embed_origin: embedOrigin(opts.successUrl),
       metadata: { userId: opts.userId, coins: String(opts.coins) },
     }),
   });

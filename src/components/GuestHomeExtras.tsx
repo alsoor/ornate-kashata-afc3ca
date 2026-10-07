@@ -34,14 +34,13 @@ function StoreButton({
 }) {
   const live = !!release;
   const title = platform === 'android' ? 'Google Play' : 'App Store';
-  const sub = live ? (lang === 'ar' ? '\u062a\u062d\u0645\u064a\u0644' : 'Download') : (lang === 'ar' ? '\u0642\u0631\u064a\u0628\u0627\u064b' : 'Coming Soon');
+  const sub = live ? 'Download' : (lang === 'ar' ? '\u0642\u0631\u064a\u0628\u0627\u064b' : 'Coming Soon');
   const body = (
     <>
       <span style={{ color: live ? '#fff' : 'rgba(255,255,255,0.55)', display: 'flex' }}>
         {platform === 'android' ? <PlayIcon /> : <AppleIcon />}
       </span>
-      <span style={{ fontSize: 11, fontWeight: 800, color: '#fff', marginTop: 2 }}>{title}</span>
-      <span style={{ fontSize: 10, fontWeight: 700, color: live ? TEAL : 'rgba(210,230,230,0.6)' }}>{sub}</span>
+      <span style={{ fontSize: 11, fontWeight: 800, marginTop: 2, color: live ? TEAL : 'rgba(210,230,230,0.6)' }}>{sub}</span>
     </>
   );
   const boxStyle: React.CSSProperties = {
@@ -388,7 +387,7 @@ export default function GuestHomeExtras({
                 style={{ width: '100%', maxHeight: '70vh', overflowY: 'auto', background: '#fff', color: '#0a0a0a', borderRadius: '20px 20px 0 0', padding: '16px 16px max(16px, env(safe-area-inset-bottom))' }}
               >
                 <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 8 }}>
-                  {T.versions} · {versions === 'android' ? 'Google Play' : 'App Store'}
+                  {T.versions}
                 </div>
                 {vList.map((r, i) => (
                   <a key={r.id} href={releaseDownloadUrl(r.id)} download

@@ -2474,6 +2474,8 @@ if (import.meta.env.PROD) {
 		attachLiveChatWS(server);
 		attachCallSignalingWS(server);
 	});
+	// Large APK/IPA uploads can take longer than Node's default 5-minute requestTimeout.
+	server.requestTimeout = 0;
 	server.on("error", (err: NodeJS.ErrnoException) => {
 		console.error("ssr.server.listen-failed", {
 			port,
