@@ -33462,7 +33462,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           myId={user?.id ? String(user.id) : (guestMode ? 'guest' : '')}
           hosts={homeLiveHosts}
           enabled={!isLiveRoute && !!user?.id}
-          showCards={pageTab === 'profile' && (headerOpen || liveScrollHidden || !guestMode) && !isLiveRoute}
+          showCards={pageTab === 'profile' && !isLiveRoute}
           collapsed={liveScrollHidden}
           dockVisible={!chatLifted}
           guest={guestMode}
