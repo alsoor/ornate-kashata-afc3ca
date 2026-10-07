@@ -537,16 +537,23 @@ let polarStopWatch: (() => void) | null = null;
 async function openPolarOfficialInApp(url: string): Promise<boolean> {
   if (!url) return false;
   const w = window as any;
-  // Native app: open through the official @capacitor/browser plugin (Chrome Custom Tab / SFSafariViewController).
+  // Native app: open through the @capacitor/browser plugin installed in the APK (Chrome Custom Tab / SFSafariViewController).
   // It has its own toolbar with a close (X) button, and the live room underneath stays untouched.
+  // NOTE: no `import '@capacitor/browser'` here on purpose — the website build does not have that package;
+  // the plugin is reached through the Capacitor object that the native app injects into the page.
   try {
-    if (w.Capacitor?.isNativePlatform?.()) {
-      const { Browser: NativeBrowser } = await import('@capacitor/browser');
-      await NativeBrowser.open({ url, presentationStyle: 'popover', toolbarColor: '#0b0b0f' });
-      return true;
+    const NCap = w.Capacitor;
+    if (NCap?.isNativePlatform?.()) {
+      const NativeBrowser =
+        NCap.Plugins?.Browser ||
+        (typeof NCap.registerPlugin === 'function' ? NCap.registerPlugin('Browser') : null);
+      if (NativeBrowser && typeof NativeBrowser.open === 'function') {
+        await NativeBrowser.open({ url, presentationStyle: 'popover', toolbarColor: '#0b0b0f' });
+        return true;
+      }
     }
   } catch (e) {
-    console.warn('[polar] @capacitor/browser failed, falling back', e);
+    console.warn('[polar] native Browser plugin failed, falling back', e);
   }
   try {
     const Cap = w.Capacitor;
