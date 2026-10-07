@@ -16961,16 +16961,11 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
       >
         {isVideo ? (
           near
-            ? <video ref={ref} src={(c.imageUrl || '') + ((c.imageUrl || '').indexOf('#') < 0 ? '#t=0.1' : '')} loop muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+            ? <video ref={ref} src={(c.imageUrl || '') + ((c.imageUrl || '').indexOf('#') < 0 ? '#t=0.1' : '')} poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" autoPlay loop muted playsInline controls={false} disablePictureInPicture disableRemotePlayback preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', background: 'transparent' }} />
             : <div aria-hidden="true" style={{ width: '100%', height: '100%', background: 'linear-gradient(160deg, #10201c 0%, #0b1512 100%)' }} />
         ) : (
           <img src={c.imageUrl || ''} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
         )}
-        {isVideo ? (
-          <div style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.5)', borderRadius: 999, padding: 5, display: 'flex', pointerEvents: 'none' }}>
-            <Play size={13} color="#fff" fill="#fff" />
-          </div>
-        ) : null}
         {commentCount > 0 ? (
           <div style={{ ...chip, position: 'absolute', top: 6, left: 6, pointerEvents: 'none' }}>
             <MessageCircle size={13} strokeWidth={2.2} color="#fff" />{commentCount}
@@ -16997,7 +16992,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
           <LiveMediaDeleteBtn
             variant="tile"
             onConfirm={() => { if (cardRef.current) onDelete(cardRef.current); }}
-            style={{ position: 'absolute', top: isVideo ? 38 : 6, right: 6, zIndex: 3 }}
+            style={{ position: 'absolute', top: 6, right: 6, zIndex: 3 }}
           />
         ) : null}
       </div>
