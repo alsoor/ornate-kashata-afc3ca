@@ -26693,17 +26693,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           {/* Row 1 + Row 2: story circle + stats, then the friends' stories strip */}
           {pageTab === 'profile' && (
           <div>
-          {/* Row 1: hamburger (top-left) + centered section icons — story/username/bio live in the white slide panel */}
+          {/* Row 1: two lines (top-left) + bell only (center). Other icons moved into profile panel. */}
           {pageTab === 'profile' && (
-            <div style={{ position: 'relative', paddingBottom: 6, paddingTop: 2, minHeight: 36 }}>
-              {/* Two small lines — top left, no frame */}
+            <div style={{ position: 'relative', paddingBottom: 4, paddingTop: 2, minHeight: 34 }}>
+              {/* Two small lines — top left, no frame — opens full page from top */}
               <button
                 type="button"
                 aria-label="Profile menu"
                 onClick={() => setProfileSlideOpen(true)}
                 style={{
-                  position: 'absolute', left: 8, top: 4, zIndex: 8,
-                  width: 28, height: 22,
+                  position: 'absolute', left: 8, top: 6, zIndex: 8,
+                  width: 28, height: 20,
                   border: 'none',
                   background: 'transparent',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5,
@@ -26714,104 +26714,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: 'rgba(255,255,255,0.92)' }} />
               </button>
 
-              {/* Centered section icons (followers / call history / live / map / requests / bell) */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, paddingLeft: 44, paddingRight: 8 }}>
-
-                  <motion.button
-                    whileTap={{ scale: 0.94 }}
-                    onClick={() => setFollowersModalOpen(true)}
-                    aria-label="Followers"
-                    title="Followers"
-                    style={{ position: 'relative', display: 'flex', flexShrink: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-                  >
-                    <span style={{
-                      width: 24, height: 24, borderRadius: '50%',
-                      ...hdrIconTone(!!(anyFriendOnlineFast || friends.some(f => !!(presence[f.friendId] as any)?.online))),
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    }}>
-                      {!followersVisible ? <Lock size={12} strokeWidth={2.2} /> : <Users size={12} strokeWidth={2.3} />}
-                    </span>
-                  </motion.button>
-                  {/* Call history — moved here from the "Call a friend" picker header in RootLayout.tsx, taking the Views slot */}
-                  <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
-                    <button
-                      type="button"
-                      onClick={() => { setFriendChatPeer(null); setFriendChatCallLogMenuOpen(false); setFriendChatCallLogOpen(true); }}
-                      aria-label="Call history"
-                      title="Call history"
-                      style={{
-                        width: 24, height: 24, borderRadius: '50%',
-                        ...hdrIconTone(!!(callHistoryDotState.joined || anyInCall)),
-                        cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
-                      }}
-                    >
-                      <Clock size={12} strokeWidth={2.3} />
-                    </button>
+              {/* Bell only — centered at top of story page */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 30 }}>
+                <div style={{ position: 'relative', width: 30, height: 30, flexShrink: 0 }}>
+                  <HeaderAdminBell userId={user?.id} size={30} />
+                  <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
+                    <StoryModerationBell userId={user?.id} size={30} />
                   </div>
-                  <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
-                    <span
-                      aria-label={(myLiveBroadcastKind || anyLiveBroadcast) ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
-                      title={(myLiveBroadcastKind || anyLiveBroadcast) ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
-                      style={{
-                        width: 24, height: 24, borderRadius: '50%',
-                        ...hdrIconTone(!!(myLiveBroadcastKind || anyLiveBroadcast)),
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                      }}
-                    >
-                      <Radio size={12} strokeWidth={2.3} />
-                    </span>
-                  </div>
-                  {/* Live map — نُقلت من الإعدادات؛ تفتح نفس الخريطة الحية السابقة */}
-                  <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
-                    <button
-                      type="button"
-                      onClick={() => { setCameraStartWithLiveMap(true); setCameraCaptureOpen(true); }}
-                      aria-label={anyFriendOnMap ? 'يوجد أشخاص على الخريطة' : 'الخريطة'}
-                      title={anyFriendOnMap ? 'يوجد أشخاص على الخريطة' : 'الخريطة'}
-                      style={{
-                        width: 24, height: 24, borderRadius: '50%',
-                        ...hdrIconTone(!!anyFriendOnMap),
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0, cursor: 'pointer',
-                      }}
-                    >
-                      <MapPin size={12} strokeWidth={2.3} />
-                    </button>
-                  </div>
-                  {/* Friend requests — نُقلت من الصف السفلي (+) إلى هنا بجانب الخريطة، بنفس حجم وألوان الأيقونات أعلاه.
-                      وصل طلب جديد → الأيقونة والنقطة برتقاليان؛ بعد فتح الصندوق ترجع الأيقونة كما كانت والنقطة رمادية. */}
-                  {user?.id && (
-                    <div style={{ position: 'relative', display: 'flex', flexShrink: 0 }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          markFriendReqsSeen();
-                          setStoryRequestsBoxOpen(true);
-                          setStoryReqTab('requests');
-                          setStoryReqQuery('');
-                        }}
-                        aria-label={hasUnseenFriendReq ? 'يوجد طلبات إضافة جديدة' : 'طلبات الإضافة'}
-                        title={hasUnseenFriendReq ? 'يوجد طلبات إضافة جديدة' : 'طلبات الإضافة'}
-                        style={{
-                          width: 24, height: 24, borderRadius: '50%',
-                          ...hdrIconTone(!!hasUnseenFriendReq, 'orange'),
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0, cursor: 'pointer',
-                        }}
-                      >
-                        <UserPlus size={12} strokeWidth={2.3} />
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Settings — نُقلت من قائمة (+) إلى نهاية صف الأيقونات (أقصى اليمين)، بيضاء ومميّزة وتدور ببطء.
-                      margin سالب حتى لا يزيد ارتفاع الصف رغم أن حجمها 38px. */}
-                  <div style={{ position: 'relative', width: 30, height: 30, flexShrink: 0 }}>
-                    <HeaderAdminBell userId={user?.id} size={30} />
-                    <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
-                      <StoryModerationBell userId={user?.id} size={30} />
-                    </div>
-                  </div>
-
+                </div>
               </div>
             </div>
           )}
@@ -26895,7 +26805,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           </div>
 
 
-          {/* ── White slide panel (from left): story + username + bio only ── */}
+          {/* ── Full profile panel: drops from top; X slides it back up ── */}
           {typeof document !== 'undefined' && createPortal(
             <>
               <div
@@ -26904,26 +26814,27 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   position: 'fixed', inset: 0, zIndex: 16000,
                   background: profileSlideOpen ? 'rgba(0,0,0,0.35)' : 'transparent',
                   pointerEvents: profileSlideOpen ? 'auto' : 'none',
-                  transition: 'background .25s ease',
+                  transition: 'background .28s ease',
                 }}
               />
               <div
                 role="dialog"
                 aria-modal="true"
                 style={{
-                  position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 16001,
-                  width: 'min(86vw, 340px)',
+                  position: 'fixed', left: 0, right: 0, top: 0, zIndex: 16001,
+                  height: '100%',
                   background: '#ffffff',
                   color: '#0a0a0a',
-                  boxShadow: profileSlideOpen ? '12px 0 40px rgba(0,0,0,0.25)' : 'none',
-                  transform: profileSlideOpen ? 'translateX(0)' : 'translateX(-100%)',
-                  transition: 'transform .3s cubic-bezier(.2,.8,.2,1)',
+                  boxShadow: profileSlideOpen ? '0 12px 40px rgba(0,0,0,0.2)' : 'none',
+                  transform: profileSlideOpen ? 'translateY(0)' : 'translateY(-105%)',
+                  transition: 'transform .32s cubic-bezier(.2,.8,.2,1)',
                   display: 'flex', flexDirection: 'column',
-                  padding: 'calc(16px + env(safe-area-inset-top, 0px)) 20px calc(20px + env(safe-area-inset-bottom, 0px))',
+                  padding: 'calc(12px + env(safe-area-inset-top, 0px)) 20px calc(20px + env(safe-area-inset-bottom, 0px))',
                   pointerEvents: profileSlideOpen ? 'auto' : 'none',
+                  overflowY: 'auto',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
                   <button
                     type="button"
                     aria-label="Close"
@@ -26935,7 +26846,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     }}
                   >×</button>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, paddingTop: 12 }}>
+
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 8 }}>
                   {user && (() => {
                     const myGroup = storyGroups.find(g => g.userId === user?.id);
                     const hasStory = !!myGroup && myGroup.items.length > 0;
@@ -26988,6 +26900,95 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   ) : (
                     <p style={{ margin: 0, fontSize: '0.82rem', color: '#999', textAlign: 'center' }}>No bio</p>
                   )}
+
+                  {/* Purple guide dots */}
+                  <div style={{ display: 'flex', gap: 10, marginTop: 6, marginBottom: 4 }}>
+                    {[0,1,2,3,4].map(i => (
+                      <span key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: '#a855f7', opacity: 0.85 }} />
+                    ))}
+                  </div>
+
+                  {/* Five section buttons under the purple dots */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, flexWrap: 'wrap', marginTop: 4 }}>
+                    <motion.button
+                      whileTap={{ scale: 0.94 }}
+                      onClick={() => { setFollowersModalOpen(true); setProfileSlideOpen(false); }}
+                      aria-label="Followers"
+                      title="Followers"
+                      style={{ position: 'relative', display: 'flex', flexShrink: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    >
+                      <span style={{
+                        width: 28, height: 28, borderRadius: '50%',
+                        ...hdrIconTone(!!(anyFriendOnlineFast || friends.some(f => !!(presence[f.friendId] as any)?.online))),
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}>
+                        {!followersVisible ? <Lock size={13} strokeWidth={2.2} /> : <Users size={13} strokeWidth={2.3} />}
+                      </span>
+                    </motion.button>
+
+                    <button
+                      type="button"
+                      onClick={() => { setFriendChatPeer(null); setFriendChatCallLogMenuOpen(false); setFriendChatCallLogOpen(true); setProfileSlideOpen(false); }}
+                      aria-label="Call history"
+                      title="Call history"
+                      style={{
+                        width: 28, height: 28, borderRadius: '50%',
+                        ...hdrIconTone(!!(callHistoryDotState.joined || anyInCall)),
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+                      }}
+                    >
+                      <Clock size={13} strokeWidth={2.3} />
+                    </button>
+
+                    <span
+                      aria-label={(myLiveBroadcastKind || anyLiveBroadcast) ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
+                      title={(myLiveBroadcastKind || anyLiveBroadcast) ? 'يوجد بث مباشر' : 'لا يوجد بث مباشر'}
+                      style={{
+                        width: 28, height: 28, borderRadius: '50%',
+                        ...hdrIconTone(!!(myLiveBroadcastKind || anyLiveBroadcast)),
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}
+                    >
+                      <Radio size={13} strokeWidth={2.3} />
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => { setCameraStartWithLiveMap(true); setCameraCaptureOpen(true); setProfileSlideOpen(false); }}
+                      aria-label={anyFriendOnMap ? 'يوجد أشخاص على الخريطة' : 'الخريطة'}
+                      title={anyFriendOnMap ? 'يوجد أشخاص على الخريطة' : 'الخريطة'}
+                      style={{
+                        width: 28, height: 28, borderRadius: '50%',
+                        ...hdrIconTone(!!anyFriendOnMap),
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0, cursor: 'pointer',
+                      }}
+                    >
+                      <MapPin size={13} strokeWidth={2.3} />
+                    </button>
+
+                    {user?.id && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          markFriendReqsSeen();
+                          setStoryRequestsBoxOpen(true);
+                          setStoryReqTab('requests');
+                          setStoryReqQuery('');
+                          setProfileSlideOpen(false);
+                        }}
+                        aria-label={hasUnseenFriendReq ? 'يوجد طلبات إضافة جديدة' : 'طلبات الإضافة'}
+                        title={hasUnseenFriendReq ? 'يوجد طلبات إضافة جديدة' : 'طلبات الإضافة'}
+                        style={{
+                          width: 28, height: 28, borderRadius: '50%',
+                          ...hdrIconTone(!!hasUnseenFriendReq, 'orange'),
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0, cursor: 'pointer',
+                        }}
+                      >
+                        <UserPlus size={13} strokeWidth={2.3} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </>,
