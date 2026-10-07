@@ -18,6 +18,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, CreditCard, Lock, Pencil, ExternalLink, Gift as GiftIcon, DollarSign } from 'lucide-react';
 import { GIFTS, TOP_GIFTS, ALL_GIFTS } from '@/lib/index';
+import { useLiveIconsVisible } from '@/lib/liveIconsVisibility';
 import type { GiftDefinition } from '@/lib/types';
 import { supportSpend } from '@/lib/supportCoinsPatch';
 import { deductGiftSupport, giftBalanceOrLocked } from '@/lib/giftDeductPatch';
@@ -945,6 +946,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
   const uid = String(currentUserId || '');
   // Warm Play Billing so the first coin tap can open the native 1-tap sheet inside the user gesture.
   useEffect(() => { void getGooglePlayService(); }, []);
+  // Owner switch (Settings → App Upload): when off, the $ and gift icons are hidden for everyone in video + voice LIVE.
+  const iconsVisible = useLiveIconsVisible();
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [coinsOpen, setCoinsOpen] = useState(false);
   const [giftsOpen, setGiftsOpen] = useState(false);
@@ -958,6 +961,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
   const [giftMsg, setGiftMsg] = useState('');
   const [customText, setCustomText] = useState('');
   const [tap, setTap] = useState<{ id: string; n: number } | null>(null);
+  useEffect(() => { if (!iconsVisible) { setCoinsOpen(false); setGiftsOpen(false); } }, [iconsVisible]);
 
   // تكرار الهدية + طابور التشغيل
   const tapRef = useRef<{ id: string; n: number } | null>(null);
@@ -1433,8 +1437,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
 
   return (
     <>
-      {dot(yellowRight + (BTN - 36), '#facc15', 'Coins', <DollarSign size={ICON + 1} color="#facc15" strokeWidth={2.6} />, () => { setGiftsOpen(false); setCoinsOpen(true); })}
-      {dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', <GiftIcon size={ICON} color="#1d7cf2" strokeWidth={2.2} />, () => {
+      {iconsVisible && dot(yellowRight + (BTN - 36), '#facc15', 'Coins', <DollarSign size={ICON + 1} color="#facc15" strokeWidth={2.6} />, () => { setGiftsOpen(false); setCoinsOpen(true); })}
+      {iconsVisible && dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', <GiftIcon size={ICON} color="#1d7cf2" strokeWidth={2.2} />, () => {
         setCoinsOpen(false);
         if (appGiftNotice) {
           try { localStorage.removeItem(giftNoticeKey(uid)); } catch { /* ignore */ }
