@@ -50,7 +50,7 @@ function LiveIconsSwitch({ T }: { T: Theme }) {
         >
           <span>{visible ? 'Visible' : 'Hidden'}</span>
           <span style={{ width: 44, height: 26, borderRadius: 999, position: 'relative', flexShrink: 0, background: visible ? (T.switchOn || '#22c55e') : '#ffffff', boxShadow: 'inset 0 0 0 2px #22c55e', transition: 'background .2s' }}>
-            <span style={{ position: 'absolute', top: 3, left: visible ? 21 : 3, width: 20, height: 20, borderRadius: '50%', background: visible ? '#ffffff' : '#22c55e', boxShadow: '0 1px 4px rgba(0,0,0,0.25)', transition: 'left .2s' }} />
+            <span style={{ position: 'absolute', top: 3, left: visible ? 21 : 3, width: 20, height: 20, borderRadius: '50%', background: '#ffffff', boxShadow: '0 1px 4px rgba(0,0,0,0.25)', transition: 'left .2s' }} />
           </span>
         </button>
       </div>
