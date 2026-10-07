@@ -2218,7 +2218,7 @@ export default function LiveCameraPage() {
           top: 0,
           left: 0,
           right: 0,
-          bottom: 'calc(52px + env(safe-area-inset-bottom))',
+          bottom: 0, // nav bar is removed on /live routes (RootLayout) so no reserved strip
           zIndex: 1000,
           background: 'radial-gradient(ellipse 70% 60% at 50% 30%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)',
           display: 'flex',
@@ -2281,7 +2281,7 @@ export default function LiveCameraPage() {
         top: 0,
         left: 0,
         right: 0,
-        bottom: 'calc(52px + env(safe-area-inset-bottom))',
+        bottom: 0, // nav bar is removed on /live routes (RootLayout) so no reserved strip
         zIndex: 1000,
         transform: livePageClosing ? 'translateY(110%)' : 'translateY(0)',
         opacity: livePageClosing ? 0 : 1,
