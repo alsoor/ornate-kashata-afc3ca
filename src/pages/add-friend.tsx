@@ -26924,13 +26924,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <p style={{ margin: 0, fontSize: '0.82rem', color: '#999', textAlign: 'center' }}>No bio</p>
                   )}
 
-                  {/* Purple guide dots */}
-                  <div style={{ display: 'flex', gap: 10, marginTop: 6, marginBottom: 4 }}>
-                    {[0,1,2,3,4].map(i => (
-                      <span key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: '#a855f7', opacity: 0.85 }} />
-                    ))}
-                  </div>
-
                   {/* Five section buttons under the purple dots — black frame + slow silver shine */}
                   <style>{`
                     @keyframes stooornaPanelBarShine {
