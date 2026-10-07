@@ -19450,8 +19450,8 @@ function PublicLiveCommentsPanel({
         position: 'relative',
         zIndex: 2,
         transition: 'background-color .28s ease, border-color .28s ease',
-        borderTop: !chatUiLifted ? ('1px solid ' + CLR_NAV_BORDER) : '1px solid #ececec',
-        background: !chatUiLifted ? '#060e0e' : '#fff',
+        borderTop: '1px solid ' + CLR_NAV_BORDER,
+        background: '#060e0e',
         paddingBottom: kbInset > 0 ? kbInset + 6 : 'max(8px, env(safe-area-inset-bottom))',
         flexShrink: 0,
         // الشات مقفول (رفع الهيدر بنقر الخط): ما يظهر شريط التعليق تحت — يظهر فقط لما الشات ينفتح بالضغط المطوّل على Call
@@ -27124,6 +27124,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {/* زر الثلاث خطوط (Privacy Policy) + أزرار Google Play / App Store للزائر */}
         {guestMode && <GuestHomeExtras lang={guestLang} />}
 
+        {/* DockBubbleHost مستقل عن الدوك: لما تنفتح الإعدادات الدوك ينشال، ولازم الصفحة تبقى معروضة */}
+        {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
+          <DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
+        )}
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && !dockSettingsOpen && (
           <BottomHeaderPortal enabled={!guestMode}>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
@@ -27171,7 +27175,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
 {/* ── Speech-bubble panel: sits above the dock, tail points at the tapped icon ── */}
 {/* PERF: the dock bubble is its own component now — tapping an icon re-renders only the bubble, not this whole page */}
-<DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
                   {user?.id && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
 <button
