@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  fetchReleases, releasesOf, latestDownloadUrl, releaseDownloadUrl, formatReleaseDate, RELEASES_EVENT,
-  type AppRelease, type ReleasePlatform,
+  fetchAppDownloads, releasesOf, latestDownloadUrl, releaseDownloadUrl, formatReleaseDate, RELEASES_EVENT,
+  type AppRelease, type ReleasePlatform, type StoreVisibility,
 } from '@/lib/appReleases';
 
 const PRIVACY_PDF = '/privacy-policy.pdf';
@@ -91,7 +91,12 @@ export default function GuestHomeExtras({
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [versions, setVersions] = useState<ReleasePlatform | null>(null);
 
-  const reload = useCallback(async () => setList(await fetchReleases()), []);
+  const [vis, setVis] = useState<StoreVisibility>({ android: true, ios: true });
+  const reload = useCallback(async () => {
+    const d = await fetchAppDownloads();
+    setList(d.releases);
+    setVis(d.visibility);
+  }, []);
   useEffect(() => {
     void reload();
     window.addEventListener(RELEASES_EVENT, reload);
@@ -126,12 +131,16 @@ export default function GuestHomeExtras({
       </button>
 
       {/* store buttons: left = Google Play, right = App Store */}
-      <div style={{ position: 'fixed', top: `calc(env(safe-area-inset-top, 0px) + ${storesTop}px)`, left: 14, zIndex: 60 }}>
-        <StoreButton platform="android" release={android[0]} count={android.length} lang={lang} onOpenVersions={() => setVersions('android')} />
-      </div>
-      <div style={{ position: 'fixed', top: `calc(env(safe-area-inset-top, 0px) + ${storesTop}px)`, right: 14, zIndex: 60 }}>
-        <StoreButton platform="ios" release={ios[0]} count={ios.length} lang={lang} onOpenVersions={() => setVersions('ios')} />
-      </div>
+      {vis.android && (
+        <div style={{ position: 'fixed', top: `calc(env(safe-area-inset-top, 0px) + ${storesTop}px)`, left: 14, zIndex: 60 }}>
+          <StoreButton platform="android" release={android[0]} count={android.length} lang={lang} onOpenVersions={() => setVersions('android')} />
+        </div>
+      )}
+      {vis.ios && (
+        <div style={{ position: 'fixed', top: `calc(env(safe-area-inset-top, 0px) + ${storesTop}px)`, right: 14, zIndex: 60 }}>
+          <StoreButton platform="ios" release={ios[0]} count={ios.length} lang={lang} onOpenVersions={() => setVersions('ios')} />
+        </div>
+      )}
 
       {createPortal(
         <AnimatePresence>

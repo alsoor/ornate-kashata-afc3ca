@@ -23,6 +23,35 @@ export async function fetchReleases(): Promise<AppRelease[]> {
   }
 }
 
+export type StoreVisibility = { android: boolean; ios: boolean };
+
+/** Releases + which store buttons are visible to everyone. */
+export async function fetchAppDownloads(): Promise<{ releases: AppRelease[]; visibility: StoreVisibility }> {
+  try {
+    const r = await fetch('/api/app-releases', { credentials: 'include', cache: 'no-store' });
+    if (!r.ok) return { releases: [], visibility: { android: true, ios: true } };
+    const j = await r.json();
+    const releases: AppRelease[] = Array.isArray(j?.releases) ? j.releases : [];
+    releases.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+    return { releases, visibility: { android: j?.visibility?.android !== false, ios: j?.visibility?.ios !== false } };
+  } catch {
+    return { releases: [], visibility: { android: true, ios: true } };
+  }
+}
+
+/** Owner only (enforced on the server). */
+export async function setStoreVisible(platform: ReleasePlatform, visible: boolean): Promise<boolean> {
+  try {
+    const r = await fetch(`/api/app-releases/visibility?platform=${platform}&visible=${visible ? '1' : '0'}`, {
+      method: 'PUT', credentials: 'include',
+    });
+    if (r.ok) window.dispatchEvent(new CustomEvent(RELEASES_EVENT));
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Newest first. */
 export function releasesOf(list: AppRelease[], platform: ReleasePlatform): AppRelease[] {
   return list

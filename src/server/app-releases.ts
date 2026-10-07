@@ -11,6 +11,7 @@ import { pipeline } from 'node:stream/promises';
 
 const DIR = process.env.APP_RELEASES_DIR || path.resolve(process.cwd(), 'data', 'app-releases');
 const META = path.join(DIR, 'releases.json');
+const VIS = path.join(DIR, 'visibility.json');
 const MAX_BYTES = 500 * 1024 * 1024;
 
 type Rel = {
@@ -41,6 +42,19 @@ function writeAll(list: Rel[]) {
   fs.mkdirSync(DIR, { recursive: true });
   fs.writeFileSync(META, JSON.stringify(list, null, 2));
 }
+type Vis = { android: boolean; ios: boolean };
+function readVis(): Vis {
+  try {
+    const j = JSON.parse(fs.readFileSync(VIS, 'utf8'));
+    return { android: j.android !== false, ios: j.ios !== false };
+  } catch {
+    return { android: true, ios: true };
+  }
+}
+function writeVis(v: Vis) {
+  fs.mkdirSync(DIR, { recursive: true });
+  fs.writeFileSync(VIS, JSON.stringify(v));
+}
 const pub = ({ stored: _stored, ...r }: Rel) => r;
 const newest = (l: Rel[]) => [...l].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
 
@@ -66,18 +80,32 @@ export async function handleAppReleases(req: Request, ctx: Ctx): Promise<Respons
   const rest = p.slice('/api/app-releases'.length); // '', '/upload', '/latest/android/download', '/<id>/download', '/<id>'
 
   if (req.method === 'GET' && rest === '') {
-    return json({ releases: newest(readAll()).map(pub) });
+    return json({ releases: newest(readAll()).map(pub), visibility: readVis() });
+  }
+
+  // Owner: show / hide one store button (and its download) for everyone else.
+  if (req.method === 'PUT' && rest === '/visibility') {
+    if (!(await ctx.isOwner(req))) return json({ error: 'Owner only' }, 403);
+    const pf = url.searchParams.get('platform');
+    if (pf !== 'android' && pf !== 'ios') return json({ error: 'Bad platform' }, 400);
+    const v = readVis();
+    v[pf] = url.searchParams.get('visible') !== '0';
+    writeVis(v);
+    return json({ visibility: v });
   }
 
   let m = rest.match(/^\/latest\/(android|ios)\/download$/);
   if (req.method === 'GET' && m) {
-    const r = newest(readAll()).find(x => x.platform === m![1]);
+    const plat = m[1] as 'android' | 'ios';
+    if (!readVis()[plat] && !(await ctx.isOwner(req))) return json({ error: 'Not available' }, 404);
+    const r = newest(readAll()).find(x => x.platform === plat);
     return r ? download(r) : json({ error: 'No release yet' }, 404);
   }
 
   m = rest.match(/^\/([a-f0-9]{16})\/download$/);
   if (req.method === 'GET' && m) {
     const r = readAll().find(x => x.id === m![1]);
+    if (r && !readVis()[r.platform] && !(await ctx.isOwner(req))) return json({ error: 'Not available' }, 404);
     return r ? download(r) : json({ error: 'Not found' }, 404);
   }
 
