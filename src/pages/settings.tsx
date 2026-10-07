@@ -1664,7 +1664,7 @@ interface Recording {
 
 // Theme colors matching the cyan main screen
 const SETTINGS_CLR = {
-  bg: '#000000',
+  bg: '#062014',
   primary: '#ffffff',
   primaryDim: '#ffffff',
   primaryFaint: '#000000',
@@ -1677,7 +1677,7 @@ const SETTINGS_CLR = {
   inputBg: '#000000',
   inputBorder: '#ffffff',
   inputFocus: '#ffffff',
-  navBg: 'linear-gradient(180deg, transparent 0%, #000000 100%)',
+  navBg: 'linear-gradient(180deg, transparent 0%, #062014 100%)',
   navBorder: '#ffffff',
   danger: '#ffffff',
   dangerBorder: '#ffffff',
