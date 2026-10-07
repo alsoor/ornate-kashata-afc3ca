@@ -1664,39 +1664,41 @@ interface Recording {
 
 // Theme colors matching the cyan main screen
 const SETTINGS_CLR = {
-  bg: 'radial-gradient(ellipse 70% 60% at 50% 40%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)',
-  primary: '#00BCD4',
-  primaryDim: 'rgba(0,188,212,0.7)',
-  primaryFaint: 'rgba(0,188,212,0.15)',
-  primaryBorder: 'rgba(0,188,212,0.25)',
-  primaryGlow: 'rgba(0,188,212,0.3)',
-  surface: 'rgba(13,32,32,0.8)',
-  surfaceBorder: 'rgba(0,188,212,0.12)',
-  text: 'rgba(200,230,230,0.9)',
-  textMuted: 'rgba(150,190,190,0.6)',
-  inputBg: 'rgba(6,14,14,0.8)',
-  inputBorder: 'rgba(0,188,212,0.2)',
-  inputFocus: 'rgba(0,188,212,0.5)',
-  navBg: 'linear-gradient(180deg, transparent 0%, rgba(6,14,14,0.95) 100%)',
-  navBorder: 'rgba(0,188,212,0.08)',
+  bg: '#f0f0f0',
+  primary: '#000000',
+  primaryDim: 'rgba(0,0,0,0.7)',
+  primaryFaint: 'rgba(0,0,0,0.08)',
+  primaryBorder: '#000000',
+  primaryGlow: 'rgba(0,0,0,0.12)',
+  surface: '#e4e4e4',
+  surfaceBorder: '#000000',
+  text: '#000000',
+  textMuted: 'rgba(0,0,0,0.6)',
+  inputBg: '#e4e4e4',
+  inputBorder: '#000000',
+  inputFocus: '#000000',
+  navBg: 'transparent',
+  navBorder: 'rgba(0,0,0,0.15)',
   danger: 'rgba(239,68,68,0.8)',
   dangerBorder: 'rgba(239,68,68,0.3)',
   dangerFaint: 'rgba(239,68,68,0.1)',
-  success: '#00BCD4',
-  tabActive: 'rgba(0,188,212,0.15)',
-  tabBorder: 'rgba(0,188,212,0.4)',
+  success: '#000000',
+  tabActive: 'rgba(0,0,0,0.07)',
+  tabBorder: 'rgba(0,0,0,0.07)',
   bronze: 'rgba(205,140,50,0.8)',
   bronzeBorder: 'rgba(205,140,50,0.3)',
   bronzeFaint: 'rgba(205,140,50,0.1)',
   green: 'hsl(var(--accent))',
   greenFaint: 'hsl(var(--accent) / 0.12)',
   greenBorder: 'hsl(var(--accent) / 0.35)',
-  bgDeep: 'rgba(6,14,14,0.95)',
+  bgDeep: '#e4e4e4',
   overlay: 'rgba(0,0,0,0.75)',
-  modalBg: 'linear-gradient(160deg, #0d2a2e 0%, #0a1a1a 100%)',
+  modalBg: '#f0f0f0',
   yellowFaint: 'rgba(234,179,8,0.12)',
   yellowBorder: 'rgba(234,179,8,0.5)',
-  yellow: '#eab308'
+  yellow: '#eab308',
+  /** original teal kept for solid buttons */
+  btn: '#00BCD4'
 };
 /** Alias kept for all existing T.xxx references in this file */
 const T = SETTINGS_CLR;
@@ -4390,7 +4392,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             width: '100%', maxWidth: 360, marginBottom: 14, boxSizing: 'border-box',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
             padding: '12px 14px', borderRadius: 14, cursor: 'pointer',
-            background: isCompany ? 'rgba(0,188,212,0.12)' : T.surface,
+            background: isCompany ? 'rgba(0,0,0,0.07)' : T.surface,
             border: `1.5px solid ${isCompany ? T.primary : T.surfaceBorder}`,
             color: T.text, textAlign: isEn ? 'left' : 'right', direction: dir,
           }}
@@ -4404,7 +4406,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           </div>
           <span aria-hidden style={{
             width: 48, height: 28, borderRadius: 999, flexShrink: 0, position: 'relative',
-            background: isCompany ? T.primary : 'rgba(150,190,190,0.25)',
+            background: isCompany ? T.btn : 'rgba(150,190,190,0.25)',
             transition: 'background 0.2s',
           }}>
             <span style={{
@@ -4479,7 +4481,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                 paddingRight: 48, cursor: 'default',
               }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(200,230,230,0.95)', fontWeight: 700, fontSize: '0.9rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#000000', fontWeight: 700, fontSize: '0.9rem' }}>
                   <ShieldCheck size={16} color={T.primaryDim} />
                   {authLang === 'en' ? 'Commercial registration certificate' : 'شهادة السجل التجاري'}
                 </span>
@@ -4561,7 +4563,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                 paddingRight: 48, cursor: 'default',
               }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(200,230,230,0.95)', fontWeight: 700, fontSize: '0.9rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#000000', fontWeight: 700, fontSize: '0.9rem' }}>
                   <FileText size={16} color={T.primaryDim} />
                   {authLang === 'en' ? 'Trade license certificate' : 'شهادة الترخيص التجاري'}
                 </span>
@@ -4676,11 +4678,11 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                         'قطاع القرطاسية والهوايات والكتب',
                       ]).map(s => (
                         <button key={s} type="button" onClick={() => { setCompanySector(s); setCompanySectorCustom(''); setSectorOpen(false); }}
-                          style={{ width: '100%', padding: '10px 12px', border: 'none', background: companySector === s ? 'rgba(0,188,212,0.12)' : 'transparent', color: 'rgba(200,230,230,0.95)', textAlign: isEn ? 'left' : 'right', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
+                          style={{ width: '100%', padding: '10px 12px', border: 'none', background: companySector === s ? 'rgba(0,0,0,0.07)' : 'transparent', color: '#000000', textAlign: isEn ? 'left' : 'right', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
                           {s}
                         </button>
                       ))}
-                      <div style={{ padding: 10, borderTop: '1px solid rgba(0,188,212,0.15)' }}>
+                      <div style={{ padding: 10, borderTop: '1px solid #000000' }}>
                         <input type="text" value={companySectorCustom} onChange={e => { setCompanySectorCustom(e.target.value); if (e.target.value.trim()) setCompanySector(''); }} placeholder={L.sectorHint} style={{ ...fieldCss(), margin: 0, fontSize: '0.8rem' }} />
                       </div>
                     </div>
@@ -4829,11 +4831,11 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         )}
         {companyPendingMsg && !error && (
           <div style={{
-            background: 'rgba(0,188,212,0.12)',
-            border: '1px solid rgba(0,188,212,0.4)',
+            background: 'rgba(0,0,0,0.07)',
+            border: '1px solid #000000',
             borderRadius: 12,
             padding: '14px 16px',
-            color: '#00BCD4',
+            color: '#000000',
             fontSize: 14,
             fontWeight: 700,
             textAlign: 'center',
@@ -4844,7 +4846,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         )}
 
         <button type="submit" disabled={loading || (isRegister && (usernameStatus === 'taken' || usernameStatus === 'invalid' || usernameStatus === 'checking'))}
-          style={{ background: (loading || (isRegister && (usernameStatus === 'taken' || usernameStatus === 'invalid'))) ? T.primaryFaint : T.primary, color: btnFg, border: 'none', borderRadius: 12, padding: '13px', fontSize: 15, fontWeight: 700, cursor: (loading || (isRegister && usernameStatus === 'taken')) ? 'not-allowed' : 'pointer', marginTop: 4, transition: 'opacity 0.2s', opacity: (isRegister && usernameStatus === 'taken') ? 0.6 : 1 }}>
+          style={{ background: (loading || (isRegister && (usernameStatus === 'taken' || usernameStatus === 'invalid'))) ? T.primaryFaint : T.btn, color: btnFg, border: 'none', borderRadius: 12, padding: '13px', fontSize: 15, fontWeight: 700, cursor: (loading || (isRegister && usernameStatus === 'taken')) ? 'not-allowed' : 'pointer', marginTop: 4, transition: 'opacity 0.2s', opacity: (isRegister && usernameStatus === 'taken') ? 0.6 : 1 }}>
           {loading ? '...' : (isRegister ? L.submitCreate : L.submitLogin)}
         </button>
       </form>
@@ -7075,7 +7077,7 @@ export default function SettingsPage() {
         width: 400,
         height: 400,
         borderRadius: '50%',
-        background: `radial-gradient(circle, rgba(0,188,212,0.1) 0%, transparent 70%)`,
+        background: `radial-gradient(circle, rgba(0,0,0,0.07) 0%, transparent 70%)`,
         top: '20%',
         left: '50%',
         transform: 'translate(-50%, -50%)'
@@ -7163,11 +7165,11 @@ export default function SettingsPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  background: supportReplyDot ? 'rgba(249,115,22,0.16)' : 'rgba(0,188,212,0.12)',
-                  border: `1px solid ${supportReplyDot ? 'rgba(249,115,22,0.7)' : 'rgba(0,188,212,0.4)'}`,
-                  color: supportReplyDot ? '#f97316' : '#00BCD4',
+                  background: supportReplyDot ? 'rgba(249,115,22,0.16)' : 'rgba(0,0,0,0.07)',
+                  border: `1px solid ${supportReplyDot ? 'rgba(249,115,22,0.7)' : '#000000'}`,
+                  color: supportReplyDot ? '#f97316' : '#000000',
                   cursor: 'pointer',
-                  boxShadow: supportReplyDot ? '0 0 12px rgba(249,115,22,0.4)' : '0 0 12px rgba(0,188,212,0.25)',
+                  boxShadow: supportReplyDot ? '0 0 12px rgba(249,115,22,0.4)' : '0 0 12px rgba(0,0,0,0.07)',
                   position: 'relative',
                   transition: 'background 0.2s, border-color 0.2s, color 0.2s',
                 }}
@@ -7393,7 +7395,7 @@ export default function SettingsPage() {
                       width: 22,
                       height: 22,
                       borderRadius: '50%',
-                      background: T.primary,
+                      background: T.btn,
                       border: '2.5px solid rgba(6,14,14,0.95)',
                       display: 'flex',
                       alignItems: 'center',
@@ -7511,15 +7513,15 @@ export default function SettingsPage() {
                           width: 32,
                           height: 32,
                           borderRadius: '50%',
-                          background: musicIsPlaying ? 'rgba(0,188,212,0.22)' : 'rgba(0,188,212,0.1)',
-                          border: `1px solid ${musicIsPlaying ? 'rgba(0,188,212,0.65)' : 'rgba(0,188,212,0.35)'}`,
-                          color: '#00BCD4',
+                          background: musicIsPlaying ? 'rgba(0,0,0,0.07)' : 'rgba(0,0,0,0.07)',
+                          border: `1px solid ${musicIsPlaying ? '#000000' : 'rgba(0,0,0,0.07)'}`,
+                          color: '#000000',
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           boxShadow: musicIsPlaying
-                            ? '0 0 10px rgba(0,188,212,0.4)'
+                            ? '0 0 10px rgba(0,0,0,0.07)'
                             : '0 1px 6px rgba(0,0,0,0.2)',
                         }}
                       >
@@ -7818,7 +7820,7 @@ export default function SettingsPage() {
                     margin: '0 0 10px',
                   }}>Profits</p>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
-                      <span style={{ color: '#fff', fontWeight: 900, fontSize: '1.45rem' }}>
+                      <span style={{ color: '#000000', fontWeight: 900, fontSize: '1.45rem' }}>
                         {Number(appProfits.usd || 0).toFixed(2)}
                       </span>
                       <span style={{ color: 'rgba(200,220,220,0.55)', fontSize: '0.75rem', fontWeight: 700 }}>USD</span>
@@ -7828,7 +7830,7 @@ export default function SettingsPage() {
                       <span style={{ color: 'rgba(150,180,180,0.5)', marginLeft: 8 }}>(نصف الدعم وصل للأونر عبر السيرفر)</span>
                     </p>
                     {ownerSupportEarn > 0 ? (
-                      <p style={{ margin: '0 0 10px', color: 'rgba(255,255,255,0.55)', fontSize: '0.78rem', fontWeight: 700 }}>
+                      <p style={{ margin: '0 0 10px', color: 'rgba(0,0,0,0.6)', fontSize: '0.78rem', fontWeight: 700 }}>
                         دعم شخصي وصلك: {ownerSupportEarn.toLocaleString('en-US')} Coins
                       </p>
                     ) : null}
@@ -7840,8 +7842,8 @@ export default function SettingsPage() {
                       style={{
                         width: '100%', boxSizing: 'border-box', marginBottom: 8,
                         borderRadius: 10, padding: '10px 12px',
-                        background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(250,204,21,0.35)',
-                        color: '#fff', fontSize: '0.82rem', outline: 'none',
+                        background: '#e4e4e4', border: '1px solid #000000',
+                        color: '#000000', fontSize: '0.82rem', outline: 'none',
                       }}
                     />
                     <button
@@ -7909,7 +7911,7 @@ export default function SettingsPage() {
                       style={{
                         width: '100%', padding: '11px 10px', borderRadius: 12, marginBottom: 8,
                         cursor: resetBusy || Number(appProfits.usd || 0) <= 0 ? 'default' : 'pointer',
-                        background: 'rgba(0,188,212,0.12)', border: '1.5px solid rgba(0,188,212,0.45)',
+                        background: 'rgba(0,0,0,0.07)', border: '1.5px solid #000000',
                         color: '#67e8f9', fontWeight: 800, fontSize: '0.84rem',
                         opacity: Number(appProfits.usd || 0) <= 0 ? 0.6 : 1,
                       }}
@@ -8817,7 +8819,7 @@ export default function SettingsPage() {
                     justifyContent: 'center',
                     paddingTop: 14
                   }}>
-                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(profileUrl)}&bgcolor=0a1a1a&color=00BCD4&margin=10`} alt="QR code" width={180} height={180} style={{
+                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(profileUrl)}&bgcolor=ffffff&color=000000&margin=10`} alt="QR code" width={180} height={180} style={{
                       borderRadius: 12,
                       border: `1px solid ${T.primaryBorder}`
                     }} />
@@ -8872,7 +8874,7 @@ export default function SettingsPage() {
                   gap: 7,
                   padding: '9px',
                   marginTop: 8,
-                  background: 'rgba(0,188,212,0.06)',
+                  background: 'rgba(0,0,0,0.07)',
                   border: `1px solid ${T.primaryBorder}`,
                   borderRadius: 9,
                   color: T.primaryDim,
@@ -8953,7 +8955,7 @@ export default function SettingsPage() {
                       onClick={() => void createAppShortLink()}
                       style={{
                         width: '100%', minHeight: 42, borderRadius: 12, border: 'none', cursor: shortLinkInput.trim() ? 'pointer' : 'default',
-                        background: shortLinkInput.trim() ? T.primary : T.primaryFaint,
+                        background: shortLinkInput.trim() ? T.btn : T.primaryFaint,
                         color: shortLinkInput.trim() ? '#041018' : T.textMuted,
                         fontWeight: 800, fontSize: '0.8rem',
                         opacity: shortLinkBusy ? 0.7 : 1,
@@ -8966,7 +8968,7 @@ export default function SettingsPage() {
                       <div style={{
                         display: 'flex', gap: 8, alignItems: 'center',
                         padding: '10px 10px', borderRadius: 12,
-                        background: 'rgba(0,188,212,0.08)', border: `1px solid ${T.primaryBorder}`,
+                        background: 'rgba(0,0,0,0.07)', border: `1px solid ${T.primaryBorder}`,
                       }}>
                         <input
                           readOnly
@@ -9223,7 +9225,7 @@ export default function SettingsPage() {
                         {/* Badges + action icons */}
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {durationStr && <span style={{
-                      background: 'rgba(0,188,212,0.1)',
+                      background: 'rgba(0,0,0,0.07)',
                       border: `1px solid ${T.primaryBorder}`,
                       borderRadius: 6,
                       padding: '2px 7px',
@@ -9246,7 +9248,7 @@ export default function SettingsPage() {
                       height: 30,
                       borderRadius: 8,
                       border: 'none',
-                      background: 'rgba(0,188,212,0.1)',
+                      background: 'rgba(0,0,0,0.07)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -9305,7 +9307,7 @@ export default function SettingsPage() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 6,
-                  background: 'rgba(0,188,212,0.08)',
+                  background: 'rgba(0,0,0,0.07)',
                   border: `1px solid ${T.primaryBorder}`,
                   borderRadius: 10,
                   padding: '9px 16px',
@@ -9448,7 +9450,7 @@ export default function SettingsPage() {
                         padding: '8px 14px',
                         borderRadius: 9,
                         border: 'none',
-                        background: liveRecShareCopied ? 'rgba(34,197,94,0.15)' : `rgba(0,188,212,0.12)`,
+                        background: liveRecShareCopied ? 'rgba(34,197,94,0.15)' : `rgba(0,0,0,0.07)`,
                         color: liveRecShareCopied ? '#22c55e' : T.primary,
                         fontSize: '0.72rem',
                         fontWeight: 700,
@@ -9477,7 +9479,7 @@ export default function SettingsPage() {
                       padding: '10px',
                       borderRadius: 10,
                       border: 'none',
-                      background: `rgba(0,188,212,0.1)`,
+                      background: `rgba(0,0,0,0.07)`,
                       outline: `1px solid ${T.primaryBorder}`,
                       color: T.primary,
                       fontSize: '0.75rem',
@@ -10063,16 +10065,16 @@ export default function SettingsPage() {
                   flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
                   fontWeight: 800, fontSize: '0.8rem',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  background: supportUsersTab === 'companies' ? 'rgba(0,188,212,0.15)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${supportUsersTab === 'companies' ? 'rgba(0,188,212,0.45)' : 'rgba(255,255,255,0.1)'}`,
-                  color: supportUsersTab === 'companies' ? '#00BCD4' : 'rgba(200,180,180,0.7)',
+                  background: supportUsersTab === 'companies' ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${supportUsersTab === 'companies' ? '#000000' : 'rgba(255,255,255,0.1)'}`,
+                  color: supportUsersTab === 'companies' ? '#000000' : 'rgba(0,0,0,0.6)',
                 }}
               >
                 <Building2 size={14} strokeWidth={2.2} />
                 شركات
                 <span style={{
                   fontSize: '0.65rem', fontWeight: 700, opacity: 0.85,
-                  background: supportUsersTab === 'companies' ? 'rgba(0,188,212,0.2)' : 'rgba(255,255,255,0.06)',
+                  background: supportUsersTab === 'companies' ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.06)',
                   padding: '2px 7px', borderRadius: 8,
                 }}>{allCompanyCtrlUsers.length}</span>
               </button>
@@ -10088,8 +10090,8 @@ export default function SettingsPage() {
                 style={{
                   width: '100%', boxSizing: 'border-box',
                   padding: '10px 12px', borderRadius: 12,
-                  background: supportUsersTab === 'companies' ? 'rgba(0,188,212,0.06)' : 'rgba(239,68,68,0.06)',
-                  border: `1px solid ${supportUsersTab === 'companies' ? 'rgba(0,188,212,0.25)' : 'rgba(239,68,68,0.25)'}`,
+                  background: supportUsersTab === 'companies' ? 'rgba(0,0,0,0.07)' : 'rgba(239,68,68,0.06)',
+                  border: `1px solid ${supportUsersTab === 'companies' ? '#000000' : 'rgba(239,68,68,0.25)'}`,
                   color: 'rgba(240,220,220,0.95)', fontSize: '0.85rem', outline: 'none',
                 }}
               />
@@ -10127,7 +10129,7 @@ export default function SettingsPage() {
                   return (
                     <div style={{ textAlign: 'center', marginTop: 48, padding: '0 16px' }}>
                       {supportUsersTab === 'companies'
-                        ? <Building2 size={32} style={{ color: 'rgba(0,188,212,0.35)', marginBottom: 10 }} />
+                        ? <Building2 size={32} style={{ color: 'rgba(0,0,0,0.07)', marginBottom: 10 }} />
                         : <Users size={32} style={{ color: 'rgba(239,68,68,0.35)', marginBottom: 10 }} />}
                       <p style={{ color: 'rgba(200,230,230,0.85)', fontSize: '0.88rem', fontWeight: 700, margin: '0 0 6px' }}>
                         {supportUsersTab === 'companies' ? 'لا حسابات شركات' : 'لا مستخدمين'}
@@ -10176,17 +10178,17 @@ export default function SettingsPage() {
                         padding: '12px 14px', borderRadius: 14, cursor: 'pointer', textAlign: 'left',
                         background: u.isBanned
                           ? 'rgba(239,68,68,0.1)'
-                          : isCo ? 'rgba(0,188,212,0.05)' : 'rgba(255,255,255,0.03)',
+                          : isCo ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.03)',
                         border: `1px solid ${u.isBanned
                           ? 'rgba(239,68,68,0.35)'
-                          : isCo ? 'rgba(0,188,212,0.2)' : 'rgba(255,255,255,0.08)'}`,
+                          : isCo ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.08)'}`,
                         color: 'rgba(230,220,220,0.95)',
                       }}
                     >
                       <div style={{ position: 'relative', width: 42, height: 42, flexShrink: 0 }}>
                         <div style={{
                           width: 42, height: 42, borderRadius: '50%',
-                          background: isCo ? 'rgba(0,188,212,0.12)' : 'rgba(0,0,0,0.35)',
+                          background: isCo ? 'rgba(0,0,0,0.07)' : 'rgba(0,0,0,0.35)',
                           border: `2px solid ${color}`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           color, fontWeight: 800, fontSize: '0.8rem',
@@ -10222,9 +10224,9 @@ export default function SettingsPage() {
                       </div>
                       {isCo && (
                         <span style={{
-                          fontSize: '0.58rem', fontWeight: 800, color: '#00BCD4',
-                          background: 'rgba(0,188,212,0.12)', padding: '3px 7px', borderRadius: 8,
-                          border: '1px solid rgba(0,188,212,0.3)', flexShrink: 0,
+                          fontSize: '0.58rem', fontWeight: 800, color: '#000000',
+                          background: 'rgba(0,0,0,0.07)', padding: '3px 7px', borderRadius: 8,
+                          border: '1px solid #000000', flexShrink: 0,
                         }}>شركة</span>
                       )}
                       {u.isBanned && (
@@ -10422,15 +10424,15 @@ export default function SettingsPage() {
                   onClick={() => { setScEditBox(scEditBox === 'color' ? null : 'color'); setScMsg(''); }}
                   style={{
                     padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
-                    background: 'rgba(0,188,212,0.1)', border: '1px solid rgba(0,188,212,0.35)',
-                    color: '#00BCD4', fontWeight: 700, fontSize: '0.85rem',
+                    background: 'rgba(0,0,0,0.07)', border: '1px solid #000000',
+                    color: '#000000', fontWeight: 700, fontSize: '0.85rem',
                   }}>
                   🎨 تغيير لون اليوزر
                 </motion.button>
                 {scEditBox === 'color' && (
                   <div style={{
                     padding: 12, borderRadius: 12, background: 'rgba(0,0,0,0.35)',
-                    border: '1px solid rgba(0,188,212,0.2)', display: 'flex', flexDirection: 'column', gap: 10,
+                    border: '1px solid #000000', display: 'flex', flexDirection: 'column', gap: 10,
                   }}>
                     {/* Quick color swatches — each with instant activate button */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -10446,7 +10448,7 @@ export default function SettingsPage() {
                             style={{
                               width: 26, height: 26, borderRadius: '50%', background: c, cursor: 'pointer', flexShrink: 0,
                               border: scColor === c ? '2px solid #fff' : '2px solid transparent',
-                              boxShadow: scColor === c ? '0 0 0 2px rgba(0,188,212,0.6)' : 'none',
+                              boxShadow: scColor === c ? '0 0 0 2px rgba(0,0,0,0.07)' : 'none',
                             }}
                           />
                           <span style={{ fontSize: '0.78rem', color: c, fontWeight: 700, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -10493,8 +10495,8 @@ export default function SettingsPage() {
                           placeholder="#00BCD4"
                           style={{
                             flex: 1, padding: '8px 10px', borderRadius: 8, outline: 'none',
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-                            color: '#fff', fontSize: '0.85rem',
+                            background: '#e4e4e4', border: '1px solid #000000',
+                            color: '#000000', fontSize: '0.85rem',
                           }}
                         />
                       </div>
@@ -10544,8 +10546,8 @@ export default function SettingsPage() {
                       placeholder="اليوزر الجديد (حرف واحد فأكثر)"
                       style={{
                         padding: '10px 12px', borderRadius: 10, outline: 'none',
-                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-                        color: '#fff', fontSize: '0.9rem',
+                        background: '#e4e4e4', border: '1px solid #000000',
+                        color: '#000000', fontSize: '0.9rem',
                       }}
                     />
                     <motion.button whileTap={{ scale: 0.97 }} type="button" disabled={scSaving || !scUsername.trim()}
@@ -10597,8 +10599,8 @@ export default function SettingsPage() {
                       placeholder="عدد الكوينز"
                       style={{
                         padding: '10px 12px', borderRadius: 10, outline: 'none',
-                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-                        color: '#fff', fontSize: '0.9rem',
+                        background: '#e4e4e4', border: '1px solid #000000',
+                        color: '#000000', fontSize: '0.9rem',
                       }}
                     />
                     <motion.button whileTap={{ scale: 0.97 }} type="button" disabled={scSaving}
@@ -10642,8 +10644,8 @@ export default function SettingsPage() {
                       placeholder="كلمة المرور الجديدة"
                       style={{
                         padding: '10px 12px', borderRadius: 10, outline: 'none',
-                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-                        color: '#fff', fontSize: '0.9rem',
+                        background: '#e4e4e4', border: '1px solid #000000',
+                        color: '#000000', fontSize: '0.9rem',
                       }}
                     />
                     <motion.button whileTap={{ scale: 0.97 }} type="button" disabled={scSaving || scPassword.length < 1}
@@ -10832,7 +10834,7 @@ export default function SettingsPage() {
                 }}>
                   <Trash2 size={22} color="#ef4444" strokeWidth={2} />
                 </div>
-                <p style={{ color: 'rgba(200,230,230,0.95)', fontSize: '0.92rem', fontWeight: 800, margin: 0, textAlign: 'center' }}>
+                <p style={{ color: '#000000', fontSize: '0.92rem', fontWeight: 800, margin: 0, textAlign: 'center' }}>
                   تأكيد حذف الحساب
                 </p>
               </div>
@@ -10860,7 +10862,7 @@ export default function SettingsPage() {
                 style={{
                   width: '100%', boxSizing: 'border-box', padding: '11px 12px',
                   borderRadius: 10, border: '1px solid rgba(239,68,68,0.35)',
-                  background: 'rgba(0,0,0,0.35)', color: 'rgba(200,230,230,0.95)',
+                  background: 'rgba(0,0,0,0.35)', color: '#000000',
                   fontSize: '0.88rem', outline: 'none', textAlign: 'center',
                 }}
               />
@@ -10875,8 +10877,8 @@ export default function SettingsPage() {
                   onClick={() => setScDeleteOpen(false)}
                   style={{
                     flex: 1, padding: '11px', borderRadius: 10,
-                    border: '1px solid rgba(0,188,212,0.2)',
-                    background: 'rgba(0,188,212,0.08)',
+                    border: '1px solid #000000',
+                    background: 'rgba(0,0,0,0.07)',
                     color: 'rgba(200,230,230,0.9)',
                     fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
                   }}
@@ -10965,26 +10967,26 @@ export default function SettingsPage() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
-              borderBottom: '1px solid rgba(0,188,212,0.25)',
+              borderBottom: '1px solid #000000',
               background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
               minHeight: 52, flexShrink: 0,
             }}>
               <button
                 type="button"
                 onClick={() => startTransition(() => setShowOwnerCompanies(false))}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00BCD4', padding: 2 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#000000', padding: 2 }}
                 aria-label="Close"
               >
                 <X size={20} />
               </button>
-              <Building2 size={18} style={{ color: '#00BCD4' }} />
-              <p style={{ margin: 0, flex: 1, color: '#00BCD4', fontWeight: 800, fontSize: '0.9rem' }}>
+              <Building2 size={18} style={{ color: '#000000' }} />
+              <p style={{ margin: 0, flex: 1, color: '#000000', fontWeight: 800, fontSize: '0.9rem' }}>
                 Companies
               </p>
               <button
                 type="button"
                 onClick={() => refreshOwnerCompanies()}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00BCD4', fontWeight: 700, fontSize: '1.1rem' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#000000', fontWeight: 700, fontSize: '1.1rem' }}
                 title="تحديث"
               >
                 ↻
@@ -10995,7 +10997,7 @@ export default function SettingsPage() {
             <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px 24px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {ownerCompanies.length === 0 && (
                 <div style={{ textAlign: 'center', marginTop: 48, padding: '0 16px' }}>
-                  <Building2 size={32} style={{ color: 'rgba(0,188,212,0.35)', marginBottom: 10 }} />
+                  <Building2 size={32} style={{ color: 'rgba(0,0,0,0.07)', marginBottom: 10 }} />
                   <p style={{ color: 'rgba(200,230,230,0.85)', fontSize: '0.88rem', fontWeight: 700, margin: '0 0 6px' }}>
                     No registered companies yet
                   </p>
@@ -11013,10 +11015,10 @@ export default function SettingsPage() {
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
                 padding: '12px 14px', borderRadius: 14, marginBottom: 8,
-                background: 'rgba(0,188,212,0.08)', border: '1px solid rgba(0,188,212,0.3)',
+                background: 'rgba(0,0,0,0.07)', border: '1px solid #000000',
               }}>
                 <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
-                  <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, fontSize: '0.82rem' }}>
+                  <p style={{ margin: 0, color: '#000000', fontWeight: 800, fontSize: '0.82rem' }}>
                     يوزرنيم للشركات
                   </p>
                   <p style={{ margin: '4px 0 0', color: 'rgba(150,190,190,0.75)', fontSize: '0.7rem', lineHeight: 1.4 }}>
@@ -11081,10 +11083,10 @@ export default function SettingsPage() {
                       style={{
                         flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4,
                         padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'right',
-                        color: 'rgba(200,230,230,0.95)',
+                        color: '#000000',
                       }}
                     >
-                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#00BCD4' }}>{displayName}</span>
+                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#000000' }}>{displayName}</span>
                       <span style={{ fontSize: '0.72rem', color: 'rgba(150,190,190,0.75)' }}>{displayTrade}</span>
                       <span style={{ fontSize: '0.65rem', color: 'rgba(150,190,190,0.55)' }}>{co.email}</span>
                     </button>
@@ -11106,9 +11108,9 @@ export default function SettingsPage() {
                       }}
                       style={{
                         width: 44, flexShrink: 0, border: 'none', cursor: 'pointer',
-                        background: 'rgba(0,188,212,0.1)',
-                        borderLeft: '1px solid rgba(0,188,212,0.2)',
-                        color: '#00BCD4',
+                        background: 'rgba(0,0,0,0.07)',
+                        borderLeft: '1px solid #000000',
+                        color: '#000000',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
                     >
@@ -11206,22 +11208,22 @@ export default function SettingsPage() {
                 width: '100%', maxWidth: 480, maxHeight: '92dvh', overflowY: 'auto',
                 background: 'linear-gradient(180deg, #0d2a2e 0%, #0a1a1a 100%)',
                 borderTopLeftRadius: 22, borderTopRightRadius: 22,
-                border: '1px solid rgba(0,188,212,0.3)',
+                border: '1px solid #000000',
                 padding: '16px 16px max(20px, env(safe-area-inset-bottom))',
                 boxSizing: 'border-box',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <Building2 size={22} color="#00BCD4" />
+                <Building2 size={22} color="#000000" />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <p style={{ margin: 0, color: '#000000', fontWeight: 800, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {ownerCompanyDetail.companyName}
                   </p>
                   <p style={{ margin: '2px 0 0', color: 'rgba(150,190,190,0.7)', fontSize: '0.7rem' }}>
                     كامل بيانات تسجيل الشركة — للدعم فقط
                   </p>
                 </div>
-                <button type="button" onClick={() => setOwnerCompanyDetail(null)} style={{ background: 'none', border: 'none', color: '#00BCD4', cursor: 'pointer' }}>
+                <button type="button" onClick={() => setOwnerCompanyDetail(null)} style={{ background: 'none', border: 'none', color: '#000000', cursor: 'pointer' }}>
                   <X size={20} />
                 </button>
               </div>
@@ -12270,7 +12272,7 @@ export default function SettingsPage() {
               ) : businessRow?.status === 'pending' ? (
                 <button type="button" disabled style={{
                   width: '100%', padding: '14px', borderRadius: 12, border: 'none',
-                  background: 'rgba(0,188,212,0.18)', color: '#00BCD4', fontWeight: 900, fontSize: '0.88rem',
+                  background: 'rgba(0,0,0,0.07)', color: '#000000', fontWeight: 900, fontSize: '0.88rem',
                 }}>
                   Under review
                 </button>
@@ -12285,8 +12287,8 @@ export default function SettingsPage() {
                     placeholder="Project name"
                     style={{
                       width: '100%', boxSizing: 'border-box', marginBottom: 12, padding: '11px 12px', borderRadius: 11,
-                      border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)',
-                      color: '#d7eeee', fontSize: '0.88rem', outline: 'none',
+                      border: '1px solid #000000', background: '#e4e4e4',
+                      color: '#000000', fontSize: '0.88rem', outline: 'none',
                     }}
                   />
                   <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -12300,8 +12302,8 @@ export default function SettingsPage() {
                         placeholder="No."
                         style={{
                           width: '100%', boxSizing: 'border-box', padding: '10px 10px', borderRadius: 11,
-                          border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)',
-                          color: '#d7eeee', fontSize: '0.82rem', outline: 'none',
+                          border: '1px solid #000000', background: '#e4e4e4',
+                          color: '#000000', fontSize: '0.82rem', outline: 'none',
                         }}
                       />
                     </div>
@@ -12315,8 +12317,8 @@ export default function SettingsPage() {
                         placeholder="No."
                         style={{
                           width: '100%', boxSizing: 'border-box', padding: '10px 10px', borderRadius: 11,
-                          border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)',
-                          color: '#d7eeee', fontSize: '0.82rem', outline: 'none',
+                          border: '1px solid #000000', background: '#e4e4e4',
+                          color: '#000000', fontSize: '0.82rem', outline: 'none',
                         }}
                       />
                     </div>
@@ -12503,12 +12505,12 @@ export default function SettingsPage() {
                       </p>
                       <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                         {row.commercialRegCert && (
-                          <a href={row.commercialRegCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#00BCD4' }}>
+                          <a href={row.commercialRegCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#000000' }}>
                             Commercial cert{row.commercialRegCertName ? ` (${row.commercialRegCertName})` : ''}
                           </a>
                         )}
                         {row.tradeLicenseCert && (
-                          <a href={row.tradeLicenseCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#00BCD4' }}>
+                          <a href={row.tradeLicenseCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#000000' }}>
                             Trade cert{row.tradeLicenseCertName ? ` (${row.tradeLicenseCertName})` : ''}
                           </a>
                         )}
@@ -12534,7 +12536,7 @@ export default function SettingsPage() {
                         rows={3}
                         style={{
                           width: '100%', boxSizing: 'border-box', borderRadius: 10, padding: '10px 12px',
-                          border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.55)',
+                          border: '1px solid #000000', background: '#e4e4e4',
                           color: 'rgba(220,230,230,0.95)', fontSize: 12, outline: 'none', resize: 'vertical',
                           fontFamily: 'inherit', marginBottom: 8,
                         }}
@@ -12636,26 +12638,26 @@ export default function SettingsPage() {
               <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Full name</label>
               <input value={bizCardName} onChange={e => setBizCardName(e.target.value.slice(0, 60))}
                 placeholder="Name on card"
-                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 10, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#d7eeee', outline: 'none' }} />
+                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 10, padding: '11px 12px', borderRadius: 10, border: '1px solid #000000', background: '#e4e4e4', color: '#000000', outline: 'none' }} />
               <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Card number</label>
               <input value={bizCardNumber} onChange={e => setBizCardNumber(e.target.value.replace(/[^0-9 ]/g, '').slice(0, 19))}
                 placeholder="XXXX XXXX XXXX XXXX"
-                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 10, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#d7eeee', outline: 'none' }} />
+                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 10, padding: '11px 12px', borderRadius: 10, border: '1px solid #000000', background: '#e4e4e4', color: '#000000', outline: 'none' }} />
               <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Expiry</label>
                   <input value={bizCardExp} onChange={e => setBizCardExp(e.target.value.slice(0, 5))} placeholder="MM/YY"
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#d7eeee', outline: 'none' }} />
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #000000', background: '#e4e4e4', color: '#000000', outline: 'none' }} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>CVV</label>
                   <input value={bizCardCvv} onChange={e => setBizCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="***"
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#d7eeee', outline: 'none' }} />
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid #000000', background: '#e4e4e4', color: '#000000', outline: 'none' }} />
                 </div>
               </div>
               <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Amount (KD)</label>
               <input value={bizTopUpAmount} onChange={e => setBizTopUpAmount(e.target.value.replace(/[^0-9.]/g, '').slice(0, 8))}
-                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 14, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#eab308', fontWeight: 800, outline: 'none' }} />
+                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 14, padding: '11px 12px', borderRadius: 10, border: '1px solid #000000', background: '#e4e4e4', color: '#eab308', fontWeight: 800, outline: 'none' }} />
               <button
                 type="button"
                 onClick={() => {
@@ -12702,25 +12704,25 @@ export default function SettingsPage() {
                 <button type="button" onClick={() => setVipPayOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
               </div>
                             <p style={{ margin: 0, color: '#eab308', fontWeight: 800 }}>5 KD / 30 days</p>
-              <div style={{ color: '#d7eeee', fontSize: 13, lineHeight: 1.45, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ color: '#000000', fontSize: 13, lineHeight: 1.45, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div>
-                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>1. VIP Profile Customization</p>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#000000' }}>1. VIP Profile Customization</p>
                   <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Features an exclusive animated golden border around your profile picture, paired with a matching golden VIP header banner.</p>
                 </div>
                 <div>
-                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>2. Advanced Room Stage Access</p>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#000000' }}>2. Advanced Room Stage Access</p>
                   <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Empowers hosts of audio or video rooms to invite up to 8 speakers simultaneously to the stage upon request.</p>
                 </div>
                 <div>
-                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>3. Custom Username Colors</p>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#000000' }}>3. Custom Username Colors</p>
                   <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Personalize your username with a selection of vibrant colors: Blue, Gold, Red, Green, or Grey.</p>
                 </div>
                 <div>
-                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>4. Advanced Music &amp; Media Player</p>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#000000' }}>4. Advanced Music &amp; Media Player</p>
                   <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Includes a dedicated search button for advanced music browsing. Play any song, track, or Quranic recitation for everyone in the room to hear. Features a personal favorites list and independent volume control for background music—allowing you to adjust the music volume without affecting normal microphone voice levels.</p>
                 </div>
                 <div>
-                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>5. One-Time Username Change</p>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#000000' }}>5. One-Time Username Change</p>
                   <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Allows a one-time username change, supporting short usernames down to a single character.</p>
                 </div>
               </div>
@@ -12766,7 +12768,7 @@ export default function SettingsPage() {
               {(() => {
                 const c = formatVipCountdown(vipExpiresAt);
                 return (
-                  <div style={{ marginTop: 12, color: '#d7eeee' }}>
+                  <div style={{ marginTop: 12, color: '#000000' }}>
                     <p style={{ margin: '0 0 8px', fontWeight: 800, color: '#eab308', fontSize: 22 }}>{c.days}d {String(c.hours).padStart(2,'0')}:{String(c.minutes).padStart(2,'0')}:{String(c.seconds).padStart(2,'0')}</p>
                     <p style={{ margin: 0, fontSize: 12, color: 'rgba(200,220,220,0.75)' }}>Ends {c.date || '—'}</p>
                     <p style={{ margin: '10px 0 0', fontSize: 12, color: 'rgba(200,220,220,0.7)' }}>When the 30 days end, VIP locks and features stop. You can subscribe again anytime from My Balance ({VIP_PRICE_KD} KD).</p>

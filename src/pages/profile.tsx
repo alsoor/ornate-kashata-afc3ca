@@ -13,19 +13,20 @@ import StatusUploader from '@/components/StatusUploader';
 
 const AVATAR_CACHE_KEY = (uid: string) => `stooorna_avatar_${uid}`;
 const T = {
-  bg: 'radial-gradient(ellipse 70% 60% at 50% 30%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)',
-  primary: '#00BCD4',
-  primaryDim: 'rgba(0,188,212,0.35)',
-  primaryBorder: 'rgba(0,188,212,0.2)',
-  primaryFaint: 'rgba(0,188,212,0.08)',
-  text: 'rgba(200,230,230,0.9)',
-  textDim: 'rgba(150,200,200,0.5)',
-  surface: 'rgba(0,188,212,0.05)',
-  surfaceBorder: 'rgba(0,188,212,0.12)',
-  navBorder: 'rgba(0,188,212,0.1)',
-  inputBg: 'rgba(0,188,212,0.05)',
-  inputBorder: 'rgba(0,188,212,0.15)',
-  inputFocus: 'rgba(0,188,212,0.4)'
+  bg: '#f0f0f0',
+  primary: '#000000',
+  primaryDim: 'rgba(0,0,0,0.7)',
+  primaryBorder: '#000000',
+  primaryFaint: 'rgba(0,0,0,0.08)',
+  text: '#000000',
+  textDim: 'rgba(0,0,0,0.6)',
+  surface: '#e4e4e4',
+  surfaceBorder: '#000000',
+  navBorder: 'rgba(0,0,0,0.15)',
+  inputBg: '#e4e4e4',
+  inputBorder: '#000000',
+  inputFocus: '#000000',
+  btn: '#00BCD4'
 };
 
 // ── Tiny QR code via qrserver.com (no npm needed) ────────────────────────────
@@ -36,7 +37,7 @@ function QRCodeImage({
   value: string;
   size?: number;
 }) {
-  const url = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(value)}&bgcolor=0a1a1a&color=00BCD4&margin=10`;
+  const url = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(value)}&bgcolor=ffffff&color=000000&margin=10`;
   return <img src={url} alt="QR code" width={size} height={size} style={{
     borderRadius: 12,
     border: `1px solid ${T.primaryBorder}`
@@ -457,7 +458,7 @@ export default function ProfilePage() {
                   height: 30,
                   borderRadius: '50%',
                   border: `2px solid ${T.bg}`,
-                  background: T.primary,
+                  background: T.btn,
                   color: '#041018',
                   cursor: avatarUploading ? 'wait' : 'pointer',
                   display: 'flex',
