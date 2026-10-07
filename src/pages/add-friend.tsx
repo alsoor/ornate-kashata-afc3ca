@@ -16953,7 +16953,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
       <div
         ref={cardRef}
         onClick={onOpen}
-        style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#0b1512', aspectRatio: '3 / 4', cursor: 'pointer', border: '2px solid #000000' }}
+        style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#0b1512', aspectRatio: '3 / 4', cursor: 'pointer', border: '2px solid #0a2f1d' }}
       >
         {isVideo ? (
           near
@@ -16971,7 +16971,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
           type="button"
           aria-label="Open profile"
           onClick={e => { e.stopPropagation(); onOpenProfile(); }}
-          style={{ position: 'absolute', left: 6, bottom: 6, background: 'none', border: '2px solid #000000', borderRadius: '50%', padding: 0, cursor: c.userId ? 'pointer' : 'default', display: 'flex' }}
+          style={{ position: 'absolute', left: 6, bottom: 6, background: 'none', border: '2px solid #0a2f1d', borderRadius: '50%', padding: 0, cursor: c.userId ? 'pointer' : 'default', display: 'flex' }}
         >
           <UserAvatar name={c.name || c.username || '?'} avatarUrl={c.avatarUrl} size={30} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
         </button>
@@ -16992,7 +16992,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
           />
         ) : null}
       </div>
-      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 300, color: '#000000', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 300, color: '#0a2f1d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
     </div>
   );
 }
@@ -18879,14 +18879,14 @@ function PublicLiveCommentsPanel({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
-              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffffff', border: '1.5px solid #000000', color: '#000000' }}>
+              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffffff', border: '1.5px solid #0a2f1d', color: '#0a2f1d' }}>
                 <Film size={15} strokeWidth={2.2} />
               </span>
-              <p style={{ margin: 0, flex: 1, color: '#000000', fontWeight: 300, fontSize: '0.98rem' }}>Templates</p>
+              <p style={{ margin: 0, flex: 1, color: '#0a2f1d', fontWeight: 300, fontSize: '0.98rem' }}>Templates</p>
               <button type="button" aria-label="Favorites" onClick={() => setTplFavOpen(true)} style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(250,204,21,0.14)', color: '#facc15', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <Bookmark size={15} strokeWidth={2.2} fill={favPosts.length > 0 ? '#facc15' : 'none'} />
               </button>
-              <button type="button" aria-label="Close" onClick={closeTplBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #000000', background: '#ffffff', color: '#000000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <button type="button" aria-label="Close" onClick={closeTplBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #0a2f1d', background: '#ffffff', color: '#0a2f1d', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <X size={15} strokeWidth={2.4} />
               </button>
             </div>
@@ -18898,7 +18898,7 @@ function PublicLiveCommentsPanel({
               }}
             >
               {mediaPosts.length === 0 ? (
-                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(0,0,0,0.55)' }}>No Templates yet</p>
+                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(10,47,29,0.55)' }}>No Templates yet</p>
               ) : (
                 <>
         {LIVE_MEDIA_STACKED ? mediaPosts.map(vc => (
@@ -18968,8 +18968,8 @@ function PublicLiveCommentsPanel({
               <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(250,204,21,0.14)', color: '#facc15' }}>
                 <Bookmark size={15} strokeWidth={2.2} fill="#facc15" />
               </span>
-              <p style={{ margin: 0, flex: 1, color: '#000000', fontWeight: 300, fontSize: '0.98rem' }}>Favorites</p>
-              <button type="button" aria-label="Close favorites" onClick={closeFavBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #000000', background: '#ffffff', color: '#000000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <p style={{ margin: 0, flex: 1, color: '#0a2f1d', fontWeight: 300, fontSize: '0.98rem' }}>Favorites</p>
+              <button type="button" aria-label="Close favorites" onClick={closeFavBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #0a2f1d', background: '#ffffff', color: '#0a2f1d', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <X size={15} strokeWidth={2.4} />
               </button>
             </div>
@@ -21454,11 +21454,11 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
       >
         {dockBubble.kind !== 'settings' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: 0 }}>
-          <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#ffffff' : 'rgba(0,188,212,0.14)', border: dockBubble.kind === 'call' ? '1.5px solid #22c55e' : dockBubble.kind === 'live' ? '1.5px solid #000000' : 'none', color: dockBubble.kind === 'call' ? '#22c55e' : dockBubble.kind === 'live' ? '#000000' : '#00BCD4' }}>
+          <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#ffffff' : 'rgba(0,188,212,0.14)', border: dockBubble.kind === 'call' ? '1.5px solid #0a2f1d' : dockBubble.kind === 'live' ? '1.5px solid #0a2f1d' : 'none', color: dockBubble.kind === 'call' ? '#0a2f1d' : dockBubble.kind === 'live' ? '#0a2f1d' : '#00BCD4' }}>
             {dockBubble.kind === 'call' ? <Phone size={15} strokeWidth={2.2} /> : dockBubble.kind === 'live' ? <Radio size={15} strokeWidth={2.2} /> : <Settings size={15} strokeWidth={2.2} />}
           </span>
-          <p style={{ margin: 0, flex: 1, color: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#000000' : '#7ee8f5', fontWeight: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? 300 : 800, fontSize: '0.98rem' }}>{title}</p>
-          <button type="button" aria-label="Close" onClick={closeBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '1.5px solid #000000' : 'none', background: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#ffffff' : 'rgba(255,255,255,0.08)', color: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#000000' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <p style={{ margin: 0, flex: 1, color: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#0a2f1d' : '#7ee8f5', fontWeight: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? 300 : 800, fontSize: '0.98rem' }}>{title}</p>
+          <button type="button" aria-label="Close" onClick={closeBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '1.5px solid #0a2f1d' : 'none', background: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#ffffff' : 'rgba(255,255,255,0.08)', color: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#0a2f1d' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <X size={15} strokeWidth={2.4} />
           </button>
         </div>
@@ -21468,7 +21468,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
             type="button"
             aria-label="Close"
             onClick={closeBubble}
-            style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', left: 16, zIndex: 20, width: 32, height: 32, borderRadius: '50%', border: '1.5px solid #000000', background: '#ffffff', color: '#000000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', left: 16, zIndex: 20, width: 32, height: 32, borderRadius: '50%', border: '1.5px solid #0a2f1d', background: '#ffffff', color: '#0a2f1d', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
           >
             <X size={16} strokeWidth={2.4} />
           </button>
@@ -21479,11 +21479,11 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
               {friendsLoadingView && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(0,0,0,0.55)' }}>Loading…</p>}
               {!friendsLoadingView && friendsView.length === 0 && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(0,0,0,0.55)' }}>No friends to call yet</p>}
               {friendsView.map(f => (
-                <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '1.5px solid #000000', background: '#ffffff' }}>
-                  <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: '1.5px solid #000000' }} />
+                <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '1.5px solid #0a2f1d', background: '#ffffff' }}>
+                  <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: '1.5px solid #0a2f1d' }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', color: '#000000', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
-                    {f.username ? <span style={{ display: 'block', fontSize: '0.7rem', color: '#000000' }}>@{f.username}</span> : null}
+                    <span style={{ display: 'block', color: '#0a2f1d', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
+                    {f.username ? <span style={{ display: 'block', fontSize: '0.7rem', color: '#0a2f1d' }}>@{f.username}</span> : null}
                   </div>
                   <button
                     type="button"
@@ -21492,7 +21492,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
                       closeBubble();
                       try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
                     }}
-                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid #22c55e', background: '#ffffff', color: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid #0a2f1d', background: '#ffffff', color: '#0a2f1d', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
                   >
                     <Phone size={16} strokeWidth={2.3} />
                   </button>
@@ -26752,8 +26752,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   cursor: 'pointer', padding: 0,
                 }}
               >
-                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#000000' }} />
-                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#000000' }} />
+                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#0a2f1d' }} />
+                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#0a2f1d' }} />
               </button>
 
               {/* Bell only — centered at top of story page */}
@@ -27232,9 +27232,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label={profilePlusIncomingCallUi.ringing ? 'Answer call' : 'Call'}
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1.5px solid #000000',
+                        border: '1.5px solid #0a2f1d',
                         background: '#ffffff',
-                        color: '#000000',
+                        color: '#0a2f1d',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27243,7 +27243,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Phone size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#000000', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Call</span>
+<span data-stooorna-icon-label="1" style={{ color: '#0a2f1d', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Call</span>
 </div>
                   )}
 
@@ -27258,9 +27258,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label="Chat"
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1.5px solid #000000',
+                        border: '1.5px solid #0a2f1d',
                         background: '#ffffff',
-                        color: '#000000',
+                        color: '#0a2f1d',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27268,7 +27268,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <MessageCircle size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#000000', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Chat</span>
+<span data-stooorna-icon-label="1" style={{ color: '#0a2f1d', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Chat</span>
 </div>
                   )}
 
@@ -27280,9 +27280,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label="Live broadcast"
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1.5px solid #000000',
+                        border: '1.5px solid #0a2f1d',
                         background: '#ffffff',
-                        color: '#000000',
+                        color: '#0a2f1d',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27290,7 +27290,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Radio size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#000000', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>LIVE</span>
+<span data-stooorna-icon-label="1" style={{ color: '#0a2f1d', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>LIVE</span>
 </div>
                   )}
                   {/* Templates — صور وفيديو Templates (كانت خلف الشيت) صارت هنا بين LIVE و Settings */}
@@ -27315,9 +27315,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       style={{
                         WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1.5px solid #000000',
+                        border: '1.5px solid #0a2f1d',
                         background: '#ffffff',
-                        color: '#000000',
+                        color: '#0a2f1d',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27325,7 +27325,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Film size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#000000', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Templates</span>
+<span data-stooorna-icon-label="1" style={{ color: '#0a2f1d', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Templates</span>
 </div>
                   )}
                   {/* Settings — نُقلت من الهيدر إلى هنا بجانب الأصدقاء والاتصال والبث */}
@@ -27342,9 +27342,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   title={GUEST_SIGNIN_LABEL[guestLang]}
   style={{
     width: 34, height: 34, borderRadius: '50%',
-    border: '1.5px solid #000000',
+    border: '1.5px solid #0a2f1d',
     background: '#ffffff',
-    color: '#000000',
+    color: '#0a2f1d',
     cursor: 'pointer', padding: 0,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     boxShadow: 'none',
@@ -27352,7 +27352,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 >
   <LogIn size={18} strokeWidth={2.2} />
 </motion.button>
-<span data-stooorna-icon-label="1" style={{ color: '#000000', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>{GUEST_SIGNIN_LABEL[guestLang]}</span>
+<span data-stooorna-icon-label="1" style={{ color: '#0a2f1d', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>{GUEST_SIGNIN_LABEL[guestLang]}</span>
 <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
   <button type="button" onClick={() => chooseGuestLang('ar')} aria-pressed={guestLang === 'ar'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'ar' ? 600 : 300, color: guestLang === 'ar' ? '#00BCD4' : 'rgba(0,0,0,0.55)' }}>Ar</button>
   <span aria-hidden="true" style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)' }}>|</span>
@@ -27369,9 +27369,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     title="Settings"
                     style={{
                       width: 34, height: 34, borderRadius: '50%',
-                      border: '1.5px solid #000000',
+                      border: '1.5px solid #0a2f1d',
                       background: '#ffffff',
-                      color: '#000000',
+                      color: '#0a2f1d',
                       cursor: 'pointer', padding: 0,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       boxShadow: 'none',
@@ -27385,7 +27385,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <Settings size={18} strokeWidth={2.2} />
                     </span>
                   </motion.button>
-<span data-stooorna-icon-label="1" style={{ color: '#000000', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Settings</span>
+<span data-stooorna-icon-label="1" style={{ color: '#0a2f1d', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Settings</span>
 </div>
 )}
                 </div>
@@ -31375,7 +31375,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 gap: 8,
                 padding: 'calc(env(safe-area-inset-top, 0px) + 12px) 12px 10px',
                 flexShrink: 0,
-                borderBottom: '1px solid #000000',
+                borderBottom: '1px solid #0a2f1d',
                 boxSizing: 'border-box',
                 width: '100%',
                 minWidth: 0,
@@ -31393,8 +31393,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       display: 'flex', alignItems: 'center', gap: 4,
                       padding: '6px 10px', borderRadius: 999,
                       background: '#ffffff',
-                      border: '1.5px solid #000000',
-                      color: '#000000',
+                      border: '1.5px solid #0a2f1d',
+                      color: '#0a2f1d',
                       fontSize: '0.72rem', fontWeight: 800,
                       flexShrink: 0,
                     }}
@@ -31404,8 +31404,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </div>
                 </div>
                 <button type="button" onClick={() => setStoryRequestsBoxOpen(false)} aria-label="Close" style={{
-                  width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #000000',
-                  background: '#ffffff', color: '#000000', cursor: 'pointer',
+                  width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #0a2f1d',
+                  background: '#ffffff', color: '#0a2f1d', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}><X size={14} /></button>
               </div>
@@ -31416,21 +31416,21 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
                 <button type="button" onClick={() => setStoryReqTab('search')} style={{
                   flex: 1, height: 34, borderRadius: 10, cursor: 'pointer', fontWeight: 800, fontSize: '0.75rem',
-                  border: '1.5px solid #000000',
+                  border: '1.5px solid #0a2f1d',
                   background: storyReqTab === 'search' ? '#e4e4e4' : '#ffffff',
-                  color: '#000000',
+                  color: '#0a2f1d',
                 }}>Search</button>
                 <button type="button" onClick={() => setStoryReqTab('requests')} style={{
                   flex: 1, height: 34, borderRadius: 10, cursor: 'pointer', fontWeight: 800, fontSize: '0.75rem',
-                  border: '1.5px solid #000000',
+                  border: '1.5px solid #0a2f1d',
                   background: storyReqTab === 'requests' ? '#e4e4e4' : '#ffffff',
-                  color: '#000000',
+                  color: '#0a2f1d',
                 }}>Requests{incoming.length ? ` (${incoming.length})` : ''}</button>
               </div>
               {storyReqTab === 'search' ? (
                 <>
                   <div style={{ position: 'relative', marginBottom: 12 }}>
-                    <Search size={14} color="#000000" style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                    <Search size={14} color="#0a2f1d" style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                     <input
                       value={storyReqQuery}
                       onChange={e => setStoryReqQuery(e.target.value)}
@@ -31440,8 +31440,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         width: '100%', boxSizing: 'border-box',
                         padding: '10px 36px 10px 12px', borderRadius: 12,
                         background: '#ffffff',
-                        border: '1.5px solid #000000',
-                        color: '#000000', fontSize: '0.8rem', outline: 'none',
+                        border: '1.5px solid #0a2f1d',
+                        color: '#0a2f1d', fontSize: '0.8rem', outline: 'none',
                       }}
                     />
                   </div>
@@ -31454,11 +31454,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>No users found</p>
                     )}
                     {storyReqResults.map(u => (
-                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: '#ffffff', border: '1.5px solid #000000' }}>
-                        <UserAvatar name={u.name || u.username || '?'} avatarUrl={u.avatarUrl} size={40} style={{ border: '2px solid #000000', boxSizing: 'border-box' }} />
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: '#ffffff', border: '1.5px solid #0a2f1d' }}>
+                        <UserAvatar name={u.name || u.username || '?'} avatarUrl={u.avatarUrl} size={40} style={{ border: '2px solid #0a2f1d', boxSizing: 'border-box' }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ margin: 0, color: '#000000', fontWeight: 700, fontSize: '0.82rem' }}>{u.name || u.username || 'User'}</p>
-                          {u.username ? <p style={{ margin: 0, color: '#000000', fontSize: '0.7rem' }}>@{u.username}</p> : null}
+                          <p style={{ margin: 0, color: '#0a2f1d', fontWeight: 700, fontSize: '0.82rem' }}>{u.name || u.username || 'User'}</p>
+                          {u.username ? <p style={{ margin: 0, color: '#0a2f1d', fontSize: '0.7rem' }}>@{u.username}</p> : null}
                         </div>
                         <button
                           type="button"
@@ -31468,7 +31468,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                             try { await sendRequest(u.id); }
                             finally { setStoryReqSendingId(null); }
                           }}
-                          style={{ width: 34, height: 34, borderRadius: '50%', border: u.friendStatus === 'accepted' ? '1.5px solid #22c55e' : '1.5px solid #000000', background: '#ffffff', color: u.friendStatus === 'accepted' ? '#22c55e' : '#000000', cursor: u.friendStatus ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ width: 34, height: 34, borderRadius: '50%', border: u.friendStatus === 'accepted' ? '1.5px solid #22c55e' : '1.5px solid #0a2f1d', background: '#ffffff', color: u.friendStatus === 'accepted' ? '#22c55e' : '#0a2f1d', cursor: u.friendStatus ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                           {u.friendStatus === 'accepted' ? <Check size={16} strokeWidth={2.6} /> : u.friendStatus === 'pending' ? <Clock size={16} strokeWidth={2.4} /> : <UserPlus size={16} strokeWidth={2.4} />}
                         </button>
@@ -31485,17 +31485,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   }}>
                     <UserPlus size={20} color="#ef4444" />
                   </div>
-                  <p style={{ color: '#000000', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>No friend requests</p>
+                  <p style={{ color: '#0a2f1d', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>No friend requests</p>
                   <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', margin: '4px 0 0' }}>Search above or wait for incoming requests</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, overflowY: 'auto' }}>
                   {incoming.map(req => (
-                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: '#ffffff', border: '1.5px solid #000000' }}>
-                      <UserAvatar name={req.name || req.username || '?'} avatarUrl={req.avatarUrl ?? null} size={40} style={{ border: '2px solid #000000', boxSizing: 'border-box' }} />
+                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: '#ffffff', border: '1.5px solid #0a2f1d' }}>
+                      <UserAvatar name={req.name || req.username || '?'} avatarUrl={req.avatarUrl ?? null} size={40} style={{ border: '2px solid #0a2f1d', boxSizing: 'border-box' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, color: '#000000', fontWeight: 700, fontSize: '0.82rem' }}>{req.name || req.username || 'User'}</p>
-                        {req.username ? <p style={{ margin: 0, color: '#000000', fontSize: '0.7rem' }}>@{req.username}</p> : null}
+                        <p style={{ margin: 0, color: '#0a2f1d', fontWeight: 700, fontSize: '0.82rem' }}>{req.name || req.username || 'User'}</p>
+                        {req.username ? <p style={{ margin: 0, color: '#0a2f1d', fontSize: '0.7rem' }}>@{req.username}</p> : null}
                       </div>
                       <button type="button" disabled={storyReqRespondingId === req.id} onClick={async () => {
                         setStoryReqRespondingId(req.id);
@@ -31795,7 +31795,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 display: 'flex',
                 flexDirection: 'column',
                 background: '#ffffff',
-                border: '1.5px solid #000000',
+                border: '1.5px solid #0a2f1d',
                 borderRadius: 22,
                 boxShadow: '0 20px 50px rgba(0,0,0,0.35)',
                 overflow: 'visible',
@@ -31803,11 +31803,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               }}
             >
               {/* tail — نفس ذيل فقاعة الأقسام */}
-              <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: 'calc(50% - 9px)', width: 18, height: 18, transform: 'rotate(45deg)', background: '#ffffff', borderRight: '1.5px solid #000000', borderBottom: '1.5px solid #000000', borderBottomRightRadius: 4 }} />
+              <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: 'calc(50% - 9px)', width: 18, height: 18, transform: 'rotate(45deg)', background: '#ffffff', borderRight: '1.5px solid #0a2f1d', borderBottom: '1.5px solid #0a2f1d', borderBottomRightRadius: 4 }} />
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                 padding: '12px 12px 10px', flexShrink: 0,
-                borderBottom: '1px solid #000000',
+                borderBottom: '1px solid #0a2f1d',
                 boxSizing: 'border-box', width: '100%', minWidth: 0,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
@@ -31815,8 +31815,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     display: 'flex', alignItems: 'center', gap: 4,
                     padding: '6px 10px', borderRadius: 999,
                     background: '#ffffff',
-                    border: '1.5px solid #000000',
-                    color: '#000000', fontSize: '0.72rem', fontWeight: 800, flexShrink: 0,
+                    border: '1.5px solid #0a2f1d',
+                    color: '#0a2f1d', fontSize: '0.72rem', fontWeight: 800, flexShrink: 0,
                   }}>
                     <Clock size={13} strokeWidth={2.2} />
                     Calls
@@ -31824,8 +31824,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 </div>
                 <div style={{ position: 'relative', flexShrink: 0 }}>
                   <button type="button" onClick={e => { e.stopPropagation(); setFriendChatCallLogMenuOpen(o => !o); }} aria-label="Call menu" style={{
-                    width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #000000',
-                    background: '#ffffff', color: '#000000', cursor: 'pointer',
+                    width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #0a2f1d',
+                    background: '#ffffff', color: '#0a2f1d', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     <MoreVertical size={14} />
@@ -31833,7 +31833,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   {friendChatCallLogMenuOpen && (
                     <div onClick={e => e.stopPropagation()} style={{
                       position: 'absolute', right: 0, top: 34, minWidth: 160, zIndex: 3,
-                      background: '#ffffff', border: '1px solid #000000',
+                      background: '#ffffff', border: '1px solid #0a2f1d',
                       borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden',
                     }}>
                       <button type="button" onClick={() => {
@@ -31846,15 +31846,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   )}
                 </div>
                 <button type="button" onClick={() => { setFriendChatCallLogOpen(false); setFriendChatCallLogMenuOpen(false); }} aria-label="Close" style={{
-                  width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #000000',
-                  background: '#ffffff', color: '#000000', cursor: 'pointer',
+                  width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #0a2f1d',
+                  background: '#ffffff', color: '#0a2f1d', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}>
                   <X size={14} />
                 </button>
               </div>
               <div style={{ padding: '10px 16px 2px', flexShrink: 0 }}>
-                <p style={{ margin: 0, color: '#000000', fontWeight: 300, fontSize: '0.68rem', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Recent</p>
+                <p style={{ margin: 0, color: '#0a2f1d', fontWeight: 300, fontSize: '0.68rem', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Recent</p>
               </div>
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 10px 14px', borderRadius: '0 0 18px 18px' }}>
                 {(() => {
@@ -31873,16 +31873,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     return <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', textAlign: 'center', padding: '28px 0', margin: 0 }}>No recent calls</p>;
                   }
                   return rows.map(row => (
-                    <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', marginBottom: 8, borderRadius: 12, background: '#ffffff', border: '1.5px solid #000000' }}>
+                    <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', marginBottom: 8, borderRadius: 12, background: '#ffffff', border: '1.5px solid #0a2f1d' }}>
                       <div style={{
                         width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-                        background: row.status === 'answered' ? '#22c55e' : (row.status === 'missed' && row.direction === 'in' ? '#ef4444' : '#9ca3af'),
+                        background: row.status === 'answered' ? '#0a2f1d' : (row.status === 'missed' && row.direction === 'in' ? '#ef4444' : '#9ca3af'),
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
                         <Phone size={16} color="#fff" strokeWidth={2.3} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontWeight: 700, color: row.status === 'missed' ? '#ef4444' : '#000000', fontSize: '0.82rem' }}>{row.peerName || 'User'}</p>
+                        <p style={{ margin: 0, fontWeight: 700, color: row.status === 'missed' ? '#ef4444' : '#0a2f1d', fontSize: '0.82rem' }}>{row.peerName || 'User'}</p>
                         <p style={{ margin: 0, color: row.status === 'missed' ? '#f87171' : '#22c55e', fontSize: '0.68rem', fontWeight: 600 }}>
                           {row.status === 'missed' && row.direction === 'in' ? 'Missed call' : row.status === 'missed' && row.direction === 'out' ? 'Call ended' : (row.direction === 'out' ? 'Outgoing' : 'Incoming')}
                           {row.durationSec ? `  ${Math.floor(row.durationSec / 60)}:${String(row.durationSec % 60).padStart(2, '0')}` : ''}
@@ -31890,7 +31890,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           {new Date(row.at).toLocaleString()}
                         </p>
                       </div>
-                      <Phone size={16} color="#000000" />
+                      <Phone size={16} color="#0a2f1d" />
                     </div>
                   ));
                 })()}
