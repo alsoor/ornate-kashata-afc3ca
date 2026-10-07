@@ -40,6 +40,7 @@ export const TEMPLATES_ENDPOINT = '/api/templates';
 export const TEMPLATES_CACHE_KEY = 'stooorna_templates_v1';
 const PENDING_KEY = 'stooorna_templates_pending_v1';   // صفوف أنشأتها ولم يؤكد السيرفر استلامها بعد
 const DELETED_KEY = 'stooorna_templates_deleted_v1';   // ما حذفته: يمنع رجوعه من أي نسخة قديمة
+const MIGRATED_KEY = 'stooorna_templates_migrated_v1'; // مرة واحدة: رفع منشوراتي المحفوظة محلياً ولم تصل السيرفر (قبل تفعيل مسارات السيرفر)
 const CMT_RE = /^↩([^\u200b\s]+)\u200b/;
 
 const hasLS = () => { try { return typeof localStorage !== 'undefined'; } catch { return false; } };
@@ -174,6 +175,13 @@ export async function syncTemplates(myId: string): Promise<TemplateRow[]> {
   if (!server) return cache;
   const deleted = new Set(readJson<string[]>(DELETED_KEY, []));
   const serverIds = new Set(server.map(r => r.id));
+  // One-time recovery: my own posts that only exist on this device (the server routes were not active before) are sent once.
+  if (!readJson<boolean>(MIGRATED_KEY, false)) {
+    for (const r of cache) {
+      if (r.userId === myId && !serverIds.has(r.id) && !deleted.has(r.id)) markTemplatePending(r.id);
+    }
+    writeJson(MIGRATED_KEY, true);
+  }
   const pending = new Set(readJson<string[]>(PENDING_KEY, []));
 
   const mine: TemplateRow[] = [];

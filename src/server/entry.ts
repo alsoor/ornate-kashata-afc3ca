@@ -14,6 +14,7 @@ import { createSession, makeLimiter, markSeen, normId, pickKey, recordPaid, seen
 import { mapEarningsAdapter, privateAssetsGuard, registerWithdrawalRoutes } from "./withdrawals.js";
 import { registerLiveBurstRoutes } from "./live-burst.js"; // EMOJI-BURST-PATCH
 import { registerAppReleaseRoutes } from "./app-releases-routes.js"; // APP-RELEASES-PATCH
+import { registerTemplatesRoutes } from "./templates-routes.js"; // TEMPLATES-PATCH
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -1147,6 +1148,25 @@ const creditRecipientEarnings = (toUserId: string, amount: number) => {
 const session = createSession(users_me_get_148 as unknown as RequestHandler, OWNER_IDS);
 registerLiveBurstRoutes(app, { getUserId: async (req) => (await session.user(req))?.id ?? null }); // EMOJI-BURST-PATCH
 registerAppReleaseRoutes(app, { getUser: (req) => session.user(req), ownerIds: OWNER_IDS }); // APP-RELEASES-PATCH
+
+// ── TEMPLATES-PATCH: Templates (صور/فيديو) تُحفظ على السيرفر ولا تُحذف إلا بطلب DELETE من ناشرها (أو الأدمن) ──
+// 1) لو لقينا MySQL pool داخل ./db/client يُستخدم (جدول templates_posts ينشأ تلقائياً).
+// 2) غير ذلك: ملف JSON داخل ASSETS_DIR/_private/templates (محمي من الوصول العام) — يبقى فقط لو ASSETS_DIR على Volume دائم.
+const templatesPool = (() => {
+  const m = dbClientModule as unknown as Record<string, any>;
+  for (const k of ["pool", "mysqlPool", "connection", "client", "default"]) {
+    const c = m[k];
+    if (c && typeof c.query === "function" && typeof c.getConnection === "function") return c;
+  }
+  return undefined;
+})();
+console.log("[templates] storage:", templatesPool ? "MySQL (templates_posts)" : "JSON file in ASSETS_DIR (needs a persistent Volume)");
+registerTemplatesRoutes(app, {
+  pool: templatesPool,
+  dataDir: join(ASSETS_DIR, "_private", "templates"),
+  getUser: (req) => session.user(req) as any,
+  isAdmin: (u) => session.isAdmin(u as any),
+});
 const allow = makeLimiter();
 const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });
 const needUser = async (req: Request, res: Response) => {

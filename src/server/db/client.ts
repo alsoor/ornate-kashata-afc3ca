@@ -23,6 +23,9 @@ const poolConnection = mysql.createPool({
   queueLimit: 0,
 });
 
+// Raw MySQL pool (same connection Drizzle uses) — used by templates-routes.ts for permanent Templates storage
+export const pool = poolConnection;
+
 // Create Drizzle instance
 export const db = drizzle(poolConnection, { schema, mode: 'default' });
 
