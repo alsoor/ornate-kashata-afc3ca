@@ -9256,8 +9256,8 @@ function FollowersListModal({
           maxHeight: '82dvh',
           borderRadius: 24,
           overflow: 'hidden',
-          background: 'linear-gradient(165deg, rgba(14,36,40,0.98) 0%, rgba(8,18,20,0.99) 55%, rgba(6,14,16,1) 100%)',
-          border: `1.5px solid ${hidden ? 'rgba(0,188,212,0.45)' : 'rgba(0,188,212,0.18)'}`,
+          background: '#ffffff',
+          border: '1.5px solid #000000',
           boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           padding: '20px 16px 16px',
@@ -9271,9 +9271,9 @@ function FollowersListModal({
           aria-label="إغلاق"
           style={{
             position: 'absolute', top: 12, left: 12,
-            width: 30, height: 30, borderRadius: '50%', border: 'none',
-            background: 'rgba(255,255,255,0.06)',
-            color: 'rgba(200,230,230,0.7)',
+            width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #000000',
+            background: '#ffffff',
+            color: '#000000',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer',
           }}
@@ -9292,16 +9292,16 @@ function FollowersListModal({
             marginBottom: 10, flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: '#ffffff',
-            border: `1.5px solid ${hidden ? 'rgba(0,188,212,0.5)' : 'rgba(0,188,212,0.22)'}`,
+            border: '1.5px solid #000000',
             boxShadow: 'none',
-            color: '#00BCD4',
+            color: '#000000',
           }}
         >
           {hidden ? <Lock size={22} strokeWidth={2.1} /> : <Users size={22} strokeWidth={2.1} />}
         </motion.div>
 
         <p style={{
-          margin: 0, fontSize: '1rem', fontWeight: 300, color: 'rgba(220,245,245,0.95)',
+          margin: 0, fontSize: '1rem', fontWeight: 300, color: '#000000',
           letterSpacing: '0.01em', textAlign: 'center', flexShrink: 0,
         }}>
           {title || (isOwner ? 'متابعيني' : 'المتابعون')}
@@ -9309,7 +9309,7 @@ function FollowersListModal({
         </p>
         <p style={{
           margin: '6px 0 0', fontSize: '0.7rem', fontWeight: 500,
-          color: 'rgba(150,200,200,0.65)', lineHeight: 1.5, textAlign: 'center',
+          color: '#000000', lineHeight: 1.5, textAlign: 'center',
           maxWidth: 260, flexShrink: 0,
         }}>
           {isOwner
@@ -9327,8 +9327,8 @@ function FollowersListModal({
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
               padding: '10px 12px',
               borderRadius: 16,
-              background: hidden ? 'rgba(0,188,212,0.12)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${hidden ? 'rgba(0,188,212,0.35)' : 'rgba(0,188,212,0.12)'}`,
+              background: '#ffffff',
+              border: '1.5px solid #000000',
               transition: 'background 0.25s ease, border-color 0.25s ease',
             }}
           >
@@ -9336,7 +9336,7 @@ function FollowersListModal({
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#000000' }}>
                 {hidden ? 'مقفولة' : 'ظاهرة'}
               </span>
-              <span style={{ fontSize: '0.64rem', color: 'rgba(150,200,200,0.55)', lineHeight: 1.4 }}>
+              <span style={{ fontSize: '0.64rem', color: '#000000', lineHeight: 1.4 }}>
                 إخفاء متابعيني عن الآخرين
               </span>
             </div>
@@ -9351,7 +9351,7 @@ function FollowersListModal({
                 cursor: 'pointer', flexShrink: 0,
                 background: hidden
                   ? 'linear-gradient(90deg, #00BCD4, #26C6DA)'
-                  : 'rgba(255,255,255,0.12)',
+                  : '#d9d9d9',
                 display: 'flex', alignItems: 'center',
                 justifyContent: hidden ? 'flex-end' : 'flex-start',
                 boxShadow: hidden ? '0 4px 16px rgba(0,188,212,0.4)' : 'none',
@@ -9366,7 +9366,7 @@ function FollowersListModal({
                   background: '#fff', border: '1.5px solid #000000', boxSizing: 'border-box',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   boxShadow: 'none',
-                  color: hidden ? '#00BCD4' : 'rgba(100,120,120,0.7)',
+                  color: '#000000',
                 }}
               >
                 {hidden ? <Lock size={11} strokeWidth={2.6} /> : <Eye size={11} strokeWidth={2.6} />}
@@ -9386,13 +9386,13 @@ function FollowersListModal({
             }}
           >
             {loading && (
-              <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', color: 'rgba(150,200,200,0.6)' }}>جاري التحميل…</p>
+              <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', color: 'rgba(0,0,0,0.6)' }}>جاري التحميل…</p>
             )}
             {!loading && list.length === 0 && errorText && (
               <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', lineHeight: 1.6, color: 'rgba(255,170,150,0.85)' }}>{errorText}</p>
             )}
             {!loading && list.length === 0 && !errorText && (
-              <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', color: 'rgba(150,200,200,0.6)' }}>لا يوجد متابعون بعد</p>
+              <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', color: 'rgba(0,0,0,0.6)' }}>لا يوجد متابعون بعد</p>
             )}
             {!loading && list.map(f => {
               const label = f.name || f.username || 'User';
@@ -9404,11 +9404,11 @@ function FollowersListModal({
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: 10,
                     padding: '8px 10px', borderRadius: 14, cursor: onOpenProfile ? 'pointer' : 'default',
-                    background: 'rgba(0,188,212,0.05)',
-                    border: '1.5px solid rgba(0,188,212,0.16)',
+                    background: '#ffffff',
+                    border: '1.5px solid #000000',
                     // LTR row: avatar on the left, username right beside it
                     textAlign: 'left', direction: 'ltr',
-                    color: 'rgba(200,230,230,0.95)',
+                    color: '#000000',
                     WebkitTapHighlightColor: 'transparent',
                   }}
                 >
@@ -9417,7 +9417,7 @@ function FollowersListModal({
                   </div>
                   <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                     {/* Username only (display name removed); falls back to name if no username */}
-                    <span style={{ display: 'block', fontWeight: 800, fontSize: '0.85rem', color: '#00BCD4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ display: 'block', fontWeight: 800, fontSize: '0.85rem', color: '#000000', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {f.username ? `@${f.username}` : label}
                     </span>
                   </div>
@@ -10284,7 +10284,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           right: 0,
           left: 42,
           zIndex: 20101,
-          background: PAGE_BG,
+          background: '#ffffff',
           display: 'flex',
           flexDirection: 'column' as const,
           overflow: 'hidden',
@@ -10302,7 +10302,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           position: 'fixed' as const,
           inset: 0,
           zIndex: 20100,
-          background: PAGE_BG,
+          background: '#ffffff',
           display: 'flex',
           flexDirection: 'column' as const,
           overflow: 'hidden',
@@ -10344,9 +10344,9 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             aria-label="Close"
             style={{
               position: 'absolute', top: 'max(10px, env(safe-area-inset-top, 0px))', insetInlineStart: 10, width: 32, height: 32, borderRadius: '50%',
-              background: coverUrl ? 'rgba(0,0,0,0.25)' : 'rgba(0,188,212,0.12)',
-              border: coverUrl ? 'none' : `1px solid ${CLR_PRIMARY_BORDER}`,
-              color: coverUrl ? '#fff' : CLR_PRIMARY,
+              background: '#ffffff',
+              border: '1.5px solid #000000',
+              color: '#000000',
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
             }}
@@ -10385,7 +10385,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             </motion.button>
           </VipAvatarFrame>
 
-          <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: '6px 0 0' }}>{name || username || '—'}</p>
+          <p style={{ color: '#000000', fontSize: '0.88rem', fontWeight: 700, margin: '6px 0 0' }}>{name || username || '—'}</p>
           {username && <p style={{ color: '#000000', fontSize: '0.72rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
             <VipBadge userId={authorId} compact />
             {(isCompanyProfile || isAuthorBusinessAccount(authorId, authorUsername)) && (
@@ -10396,7 +10396,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             )}
           </p>}
           {profile?.bio && (
-            <p style={{ color: CLR_TEXT, opacity: 0.85, fontSize: '0.7rem', fontWeight: 500, margin: '4px 20px 0', textAlign: 'center', lineHeight: 1.4 }}>
+            <p style={{ color: '#000000', opacity: 0.85, fontSize: '0.7rem', fontWeight: 500, margin: '4px 20px 0', textAlign: 'center', lineHeight: 1.4 }}>
               {profile.bio}
             </p>
           )}
@@ -10408,14 +10408,14 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               const likedHere = authorPosts.some(p => !!(p as any).likedByMe || !!(p as any).isLiked);
               const ic = (color: string, child: React.ReactNode) => (
                 <span style={{
-                  width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
-                  background: 'rgba(225,225,225,0.1)', color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 24, height: 24, borderRadius: '50%', border: '1.5px solid #000000',
+                  background: '#ffffff', color, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>{child}</span>
               );
               return (
                 <>
                   {hiddenFollowers ? (
-                    ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <Lock size={12} strokeWidth={2.2} />)
+                    ic(liveActive ? '#22c55e' : '#000000', <Lock size={12} strokeWidth={2.2} />)
                   ) : (
                     <button
                       type="button"
@@ -10424,12 +10424,12 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                       title="Followers"
                       style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', WebkitTapHighlightColor: 'transparent' }}
                     >
-                      {ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <Users size={12} strokeWidth={2.3} />)}
+                      {ic(liveActive ? '#22c55e' : '#000000', <Users size={12} strokeWidth={2.3} />)}
                     </button>
                   )}
-                  {ic(liveActive ? '#ef4444' : 'rgba(230,230,230,0.9)', <Radio size={12} strokeWidth={2.3} />)}
-                  {ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <MapPin size={12} strokeWidth={2.3} />)}
-                  {ic(likedHere ? '#ef4444' : 'rgba(230,230,230,0.9)', <Heart size={12} strokeWidth={2.3} fill={likedHere ? '#ef4444' : 'none'} />)}
+                  {ic(liveActive ? '#ef4444' : '#000000', <Radio size={12} strokeWidth={2.3} />)}
+                  {ic(liveActive ? '#22c55e' : '#000000', <MapPin size={12} strokeWidth={2.3} />)}
+                  {ic(likedHere ? '#ef4444' : '#000000', <Heart size={12} strokeWidth={2.3} fill={likedHere ? '#ef4444' : 'none'} />)}
                 </>
               );
             })()}
@@ -10516,7 +10516,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 aria-expanded={friendMenuOpen}
                 style={{
                   width: 44, height: 22, borderRadius: 999, border: 'none', background: 'transparent',
-                  color: CLR_PRIMARY, display: 'flex', flexDirection: 'row', alignItems: 'center',
+                  color: '#000000', display: 'flex', flexDirection: 'row', alignItems: 'center',
                   justifyContent: 'center', gap: 4, cursor: 'pointer', position: 'relative', zIndex: 41,
                 }}
               >
@@ -10556,11 +10556,11 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
 
                 {isHiddenPrivate ? (
           <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 40, paddingBottom: 48, borderTop: `1px solid ${CLR_NAV_BORDER}`, marginTop: 8 }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000000' }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#ffffff', border: '1.5px solid #000000', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000000' }}>
               <LockKeyhole size={22} strokeWidth={1.6} />
             </div>
-            <p style={{ color: CLR_TEXT, fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>Private account</p>
-            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', maxWidth: 240, lineHeight: 1.6 }}>
+            <p style={{ color: '#000000', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>Private account</p>
+            <p style={{ color: 'rgba(0,0,0,0.6)', fontSize: '0.78rem', textAlign: 'center', maxWidth: 240, lineHeight: 1.6 }}>
               Add {name ?? 'this user'} as a friend to see their posts
             </p>
           </div>
@@ -14335,7 +14335,7 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
         aria-label="Admin notices"
         style={{
           width: size, height: size, borderRadius: '50%',
-          border: `1.5px solid ${unread ? 'rgba(239,68,68,0.95)' : hapticOff ? 'rgba(249,115,22,0.85)' : 'rgba(255,255,255,0.35)'}`,
+          border: `1.5px solid ${unread ? 'rgba(239,68,68,0.95)' : hapticOff ? 'rgba(249,115,22,0.85)' : '#ffffff'}`,
           background: unread ? 'rgba(239,68,68,0.16)' : hapticOff ? 'rgba(249,115,22,0.2)' : 'transparent',
           color: '#ffffff',
           boxShadow: unread ? '0 0 10px rgba(239,68,68,0.55)' : 'none',
@@ -16973,7 +16973,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
           type="button"
           aria-label="Open profile"
           onClick={e => { e.stopPropagation(); onOpenProfile(); }}
-          style={{ position: 'absolute', left: 6, bottom: 6, background: 'none', border: '2px solid #fff', borderRadius: '50%', padding: 0, cursor: c.userId ? 'pointer' : 'default', display: 'flex' }}
+          style={{ position: 'absolute', left: 6, bottom: 6, background: 'none', border: '2px solid #0a2f1d', borderRadius: '50%', padding: 0, cursor: c.userId ? 'pointer' : 'default', display: 'flex' }}
         >
           <UserAvatar name={c.name || c.username || '?'} avatarUrl={c.avatarUrl} size={30} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
         </button>
@@ -16994,7 +16994,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
           />
         ) : null}
       </div>
-      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 300, color: CLR_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 300, color: '#0a2f1d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
     </div>
   );
 }
@@ -18884,11 +18884,11 @@ function PublicLiveCommentsPanel({
               <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffffff', border: '1.5px solid #0a2f1d', color: '#0a2f1d' }}>
                 <Film size={15} strokeWidth={2.2} />
               </span>
-              <p style={{ margin: 0, flex: 1, color: '#7ee8f5', fontWeight: 300, fontSize: '0.98rem' }}>Templates</p>
-              <button type="button" aria-label="Favorites" onClick={() => setTplFavOpen(true)} style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(250,204,21,0.14)', color: '#facc15', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <Bookmark size={15} strokeWidth={2.2} fill={favPosts.length > 0 ? '#facc15' : 'none'} />
+              <p style={{ margin: 0, flex: 1, color: '#0a2f1d', fontWeight: 300, fontSize: '0.98rem' }}>Templates</p>
+              <button type="button" aria-label="Favorites" onClick={() => setTplFavOpen(true)} style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #0a2f1d', background: '#ffffff', color: '#0a2f1d', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <Bookmark size={15} strokeWidth={2.2} fill={favPosts.length > 0 ? '#0a2f1d' : 'none'} />
               </button>
-              <button type="button" aria-label="Close" onClick={closeTplBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <button type="button" aria-label="Close" onClick={closeTplBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #0a2f1d', background: '#ffffff', color: '#0a2f1d', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <X size={15} strokeWidth={2.4} />
               </button>
             </div>
@@ -18900,7 +18900,7 @@ function PublicLiveCommentsPanel({
               }}
             >
               {mediaPosts.length === 0 ? (
-                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No Templates yet</p>
+                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(10,47,29,0.55)' }}>No Templates yet</p>
               ) : (
                 <>
         {LIVE_MEDIA_STACKED ? mediaPosts.map(vc => (
@@ -18968,10 +18968,10 @@ function PublicLiveCommentsPanel({
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
               <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffffff', border: '1.5px solid #0a2f1d', color: '#0a2f1d' }}>
-                <Bookmark size={15} strokeWidth={2.2} fill="#facc15" />
+                <Bookmark size={15} strokeWidth={2.2} fill="#0a2f1d" />
               </span>
-              <p style={{ margin: 0, flex: 1, color: '#facc15', fontWeight: 300, fontSize: '0.98rem' }}>Favorites</p>
-              <button type="button" aria-label="Close favorites" onClick={closeFavBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <p style={{ margin: 0, flex: 1, color: '#0a2f1d', fontWeight: 300, fontSize: '0.98rem' }}>Favorites</p>
+              <button type="button" aria-label="Close favorites" onClick={closeFavBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #0a2f1d', background: '#ffffff', color: '#0a2f1d', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <X size={15} strokeWidth={2.4} />
               </button>
             </div>
@@ -18982,7 +18982,7 @@ function PublicLiveCommentsPanel({
               }}
             >
               {favPosts.length === 0 ? (
-                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No favorites yet</p>
+                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(0,0,0,0.55)' }}>No favorites yet</p>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, direction: 'ltr' }}>
                   {favPosts.map(vc => (
@@ -20449,8 +20449,8 @@ function hdrIconTonePanel(active: boolean, tone: 'green' | 'orange' = 'green'): 
   if (!active) {
     return {
       border: '2px solid #111111',
-      background: 'rgba(225,225,225,0.04)',
-      color: 'rgba(200,210,210,0.42)',
+      background: 'rgba(0,0,0,0.04)',
+      color: '#333333',
       boxShadow: 'none',
       transition: 'color 200ms ease, border-color 200ms ease, background 200ms ease',
     };
@@ -26693,9 +26693,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         <div className="sticky top-0 z-20" data-stooorna-top-header="1" style={{
           position: 'relative',
           paddingTop: 'max(16px, calc(env(safe-area-inset-top, 0px) + 8px))',
-          background: CLR_HEADER_BG,
+          background: '#000000',
           backdropFilter: 'blur(14px)',
-          borderBottom: `1px solid ${CLR_NAV_BORDER}`,
+          borderBottom: '1px solid #ffffff',
         }}>
           {/* Profile bell lives in the right icon column above Ads (not absolute top). */}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
@@ -27147,9 +27147,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             zIndex: 10070,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '5px 10px calc(5px + env(safe-area-inset-bottom, 0px)) 10px',
-            background: 'rgba(4,12,12,0.96)',
+            background: '#000000',
             backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-            borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
+            borderTop: '1px solid #ffffff',
             // هيد الأقسام السفلي ثابت دايم: لا يختفي بالتمرير ولا برفع الهيدر
             transform: 'translateY(0)',
             transition: 'transform 0.25s ease',
@@ -27249,8 +27249,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label={profilePlusIncomingCallUi.ringing ? 'Answer call' : 'Call'}
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1.5px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
+                        border: '1.5px solid #ffffff',
+                        background: '#000000',
                         color: '#22c55e',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -27275,9 +27275,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label="Chat"
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
+                        border: '1.5px solid #ffffff',
+                        background: '#000000',
+                        color: '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27297,9 +27297,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label="Live broadcast"
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1.5px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
+                        border: '1.5px solid #ffffff',
+                        background: '#000000',
+                        color: '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27332,9 +27332,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       style={{
                         WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1.5px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
+                        border: '1.5px solid #ffffff',
+                        background: '#000000',
+                        color: '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27359,9 +27359,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   title={GUEST_SIGNIN_LABEL[guestLang]}
   style={{
     width: 34, height: 34, borderRadius: '50%',
-    border: '1.5px solid rgba(0,188,212,0.4)',
-    background: 'rgba(6,20,22,0.96)',
-    color: '#00BCD4',
+    border: '1.5px solid #0a2f1d',
+    background: '#ffffff',
+    color: '#0a2f1d',
     cursor: 'pointer', padding: 0,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     boxShadow: 'none',
@@ -27369,11 +27369,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 >
   <LogIn size={18} strokeWidth={2.2} />
 </motion.button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>{GUEST_SIGNIN_LABEL[guestLang]}</span>
+<span data-stooorna-icon-label="1" style={{ color: '#0a2f1d', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>{GUEST_SIGNIN_LABEL[guestLang]}</span>
 <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
-  <button type="button" onClick={() => chooseGuestLang('ar')} aria-pressed={guestLang === 'ar'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'ar' ? 600 : 300, color: guestLang === 'ar' ? '#00BCD4' : 'rgba(255,255,255,0.6)' }}>Ar</button>
-  <span aria-hidden="true" style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>|</span>
-  <button type="button" onClick={() => chooseGuestLang('en')} aria-pressed={guestLang === 'en'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'en' ? 600 : 300, color: guestLang === 'en' ? '#00BCD4' : 'rgba(255,255,255,0.6)' }}>En</button>
+  <button type="button" onClick={() => chooseGuestLang('ar')} aria-pressed={guestLang === 'ar'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'ar' ? 600 : 300, color: guestLang === 'ar' ? '#00BCD4' : 'rgba(0,0,0,0.55)' }}>Ar</button>
+  <span aria-hidden="true" style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)' }}>|</span>
+  <button type="button" onClick={() => chooseGuestLang('en')} aria-pressed={guestLang === 'en'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'en' ? 600 : 300, color: guestLang === 'en' ? '#00BCD4' : 'rgba(0,0,0,0.55)' }}>En</button>
 </div>
 </div>
 ) : (
@@ -27386,9 +27386,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     title="Settings"
                     style={{
                       width: 34, height: 34, borderRadius: '50%',
-                      border: '1.5px solid rgba(0,188,212,0.4)',
-                      background: 'rgba(6,20,22,0.96)',
-                      color: '#00BCD4',
+                      border: '1.5px solid #ffffff',
+                      background: '#000000',
+                      color: '#ffffff',
                       cursor: 'pointer', padding: 0,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       boxShadow: 'none',
@@ -31376,7 +31376,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 maxHeight: '100%',
                 display: 'flex',
                 flexDirection: 'column',
-                background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
+                background: '#ffffff',
                 border: 'none',
                 borderRadius: 0,
                 boxShadow: 'none',
@@ -31392,7 +31392,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 gap: 8,
                 padding: 'calc(env(safe-area-inset-top, 0px) + 12px) 12px 10px',
                 flexShrink: 0,
-                borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
+                borderBottom: '1px solid #0a2f1d',
                 boxSizing: 'border-box',
                 width: '100%',
                 minWidth: 0,
@@ -31409,9 +31409,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     style={{
                       display: 'flex', alignItems: 'center', gap: 4,
                       padding: '6px 10px', borderRadius: 999,
-                      background: 'rgba(0,188,212,0.18)',
-                      border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                      color: CLR_PRIMARY,
+                      background: '#ffffff',
+                      border: '1.5px solid #0a2f1d',
+                      color: '#0a2f1d',
                       fontSize: '0.72rem', fontWeight: 800,
                       flexShrink: 0,
                     }}
@@ -31421,8 +31421,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </div>
                 </div>
                 <button type="button" onClick={() => setStoryRequestsBoxOpen(false)} aria-label="Close" style={{
-                  width: 28, height: 28, borderRadius: '50%', border: 'none',
-                  background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                  width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #0a2f1d',
+                  background: '#ffffff', color: '#0a2f1d', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}><X size={14} /></button>
               </div>
@@ -31433,21 +31433,21 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
                 <button type="button" onClick={() => setStoryReqTab('search')} style={{
                   flex: 1, height: 34, borderRadius: 10, cursor: 'pointer', fontWeight: 800, fontSize: '0.75rem',
-                  border: storyReqTab === 'search' ? '1px solid rgba(0,188,212,0.55)' : '1px solid rgba(255,255,255,0.1)',
-                  background: storyReqTab === 'search' ? 'rgba(0,188,212,0.18)' : 'rgba(255,255,255,0.04)',
-                  color: storyReqTab === 'search' ? '#00BCD4' : 'rgba(255,255,255,0.7)',
+                  border: '1.5px solid #0a2f1d',
+                  background: storyReqTab === 'search' ? '#e4e4e4' : '#ffffff',
+                  color: '#0a2f1d',
                 }}>Search</button>
                 <button type="button" onClick={() => setStoryReqTab('requests')} style={{
                   flex: 1, height: 34, borderRadius: 10, cursor: 'pointer', fontWeight: 800, fontSize: '0.75rem',
-                  border: storyReqTab === 'requests' ? '1px solid rgba(0,188,212,0.55)' : '1px solid rgba(255,255,255,0.1)',
-                  background: storyReqTab === 'requests' ? 'rgba(0,188,212,0.18)' : 'rgba(255,255,255,0.04)',
-                  color: storyReqTab === 'requests' ? '#00BCD4' : 'rgba(255,255,255,0.7)',
+                  border: '1.5px solid #0a2f1d',
+                  background: storyReqTab === 'requests' ? '#e4e4e4' : '#ffffff',
+                  color: '#0a2f1d',
                 }}>Requests{incoming.length ? ` (${incoming.length})` : ''}</button>
               </div>
               {storyReqTab === 'search' ? (
                 <>
                   <div style={{ position: 'relative', marginBottom: 12 }}>
-                    <Search size={14} color="rgba(255,255,255,0.4)" style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                    <Search size={14} color="#0a2f1d" style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                     <input
                       value={storyReqQuery}
                       onChange={e => setStoryReqQuery(e.target.value)}
@@ -31456,26 +31456,26 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       style={{
                         width: '100%', boxSizing: 'border-box',
                         padding: '10px 36px 10px 12px', borderRadius: 12,
-                        background: 'rgba(255,255,255,0.06)',
-                        border: '1.5px solid rgba(255,255,255,0.12)',
-                        color: '#fff', fontSize: '0.8rem', outline: 'none',
+                        background: '#ffffff',
+                        border: '1.5px solid #0a2f1d',
+                        color: '#0a2f1d', fontSize: '0.8rem', outline: 'none',
                       }}
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                    {storyReqSearching && <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Searching…</p>}
+                    {storyReqSearching && <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Searching…</p>}
                     {!storyReqSearching && normalizeUserQuery(storyReqQuery).length < 1 && (
-                      <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Type a username</p>
+                      <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Type a username</p>
                     )}
                     {!storyReqSearching && normalizeUserQuery(storyReqQuery).length >= 1 && storyReqResults.length === 0 && (
-                      <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>No users found</p>
+                      <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>No users found</p>
                     )}
                     {storyReqResults.map(u => (
-                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1.5px solid rgba(255,255,255,0.08)' }}>
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: '#ffffff', border: '1.5px solid #0a2f1d' }}>
                         <UserAvatar name={u.name || u.username || '?'} avatarUrl={u.avatarUrl} size={40} style={{ border: '2px solid #0a2f1d', boxSizing: 'border-box' }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ margin: 0, color: '#fff', fontWeight: 700, fontSize: '0.82rem' }}>{u.name || u.username || 'User'}</p>
-                          {u.username ? <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>@{u.username}</p> : null}
+                          <p style={{ margin: 0, color: '#0a2f1d', fontWeight: 700, fontSize: '0.82rem' }}>{u.name || u.username || 'User'}</p>
+                          {u.username ? <p style={{ margin: 0, color: '#0a2f1d', fontSize: '0.7rem' }}>@{u.username}</p> : null}
                         </div>
                         <button
                           type="button"
@@ -31485,7 +31485,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                             try { await sendRequest(u.id); }
                             finally { setStoryReqSendingId(null); }
                           }}
-                          style={{ width: 34, height: 34, borderRadius: '50%', border: u.friendStatus === 'accepted' ? '1.5px solid #22c55e' : '1.5px solid #0a2f1d', background: u.friendStatus === 'accepted' ? 'rgba(34,197,94,0.2)' : 'rgba(0,188,212,0.18)', color: u.friendStatus === 'accepted' ? '#22c55e' : '#00BCD4', cursor: u.friendStatus ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ width: 34, height: 34, borderRadius: '50%', border: u.friendStatus === 'accepted' ? '1.5px solid #22c55e' : '1.5px solid #0a2f1d', background: '#ffffff', color: u.friendStatus === 'accepted' ? '#22c55e' : '#0a2f1d', cursor: u.friendStatus ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                           {u.friendStatus === 'accepted' ? <Check size={16} strokeWidth={2.6} /> : u.friendStatus === 'pending' ? <Clock size={16} strokeWidth={2.4} /> : <UserPlus size={16} strokeWidth={2.4} />}
                         </button>
@@ -31497,35 +31497,35 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 <div style={{ textAlign: 'center', padding: '4px 10px 6px', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <div style={{
                     width: 40, height: 40, borderRadius: '50%', margin: '0 auto 8px',
-                    background: 'rgba(239,68,68,0.12)', border: '1.5px solid #ef4444',
+                    background: '#ffffff', border: '1.5px solid #ef4444',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     <UserPlus size={20} color="#ef4444" />
                   </div>
-                  <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>No friend requests</p>
-                  <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', margin: '4px 0 0' }}>Search above or wait for incoming requests</p>
+                  <p style={{ color: '#0a2f1d', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>No friend requests</p>
+                  <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', margin: '4px 0 0' }}>Search above or wait for incoming requests</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, overflowY: 'auto' }}>
                   {incoming.map(req => (
-                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1.5px solid rgba(255,255,255,0.08)' }}>
+                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: '#ffffff', border: '1.5px solid #0a2f1d' }}>
                       <UserAvatar name={req.name || req.username || '?'} avatarUrl={req.avatarUrl ?? null} size={40} style={{ border: '2px solid #0a2f1d', boxSizing: 'border-box' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, color: '#fff', fontWeight: 700, fontSize: '0.82rem' }}>{req.name || req.username || 'User'}</p>
-                        {req.username ? <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>@{req.username}</p> : null}
+                        <p style={{ margin: 0, color: '#0a2f1d', fontWeight: 700, fontSize: '0.82rem' }}>{req.name || req.username || 'User'}</p>
+                        {req.username ? <p style={{ margin: 0, color: '#0a2f1d', fontSize: '0.7rem' }}>@{req.username}</p> : null}
                       </div>
                       <button type="button" disabled={storyReqRespondingId === req.id} onClick={async () => {
                         setStoryReqRespondingId(req.id);
                         try { await respond(req.id, 'accept'); }
                         finally { setStoryReqRespondingId(null); }
-                      }} style={{ width: 34, height: 34, borderRadius: '50%', border: '1.5px solid #22c55e', background: 'rgba(34,197,94,0.2)', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      }} style={{ width: 34, height: 34, borderRadius: '50%', border: '1.5px solid #22c55e', background: '#ffffff', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Check size={16} strokeWidth={2.6} />
                       </button>
                       <button type="button" disabled={storyReqRespondingId === req.id} onClick={async () => {
                         setStoryReqRespondingId(req.id);
                         try { await respond(req.id, 'reject'); }
                         finally { setStoryReqRespondingId(null); }
-                      }} style={{ width: 34, height: 34, borderRadius: '50%', border: '1.5px solid #ef4444', background: 'rgba(239,68,68,0.18)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      }} style={{ width: 34, height: 34, borderRadius: '50%', border: '1.5px solid #ef4444', background: '#ffffff', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <X size={16} strokeWidth={2.6} />
                       </button>
                     </div>
@@ -31811,29 +31811,29 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 maxHeight: 'min(56vh, 420px)',
                 display: 'flex',
                 flexDirection: 'column',
-                background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
-                border: '1.5px solid rgba(0,188,212,0.35)',
+                background: '#ffffff',
+                border: '1.5px solid #0a2f1d',
                 borderRadius: 22,
-                boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
+                boxShadow: '0 20px 50px rgba(0,0,0,0.35)',
                 overflow: 'visible',
                 boxSizing: 'border-box',
               }}
             >
               {/* tail — نفس ذيل فقاعة الأقسام */}
-              <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: 'calc(50% - 9px)', width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
+              <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: 'calc(50% - 9px)', width: 18, height: 18, transform: 'rotate(45deg)', background: '#ffffff', borderRight: '1.5px solid #0a2f1d', borderBottom: '1.5px solid #0a2f1d', borderBottomRightRadius: 4 }} />
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                 padding: '12px 12px 10px', flexShrink: 0,
-                borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
+                borderBottom: '1px solid #0a2f1d',
                 boxSizing: 'border-box', width: '100%', minWidth: 0,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 4,
                     padding: '6px 10px', borderRadius: 999,
-                    background: 'rgba(0,188,212,0.18)',
-                    border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                    color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800, flexShrink: 0,
+                    background: '#ffffff',
+                    border: '1.5px solid #0a2f1d',
+                    color: '#0a2f1d', fontSize: '0.72rem', fontWeight: 800, flexShrink: 0,
                   }}>
                     <Clock size={13} strokeWidth={2.2} />
                     Calls
@@ -31841,8 +31841,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 </div>
                 <div style={{ position: 'relative', flexShrink: 0 }}>
                   <button type="button" onClick={e => { e.stopPropagation(); setFriendChatCallLogMenuOpen(o => !o); }} aria-label="Call menu" style={{
-                    width: 28, height: 28, borderRadius: '50%', border: 'none',
-                    background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                    width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #0a2f1d',
+                    background: '#ffffff', color: '#0a2f1d', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     <MoreVertical size={14} />
@@ -31850,7 +31850,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   {friendChatCallLogMenuOpen && (
                     <div onClick={e => e.stopPropagation()} style={{
                       position: 'absolute', right: 0, top: 34, minWidth: 160, zIndex: 3,
-                      background: '#0a1f22', border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      background: '#ffffff', border: '1px solid #0a2f1d',
                       borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden',
                     }}>
                       <button type="button" onClick={() => {
@@ -31863,15 +31863,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   )}
                 </div>
                 <button type="button" onClick={() => { setFriendChatCallLogOpen(false); setFriendChatCallLogMenuOpen(false); }} aria-label="Close" style={{
-                  width: 28, height: 28, borderRadius: '50%', border: 'none',
-                  background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                  width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #0a2f1d',
+                  background: '#ffffff', color: '#0a2f1d', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}>
                   <X size={14} />
                 </button>
               </div>
               <div style={{ padding: '10px 16px 2px', flexShrink: 0 }}>
-                <p style={{ margin: 0, color: CLR_TEXT_DIM, fontWeight: 300, fontSize: '0.68rem', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Recent</p>
+                <p style={{ margin: 0, color: '#0a2f1d', fontWeight: 300, fontSize: '0.68rem', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Recent</p>
               </div>
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 10px 14px', borderRadius: '0 0 18px 18px' }}>
                 {(() => {
@@ -31887,10 +31887,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     .filter(r => !friendChatPeer || r.peerId === friendChatPeer.friendId)
                     .sort((a, b) => b.at - a.at);
                   if (!rows.length) {
-                    return <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '28px 0', margin: 0 }}>No recent calls</p>;
+                    return <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', textAlign: 'center', padding: '28px 0', margin: 0 }}>No recent calls</p>;
                   }
                   return rows.map(row => (
-                    <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', marginBottom: 8, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1.5px solid rgba(255,255,255,0.08)' }}>
+                    <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', marginBottom: 8, borderRadius: 12, background: '#ffffff', border: '1.5px solid #0a2f1d' }}>
                       <div style={{
                         width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
                         background: row.status === 'answered' ? '#22c55e' : (row.status === 'missed' && row.direction === 'in' ? '#ef4444' : '#9ca3af'),
@@ -31899,7 +31899,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         <Phone size={16} color="#fff" strokeWidth={2.3} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontWeight: 700, color: row.status === 'missed' ? '#ef4444' : '#fff', fontSize: '0.82rem' }}>{row.peerName || 'User'}</p>
+                        <p style={{ margin: 0, fontWeight: 700, color: row.status === 'missed' ? '#ef4444' : '#0a2f1d', fontSize: '0.82rem' }}>{row.peerName || 'User'}</p>
                         <p style={{ margin: 0, color: row.status === 'missed' ? '#f87171' : '#22c55e', fontSize: '0.68rem', fontWeight: 600 }}>
                           {row.status === 'missed' && row.direction === 'in' ? 'Missed call' : row.status === 'missed' && row.direction === 'out' ? 'Call ended' : (row.direction === 'out' ? 'Outgoing' : 'Incoming')}
                           {row.durationSec ? `  ${Math.floor(row.durationSec / 60)}:${String(row.durationSec % 60).padStart(2, '0')}` : ''}
@@ -31907,7 +31907,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           {new Date(row.at).toLocaleString()}
                         </p>
                       </div>
-                      <Phone size={16} color={CLR_PRIMARY} />
+                      <Phone size={16} color="#0a2f1d" />
                     </div>
                   ));
                 })()}
