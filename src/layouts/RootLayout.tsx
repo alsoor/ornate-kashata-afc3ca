@@ -25,6 +25,7 @@ import { playNotificationSound } from '@/lib/notificationSound';
 import SplashScreen from '@/components/SplashScreen';
 import WelcomeGuide from '@/components/WelcomeGuide';
 import { startPublicBadgeSync } from '@/lib/publicVisibility';
+import '@/lib/checkoutInAppPatch'; // checkout (Polar/Stripe) opens over the app in the in-app browser with X
 import PwaInstallBanner from '@/components/PwaInstallBanner';
 import OwnerControlDock from '@/components/OwnerControlDock';
 // Welcome guide + splash are DISABLED (files kept). Set to true to bring them back.
