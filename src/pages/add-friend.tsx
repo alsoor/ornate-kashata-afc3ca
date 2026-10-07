@@ -24403,7 +24403,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const bottomHeaderShown = !guestMode && !chatLifted && !isFriendManagement && !visitorProfileOpen && !dockSettingsOpen;
   useEffect(() => {
     try {
-      document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(40px + env(safe-area-inset-bottom, 0px))' : '0px');
+      document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(52px + env(safe-area-inset-bottom, 0px))' : '0px');
     } catch { /* */ }
     return () => { try { document.documentElement.style.setProperty('--stooorna-bottom-bar-h', '0px'); } catch { /* */ } };
   }, [bottomHeaderShown]);
@@ -26733,6 +26733,50 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               paddingTop: 4,
               position: 'relative',
             }}>
+          {/* Row 1: two lines (top-left) + bell only (center). Other icons moved into profile panel. */}
+          {pageTab === 'profile' && (
+            <div style={{ position: 'relative', paddingBottom: 4, paddingTop: 2, minHeight: 34 }}>
+              {/* Two small lines — top left, no frame — opens full page from top */}
+              <button
+                type="button"
+                aria-label="Profile menu"
+                onClick={() => setProfileSlideOpen(true)}
+                style={{
+                  position: 'absolute', left: 8, top: 6, zIndex: 8,
+                  width: 28, height: 20,
+                  border: 'none', outline: 'none',
+                  background: 'transparent',
+                  WebkitTapHighlightColor: 'transparent',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  cursor: 'pointer', padding: 0,
+                }}
+              >
+                <style>{`@keyframes stooornaLinesShine { 0% { transform: translateX(-130%); } 100% { transform: translateX(340%); } }`}</style>
+                {[0, 1].map(i => (
+                  <span key={i} style={{ position: 'relative', display: 'block', width: 16, height: 2, borderRadius: 1, background: '#ffffff', overflow: 'hidden' }}>
+                    <span aria-hidden style={{
+                      position: 'absolute', top: 0, bottom: 0, left: 0, width: '55%',
+                      background: 'linear-gradient(90deg, transparent, rgba(226,232,240,0.15), rgba(248,250,252,1), rgba(203,213,225,0.85), transparent)',
+                      animation: 'stooornaLinesShine 1.6s ease-in-out infinite',
+                    }} />
+                  </span>
+                ))}
+              </button>
+
+              {/* Bell only — centered at top of story page */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 30 }}>
+                <div style={{ position: 'relative', width: 30, height: 30, flexShrink: 0 }}>
+                  <HeaderAdminBell userId={user?.id} size={30} />
+                  <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
+                    <StoryModerationBell userId={user?.id} size={30} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+
+
               {/* Fog overlay */}
               <div aria-hidden style={{
                 position: 'absolute', inset: 0, zIndex: 6,
@@ -27035,49 +27079,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             document.body
           )}
 
-          {/* Row 1: two lines (top-left) + bell only (center). Other icons moved into profile panel. */}
-          {pageTab === 'profile' && (
-            <div style={{ position: 'relative', paddingBottom: 4, paddingTop: 2, minHeight: 34 }}>
-              {/* Two small lines — top left, no frame — opens full page from top */}
-              <button
-                type="button"
-                aria-label="Profile menu"
-                onClick={() => setProfileSlideOpen(true)}
-                style={{
-                  position: 'absolute', left: 8, top: 6, zIndex: 8,
-                  width: 28, height: 20,
-                  border: 'none', outline: 'none',
-                  background: 'transparent',
-                  WebkitTapHighlightColor: 'transparent',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5,
-                  cursor: 'pointer', padding: 0,
-                }}
-              >
-                <style>{`@keyframes stooornaLinesShine { 0% { transform: translateX(-130%); } 100% { transform: translateX(340%); } }`}</style>
-                {[0, 1].map(i => (
-                  <span key={i} style={{ position: 'relative', display: 'block', width: 16, height: 2, borderRadius: 1, background: '#ffffff', overflow: 'hidden' }}>
-                    <span aria-hidden style={{
-                      position: 'absolute', top: 0, bottom: 0, left: 0, width: '55%',
-                      background: 'linear-gradient(90deg, transparent, rgba(226,232,240,0.15), rgba(248,250,252,1), rgba(203,213,225,0.85), transparent)',
-                      animation: 'stooornaLinesShine 1.6s ease-in-out infinite',
-                    }} />
-                  </span>
-                ))}
-              </button>
-
-              {/* Bell only — centered at top of story page */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 30 }}>
-                <div style={{ position: 'relative', width: 30, height: 30, flexShrink: 0 }}>
-                  <HeaderAdminBell userId={user?.id} size={30} />
-                  <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
-                    <StoryModerationBell userId={user?.id} size={30} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-
           {/* ── Header show/hide grabber — sits above the content switcher.
               Tap toggles header open/closed. Swipe-up on posts also collapses it. ── */}
           <div data-stooorna-header-grabber="1" style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
@@ -27154,22 +27155,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             position: 'fixed', left: 0, right: 0, bottom: 0,
             zIndex: 10070,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '4px 8px env(safe-area-inset-bottom, 0px)',
+            padding: '6px 10px env(safe-area-inset-bottom, 0px)',
             background: 'rgba(4,12,12,0.96)',
             backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-            borderTop: '1px solid rgba(255,255,255,0.85)',
+            borderTop: 'none',
             transform: 'translateY(0)',
             transition: 'transform 0.25s ease',
             overflow: 'hidden',
           } : { display: 'flex', justifyContent: 'center', padding: '8px 0 10px', position: 'relative' }}>
-                {!guestMode && (
-                  <>
-                    <style>{`@keyframes stooornaDockTopShine { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }`}</style>
-                    <span aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, overflow: 'hidden', pointerEvents: 'none', background: '#ffffff' }}>
-                      <span style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '28%', background: 'linear-gradient(90deg, transparent, rgba(226,232,240,0.2), rgba(248,250,252,1), rgba(148,163,184,0.95), transparent)', animation: 'stooornaDockTopShine 1.8s ease-in-out infinite' }} />
-                    </span>
-                  </>
-                )}
                 <div style={guestMode ? {
                   position: 'relative',
                   display: 'flex',
@@ -27262,7 +27255,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       }}
                       aria-label={profilePlusIncomingCallUi.ringing ? 'Answer call' : 'Call'}
                       style={{
-                        width: 34, height: 34, borderRadius: '50%',
+                        width: 44, height: 44, borderRadius: '50%',
                         border: '1.5px solid #ffffff',
                         background: 'transparent',
                         color: '#ffffff',
@@ -27272,7 +27265,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none', WebkitUserSelect: 'none',
                       }}
                     >
-                      <Phone size={18} strokeWidth={2.2} />
+                      <Phone size={22} strokeWidth={2.2} />
                     </button>
 </div>
                   )}
@@ -27287,7 +27280,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       }}
                       aria-label="Chat"
                       style={{
-                        width: 34, height: 34, borderRadius: '50%',
+                        width: 44, height: 44, borderRadius: '50%',
                         border: '1.5px solid #ffffff',
                         background: 'transparent',
                         color: '#ffffff',
@@ -27296,7 +27289,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         boxShadow: 'none',
                       }}
                     >
-                      <MessageCircle size={18} strokeWidth={2.2} />
+                      <MessageCircle size={22} strokeWidth={2.2} />
                     </button>
 </div>
                   )}
@@ -27308,7 +27301,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       onClick={(e) => openDockBubble('live', e.currentTarget)}
                       aria-label="Live broadcast"
                       style={{
-                        width: 34, height: 34, borderRadius: '50%',
+                        width: 44, height: 44, borderRadius: '50%',
                         border: '1.5px solid #ffffff',
                         background: 'transparent',
                         color: '#ffffff',
@@ -27317,7 +27310,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         boxShadow: 'none',
                       }}
                     >
-                      <Radio size={18} strokeWidth={2.2} />
+                      <Radio size={22} strokeWidth={2.2} />
                     </button>
 </div>
                   )}
@@ -27342,7 +27335,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       title="Templates"
                       style={{
                         WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
-                        width: 34, height: 34, borderRadius: '50%',
+                        width: 44, height: 44, borderRadius: '50%',
                         border: '1.5px solid #ffffff',
                         background: 'transparent',
                         color: '#ffffff',
@@ -27351,7 +27344,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         boxShadow: 'none',
                       }}
                     >
-                      <Film size={18} strokeWidth={2.2} />
+                      <Film size={22} strokeWidth={2.2} />
                     </button>
 </div>
                   )}
@@ -27368,7 +27361,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   aria-label={GUEST_SIGNIN_LABEL[guestLang]}
   title={GUEST_SIGNIN_LABEL[guestLang]}
   style={{
-    width: 34, height: 34, borderRadius: '50%',
+    width: 44, height: 44, borderRadius: '50%',
     border: '1.5px solid #ffffff',
     background: 'transparent',
     color: '#ffffff',
@@ -27377,7 +27370,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     boxShadow: 'none',
   }}
 >
-  <LogIn size={18} strokeWidth={2.2} />
+  <LogIn size={22} strokeWidth={2.2} />
 </motion.button>
 <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
   <button type="button" onClick={() => chooseGuestLang('ar')} aria-pressed={guestLang === 'ar'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'ar' ? 600 : 300, color: guestLang === 'ar' ? '#00BCD4' : 'rgba(255,255,255,0.6)' }}>Ar</button>
@@ -27394,7 +27387,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     aria-label="Settings"
                     title="Settings"
                     style={{
-                      width: 34, height: 34, borderRadius: '50%',
+                      width: 44, height: 44, borderRadius: '50%',
                       border: '1.5px solid #ffffff',
                       background: 'transparent',
                       color: '#ffffff',
@@ -27408,7 +27401,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-hidden="true"
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'stooornaDockGearSpin 9s linear infinite', willChange: 'transform' }}
                     >
-                      <Settings size={18} strokeWidth={2.2} />
+                      <Settings size={22} strokeWidth={2.2} />
                     </span>
                   </motion.button>
 </div>
