@@ -1,1 +1,15 @@
-n/* Hide PWA Install Prompt & Cookie Banner in Capacitor APK */n.capacitor-native [class*='pwa'], .capacitor-native [class*='install'], .capacitor-native [class*='cookie'], .capacitor-native [id*='cookie'], body.capacitor-native #pwa-prompt, body.capacitor-native .cookie-banner { display: none !important; }
+/* Hide PWA install prompt & cookie/consent banners (web, PWA and Capacitor APK) */
+.capacitor-native [class*='pwa'], .capacitor-native [class*='install'],
+body.capacitor-native #pwa-prompt {
+  display: none !important;
+}
+
+[class*='cookie' i], [id*='cookie' i],
+[class*='consent' i], [id*='consent' i],
+.cookie-banner, #cookie-banner, .cookie-consent, #cookie-consent,
+.fc-consent-root, .fc-dialog-overlay, #CybotCookiebotDialog, #onetrust-consent-sdk {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

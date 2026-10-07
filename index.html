@@ -26,6 +26,48 @@
     <!-- Google AdSense -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1118814836471828"
       crossorigin="anonymous"></script>
+    <!-- Remove the white "Cookie Consent" banner on every app launch -->
+    <style>
+      [class*="cookie" i], [id*="cookie" i], [class*="consent" i], [id*="consent" i],
+      .fc-consent-root, .fc-dialog-overlay, #CybotCookiebotDialog, #onetrust-consent-sdk {
+        display: none !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important;
+      }
+    </style>
+    <script>
+      (function () {
+        var RX = /we serve cookies|cookie consent|essential services and functionality on our site/i;
+        function kill(root) {
+          try {
+            var all = (root.querySelectorAll ? root.querySelectorAll('div,section,aside,footer,dialog,iframe') : []);
+            for (var i = 0; i < all.length; i++) {
+              var el = all[i];
+              if (el.id === 'app' || el.contains(document.getElementById('app'))) continue;
+              var t = el.tagName === 'IFRAME' ? (el.src || el.title || '') : (el.textContent || '');
+              if (t.length < 1200 && RX.test(t)) {
+                var cs = getComputedStyle(el);
+                var box = el;
+                // climb to the fixed/absolute container so no empty white strip is left
+                while (box.parentElement && box.parentElement !== document.body && box.parentElement.id !== 'app' && !box.parentElement.contains(document.getElementById('app')) &&
+                       (box.parentElement.textContent || '').length < 1500) box = box.parentElement;
+                box.remove();
+              }
+            }
+          } catch (e) {}
+        }
+        function start() {
+          kill(document);
+          new MutationObserver(function (muts) {
+            for (var i = 0; i < muts.length; i++) {
+              for (var j = 0; j < muts[i].addedNodes.length; j++) {
+                var n = muts[i].addedNodes[j];
+                if (n.nodeType === 1) { if (RX.test(n.textContent || '')) kill(document); }
+              }
+            }
+          }).observe(document.documentElement, { childList: true, subtree: true });
+        }
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+      })();
+    </script>
     <!--app-head-->
     <script src="/airo-video-slots.js"></script>
     <script src="/airo-logo-orientation.js"></script>
