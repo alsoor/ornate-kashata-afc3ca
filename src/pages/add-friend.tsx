@@ -21454,7 +21454,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
       >
         {dockBubble.kind !== 'settings' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: 0 }}>
-          <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#ffffff' : 'rgba(0,188,212,0.14)', border: dockBubble.kind === 'call' ? '1.5px solid #0a2f1d' : dockBubble.kind === 'live' ? '1.5px solid #0a2f1d' : 'none', color: dockBubble.kind === 'call' ? '#0a2f1d' : dockBubble.kind === 'live' ? '#0a2f1d' : '#00BCD4' }}>
+          <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#ffffff' : 'rgba(0,188,212,0.14)', border: dockBubble.kind === 'call' ? '1.5px solid #0a2f1d' : dockBubble.kind === 'live' ? '1.5px solid #0a2f1d' : 'none', color: dockBubble.kind === 'call' ? '#22c55e' : dockBubble.kind === 'live' ? '#0a2f1d' : '#00BCD4' }}>
             {dockBubble.kind === 'call' ? <Phone size={15} strokeWidth={2.2} /> : dockBubble.kind === 'live' ? <Radio size={15} strokeWidth={2.2} /> : <Settings size={15} strokeWidth={2.2} />}
           </span>
           <p style={{ margin: 0, flex: 1, color: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#0a2f1d' : '#7ee8f5', fontWeight: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? 300 : 800, fontSize: '0.98rem' }}>{title}</p>
@@ -21492,7 +21492,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
                       closeBubble();
                       try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
                     }}
-                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid #0a2f1d', background: '#ffffff', color: '#0a2f1d', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid #0a2f1d', background: '#ffffff', color: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
                   >
                     <Phone size={16} strokeWidth={2.3} />
                   </button>
@@ -21539,22 +21539,22 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
                       onClick={() => startLive('/live-camera')}
                       style={{
                         position: 'relative', width: 64, height: 64, borderRadius: '50%', cursor: 'pointer',
-                        background: 'rgba(0,188,212,0.14)', border: '1.5px solid rgba(0,188,212,0.75)', color: '#00BCD4',
+                        background: 'rgba(10,47,29,0.14)', border: '1.5px solid rgba(10,47,29,0.75)', color: '#0a2f1d',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-                        boxShadow: myLiveBroadcastKind === 'camera' ? '0 0 18px rgba(0,188,212,0.55)' : '0 0 10px rgba(0,188,212,0.28)',
+                        boxShadow: myLiveBroadcastKind === 'camera' ? '0 0 18px rgba(10,47,29,0.55)' : '0 0 10px rgba(10,47,29,0.28)',
                       }}
                     >
                       {myLiveBroadcastKind === 'camera' && (
                         <>
-                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(0,188,212,0.75)', animation: 'stooornaLiveChoiceRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
-                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(0,188,212,0.5)', animation: 'stooornaLiveChoiceRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
+                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(10,47,29,0.75)', animation: 'stooornaLiveChoiceRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
+                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(10,47,29,0.5)', animation: 'stooornaLiveChoiceRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
                         </>
                       )}
                       <span style={{ display: 'flex', animation: myLiveBroadcastKind === 'camera' ? 'stooornaLiveChoiceShake 0.7s ease-in-out infinite' : 'none' }}>
-                        <Video size={26} strokeWidth={2.3} color="#00BCD4" />
+                        <Video size={26} strokeWidth={2.3} color="#0a2f1d" />
                       </span>
                     </button>
-                    <span style={{ color: '#67e8f9', fontWeight: 800, fontSize: '0.78rem' }}>Video Live</span>
+                    <span style={{ color: '#0a2f1d', fontWeight: 800, fontSize: '0.78rem' }}>Video Live</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                     <button
@@ -21563,29 +21563,29 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
                       onClick={() => startLive('/live')}
                       style={{
                         position: 'relative', width: 64, height: 64, borderRadius: '50%', cursor: 'pointer',
-                        background: 'rgba(250,204,21,0.14)', border: '1.5px solid rgba(250,204,21,0.8)', color: '#facc15',
+                        background: 'rgba(10,47,29,0.14)', border: '1.5px solid rgba(10,47,29,0.8)', color: '#0a2f1d',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-                        boxShadow: myLiveBroadcastKind === 'voice' ? '0 0 18px rgba(250,204,21,0.55)' : '0 0 10px rgba(250,204,21,0.28)',
+                        boxShadow: myLiveBroadcastKind === 'voice' ? '0 0 18px rgba(10,47,29,0.55)' : '0 0 10px rgba(10,47,29,0.28)',
                       }}
                     >
                       {myLiveBroadcastKind === 'voice' && (
                         <>
-                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(250,204,21,0.8)', animation: 'stooornaLiveChoiceRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
-                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(250,204,21,0.5)', animation: 'stooornaLiveChoiceRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
+                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(10,47,29,0.8)', animation: 'stooornaLiveChoiceRing 1.5s ease-out infinite', pointerEvents: 'none' }} />
+                          <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(10,47,29,0.5)', animation: 'stooornaLiveChoiceRing 1.5s ease-out 0.5s infinite', pointerEvents: 'none' }} />
                         </>
                       )}
                       <span style={{ display: 'flex', animation: myLiveBroadcastKind === 'voice' ? 'stooornaLiveChoiceShake 0.7s ease-in-out infinite' : 'none' }}>
-                        <Mic size={26} strokeWidth={2.3} color="#facc15" />
+                        <Mic size={26} strokeWidth={2.3} color="#0a2f1d" />
                       </span>
                     </button>
-                    <span style={{ color: '#facc15', fontWeight: 800, fontSize: '0.78rem' }}>Voice Live</span>
+                    <span style={{ color: '#0a2f1d', fontWeight: 800, fontSize: '0.78rem' }}>Voice Live</span>
                   </div>
                 </div>
                 {/* ── Public LIVE: مايك كبير — ضغطة وحدة تفتح اللايف العام. برتقالي + ذبذبات لو في أحد داخل الغرفة أو يتكلم ── */}
                 {(() => {
                   const hot = publicVoiceStatus.present || publicVoiceStatus.talking;
-                  const c = hot ? '#f97316' : '#ef4444';
-                  const rgb = hot ? '249,115,22' : '239,68,68';
+                  const c = '#0a2f1d';
+                  const rgb = '10,47,29';
                   return (
                     <div style={{ marginTop: 'auto', paddingTop: 18, paddingBottom: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                       <style>{`
@@ -21630,7 +21630,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
                           <Mic size={28} strokeWidth={2.3} />
                         </span>
                       </button>
-                      <span style={{ color: hot ? '#fdba74' : '#fca5a5', fontWeight: 800, fontSize: '0.8rem', letterSpacing: '0.02em' }}>Public LIVE</span>
+                      <span style={{ color: '#0a2f1d', fontWeight: 800, fontSize: '0.8rem', letterSpacing: '0.02em' }}>Public LIVE</span>
                     </div>
                   );
                 })()}
@@ -27234,7 +27234,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         width: 34, height: 34, borderRadius: '50%',
                         border: '1.5px solid #0a2f1d',
                         background: '#ffffff',
-                        color: '#0a2f1d',
+                        color: '#22c55e',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -31876,7 +31876,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', marginBottom: 8, borderRadius: 12, background: '#ffffff', border: '1.5px solid #0a2f1d' }}>
                       <div style={{
                         width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-                        background: row.status === 'answered' ? '#0a2f1d' : (row.status === 'missed' && row.direction === 'in' ? '#ef4444' : '#9ca3af'),
+                        background: row.status === 'answered' ? '#22c55e' : (row.status === 'missed' && row.direction === 'in' ? '#ef4444' : '#9ca3af'),
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
                         <Phone size={16} color="#fff" strokeWidth={2.3} />
