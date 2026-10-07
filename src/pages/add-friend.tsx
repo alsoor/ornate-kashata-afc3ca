@@ -6252,7 +6252,7 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
       initial={{ opacity: 0, scale: 0.94, y: 20, borderRadius: 28 }}
       animate={{ opacity: 1, scale: 1, y: 0, borderRadius: 0 }}
       exit={{ opacity: 0, scale: 0.96, y: 12, borderRadius: 22 }}
-      style={{ position: 'fixed', inset: 0, zIndex: 13000, background: 'hsl(var(--background))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 20050, background: 'hsl(var(--background))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       onClick={e => {
         // نافذة التعليقات مفتوحة — أي نقرة على القصة تُغلق شيت التعليقات فقط
         // ولا تنتقل للستوري التالية ولا تُخرج المستخدم من صفحة القصة (كانت
@@ -26835,9 +26835,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 onClick={() => setProfileSlideOpen(false)}
                 style={{
                   position: 'fixed', inset: 0,
-                  zIndex: (cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen) ? 8999 : 16000,
+                  zIndex: (cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen) ? 8999 : 16000,
                   background: profileSlideOpen ? 'rgba(0,0,0,0.35)' : 'transparent',
-                  pointerEvents: profileSlideOpen && !(cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen) ? 'auto' : 'none',
+                  pointerEvents: profileSlideOpen && !(cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen) ? 'auto' : 'none',
                   transition: 'background .28s ease',
                 }}
               />
@@ -26847,7 +26847,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 style={{
                   position: 'fixed', left: 0, right: 0, top: 0,
                   // Drop under map/calls/requests/followers so they open on top (still inside the app)
-                  zIndex: (cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen) ? 9000 : 16001,
+                  zIndex: (cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen) ? 9000 : 16001,
                   height: '100%',
                   background: '#ffffff',
                   color: '#0a0a0a',
@@ -26884,10 +26884,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         onClick={() => {
                           if (myGroup) {
                             setViewerGroupIdx(storyGroups.indexOf(myGroup));
-                            setProfileSlideOpen(false);
                           } else {
                             setPublishMenuOpen(true);
-                            setProfileSlideOpen(false);
                           }
                         }}
                         style={{
@@ -26906,7 +26904,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           />
                         </div>
                         <span
-                          onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); setProfileSlideOpen(false); }}
+                          onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); }}
                           style={{
                             position: 'absolute', bottom: 2, right: 2, width: 22, height: 22, borderRadius: '50%',
                             background: '#ef4444', border: '2px solid #fff', color: '#fff',
@@ -32186,7 +32184,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             onClick={() => setPublishMenuOpen(false)}
             style={{
               position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)',
-              zIndex: 12010, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+              zIndex: 20055, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
             }}
           >
             <motion.div
