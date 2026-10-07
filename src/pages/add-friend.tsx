@@ -4487,7 +4487,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
         : { type: 'spring', stiffness: 380, damping: 36, mass: 0.9 }
       }
       style={{
-        position: 'fixed', inset: 0, zIndex: 12500, background: '#000',
+        position: 'fixed', inset: 0, zIndex: 20040, background: '#000',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}
     >
@@ -26834,9 +26834,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <div
                 onClick={() => setProfileSlideOpen(false)}
                 style={{
-                  position: 'fixed', inset: 0, zIndex: 16000,
+                  position: 'fixed', inset: 0,
+                  zIndex: (cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen) ? 8999 : 16000,
                   background: profileSlideOpen ? 'rgba(0,0,0,0.35)' : 'transparent',
-                  pointerEvents: profileSlideOpen ? 'auto' : 'none',
+                  pointerEvents: profileSlideOpen && !(cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen) ? 'auto' : 'none',
                   transition: 'background .28s ease',
                 }}
               />
@@ -26844,7 +26845,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 role="dialog"
                 aria-modal="true"
                 style={{
-                  position: 'fixed', left: 0, right: 0, top: 0, zIndex: 16001,
+                  position: 'fixed', left: 0, right: 0, top: 0,
+                  // Drop under map/calls/requests/followers so they open on top (still inside the app)
+                  zIndex: (cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen) ? 9000 : 16001,
                   height: '100%',
                   background: '#ffffff',
                   color: '#0a0a0a',
@@ -26946,7 +26949,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     }} />
                     <motion.button
                       whileTap={{ scale: 0.94 }}
-                      onClick={() => { setFollowersModalOpen(true); setProfileSlideOpen(false); }}
+                      onClick={() => { setFollowersModalOpen(true); }}
                       aria-label="Followers"
                       title="Followers"
                       style={{ position: 'relative', display: 'flex', flexShrink: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
@@ -26962,7 +26965,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
                     <button
                       type="button"
-                      onClick={() => { setFriendChatPeer(null); setFriendChatCallLogMenuOpen(false); setFriendChatCallLogOpen(true); setProfileSlideOpen(false); }}
+                      onClick={() => { setFriendChatPeer(null); setFriendChatCallLogMenuOpen(false); setFriendChatCallLogOpen(true); }}
                       aria-label="Call history"
                       title="Call history"
                       style={{
@@ -26989,7 +26992,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
                     <button
                       type="button"
-                      onClick={() => { setCameraStartWithLiveMap(true); setCameraCaptureOpen(true); setProfileSlideOpen(false); }}
+                      onClick={() => { setCameraStartWithLiveMap(true); setCameraCaptureOpen(true); }}
                       aria-label={anyFriendOnMap ? 'يوجد أشخاص على الخريطة' : 'الخريطة'}
                       title={anyFriendOnMap ? 'يوجد أشخاص على الخريطة' : 'الخريطة'}
                       style={{
@@ -27009,7 +27012,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           setStoryRequestsBoxOpen(true);
                           setStoryReqTab('requests');
                           setStoryReqQuery('');
-                          setProfileSlideOpen(false);
                         }}
                         aria-label={hasUnseenFriendReq ? 'يوجد طلبات إضافة جديدة' : 'طلبات الإضافة'}
                         title={hasUnseenFriendReq ? 'يوجد طلبات إضافة جديدة' : 'طلبات الإضافة'}
@@ -31299,7 +31301,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               saveUserShareInbox(user.id, list);
               setUserShareInbox(list);
             }}
-            zIndex={cameraCaptureOpen ? 13000 : 10295}
+            zIndex={cameraCaptureOpen ? 20040 : 10295}
           />
         )}
       </AnimatePresence>
@@ -31746,7 +31748,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
             onClick={() => { setFriendChatCallLogOpen(false); setFriendChatCallLogMenuOpen(false); }}
             style={{
-              position: 'fixed', inset: 0, zIndex: 10985,
+              position: 'fixed', inset: 0, zIndex: 20060,
               background: 'rgba(0,0,0,0.45)',
               display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
               padding: '12px 12px calc(var(--stooorna-bottom-bar-h, 96px) + 14px)',
@@ -32920,6 +32922,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               setViewingProfile({ id: f.friendId, name: f.name, username: f.username, avatarUrl: f.avatarUrl ?? null });
             }}
             onClose={() => setFollowersModalOpen(false)}
+            zIndex={20070}
           />
         )}
       </AnimatePresence>
