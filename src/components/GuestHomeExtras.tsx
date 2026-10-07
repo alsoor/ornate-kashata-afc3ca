@@ -52,7 +52,7 @@ function StoreButton({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
       {live ? (
-        <a href={latestDownloadUrl(platform)} download style={boxStyle} aria-label={`${title} download`}>{body}</a>
+        <a href={latestDownloadUrl(platform)} {...(release?.link ? { target: '_blank', rel: 'noopener noreferrer' } : { download: true })} style={boxStyle} aria-label={`${title} download`}>{body}</a>
       ) : (
         <div style={boxStyle} aria-disabled="true">{body}</div>
       )}
@@ -390,7 +390,7 @@ export default function GuestHomeExtras({
                   {T.versions}
                 </div>
                 {vList.map((r, i) => (
-                  <a key={r.id} href={releaseDownloadUrl(r.id)} download
+                  <a key={r.id} href={releaseDownloadUrl(r.id)} {...(r.link ? { target: '_blank', rel: 'noopener noreferrer' } : { download: true })}
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 0', borderTop: '1px solid #e5e7eb', textDecoration: 'none', color: 'inherit' }}>
                     <span>
                       <span style={{ display: 'block', fontWeight: 800, fontSize: 14 }}>v{r.version}</span>
