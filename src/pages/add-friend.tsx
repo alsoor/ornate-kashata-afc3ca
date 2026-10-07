@@ -10266,7 +10266,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 13040,
+        zIndex: 20100,
         background: 'rgba(0,0,0,0.32)',
       }}
     />
@@ -10284,7 +10284,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           bottom: 0,
           right: 0,
           left: 42,
-          zIndex: 13041,
+          zIndex: 20101,
           background: PAGE_BG,
           display: 'flex',
           flexDirection: 'column' as const,
@@ -10302,7 +10302,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         style: {
           position: 'fixed' as const,
           inset: 0,
-          zIndex: 13040,
+          zIndex: 20100,
           background: PAGE_BG,
           display: 'flex',
           flexDirection: 'column' as const,
@@ -26841,9 +26841,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 onClick={() => setProfileSlideOpen(false)}
                 style={{
                   position: 'fixed', inset: 0,
-                  zIndex: (cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen) ? 8999 : 16000,
+                  zIndex: (cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen || !!viewingProfile) ? 8999 : 16000,
                   background: profileSlideOpen ? 'rgba(0,0,0,0.35)' : 'transparent',
-                  pointerEvents: profileSlideOpen && !(cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen) ? 'auto' : 'none',
+                  pointerEvents: profileSlideOpen && !(cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen || !!viewingProfile) ? 'auto' : 'none',
                   transition: 'background .28s ease',
                 }}
               />
@@ -26853,7 +26853,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 style={{
                   position: 'fixed', left: 0, right: 0, top: 0,
                   // Drop under map/calls/requests/followers so they open on top (still inside the app)
-                  zIndex: (cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen) ? 9000 : 16001,
+                  zIndex: (cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen || !!viewingProfile) ? 9000 : 16001,
                   height: '100%',
                   background: '#ffffff',
                   color: '#0a0a0a',
