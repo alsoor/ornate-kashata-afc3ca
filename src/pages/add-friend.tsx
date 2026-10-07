@@ -18869,8 +18869,11 @@ function PublicLiveCommentsPanel({
               background: '#071214',
               visibility: tplShown ? 'visible' : 'hidden',
               pointerEvents: tplShown ? 'auto' : 'none',
-              transform: tplShown ? 'translateY(0)' : 'translateY(100%)',
-              transition: 'transform .32s cubic-bezier(.2,.8,.2,1), visibility 0s linear ' + (tplShown ? '0s' : '.32s'),
+              transform: tplShown ? 'translateY(0)' : 'translateY(105%)',
+              transition: tplShown
+                ? 'transform .34s cubic-bezier(.2,.8,.2,1)'
+                : 'transform .34s cubic-bezier(.4,0,.2,1), visibility 0s linear .34s',
+              willChange: 'transform',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
@@ -21435,11 +21438,14 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
           display: 'flex', flexDirection: 'column',
           padding: dockBubble.kind === 'settings' ? 'env(safe-area-inset-top, 0px) 0 0' : 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 0',
           background: '#071214',
+          // Slide down on close (X) — keep visible during the exit transition
           visibility: active ? 'visible' : 'hidden',
           pointerEvents: active ? 'auto' : 'none',
-          transform: active ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'transform .32s cubic-bezier(.2,.8,.2,1), visibility 0s linear ' + (active ? '0s' : '.32s'),
-          ...({ contentVisibility: active ? 'visible' : 'hidden' } as React.CSSProperties),
+          transform: active ? 'translateY(0)' : 'translateY(105%)',
+          transition: active
+            ? 'transform .34s cubic-bezier(.2,.8,.2,1)'
+            : 'transform .34s cubic-bezier(.4,0,.2,1), visibility 0s linear .34s',
+          willChange: 'transform',
         }}
       >
         {dockBubble.kind !== 'settings' && (
@@ -32204,9 +32210,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 whileTap={{ scale: 0.97 }}
                 onClick={() => {
                   setPublishMenuOpen(false);
-                  // Stay on the same page: open in-app camera/editor (no system file picker kick-out)
-                  setCameraStartWithLiveMap(false);
-                  setCameraCaptureOpen(true);
+                  // Gallery only (photo/video library) — no camera
+                  requestAnimationFrame(() => storyFileRef.current?.click());
                 }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px',
