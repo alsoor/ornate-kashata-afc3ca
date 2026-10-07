@@ -1,1 +1,20 @@
-﻿{"appId":"com.stooorna.app","appName":"Stooorna","webDir":"dist/client"}
+{
+  "appId": "com.stooorna.app",
+  "appName": "Stooorna",
+  "webDir": "dist/client",
+  "backgroundColor": "#060E0E",
+  "server": {
+    "url": "https://stooorna.com",
+    "androidScheme": "https",
+    "cleartext": false,
+    "allowNavigation": [
+      "stooorna.com",
+      "*.stooorna.com",
+      "polar.sh",
+      "*.polar.sh",
+      "stripe.com",
+      "*.stripe.com",
+      "*.stripe.network"
+    ]
+  }
+}
