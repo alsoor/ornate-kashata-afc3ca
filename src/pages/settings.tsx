@@ -15,6 +15,7 @@ const OwnerAdsPanelLazy = React.lazy(() => import('./add-friend').then((m) => ({
 import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, hydrateVipDirectory, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown, ownerGrantEightMics, getVipFeats } from '@/lib/vipPatch';
 import { getAppProfitsSnapshot, syncAppProfitsFromServer, syncEarningsFromServer, readUserEarnings, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
 import { readOwnerSupportProfit, syncOwnerSupportProfit } from '@/lib/ownerSupportProfitPatch';
+import AppReleasesOwnerCard from '@/components/AppReleasesOwnerCard';
 // VIP frame cancelled — avatar renders without frame
 // import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
@@ -9504,6 +9505,8 @@ export default function SettingsPage() {
             {/* ── LOGGED IN — COMPANY TAB (owner only) ── */}
             {!isPending && user && tab === 'companies' && (
               <div key="companies" className="flex flex-col gap-3" style={{ paddingBottom: 8 }}>
+                <AppReleasesOwnerCard T={T} />
+
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   type="button"
