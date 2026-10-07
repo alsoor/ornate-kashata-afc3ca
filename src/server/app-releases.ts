@@ -9,7 +9,10 @@ import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
-const DIR = process.env.APP_RELEASES_DIR || path.resolve(process.cwd(), 'data', 'app-releases');
+// Same persistent storage the app already uses (the _private folder is blocked from public URLs by privateAssetsGuard).
+const DIR =
+  process.env.APP_RELEASES_DIR ||
+  path.join(process.env.ASSETS_DIR || '/shared-storage/public/assets', '_private', 'app-releases');
 const META = path.join(DIR, 'releases.json');
 const VIS = path.join(DIR, 'visibility.json');
 const MAX_BYTES = 500 * 1024 * 1024;

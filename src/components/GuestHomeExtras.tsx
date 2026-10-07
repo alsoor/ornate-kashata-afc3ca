@@ -85,8 +85,10 @@ function StoreButton({
 export default function GuestHomeExtras({
   hamburgerTop = 82,
   storesTop = 118,
-}: { hamburgerTop?: number; storesTop?: number }) {
-  const [lang, setLang] = useState<'ar' | 'en'>(readLang);
+  lang: langProp,
+}: { hamburgerTop?: number; storesTop?: number; lang?: 'ar' | 'en' }) {
+  const [langAuto, setLang] = useState<'ar' | 'en'>(readLang);
+  const lang = langProp ?? langAuto;
   const [list, setList] = useState<AppRelease[]>([]);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [versions, setVersions] = useState<ReleasePlatform | null>(null);
@@ -100,9 +102,9 @@ export default function GuestHomeExtras({
   useEffect(() => {
     void reload();
     window.addEventListener(RELEASES_EVENT, reload);
-    const poll = window.setInterval(() => setLang(readLang()), 600); // follows the Ar | En switch
-    return () => { window.removeEventListener(RELEASES_EVENT, reload); window.clearInterval(poll); };
-  }, [reload]);
+    const poll = langProp ? 0 : window.setInterval(() => setLang(readLang()), 600); // follows the Ar | En switch
+    return () => { window.removeEventListener(RELEASES_EVENT, reload); if (poll) window.clearInterval(poll); };
+  }, [reload, langProp]);
 
   const android = releasesOf(list, 'android');
   const ios = releasesOf(list, 'ios');
@@ -115,13 +117,15 @@ export default function GuestHomeExtras({
 
   return (
     <>
+      {createPortal(
+        <>
       {/* three-lines button */}
       <button
         type="button"
         onClick={() => setPrivacyOpen(true)}
         aria-label="Menu"
         style={{
-          position: 'fixed', top: `calc(env(safe-area-inset-top, 0px) + ${hamburgerTop}px)`, right: 16, zIndex: 60,
+          position: 'fixed', top: `calc(env(safe-area-inset-top, 0px) + ${hamburgerTop}px)`, right: 16, zIndex: 10090,
           width: 34, height: 34, borderRadius: 10, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer',
           background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
@@ -132,14 +136,18 @@ export default function GuestHomeExtras({
 
       {/* store buttons: left = Google Play, right = App Store */}
       {vis.android && (
-        <div style={{ position: 'fixed', top: `calc(env(safe-area-inset-top, 0px) + ${storesTop}px)`, left: 14, zIndex: 60 }}>
+        <div style={{ position: 'fixed', top: `calc(env(safe-area-inset-top, 0px) + ${storesTop}px)`, left: 14, zIndex: 10090 }}>
           <StoreButton platform="android" release={android[0]} count={android.length} lang={lang} onOpenVersions={() => setVersions('android')} />
         </div>
       )}
       {vis.ios && (
-        <div style={{ position: 'fixed', top: `calc(env(safe-area-inset-top, 0px) + ${storesTop}px)`, right: 14, zIndex: 60 }}>
+        <div style={{ position: 'fixed', top: `calc(env(safe-area-inset-top, 0px) + ${storesTop}px)`, right: 14, zIndex: 10090 }}>
           <StoreButton platform="ios" release={ios[0]} count={ios.length} lang={lang} onOpenVersions={() => setVersions('ios')} />
         </div>
+      )}
+
+        </>,
+        document.body,
       )}
 
       {createPortal(

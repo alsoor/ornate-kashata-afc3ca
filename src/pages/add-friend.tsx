@@ -126,6 +126,7 @@ import { StoryModerationBell, StoryModerationWatcher } from '@/components/StoryM
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
 import { noteHostClosed, refreshStoryLives, startStoryLiveWatch, storyLiveStillOpen, readStoryLive } from '@/lib/liveStoryPresencePatch';
 import { VoiceInviteGlobalWatcher } from '@/lib/liveVoiceInvite'; // VOICE-INVITE-PATCH
+import GuestHomeExtras from '@/components/GuestHomeExtras';
 
 // ── PERF: code splitting — these are only drawn after a tap, so their code is downloaded on first use (not at app start) ──
 const PublicVoiceLive = React.lazy(() => import('@/components/PublicVoiceLive'));
@@ -27105,6 +27106,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {/* الأيقونات (Friends / Call / Live / Settings) تظهر دائماً تحت الخط: عند الدخول مباشرة، وعند رفع الهيدر أو إنزاله. */}
         {/* الأيقونات الأربع: تظهر في الرئيسية (الهيدر مفتوح) فقط، وتختفي بعد رفع الشيت ليبقى الشات وحده.
             الزائر يبقى عنده الصف (زر Sign in و Ar/En) لأن الهيدر عنده مقفل دائماً. */}
+        {/* زر الثلاث خطوط (Privacy Policy) + أزرار Google Play / App Store للزائر */}
+        {guestMode && <GuestHomeExtras lang={guestLang} />}
+
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
           <BottomHeaderPortal enabled={!guestMode}>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {

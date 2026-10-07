@@ -13,6 +13,7 @@ import { googlePlayConfigured, verifyAndCreditGooglePlay } from "./google-play.j
 import { createSession, makeLimiter, markSeen, normId, pickKey, recordPaid, seenRecently, takePaid } from "./gift-guard.js";
 import { mapEarningsAdapter, privateAssetsGuard, registerWithdrawalRoutes } from "./withdrawals.js";
 import { registerLiveBurstRoutes } from "./live-burst.js"; // EMOJI-BURST-PATCH
+import { registerAppReleaseRoutes } from "./app-releases-routes.js"; // APP-RELEASES-PATCH
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -1145,6 +1146,7 @@ const creditRecipientEarnings = (toUserId: string, amount: number) => {
 // القاعدة: الهوية من الجلسة فقط، والأرباح لا تُنشأ إلا مقابل خصم فعلي من رصيد السيرفر.
 const session = createSession(users_me_get_148 as unknown as RequestHandler, OWNER_IDS);
 registerLiveBurstRoutes(app, { getUserId: async (req) => (await session.user(req))?.id ?? null }); // EMOJI-BURST-PATCH
+registerAppReleaseRoutes(app, { getUser: (req) => session.user(req), ownerIds: OWNER_IDS }); // APP-RELEASES-PATCH
 const allow = makeLimiter();
 const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });
 const needUser = async (req: Request, res: Response) => {
