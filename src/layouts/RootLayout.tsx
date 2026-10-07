@@ -5125,7 +5125,9 @@ function GlobalBottomNavigation() {
       )}
 
   {(() => {
-    if (storyPageActive || settingsSheetOpen) return null;
+    // /live and /live-camera: the bar is an empty strip (52px + safe-area) with nothing inside it,
+    // and it showed up as a blank band under the live room / "Opening your broadcast" screen.
+    if (storyPageActive || settingsSheetOpen || isVoiceRoom) return null;
     const hideBottomBar =
       // navBarHidden (auto-hide on scroll in the profile/story page) intentionally
       // excluded — the "+" button lives on this bar and must always stay reachable
@@ -5325,15 +5327,30 @@ export default function RootLayout({
   const session = (sessionResult as any).session ?? (sessionResult as any).data;
   const location = useLocation();
   const navigate = useNavigate();
-  // Tap haptic on navigation / buttons (restored). Long-press on the bell no longer toggles this off.
+  // Tap haptic on navigation / buttons. Long-press on the bell (add-friend.tsx HeaderAdminBell) turns it off/on:
+  // it stores stooorna_haptic_off = '1' and every tap-style vibration in the whole app is silenced until toggled back.
+  // Ringing / incoming-call vibration patterns (long ones) are NOT affected.
   useEffect(() => {
-    try { localStorage.removeItem('stooorna_haptic_off'); } catch { /* */ }
+    const nav: any = navigator;
+    if (typeof nav.vibrate !== 'function' || nav.__stooornaHapticWrapped) return;
+    const orig = nav.vibrate.bind(nav);
+    const hapticOff = () => { try { return localStorage.getItem('stooorna_haptic_off') === '1'; } catch { return false; } };
+    const isTapLike = (p: any) => {
+      if (typeof p === 'number') return p > 0 && p <= 60;
+      if (Array.isArray(p)) return p.reduce((n: number, v: any) => n + (Number(v) || 0), 0) <= 400;
+      return false;
+    };
+    nav.vibrate = (p: any) => (hapticOff() && isTapLike(p)) ? true : orig(p);
+    nav.__stooornaHapticWrapped = true;
+  }, []);
+  useEffect(() => {
     try { navigator.vibrate?.(16); } catch { /* */ }
   }, []);
   useEffect(() => {
     const buzz = (e: Event) => {
       const el = e.target as HTMLElement | null;
       if (!el || !el.closest('button, [role="button"], a')) return;
+      try { if (localStorage.getItem('stooorna_haptic_off') === '1') return; } catch { /* */ }
       try { navigator.vibrate?.(14); } catch { /* */ }
     };
     document.addEventListener('pointerdown', buzz, true);

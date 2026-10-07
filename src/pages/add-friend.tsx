@@ -14312,18 +14312,28 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
     <div style={{ position: 'relative' }}>
       <button
         type="button"
-        onClick={openPanel}
+        onClick={e => {
+          // after a long-press (haptic switch) the browser still fires a click on release — ignore it
+          if ((e.currentTarget as any)._hapticFired) { (e.currentTarget as any)._hapticFired = false; return; }
+          openPanel();
+        }}
         onContextMenu={e => e.preventDefault()}
         onPointerDown={e => {
-          (e.currentTarget as any)._hapticHold = window.setTimeout(() => {
+          const btn = e.currentTarget as any;
+          btn._hapticFired = false;
+          btn._hapticHold = window.setTimeout(() => {
+            btn._hapticFired = true;
             const next = !hapticOff;
             setHapticOff(next);
             try { localStorage.setItem('stooorna_haptic_off', next ? '1' : '0'); } catch { /* */ }
             try { window.dispatchEvent(new CustomEvent('stooorna:haptic', { detail: { off: next } })); } catch { /* */ }
+            // vibration turned back ON → one confirming buzz; turned OFF → silence
+            if (!next) { try { navigator.vibrate?.(30); } catch { /* */ } }
           }, 480);
         }}
         onPointerUp={e => { const t = (e.currentTarget as any)._hapticHold; if (t) window.clearTimeout(t); }}
         onPointerLeave={e => { const t = (e.currentTarget as any)._hapticHold; if (t) window.clearTimeout(t); }}
+        onPointerCancel={e => { const t = (e.currentTarget as any)._hapticHold; if (t) window.clearTimeout(t); }}
         aria-label="Admin notices"
         style={{
           width: size, height: size, borderRadius: '50%',
