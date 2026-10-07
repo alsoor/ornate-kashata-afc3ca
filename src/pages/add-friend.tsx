@@ -97,7 +97,7 @@ import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Menu, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -24298,6 +24298,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // stories strip, new-post + inbox) like a shutter. Swiping up on the posts feed
   // also collapses it; scrolling back to the top expands it again.
   const [headerOpen, setHeaderOpen] = useState(true);
+  const [profileSlideOpen, setProfileSlideOpen] = useState(false);
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
   const [liveScrollHidden, setLiveScrollHidden] = useState(false);
   // [perf] نسخة مؤجّلة من حالة الشيت للوحة الشات الثقيلة (تُحمَّل بعد بدء حركة الشيت لا قبلها)
@@ -26692,138 +26693,31 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           {/* Row 1 + Row 2: story circle + stats, then the friends' stories strip */}
           {pageTab === 'profile' && (
           <div>
-          {/* Row 1: story circle + Post/Followers/Following — restored to its original place. The Inbox
-              (shared-posts / my story posts) button now lives in the unified nav row below, always visible.
-              The decorative Globe next to "Following" has been removed. */}
+          {/* Row 1: hamburger (top-left) + centered section icons — story/username/bio live in the white slide panel */}
           {pageTab === 'profile' && (
-            <div className="flex items-center px-4" style={{ paddingBottom: 4, gap: 10, alignItems: 'flex-start' }}>
-              {/* ── My story circle — same place as before ── */}
-              {user && (() => {
-                const myGroup = storyGroups.find(g => g.userId === user?.id);
-                const hasStory = !!myGroup && myGroup.items.length > 0;
-                const allSeen = hasStory && myGroup!.items.every(i => i.seen);
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 0, marginLeft: -4, flexShrink: 0 }}>
-                    <div style={{ width: 52, height: 52, position: 'relative', flexShrink: 0 }}>
-                      <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => {
-                          if (myGroup) {
-                            setViewerGroupIdx(storyGroups.indexOf(myGroup));
-                          } else {
-                            // بدون قائمة Photo/Video — افتح قائمة النشر (قصة / كاميرا)
-                            setPublishMenuOpen(true);
-                          }
-                        }}
-                        disabled={storyUploading}
-                        style={{ width: 52, height: 52, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
-                      >
-                        {/* One fixed circular frame: the photo is clipped inside it and can never overflow. */}
-                        {/* إطار أزرق ثابت + صورة ثابتة */}
-                        <div style={{
-                          position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'visible',
-                          background: 'hsl(var(--card))',
-                          border: hasStory ? '2.5px solid #0ea5e9' : '2px solid #0ea5e9',
-                          boxSizing: 'border-box',
-                          boxShadow: hasStory && !allSeen ? '0 0 8px rgba(14,165,233,0.4)' : '0 0 6px rgba(14,165,233,0.22)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          {/* VIP account: gold spinning ring frame, same component used on the friends' story strip and the fullscreen story viewer.
-                              hideLabel here only — keeps the ring sized exactly to this avatar without the floating "VIP" text tag poking above it.
-                              size raised to 76 (was 68) to match the outer story circle exactly, so the VIP ring sits right on the picture's own edge instead of nested inside it with a gap. */}
-                          <VipAvatarFrame userId={user?.id} size={52} hideLabel>
-                            <UserAvatar name={user?.name ?? ''} avatarUrl={localAvatarUrl || resolveMediaUrl((user as any)?.avatarUrl) || readCachedProfileMedia(user?.id, 'avatar') || (user as any)?.avatarUrl || null} size={52} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
-                          </VipAvatarFrame>
-                        </div>
-                      </motion.button>
-                      {/* + badge — its own button now: always opens the نشر إعلان للقصة/صورة/فيديو
-                          menu, whether or not a story already exists. */}
-                      <motion.button
-                        whileTap={{ scale: 0.88 }}
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 2.4, repeat: Infinity, ease: 'linear' }}
-                        onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); }}
-                        disabled={storyUploading || quickPublishing}
-                        aria-label="خيارات النشر"
-                        style={{
-                          position: 'absolute', bottom: 0, right: 0,
-                          width: 16, height: 16, borderRadius: '50%',
-                          background: '#ef4444',
-                          border: '2px solid hsl(var(--background))',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          padding: 0, cursor: 'pointer',
-                          boxShadow: '0 0 6px rgba(239,68,68,0.55)',
-                          zIndex: 5,
-                        }}
-                      >
-                        {storyUploading || quickPublishing
-                          ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
-                              style={{ width: 9, height: 9, borderRadius: '50%', border: '2px solid #fff', borderTopColor: 'transparent' }} />
-                          : <Plus size={10} strokeWidth={3} color="#fff" />
-                        }
-                      </motion.button>
-                    </div>
-                    {myUsername ? (
-                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#fb923c', lineHeight: 1.15, maxWidth: 72, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        @{myUsername}
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: '0.55rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500 }}>قصتي</span>
-                    )}
-                  </div>
-                );
-              })()}
+            <div style={{ position: 'relative', paddingBottom: 6, paddingTop: 2, minHeight: 36 }}>
+              {/* Three-line menu — top left */}
+              <button
+                type="button"
+                aria-label="Profile menu"
+                onClick={() => setProfileSlideOpen(true)}
+                style={{
+                  position: 'absolute', left: 10, top: 2, zIndex: 8,
+                  width: 36, height: 36, borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,0.14)',
+                  background: 'rgba(255,255,255,0.06)',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  cursor: 'pointer', padding: 0,
+                }}
+              >
+                <span style={{ display: 'block', width: 16, height: 2, borderRadius: 1, background: '#fff' }} />
+                <span style={{ display: 'block', width: 16, height: 2, borderRadius: 1, background: '#fff' }} />
+                <span style={{ display: 'block', width: 16, height: 2, borderRadius: 1, background: '#fff' }} />
+              </button>
 
-              {/* ── Username | Bio (same line, spaced apart with a divider) / Post-Followers-Following-Likes (untouched) ── */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 6, flex: 1 }}>
-                {/* Pinned track — shown right above my name/username, playable from here too. */}
-                {pinnedTrack && <PinnedTrackBar track={pinnedTrack} />}
-                {myBio && !pinnedTrack ? (
-                  // اليوزر + الفاصل مرفوعان للأعلى، والبايو تحتهما (سطرين كحد أقصى) —
-                  // الارتفاع الكلي للصف ثابت (نفس ارتفاع سطر اليوزر الأصلي) فلا تتحرك أي أيقونة.
-                  <div style={{ position: 'relative', height: '1.032rem' }}>
-                    <div style={{ position: 'absolute', top: -22, left: 0, right: 0, paddingRight: 52 }}>
-                      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        {myUsername && (
-                          <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                            @{myUsername}
-                          </span>
-                        )}
-                        {myUsername && (
-                          <span aria-hidden="true" style={{ fontSize: '0.72rem', fontWeight: 500, color: 'rgba(255,255,255,0.4)', lineHeight: 1.2, flexShrink: 0 }}>
-                            |
-                          </span>
-                        )}
-                      </div>
-                      <span style={{
-                        display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden',
-                        marginTop: 1, fontSize: '0.7rem', fontWeight: 500, color: 'rgba(255,255,255,0.82)', lineHeight: 1.25, wordBreak: 'break-word',
-                      }}>
-                        {myBio}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingRight: 52, rowGap: 3 }}>
-                    {myUsername && (
-                      <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#fb923c', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                        @{myUsername}
-                      </span>
-                    )}
-                    {myUsername && myBio && (
-                      <span aria-hidden="true" style={{ fontSize: '0.72rem', fontWeight: 500, color: 'rgba(255,255,255,0.4)', lineHeight: 1.35, flexShrink: 0 }}>
-                        |
-                      </span>
-                    )}
-                    {myBio && (
-                      <span style={{ fontSize: '0.72rem', fontWeight: 500, color: 'rgba(255,255,255,0.82)', lineHeight: 1.35, maxWidth: '100%', wordBreak: 'break-word' }}>
-                        {myBio}
-                      </span>
-                    )}
-                </div>
-                )}
+              {/* Centered section icons (followers / call history / live / map / requests / bell) */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, paddingLeft: 44, paddingRight: 8 }}>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: -2 }}>
                   <motion.button
                     whileTap={{ scale: 0.94 }}
                     onClick={() => setFollowersModalOpen(true)}
@@ -26912,18 +26806,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
                   {/* Settings — نُقلت من قائمة (+) إلى نهاية صف الأيقونات (أقصى اليمين)، بيضاء ومميّزة وتدور ببطء.
                       margin سالب حتى لا يزيد ارتفاع الصف رغم أن حجمها 38px. */}
-                  <div style={{ position: 'relative', marginLeft: 'auto', marginTop: -3, marginBottom: -3, width: 30, height: 30, flexShrink: 0 }}>
-                  {/* زر الإعدادات نُقل إلى صف الأيقونات (Friends / Call / Live) تحت الخط */}
-                  {/* Bell — نزل لنفس مستوى الأيقونات (أقصى اليمين)، same size: notices the owner sent (deleted story + message) */}
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, zIndex: 5 }}>
+                  <div style={{ position: 'relative', width: 30, height: 30, flexShrink: 0 }}>
                     <HeaderAdminBell userId={user?.id} size={30} />
                     <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
                       <StoryModerationBell userId={user?.id} size={30} />
                     </div>
                   </div>
-                  </div>
 
-                </div>
               </div>
             </div>
           )}
@@ -26944,9 +26833,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   overflowX: 'auto',
                   overflowY: storyPullProgress > 0 ? 'visible' : 'hidden',
                   scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
+                  justifyContent: 'flex-start',
                   padding: storyPullProgress > 0
                     ? `${8 + Math.round(storyPullProgress * 14)}px 14px ${10 + Math.round(storyPullProgress * 10)}px`
-                    : '2px 14px 10px',
+                    : '4px 14px 10px',
                   alignItems: 'center',
                 }}
               >
@@ -27004,6 +26894,106 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           {/* Actions row removed — text-posts button now lives in the header next to the globe. */}
             </div>
           </div>
+
+
+          {/* ── White slide panel (from right): story + username + bio only ── */}
+          {typeof document !== 'undefined' && createPortal(
+            <>
+              <div
+                onClick={() => setProfileSlideOpen(false)}
+                style={{
+                  position: 'fixed', inset: 0, zIndex: 16000,
+                  background: profileSlideOpen ? 'rgba(0,0,0,0.35)' : 'transparent',
+                  pointerEvents: profileSlideOpen ? 'auto' : 'none',
+                  transition: 'background .25s ease',
+                }}
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                style={{
+                  position: 'fixed', top: 0, bottom: 0, right: 0, zIndex: 16001,
+                  width: 'min(86vw, 340px)',
+                  background: '#ffffff',
+                  color: '#0a0a0a',
+                  boxShadow: profileSlideOpen ? '-12px 0 40px rgba(0,0,0,0.25)' : 'none',
+                  transform: profileSlideOpen ? 'translateX(0)' : 'translateX(100%)',
+                  transition: 'transform .3s cubic-bezier(.2,.8,.2,1)',
+                  display: 'flex', flexDirection: 'column',
+                  padding: 'calc(16px + env(safe-area-inset-top, 0px)) 20px calc(20px + env(safe-area-inset-bottom, 0px))',
+                  pointerEvents: profileSlideOpen ? 'auto' : 'none',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={() => setProfileSlideOpen(false)}
+                    style={{
+                      width: 34, height: 34, borderRadius: '50%', border: 'none',
+                      background: 'rgba(0,0,0,0.06)', color: '#111', cursor: 'pointer',
+                      fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >×</button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, paddingTop: 12 }}>
+                  {user && (() => {
+                    const myGroup = storyGroups.find(g => g.userId === user?.id);
+                    const hasStory = !!myGroup && myGroup.items.length > 0;
+                    const allSeen = hasStory && myGroup!.items.every(i => i.seen);
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (myGroup) {
+                            setViewerGroupIdx(storyGroups.indexOf(myGroup));
+                            setProfileSlideOpen(false);
+                          } else {
+                            setPublishMenuOpen(true);
+                            setProfileSlideOpen(false);
+                          }
+                        }}
+                        style={{
+                          width: 88, height: 88, borderRadius: '50%', padding: 0, background: 'none',
+                          border: hasStory ? '3px solid #0ea5e9' : '2.5px solid #0ea5e9',
+                          boxShadow: hasStory && !allSeen ? '0 0 12px rgba(14,165,233,0.4)' : '0 0 8px rgba(14,165,233,0.2)',
+                          cursor: 'pointer', position: 'relative', overflow: 'visible',
+                        }}
+                      >
+                        <div style={{ position: 'absolute', inset: 3, borderRadius: '50%', overflow: 'hidden' }}>
+                          <UserAvatar
+                            name={user?.name ?? ''}
+                            avatarUrl={localAvatarUrl || resolveMediaUrl((user as any)?.avatarUrl) || readCachedProfileMedia(user?.id, 'avatar') || (user as any)?.avatarUrl || null}
+                            size={82}
+                            style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }}
+                          />
+                        </div>
+                        <span
+                          onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); setProfileSlideOpen(false); }}
+                          style={{
+                            position: 'absolute', bottom: 2, right: 2, width: 22, height: 22, borderRadius: '50%',
+                            background: '#ef4444', border: '2px solid #fff', color: '#fff',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800,
+                          }}
+                        >+</span>
+                      </button>
+                    );
+                  })()}
+                  {myUsername ? (
+                    <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0a0a0a' }}>@{myUsername}</p>
+                  ) : null}
+                  {myBio ? (
+                    <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 500, color: '#444', textAlign: 'center', lineHeight: 1.45, maxWidth: 280 }}>
+                      {myBio}
+                    </p>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#999', textAlign: 'center' }}>No bio</p>
+                  )}
+                </div>
+              </div>
+            </>,
+            document.body
+          )}
 
           {/* ── Header show/hide grabber — sits above the content switcher.
               Tap toggles header open/closed. Swipe-up on posts also collapses it. ── */}
