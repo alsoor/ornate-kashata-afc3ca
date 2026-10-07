@@ -24388,7 +24388,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     return () => window.removeEventListener('stooorna:chat-lift', onLift as EventListener);
   }, []);
   // الهيدر السفلي (الأيقونات الأربع) للمسجّلين: نعرّف ارتفاعه كمتغير CSS ليتجنبه أي مربع/لوحة (اتصال، أصدقاء، بث)
-  const bottomHeaderShown = !guestMode && !chatLifted && !isFriendManagement && !visitorProfileOpen;
+  // Settings bubble open → the bottom bar (white strip + Call/Chat/LIVE/Templates/Settings) is hidden completely.
+  // Boolean selector: this component only re-renders when Settings opens/closes, not on every dock tap.
+  const dockSettingsOpen = useSyncExternalStore(dockSubscribe, () => dockGet()?.kind === 'settings', () => false);
+  const bottomHeaderShown = !guestMode && !chatLifted && !isFriendManagement && !visitorProfileOpen && !dockSettingsOpen;
   useEffect(() => {
     try {
       document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(80px + env(safe-area-inset-bottom, 0px))' : '0px');
@@ -27121,7 +27124,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {/* زر الثلاث خطوط (Privacy Policy) + أزرار Google Play / App Store للزائر */}
         {guestMode && <GuestHomeExtras lang={guestLang} />}
 
-        {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
+        {!isFriendManagement && !visitorProfileOpen && !chatLifted && !dockSettingsOpen && (
           <BottomHeaderPortal enabled={!guestMode}>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
             position: 'fixed', left: 0, right: 0, bottom: 0,
