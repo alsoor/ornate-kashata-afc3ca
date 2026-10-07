@@ -26841,9 +26841,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 onClick={() => setProfileSlideOpen(false)}
                 style={{
                   position: 'fixed', inset: 0,
-                  zIndex: (cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen || !!viewingProfile) ? 8999 : 16000,
+                  zIndex: profileSlideOpen
+                    ? ((cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen || !!viewingProfile) ? 8999 : 16000)
+                    : -1,
                   background: profileSlideOpen ? 'rgba(0,0,0,0.35)' : 'transparent',
                   pointerEvents: profileSlideOpen && !(cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen || !!viewingProfile) ? 'auto' : 'none',
+                  visibility: profileSlideOpen ? 'visible' : 'hidden',
                   transition: 'background .28s ease',
                 }}
               />
@@ -26853,13 +26856,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 style={{
                   position: 'fixed', left: 0, right: 0, top: 0,
                   // Drop under map/calls/requests/followers so they open on top (still inside the app)
-                  zIndex: (cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen || !!viewingProfile) ? 9000 : 16001,
+                  zIndex: profileSlideOpen
+                    ? ((cameraCaptureOpen || friendChatCallLogOpen || storyRequestsBoxOpen || followersModalOpen || viewerGroupIdx !== null || publishMenuOpen || !!viewingProfile) ? 9000 : 16001)
+                    : -1,
                   height: '100%',
                   background: '#ffffff',
                   color: '#0a0a0a',
                   boxShadow: profileSlideOpen ? '0 12px 40px rgba(0,0,0,0.2)' : 'none',
                   transform: profileSlideOpen ? 'translateY(0)' : 'translateY(-105%)',
-                  transition: 'transform .32s cubic-bezier(.2,.8,.2,1)',
+                  transition: profileSlideOpen ? 'transform .32s cubic-bezier(.2,.8,.2,1)' : 'transform .32s cubic-bezier(.2,.8,.2,1), visibility 0s linear .32s',
+                  visibility: profileSlideOpen ? 'visible' : 'hidden',
                   display: 'flex', flexDirection: 'column',
                   padding: 'calc(12px + env(safe-area-inset-top, 0px)) 20px calc(20px + env(safe-area-inset-bottom, 0px))',
                   pointerEvents: profileSlideOpen ? 'auto' : 'none',
