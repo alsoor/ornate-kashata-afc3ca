@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -77,83 +77,48 @@ function StoreButton({
 
 const FEATURE_COUNT = 8;
 const FEATURE_IMAGES = Array.from({ length: FEATURE_COUNT }, (_, i) => `/app-features/feature-${i + 1}.jpg`);
+const FEATURE_ALTS = ['Home Hub', 'Stories', 'Call friends', 'Go LIVE', 'LIVE Battles', 'Live GPS Map', 'Templates', 'Live Chat and Reactions'];
 
-/** Ghost-like reel of the app feature screenshots: endless, left → right, each picture also floats on its own. */
-function FeatureReel({ top }: { top: number }) {
-  const [hidden, setHidden] = useState<Record<number, boolean>>({});
-  const set = (offset: number) => (
-    <div key={offset} style={{ display: 'flex', gap: 14, paddingRight: 14, flexShrink: 0, height: '100%' }}>
-      {FEATURE_IMAGES.map((src, i) => !hidden[i] && (
-        <div
-          key={src}
-          className="stf-float"
-          style={{ height: '100%', aspectRatio: '1 / 2', flexShrink: 0, animationDelay: `${-(i * 0.9 + offset)}s`, animationDuration: `${5 + (i % 3)}s` }}
-        >
-          <img
-            src={src}
-            alt=""
-            draggable={false}
-            loading="lazy"
-            onError={() => setHidden(h => ({ ...h, [i]: true }))}
-            style={{ height: '100%', width: '100%', objectFit: 'cover', borderRadius: 22, display: 'block' }}
-          />
-        </div>
-      ))}
-    </div>
-  );
-  return (
-    <div
-      dir="ltr"
-      aria-hidden="true"
-      style={{
-        position: 'fixed', left: 0, right: 0, zIndex: 10080, pointerEvents: 'none', overflow: 'hidden',
-        top: `calc(env(safe-area-inset-top, 0px) + ${top}px)`, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 78px)',
-        opacity: 0.3, filter: 'saturate(0.8) blur(0.4px)',
-        WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, #000 18%, #000 55%, transparent 100%)',
-        maskImage: 'linear-gradient(to bottom, transparent 0%, #000 18%, #000 55%, transparent 100%)',
-      }}
-    >
-      <style>{`
-        @keyframes stf-move { from { transform: translateX(-50%); } to { transform: translateX(0); } }
-        @keyframes stf-bob { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-10px) scale(1.03); } }
-        .stf-track { animation: stf-move 70s linear infinite; will-change: transform; }
-        .stf-float { animation: stf-bob 6s ease-in-out infinite; }
-        @media (prefers-reduced-motion: reduce) { .stf-track, .stf-float { animation: none; } }
-      `}</style>
-      <div className="stf-track" style={{ display: 'flex', width: 'max-content', height: '100%' }}>
-        {set(0)}
-        {set(0.45)}
-      </div>
-    </div>
-  );
-}
+const ABOUT_TEXT =
+  'Stooorna is a social app that brings your friends together in one place. Go LIVE with video or voice, join split-screen LIVE battles, share stories, call your friends, chat in real time and see your friends on a live GPS map. With ready-made templates and animated reactions, every moment with your friends is more fun.';
+const SUMMARY_TEXT =
+  'Stooorna is a social LIVE app for friends. Broadcast with Video Live, Voice Live or Public LIVE, share full-screen stories, call friends in one tap, chat with animated reactions and follow your friends on a live map. Everything you need to stay connected is on one clean home screen.';
+const SUPPORT_EMAIL = 'Stooorna@mail.com';
+
+type SheetTab = 'about' | 'summary' | 'privacy';
+const TABS: { key: SheetTab; label: string }[] = [
+  { key: 'about', label: 'About' },
+  { key: 'summary', label: 'Summary' },
+  { key: 'privacy', label: 'Privacy Policy' },
+];
 
 /**
  * Logged-out home extras:
- *  - three-lines button (top-right of the header) → white page slides up with the Privacy Policy PDF + zoom bar
+ *  - white header on top (About | Summary | Privacy Policy); tap a tab or the handle line → it drops down into a white page
+ *    with the app screenshots (scroll up to move through them), the summary text and the Privacy Policy PDF + zoom bar
  *  - Google Play (left) / App Store (right) buttons on the same row as the "Sign in" pill, equal gaps
- *  - faded, endlessly moving (left → right) reel of app feature screenshots under the Ads card
  *  - circle under Download → every uploaded version, newest first, with day + date
  * Mount once where the "Sign in" pill is rendered, only when the user is logged out.
  */
 export default function GuestHomeExtras({
-  hamburgerTop = 4,
   storesTop = 69,
-  featuresTop = 249,
-  storeGap = 8,
+  storeGap = 16,
   signInHalf = 46,
+  headerHeight = 36,
   lang: langProp,
 }: {
-  hamburgerTop?: number; storesTop?: number; featuresTop?: number;
-  storeGap?: number; signInHalf?: number; lang?: 'ar' | 'en';
+  hamburgerTop?: number; // legacy, no longer used
+  storesTop?: number; storeGap?: number; signInHalf?: number; headerHeight?: number; lang?: 'ar' | 'en';
 }) {
   const [langAuto, setLang] = useState<'ar' | 'en'>(readLang);
   const lang = langProp ?? langAuto;
   const [list, setList] = useState<AppRelease[]>([]);
-  const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [tab, setTab] = useState<SheetTab>('about');
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [versions, setVersions] = useState<ReleasePlatform | null>(null);
   const [zoom, setZoom] = useState(1);
-  useEffect(() => { if (!privacyOpen) setZoom(1); }, [privacyOpen]);
+  useEffect(() => { if (!sheetOpen) setZoom(1); }, [sheetOpen]);
   const zoomBy = (d: number) => setZoom(z => Math.min(3, Math.max(1, Math.round((z + d) * 100) / 100)));
 
   const [vis, setVis] = useState<StoreVisibility>({ android: true, ios: true });
@@ -182,24 +147,6 @@ export default function GuestHomeExtras({
     <>
       {createPortal(
         <>
-      {/* faded moving screenshots reel (under the Ads card) */}
-      <FeatureReel top={featuresTop} />
-
-      {/* three-lines button */}
-      <button
-        type="button"
-        onClick={() => setPrivacyOpen(true)}
-        aria-label="Menu"
-        style={{
-          position: 'fixed', top: `calc(env(safe-area-inset-top, 0px) + ${hamburgerTop}px)`, right: 16, zIndex: 10090,
-          width: 34, height: 34, borderRadius: 10, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 4, cursor: 'pointer',
-          background: 'rgba(0,188,212,0.12)', border: '1px solid rgba(0,188,212,0.4)',
-        }}
-      >
-        {[0, 1, 2].map(i => <span key={i} style={{ width: 16, height: 2, borderRadius: 2, background: TEAL }} />)}
-      </button>
-
       {/* store buttons: left = Google Play, right = App Store */}
       {vis.android && (
         <div style={{ position: 'fixed', top: `calc(env(safe-area-inset-top, 0px) + ${storesTop}px)`, left: `calc(50% - ${signInHalf + storeGap + 84}px)`, zIndex: 10090 }}>
@@ -217,35 +164,111 @@ export default function GuestHomeExtras({
       )}
 
       {createPortal(
-        <AnimatePresence>
-          {privacyOpen && (
-            <motion.div
-              key="privacy"
-              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              transition={{ type: 'spring', stiffness: 320, damping: 36 }}
-              style={{ position: 'fixed', inset: 0, zIndex: 300000, background: '#fff', color: '#0a0a0a', display: 'flex', flexDirection: 'column' }}
-              dir={dir}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: 'max(14px, env(safe-area-inset-top)) 16px 12px', borderBottom: '1px solid #e5e7eb' }}>
-                <strong style={{ fontSize: 16 }}>{T.privacy}</strong>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <a href={PRIVACY_PDF} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: '#0891b2', textDecoration: 'none', alignSelf: 'center' }}>{T.open}</a>
-                  <button type="button" onClick={() => setPrivacyOpen(false)} aria-label={T.close}
-                    style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid #e5e7eb', background: '#f3f4f6', fontSize: 18, cursor: 'pointer' }}>×</button>
+        <div
+          dir="ltr"
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, zIndex: sheetOpen ? 300000 : 10095,
+            height: sheetOpen ? '100dvh' : `calc(env(safe-area-inset-top, 0px) + ${headerHeight}px)`,
+            background: '#fff', color: '#0a0a0a', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            transition: 'height .38s cubic-bezier(.22,1,.36,1)', boxShadow: '0 2px 10px rgba(0,0,0,0.25)',
+          }}
+        >
+          {/* three sections */}
+          <div style={{ display: 'flex', flexShrink: 0, paddingTop: 'env(safe-area-inset-top, 0px)', height: 22, boxSizing: 'content-box', borderBottom: sheetOpen ? '1px solid #e5e7eb' : 'none' }}>
+            {TABS.map(x => {
+              const on = sheetOpen && tab === x.key;
+              return (
+                <button
+                  key={x.key}
+                  type="button"
+                  onClick={() => { setTab(x.key); setSheetOpen(true); }}
+                  style={{
+                    flex: 1, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 12, fontWeight: 800,
+                    color: on ? '#0891b2' : '#374151', borderBottom: on ? '2px solid #0891b2' : '2px solid transparent',
+                  }}
+                >
+                  {x.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* page content */}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', opacity: sheetOpen ? 1 : 0, pointerEvents: sheetOpen ? 'auto' : 'none', transition: 'opacity .25s' }}>
+            {tab === 'about' && (
+              <div key="about" ref={scrollRef} style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '18px 16px 12px' }}>
+                <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>About</div>
+                <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.65, color: '#1f2937' }}>{ABOUT_TEXT}</p>
+                <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
+                  {sheetOpen && FEATURE_IMAGES.map((src, i) => (
+                    <motion.img
+                      key={src}
+                      src={src}
+                      alt={FEATURE_ALTS[i]}
+                      draggable={false}
+                      loading="lazy"
+                      initial={{ opacity: 0, y: 60 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true, root: scrollRef, amount: 0.12 }}
+                      transition={{ duration: 0.5, ease: 'easeOut' }}
+                      style={{ width: 'min(100%, 340px)', height: 'auto', borderRadius: 22, display: 'block', boxShadow: '0 8px 24px rgba(0,0,0,0.22)' }}
+                    />
+                  ))}
+                </div>
+                <div style={{ marginTop: 22, fontSize: 13, color: '#6b7280', textAlign: 'center' }}>
+                  Support: <a href={`mailto:${SUPPORT_EMAIL}`} style={{ color: '#0891b2', fontWeight: 700, textDecoration: 'none' }}>{SUPPORT_EMAIL}</a>
                 </div>
               </div>
-              <div style={{ flex: 1, overflow: 'auto', background: '#fff', WebkitOverflowScrolling: 'touch' }}>
-                <iframe title={T.privacy} src={PRIVACY_PDF} style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%`, border: 'none', background: '#fff', display: 'block' }} />
+            )}
+            {tab === 'summary' && (
+              <div key="summary" style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '18px 16px 12px' }}>
+                <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Summary</div>
+                <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.65, color: '#1f2937' }}>{SUMMARY_TEXT}</p>
               </div>
-              <div dir="ltr" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '10px 16px max(10px, env(safe-area-inset-bottom))', borderTop: '1px solid #e5e7eb', background: '#fff' }}>
-                <button type="button" onClick={() => zoomBy(-0.25)} disabled={zoom <= 1} aria-label="Zoom out"
-                  style={{ width: 42, height: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f3f4f6', fontSize: 22, fontWeight: 800, cursor: 'pointer', opacity: zoom <= 1 ? 0.4 : 1 }}>−</button>
-                <span style={{ minWidth: 52, textAlign: 'center', fontSize: 13, fontWeight: 800, color: '#0891b2' }}>{Math.round(zoom * 100)}%</span>
-                <button type="button" onClick={() => zoomBy(0.25)} disabled={zoom >= 3} aria-label="Zoom in"
-                  style={{ width: 42, height: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f3f4f6', fontSize: 22, fontWeight: 800, cursor: 'pointer', opacity: zoom >= 3 ? 0.4 : 1 }}>+</button>
-              </div>
-            </motion.div>
-          )}
+            )}
+            {tab === 'privacy' && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', flexShrink: 0 }}>
+                  <strong style={{ fontSize: 15 }}>Privacy Policy</strong>
+                  <a href={PRIVACY_PDF} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: '#0891b2', textDecoration: 'none' }}>{T.open}</a>
+                </div>
+                <div style={{ flex: 1, overflow: 'auto', background: '#fff', WebkitOverflowScrolling: 'touch' }}>
+                  <iframe title={T.privacy} src={PRIVACY_PDF} style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%`, border: 'none', background: '#fff', display: 'block' }} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '10px 16px', borderTop: '1px solid #e5e7eb', background: '#fff', flexShrink: 0 }}>
+                  <button type="button" onClick={() => zoomBy(-0.25)} disabled={zoom <= 1} aria-label="Zoom out"
+                    style={{ width: 42, height: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f3f4f6', fontSize: 22, fontWeight: 800, cursor: 'pointer', opacity: zoom <= 1 ? 0.4 : 1 }}>−</button>
+                  <span style={{ minWidth: 52, textAlign: 'center', fontSize: 13, fontWeight: 800, color: '#0891b2' }}>{Math.round(zoom * 100)}%</span>
+                  <button type="button" onClick={() => zoomBy(0.25)} disabled={zoom >= 3} aria-label="Zoom in"
+                    style={{ width: 42, height: 42, borderRadius: 12, border: '1px solid #e5e7eb', background: '#f3f4f6', fontSize: 22, fontWeight: 800, cursor: 'pointer', opacity: zoom >= 3 ? 0.4 : 1 }}>+</button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* the sheet line: tap to drop the page down / pull it back up */}
+          <button
+            type="button"
+            onClick={() => setSheetOpen(o => !o)}
+            aria-label={sheetOpen ? T.close : 'Open'}
+            style={{
+              flexShrink: 0, width: '100%', height: sheetOpen ? 'calc(34px + env(safe-area-inset-bottom, 0px))' : 14,
+              paddingBottom: sheetOpen ? 'env(safe-area-inset-bottom, 0px)' : 0, boxSizing: 'border-box',
+              background: '#fff', border: 'none', borderTop: sheetOpen ? '1px solid #e5e7eb' : 'none', cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+            }}
+          >
+            {sheetOpen && (
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6,15 12,9 18,15" /></svg>
+            )}
+            <span style={{ width: 40, height: 4, borderRadius: 2, background: '#cbd5e1' }} />
+          </button>
+        </div>,
+        document.body,
+      )}
+
+      {createPortal(
+        <AnimatePresence>
           {versions && (
             <motion.div
               key="versions"
