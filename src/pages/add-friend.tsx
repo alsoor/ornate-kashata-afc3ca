@@ -14817,9 +14817,9 @@ function SavedMessagesScreen({
                 gap: 10,
                 padding: '6px 18px 6px 6px',
                 borderRadius: 999,
-                border: 'none',
-                background: 'linear-gradient(180deg, #ffffff 0%, #f3f5f7 100%)',
-                boxShadow: '0 4px 18px rgba(0,0,0,0.12), 0 1px 0 rgba(255,255,255,0.9) inset',
+                border: '1.5px solid #060e0e',
+                background: '#060e0e',
+                boxShadow: 'none',
                 cursor: 'pointer',
                 WebkitTapHighlightColor: 'transparent',
               }}
@@ -14840,7 +14840,7 @@ function SavedMessagesScreen({
               <span style={{
                 fontWeight: 700,
                 fontSize: '0.95rem',
-                color: '#1a1a1a',
+                color: '#ffffff',
                 letterSpacing: '-0.01em',
                 whiteSpace: 'nowrap',
               }}>
@@ -15071,8 +15071,8 @@ function SavedMessagesScreen({
           <div
             style={{
               flexShrink: 0,
-              borderTop: '1px solid #e5e7eb',
-              background: '#fff',
+              borderTop: '1px solid rgba(0,188,212,0.08)',
+              background: '#060e0e',
               padding: '8px 12px max(10px, env(safe-area-inset-bottom))',
               position: 'relative',
             }}
