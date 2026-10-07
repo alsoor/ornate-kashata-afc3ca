@@ -1286,7 +1286,9 @@ app.post("/api/polar/checkout", guarded(async (req, res) => {
   if (!COIN_PACKS.includes(coins)) return deny(res, 400, "invalid pack");
   const origin = process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get("host")}`;
   try {
-    const c = await createCheckout({ coins, userId: u.id, successUrl: `${origin}/?coins_paid=1` });
+    const reqOrigin = String(req.get("origin") || "");
+    const embedOrigin = /^https?:\/\/[^/]+$/i.test(reqOrigin) ? reqOrigin : undefined;
+    const c = await createCheckout({ coins, userId: u.id, successUrl: `${origin}/?coins_paid=1`, embedOrigin });
     res.json({ ok: true, url: c.url });
   } catch (e) {
     console.error("[polar] checkout failed", e);
