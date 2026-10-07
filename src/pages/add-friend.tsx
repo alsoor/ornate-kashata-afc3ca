@@ -25468,6 +25468,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const anyFriendOnMap = anyFriendOnMapPins_(
     friendIds, user?.id ? String(user.id) : '', outerMapSync, outerOnlineIds, presence as any, anyFriendOnMapPins,
   );
+  // خط الشيت (الـ grabber) يصير أخضر إذا أي أحد أونلاين بالتطبيق (أصدقاء أو غيرهم) — بدون حساب نفسي
+  const anyoneOnlineInApp = (() => {
+    const me = user?.id ? String(user.id) : '';
+    if (anyFriendOnlineFast || anyFriendOnMap) return true;
+    if (friends.some(f => !!(presence as any)?.[f.friendId]?.online)) return true;
+    for (const id of outerMapSync.onlineIds) if (id !== me) return true;
+    for (const id of outerOnlineIds) if (id !== me) return true;
+    return false;
+  })();
   // Heartbeat so friends see this user as online (shared presence store on server)
   useEffect(() => {
     if (!user?.id) return;
@@ -27077,8 +27086,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   display: 'block',
                   position: 'relative', overflow: 'hidden',
                   width: 36, height: 4, borderRadius: 2,
-                  background: liveChatBusy ? '#16a34a' : '#000000',
-                  boxShadow: liveChatBusy ? '0 0 6px rgba(34,197,94,0.55)' : 'none',
+                  background: (liveChatBusy || anyoneOnlineInApp) ? '#16a34a' : '#000000',
+                  boxShadow: (liveChatBusy || anyoneOnlineInApp) ? '0 0 6px rgba(34,197,94,0.55)' : 'none',
                   transition: 'background 0.25s ease, box-shadow 0.25s ease',
                 }}
               >
