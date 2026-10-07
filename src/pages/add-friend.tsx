@@ -4030,6 +4030,8 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   // السوداء سابقًا: كنا نعيد فتح الكاميرا حتى لو الجهاز المطلوب نفسه لم يتغيّر.
   const wantUltraWide = zoom === 0.5 && !!ultraWideDeviceId && facingMode === 'environment';
   useEffect(() => {
+    // GPS Live (opened with the map pin) is map-only: don't start the camera/mic behind it.
+    if (startWithLiveMap) return;
     let cancelled = false;
     async function start() {
       try {
@@ -4105,7 +4107,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     }
     void start();
     return () => { cancelled = true; };
-  }, [facingMode, wantUltraWide, ultraWideDeviceId, backDeviceId, frontDeviceId]);
+  }, [facingMode, wantUltraWide, ultraWideDeviceId, backDeviceId, frontDeviceId, startWithLiveMap]);
 
   // حلقة رسم: نعرض الفيديو كاملًا بأسلوب contain داخل إطار عمودي (بدون زوم إضافي)
   useEffect(() => {
@@ -4494,7 +4496,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     >
       <div
         onClick={handleVideoDoubleTap}
-        style={{ position: 'relative', flex: 1, overflow: 'hidden', display: captured ? 'none' : 'block', background: '#000' }}
+        style={{ position: 'relative', flex: 1, overflow: 'hidden', display: (captured || startWithLiveMap) ? 'none' : 'block', background: '#000' }}
       >
         {/* معاينة مباشرة — cover يملأ الشاشة */}
         <video
@@ -4917,7 +4919,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                     <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#22c55e', lineHeight: 1 }}>{mapOnlineCount}</span>
                   </div>
                 </div>
-                <button type="button" onClick={() => { setLiveMapOpen(false); setLiveMsgPeer(null); if (startWithLiveMap) onClose(); }} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>X</button>
+                <button type="button" onClick={() => { if (startWithLiveMap) { try { gpsGo.finish(); } catch { /* */ } setLiveMsgPeer(null); onClose(); return; } setLiveMapOpen(false); setLiveMsgPeer(null); }} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, cursor: 'pointer' }}>X</button>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ flex: 1, position: 'relative' }}>
