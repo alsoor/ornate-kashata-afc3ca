@@ -14337,9 +14337,9 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
         aria-label="Admin notices"
         style={{
           width: size, height: size, borderRadius: '50%',
-          border: `1.5px solid ${unread ? 'rgba(239,68,68,0.95)' : hapticOff ? 'rgba(249,115,22,0.85)' : 'rgba(255,255,255,0.35)'}`,
-          background: unread ? 'rgba(239,68,68,0.16)' : hapticOff ? 'rgba(249,115,22,0.2)' : 'rgba(255,255,255,0.08)',
-          color: '#ffffff',
+          border: `1.5px solid ${unread ? 'rgba(239,68,68,0.95)' : hapticOff ? 'rgba(249,115,22,0.85)' : '#000000'}`,
+          background: unread ? 'rgba(239,68,68,0.16)' : hapticOff ? 'rgba(249,115,22,0.2)' : 'transparent',
+          color: '#000000',
           boxShadow: unread ? '0 0 10px rgba(239,68,68,0.55)' : 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', padding: 0,
@@ -14354,7 +14354,7 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
           top: -28,
           left: '50%',
           transform: 'translateX(-50%)',
-          color: '#ffffff',
+          color: '#000000',
           fontSize: '0.78rem',
           fontWeight: 800,
           lineHeight: 1,
@@ -26657,7 +26657,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
       <div className="flex flex-col" style={{
       minHeight: '100dvh',
-      background: PAGE_BG,
+      background: isFriendManagement ? PAGE_BG : '#ffffff',
       fontFamily: 'var(--font-sans)',
       animation: accountSlideFromLeft ? 'stooornaAccountInFromLeft 0.36s cubic-bezier(0.32, 0.72, 0, 1)' : undefined,
     }}>
@@ -26683,9 +26683,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         <div className="sticky top-0 z-20" style={{
           position: 'relative',
           paddingTop: 'max(16px, calc(env(safe-area-inset-top, 0px) + 8px))',
-          background: CLR_HEADER_BG,
+          background: '#ffffff',
           backdropFilter: 'blur(14px)',
-          borderBottom: `1px solid ${CLR_NAV_BORDER}`,
+          borderBottom: '1px solid rgba(0,0,0,0.10)',
         }}>
           {/* Profile bell lives in the right icon column above Ads (not absolute top). */}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
@@ -26747,8 +26747,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   cursor: 'pointer', padding: 0,
                 }}
               >
-                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: 'rgba(255,255,255,0.92)' }} />
-                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: 'rgba(255,255,255,0.92)' }} />
+                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#000000' }} />
+                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#000000' }} />
               </button>
 
               {/* Bell only — centered at top of story page */}
@@ -27081,7 +27081,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   display: 'block',
                   position: 'relative', overflow: 'hidden',
                   width: 36, height: 4, borderRadius: 2,
-                  background: liveChatBusy ? '#16a34a' : CLR_PRIMARY_BORDER,
+                  background: liveChatBusy ? '#16a34a' : '#000000',
                   boxShadow: liveChatBusy ? '0 0 6px rgba(34,197,94,0.55)' : 'none',
                   transition: 'background 0.25s ease, box-shadow 0.25s ease',
                 }}
@@ -27124,9 +27124,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             zIndex: 10070,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '5px 10px calc(5px + env(safe-area-inset-bottom, 0px)) 10px',
-            background: 'rgba(4,12,12,0.72)',
+            background: '#ffffff',
             backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-            borderTop: '1px solid rgba(0,188,212,0.1)',
+            borderTop: '1px solid rgba(0,0,0,0.12)',
             // هيد الأقسام السفلي ثابت دايم: لا يختفي بالتمرير ولا برفع الهيدر
             transform: 'translateY(0)',
             transition: 'transform 0.25s ease',
@@ -27227,18 +27227,18 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label={profilePlusIncomingCallUi.ringing ? 'Answer call' : 'Call'}
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
+                        border: '1.5px solid #000000',
+                        background: '#ffffff',
+                        color: '#000000',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                        boxShadow: 'none',
                         touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none', WebkitUserSelect: 'none',
                       }}
                     >
                       <Phone size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Call</span>
+<span data-stooorna-icon-label="1" style={{ color: '#000000', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Call</span>
 </div>
                   )}
 
@@ -27253,17 +27253,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label="Chat"
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
+                        border: '1.5px solid #000000',
+                        background: '#ffffff',
+                        color: '#000000',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                        boxShadow: 'none',
                       }}
                     >
                       <MessageCircle size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Chat</span>
+<span data-stooorna-icon-label="1" style={{ color: '#000000', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Chat</span>
 </div>
                   )}
 
@@ -27275,17 +27275,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label="Live broadcast"
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
+                        border: '1.5px solid #000000',
+                        background: '#ffffff',
+                        color: '#000000',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                        boxShadow: 'none',
                       }}
                     >
                       <Radio size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>LIVE</span>
+<span data-stooorna-icon-label="1" style={{ color: '#000000', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>LIVE</span>
 </div>
                   )}
                   {/* Templates — صور وفيديو Templates (كانت خلف الشيت) صارت هنا بين LIVE و Settings */}
@@ -27310,17 +27310,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       style={{
                         WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
+                        border: '1.5px solid #000000',
+                        background: '#ffffff',
+                        color: '#000000',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                        boxShadow: 'none',
                       }}
                     >
                       <Film size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Templates</span>
+<span data-stooorna-icon-label="1" style={{ color: '#000000', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Templates</span>
 </div>
                   )}
                   {/* Settings — نُقلت من الهيدر إلى هنا بجانب الأصدقاء والاتصال والبث */}
@@ -27337,21 +27337,21 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   title={GUEST_SIGNIN_LABEL[guestLang]}
   style={{
     width: 34, height: 34, borderRadius: '50%',
-    border: '1px solid rgba(0,188,212,0.4)',
-    background: 'rgba(6,20,22,0.96)',
-    color: '#00BCD4',
+    border: '1.5px solid #000000',
+    background: '#ffffff',
+    color: '#000000',
     cursor: 'pointer', padding: 0,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+    boxShadow: 'none',
   }}
 >
   <LogIn size={18} strokeWidth={2.2} />
 </motion.button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>{GUEST_SIGNIN_LABEL[guestLang]}</span>
+<span data-stooorna-icon-label="1" style={{ color: '#000000', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>{GUEST_SIGNIN_LABEL[guestLang]}</span>
 <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
-  <button type="button" onClick={() => chooseGuestLang('ar')} aria-pressed={guestLang === 'ar'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'ar' ? 600 : 300, color: guestLang === 'ar' ? '#00BCD4' : 'rgba(255,255,255,0.6)' }}>Ar</button>
-  <span aria-hidden="true" style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>|</span>
-  <button type="button" onClick={() => chooseGuestLang('en')} aria-pressed={guestLang === 'en'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'en' ? 600 : 300, color: guestLang === 'en' ? '#00BCD4' : 'rgba(255,255,255,0.6)' }}>En</button>
+  <button type="button" onClick={() => chooseGuestLang('ar')} aria-pressed={guestLang === 'ar'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'ar' ? 600 : 300, color: guestLang === 'ar' ? '#00BCD4' : 'rgba(0,0,0,0.55)' }}>Ar</button>
+  <span aria-hidden="true" style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)' }}>|</span>
+  <button type="button" onClick={() => chooseGuestLang('en')} aria-pressed={guestLang === 'en'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'en' ? 600 : 300, color: guestLang === 'en' ? '#00BCD4' : 'rgba(0,0,0,0.55)' }}>En</button>
 </div>
 </div>
 ) : (
@@ -27364,12 +27364,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     title="Settings"
                     style={{
                       width: 34, height: 34, borderRadius: '50%',
-                      border: '1px solid rgba(0,188,212,0.4)',
-                      background: 'rgba(6,20,22,0.96)',
-                      color: '#00BCD4',
+                      border: '1.5px solid #000000',
+                      background: '#ffffff',
+                      color: '#000000',
                       cursor: 'pointer', padding: 0,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                      boxShadow: 'none',
                     }}
                   >
                     <style>{`@keyframes stooornaDockGearSpin { to { transform: rotate(360deg); } }`}</style>
@@ -27380,7 +27380,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <Settings size={18} strokeWidth={2.2} />
                     </span>
                   </motion.button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Settings</span>
+<span data-stooorna-icon-label="1" style={{ color: '#000000', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Settings</span>
 </div>
 )}
                 </div>
