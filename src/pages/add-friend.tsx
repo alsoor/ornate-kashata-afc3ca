@@ -9254,11 +9254,9 @@ function FollowersListModal({
           maxHeight: '82dvh',
           borderRadius: 24,
           overflow: 'hidden',
-          background: 'linear-gradient(165deg, rgba(14,36,40,0.98) 0%, rgba(8,18,20,0.99) 55%, rgba(6,14,16,1) 100%)',
-          border: `1.5px solid ${hidden ? 'rgba(0,188,212,0.45)' : 'rgba(0,188,212,0.18)'}`,
-          boxShadow: hidden
-            ? '0 24px 60px rgba(0,0,0,0.55), 0 0 40px rgba(0,188,212,0.18), inset 0 1px 0 rgba(255,255,255,0.06)'
-            : '0 24px 60px rgba(0,0,0,0.5), 0 0 24px rgba(0,188,212,0.08), inset 0 1px 0 rgba(255,255,255,0.05)',
+          background: '#ffffff',
+          border: '1.5px solid #000000',
+          boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           padding: '20px 16px 16px',
           position: 'relative',
@@ -9271,9 +9269,9 @@ function FollowersListModal({
           aria-label="إغلاق"
           style={{
             position: 'absolute', top: 12, left: 12,
-            width: 30, height: 30, borderRadius: '50%', border: 'none',
-            background: 'rgba(255,255,255,0.06)',
-            color: 'rgba(200,230,230,0.7)',
+            width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #000000',
+            background: '#ffffff',
+            color: '#000000',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer',
           }}
@@ -9291,19 +9289,17 @@ function FollowersListModal({
             width: 52, height: 52, borderRadius: 16,
             marginBottom: 10, flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: hidden
-              ? 'linear-gradient(145deg, rgba(0,188,212,0.28), rgba(0,188,212,0.08))'
-              : 'linear-gradient(145deg, rgba(0,188,212,0.16), rgba(0,188,212,0.04))',
-            border: `1.5px solid ${hidden ? 'rgba(0,188,212,0.5)' : 'rgba(0,188,212,0.22)'}`,
-            boxShadow: hidden ? '0 8px 28px rgba(0,188,212,0.22)' : '0 6px 18px rgba(0,0,0,0.25)',
-            color: '#00BCD4',
+            background: '#ffffff',
+            border: '1.5px solid #000000',
+            boxShadow: 'none',
+            color: '#000000',
           }}
         >
           {hidden ? <Lock size={22} strokeWidth={2.1} /> : <Users size={22} strokeWidth={2.1} />}
         </motion.div>
 
         <p style={{
-          margin: 0, fontSize: '1rem', fontWeight: 800, color: 'rgba(220,245,245,0.95)',
+          margin: 0, fontSize: '1rem', fontWeight: 300, color: '#000000',
           letterSpacing: '0.01em', textAlign: 'center', flexShrink: 0,
         }}>
           {title || (isOwner ? 'متابعيني' : 'المتابعون')}
@@ -9311,7 +9307,7 @@ function FollowersListModal({
         </p>
         <p style={{
           margin: '6px 0 0', fontSize: '0.7rem', fontWeight: 500,
-          color: 'rgba(150,200,200,0.65)', lineHeight: 1.5, textAlign: 'center',
+          color: '#000000', lineHeight: 1.5, textAlign: 'center',
           maxWidth: 260, flexShrink: 0,
         }}>
           {isOwner
@@ -9329,16 +9325,16 @@ function FollowersListModal({
               display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
               padding: '10px 12px',
               borderRadius: 16,
-              background: hidden ? 'rgba(0,188,212,0.12)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${hidden ? 'rgba(0,188,212,0.35)' : 'rgba(0,188,212,0.12)'}`,
+              background: '#ffffff',
+              border: '1.5px solid #000000',
               transition: 'background 0.25s ease, border-color 0.25s ease',
             }}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, textAlign: 'right' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: hidden ? '#00BCD4' : 'rgba(200,230,230,0.9)' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#000000' }}>
                 {hidden ? 'مقفولة' : 'ظاهرة'}
               </span>
-              <span style={{ fontSize: '0.64rem', color: 'rgba(150,200,200,0.55)', lineHeight: 1.4 }}>
+              <span style={{ fontSize: '0.64rem', color: '#000000', lineHeight: 1.4 }}>
                 إخفاء متابعيني عن الآخرين
               </span>
             </div>
@@ -9353,7 +9349,7 @@ function FollowersListModal({
                 cursor: 'pointer', flexShrink: 0,
                 background: hidden
                   ? 'linear-gradient(90deg, #00BCD4, #26C6DA)'
-                  : 'rgba(255,255,255,0.12)',
+                  : '#d9d9d9',
                 display: 'flex', alignItems: 'center',
                 justifyContent: hidden ? 'flex-end' : 'flex-start',
                 boxShadow: hidden ? '0 4px 16px rgba(0,188,212,0.4)' : 'none',
@@ -9365,10 +9361,10 @@ function FollowersListModal({
                 transition={{ type: 'spring', stiffness: 500, damping: 32 }}
                 style={{
                   width: 24, height: 24, borderRadius: '50%',
-                  background: '#fff',
+                  background: '#fff', border: '1.5px solid #000000', boxSizing: 'border-box',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-                  color: hidden ? '#00BCD4' : 'rgba(100,120,120,0.7)',
+                  boxShadow: 'none',
+                  color: '#000000',
                 }}
               >
                 {hidden ? <Lock size={11} strokeWidth={2.6} /> : <Eye size={11} strokeWidth={2.6} />}
@@ -9388,13 +9384,13 @@ function FollowersListModal({
             }}
           >
             {loading && (
-              <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', color: 'rgba(150,200,200,0.6)' }}>جاري التحميل…</p>
+              <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', color: 'rgba(0,0,0,0.6)' }}>جاري التحميل…</p>
             )}
             {!loading && list.length === 0 && errorText && (
               <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', lineHeight: 1.6, color: 'rgba(255,170,150,0.85)' }}>{errorText}</p>
             )}
             {!loading && list.length === 0 && !errorText && (
-              <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', color: 'rgba(150,200,200,0.6)' }}>لا يوجد متابعون بعد</p>
+              <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.75rem', color: 'rgba(0,0,0,0.6)' }}>لا يوجد متابعون بعد</p>
             )}
             {!loading && list.map(f => {
               const label = f.name || f.username || 'User';
@@ -9406,20 +9402,20 @@ function FollowersListModal({
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: 10,
                     padding: '8px 10px', borderRadius: 14, cursor: onOpenProfile ? 'pointer' : 'default',
-                    background: 'rgba(0,188,212,0.05)',
-                    border: '1px solid rgba(0,188,212,0.16)',
+                    background: '#ffffff',
+                    border: '1.5px solid #000000',
                     // LTR row: avatar on the left, username right beside it
                     textAlign: 'left', direction: 'ltr',
-                    color: 'rgba(200,230,230,0.95)',
+                    color: '#000000',
                     WebkitTapHighlightColor: 'transparent',
                   }}
                 >
-                  <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: '2px solid #000000', boxSizing: 'border-box' }}>
                     <UserAvatar name={label} avatarUrl={f.avatarUrl ?? null} size={40} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                     {/* Username only (display name removed); falls back to name if no username */}
-                    <span style={{ display: 'block', fontWeight: 800, fontSize: '0.85rem', color: '#00BCD4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ display: 'block', fontWeight: 800, fontSize: '0.85rem', color: '#000000', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {f.username ? `@${f.username}` : label}
                     </span>
                   </div>
@@ -21445,7 +21441,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
           position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
           display: 'flex', flexDirection: 'column',
           padding: dockBubble.kind === 'settings' ? 'env(safe-area-inset-top, 0px) 0 0' : 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 0',
-          background: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#ffffff' : '#071214',
+          background: '#ffffff',
           // Slide down on close (X) — keep visible during the exit transition
           visibility: active ? 'visible' : 'hidden',
           pointerEvents: active ? 'auto' : 'none',
@@ -21472,7 +21468,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
             type="button"
             aria-label="Close"
             onClick={closeBubble}
-            style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', left: 16, zIndex: 20, width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', left: 16, zIndex: 20, width: 32, height: 32, borderRadius: '50%', border: '1.5px solid #000000', background: '#ffffff', color: '#000000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
           >
             <X size={16} strokeWidth={2.4} />
           </button>
@@ -31354,7 +31350,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 maxHeight: '100%',
                 display: 'flex',
                 flexDirection: 'column',
-                background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
+                background: '#ffffff',
                 border: 'none',
                 borderRadius: 0,
                 boxShadow: 'none',
@@ -31370,7 +31366,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 gap: 8,
                 padding: 'calc(env(safe-area-inset-top, 0px) + 12px) 12px 10px',
                 flexShrink: 0,
-                borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
+                borderBottom: '1px solid #000000',
                 boxSizing: 'border-box',
                 width: '100%',
                 minWidth: 0,
@@ -31387,9 +31383,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     style={{
                       display: 'flex', alignItems: 'center', gap: 4,
                       padding: '6px 10px', borderRadius: 999,
-                      background: 'rgba(0,188,212,0.18)',
-                      border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                      color: CLR_PRIMARY,
+                      background: '#ffffff',
+                      border: '1.5px solid #000000',
+                      color: '#000000',
                       fontSize: '0.72rem', fontWeight: 800,
                       flexShrink: 0,
                     }}
@@ -31399,8 +31395,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </div>
                 </div>
                 <button type="button" onClick={() => setStoryRequestsBoxOpen(false)} aria-label="Close" style={{
-                  width: 28, height: 28, borderRadius: '50%', border: 'none',
-                  background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                  width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #000000',
+                  background: '#ffffff', color: '#000000', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}><X size={14} /></button>
               </div>
@@ -31411,21 +31407,21 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
                 <button type="button" onClick={() => setStoryReqTab('search')} style={{
                   flex: 1, height: 34, borderRadius: 10, cursor: 'pointer', fontWeight: 800, fontSize: '0.75rem',
-                  border: storyReqTab === 'search' ? '1px solid rgba(0,188,212,0.55)' : '1px solid rgba(255,255,255,0.1)',
-                  background: storyReqTab === 'search' ? 'rgba(0,188,212,0.18)' : 'rgba(255,255,255,0.04)',
-                  color: storyReqTab === 'search' ? '#00BCD4' : 'rgba(255,255,255,0.7)',
+                  border: '1.5px solid #000000',
+                  background: storyReqTab === 'search' ? '#e4e4e4' : '#ffffff',
+                  color: '#000000',
                 }}>Search</button>
                 <button type="button" onClick={() => setStoryReqTab('requests')} style={{
                   flex: 1, height: 34, borderRadius: 10, cursor: 'pointer', fontWeight: 800, fontSize: '0.75rem',
-                  border: storyReqTab === 'requests' ? '1px solid rgba(0,188,212,0.55)' : '1px solid rgba(255,255,255,0.1)',
-                  background: storyReqTab === 'requests' ? 'rgba(0,188,212,0.18)' : 'rgba(255,255,255,0.04)',
-                  color: storyReqTab === 'requests' ? '#00BCD4' : 'rgba(255,255,255,0.7)',
+                  border: '1.5px solid #000000',
+                  background: storyReqTab === 'requests' ? '#e4e4e4' : '#ffffff',
+                  color: '#000000',
                 }}>Requests{incoming.length ? ` (${incoming.length})` : ''}</button>
               </div>
               {storyReqTab === 'search' ? (
                 <>
                   <div style={{ position: 'relative', marginBottom: 12 }}>
-                    <Search size={14} color="rgba(255,255,255,0.4)" style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                    <Search size={14} color="#000000" style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                     <input
                       value={storyReqQuery}
                       onChange={e => setStoryReqQuery(e.target.value)}
@@ -31434,26 +31430,26 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       style={{
                         width: '100%', boxSizing: 'border-box',
                         padding: '10px 36px 10px 12px', borderRadius: 12,
-                        background: 'rgba(255,255,255,0.06)',
-                        border: '1px solid rgba(255,255,255,0.12)',
-                        color: '#fff', fontSize: '0.8rem', outline: 'none',
+                        background: '#ffffff',
+                        border: '1.5px solid #000000',
+                        color: '#000000', fontSize: '0.8rem', outline: 'none',
                       }}
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                    {storyReqSearching && <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Searching…</p>}
+                    {storyReqSearching && <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Searching…</p>}
                     {!storyReqSearching && normalizeUserQuery(storyReqQuery).length < 1 && (
-                      <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Type a username</p>
+                      <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>Type a username</p>
                     )}
                     {!storyReqSearching && normalizeUserQuery(storyReqQuery).length >= 1 && storyReqResults.length === 0 && (
-                      <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>No users found</p>
+                      <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', textAlign: 'center', padding: '16px 0', margin: 0 }}>No users found</p>
                     )}
                     {storyReqResults.map(u => (
-                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                        <UserAvatar name={u.name || u.username || '?'} avatarUrl={u.avatarUrl} size={40} />
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: '#ffffff', border: '1.5px solid #000000' }}>
+                        <UserAvatar name={u.name || u.username || '?'} avatarUrl={u.avatarUrl} size={40} style={{ border: '2px solid #000000', boxSizing: 'border-box' }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ margin: 0, color: '#fff', fontWeight: 700, fontSize: '0.82rem' }}>{u.name || u.username || 'User'}</p>
-                          {u.username ? <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>@{u.username}</p> : null}
+                          <p style={{ margin: 0, color: '#000000', fontWeight: 700, fontSize: '0.82rem' }}>{u.name || u.username || 'User'}</p>
+                          {u.username ? <p style={{ margin: 0, color: '#000000', fontSize: '0.7rem' }}>@{u.username}</p> : null}
                         </div>
                         <button
                           type="button"
@@ -31463,7 +31459,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                             try { await sendRequest(u.id); }
                             finally { setStoryReqSendingId(null); }
                           }}
-                          style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: u.friendStatus === 'accepted' ? 'rgba(34,197,94,0.2)' : 'rgba(0,188,212,0.18)', color: u.friendStatus === 'accepted' ? '#22c55e' : '#00BCD4', cursor: u.friendStatus ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          style={{ width: 34, height: 34, borderRadius: '50%', border: u.friendStatus === 'accepted' ? '1.5px solid #22c55e' : '1.5px solid #000000', background: '#ffffff', color: u.friendStatus === 'accepted' ? '#22c55e' : '#000000', cursor: u.friendStatus ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                           {u.friendStatus === 'accepted' ? <Check size={16} strokeWidth={2.6} /> : u.friendStatus === 'pending' ? <Clock size={16} strokeWidth={2.4} /> : <UserPlus size={16} strokeWidth={2.4} />}
                         </button>
@@ -31475,35 +31471,35 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 <div style={{ textAlign: 'center', padding: '4px 10px 6px', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <div style={{
                     width: 40, height: 40, borderRadius: '50%', margin: '0 auto 8px',
-                    background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)',
+                    background: '#ffffff', border: '1.5px solid #ef4444',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     <UserPlus size={20} color="#ef4444" />
                   </div>
-                  <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>No friend requests</p>
-                  <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', margin: '4px 0 0' }}>Search above or wait for incoming requests</p>
+                  <p style={{ color: '#000000', fontWeight: 700, fontSize: '0.9rem', margin: 0 }}>No friend requests</p>
+                  <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', margin: '4px 0 0' }}>Search above or wait for incoming requests</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0, overflowY: 'auto' }}>
                   {incoming.map(req => (
-                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                      <UserAvatar name={req.name || req.username || '?'} avatarUrl={req.avatarUrl ?? null} size={40} />
+                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', borderRadius: 12, background: '#ffffff', border: '1.5px solid #000000' }}>
+                      <UserAvatar name={req.name || req.username || '?'} avatarUrl={req.avatarUrl ?? null} size={40} style={{ border: '2px solid #000000', boxSizing: 'border-box' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, color: '#fff', fontWeight: 700, fontSize: '0.82rem' }}>{req.name || req.username || 'User'}</p>
-                        {req.username ? <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem' }}>@{req.username}</p> : null}
+                        <p style={{ margin: 0, color: '#000000', fontWeight: 700, fontSize: '0.82rem' }}>{req.name || req.username || 'User'}</p>
+                        {req.username ? <p style={{ margin: 0, color: '#000000', fontSize: '0.7rem' }}>@{req.username}</p> : null}
                       </div>
                       <button type="button" disabled={storyReqRespondingId === req.id} onClick={async () => {
                         setStoryReqRespondingId(req.id);
                         try { await respond(req.id, 'accept'); }
                         finally { setStoryReqRespondingId(null); }
-                      }} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(34,197,94,0.2)', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      }} style={{ width: 34, height: 34, borderRadius: '50%', border: '1.5px solid #22c55e', background: '#ffffff', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Check size={16} strokeWidth={2.6} />
                       </button>
                       <button type="button" disabled={storyReqRespondingId === req.id} onClick={async () => {
                         setStoryReqRespondingId(req.id);
                         try { await respond(req.id, 'reject'); }
                         finally { setStoryReqRespondingId(null); }
-                      }} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(239,68,68,0.18)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      }} style={{ width: 34, height: 34, borderRadius: '50%', border: '1.5px solid #ef4444', background: '#ffffff', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <X size={16} strokeWidth={2.6} />
                       </button>
                     </div>
@@ -31789,29 +31785,29 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 maxHeight: 'min(56vh, 420px)',
                 display: 'flex',
                 flexDirection: 'column',
-                background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
-                border: '1.5px solid rgba(0,188,212,0.35)',
+                background: '#ffffff',
+                border: '1.5px solid #000000',
                 borderRadius: 22,
-                boxShadow: '0 20px 50px rgba(0,0,0,0.6), 0 0 28px rgba(0,188,212,0.12)',
+                boxShadow: '0 20px 50px rgba(0,0,0,0.35)',
                 overflow: 'visible',
                 boxSizing: 'border-box',
               }}
             >
               {/* tail — نفس ذيل فقاعة الأقسام */}
-              <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: 'calc(50% - 9px)', width: 18, height: 18, transform: 'rotate(45deg)', background: 'rgba(6,14,16,1)', borderRight: '1.5px solid rgba(0,188,212,0.35)', borderBottom: '1.5px solid rgba(0,188,212,0.35)', borderBottomRightRadius: 4 }} />
+              <span aria-hidden="true" style={{ position: 'absolute', bottom: -9, left: 'calc(50% - 9px)', width: 18, height: 18, transform: 'rotate(45deg)', background: '#ffffff', borderRight: '1.5px solid #000000', borderBottom: '1.5px solid #000000', borderBottomRightRadius: 4 }} />
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                 padding: '12px 12px 10px', flexShrink: 0,
-                borderBottom: `1px solid ${CLR_PRIMARY_BORDER}`,
+                borderBottom: '1px solid #000000',
                 boxSizing: 'border-box', width: '100%', minWidth: 0,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 4,
                     padding: '6px 10px', borderRadius: 999,
-                    background: 'rgba(0,188,212,0.18)',
-                    border: `1px solid ${CLR_PRIMARY_BORDER}`,
-                    color: CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 800, flexShrink: 0,
+                    background: '#ffffff',
+                    border: '1.5px solid #000000',
+                    color: '#000000', fontSize: '0.72rem', fontWeight: 800, flexShrink: 0,
                   }}>
                     <Clock size={13} strokeWidth={2.2} />
                     Calls
@@ -31819,8 +31815,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 </div>
                 <div style={{ position: 'relative', flexShrink: 0 }}>
                   <button type="button" onClick={e => { e.stopPropagation(); setFriendChatCallLogMenuOpen(o => !o); }} aria-label="Call menu" style={{
-                    width: 28, height: 28, borderRadius: '50%', border: 'none',
-                    background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                    width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #000000',
+                    background: '#ffffff', color: '#000000', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     <MoreVertical size={14} />
@@ -31828,7 +31824,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   {friendChatCallLogMenuOpen && (
                     <div onClick={e => e.stopPropagation()} style={{
                       position: 'absolute', right: 0, top: 34, minWidth: 160, zIndex: 3,
-                      background: '#0a1f22', border: `1px solid ${CLR_PRIMARY_BORDER}`,
+                      background: '#ffffff', border: '1px solid #000000',
                       borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', overflow: 'hidden',
                     }}>
                       <button type="button" onClick={() => {
@@ -31841,15 +31837,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   )}
                 </div>
                 <button type="button" onClick={() => { setFriendChatCallLogOpen(false); setFriendChatCallLogMenuOpen(false); }} aria-label="Close" style={{
-                  width: 28, height: 28, borderRadius: '50%', border: 'none',
-                  background: 'rgba(255,255,255,0.08)', color: CLR_TEXT_DIM, cursor: 'pointer',
+                  width: 28, height: 28, borderRadius: '50%', border: '1.5px solid #000000',
+                  background: '#ffffff', color: '#000000', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}>
                   <X size={14} />
                 </button>
               </div>
               <div style={{ padding: '10px 16px 2px', flexShrink: 0 }}>
-                <p style={{ margin: 0, color: CLR_TEXT_DIM, fontWeight: 800, fontSize: '0.68rem', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Recent</p>
+                <p style={{ margin: 0, color: '#000000', fontWeight: 300, fontSize: '0.68rem', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Recent</p>
               </div>
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 10px 14px', borderRadius: '0 0 18px 18px' }}>
                 {(() => {
@@ -31865,10 +31861,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     .filter(r => !friendChatPeer || r.peerId === friendChatPeer.friendId)
                     .sort((a, b) => b.at - a.at);
                   if (!rows.length) {
-                    return <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', textAlign: 'center', padding: '28px 0', margin: 0 }}>No recent calls</p>;
+                    return <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.75rem', textAlign: 'center', padding: '28px 0', margin: 0 }}>No recent calls</p>;
                   }
                   return rows.map(row => (
-                    <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', marginBottom: 8, borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', marginBottom: 8, borderRadius: 12, background: '#ffffff', border: '1.5px solid #000000' }}>
                       <div style={{
                         width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
                         background: row.status === 'answered' ? '#22c55e' : (row.status === 'missed' && row.direction === 'in' ? '#ef4444' : '#9ca3af'),
@@ -31877,7 +31873,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         <Phone size={16} color="#fff" strokeWidth={2.3} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontWeight: 700, color: row.status === 'missed' ? '#f87171' : '#fff', fontSize: '0.82rem' }}>{row.peerName || 'User'}</p>
+                        <p style={{ margin: 0, fontWeight: 700, color: row.status === 'missed' ? '#ef4444' : '#000000', fontSize: '0.82rem' }}>{row.peerName || 'User'}</p>
                         <p style={{ margin: 0, color: row.status === 'missed' ? '#f87171' : '#22c55e', fontSize: '0.68rem', fontWeight: 600 }}>
                           {row.status === 'missed' && row.direction === 'in' ? 'Missed call' : row.status === 'missed' && row.direction === 'out' ? 'Call ended' : (row.direction === 'out' ? 'Outgoing' : 'Incoming')}
                           {row.durationSec ? `  ${Math.floor(row.durationSec / 60)}:${String(row.durationSec % 60).padStart(2, '0')}` : ''}
@@ -31885,7 +31881,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           {new Date(row.at).toLocaleString()}
                         </p>
                       </div>
-                      <Phone size={16} color={CLR_PRIMARY} />
+                      <Phone size={16} color="#000000" />
                     </div>
                   ));
                 })()}
