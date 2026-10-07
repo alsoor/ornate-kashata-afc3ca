@@ -26866,7 +26866,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   overflowY: 'auto',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8 }}>
                   <button
                     type="button"
                     aria-label="Close"
