@@ -496,7 +496,8 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
   // Inside the Android/iOS app the checkout opens in the native in-app browser (see openPolarOfficialInApp),
   // so no blank pre-window is needed there — in a WebView it would replace the app page instead of opening a tab.
   const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
-  if (!isNativeApp) { try { pre = window.open('about:blank', '_blank'); } catch { pre = null; } }
+  // Checkout now opens INSIDE the site (see PolarEmbedSheet) — no external tab is pre-opened any more.
+  void isNativeApp;
   try {
     const r = await fetch('/api/polar/checkout', {
       method: 'POST',
@@ -595,6 +596,92 @@ async function openPolarOfficialInApp(url: string): Promise<boolean> {
   return false;
 }
 
+// ── Polar embedded checkout sheet (inside the site, above the live room) ─────────────────────
+// Uses Polar's official embed mode (?embed=true). For the page to be allowed in the frame the server MUST create
+// the checkout with `embed_origin` = the site origin (see /api/polar/checkout). Without it the frame stays blank,
+// so the sheet shows an "Open in browser" escape hatch.
+function polarEmbedUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.searchParams.set('embed', 'true');
+    u.searchParams.set('theme', 'dark');
+    return u.toString();
+  } catch {
+    return url + (url.includes('?') ? '&' : '?') + 'embed=true&theme=dark';
+  }
+}
+
+function PolarEmbedSheet({ url, onClose }: { url: string; onClose: () => void }) {
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [slow, setSlow] = useState(false);
+
+  useEffect(() => {
+    const onMsg = (ev: MessageEvent) => {
+      if (!frameRef.current || ev.source !== frameRef.current.contentWindow) return;
+      let d: any = ev.data;
+      if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = null; } }
+      const name = d && typeof d === 'object' ? d.event : null;
+      if (name === 'loaded') setLoaded(true);
+      else if (name === 'close') onClose();
+      else if (name === 'success') window.setTimeout(onClose, 1400); // coins are credited by the webhook → watchPolarCredit
+    };
+    window.addEventListener('message', onMsg);
+    const t = window.setTimeout(() => setSlow(true), 6000);
+    return () => { window.removeEventListener('message', onMsg); window.clearTimeout(t); };
+  }, [onClose]);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200050, background: '#0b0b0f', display: 'flex', flexDirection: 'column', direction: 'ltr' }}>
+      <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px', color: '#fff' }}>
+        <Lock size={16} />
+        <span style={{ fontWeight: 800, fontSize: '0.95rem', flex: 1 }}>Secure checkout</span>
+        <button type="button" aria-label="Close" onClick={onClose}
+          style={{ width: 36, height: 36, borderRadius: 18, border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+          <X size={20} />
+        </button>
+      </div>
+      <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+        <iframe
+          ref={frameRef}
+          title="Polar checkout"
+          src={polarEmbedUrl(url)}
+          allow="payment *; clipboard-write"
+          onLoad={() => setLoaded(true)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#fff' }}
+        />
+        {!loaded && (
+          <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem', pointerEvents: 'none' }}>
+            Loading checkout…
+          </div>
+        )}
+      </div>
+      {slow && !loaded && (
+        <button type="button" onClick={() => { try { window.open(url, '_blank', 'noopener,noreferrer'); } catch { /* ignore */ } }}
+          style={{ flex: '0 0 auto', margin: 12, padding: '12px 14px', borderRadius: 12, border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <ExternalLink size={16} /> Open in browser
+        </button>
+      )}
+    </div>
+  );
+}
+
+function closePolarEmbedSheet() {
+  if (polarRoot) { try { polarRoot.unmount(); } catch { /* ignore */ } polarRoot = null; }
+  if (polarHost) { try { polarHost.remove(); } catch { /* ignore */ } polarHost = null; }
+}
+
+function openPolarEmbedSheet(url: string, onDone?: () => void) {
+  if (typeof document === 'undefined') return;
+  closePolarEmbedSheet();
+  polarHost = document.createElement('div');
+  polarHost.setAttribute('data-polar-embed', '1');
+  document.body.appendChild(polarHost);
+  polarRoot = createRoot(polarHost);
+  polarRoot.render(<PolarEmbedSheet url={url} onClose={() => { closePolarEmbedSheet(); }} />);
+  void onDone; // credit watcher keeps running after the sheet closes so the balance still updates
+}
+
 /** Open Polar's ORIGINAL hosted checkout URL immediately — no intermediate sheet. */
 function openPolarCheckout(url: string, userId: string, pre?: Window | null) {
   if (typeof document === 'undefined') return;
@@ -609,37 +696,10 @@ function openPolarCheckout(url: string, userId: string, pre?: Window | null) {
       return;
     }
 
-    // 2) No Capacitor Browser in this APK — open Polar's real site in the tab
-    //    pre-opened on the same user tap (avoids popup blockers). The live WebView
-    //    stays in the background; after payment the user returns to the app and
-    //    watchPolarCredit credits the coins.
-    let opened = false;
-    try {
-      if (pre && !pre.closed) {
-        try { pre.opener = null; } catch { /* ignore */ }
-        pre.location.href = url;
-        opened = true;
-      }
-    } catch { opened = false; }
-    if (!opened) {
-      try {
-        const a = document.createElement('a');
-        a.href = url;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        opened = true;
-      } catch { /* ignore */ }
-    }
-    if (!opened) {
-      try { opened = !!window.open(url, '_blank', 'noopener,noreferrer'); } catch { opened = false; }
-    }
-    if (!opened) {
-      try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
-    }
+    // 2) No native browser plugin (normal site / TWA) — open Polar's checkout INSIDE the site as a
+    //    full-screen sheet on top of the live room (mic + stream stay untouched underneath).
+    try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
+    openPolarEmbedSheet(url, () => { try { polarStopWatch?.(); } catch { /* ignore */ } polarStopWatch = null; });
   })();
 }
 
