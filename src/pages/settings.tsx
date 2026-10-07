@@ -1664,39 +1664,42 @@ interface Recording {
 
 // Theme colors matching the cyan main screen
 const SETTINGS_CLR = {
-  bg: 'radial-gradient(ellipse 70% 60% at 50% 40%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)',
-  primary: '#00BCD4',
-  primaryDim: 'rgba(0,188,212,0.7)',
-  primaryFaint: 'rgba(0,188,212,0.15)',
-  primaryBorder: 'rgba(0,188,212,0.25)',
-  primaryGlow: 'rgba(0,188,212,0.3)',
-  surface: 'rgba(13,32,32,0.8)',
-  surfaceBorder: 'rgba(0,188,212,0.12)',
-  text: 'rgba(200,230,230,0.9)',
-  textMuted: 'rgba(150,190,190,0.6)',
-  inputBg: 'rgba(6,14,14,0.8)',
-  inputBorder: 'rgba(0,188,212,0.2)',
-  inputFocus: 'rgba(0,188,212,0.5)',
-  navBg: 'linear-gradient(180deg, transparent 0%, rgba(6,14,14,0.95) 100%)',
-  navBorder: 'rgba(0,188,212,0.08)',
-  danger: 'rgba(239,68,68,0.8)',
-  dangerBorder: 'rgba(239,68,68,0.3)',
-  dangerFaint: 'rgba(239,68,68,0.1)',
-  success: '#00BCD4',
-  tabActive: 'rgba(0,188,212,0.15)',
-  tabBorder: 'rgba(0,188,212,0.4)',
-  bronze: 'rgba(205,140,50,0.8)',
-  bronzeBorder: 'rgba(205,140,50,0.3)',
-  bronzeFaint: 'rgba(205,140,50,0.1)',
-  green: 'hsl(var(--accent))',
-  greenFaint: 'hsl(var(--accent) / 0.12)',
-  greenBorder: 'hsl(var(--accent) / 0.35)',
-  bgDeep: 'rgba(6,14,14,0.95)',
+  bg: '#ffffff',
+  primary: '#0b2b1c',
+  primaryDim: 'rgba(11,43,28,0.7)',
+  primaryFaint: 'rgba(11,43,28,0.08)',
+  primaryBorder: 'rgba(11,43,28,0.45)',
+  primaryGlow: 'rgba(11,43,28,0.15)',
+  surface: '#ffffff',
+  surfaceBorder: 'rgba(11,43,28,0.45)',
+  text: '#0b2b1c',
+  textMuted: 'rgba(11,43,28,0.62)',
+  inputBg: '#ffffff',
+  inputBorder: 'rgba(11,43,28,0.5)',
+  inputFocus: '#0b2b1c',
+  navBg: 'linear-gradient(180deg, transparent 0%, #ffffff 100%)',
+  navBorder: 'rgba(11,43,28,0.2)',
+  danger: '#0b2b1c',
+  dangerBorder: 'rgba(11,43,28,0.45)',
+  dangerFaint: 'rgba(11,43,28,0.08)',
+  success: '#0b2b1c',
+  tabActive: 'rgba(11,43,28,0.1)',
+  tabBorder: 'rgba(11,43,28,0.7)',
+  bronze: '#0b2b1c',
+  bronzeBorder: 'rgba(11,43,28,0.45)',
+  bronzeFaint: 'rgba(11,43,28,0.08)',
+  green: '#0b2b1c',
+  greenFaint: 'rgba(11,43,28,0.08)',
+  greenBorder: 'rgba(11,43,28,0.45)',
+  bgDeep: '#ffffff',
   overlay: 'rgba(0,0,0,0.75)',
-  modalBg: 'linear-gradient(160deg, #0d2a2e 0%, #0a1a1a 100%)',
-  yellowFaint: 'rgba(234,179,8,0.12)',
-  yellowBorder: 'rgba(234,179,8,0.5)',
-  yellow: '#eab308'
+  modalBg: '#ffffff',
+  yellowFaint: 'rgba(11,43,28,0.08)',
+  yellowBorder: 'rgba(11,43,28,0.45)',
+  yellow: '#0b2b1c',
+  /** switch ON colour (natural green) / OFF track */
+  switchOn: '#22c55e',
+  switchOff: '#c9d3cd'
 };
 /** Alias kept for all existing T.xxx references in this file */
 const T = SETTINGS_CLR;
@@ -2695,7 +2698,7 @@ function SupportChatOverlay({
   const primary = '#0277BD';
   const menuItem: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px', border: 'none',
-    background: 'transparent', cursor: 'pointer', color: '#0f172a', fontSize: '0.82rem', fontWeight: 700,
+    background: 'transparent', cursor: 'pointer', color: '#0b2b1c', fontSize: '0.82rem', fontWeight: 700,
     textAlign: 'start',
   };
 
@@ -2720,7 +2723,7 @@ function SupportChatOverlay({
           style={{
             width: 'min(94vw, 420px)', maxHeight: '88vh', overflowY: 'auto', background: '#ffffff',
             borderRadius: 22, boxShadow: '0 20px 60px rgba(0,0,0,0.35)', padding: '14px 16px 18px',
-            direction: isAr ? 'rtl' : 'ltr', color: '#0f172a',
+            direction: isAr ? 'rtl' : 'ltr', color: '#0b2b1c',
           }}
         >
           {/* أيقونة التطبيق + Support */}
@@ -2735,7 +2738,7 @@ function SupportChatOverlay({
               type="button"
               onClick={onClose}
               aria-label="Close"
-              style={{ marginInlineStart: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}
+              style={{ marginInlineStart: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#0b2b1c', padding: 4 }}
             >
               <X size={20} />
             </button>
@@ -2746,9 +2749,9 @@ function SupportChatOverlay({
             display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 12,
             background: '#f1f5f9', border: '1px solid #e2e8f0', marginBottom: 10,
           }}>
-            <User size={15} style={{ color: '#64748b', flexShrink: 0 }} />
-            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 700 }}>{t.user}</span>
-            <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', direction: 'ltr', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <User size={15} style={{ color: '#0b2b1c', flexShrink: 0 }} />
+            <span style={{ fontSize: '0.74rem', color: '#0b2b1c', fontWeight: 700 }}>{t.user}</span>
+            <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0b2b1c', direction: 'ltr', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {uname ? `@${uname}` : (currentUser?.name || t.guest)}
             </span>
           </div>
@@ -2773,7 +2776,7 @@ function SupportChatOverlay({
             autoComplete="email"
             style={{
               width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 12, marginBottom: 10,
-              background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '0.88rem',
+              background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0b2b1c', fontSize: '0.88rem',
               outline: 'none', direction: 'ltr', textAlign: isAr ? 'right' : 'left', fontFamily: 'var(--font-sans)',
             }}
           />
@@ -2786,7 +2789,7 @@ function SupportChatOverlay({
             rows={4}
             style={{
               width: '100%', boxSizing: 'border-box', resize: 'none', padding: '11px 12px', borderRadius: 12,
-              background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '0.88rem',
+              background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0b2b1c', fontSize: '0.88rem',
               outline: 'none', lineHeight: 1.5, fontFamily: 'var(--font-sans)',
               direction: isAr ? 'rtl' : 'ltr',
             }}
@@ -2803,10 +2806,10 @@ function SupportChatOverlay({
                 : attachment.type === 'video'
                   ? <VideoIcon size={20} style={{ color: primary, flexShrink: 0 }} />
                   : <FileText size={20} style={{ color: primary, flexShrink: 0 }} />}
-              <span style={{ flex: 1, minWidth: 0, fontSize: '0.78rem', fontWeight: 700, color: '#0f172a', direction: 'ltr', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ flex: 1, minWidth: 0, fontSize: '0.78rem', fontWeight: 700, color: '#0b2b1c', direction: 'ltr', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {attachment.name}
               </span>
-              <button type="button" onClick={() => setAttachment(null)} aria-label="Remove" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 2 }}>
+              <button type="button" onClick={() => setAttachment(null)} aria-label="Remove" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0b2b1c', padding: 2 }}>
                 <X size={16} />
               </button>
             </div>
@@ -2863,7 +2866,7 @@ function SupportChatOverlay({
               onClick={() => void submit()}
               style={{
                 flex: 1, height: 44, borderRadius: 12, border: 'none', cursor: sending ? 'default' : 'pointer',
-                background: primary, color: '#ffffff', fontWeight: 800, fontSize: '0.92rem',
+                background: primary, color: '#0b2b1c', fontWeight: 800, fontSize: '0.92rem',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 opacity: sending ? 0.7 : 1,
               }}
@@ -2939,7 +2942,7 @@ function CommentsSheet({
         style={{
           width: 'min(100vw, 560px)', height: 'min(84vh, 780px)', background: '#ffffff',
           borderRadius: '22px 22px 0 0', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          boxShadow: '0 -10px 40px rgba(0,0,0,0.3)', direction: 'ltr', color: '#0f172a',
+          boxShadow: '0 -10px 40px rgba(0,0,0,0.3)', direction: 'ltr', color: '#0b2b1c',
         }}
       >
         {/* مقبض السحب */}
@@ -2957,12 +2960,12 @@ function CommentsSheet({
           <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: '#475569' }}>
             {title ?? `${count.toLocaleString('ar-EG')} تعليق`}
           </p>
-          {subtitle && <div style={{ marginTop: 3, fontSize: '0.68rem', color: '#94a3b8', direction: 'ltr' }}>{subtitle}</div>}
+          {subtitle && <div style={{ marginTop: 3, fontSize: '0.68rem', color: '#0b2b1c', direction: 'ltr' }}>{subtitle}</div>}
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            style={{ position: 'absolute', right: 12, top: 0, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}
+            style={{ position: 'absolute', right: 12, top: 0, background: 'none', border: 'none', cursor: 'pointer', color: '#0b2b1c', padding: 4 }}
           >
             <X size={20} />
           </button>
@@ -2993,7 +2996,7 @@ function SupportRepliesBubble({
   const isAr = (() => { try { return localStorage.getItem('lang') !== 'en'; } catch { return true; } })();
   const title = isAr ? 'رسالة من الدعم' : 'Message from support';
   const empty = isAr ? 'لا توجد رسائل من الدعم' : 'No messages from support';
-  const orange = '#f97316';
+  const orange = '#0b2b1c';
   const fmt = (at: number) => {
     if (!at) return '';
     try { return new Date(at).toLocaleString(isAr ? 'ar' : 'en', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }); } catch { return ''; }
@@ -3020,7 +3023,7 @@ function SupportRepliesBubble({
             style={{
               width: 'min(94vw, 420px)', maxHeight: '80vh', overflowY: 'auto', background: '#ffffff',
               borderRadius: 22, boxShadow: '0 20px 60px rgba(0,0,0,0.35)', padding: '14px 16px 18px',
-              direction: isAr ? 'rtl' : 'ltr', color: '#0f172a',
+              direction: isAr ? 'rtl' : 'ltr', color: '#0b2b1c',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, direction: 'ltr', marginBottom: 12 }}>
@@ -3034,14 +3037,14 @@ function SupportRepliesBubble({
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                style={{ marginInlineStart: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}
+                style={{ marginInlineStart: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#0b2b1c', padding: 4 }}
               >
                 <X size={20} />
               </button>
             </div>
 
             {replies.length === 0 ? (
-              <p style={{ margin: '24px 0', textAlign: 'center', color: '#64748b', fontSize: '0.84rem' }}>{empty}</p>
+              <p style={{ margin: '24px 0', textAlign: 'center', color: '#0b2b1c', fontSize: '0.84rem' }}>{empty}</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {replies.map(m => (
@@ -3049,7 +3052,7 @@ function SupportRepliesBubble({
                     <div style={{
                       flex: 1, minWidth: 0, padding: '10px 12px', borderRadius: 14,
                       background: '#fff7ed', border: '1px solid #fdba74',
-                      fontSize: '0.86rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#0f172a',
+                      fontSize: '0.86rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', color: '#0b2b1c',
                       wordBreak: 'break-word',
                     }}>
                       {m.mediaUrl && m.mediaType === 'image' && (
@@ -3460,11 +3463,11 @@ function OwnerSupportThread({
             }}
             style={{
               flex: 1, minWidth: 0, resize: 'none', maxHeight: 96, textAlign: 'left', padding: '12px 0', border: 'none', outline: 'none',
-              background: 'transparent', color: '#0f172a', fontSize: '0.92rem', fontFamily: 'var(--font-sans)', lineHeight: 1.35,
+              background: 'transparent', color: '#0b2b1c', fontSize: '0.92rem', fontFamily: 'var(--font-sans)', lineHeight: 1.35,
             }}
           />
           <button type="button" onClick={() => fileRef.current?.click()} aria-label="Attach"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4, display: 'flex' }}>
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0b2b1c', padding: 4, display: 'flex' }}>
             <Plus size={22} strokeWidth={2.2} />
           </button>
           <button type="button" onClick={() => setShowEmoji(v => !v)} aria-label="Emoji"
@@ -3508,7 +3511,7 @@ function OwnerSupportThread({
       }
     >
       {messages.length === 0 && (
-        <p style={{ color: '#94a3b8', fontSize: '0.84rem', textAlign: 'center', marginTop: 48 }}>
+        <p style={{ color: '#0b2b1c', fontSize: '0.84rem', textAlign: 'center', marginTop: 48 }}>
           {settings.noMessages}
         </p>
       )}
@@ -3526,7 +3529,7 @@ function OwnerSupportThread({
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0 }}>
                 <div style={{
                   width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', background: '#e5e7eb',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0a0a0a', fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0b2b1c', fontWeight: 700,
                 }}>
                   {peer.avatarUrl
                     ? <img src={peer.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -3536,11 +3539,11 @@ function OwnerSupportThread({
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0a0a0a', direction: 'ltr' }}>
+                <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0b2b1c', direction: 'ltr' }}>
                   {mine ? '@Stooorna' : peerHandle}
                 </span>
                 {mine && (
-                  <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#ffffff', background: '#0a0a0a', borderRadius: 6, padding: '1px 6px' }}>الدعم</span>
+                  <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#0b2b1c', background: '#ffffff', borderRadius: 6, padding: '1px 6px' }}>الدعم</span>
                 )}
                 <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{relTimeAr(m.at)}</span>
               </div>
@@ -3552,7 +3555,7 @@ function OwnerSupportThread({
                   <video src={m.mediaUrl} controls playsInline style={{ width: '100%', maxWidth: 260, borderRadius: 12, marginBottom: m.text ? 8 : 0, display: 'block' }} />
                 )}
                 {m.mediaUrl && m.mediaType === 'file' && (
-                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ color: '#0a0a0a', fontSize: '0.84rem', display: 'block', marginBottom: m.text ? 6 : 0 }}>
+                  <a href={m.mediaUrl} target="_blank" rel="noreferrer" style={{ color: '#0b2b1c', fontSize: '0.84rem', display: 'block', marginBottom: m.text ? 6 : 0 }}>
                     📎 Attachment
                   </a>
                 )}
@@ -4390,7 +4393,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             width: '100%', maxWidth: 360, marginBottom: 14, boxSizing: 'border-box',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
             padding: '12px 14px', borderRadius: 14, cursor: 'pointer',
-            background: isCompany ? 'rgba(0,188,212,0.12)' : T.surface,
+            background: isCompany ? 'rgba(11,43,28,0.12)' : T.surface,
             border: `1.5px solid ${isCompany ? T.primary : T.surfaceBorder}`,
             color: T.text, textAlign: isEn ? 'left' : 'right', direction: dir,
           }}
@@ -4404,7 +4407,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           </div>
           <span aria-hidden style={{
             width: 48, height: 28, borderRadius: 999, flexShrink: 0, position: 'relative',
-            background: isCompany ? T.primary : 'rgba(150,190,190,0.25)',
+            background: isCompany ? T.switchOn : T.switchOff,
             transition: 'background 0.2s',
           }}>
             <span style={{
@@ -4449,7 +4452,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                   ...fieldCss(),
                   direction: 'ltr',
                   border: `1px solid ${
-                    usernameStatus === 'taken' ? 'hsl(var(--destructive))'
+                    usernameStatus === 'taken' ? 'hsl(152 59% 11%)'
                     : usernameStatus === 'available' ? 'rgba(34,197,94,0.55)'
                     : T.surfaceBorder
                   }`,
@@ -4461,8 +4464,8 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
               <p style={{
                 margin: '-6px 0 0', fontSize: 12, fontWeight: 700, textAlign: 'center',
                 color: usernameStatus === 'available' ? '#22c55e'
-                  : usernameStatus === 'taken' ? 'hsl(var(--destructive))'
-                  : usernameStatus === 'invalid' ? '#eab308'
+                  : usernameStatus === 'taken' ? 'hsl(152 59% 11%)'
+                  : usernameStatus === 'invalid' ? '#0b2b1c'
                   : usernameStatus === 'checking' ? T.primaryDim
                   : 'transparent',
               }}>
@@ -4479,7 +4482,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                 paddingRight: 48, cursor: 'default',
               }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(200,230,230,0.95)', fontWeight: 700, fontSize: '0.9rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(11,43,28,0.95)', fontWeight: 700, fontSize: '0.9rem' }}>
                   <ShieldCheck size={16} color={T.primaryDim} />
                   {authLang === 'en' ? 'Commercial registration certificate' : 'شهادة السجل التجاري'}
                 </span>
@@ -4523,33 +4526,33 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 onClick={() => document.getElementById('commercial-reg-file')?.click()}
                 style={{
                   position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                  background: commercialRegVerify === 'valid' ? 'hsl(var(--success)/0.18)' : commercialRegVerify === 'invalid' ? 'hsl(var(--destructive)/0.18)' : 'hsl(var(--primary)/0.12)',
-                  border: `1px solid ${commercialRegVerify === 'valid' ? 'hsl(var(--success)/0.5)' : commercialRegVerify === 'invalid' ? 'hsl(var(--destructive)/0.5)' : 'hsl(var(--primary)/0.35)'}`,
+                  background: commercialRegVerify === 'valid' ? 'hsl(152 59% 11%/0.18)' : commercialRegVerify === 'invalid' ? 'hsl(152 59% 11%/0.18)' : 'hsl(152 59% 11%/0.12)',
+                  border: `1px solid ${commercialRegVerify === 'valid' ? 'hsl(152 59% 11%/0.5)' : commercialRegVerify === 'invalid' ? 'hsl(152 59% 11%/0.5)' : 'hsl(152 59% 11%/0.35)'}`,
                   borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   cursor: commercialRegVerify === 'checking' ? 'wait' : 'pointer', flexShrink: 0,
                   opacity: commercialRegVerify === 'checking' ? 0.6 : 1,
                 }}
               >
                 {commercialRegVerify === 'checking'
-                  ? <Clock size={15} color="hsl(var(--primary))" />
+                  ? <Clock size={15} color="hsl(152 59% 11%)" />
                   : commercialRegVerify === 'valid'
-                    ? <Check size={15} color="hsl(var(--success))" />
+                    ? <Check size={15} color="hsl(152 59% 11%)" />
                     : commercialRegVerify === 'invalid'
-                      ? <X size={15} color="hsl(var(--destructive))" />
-                      : <Plus size={15} color="hsl(var(--primary))" />
+                      ? <X size={15} color="hsl(152 59% 11%)" />
+                      : <Plus size={15} color="hsl(152 59% 11%)" />
                 }
               </button>
             </div>
             {commercialRegFile && commercialRegVerify === 'valid' && (
-              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(152 59% 11%)', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
                 <Check size={11} /> {commercialRegFile.name}
-                <button type="button" onClick={() => { setCommercialRegFile(null); setCommercialRegVerify('idle'); setCommercialRegVerifyMessage(''); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                <button type="button" onClick={() => { setCommercialRegFile(null); setCommercialRegVerify('idle'); setCommercialRegVerifyMessage(''); }} style={{ background: 'none', border: 'none', color: 'hsl(152 59% 11%/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
                   <X size={11} />
                 </button>
               </p>
             )}
             {commercialRegVerify === 'invalid' && (
-              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(152 59% 11%)', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
                 <AlertTriangle size={11} /> {commercialRegVerifyMessage || (authLang === 'en' ? 'Upload failed' : 'فشل الرفع')}
               </p>
             )}
@@ -4561,7 +4564,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
                 paddingRight: 48, cursor: 'default',
               }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(200,230,230,0.95)', fontWeight: 700, fontSize: '0.9rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(11,43,28,0.95)', fontWeight: 700, fontSize: '0.9rem' }}>
                   <FileText size={16} color={T.primaryDim} />
                   {authLang === 'en' ? 'Trade license certificate' : 'شهادة الترخيص التجاري'}
                 </span>
@@ -4605,33 +4608,33 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 onClick={() => document.getElementById('trade-license-file')?.click()}
                 style={{
                   position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                  background: tradeLicenseVerify === 'valid' ? 'hsl(var(--success)/0.18)' : tradeLicenseVerify === 'invalid' ? 'hsl(var(--destructive)/0.18)' : 'hsl(var(--primary)/0.12)',
-                  border: `1px solid ${tradeLicenseVerify === 'valid' ? 'hsl(var(--success)/0.5)' : tradeLicenseVerify === 'invalid' ? 'hsl(var(--destructive)/0.5)' : 'hsl(var(--primary)/0.35)'}`,
+                  background: tradeLicenseVerify === 'valid' ? 'hsl(152 59% 11%/0.18)' : tradeLicenseVerify === 'invalid' ? 'hsl(152 59% 11%/0.18)' : 'hsl(152 59% 11%/0.12)',
+                  border: `1px solid ${tradeLicenseVerify === 'valid' ? 'hsl(152 59% 11%/0.5)' : tradeLicenseVerify === 'invalid' ? 'hsl(152 59% 11%/0.5)' : 'hsl(152 59% 11%/0.35)'}`,
                   borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   cursor: tradeLicenseVerify === 'checking' ? 'wait' : 'pointer', flexShrink: 0,
                   opacity: tradeLicenseVerify === 'checking' ? 0.6 : 1,
                 }}
               >
                 {tradeLicenseVerify === 'checking'
-                  ? <Clock size={15} color="hsl(var(--primary))" />
+                  ? <Clock size={15} color="hsl(152 59% 11%)" />
                   : tradeLicenseVerify === 'valid'
-                    ? <Check size={15} color="hsl(var(--success))" />
+                    ? <Check size={15} color="hsl(152 59% 11%)" />
                     : tradeLicenseVerify === 'invalid'
-                      ? <X size={15} color="hsl(var(--destructive))" />
-                      : <Plus size={15} color="hsl(var(--primary))" />
+                      ? <X size={15} color="hsl(152 59% 11%)" />
+                      : <Plus size={15} color="hsl(152 59% 11%)" />
                 }
               </button>
             </div>
             {tradeLicenseFile && tradeLicenseVerify === 'valid' && (
-              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--success))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(152 59% 11%)', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
                 <Check size={11} /> {tradeLicenseFile.name}
-                <button type="button" onClick={() => { setTradeLicenseFile(null); setTradeLicenseVerify('idle'); setTradeLicenseVerifyMessage(''); }} style={{ background: 'none', border: 'none', color: 'hsl(var(--destructive)/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
+                <button type="button" onClick={() => { setTradeLicenseFile(null); setTradeLicenseVerify('idle'); setTradeLicenseVerifyMessage(''); }} style={{ background: 'none', border: 'none', color: 'hsl(152 59% 11%/0.7)', cursor: 'pointer', padding: 0, marginRight: 4, display: 'flex', alignItems: 'center' }}>
                   <X size={11} />
                 </button>
               </p>
             )}
             {tradeLicenseVerify === 'invalid' && (
-              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(var(--destructive))', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
+              <p style={{ margin: '-6px 0 0', fontSize: 11, color: 'hsl(152 59% 11%)', display: 'flex', alignItems: 'center', gap: 4, paddingRight: 4 }}>
                 <AlertTriangle size={11} /> {tradeLicenseVerifyMessage || (authLang === 'en' ? 'Upload failed' : 'فشل الرفع')}
               </p>
             )}
@@ -4639,11 +4642,11 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             {/* Both certificates required */}
             {(!commercialRegFile || !tradeLicenseFile || commercialRegVerify !== 'valid' || tradeLicenseVerify !== 'valid') && (
               <div style={{
-                background: 'hsl(var(--gold)/0.08)', border: '1px solid hsl(var(--gold)/0.3)',
+                background: 'hsl(152 59% 11%/0.08)', border: '1px solid hsl(152 59% 11%/0.3)',
                 borderRadius: 10, padding: '8px 12px', display: 'flex', alignItems: 'flex-start', gap: 8,
               }}>
-                <AlertTriangle size={14} color="hsl(var(--gold))" style={{ flexShrink: 0, marginTop: 2 }} />
-                <p style={{ margin: 0, fontSize: '0.75rem', color: 'hsl(var(--gold)/0.9)', lineHeight: 1.5 }}>
+                <AlertTriangle size={14} color="hsl(152 59% 11%)" style={{ flexShrink: 0, marginTop: 2 }} />
+                <p style={{ margin: 0, fontSize: '0.75rem', color: 'hsl(152 59% 11%/0.9)', lineHeight: 1.5 }}>
                   {authLang === 'en'
                     ? 'Upload both the commercial registration certificate and the trade license certificate — the request will not be accepted without them'
                     : 'يجب رفع شهادة السجل التجاري وشهادة الترخيص التجاري — لن يُقبل الطلب بدونهما'}
@@ -4652,14 +4655,14 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             )}
                 <div style={{ position: 'relative' }}>
                   <button type="button" onClick={() => setSectorOpen(o => !o)}
-                    style={{ ...fieldCss(), borderColor: 'rgba(239,68,68,0.35)', paddingLeft: 14, paddingRight: 36, textAlign: isEn ? 'left' : 'right', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}>
+                    style={{ ...fieldCss(), borderColor: 'rgba(11,43,28,0.35)', paddingLeft: 14, paddingRight: 36, textAlign: isEn ? 'left' : 'right', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', width: '100%', boxSizing: 'border-box' }}>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: (companySector || companySectorCustom) ? 'inherit' : 'rgba(150,200,200,0.55)' }}>
                       {companySector || companySectorCustom || L.sector}
                     </span>
                     <ChevronDown size={16} color="rgba(150,200,200,0.8)" style={{ flexShrink: 0 }} />
                   </button>
                   {sectorOpen && (
-                    <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 40, marginTop: 4, background: 'rgba(8,20,22,0.98)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 12, overflow: 'hidden', boxShadow: '0 10px 24px rgba(0,0,0,0.4)' }}>
+                    <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 40, marginTop: 4, background: 'rgba(8,20,22,0.98)', border: '1px solid rgba(11,43,28,0.35)', borderRadius: 12, overflow: 'hidden', boxShadow: '0 10px 24px rgba(0,0,0,0.4)' }}>
                       {(isEn ? [
                         'Electronics & Electrical appliances',
                         'Perfume, beauty & personal care',
@@ -4676,11 +4679,11 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                         'قطاع القرطاسية والهوايات والكتب',
                       ]).map(s => (
                         <button key={s} type="button" onClick={() => { setCompanySector(s); setCompanySectorCustom(''); setSectorOpen(false); }}
-                          style={{ width: '100%', padding: '10px 12px', border: 'none', background: companySector === s ? 'rgba(0,188,212,0.12)' : 'transparent', color: 'rgba(200,230,230,0.95)', textAlign: isEn ? 'left' : 'right', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
+                          style={{ width: '100%', padding: '10px 12px', border: 'none', background: companySector === s ? 'rgba(11,43,28,0.12)' : 'transparent', color: 'rgba(11,43,28,0.95)', textAlign: isEn ? 'left' : 'right', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }}>
                           {s}
                         </button>
                       ))}
-                      <div style={{ padding: 10, borderTop: '1px solid rgba(0,188,212,0.15)' }}>
+                      <div style={{ padding: 10, borderTop: '1px solid rgba(11,43,28,0.15)' }}>
                         <input type="text" value={companySectorCustom} onChange={e => { setCompanySectorCustom(e.target.value); if (e.target.value.trim()) setCompanySector(''); }} placeholder={L.sectorHint} style={{ ...fieldCss(), margin: 0, fontSize: '0.8rem' }} />
                       </div>
                     </div>
@@ -4722,7 +4725,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                   ...fieldCss(),
                   direction: 'ltr',
                   border: `1px solid ${
-                    usernameStatus === 'taken' ? 'hsl(var(--destructive))'
+                    usernameStatus === 'taken' ? 'hsl(152 59% 11%)'
                     : usernameStatus === 'available' ? 'rgba(34,197,94,0.55)'
                     : T.surfaceBorder
                   }`,
@@ -4734,8 +4737,8 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
               <p style={{
                 margin: '-6px 0 0', fontSize: 12, fontWeight: 700, textAlign: 'center',
                 color: usernameStatus === 'available' ? '#22c55e'
-                  : usernameStatus === 'taken' ? 'hsl(var(--destructive))'
-                  : usernameStatus === 'invalid' ? '#eab308'
+                  : usernameStatus === 'taken' ? 'hsl(152 59% 11%)'
+                  : usernameStatus === 'invalid' ? '#0b2b1c'
                   : usernameStatus === 'checking' ? T.primaryDim
                   : 'transparent',
               }}>
@@ -4776,12 +4779,12 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
               required
               style={{
                 ...fieldCss(),
-                border: `1px solid ${confirmEmail && confirmEmail.trim().toLowerCase() !== email.trim().toLowerCase() ? 'hsl(var(--destructive))' : T.surfaceBorder}`,
+                border: `1px solid ${confirmEmail && confirmEmail.trim().toLowerCase() !== email.trim().toLowerCase() ? 'hsl(152 59% 11%)' : T.surfaceBorder}`,
               }}
               dir="ltr"
             />
             {confirmEmail && confirmEmail.trim().toLowerCase() === email.trim().toLowerCase() && (
-              <Check size={14} color="hsl(var(--primary))" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <Check size={14} color="hsl(152 59% 11%)" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
             )}
           </div>
         )}
@@ -4809,7 +4812,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
               style={{
                 ...fieldCss(),
                 paddingRight: 44,
-                border: `1px solid ${confirmPassword && confirmPassword !== password ? 'hsl(var(--destructive))' : T.surfaceBorder}`,
+                border: `1px solid ${confirmPassword && confirmPassword !== password ? 'hsl(152 59% 11%)' : T.surfaceBorder}`,
               }}
               dir="ltr"
             />
@@ -4817,23 +4820,23 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
               {showConfirmPw ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
             {confirmPassword && confirmPassword === password && (
-              <Check size={14} color="hsl(var(--primary))" style={{ position: 'absolute', right: 40, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <Check size={14} color="hsl(152 59% 11%)" style={{ position: 'absolute', right: 40, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
             )}
           </div>
         )}
 
         {error && (
-          <div style={{ background: 'hsl(var(--destructive)/0.15)', border: '1px solid hsl(var(--destructive)/0.4)', borderRadius: 10, padding: '10px 14px', color: 'hsl(var(--destructive))', fontSize: 13, textAlign: 'center' }}>
+          <div style={{ background: 'hsl(152 59% 11%/0.15)', border: '1px solid hsl(152 59% 11%/0.4)', borderRadius: 10, padding: '10px 14px', color: 'hsl(152 59% 11%)', fontSize: 13, textAlign: 'center' }}>
             {error}
           </div>
         )}
         {companyPendingMsg && !error && (
           <div style={{
-            background: 'rgba(0,188,212,0.12)',
-            border: '1px solid rgba(0,188,212,0.4)',
+            background: 'rgba(11,43,28,0.12)',
+            border: '1px solid rgba(11,43,28,0.4)',
             borderRadius: 12,
             padding: '14px 16px',
-            color: '#00BCD4',
+            color: '#0b2b1c',
             fontSize: 14,
             fontWeight: 700,
             textAlign: 'center',
@@ -4943,28 +4946,28 @@ function SettingsMusicSearchModal({
           width: '100%', maxWidth: 380, maxHeight: '78vh',
           display: 'flex', flexDirection: 'column',
           background: 'rgba(12,10,8,0.97)',
-          border: '1px solid rgba(0,188,212,0.28)',
+          border: '1px solid rgba(11,43,28,0.28)',
           borderRadius: 20,
-          boxShadow: '0 12px 50px rgba(0,0,0,0.55), 0 0 30px rgba(0,188,212,0.1)',
+          boxShadow: '0 12px 50px rgba(0,0,0,0.55), 0 0 30px rgba(11,43,28,0.1)',
           overflow: 'hidden',
         }}
       >
-        <div style={{ padding: '14px 14px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ padding: '14px 14px 10px', borderBottom: '1px solid rgba(11,43,28,0.08)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Music size={16} color="#00BCD4" />
+            <span style={{ color: '#0b2b1c', fontSize: '0.85rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Music size={16} color='#0b2b1c' />
               الموسيقى
             </span>
             <button
               type="button"
               onClick={onClose}
-              style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 999, width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              style={{ background: 'rgba(11,43,28,0.06)', border: 'none', borderRadius: 999, width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
             >
               <X size={14} color="rgba(255,255,255,0.7)" />
             </button>
           </div>
           <div style={{ position: 'relative' }}>
-            <Search size={14} color="rgba(255,255,255,0.4)" style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)' }} />
+            <Search size={14} color="rgba(11,43,28,0.4)" style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)' }} />
             <input
               autoFocus
               value={query}
@@ -4972,8 +4975,8 @@ function SettingsMusicSearchModal({
               placeholder="ابحث عن أغنية أو فنان..."
               style={{
                 width: '100%', padding: '9px 36px 9px 12px', borderRadius: 12,
-                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-                color: '#fff', fontSize: '0.78rem', outline: 'none', boxSizing: 'border-box',
+                background: 'rgba(11,43,28,0.06)', border: '1px solid rgba(11,43,28,0.1)',
+                color: '#0b2b1c', fontSize: '0.78rem', outline: 'none', boxSizing: 'border-box',
               }}
             />
           </div>
@@ -4986,9 +4989,9 @@ function SettingsMusicSearchModal({
               onClick={() => setTabKey(k)}
               style={{
                 flex: 1, padding: '8px 0', textAlign: 'center', background: 'transparent', border: 'none', cursor: 'pointer',
-                color: tabKey === k ? '#00BCD4' : 'rgba(255,255,255,0.4)',
+                color: tabKey === k ? '#0b2b1c' : 'rgba(11,43,28,0.4)',
                 fontSize: '0.72rem', fontWeight: 700,
-                borderBottom: tabKey === k ? '2px solid #00BCD4' : '2px solid transparent',
+                borderBottom: tabKey === k ? '2px solid #0b2b1c' : '2px solid transparent',
               }}
             >
               {k === 'search' ? 'بحث' : `المفضلة${favorites.length ? ` (${favorites.length})` : ''}`}
@@ -4997,19 +5000,19 @@ function SettingsMusicSearchModal({
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px 14px' }}>
           {tabKey === 'search' && searching && (
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>جاري البحث...</p>
+            <p style={{ color: 'rgba(11,43,28,0.4)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>جاري البحث...</p>
           )}
           {tabKey === 'search' && !searching && error && (
-            <p style={{ color: 'rgba(239,68,68,0.8)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>{error}</p>
+            <p style={{ color: 'rgba(11,43,28,0.8)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>{error}</p>
           )}
           {tabKey === 'search' && !searching && !error && query.trim() && list.length === 0 && (
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>لا توجد نتائج</p>
+            <p style={{ color: 'rgba(11,43,28,0.4)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>لا توجد نتائج</p>
           )}
           {tabKey === 'search' && !query.trim() && (
-            <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>اكتب اسم أغنية أو فنان للبحث</p>
+            <p style={{ color: 'rgba(11,43,28,0.35)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>اكتب اسم أغنية أو فنان للبحث</p>
           )}
           {tabKey === 'favorites' && favorites.length === 0 && (
-            <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>لا توجد أغاني في المفضلة بعد</p>
+            <p style={{ color: 'rgba(11,43,28,0.35)', fontSize: '0.72rem', textAlign: 'center', padding: '20px 0' }}>لا توجد أغاني في المفضلة بعد</p>
           )}
           {list.map(track => {
             const active = currentTrack?.id === track.id;
@@ -5018,31 +5021,31 @@ function SettingsMusicSearchModal({
                 key={track.id}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px', borderRadius: 12,
-                  background: active ? 'rgba(0,188,212,0.1)' : 'transparent', marginBottom: 4,
+                  background: active ? 'rgba(11,43,28,0.1)' : 'transparent', marginBottom: 4,
                 }}
               >
                 {track.artwork ? (
                   <img src={track.artwork} alt="" width={40} height={40} style={{ borderRadius: 8, flexShrink: 0, objectFit: 'cover' }} />
                 ) : (
-                  <div style={{ width: 40, height: 40, borderRadius: 8, background: 'rgba(255,255,255,0.06)', flexShrink: 0 }} />
+                  <div style={{ width: 40, height: 40, borderRadius: 8, background: 'rgba(11,43,28,0.06)', flexShrink: 0 }} />
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: active ? '#00BCD4' : '#fff', fontSize: '0.74rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.64rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.artist}</div>
+                  <div style={{ color: active ? '#0b2b1c' : '#fff', fontSize: '0.74rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</div>
+                  <div style={{ color: 'rgba(11,43,28,0.45)', fontSize: '0.64rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.artist}</div>
                 </div>
                 <button type="button" onClick={() => onToggleFavorite(track)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, flexShrink: 0 }}>
-                  <Heart size={16} color={isFav(track.id) ? '#ef4444' : 'rgba(255,255,255,0.35)'} fill={isFav(track.id) ? '#ef4444' : 'none'} />
+                  <Heart size={16} color={isFav(track.id) ? '#0b2b1c' : 'rgba(11,43,28,0.35)'} fill={isFav(track.id) ? '#0b2b1c' : 'none'} />
                 </button>
                 <button
                   type="button"
                   onClick={() => onPlayTrack(track)}
                   style={{
-                    background: active && isPlaying ? 'rgba(0,188,212,0.22)' : 'rgba(255,255,255,0.07)',
-                    border: '1px solid rgba(0,188,212,0.3)', borderRadius: 999, width: 30, height: 30,
+                    background: active && isPlaying ? 'rgba(11,43,28,0.22)' : 'rgba(11,43,28,0.07)',
+                    border: '1px solid rgba(11,43,28,0.3)', borderRadius: 999, width: 30, height: 30,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
                   }}
                 >
-                  {active && isPlaying ? <Pause size={13} color="#00BCD4" /> : <Play size={13} color="#00BCD4" style={{ marginRight: -1 }} />}
+                  {active && isPlaying ? <Pause size={13} color='#0b2b1c' /> : <Play size={13} color='#0b2b1c' style={{ marginRight: -1 }} />}
                 </button>
               </div>
             );
@@ -5641,7 +5644,7 @@ export default function SettingsPage() {
   const [scCoinsMsg, setScCoinsMsg] = useState('');
   const [scUsername, setScUsername] = useState('');
   const [scPassword, setScPassword] = useState('');
-  const [scColor, setScColor] = useState('#00BCD4');
+  const [scColor, setScColor] = useState('#0b2b1c');
   const [scMsg, setScMsg] = useState('');
   const [scSaving, setScSaving] = useState(false);
   const [scDeleteOpen, setScDeleteOpen] = useState(false);
@@ -7075,7 +7078,7 @@ export default function SettingsPage() {
         width: 400,
         height: 400,
         borderRadius: '50%',
-        background: `radial-gradient(circle, rgba(0,188,212,0.1) 0%, transparent 70%)`,
+        background: `radial-gradient(circle, rgba(11,43,28,0.1) 0%, transparent 70%)`,
         top: '20%',
         left: '50%',
         transform: 'translate(-50%, -50%)'
@@ -7131,7 +7134,7 @@ export default function SettingsPage() {
                   justifyContent: 'center',
                   background: (supportReplyDot || showSupportReplies) ? 'rgba(249,115,22,0.16)' : 'rgba(148,163,184,0.12)',
                   border: `1px solid ${(supportReplyDot || showSupportReplies) ? 'rgba(249,115,22,0.7)' : 'rgba(148,163,184,0.35)'}`,
-                  color: (supportReplyDot || showSupportReplies) ? '#f97316' : '#94a3b8',
+                  color: (supportReplyDot || showSupportReplies) ? '#0b2b1c' : '#94a3b8',
                   cursor: 'pointer',
                   position: 'relative',
                   transition: 'background 0.2s, border-color 0.2s, color 0.2s',
@@ -7141,7 +7144,7 @@ export default function SettingsPage() {
                 {supportReplies.length > 0 && (
                   <span style={{
                     position: 'absolute', top: -5, right: -5, minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px',
-                    background: '#f97316', color: '#fff', fontSize: '0.6rem', fontWeight: 800,
+                    background: '#0b2b1c', color: '#fff', fontSize: '0.6rem', fontWeight: 800,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #ffffff',
                     boxSizing: 'content-box',
                   }}>
@@ -7163,11 +7166,11 @@ export default function SettingsPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  background: supportReplyDot ? 'rgba(249,115,22,0.16)' : 'rgba(0,188,212,0.12)',
-                  border: `1px solid ${supportReplyDot ? 'rgba(249,115,22,0.7)' : 'rgba(0,188,212,0.4)'}`,
-                  color: supportReplyDot ? '#f97316' : '#00BCD4',
+                  background: supportReplyDot ? 'rgba(249,115,22,0.16)' : 'rgba(11,43,28,0.12)',
+                  border: `1px solid ${supportReplyDot ? 'rgba(249,115,22,0.7)' : 'rgba(11,43,28,0.4)'}`,
+                  color: supportReplyDot ? '#0b2b1c' : '#0b2b1c',
                   cursor: 'pointer',
-                  boxShadow: supportReplyDot ? '0 0 12px rgba(249,115,22,0.4)' : '0 0 12px rgba(0,188,212,0.25)',
+                  boxShadow: supportReplyDot ? '0 0 12px rgba(249,115,22,0.4)' : '0 0 12px rgba(11,43,28,0.25)',
                   position: 'relative',
                   transition: 'background 0.2s, border-color 0.2s, color 0.2s',
                 }}
@@ -7303,7 +7306,7 @@ export default function SettingsPage() {
                     height: 26,
                     borderRadius: '50%',
                     background: 'rgba(0,0,0,0.55)',
-                    border: `1.5px solid rgba(255,255,255,0.15)`,
+                    border: `1.5px solid rgba(11,43,28,0.15)`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -7511,15 +7514,15 @@ export default function SettingsPage() {
                           width: 32,
                           height: 32,
                           borderRadius: '50%',
-                          background: musicIsPlaying ? 'rgba(0,188,212,0.22)' : 'rgba(0,188,212,0.1)',
-                          border: `1px solid ${musicIsPlaying ? 'rgba(0,188,212,0.65)' : 'rgba(0,188,212,0.35)'}`,
-                          color: '#00BCD4',
+                          background: musicIsPlaying ? 'rgba(11,43,28,0.22)' : 'rgba(11,43,28,0.1)',
+                          border: `1px solid ${musicIsPlaying ? 'rgba(11,43,28,0.65)' : 'rgba(11,43,28,0.35)'}`,
+                          color: '#0b2b1c',
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           boxShadow: musicIsPlaying
-                            ? '0 0 10px rgba(0,188,212,0.4)'
+                            ? '0 0 10px rgba(11,43,28,0.4)'
                             : '0 1px 6px rgba(0,0,0,0.2)',
                         }}
                       >
@@ -7543,7 +7546,7 @@ export default function SettingsPage() {
                           borderRadius: '50%',
                           background: walletOpen ? 'rgba(250,204,21,0.22)' : 'rgba(250,204,21,0.1)',
                           border: `1px solid ${walletOpen ? 'rgba(250,204,21,0.65)' : 'rgba(250,204,21,0.35)'}`,
-                          color: '#facc15',
+                          color: '#0b2b1c',
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
@@ -7592,7 +7595,7 @@ export default function SettingsPage() {
                               <span style={{
                                 position: 'absolute', top: -4, right: -4,
                                 minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px',
-                                background: '#ef4444', color: '#fff', fontSize: '0.55rem', fontWeight: 800,
+                                background: '#0b2b1c', color: '#fff', fontSize: '0.55rem', fontWeight: 800,
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                               }}>
                                 {supportUnreadTotal > 9 ? '9+' : supportUnreadTotal}
@@ -7612,7 +7615,7 @@ export default function SettingsPage() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           {supportUnreadTotal > 0 && (
-                            <Bell size={15} style={{ color: '#eab308' }} />
+                            <Bell size={15} style={{ color: '#0b2b1c' }} />
                           )}
                           <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
                         </div>
@@ -7633,10 +7636,10 @@ export default function SettingsPage() {
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                         <div>
                           <p style={{
-                            color: '#eab308', fontSize: '0.62rem', letterSpacing: '0.2em',
+                            color: '#0b2b1c', fontSize: '0.62rem', letterSpacing: '0.2em',
                             textTransform: 'uppercase', fontWeight: 700, margin: 0,
                           }}>My balance</p>
-                          <p style={{ margin: '6px 0 0', color: '#eab308', fontSize: '1.15rem', fontWeight: 900 }}>
+                          <p style={{ margin: '6px 0 0', color: '#0b2b1c', fontSize: '1.15rem', fontWeight: 900 }}>
                             {bizBalance.toFixed(0)} KD
                           </p>
                         </div>
@@ -7645,8 +7648,8 @@ export default function SettingsPage() {
                           aria-label="Add balance"
                           onClick={() => setBizTopUpOpen(true)}
                           style={{
-                            width: 36, height: 36, borderRadius: '50%', border: '1.5px solid rgba(234,179,8,0.55)',
-                            background: 'rgba(234,179,8,0.15)', color: '#eab308', fontWeight: 900,
+                            width: 36, height: 36, borderRadius: '50%', border: '1.5px solid rgba(11,43,28,0.55)',
+                            background: 'rgba(11,43,28,0.15)', color: '#0b2b1c', fontWeight: 900,
                             fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1,
                           }}
                         >
@@ -7768,7 +7771,7 @@ export default function SettingsPage() {
                             </div>
                           </div>
                           {nameMsg && <p style={{
-                      color: '#ef4444',
+                      color: '#0b2b1c',
                       fontSize: '0.68rem',
                       marginTop: 3
                     }}>{nameMsg}</p>}
@@ -7795,7 +7798,7 @@ export default function SettingsPage() {
                     <button
                       type="button"
                       onClick={() => { setShowOwnerInbox(true); setOwnerSupportAlert(null); try { localStorage.setItem('stooorna_owner_support_alerts', '[]'); } catch { /* */ } }}
-                      style={{ width: '100%', marginTop: 10, padding: '12px 14px', borderRadius: 14, cursor: 'pointer', textAlign: 'right', background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.45)', color: '#fff', fontWeight: 800 }}
+                      style={{ width: '100%', marginTop: 10, padding: '12px 14px', borderRadius: 14, cursor: 'pointer', textAlign: 'right', background: 'rgba(11,43,28,0.14)', border: '1px solid rgba(11,43,28,0.45)', color: '#0b2b1c', fontWeight: 800 }}
                     >
                       لديك رساله جديده
                       <span style={{ display: 'block', marginTop: 4, color: 'rgba(255,255,255,0.7)', fontWeight: 600, fontSize: '0.75rem' }}>{ownerSupportAlert}</span>
@@ -7804,13 +7807,13 @@ export default function SettingsPage() {
                   {isOwner && (
                   <div style={{
                 background: T.surface,
-                border: '1px solid rgba(234,179,8,0.35)',
+                border: '1px solid rgba(11,43,28,0.35)',
                 borderRadius: 14,
                 padding: '14px 16px',
                 marginTop: 10,
               }}>
                     <p style={{
-                    color: '#eab308',
+                    color: '#0b2b1c',
                     fontSize: '0.62rem',
                     letterSpacing: '0.2em',
                     textTransform: 'uppercase',
@@ -7818,12 +7821,12 @@ export default function SettingsPage() {
                     margin: '0 0 10px',
                   }}>Profits</p>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
-                      <span style={{ color: '#fff', fontWeight: 900, fontSize: '1.45rem' }}>
+                      <span style={{ color: '#0b2b1c', fontWeight: 900, fontSize: '1.45rem' }}>
                         {Number(appProfits.usd || 0).toFixed(2)}
                       </span>
-                      <span style={{ color: 'rgba(200,220,220,0.55)', fontSize: '0.75rem', fontWeight: 700 }}>USD</span>
+                      <span style={{ color: 'rgba(11,43,28,0.55)', fontSize: '0.75rem', fontWeight: 700 }}>USD</span>
                     </div>
-                    <p style={{ margin: '0 0 12px', color: 'rgba(200,220,220,0.7)', fontSize: '0.78rem' }}>
+                    <p style={{ margin: '0 0 12px', color: 'rgba(11,43,28,0.7)', fontSize: '0.78rem' }}>
                       Coins · {Number(appProfits.coins || 0).toLocaleString('en-US')}
                       <span style={{ color: 'rgba(150,180,180,0.5)', marginLeft: 8 }}>(نصف الدعم وصل للأونر عبر السيرفر)</span>
                     </p>
@@ -7878,7 +7881,7 @@ export default function SettingsPage() {
                       style={{
                         width: '100%', padding: '12px 10px', borderRadius: 12, cursor: payoutBusy ? 'default' : 'pointer',
                         background: 'rgba(250,204,21,0.12)', border: '1.5px solid rgba(250,204,21,0.5)',
-                        color: '#facc15', fontWeight: 800, fontSize: '0.88rem', marginBottom: 8,
+                        color: '#0b2b1c', fontWeight: 800, fontSize: '0.88rem', marginBottom: 8,
                         opacity: payoutBusy || Number(appProfits.usd || 0) <= 0 ? 0.6 : 1,
                       }}
                     >
@@ -7909,7 +7912,7 @@ export default function SettingsPage() {
                       style={{
                         width: '100%', padding: '11px 10px', borderRadius: 12, marginBottom: 8,
                         cursor: resetBusy || Number(appProfits.usd || 0) <= 0 ? 'default' : 'pointer',
-                        background: 'rgba(0,188,212,0.12)', border: '1.5px solid rgba(0,188,212,0.45)',
+                        background: 'rgba(11,43,28,0.12)', border: '1.5px solid rgba(11,43,28,0.45)',
                         color: '#67e8f9', fontWeight: 800, fontSize: '0.84rem',
                         opacity: Number(appProfits.usd || 0) <= 0 ? 0.6 : 1,
                       }}
@@ -7945,14 +7948,14 @@ export default function SettingsPage() {
                       }}
                       style={{
                         width: '100%', padding: '11px 10px', borderRadius: 12, cursor: resetBusy ? 'default' : 'pointer',
-                        background: 'rgba(239,68,68,0.12)', border: '1.5px solid rgba(239,68,68,0.45)',
-                        color: '#ef4444', fontWeight: 800, fontSize: '0.84rem',
+                        background: 'rgba(11,43,28,0.12)', border: '1.5px solid rgba(11,43,28,0.45)',
+                        color: '#0b2b1c', fontWeight: 800, fontSize: '0.84rem',
                       }}
                     >
                       {resetBusy ? '…' : 'تصفير الرصيد'}
                     </button>
                     {profitActionMsg ? (
-                      <p style={{ margin: '8px 0 0', color: '#facc15', fontSize: '0.75rem', fontWeight: 700 }}>{profitActionMsg}</p>
+                      <p style={{ margin: '8px 0 0', color: '#0b2b1c', fontSize: '0.75rem', fontWeight: 700 }}>{profitActionMsg}</p>
                     ) : null}
                   </div>
                   )}
@@ -7960,15 +7963,15 @@ export default function SettingsPage() {
                   {isOwner && (
                   <div style={{
                     background: T.surface,
-                    border: '1px solid rgba(234,179,8,0.45)',
+                    border: '1px solid rgba(11,43,28,0.45)',
                     borderRadius: 14,
                     padding: '14px 16px',
                     marginTop: 10,
                     display: 'flex', alignItems: 'center', gap: 12,
                   }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ margin: 0, color: '#eab308', fontWeight: 800, fontSize: '0.92rem' }}>Control Owner</p>
-                      <p style={{ margin: '4px 0 0', color: 'rgba(200,220,220,0.62)', fontSize: '0.72rem', lineHeight: 1.4 }}>
+                      <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 800, fontSize: '0.92rem' }}>Control Owner</p>
+                      <p style={{ margin: '4px 0 0', color: 'rgba(11,43,28,0.62)', fontSize: '0.72rem', lineHeight: 1.4 }}>
                         أيقونة التطبيق الصفراء تبقى ظاهرة في كل مكان حتى البث. أطفئ المفتاح لإخفائها.
                       </p>
                     </div>
@@ -7983,7 +7986,7 @@ export default function SettingsPage() {
                       }}
                       style={{
                         width: 52, height: 30, borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0,
-                        background: ownerControlOn ? '#eab308' : '#3f3f46', position: 'relative',
+                        background: ownerControlOn ? T.switchOn : T.switchOff, position: 'relative',
                       }}
                     >
                       <span style={{
@@ -8097,7 +8100,7 @@ export default function SettingsPage() {
                             </div>
                           </div>
                           {bioMsg && <p style={{
-                      color: '#ef4444',
+                      color: '#0b2b1c',
                       fontSize: '0.68rem',
                       marginTop: 3
                     }}>{bioMsg}</p>}
@@ -8186,7 +8189,7 @@ export default function SettingsPage() {
                           </motion.button>
                         </div>
                         {usernameMsg && <p style={{
-                    color: usernameMsg === 'Saved!' ? T.primary : '#ef4444',
+                    color: usernameMsg === 'Saved!' ? T.primary : '#0b2b1c',
                     fontSize: '0.7rem'
                   }}>{usernameMsg}</p>}
                       </div> : <div className="flex items-center justify-between">
@@ -8331,7 +8334,7 @@ export default function SettingsPage() {
                             </motion.button>
                           </div>
                           {phoneMsg && <p style={{
-                      color: phoneMsg === 'Saved!' ? T.primary : '#ef4444',
+                      color: phoneMsg === 'Saved!' ? T.primary : '#0b2b1c',
                       fontSize: '0.7rem'
                     }}>{phoneMsg}</p>}
                         </motion.div> : <motion.div key="view-phone" initial={{
@@ -8495,7 +8498,7 @@ export default function SettingsPage() {
                             </motion.button>
                           </div>
                           {emailMsg && <p style={{
-                      color: emailMsg === 'Email updated!' ? T.primary : '#ef4444',
+                      color: emailMsg === 'Email updated!' ? T.primary : '#0b2b1c',
                       fontSize: '0.7rem'
                     }}>{emailMsg}</p>}
                         </motion.div> : <motion.div key="view-email" initial={{
@@ -8656,13 +8659,13 @@ export default function SettingsPage() {
                         paddingTop: 9,
                         paddingBottom: 9,
                         background: T.inputBg,
-                        border: `1px solid ${confirmNewPw && confirmNewPw !== newPw ? 'rgba(239,68,68,0.5)' : T.inputBorder}`,
+                        border: `1px solid ${confirmNewPw && confirmNewPw !== newPw ? 'rgba(11,43,28,0.5)' : T.inputBorder}`,
                         borderRadius: 9,
                         color: T.text,
                         fontSize: '0.85rem',
                         outline: 'none',
                         fontFamily: 'var(--font-sans)'
-                      }} onFocus={e => e.target.style.borderColor = T.inputFocus} onBlur={e => e.target.style.borderColor = confirmNewPw && confirmNewPw !== newPw ? 'rgba(239,68,68,0.5)' : T.inputBorder} />
+                      }} onFocus={e => e.target.style.borderColor = T.inputFocus} onBlur={e => e.target.style.borderColor = confirmNewPw && confirmNewPw !== newPw ? 'rgba(11,43,28,0.5)' : T.inputBorder} />
                           </div>
                           {/* Strength indicator */}
                           {newPw.length > 0 && <div style={{
@@ -8674,7 +8677,7 @@ export default function SettingsPage() {
                         flex: 1,
                         height: 3,
                         borderRadius: 2,
-                        background: newPw.length >= i * 3 ? newPw.length >= 12 ? '#22c55e' : newPw.length >= 8 ? T.primary : '#f59e0b' : 'rgba(255,255,255,0.1)',
+                        background: newPw.length >= i * 3 ? newPw.length >= 12 ? '#22c55e' : newPw.length >= 8 ? T.primary : '#f59e0b' : 'rgba(11,43,28,0.1)',
                         transition: 'background 0.2s'
                       }} />)}
                               <span style={{
@@ -8722,7 +8725,7 @@ export default function SettingsPage() {
                             </motion.button>
                           </div>
                           {pwMsg && <p style={{
-                      color: pwMsg === 'Password changed!' ? T.primary : '#ef4444',
+                      color: pwMsg === 'Password changed!' ? T.primary : '#0b2b1c',
                       fontSize: '0.7rem'
                     }}>{pwMsg}</p>}
                         </motion.div>}
@@ -8872,7 +8875,7 @@ export default function SettingsPage() {
                   gap: 7,
                   padding: '9px',
                   marginTop: 8,
-                  background: 'rgba(0,188,212,0.06)',
+                  background: 'rgba(11,43,28,0.06)',
                   border: `1px solid ${T.primaryBorder}`,
                   borderRadius: 9,
                   color: T.primaryDim,
@@ -8966,7 +8969,7 @@ export default function SettingsPage() {
                       <div style={{
                         display: 'flex', gap: 8, alignItems: 'center',
                         padding: '10px 10px', borderRadius: 12,
-                        background: 'rgba(0,188,212,0.08)', border: `1px solid ${T.primaryBorder}`,
+                        background: 'rgba(11,43,28,0.08)', border: `1px solid ${T.primaryBorder}`,
                       }}>
                         <input
                           readOnly
@@ -9103,8 +9106,8 @@ export default function SettingsPage() {
                   width: 8,
                   height: 8,
                   borderRadius: '50%',
-                  background: '#ef4444',
-                  boxShadow: '0 0 6px rgba(239,68,68,0.6)'
+                  background: '#0b2b1c',
+                  boxShadow: '0 0 6px rgba(11,43,28,0.6)'
                 }} />
                     <p style={{
                   color: T.textMuted,
@@ -9190,13 +9193,13 @@ export default function SettingsPage() {
                       height: 32,
                       borderRadius: 8,
                       flexShrink: 0,
-                      background: 'rgba(239,68,68,0.1)',
-                      border: '1px solid rgba(239,68,68,0.2)',
+                      background: 'rgba(11,43,28,0.1)',
+                      border: '1px solid rgba(11,43,28,0.2)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center'
                     }}>
-                            <Radio size={14} color="#ef4444" strokeWidth={2} />
+                            <Radio size={14} color='#0b2b1c' strokeWidth={2} />
                           </div>
                           <div className="min-w-0">
                             <p style={{
@@ -9223,7 +9226,7 @@ export default function SettingsPage() {
                         {/* Badges + action icons */}
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {durationStr && <span style={{
-                      background: 'rgba(0,188,212,0.1)',
+                      background: 'rgba(11,43,28,0.1)',
                       border: `1px solid ${T.primaryBorder}`,
                       borderRadius: 6,
                       padding: '2px 7px',
@@ -9246,7 +9249,7 @@ export default function SettingsPage() {
                       height: 30,
                       borderRadius: 8,
                       border: 'none',
-                      background: 'rgba(0,188,212,0.1)',
+                      background: 'rgba(11,43,28,0.1)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -9264,14 +9267,14 @@ export default function SettingsPage() {
                       height: 30,
                       borderRadius: 8,
                       border: 'none',
-                      background: 'rgba(239,68,68,0.08)',
+                      background: 'rgba(11,43,28,0.08)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       cursor: 'pointer',
                       flexShrink: 0
                     }}>
-                            <Trash2 size={13} color="#ef4444" strokeWidth={2} />
+                            <Trash2 size={13} color='#0b2b1c' strokeWidth={2} />
                           </motion.button>
                         </div>
                       </div>
@@ -9305,7 +9308,7 @@ export default function SettingsPage() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 6,
-                  background: 'rgba(0,188,212,0.08)',
+                  background: 'rgba(11,43,28,0.08)',
                   border: `1px solid ${T.primaryBorder}`,
                   borderRadius: 10,
                   padding: '9px 16px',
@@ -9326,13 +9329,13 @@ export default function SettingsPage() {
                     opacity: 0,
                     scale: 0.94
                   }} style={{
-                    background: 'rgba(239,68,68,0.06)',
-                    border: '1px solid rgba(239,68,68,0.22)',
+                    background: 'rgba(11,43,28,0.06)',
+                    border: '1px solid rgba(11,43,28,0.22)',
                     borderRadius: 12,
                     padding: '14px 16px'
                   }}>
                             <p style={{
-                      color: '#ef4444',
+                      color: '#0b2b1c',
                       fontSize: '0.78rem',
                       fontWeight: 600,
                       margin: '0 0 10px'
@@ -9355,7 +9358,7 @@ export default function SettingsPage() {
                         padding: '9px',
                         borderRadius: 9,
                         border: 'none',
-                        background: '#ef4444',
+                        background: '#0b2b1c',
                         color: '#fff',
                         fontSize: '0.75rem',
                         fontWeight: 700,
@@ -9394,7 +9397,7 @@ export default function SettingsPage() {
                     opacity: 0,
                     scale: 0.94
                   }} style={{
-                    background: 'rgba(255,255,255,0.04)',
+                    background: 'rgba(11,43,28,0.04)',
                     border: `1px solid ${T.surfaceBorder}`,
                     borderRadius: 12,
                     padding: '14px 16px'
@@ -9448,7 +9451,7 @@ export default function SettingsPage() {
                         padding: '8px 14px',
                         borderRadius: 9,
                         border: 'none',
-                        background: liveRecShareCopied ? 'rgba(34,197,94,0.15)' : `rgba(0,188,212,0.12)`,
+                        background: liveRecShareCopied ? 'rgba(34,197,94,0.15)' : `rgba(11,43,28,0.12)`,
                         color: liveRecShareCopied ? '#22c55e' : T.primary,
                         fontSize: '0.72rem',
                         fontWeight: 700,
@@ -9477,7 +9480,7 @@ export default function SettingsPage() {
                       padding: '10px',
                       borderRadius: 10,
                       border: 'none',
-                      background: `rgba(0,188,212,0.1)`,
+                      background: `rgba(11,43,28,0.1)`,
                       outline: `1px solid ${T.primaryBorder}`,
                       color: T.primary,
                       fontSize: '0.75rem',
@@ -9528,8 +9531,8 @@ export default function SettingsPage() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(239,68,68,0.1)',
-                      border: '1px solid rgba(239,68,68,0.35)', color: '#ef4444',
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(11,43,28,0.1)',
+                      border: '1px solid rgba(11,43,28,0.35)', color: '#0b2b1c',
                     }}>
                       <Users size={19} strokeWidth={2.1} />
                     </span>
@@ -9564,8 +9567,8 @@ export default function SettingsPage() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
-                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308',
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(11,43,28,0.12)',
+                      border: '1px solid rgba(11,43,28,0.35)', color: '#0b2b1c',
                     }}>
                       <ShieldCheck size={19} strokeWidth={2.1} />
                     </span>
@@ -9580,7 +9583,7 @@ export default function SettingsPage() {
                     {loadDeletedUsers().length > 0 && (
                       <span style={{
                         minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
-                        background: '#eab308', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
+                        background: '#0b2b1c', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
                         {loadDeletedUsers().length > 9 ? '9+' : loadDeletedUsers().length}
@@ -9613,8 +9616,8 @@ export default function SettingsPage() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
-                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308', fontWeight: 900, fontSize: '0.72rem',
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(11,43,28,0.12)',
+                      border: '1px solid rgba(11,43,28,0.35)', color: '#0b2b1c', fontWeight: 900, fontSize: '0.72rem',
                     }}>
                       VIP
                     </span>
@@ -9646,8 +9649,8 @@ export default function SettingsPage() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
-                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308', fontWeight: 900, fontSize: '0.72rem',
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(11,43,28,0.12)',
+                      border: '1px solid rgba(11,43,28,0.35)', color: '#0b2b1c', fontWeight: 900, fontSize: '0.72rem',
                     }}>
                       Ads
                     </span>
@@ -9685,8 +9688,8 @@ export default function SettingsPage() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
-                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308',
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(11,43,28,0.12)',
+                      border: '1px solid rgba(11,43,28,0.35)', color: '#0b2b1c',
                     }}>
                       <Briefcase size={19} strokeWidth={2.1} />
                     </span>
@@ -9721,8 +9724,8 @@ export default function SettingsPage() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(239,68,68,0.12)',
-                      border: '1px solid rgba(239,68,68,0.35)', color: '#ef4444',
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(11,43,28,0.12)',
+                      border: '1px solid rgba(11,43,28,0.35)', color: '#0b2b1c',
                     }}>
                       <ShieldCheck size={19} strokeWidth={2.1} />
                     </span>
@@ -9757,8 +9760,8 @@ export default function SettingsPage() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
-                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308',
+                      width: 38, height: 38, borderRadius: 12, background: 'rgba(11,43,28,0.12)',
+                      border: '1px solid rgba(11,43,28,0.35)', color: '#0b2b1c',
                     }}>
                       <Briefcase size={19} strokeWidth={2.1} />
                     </span>
@@ -9773,7 +9776,7 @@ export default function SettingsPage() {
                     {ownerBusinessList.filter(x => x.status === 'pending').length > 0 && (
                       <span style={{
                         minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
-                        background: '#eab308', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
+                        background: '#0b2b1c', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
                         {ownerBusinessList.filter(x => x.status === 'pending').length > 9 ? '9+' : ownerBusinessList.filter(x => x.status === 'pending').length}
@@ -9860,13 +9863,13 @@ export default function SettingsPage() {
             subtitle="Stooorna · الدعم / Support"
           >
             {supportInboxLoading && supportInbox.length === 0 && (
-              <p style={{ color: '#94a3b8', fontSize: '0.84rem', textAlign: 'center', marginTop: 48 }}>جاري التحميل…</p>
+              <p style={{ color: '#0b2b1c', fontSize: '0.84rem', textAlign: 'center', marginTop: 48 }}>جاري التحميل…</p>
             )}
             {!supportInboxLoading && supportInbox.length === 0 && (
               <div style={{ textAlign: 'center', marginTop: 56, padding: '0 20px' }}>
-                <MessageCircle size={36} style={{ color: '#cbd5e1', marginBottom: 12 }} />
-                <p style={{ color: '#0f172a', fontSize: '0.9rem', fontWeight: 600, margin: '0 0 6px' }}>لا توجد تعليقات</p>
-                <p style={{ color: '#94a3b8', fontSize: '0.78rem', margin: 0, lineHeight: 1.5 }}>
+                <MessageCircle size={36} style={{ color: '#0b2b1c', marginBottom: 12 }} />
+                <p style={{ color: '#0b2b1c', fontSize: '0.9rem', fontWeight: 600, margin: '0 0 6px' }}>لا توجد تعليقات</p>
+                <p style={{ color: '#0b2b1c', fontSize: '0.78rem', margin: 0, lineHeight: 1.5 }}>
                   عند إرسال أي مستخدم لمشكلته ستظهر هنا باسمه ويمكنك الرد عليه مباشرة.
                 </p>
               </div>
@@ -9892,7 +9895,7 @@ export default function SettingsPage() {
                     <div style={{ position: 'relative', width: 42, height: 42 }}>
                       <div style={{
                         width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', background: '#e5e7eb',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0a0a0a', fontWeight: 700,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0b2b1c', fontWeight: 700,
                       }}>
                         {peer.avatarUrl
                           ? <img src={peer.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -9909,14 +9912,14 @@ export default function SettingsPage() {
                     whileTap={{ scale: 0.99 }}
                     type="button"
                     onClick={() => setOwnerChatUser(peer)}
-                    style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'start', color: '#0f172a' }}
+                    style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'start', color: '#0b2b1c' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0a0a0a', direction: 'ltr' }}>{handle}</span>
+                      <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0b2b1c', direction: 'ltr' }}>{handle}</span>
                       <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{relTimeAr(peer.lastAt)}</span>
                       {!!peer.unread && peer.unread > 0 && (
                         <span style={{
-                          minWidth: 18, height: 18, borderRadius: 9, padding: '0 5px', background: '#0a0a0a', color: '#fff',
+                          minWidth: 18, height: 18, borderRadius: 9, padding: '0 5px', background: '#ffffff', color: '#0b2b1c',
                           fontSize: '0.64rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         }}>{peer.unread}</span>
                       )}
@@ -9928,7 +9931,7 @@ export default function SettingsPage() {
                     }}>
                       {supportPreview(peer.lastMessage) || peer.lastMessage || 'فتح المحادثة'}
                     </p>
-                    <span style={{ display: 'inline-block', marginTop: 6, fontSize: '0.78rem', fontWeight: 700, color: '#64748b' }}>رد</span>
+                    <span style={{ display: 'inline-block', marginTop: 6, fontSize: '0.78rem', fontWeight: 700, color: '#0b2b1c' }}>رد</span>
                   </motion.button>
 
                   {/* حذف المحادثة — للدعم فقط */}
@@ -9996,7 +9999,7 @@ export default function SettingsPage() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
-              borderBottom: '1px solid rgba(239,68,68,0.3)',
+              borderBottom: '1px solid rgba(11,43,28,0.3)',
               background: 'linear-gradient(180deg, #1a0a0e 0%, #0c0608 100%)',
               minHeight: 52, flexShrink: 0,
             }}>
@@ -10009,12 +10012,12 @@ export default function SettingsPage() {
                   setSupportUsersTab('users');
                   if (dock) window.dispatchEvent(new CustomEvent('stooorna:close-owner-dock'));
                 }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0b2b1c', padding: 2 }}
                 aria-label="Close"
               >
                 <X size={20} />
               </button>
-              <Users size={18} style={{ color: '#ef4444' }} />
+              <Users size={18} style={{ color: '#0b2b1c' }} />
               <p style={{ margin: 0, flex: 1, color: '#fca5a5', fontWeight: 800, fontSize: '0.9rem' }}>
                 تحكم المستخدمين
               </p>
@@ -10022,7 +10025,7 @@ export default function SettingsPage() {
                 type="button"
                 onClick={() => loadOwnerData()}
                 disabled={usersLoading}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(var(--primary))', padding: 4, opacity: usersLoading ? 0.4 : 1, fontSize: '1.1rem', fontWeight: 700 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(152 59% 11%)', padding: 4, opacity: usersLoading ? 0.4 : 1, fontSize: '1.1rem', fontWeight: 700 }}
                 title="إعادة تحميل"
               >
                 {usersLoading ? '…' : '↻'}
@@ -10043,8 +10046,8 @@ export default function SettingsPage() {
                   flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
                   fontWeight: 800, fontSize: '0.8rem',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  background: supportUsersTab === 'users' ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${supportUsersTab === 'users' ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                  background: supportUsersTab === 'users' ? 'rgba(11,43,28,0.18)' : 'rgba(11,43,28,0.04)',
+                  border: `1px solid ${supportUsersTab === 'users' ? 'rgba(11,43,28,0.5)' : 'rgba(11,43,28,0.1)'}`,
                   color: supportUsersTab === 'users' ? '#fca5a5' : 'rgba(200,180,180,0.7)',
                 }}
               >
@@ -10052,7 +10055,7 @@ export default function SettingsPage() {
                 مستخدمين
                 <span style={{
                   fontSize: '0.65rem', fontWeight: 700, opacity: 0.85,
-                  background: supportUsersTab === 'users' ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.06)',
+                  background: supportUsersTab === 'users' ? 'rgba(11,43,28,0.25)' : 'rgba(11,43,28,0.06)',
                   padding: '2px 7px', borderRadius: 8,
                 }}>{allUsers.length}</span>
               </button>
@@ -10063,16 +10066,16 @@ export default function SettingsPage() {
                   flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
                   fontWeight: 800, fontSize: '0.8rem',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  background: supportUsersTab === 'companies' ? 'rgba(0,188,212,0.15)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${supportUsersTab === 'companies' ? 'rgba(0,188,212,0.45)' : 'rgba(255,255,255,0.1)'}`,
-                  color: supportUsersTab === 'companies' ? '#00BCD4' : 'rgba(200,180,180,0.7)',
+                  background: supportUsersTab === 'companies' ? 'rgba(11,43,28,0.15)' : 'rgba(11,43,28,0.04)',
+                  border: `1px solid ${supportUsersTab === 'companies' ? 'rgba(11,43,28,0.45)' : 'rgba(11,43,28,0.1)'}`,
+                  color: supportUsersTab === 'companies' ? '#0b2b1c' : 'rgba(200,180,180,0.7)',
                 }}
               >
                 <Building2 size={14} strokeWidth={2.2} />
                 شركات
                 <span style={{
                   fontSize: '0.65rem', fontWeight: 700, opacity: 0.85,
-                  background: supportUsersTab === 'companies' ? 'rgba(0,188,212,0.2)' : 'rgba(255,255,255,0.06)',
+                  background: supportUsersTab === 'companies' ? 'rgba(11,43,28,0.2)' : 'rgba(11,43,28,0.06)',
                   padding: '2px 7px', borderRadius: 8,
                 }}>{allCompanyCtrlUsers.length}</span>
               </button>
@@ -10088,8 +10091,8 @@ export default function SettingsPage() {
                 style={{
                   width: '100%', boxSizing: 'border-box',
                   padding: '10px 12px', borderRadius: 12,
-                  background: supportUsersTab === 'companies' ? 'rgba(0,188,212,0.06)' : 'rgba(239,68,68,0.06)',
-                  border: `1px solid ${supportUsersTab === 'companies' ? 'rgba(0,188,212,0.25)' : 'rgba(239,68,68,0.25)'}`,
+                  background: supportUsersTab === 'companies' ? 'rgba(11,43,28,0.06)' : 'rgba(11,43,28,0.06)',
+                  border: `1px solid ${supportUsersTab === 'companies' ? 'rgba(11,43,28,0.25)' : 'rgba(11,43,28,0.25)'}`,
                   color: 'rgba(240,220,220,0.95)', fontSize: '0.85rem', outline: 'none',
                 }}
               />
@@ -10100,10 +10103,10 @@ export default function SettingsPage() {
                 <p style={{ textAlign: 'center', color: 'rgba(180,150,150,0.55)', marginTop: 40, fontSize: '0.8rem' }}>جاري التحميل…</p>
               )}
               {!usersLoading && usersError && (
-                <div style={{ margin: '20px 0', padding: '14px', borderRadius: 12, background: 'hsl(var(--destructive)/0.1)', border: '1px solid hsl(var(--destructive)/0.35)', color: 'hsl(var(--destructive))', fontSize: '0.78rem', textAlign: 'center' }}>
+                <div style={{ margin: '20px 0', padding: '14px', borderRadius: 12, background: 'hsl(152 59% 11%/0.1)', border: '1px solid hsl(152 59% 11%/0.35)', color: 'hsl(152 59% 11%)', fontSize: '0.78rem', textAlign: 'center' }}>
                   <p style={{ margin: '0 0 8px', fontWeight: 700 }}>فشل تحميل المستخدمين</p>
                   <p style={{ margin: '0 0 10px', opacity: 0.8, wordBreak: 'break-all' }}>{usersError}</p>
-                  <button type="button" onClick={() => loadOwnerData()} style={{ background: 'hsl(var(--destructive)/0.2)', border: '1px solid hsl(var(--destructive)/0.4)', borderRadius: 8, padding: '6px 14px', color: 'hsl(var(--destructive))', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+                  <button type="button" onClick={() => loadOwnerData()} style={{ background: 'hsl(152 59% 11%/0.2)', border: '1px solid hsl(152 59% 11%/0.4)', borderRadius: 8, padding: '6px 14px', color: 'hsl(152 59% 11%)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
                     إعادة المحاولة
                   </button>
                 </div>
@@ -10127,12 +10130,12 @@ export default function SettingsPage() {
                   return (
                     <div style={{ textAlign: 'center', marginTop: 48, padding: '0 16px' }}>
                       {supportUsersTab === 'companies'
-                        ? <Building2 size={32} style={{ color: 'rgba(0,188,212,0.35)', marginBottom: 10 }} />
-                        : <Users size={32} style={{ color: 'rgba(239,68,68,0.35)', marginBottom: 10 }} />}
-                      <p style={{ color: 'rgba(200,230,230,0.85)', fontSize: '0.88rem', fontWeight: 700, margin: '0 0 6px' }}>
+                        ? <Building2 size={32} style={{ color: 'rgba(11,43,28,0.35)', marginBottom: 10 }} />
+                        : <Users size={32} style={{ color: 'rgba(11,43,28,0.35)', marginBottom: 10 }} />}
+                      <p style={{ color: 'rgba(11,43,28,0.85)', fontSize: '0.88rem', fontWeight: 700, margin: '0 0 6px' }}>
                         {supportUsersTab === 'companies' ? 'لا حسابات شركات' : 'لا مستخدمين'}
                       </p>
-                      <p style={{ color: 'rgba(150,190,190,0.55)', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
+                      <p style={{ color: 'rgba(11,43,28,0.55)', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
                         {supportUsersTab === 'companies'
                           ? 'حسابات الشركات المسجّلة تظهر هنا مع نفس أدوات التحكم (لون اليوزر · تعديل اليوزر · كلمة المرور · حظر).'
                           : 'لا نتائج مطابقة للبحث.'}
@@ -10142,7 +10145,7 @@ export default function SettingsPage() {
                 }
                 return filtered.map(u => {
                   const online = ownerPresence[u.id]?.online ?? false;
-                  const color = (u as SupportCtrlUser).nameColor || (supportUsersTab === 'companies' ? '#00BCD4' : '#00BCD4');
+                  const color = (u as SupportCtrlUser).nameColor || (supportUsersTab === 'companies' ? '#0b2b1c' : '#0b2b1c');
                   const isCo = supportUsersTab === 'companies';
                   const title = isCo
                     ? preferredCompanyDisplayName(u)
@@ -10167,7 +10170,7 @@ export default function SettingsPage() {
                         });
                         setScUsername(u.username || '');
                         setScPassword('');
-                        setScColor((u as SupportCtrlUser).nameColor || '#00BCD4');
+                        setScColor((u as SupportCtrlUser).nameColor || '#0b2b1c');
                         setScMsg('');
                         setScEditBox(null);
                       }}
@@ -10175,18 +10178,18 @@ export default function SettingsPage() {
                         display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                         padding: '12px 14px', borderRadius: 14, cursor: 'pointer', textAlign: 'left',
                         background: u.isBanned
-                          ? 'rgba(239,68,68,0.1)'
-                          : isCo ? 'rgba(0,188,212,0.05)' : 'rgba(255,255,255,0.03)',
+                          ? 'rgba(11,43,28,0.1)'
+                          : isCo ? 'rgba(11,43,28,0.05)' : 'rgba(11,43,28,0.03)',
                         border: `1px solid ${u.isBanned
-                          ? 'rgba(239,68,68,0.35)'
-                          : isCo ? 'rgba(0,188,212,0.2)' : 'rgba(255,255,255,0.08)'}`,
+                          ? 'rgba(11,43,28,0.35)'
+                          : isCo ? 'rgba(11,43,28,0.2)' : 'rgba(11,43,28,0.08)'}`,
                         color: 'rgba(230,220,220,0.95)',
                       }}
                     >
                       <div style={{ position: 'relative', width: 42, height: 42, flexShrink: 0 }}>
                         <div style={{
                           width: 42, height: 42, borderRadius: '50%',
-                          background: isCo ? 'rgba(0,188,212,0.12)' : 'rgba(0,0,0,0.35)',
+                          background: isCo ? 'rgba(11,43,28,0.12)' : 'rgba(0,0,0,0.35)',
                           border: `2px solid ${color}`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           color, fontWeight: 800, fontSize: '0.8rem',
@@ -10222,15 +10225,15 @@ export default function SettingsPage() {
                       </div>
                       {isCo && (
                         <span style={{
-                          fontSize: '0.58rem', fontWeight: 800, color: '#00BCD4',
-                          background: 'rgba(0,188,212,0.12)', padding: '3px 7px', borderRadius: 8,
-                          border: '1px solid rgba(0,188,212,0.3)', flexShrink: 0,
+                          fontSize: '0.58rem', fontWeight: 800, color: '#0b2b1c',
+                          background: 'rgba(11,43,28,0.12)', padding: '3px 7px', borderRadius: 8,
+                          border: '1px solid rgba(11,43,28,0.3)', flexShrink: 0,
                         }}>شركة</span>
                       )}
                       {u.isBanned && (
                         <span style={{
-                          fontSize: '0.6rem', fontWeight: 800, color: '#ef4444',
-                          background: 'rgba(239,68,68,0.15)', padding: '3px 7px', borderRadius: 8,
+                          fontSize: '0.6rem', fontWeight: 800, color: '#0b2b1c',
+                          background: 'rgba(11,43,28,0.15)', padding: '3px 7px', borderRadius: 8,
                         }}>BAN</span>
                       )}
                     </motion.button>
@@ -10267,7 +10270,7 @@ export default function SettingsPage() {
                 overflowY: 'auto',
                 background: 'linear-gradient(180deg, #1a1014 0%, #0c080a 100%)',
                 borderTopLeftRadius: 22, borderTopRightRadius: 22,
-                border: '1px solid rgba(239,68,68,0.3)',
+                border: '1px solid rgba(11,43,28,0.3)',
                 padding: '16px 16px max(20px, env(safe-area-inset-bottom))',
                 boxSizing: 'border-box',
               }}
@@ -10275,9 +10278,9 @@ export default function SettingsPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
                 <div style={{
                   width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
-                  border: `2px solid ${supportCtrlUser.nameColor || 'hsl(var(--primary))'}`,
+                  border: `2px solid ${supportCtrlUser.nameColor || 'hsl(152 59% 11%)'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: supportCtrlUser.nameColor || 'hsl(var(--primary))', fontWeight: 800, fontSize: '1rem',
+                  color: supportCtrlUser.nameColor || 'hsl(152 59% 11%)', fontWeight: 800, fontSize: '1rem',
                   background: 'rgba(0,0,0,0.35)',
                   overflow: 'hidden',
                 }}>
@@ -10288,13 +10291,13 @@ export default function SettingsPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{
                     margin: 0, fontWeight: 800, fontSize: '1rem',
-                    color: supportCtrlUser.nameColor || 'hsl(var(--primary))',
+                    color: supportCtrlUser.nameColor || 'hsl(152 59% 11%)',
                     display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
                   }}>
                     @{supportCtrlUser.username || '—'}
                     {isPublicBusinessAccount(supportCtrlUser) && <BusinessHeadBadge compact />}
                   </p>
-                  <p style={{ margin: '2px 0 0', color: 'hsl(var(--muted-foreground))', fontSize: '0.72rem' }}>
+                  <p style={{ margin: '2px 0 0', color: 'hsl(152 25% 28%)', fontSize: '0.72rem' }}>
                     {supportCtrlUser.name || 'بدون اسم'}
                   </p>
                 </div>
@@ -10321,9 +10324,9 @@ export default function SettingsPage() {
                       navigate(`/?${q.toString()}`);
                     }}
                     style={{
-                      background: 'hsl(var(--primary) / 0.12)', border: '1px solid hsl(var(--primary) / 0.35)',
+                      background: 'hsl(152 59% 11% / 0.12)', border: '1px solid hsl(152 59% 11% / 0.35)',
                       borderRadius: 10, padding: '6px 10px', cursor: 'pointer',
-                      color: 'hsl(var(--primary))', display: 'flex', alignItems: 'center', gap: 5,
+                      color: 'hsl(152 59% 11%)', display: 'flex', alignItems: 'center', gap: 5,
                       fontSize: '0.72rem', fontWeight: 700, flexShrink: 0,
                     }}
                   >
@@ -10345,8 +10348,8 @@ export default function SettingsPage() {
 
               {/* Info card */}
               <div style={{
-                background: 'rgba(255,255,255,0.04)', borderRadius: 14,
-                border: '1px solid rgba(255,255,255,0.08)', padding: '12px 14px',
+                background: 'rgba(11,43,28,0.04)', borderRadius: 14,
+                border: '1px solid rgba(11,43,28,0.08)', padding: '12px 14px',
                 display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14,
                 fontSize: '0.78rem', color: 'rgba(220,200,200,0.9)',
               }}>
@@ -10370,12 +10373,12 @@ export default function SettingsPage() {
               {/* Owner: grant 8 speakers (VIP mic cap) — User Control only */}
                 <div style={{
                   marginTop: 12, padding: '12px 12px', borderRadius: 12,
-                  background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)',
+                  background: 'rgba(11,43,28,0.08)', border: '1px solid rgba(11,43,28,0.3)',
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ margin: 0, color: '#eab308', fontWeight: 800, fontSize: '0.82rem' }}>مميزات VIP · عدد المتحدثين</p>
-                      <p style={{ margin: '4px 0 0', color: 'rgba(200,220,220,0.65)', fontSize: '0.7rem', lineHeight: 1.4 }}>
+                      <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 800, fontSize: '0.82rem' }}>مميزات VIP · عدد المتحدثين</p>
+                      <p style={{ margin: '4px 0 0', color: 'rgba(11,43,28,0.65)', fontSize: '0.7rem', lineHeight: 1.4 }}>
                         تفعيل 8 متحدثين في البث الصوتي والمرئي للحساب (بدلاً من 4)
                       </p>
                     </div>
@@ -10390,7 +10393,7 @@ export default function SettingsPage() {
                       }}
                       style={{
                         width: 48, height: 28, borderRadius: 999, border: 'none', flexShrink: 0,
-                        background: getVipFeats(supportCtrlUser.id).eightMics ? '#eab308' : '#4b5563',
+                        background: getVipFeats(supportCtrlUser.id).eightMics ? T.switchOn : T.switchOff,
                         position: 'relative', cursor: 'pointer',
                       }}
                     >
@@ -10410,7 +10413,7 @@ export default function SettingsPage() {
               {scMsg && (
                 <p style={{
                   margin: '0 0 12px', textAlign: 'center', fontSize: '0.78rem', fontWeight: 600,
-                  color: scMsg.includes('تم') || scMsg.toLowerCase().includes('ok') ? '#22c55e' : '#ef4444',
+                  color: scMsg.includes('تم') || scMsg.toLowerCase().includes('ok') ? '#22c55e' : '#0b2b1c',
                 }}>
                   {scMsg}
                 </p>
@@ -10422,21 +10425,21 @@ export default function SettingsPage() {
                   onClick={() => { setScEditBox(scEditBox === 'color' ? null : 'color'); setScMsg(''); }}
                   style={{
                     padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
-                    background: 'rgba(0,188,212,0.1)', border: '1px solid rgba(0,188,212,0.35)',
-                    color: '#00BCD4', fontWeight: 700, fontSize: '0.85rem',
+                    background: 'rgba(11,43,28,0.1)', border: '1px solid rgba(11,43,28,0.35)',
+                    color: '#0b2b1c', fontWeight: 700, fontSize: '0.85rem',
                   }}>
                   🎨 تغيير لون اليوزر
                 </motion.button>
                 {scEditBox === 'color' && (
                   <div style={{
                     padding: 12, borderRadius: 12, background: 'rgba(0,0,0,0.35)',
-                    border: '1px solid rgba(0,188,212,0.2)', display: 'flex', flexDirection: 'column', gap: 10,
+                    border: '1px solid rgba(11,43,28,0.2)', display: 'flex', flexDirection: 'column', gap: 10,
                   }}>
                     {/* Quick color swatches — each with instant activate button */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {([
-                        ['#00BCD4','سماوي'],['#22c55e','أخضر'],['#eab308','ذهبي'],['#ef4444','أحمر'],
-                        ['#a855f7','بنفسجي'],['#f97316','برتقالي'],['#ec4899','وردي'],['#3b82f6','أزرق'],
+                        ['#0b2b1c','سماوي'],['#22c55e','أخضر'],['#0b2b1c','ذهبي'],['#0b2b1c','أحمر'],
+                        ['#a855f7','بنفسجي'],['#0b2b1c','برتقالي'],['#ec4899','وردي'],['#3b82f6','أزرق'],
                         ['#ffffff','أبيض'],['#94a3b8','رمادي'],['#14b8a6','زمردي'],['#f43f5e','قرمزي'],
                       ] as [string, string][]).map(([c, label]) => (
                         <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -10446,7 +10449,7 @@ export default function SettingsPage() {
                             style={{
                               width: 26, height: 26, borderRadius: '50%', background: c, cursor: 'pointer', flexShrink: 0,
                               border: scColor === c ? '2px solid #fff' : '2px solid transparent',
-                              boxShadow: scColor === c ? '0 0 0 2px rgba(0,188,212,0.6)' : 'none',
+                              boxShadow: scColor === c ? '0 0 0 2px rgba(11,43,28,0.6)' : 'none',
                             }}
                           />
                           <span style={{ fontSize: '0.78rem', color: c, fontWeight: 700, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -10482,19 +10485,19 @@ export default function SettingsPage() {
                     </div>
 
                     {/* Custom color picker */}
-                    <div style={{ borderTop: '1px solid hsl(var(--border))', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'hsl(var(--muted-foreground))', fontWeight: 600 }}>لون مخصص</p>
+                    <div style={{ borderTop: '1px solid hsl(152 30% 30%)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: 'hsl(152 25% 28%)', fontWeight: 600 }}>لون مخصص</p>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <input type="color" value={scColor} onChange={e => setScColor(e.target.value)}
                           style={{ width: 44, height: 36, border: 'none', background: 'none', cursor: 'pointer' }} />
                         <input
                           value={scColor}
                           onChange={e => setScColor(e.target.value)}
-                          placeholder="#00BCD4"
+                          placeholder='#0b2b1c'
                           style={{
                             flex: 1, padding: '8px 10px', borderRadius: 8, outline: 'none',
-                            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-                            color: '#fff', fontSize: '0.85rem',
+                            background: 'rgba(11,43,28,0.05)', border: '1px solid rgba(11,43,28,0.12)',
+                            color: '#0b2b1c', fontSize: '0.85rem',
                           }}
                         />
                       </div>
@@ -10516,7 +10519,7 @@ export default function SettingsPage() {
                         }}
                         style={{
                           padding: '10px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                          background: scColor, color: '#041018', fontWeight: 800, fontSize: '0.85rem',
+                          background: scColor, color: '#0b2b1c', fontWeight: 800, fontSize: '0.85rem',
                         }}>
                         {scSaving ? '…' : 'تفعيل اللون المخصص'}
                       </motion.button>
@@ -10544,8 +10547,8 @@ export default function SettingsPage() {
                       placeholder="اليوزر الجديد (حرف واحد فأكثر)"
                       style={{
                         padding: '10px 12px', borderRadius: 10, outline: 'none',
-                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-                        color: '#fff', fontSize: '0.9rem',
+                        background: 'rgba(11,43,28,0.05)', border: '1px solid rgba(11,43,28,0.12)',
+                        color: '#0b2b1c', fontSize: '0.9rem',
                       }}
                     />
                     <motion.button whileTap={{ scale: 0.97 }} type="button" disabled={scSaving || !scUsername.trim()}
@@ -10565,7 +10568,7 @@ export default function SettingsPage() {
                       }}
                       style={{
                         padding: '10px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                        background: '#a855f7', color: '#fff', fontWeight: 800, fontSize: '0.85rem',
+                        background: '#a855f7', color: '#0b2b1c', fontWeight: 800, fontSize: '0.85rem',
                         opacity: !scUsername.trim() ? 0.5 : 1,
                       }}>
                       {scSaving ? '…' : 'حفظ اليوزر'}
@@ -10597,8 +10600,8 @@ export default function SettingsPage() {
                       placeholder="عدد الكوينز"
                       style={{
                         padding: '10px 12px', borderRadius: 10, outline: 'none',
-                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-                        color: '#fff', fontSize: '0.9rem',
+                        background: 'rgba(11,43,28,0.05)', border: '1px solid rgba(11,43,28,0.12)',
+                        color: '#0b2b1c', fontSize: '0.9rem',
                       }}
                     />
                     <motion.button whileTap={{ scale: 0.97 }} type="button" disabled={scSaving}
@@ -10614,7 +10617,7 @@ export default function SettingsPage() {
                       }}
                       style={{
                         padding: '10px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                        background: '#8b12ff', color: '#fff', fontWeight: 800, fontSize: '0.85rem',
+                        background: '#8b12ff', color: '#0b2b1c', fontWeight: 800, fontSize: '0.85rem',
                       }}>
                       تنفيذ الأمر
                     </motion.button>
@@ -10625,15 +10628,15 @@ export default function SettingsPage() {
                   onClick={() => { setScEditBox(scEditBox === 'password' ? null : 'password'); setScMsg(''); setScPassword(''); }}
                   style={{
                     padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
-                    background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.35)',
-                    color: '#eab308', fontWeight: 700, fontSize: '0.85rem',
+                    background: 'rgba(11,43,28,0.1)', border: '1px solid rgba(11,43,28,0.35)',
+                    color: '#0b2b1c', fontWeight: 700, fontSize: '0.85rem',
                   }}>
                   🔑 تغيير كلمة المرور (بدون معرفة القديمة)
                 </motion.button>
                 {scEditBox === 'password' && (
                   <div style={{
                     padding: 12, borderRadius: 12, background: 'rgba(0,0,0,0.35)',
-                    border: '1px solid rgba(234,179,8,0.2)', display: 'flex', flexDirection: 'column', gap: 10,
+                    border: '1px solid rgba(11,43,28,0.2)', display: 'flex', flexDirection: 'column', gap: 10,
                   }}>
                     <input
                       type="text"
@@ -10642,8 +10645,8 @@ export default function SettingsPage() {
                       placeholder="كلمة المرور الجديدة"
                       style={{
                         padding: '10px 12px', borderRadius: 10, outline: 'none',
-                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-                        color: '#fff', fontSize: '0.9rem',
+                        background: 'rgba(11,43,28,0.05)', border: '1px solid rgba(11,43,28,0.12)',
+                        color: '#0b2b1c', fontSize: '0.9rem',
                       }}
                     />
                     <motion.button whileTap={{ scale: 0.97 }} type="button" disabled={scSaving || scPassword.length < 1}
@@ -10664,7 +10667,7 @@ export default function SettingsPage() {
                       }}
                       style={{
                         padding: '10px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                        background: '#eab308', color: '#1a1400', fontWeight: 800, fontSize: '0.85rem',
+                        background: '#0b2b1c', color: '#1a1400', fontWeight: 800, fontSize: '0.85rem',
                         opacity: scPassword.length < 1 ? 0.5 : 1,
                       }}>
                       {scSaving ? '…' : 'حفظ كلمة المرور'}
@@ -10684,8 +10687,8 @@ export default function SettingsPage() {
                   }}
                   style={{
                     padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
-                    background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.4)',
-                    color: '#eab308', fontWeight: 700, fontSize: '0.85rem',
+                    background: 'rgba(11,43,28,0.1)', border: '1px solid rgba(11,43,28,0.4)',
+                    color: '#0b2b1c', fontWeight: 700, fontSize: '0.85rem',
                     opacity: scSaving ? 0.6 : 1,
                   }}>
                   👑 إزالة خاصية VIP{ownerVipActive(supportCtrlUser.id) ? ' (مفعّل)' : ''}
@@ -10706,7 +10709,7 @@ export default function SettingsPage() {
                   style={{
                     padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
                     background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.35)',
-                    color: '#facc15', fontWeight: 700, fontSize: '0.85rem',
+                    color: '#0b2b1c', fontWeight: 700, fontSize: '0.85rem',
                     opacity: scSaving ? 0.6 : 1,
                   }}>
                   💼 إزالة خاصية Business{isPublicBusinessAccount(supportCtrlUser) ? ' (مفعّل)' : ''}
@@ -10728,9 +10731,9 @@ export default function SettingsPage() {
                   }}
                   style={{
                     padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
-                    background: supportCtrlUser.isBanned ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-                    border: `1px solid ${supportCtrlUser.isBanned ? 'rgba(34,197,94,0.4)' : 'rgba(239,68,68,0.4)'}`,
-                    color: supportCtrlUser.isBanned ? '#22c55e' : '#ef4444',
+                    background: supportCtrlUser.isBanned ? 'rgba(34,197,94,0.12)' : 'rgba(11,43,28,0.12)',
+                    border: `1px solid ${supportCtrlUser.isBanned ? 'rgba(34,197,94,0.4)' : 'rgba(11,43,28,0.4)'}`,
+                    color: supportCtrlUser.isBanned ? '#22c55e' : '#0b2b1c',
                     fontWeight: 800, fontSize: '0.85rem',
                   }}>
                   {supportCtrlUser.isBanned ? '✅ رفع الحظر' : '🚫 حظر / طرد من التطبيق'}
@@ -10747,7 +10750,7 @@ export default function SettingsPage() {
                     padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
                     background: 'rgba(249,115,22,0.16)',
                     border: '1px solid rgba(249,115,22,0.5)',
-                    color: '#f97316',
+                    color: '#0b2b1c',
                     fontWeight: 800, fontSize: '0.85rem',
                     display: 'flex', alignItems: 'center', gap: 8,
                   }}>
@@ -10770,9 +10773,9 @@ export default function SettingsPage() {
                   }}
                   style={{
                     padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
-                    background: 'rgba(239,68,68,0.18)',
-                    border: '1px solid rgba(239,68,68,0.45)',
-                    color: '#ef4444',
+                    background: 'rgba(11,43,28,0.18)',
+                    border: '1px solid rgba(11,43,28,0.45)',
+                    color: '#0b2b1c',
                     fontWeight: 800, fontSize: '0.85rem',
                     display: 'flex', alignItems: 'center', gap: 8,
                     opacity: isSupportOwnerAccount(supportCtrlUser, supportCtrlUser.username) ? 0.45 : 1,
@@ -10815,7 +10818,7 @@ export default function SettingsPage() {
                 width: '100%',
                 maxWidth: 340,
                 background: 'linear-gradient(160deg, #1a1212 0%, #0e0a0a 100%)',
-                border: '1px solid rgba(239,68,68,0.35)',
+                border: '1px solid rgba(11,43,28,0.35)',
                 borderRadius: 16,
                 padding: '22px 18px',
                 display: 'flex',
@@ -10826,30 +10829,30 @@ export default function SettingsPage() {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                 <div style={{
                   width: 48, height: 48, borderRadius: '50%',
-                  background: 'rgba(239,68,68,0.15)',
-                  border: '1px solid rgba(239,68,68,0.35)',
+                  background: 'rgba(11,43,28,0.15)',
+                  border: '1px solid rgba(11,43,28,0.35)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Trash2 size={22} color="#ef4444" strokeWidth={2} />
+                  <Trash2 size={22} color='#0b2b1c' strokeWidth={2} />
                 </div>
-                <p style={{ color: 'rgba(200,230,230,0.95)', fontSize: '0.92rem', fontWeight: 800, margin: 0, textAlign: 'center' }}>
+                <p style={{ color: 'rgba(11,43,28,0.95)', fontSize: '0.92rem', fontWeight: 800, margin: 0, textAlign: 'center' }}>
                   تأكيد حذف الحساب
                 </p>
               </div>
               <p style={{
-                color: 'rgba(150,190,190,0.7)', fontSize: '0.78rem', lineHeight: 1.55,
+                color: 'rgba(11,43,28,0.7)', fontSize: '0.78rem', lineHeight: 1.55,
                 textAlign: 'center', margin: 0,
               }}>
                 سيتم حذف
                 {' '}
-                <span style={{ color: '#ef4444', fontWeight: 800 }}>
+                <span style={{ color: '#0b2b1c', fontWeight: 800 }}>
                   @{(supportCtrlUser?.username || ownerDeleteCompany?.username || supportCtrlUser?.email || ownerDeleteCompany?.email)}
                 </span>
                 {' '}
                 وكل بياناته من التطبيق نهائياً. لا يمكن التراجع.
               </p>
-              <p style={{ color: 'rgba(150,190,190,0.65)', fontSize: '0.72rem', textAlign: 'center', margin: 0 }}>
-                اكتب <span style={{ color: '#ef4444', fontWeight: 700 }}>حذف</span> أو <span style={{ color: '#ef4444', fontWeight: 700 }}>delete</span> للتأكيد
+              <p style={{ color: 'rgba(11,43,28,0.65)', fontSize: '0.72rem', textAlign: 'center', margin: 0 }}>
+                اكتب <span style={{ color: '#0b2b1c', fontWeight: 700 }}>حذف</span> أو <span style={{ color: '#0b2b1c', fontWeight: 700 }}>delete</span> للتأكيد
               </p>
               <input
                 value={scDeleteText}
@@ -10859,13 +10862,13 @@ export default function SettingsPage() {
                 autoFocus
                 style={{
                   width: '100%', boxSizing: 'border-box', padding: '11px 12px',
-                  borderRadius: 10, border: '1px solid rgba(239,68,68,0.35)',
-                  background: 'rgba(0,0,0,0.35)', color: 'rgba(200,230,230,0.95)',
+                  borderRadius: 10, border: '1px solid rgba(11,43,28,0.35)',
+                  background: 'rgba(0,0,0,0.35)', color: 'rgba(11,43,28,0.95)',
                   fontSize: '0.88rem', outline: 'none', textAlign: 'center',
                 }}
               />
               {scDeleteError ? (
-                <p style={{ color: '#ef4444', fontSize: '0.72rem', margin: 0, textAlign: 'center' }}>{scDeleteError}</p>
+                <p style={{ color: '#0b2b1c', fontSize: '0.72rem', margin: 0, textAlign: 'center' }}>{scDeleteError}</p>
               ) : null}
               <div style={{ display: 'flex', gap: 10 }}>
                 <motion.button
@@ -10875,9 +10878,9 @@ export default function SettingsPage() {
                   onClick={() => setScDeleteOpen(false)}
                   style={{
                     flex: 1, padding: '11px', borderRadius: 10,
-                    border: '1px solid rgba(0,188,212,0.2)',
-                    background: 'rgba(0,188,212,0.08)',
-                    color: 'rgba(200,230,230,0.9)',
+                    border: '1px solid rgba(11,43,28,0.2)',
+                    background: 'rgba(11,43,28,0.08)',
+                    color: 'rgba(11,43,28,0.9)',
                     fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
                   }}
                 >
@@ -10927,9 +10930,9 @@ export default function SettingsPage() {
                   }}
                   style={{
                     flex: 1, padding: '11px', borderRadius: 10,
-                    border: '1px solid rgba(239,68,68,0.4)',
-                    background: 'rgba(239,68,68,0.22)',
-                    color: '#ef4444',
+                    border: '1px solid rgba(11,43,28,0.4)',
+                    background: 'rgba(11,43,28,0.22)',
+                    color: '#0b2b1c',
                     fontSize: '0.82rem', fontWeight: 800,
                     cursor: scDeleting ? 'wait' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -10965,47 +10968,47 @@ export default function SettingsPage() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
-              borderBottom: '1px solid rgba(0,188,212,0.25)',
+              borderBottom: '1px solid rgba(11,43,28,0.25)',
               background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
               minHeight: 52, flexShrink: 0,
             }}>
               <button
                 type="button"
                 onClick={() => startTransition(() => setShowOwnerCompanies(false))}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00BCD4', padding: 2 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0b2b1c', padding: 2 }}
                 aria-label="Close"
               >
                 <X size={20} />
               </button>
-              <Building2 size={18} style={{ color: '#00BCD4' }} />
-              <p style={{ margin: 0, flex: 1, color: '#00BCD4', fontWeight: 800, fontSize: '0.9rem' }}>
+              <Building2 size={18} style={{ color: '#0b2b1c' }} />
+              <p style={{ margin: 0, flex: 1, color: '#0b2b1c', fontWeight: 800, fontSize: '0.9rem' }}>
                 Companies
               </p>
               <button
                 type="button"
                 onClick={() => refreshOwnerCompanies()}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#00BCD4', fontWeight: 700, fontSize: '1.1rem' }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0b2b1c', fontWeight: 700, fontSize: '1.1rem' }}
                 title="تحديث"
               >
                 ↻
               </button>
-              <span style={{ color: 'rgba(150,190,190,0.6)', fontSize: '0.7rem' }}>{ownerCompanies.filter(c => !/nadoosha/i.test(`${c.email} ${c.username || c.companyName || ''}`)).length}</span>
+              <span style={{ color: 'rgba(11,43,28,0.6)', fontSize: '0.7rem' }}>{ownerCompanies.filter(c => !/nadoosha/i.test(`${c.email} ${c.username || c.companyName || ''}`)).length}</span>
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px 24px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {ownerCompanies.length === 0 && (
                 <div style={{ textAlign: 'center', marginTop: 48, padding: '0 16px' }}>
-                  <Building2 size={32} style={{ color: 'rgba(0,188,212,0.35)', marginBottom: 10 }} />
-                  <p style={{ color: 'rgba(200,230,230,0.85)', fontSize: '0.88rem', fontWeight: 700, margin: '0 0 6px' }}>
+                  <Building2 size={32} style={{ color: 'rgba(11,43,28,0.35)', marginBottom: 10 }} />
+                  <p style={{ color: 'rgba(11,43,28,0.85)', fontSize: '0.88rem', fontWeight: 700, margin: '0 0 6px' }}>
                     No registered companies yet
                   </p>
-                  <p style={{ color: 'rgba(150,190,190,0.55)', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
+                  <p style={{ color: 'rgba(11,43,28,0.55)', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
                     Companies that register from the auth screen (Companies tab) appear here only — separate from User Control.
                   </p>
                 </div>
               )}
               {ownerPendingCompanyCount > 0 && (
-                <p style={{ margin: '4px 0 2px', color: '#eab308', fontWeight: 800, fontSize: '0.78rem', textAlign: 'right' }}>
+                <p style={{ margin: '4px 0 2px', color: '#0b2b1c', fontWeight: 800, fontSize: '0.78rem', textAlign: 'right' }}>
                   طلبات بانتظار الموافقة ({ownerPendingCompanyCount})
                 </p>
               )}
@@ -11013,13 +11016,13 @@ export default function SettingsPage() {
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
                 padding: '12px 14px', borderRadius: 14, marginBottom: 8,
-                background: 'rgba(0,188,212,0.08)', border: '1px solid rgba(0,188,212,0.3)',
+                background: 'rgba(11,43,28,0.08)', border: '1px solid rgba(11,43,28,0.3)',
               }}>
                 <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
-                  <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, fontSize: '0.82rem' }}>
+                  <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 800, fontSize: '0.82rem' }}>
                     يوزرنيم للشركات
                   </p>
-                  <p style={{ margin: '4px 0 0', color: 'rgba(150,190,190,0.75)', fontSize: '0.7rem', lineHeight: 1.4 }}>
+                  <p style={{ margin: '4px 0 0', color: 'rgba(11,43,28,0.75)', fontSize: '0.7rem', lineHeight: 1.4 }}>
                     عند التشغيل تظهر للشركات إضافة يوزرنيم في إعداداتهم. عند الإيقاف تختفي الميزة.
                   </p>
                 </div>
@@ -11032,7 +11035,7 @@ export default function SettingsPage() {
                   }}
                   style={{
                     width: 52, height: 30, borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0,
-                    background: ownerCoUsernameFeature ? '#00BCD4' : 'rgba(100,130,140,0.35)',
+                    background: ownerCoUsernameFeature ? T.switchOn : T.switchOff,
                     position: 'relative', transition: 'background 0.2s',
                   }}
                   aria-label="Toggle company username feature"
@@ -11060,8 +11063,8 @@ export default function SettingsPage() {
                     style={{
                       display: 'flex', alignItems: 'stretch', gap: 0,
                       borderRadius: 14, overflow: 'hidden',
-                      border: `1px solid ${isActive ? 'rgba(34,197,94,0.35)' : isPending ? 'rgba(234,179,8,0.35)' : 'rgba(239,68,68,0.3)'}`,
-                      background: isActive ? 'rgba(34,197,94,0.06)' : isPending ? 'rgba(234,179,8,0.06)' : 'rgba(239,68,68,0.06)',
+                      border: `1px solid ${isActive ? 'rgba(34,197,94,0.35)' : isPending ? 'rgba(11,43,28,0.35)' : 'rgba(11,43,28,0.3)'}`,
+                      background: isActive ? 'rgba(34,197,94,0.06)' : isPending ? 'rgba(11,43,28,0.06)' : 'rgba(11,43,28,0.06)',
                     }}
                   >
                     <button
@@ -11081,12 +11084,12 @@ export default function SettingsPage() {
                       style={{
                         flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4,
                         padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'right',
-                        color: 'rgba(200,230,230,0.95)',
+                        color: 'rgba(11,43,28,0.95)',
                       }}
                     >
-                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#00BCD4' }}>{displayName}</span>
-                      <span style={{ fontSize: '0.72rem', color: 'rgba(150,190,190,0.75)' }}>{displayTrade}</span>
-                      <span style={{ fontSize: '0.65rem', color: 'rgba(150,190,190,0.55)' }}>{co.email}</span>
+                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0b2b1c' }}>{displayName}</span>
+                      <span style={{ fontSize: '0.72rem', color: 'rgba(11,43,28,0.75)' }}>{displayTrade}</span>
+                      <span style={{ fontSize: '0.65rem', color: 'rgba(11,43,28,0.55)' }}>{co.email}</span>
                     </button>
                     <button
                       type="button"
@@ -11106,9 +11109,9 @@ export default function SettingsPage() {
                       }}
                       style={{
                         width: 44, flexShrink: 0, border: 'none', cursor: 'pointer',
-                        background: 'rgba(0,188,212,0.1)',
-                        borderLeft: '1px solid rgba(0,188,212,0.2)',
-                        color: '#00BCD4',
+                        background: 'rgba(11,43,28,0.1)',
+                        borderLeft: '1px solid rgba(11,43,28,0.2)',
+                        color: '#0b2b1c',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
                     >
@@ -11126,9 +11129,9 @@ export default function SettingsPage() {
                       }}
                       style={{
                         width: 44, flexShrink: 0, border: 'none', cursor: 'pointer',
-                        background: 'rgba(239,68,68,0.12)',
-                        borderLeft: '1px solid rgba(239,68,68,0.25)',
-                        color: '#ef4444',
+                        background: 'rgba(11,43,28,0.12)',
+                        borderLeft: '1px solid rgba(11,43,28,0.25)',
+                        color: '#0b2b1c',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
                     >
@@ -11162,8 +11165,8 @@ export default function SettingsPage() {
                       }}
                       style={{
                         width: 88, flexShrink: 0, border: 'none', cursor: 'pointer',
-                        background: isActive ? 'rgba(34,197,94,0.18)' : isPending ? 'rgba(234,179,8,0.15)' : 'rgba(239,68,68,0.15)',
-                        color: isActive ? '#22c55e' : isPending ? '#eab308' : '#ef4444',
+                        background: isActive ? 'rgba(34,197,94,0.18)' : isPending ? 'rgba(11,43,28,0.15)' : 'rgba(11,43,28,0.15)',
+                        color: isActive ? '#22c55e' : isPending ? '#0b2b1c' : '#0b2b1c',
                         fontWeight: 800, fontSize: '0.72rem',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         writingMode: 'horizontal-tb',
@@ -11206,29 +11209,29 @@ export default function SettingsPage() {
                 width: '100%', maxWidth: 480, maxHeight: '92dvh', overflowY: 'auto',
                 background: 'linear-gradient(180deg, #0d2a2e 0%, #0a1a1a 100%)',
                 borderTopLeftRadius: 22, borderTopRightRadius: 22,
-                border: '1px solid rgba(0,188,212,0.3)',
+                border: '1px solid rgba(11,43,28,0.3)',
                 padding: '16px 16px max(20px, env(safe-area-inset-bottom))',
                 boxSizing: 'border-box',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <Building2 size={22} color="#00BCD4" />
+                <Building2 size={22} color='#0b2b1c' />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 800, fontSize: '1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {ownerCompanyDetail.companyName}
                   </p>
-                  <p style={{ margin: '2px 0 0', color: 'rgba(150,190,190,0.7)', fontSize: '0.7rem' }}>
+                  <p style={{ margin: '2px 0 0', color: 'rgba(11,43,28,0.7)', fontSize: '0.7rem' }}>
                     كامل بيانات تسجيل الشركة — للدعم فقط
                   </p>
                 </div>
-                <button type="button" onClick={() => setOwnerCompanyDetail(null)} style={{ background: 'none', border: 'none', color: '#00BCD4', cursor: 'pointer' }}>
+                <button type="button" onClick={() => setOwnerCompanyDetail(null)} style={{ background: 'none', border: 'none', color: '#0b2b1c', cursor: 'pointer' }}>
                   <X size={20} />
                 </button>
               </div>
 
               <div style={{
-                background: 'rgba(255,255,255,0.04)', borderRadius: 14,
-                border: '1px solid rgba(255,255,255,0.08)', padding: '12px 14px',
+                background: 'rgba(11,43,28,0.04)', borderRadius: 14,
+                border: '1px solid rgba(11,43,28,0.08)', padding: '12px 14px',
                 display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14,
                 fontSize: '0.8rem', color: 'rgba(220,230,230,0.95)',
               }}>
@@ -11251,10 +11254,10 @@ export default function SettingsPage() {
                   ['وافق بواسطة', ownerCompanyDetail.approvedBy || '—'],
                 ].map(([k, v]) => (
                   <div key={k as string} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                    <span style={{ color: 'rgba(150,190,190,0.65)', flexShrink: 0, minWidth: 110 }}>{k}</span>
+                    <span style={{ color: 'rgba(11,43,28,0.65)', flexShrink: 0, minWidth: 110 }}>{k}</span>
                     <span style={{
                       textAlign: 'right', wordBreak: 'break-all', fontWeight: 600,
-                      color: k === 'كلمة المرور' && ownerCompanyDetail.password ? '#eab308' : undefined,
+                      color: k === 'كلمة المرور' && ownerCompanyDetail.password ? '#0b2b1c' : undefined,
                       fontFamily: k === 'كلمة المرور' ? 'ui-monospace, monospace' : undefined,
                       direction: k === 'كلمة المرور' || k === 'البريد الإلكتروني' || k === 'رقم الهاتف' || k === 'رقم هاتف آخر (اختياري)' || k === 'رقم السجل التجاري' || k === 'المعرّف' || k === 'معرّف المستخدم' ? 'ltr' : undefined,
                     }}>{v as string}</span>
@@ -11263,8 +11266,8 @@ export default function SettingsPage() {
 
                 {/* شهادة السجل التجاري */}
                 {ownerCompanyDetail.commercialRegCert && (
-                  <div style={{ borderTop: '1px solid hsl(var(--primary)/0.15)', paddingTop: 10, marginTop: 4 }}>
-                    <p style={{ margin: '0 0 6px', color: 'hsl(var(--primary)/0.7)', fontSize: '0.75rem', fontWeight: 700 }}>
+                  <div style={{ borderTop: '1px solid hsl(152 59% 11%/0.15)', paddingTop: 10, marginTop: 4 }}>
+                    <p style={{ margin: '0 0 6px', color: 'hsl(152 59% 11%/0.7)', fontSize: '0.75rem', fontWeight: 700 }}>
                       شهادة السجل التجاري
                     </p>
                     {ownerCompanyDetail.commercialRegCert.startsWith('data:image') ? (
@@ -11273,13 +11276,13 @@ export default function SettingsPage() {
                         alt="شهادة السجل التجاري"
                         loading="lazy"
                         decoding="async"
-                        style={{ width: '100%', borderRadius: 10, border: '1px solid hsl(var(--primary)/0.2)', objectFit: 'contain', maxHeight: 260 }}
+                        style={{ width: '100%', borderRadius: 10, border: '1px solid hsl(152 59% 11%/0.2)', objectFit: 'contain', maxHeight: 260 }}
                       />
                     ) : (
                       <a
                         href={ownerCompanyDetail.commercialRegCert}
                         download={ownerCompanyDetail.commercialRegCertName || 'commercial-reg.pdf'}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'hsl(var(--primary)/0.1)', border: '1px solid hsl(var(--primary)/0.25)', borderRadius: 10, color: 'hsl(var(--primary))', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 700 }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'hsl(152 59% 11%/0.1)', border: '1px solid hsl(152 59% 11%/0.25)', borderRadius: 10, color: 'hsl(152 59% 11%)', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 700 }}
                       >
                         <FileText size={16} />
                         {ownerCompanyDetail.commercialRegCertName || 'تحميل الشهادة'}
@@ -11290,8 +11293,8 @@ export default function SettingsPage() {
 
                 {/* شهادة الترخيص التجاري */}
                 {ownerCompanyDetail.tradeLicenseCert && (
-                  <div style={{ borderTop: '1px solid hsl(var(--gold)/0.15)', paddingTop: 10, marginTop: 4 }}>
-                    <p style={{ margin: '0 0 6px', color: 'hsl(var(--gold)/0.8)', fontSize: '0.75rem', fontWeight: 700 }}>
+                  <div style={{ borderTop: '1px solid hsl(152 59% 11%/0.15)', paddingTop: 10, marginTop: 4 }}>
+                    <p style={{ margin: '0 0 6px', color: 'hsl(152 59% 11%/0.8)', fontSize: '0.75rem', fontWeight: 700 }}>
                       شهادة الترخيص التجاري
                     </p>
                     {ownerCompanyDetail.tradeLicenseCert.startsWith('data:image') ? (
@@ -11300,13 +11303,13 @@ export default function SettingsPage() {
                         alt="شهادة الترخيص التجاري"
                         loading="lazy"
                         decoding="async"
-                        style={{ width: '100%', borderRadius: 10, border: '1px solid hsl(var(--gold)/0.2)', objectFit: 'contain', maxHeight: 260 }}
+                        style={{ width: '100%', borderRadius: 10, border: '1px solid hsl(152 59% 11%/0.2)', objectFit: 'contain', maxHeight: 260 }}
                       />
                     ) : (
                       <a
                         href={ownerCompanyDetail.tradeLicenseCert}
                         download={ownerCompanyDetail.tradeLicenseCertName || 'trade-license.pdf'}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'hsl(var(--gold)/0.1)', border: '1px solid hsl(var(--gold)/0.25)', borderRadius: 10, color: 'hsl(var(--gold))', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 700 }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'hsl(152 59% 11%/0.1)', border: '1px solid hsl(152 59% 11%/0.25)', borderRadius: 10, color: 'hsl(152 59% 11%)', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 700 }}
                       >
                         <FileText size={16} />
                         {ownerCompanyDetail.tradeLicenseCertName || 'تحميل الشهادة'}
@@ -11317,9 +11320,9 @@ export default function SettingsPage() {
 
                 {/* تنبيه إذا لم ترفق الشهادات */}
                 {(!ownerCompanyDetail.commercialRegCert || !ownerCompanyDetail.tradeLicenseCert) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'hsl(var(--destructive)/0.08)', border: '1px solid hsl(var(--destructive)/0.25)', borderRadius: 10, marginTop: 4 }}>
-                    <AlertTriangle size={14} color="hsl(var(--destructive))" style={{ flexShrink: 0 }} />
-                    <p style={{ margin: 0, fontSize: '0.72rem', color: 'hsl(var(--destructive)/0.85)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'hsl(152 59% 11%/0.08)', border: '1px solid hsl(152 59% 11%/0.25)', borderRadius: 10, marginTop: 4 }}>
+                    <AlertTriangle size={14} color="hsl(152 59% 11%)" style={{ flexShrink: 0 }} />
+                    <p style={{ margin: 0, fontSize: '0.72rem', color: 'hsl(152 59% 11%/0.85)' }}>
                       {!ownerCompanyDetail.commercialRegCert && !ownerCompanyDetail.tradeLicenseCert
                         ? 'لم يتم رفع شهادة السجل التجاري ولا شهادة الترخيص التجاري'
                         : !ownerCompanyDetail.commercialRegCert
@@ -11341,8 +11344,8 @@ export default function SettingsPage() {
                   setScDeleteOpen(true);
                 }}
                 style={{
-                  width: '100%', padding: '12px', borderRadius: 12, border: '1px solid rgba(239,68,68,0.4)',
-                  background: 'rgba(239,68,68,0.14)', color: '#ef4444', fontWeight: 800, fontSize: '0.85rem',
+                  width: '100%', padding: '12px', borderRadius: 12, border: '1px solid rgba(11,43,28,0.4)',
+                  background: 'rgba(11,43,28,0.14)', color: '#0b2b1c', fontWeight: 800, fontSize: '0.85rem',
                   cursor: 'pointer', marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 }}
               >
@@ -11404,7 +11407,7 @@ export default function SettingsPage() {
                   }}
                   style={{
                     flex: 1, padding: '12px', borderRadius: 12, border: 'none', cursor: 'pointer',
-                    background: ownerCompanyDetail.status === 'inactive' ? 'rgba(239,68,68,0.2)' : '#ef4444',
+                    background: ownerCompanyDetail.status === 'inactive' ? 'rgba(11,43,28,0.2)' : '#0b2b1c',
                     color: ownerCompanyDetail.status === 'inactive' ? '#fca5a5' : '#fff',
                     fontWeight: 800, fontSize: '0.85rem',
                     opacity: ownerCompanyDetail.status === 'inactive' ? 0.7 : 1,
@@ -11423,7 +11426,7 @@ export default function SettingsPage() {
         <div style={{
           margin: '0 20px 20px',
           background: 'hsl(var(--card))',
-          border: '1px solid hsl(var(--border))',
+          border: '1px solid hsl(152 30% 30%)',
           borderRadius: 16,
           padding: 16,
           direction: 'rtl',
@@ -11434,7 +11437,7 @@ export default function SettingsPage() {
               {ownerNewCompanies.filter(c => c.status === 'pending').length > 0 && (
                 <span style={{
                   marginRight: 8, padding: '2px 8px', borderRadius: 20,
-                  background: 'hsl(var(--primary)/0.2)', color: 'hsl(var(--primary))',
+                  background: 'hsl(152 59% 11%/0.2)', color: 'hsl(152 59% 11%)',
                   fontSize: 11, fontWeight: 700,
                 }}>
                   {ownerNewCompanies.filter(c => c.status === 'pending').length} جديد
@@ -11449,8 +11452,8 @@ export default function SettingsPage() {
                   style={{
                     padding: '4px 10px', borderRadius: 20, border: 'none', cursor: 'pointer',
                     fontSize: 11, fontWeight: 600,
-                    background: ownerNewCompaniesFilter === f ? 'hsl(var(--primary))' : 'hsl(var(--muted)/0.5)',
-                    color: ownerNewCompaniesFilter === f ? 'hsl(var(--primary-foreground))' : 'hsl(var(--muted-foreground))',
+                    background: ownerNewCompaniesFilter === f ? 'hsl(152 59% 11%)' : 'hsl(var(--muted)/0.5)',
+                    color: ownerNewCompaniesFilter === f ? 'hsl(var(--primary-foreground))' : 'hsl(152 25% 28%)',
                   }}
                 >
                   {f === 'pending' ? 'انتظار' : f === 'approved' ? 'معتمد' : f === 'rejected' ? 'مرفوض' : 'الكل'}
@@ -11460,7 +11463,7 @@ export default function SettingsPage() {
           </div>
 
           {ownerNewCompaniesLoading ? (
-            <p style={{ textAlign: 'center', color: 'hsl(var(--muted-foreground))', fontSize: 13, padding: 12 }}>جاري التحميل…</p>
+            <p style={{ textAlign: 'center', color: 'hsl(152 25% 28%)', fontSize: 13, padding: 12 }}>جاري التحميل…</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {ownerNewCompanies
@@ -11468,43 +11471,43 @@ export default function SettingsPage() {
                 .map(c => (
                   <div key={c.id} style={{
                     background: 'hsl(var(--muted)/0.3)',
-                    border: `1px solid ${c.status === 'pending' ? 'hsl(var(--primary)/0.3)' : c.status === 'approved' ? 'hsl(var(--success)/0.3)' : 'hsl(var(--destructive)/0.3)'}`,
+                    border: `1px solid ${c.status === 'pending' ? 'hsl(152 59% 11%/0.3)' : c.status === 'approved' ? 'hsl(152 59% 11%/0.3)' : 'hsl(152 59% 11%/0.3)'}`,
                     borderRadius: 12, padding: 12,
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                       <div style={{ flex: 1 }}>
                         <p style={{ fontWeight: 700, fontSize: 14, color: 'hsl(var(--foreground))' }}>{c.companyName}</p>
-                        {c.tradeName && <p style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>{c.tradeName}</p>}
-                        <p style={{ fontSize: 11, color: 'hsl(var(--muted-foreground))', marginTop: 4 }}>
+                        {c.tradeName && <p style={{ fontSize: 12, color: 'hsl(152 25% 28%)' }}>{c.tradeName}</p>}
+                        <p style={{ fontSize: 11, color: 'hsl(152 25% 28%)', marginTop: 4 }}>
                           مقدّم من: {c.submitter.name || c.submitter.username || c.submitter.email}
                         </p>
-                        {c.licenseNumber && <p style={{ fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>سجل: {c.licenseNumber}</p>}
-                        {c.tradeLicenseNumber && <p style={{ fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>رخصة: {c.tradeLicenseNumber}</p>}
-                        {c.description && <p style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))', marginTop: 4 }}>{c.description}</p>}
+                        {c.licenseNumber && <p style={{ fontSize: 11, color: 'hsl(152 25% 28%)' }}>سجل: {c.licenseNumber}</p>}
+                        {c.tradeLicenseNumber && <p style={{ fontSize: 11, color: 'hsl(152 25% 28%)' }}>رخصة: {c.tradeLicenseNumber}</p>}
+                        {c.description && <p style={{ fontSize: 12, color: 'hsl(152 25% 28%)', marginTop: 4 }}>{c.description}</p>}
                         {/* Documents */}
                         <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                           {c.commercialRegFile ? (
                             <a href={c.commercialRegFile} target="_blank" rel="noopener noreferrer"
-                              style={{ fontSize: 11, color: 'hsl(var(--primary))', textDecoration: 'underline' }}>
+                              style={{ fontSize: 11, color: 'hsl(152 59% 11%)', textDecoration: 'underline' }}>
                               📄 السجل التجاري
                             </a>
                           ) : (
-                            <span style={{ fontSize: 11, color: 'hsl(var(--destructive))' }}>⚠ لا يوجد سجل تجاري</span>
+                            <span style={{ fontSize: 11, color: 'hsl(152 59% 11%)' }}>⚠ لا يوجد سجل تجاري</span>
                           )}
                           {c.tradeLicenseFile ? (
                             <a href={c.tradeLicenseFile} target="_blank" rel="noopener noreferrer"
-                              style={{ fontSize: 11, color: 'hsl(var(--primary))', textDecoration: 'underline' }}>
+                              style={{ fontSize: 11, color: 'hsl(152 59% 11%)', textDecoration: 'underline' }}>
                               📄 الترخيص التجاري
                             </a>
                           ) : (
-                            <span style={{ fontSize: 11, color: 'hsl(var(--destructive))' }}>⚠ لا يوجد ترخيص</span>
+                            <span style={{ fontSize: 11, color: 'hsl(152 59% 11%)' }}>⚠ لا يوجد ترخيص</span>
                           )}
                         </div>
                       </div>
                       <span style={{
                         padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
-                        background: c.status === 'pending' ? 'hsl(var(--primary)/0.15)' : c.status === 'approved' ? 'hsl(var(--success)/0.15)' : 'hsl(var(--destructive)/0.15)',
-                        color: c.status === 'pending' ? 'hsl(var(--primary))' : c.status === 'approved' ? 'hsl(var(--success))' : 'hsl(var(--destructive))',
+                        background: c.status === 'pending' ? 'hsl(152 59% 11%/0.15)' : c.status === 'approved' ? 'hsl(152 59% 11%/0.15)' : 'hsl(152 59% 11%/0.15)',
+                        color: c.status === 'pending' ? 'hsl(152 59% 11%)' : c.status === 'approved' ? 'hsl(152 59% 11%)' : 'hsl(152 59% 11%)',
                       }}>
                         {c.status === 'pending' ? 'انتظار' : c.status === 'approved' ? 'معتمد ✓' : 'مرفوض'}
                       </span>
@@ -11519,7 +11522,7 @@ export default function SettingsPage() {
                           placeholder="سبب الرفض (اختياري)"
                           style={{
                             flex: 1, padding: '8px 10px', borderRadius: 8,
-                            border: '1px solid hsl(var(--border))',
+                            border: '1px solid hsl(152 30% 30%)',
                             background: 'hsl(var(--muted)/0.4)',
                             color: 'hsl(var(--foreground))', fontSize: 12, direction: 'rtl',
                           }}
@@ -11528,7 +11531,7 @@ export default function SettingsPage() {
                           onClick={() => reviewNewCompany(c.id, 'reject', ownerNewCompaniesRejectReason)}
                           style={{
                             padding: '8px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                            background: 'hsl(var(--destructive))', color: 'hsl(var(--destructive-foreground))',
+                            background: 'hsl(152 59% 11%)', color: 'hsl(var(--destructive-foreground))',
                             fontSize: 12, fontWeight: 700,
                           }}
                         >
@@ -11537,8 +11540,8 @@ export default function SettingsPage() {
                         <button
                           onClick={() => setOwnerNewCompaniesRejectId(null)}
                           style={{
-                            padding: '8px 12px', borderRadius: 8, border: '1px solid hsl(var(--border))',
-                            background: 'transparent', color: 'hsl(var(--muted-foreground))',
+                            padding: '8px 12px', borderRadius: 8, border: '1px solid hsl(152 30% 30%)',
+                            background: 'transparent', color: 'hsl(152 25% 28%)',
                             fontSize: 12, cursor: 'pointer',
                           }}
                         >
@@ -11554,7 +11557,7 @@ export default function SettingsPage() {
                           onClick={() => reviewNewCompany(c.id, 'approve')}
                           style={{
                             flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                            background: 'hsl(var(--success))', color: 'hsl(var(--success-foreground))',
+                            background: 'hsl(152 59% 11%)', color: 'hsl(var(--success-foreground))',
                             fontSize: 12, fontWeight: 700,
                           }}
                         >
@@ -11564,7 +11567,7 @@ export default function SettingsPage() {
                           onClick={() => { setOwnerNewCompaniesRejectId(c.id); setOwnerNewCompaniesRejectReason(''); }}
                           style={{
                             flex: 1, padding: '8px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                            background: 'hsl(var(--destructive))', color: 'hsl(var(--destructive-foreground))',
+                            background: 'hsl(152 59% 11%)', color: 'hsl(var(--destructive-foreground))',
                             fontSize: 12, fontWeight: 700,
                           }}
                         >
@@ -11577,8 +11580,8 @@ export default function SettingsPage() {
                         onClick={() => reviewNewCompany(c.id, 'reject', 'تم إلغاء الاعتماد')}
                         style={{
                           marginTop: 8, padding: '6px 14px', borderRadius: 8,
-                          border: '1px solid hsl(var(--destructive)/0.5)',
-                          background: 'transparent', color: 'hsl(var(--destructive))',
+                          border: '1px solid hsl(152 59% 11%/0.5)',
+                          background: 'transparent', color: 'hsl(152 59% 11%)',
                           fontSize: 11, cursor: 'pointer',
                         }}
                       >
@@ -11613,21 +11616,21 @@ export default function SettingsPage() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
-              borderBottom: '1px solid rgba(234,179,8,0.25)',
+              borderBottom: '1px solid rgba(11,43,28,0.25)',
               background: 'linear-gradient(180deg, #1a1608 0%, #0a0e0e 100%)',
               minHeight: 52, flexShrink: 0,
             }}>
               <button
                 type="button"
                 onClick={() => setShowRecoveredUsers(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#eab308', padding: 2 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0b2b1c', padding: 2 }}
                 aria-label="Close"
               >
                 <X size={20} />
               </button>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.95rem' }}>Banned / Deleted</p>
-                <p style={{ margin: '1px 0 0', color: 'rgba(200,190,150,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
+                <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 900, fontSize: '0.95rem' }}>Banned / Deleted</p>
+                <p style={{ margin: '1px 0 0', color: 'rgba(11,43,28,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
                   Restore accounts or permanent wipe
                 </p>
               </div>
@@ -11635,8 +11638,8 @@ export default function SettingsPage() {
                 type="button"
                 onClick={() => setRecoveredUsers(loadDeletedUsers())}
                 style={{
-                  border: '1px solid rgba(234,179,8,0.35)', background: 'rgba(234,179,8,0.1)',
-                  color: '#eab308', borderRadius: 8, padding: '6px 10px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer',
+                  border: '1px solid rgba(11,43,28,0.35)', background: 'rgba(11,43,28,0.1)',
+                  color: '#0b2b1c', borderRadius: 8, padding: '6px 10px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer',
                 }}
               >
                 Refresh
@@ -11646,8 +11649,8 @@ export default function SettingsPage() {
             <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
               {recoveredUsers.length === 0 && (
                 <div style={{
-                  padding: 24, textAlign: 'center', color: 'rgba(180,180,160,0.7)',
-                  border: '1px dashed rgba(234,179,8,0.25)', borderRadius: 14,
+                  padding: 24, textAlign: 'center', color: 'rgba(11,43,28,0.7)',
+                  border: '1px dashed rgba(11,43,28,0.25)', borderRadius: 14,
                 }}>
                   No banned or soft-deleted accounts in recovery list
                 </div>
@@ -11660,15 +11663,15 @@ export default function SettingsPage() {
                     key={key}
                     style={{
                       marginBottom: 10, padding: '12px 14px', borderRadius: 14,
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(234,179,8,0.2)',
+                      background: 'rgba(11,43,28,0.03)',
+                      border: '1px solid rgba(11,43,28,0.2)',
                     }}
                   >
-                    <p style={{ margin: 0, color: '#f5e6a8', fontWeight: 800, fontSize: '0.88rem' }}>
+                    <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 800, fontSize: '0.88rem' }}>
                       {row.username ? `@${String(row.username).replace(/^@/, '')}` : (row.email || row.id)}
                     </p>
                     {row.email && (
-                      <p style={{ margin: '4px 0 0', color: 'rgba(180,180,160,0.75)', fontSize: '0.72rem' }}>{row.email}</p>
+                      <p style={{ margin: '4px 0 0', color: 'rgba(11,43,28,0.75)', fontSize: '0.72rem' }}>{row.email}</p>
                     )}
                     <p style={{ margin: '4px 0 0', color: 'rgba(150,150,130,0.6)', fontSize: '0.65rem' }}>
                       Soft-deleted {row.deletedAt ? new Date(row.deletedAt).toLocaleString() : ''}
@@ -11722,7 +11725,7 @@ export default function SettingsPage() {
                         }}
                         style={{
                           flex: 1, minWidth: 100, padding: '10px 12px', borderRadius: 10, border: 'none',
-                          background: '#22c55e', color: '#041018', fontWeight: 800, fontSize: '0.78rem',
+                          background: '#22c55e', color: '#0b2b1c', fontWeight: 800, fontSize: '0.78rem',
                           cursor: 'pointer', opacity: busy ? 0.6 : 1,
                         }}
                       >
@@ -11773,7 +11776,7 @@ export default function SettingsPage() {
                         }}
                         style={{
                           flex: 1, minWidth: 100, padding: '10px 12px', borderRadius: 10, border: 'none',
-                          background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: '0.78rem',
+                          background: '#0b2b1c', color: '#fff', fontWeight: 800, fontSize: '0.78rem',
                           cursor: 'pointer', opacity: busy ? 0.6 : 1,
                         }}
                       >
@@ -11822,49 +11825,49 @@ export default function SettingsPage() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
-              borderBottom: '1px solid rgba(234,179,8,0.25)',
+              borderBottom: '1px solid rgba(11,43,28,0.25)',
               background: 'linear-gradient(180deg, #1a1608 0%, #0a0e0e 100%)',
               minHeight: 52, flexShrink: 0,
             }}>
               <button type="button" onClick={() => setShowOwnerVip(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#eab308', padding: 2 }} aria-label="Close">
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0b2b1c', padding: 2 }} aria-label="Close">
                 <X size={20} />
               </button>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.95rem' }}>VIP Manager</p>
-                <p style={{ margin: '1px 0 0', color: 'rgba(200,190,150,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
+                <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 900, fontSize: '0.95rem' }}>VIP Manager</p>
+                <p style={{ margin: '1px 0 0', color: 'rgba(11,43,28,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
                   Owner only · give VIP with frame, color and VIP header
                 </p>
               </div>
               <button type="button" onClick={() => { void loadOwnerData(); setOwnerVipTick(t => t + 1); }}
-                style={{ border: '1px solid rgba(234,179,8,0.35)', background: 'rgba(234,179,8,0.1)', color: '#eab308', borderRadius: 8, padding: '6px 10px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}>
+                style={{ border: '1px solid rgba(11,43,28,0.35)', background: 'rgba(11,43,28,0.1)', color: '#0b2b1c', borderRadius: 8, padding: '6px 10px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}>
                 Refresh
               </button>
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }} data-tick={ownerVipTick}>
               {ownerVipSel && (
-                <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 14, background: 'rgba(234,179,8,0.06)', border: '1px solid rgba(234,179,8,0.35)' }}>
+                <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 14, background: 'rgba(11,43,28,0.06)', border: '1px solid rgba(11,43,28,0.35)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <span style={{
                       width: 46, height: 46, borderRadius: '50%', flexShrink: 0,
-                      border: `3px solid ${(VIP_COLORS as Record<string, string>)[ownerVipColor] || '#eab308'}`,
-                      boxShadow: `0 0 12px ${(VIP_COLORS as Record<string, string>)[ownerVipColor] || '#eab308'}`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f5e6a8', fontWeight: 900,
+                      border: `3px solid ${(VIP_COLORS as Record<string, string>)[ownerVipColor] || '#0b2b1c'}`,
+                      boxShadow: `0 0 12px ${(VIP_COLORS as Record<string, string>)[ownerVipColor] || '#0b2b1c'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0b2b1c', fontWeight: 900,
                     }}>
                       {(ownerVipSel.username || ownerVipSel.email || '?').replace(/^@/, '').slice(0, 1).toUpperCase()}
                     </span>
                     <div style={{ minWidth: 0 }}>
-                      <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: '0.9rem', color: (VIP_COLORS as Record<string, string>)[ownerVipColor] || '#f5e6a8' }}>
+                      <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: '0.9rem', color: (VIP_COLORS as Record<string, string>)[ownerVipColor] || '#0b2b1c' }}>
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {ownerVipSel.username ? `@${String(ownerVipSel.username).replace(/^@/, '')}` : ownerVipSel.email}
                         </span>
-                        <span style={{ padding: '1px 7px', borderRadius: 999, fontSize: '0.6rem', fontWeight: 900, background: (VIP_COLORS as Record<string, string>)[ownerVipColor] || '#eab308', color: '#111' }}>VIP</span>
+                        <span style={{ padding: '1px 7px', borderRadius: 999, fontSize: '0.6rem', fontWeight: 900, background: (VIP_COLORS as Record<string, string>)[ownerVipColor] || '#0b2b1c', color: '#0b2b1c' }}>VIP</span>
                       </p>
-                      <p style={{ margin: '3px 0 0', color: 'rgba(180,180,160,0.75)', fontSize: '0.68rem' }}>{ownerVipSel.email}</p>
+                      <p style={{ margin: '3px 0 0', color: 'rgba(11,43,28,0.75)', fontSize: '0.68rem' }}>{ownerVipSel.email}</p>
                     </div>
                   </div>
-                  <p style={{ margin: '12px 0 6px', color: 'rgba(200,190,150,0.8)', fontSize: '0.68rem', fontWeight: 700 }}>Frame &amp; header color</p>
+                  <p style={{ margin: '12px 0 6px', color: 'rgba(11,43,28,0.8)', fontSize: '0.68rem', fontWeight: 700 }}>Frame &amp; header color</p>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                     {Object.keys(VIP_COLORS as Record<string, string>).map(c => (
                       <button key={c} type="button" onClick={() => setOwnerVipColor(c)} aria-label={c}
@@ -11886,7 +11889,7 @@ export default function SettingsPage() {
                           setOwnerVipTick(t => t + 1);
                         } finally { setOwnerVipBusy(false); }
                       }}
-                      style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#eab308', color: '#111', fontWeight: 900, fontSize: '0.78rem', cursor: 'pointer', opacity: ownerVipBusy ? 0.6 : 1 }}>
+                      style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#0b2b1c', color: '#fff', fontWeight: 900, fontSize: '0.78rem', cursor: 'pointer', opacity: ownerVipBusy ? 0.6 : 1 }}>
                       {ownerVipActive(ownerVipSel.id) ? 'Update VIP' : 'Give VIP'}
                     </button>
                     {ownerVipActive(ownerVipSel.id) && (
@@ -11903,12 +11906,12 @@ export default function SettingsPage() {
                             setOwnerVipTick(t => t + 1);
                           } finally { setOwnerVipBusy(false); }
                         }}
-                        style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer', opacity: ownerVipBusy ? 0.6 : 1 }}>
+                        style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#0b2b1c', color: '#fff', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer', opacity: ownerVipBusy ? 0.6 : 1 }}>
                         Remove VIP
                       </button>
                     )}
                   </div>
-                  {ownerVipMsg && <p style={{ margin: '10px 0 0', color: '#f5e6a8', fontSize: '0.72rem' }}>{ownerVipMsg}</p>}
+                  {ownerVipMsg && <p style={{ margin: '10px 0 0', color: '#0b2b1c', fontSize: '0.72rem' }}>{ownerVipMsg}</p>}
                 </div>
               )}
 
@@ -11918,7 +11921,7 @@ export default function SettingsPage() {
                 placeholder="Search username or email…"
                 style={{
                   width: '100%', boxSizing: 'border-box', padding: '10px 12px', marginBottom: 10, borderRadius: 10,
-                  border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(255,255,255,0.04)', color: '#f5e6a8', fontSize: '0.8rem', outline: 'none',
+                  border: '1px solid rgba(11,43,28,0.3)', background: 'rgba(11,43,28,0.04)', color: '#0b2b1c', fontSize: '0.8rem', outline: 'none',
                 }}
               />
               {allUsers
@@ -11944,25 +11947,25 @@ export default function SettingsPage() {
                       }}
                       style={{
                         width: '100%', textAlign: 'left', marginBottom: 8, padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
-                        background: selected ? 'rgba(234,179,8,0.1)' : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${selected ? 'rgba(234,179,8,0.5)' : 'rgba(234,179,8,0.15)'}`,
+                        background: selected ? 'rgba(11,43,28,0.1)' : 'rgba(11,43,28,0.03)',
+                        border: `1px solid ${selected ? 'rgba(11,43,28,0.5)' : 'rgba(11,43,28,0.15)'}`,
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                       }}
                     >
                       <span style={{ minWidth: 0 }}>
-                        <span style={{ display: 'block', color: '#f5e6a8', fontWeight: 800, fontSize: '0.84rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'block', color: '#0b2b1c', fontWeight: 800, fontSize: '0.84rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {u.username ? `@${String(u.username).replace(/^@/, '')}` : (u.name || u.email)}
                         </span>
-                        <span style={{ display: 'block', color: 'rgba(180,180,160,0.7)', fontSize: '0.66rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</span>
+                        <span style={{ display: 'block', color: 'rgba(11,43,28,0.7)', fontSize: '0.66rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</span>
                       </span>
                       {on && (
-                        <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.62rem', fontWeight: 900, background: (VIP_COLORS as Record<string, string>)[col || 'gold'] || '#eab308', color: '#111', flexShrink: 0 }}>VIP</span>
+                        <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: '0.62rem', fontWeight: 900, background: (VIP_COLORS as Record<string, string>)[col || 'gold'] || '#0b2b1c', color: '#0b2b1c', flexShrink: 0 }}>VIP</span>
                       )}
                     </button>
                   );
                 })}
               {allUsers.length === 0 && (
-                <div style={{ padding: 24, textAlign: 'center', color: 'rgba(180,180,160,0.7)', border: '1px dashed rgba(234,179,8,0.25)', borderRadius: 14 }}>
+                <div style={{ padding: 24, textAlign: 'center', color: 'rgba(11,43,28,0.7)', border: '1px dashed rgba(11,43,28,0.25)', borderRadius: 14 }}>
                   No users loaded yet — tap Refresh
                 </div>
               )}
@@ -11991,44 +11994,44 @@ export default function SettingsPage() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
-              borderBottom: '1px solid rgba(234,179,8,0.25)',
+              borderBottom: '1px solid rgba(11,43,28,0.25)',
               background: 'linear-gradient(180deg, #1a1608 0%, #0a0e0e 100%)',
               minHeight: 52, flexShrink: 0,
             }}>
               <button type="button" onClick={() => setShowOwnerBiz(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#eab308', padding: 2 }} aria-label="Close">
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0b2b1c', padding: 2 }} aria-label="Close">
                 <X size={20} />
               </button>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.95rem' }}>Business Manager</p>
-                <p style={{ margin: '1px 0 0', color: 'rgba(200,190,150,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
+                <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 900, fontSize: '0.95rem' }}>Business Manager</p>
+                <p style={{ margin: '1px 0 0', color: 'rgba(11,43,28,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
                   Owner only · give Business with the Business header
                 </p>
               </div>
               <button type="button" onClick={() => { void loadOwnerData(); setOwnerBizTick(t => t + 1); }}
-                style={{ border: '1px solid rgba(234,179,8,0.35)', background: 'rgba(234,179,8,0.1)', color: '#eab308', borderRadius: 8, padding: '6px 10px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}>
+                style={{ border: '1px solid rgba(11,43,28,0.35)', background: 'rgba(11,43,28,0.1)', color: '#0b2b1c', borderRadius: 8, padding: '6px 10px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}>
                 Refresh
               </button>
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }} data-tick={ownerBizTick}>
               {ownerBizSel && (
-                <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 14, background: 'rgba(234,179,8,0.06)', border: '1px solid rgba(234,179,8,0.35)' }}>
-                  <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: '0.9rem', color: '#f5e6a8' }}>
+                <div style={{ marginBottom: 12, padding: '12px 14px', borderRadius: 14, background: 'rgba(11,43,28,0.06)', border: '1px solid rgba(11,43,28,0.35)' }}>
+                  <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: '0.9rem', color: '#0b2b1c' }}>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {ownerBizSel.username ? `@${String(ownerBizSel.username).replace(/^@/, '')}` : ownerBizSel.email}
                     </span>
                     <BusinessHeadBadge compact />
                   </p>
-                  <p style={{ margin: '3px 0 0', color: 'rgba(180,180,160,0.75)', fontSize: '0.68rem' }}>{ownerBizSel.email}</p>
-                  <p style={{ margin: '12px 0 6px', color: 'rgba(200,190,150,0.8)', fontSize: '0.68rem', fontWeight: 700 }}>Business / project name (optional)</p>
+                  <p style={{ margin: '3px 0 0', color: 'rgba(11,43,28,0.75)', fontSize: '0.68rem' }}>{ownerBizSel.email}</p>
+                  <p style={{ margin: '12px 0 6px', color: 'rgba(11,43,28,0.8)', fontSize: '0.68rem', fontWeight: 700 }}>Business / project name (optional)</p>
                   <input
                     value={ownerBizProject}
                     onChange={e => setOwnerBizProject(e.target.value)}
                     placeholder={String(ownerBizSel.username || '').replace(/^@/, '') || 'Project name'}
                     style={{
                       width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10,
-                      border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(255,255,255,0.04)', color: '#f5e6a8', fontSize: '0.8rem', outline: 'none',
+                      border: '1px solid rgba(11,43,28,0.3)', background: 'rgba(11,43,28,0.04)', color: '#0b2b1c', fontSize: '0.8rem', outline: 'none',
                     }}
                   />
                   <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
@@ -12042,7 +12045,7 @@ export default function SettingsPage() {
                           setOwnerBizTick(t => t + 1);
                         } finally { setOwnerBizBusy(false); }
                       }}
-                      style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#eab308', color: '#111', fontWeight: 900, fontSize: '0.78rem', cursor: 'pointer', opacity: ownerBizBusy ? 0.6 : 1 }}>
+                      style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#0b2b1c', color: '#fff', fontWeight: 900, fontSize: '0.78rem', cursor: 'pointer', opacity: ownerBizBusy ? 0.6 : 1 }}>
                       {ownerBizActive(ownerBizSel.id) ? 'Update Business' : 'Give Business'}
                     </button>
                     {ownerBizActive(ownerBizSel.id) && (
@@ -12059,12 +12062,12 @@ export default function SettingsPage() {
                             setOwnerBizTick(t => t + 1);
                           } finally { setOwnerBizBusy(false); }
                         }}
-                        style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer', opacity: ownerBizBusy ? 0.6 : 1 }}>
+                        style={{ flex: 1, minWidth: 110, padding: '10px 12px', borderRadius: 10, border: 'none', background: '#0b2b1c', color: '#fff', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer', opacity: ownerBizBusy ? 0.6 : 1 }}>
                         Remove Business
                       </button>
                     )}
                   </div>
-                  {ownerBizMsg && <p style={{ margin: '10px 0 0', color: '#f5e6a8', fontSize: '0.72rem' }}>{ownerBizMsg}</p>}
+                  {ownerBizMsg && <p style={{ margin: '10px 0 0', color: '#0b2b1c', fontSize: '0.72rem' }}>{ownerBizMsg}</p>}
                 </div>
               )}
 
@@ -12074,7 +12077,7 @@ export default function SettingsPage() {
                 placeholder="Search username or email…"
                 style={{
                   width: '100%', boxSizing: 'border-box', padding: '10px 12px', marginBottom: 10, borderRadius: 10,
-                  border: '1px solid rgba(234,179,8,0.3)', background: 'rgba(255,255,255,0.04)', color: '#f5e6a8', fontSize: '0.8rem', outline: 'none',
+                  border: '1px solid rgba(11,43,28,0.3)', background: 'rgba(11,43,28,0.04)', color: '#0b2b1c', fontSize: '0.8rem', outline: 'none',
                 }}
               />
               {allUsers
@@ -12100,23 +12103,23 @@ export default function SettingsPage() {
                       }}
                       style={{
                         width: '100%', textAlign: 'left', marginBottom: 8, padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
-                        background: selected ? 'rgba(234,179,8,0.1)' : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${selected ? 'rgba(234,179,8,0.5)' : 'rgba(234,179,8,0.15)'}`,
+                        background: selected ? 'rgba(11,43,28,0.1)' : 'rgba(11,43,28,0.03)',
+                        border: `1px solid ${selected ? 'rgba(11,43,28,0.5)' : 'rgba(11,43,28,0.15)'}`,
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                       }}
                     >
                       <span style={{ minWidth: 0 }}>
-                        <span style={{ display: 'block', color: '#f5e6a8', fontWeight: 800, fontSize: '0.84rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'block', color: '#0b2b1c', fontWeight: 800, fontSize: '0.84rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {u.username ? `@${String(u.username).replace(/^@/, '')}` : (u.name || u.email)}
                         </span>
-                        <span style={{ display: 'block', color: 'rgba(180,180,160,0.7)', fontSize: '0.66rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</span>
+                        <span style={{ display: 'block', color: 'rgba(11,43,28,0.7)', fontSize: '0.66rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</span>
                       </span>
                       {on && <BusinessHeadBadge compact />}
                     </button>
                   );
                 })}
               {allUsers.length === 0 && (
-                <div style={{ padding: 24, textAlign: 'center', color: 'rgba(180,180,160,0.7)', border: '1px dashed rgba(234,179,8,0.25)', borderRadius: 14 }}>
+                <div style={{ padding: 24, textAlign: 'center', color: 'rgba(11,43,28,0.7)', border: '1px dashed rgba(11,43,28,0.25)', borderRadius: 14 }}>
                   No users loaded yet — tap Refresh
                 </div>
               )}
@@ -12171,14 +12174,14 @@ export default function SettingsPage() {
               style={{
                 width: 'min(92vw, 360px)',
                 background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
-                border: '1px solid rgba(234,179,8,0.4)',
+                border: '1px solid rgba(11,43,28,0.4)',
                 borderRadius: 16,
                 padding: '16px 14px',
                 boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.9rem' }}>Message from owner</p>
+                <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 900, fontSize: '0.9rem' }}>Message from owner</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -12187,12 +12190,12 @@ export default function SettingsPage() {
                     const r = getBusinessForUser(user?.id);
                     setBusinessRow(r);
                   }}
-                  style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}
+                  style={{ background: 'none', border: 'none', color: '#0b2b1c', cursor: 'pointer' }}
                 >
                   <X size={18} />
                 </button>
               </div>
-              <p style={{ margin: 0, color: 'rgba(200,230,230,0.9)', fontSize: '0.88rem', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+              <p style={{ margin: 0, color: 'rgba(11,43,28,0.9)', fontSize: '0.88rem', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
                 {businessRow.ownerNote}
               </p>
               <button
@@ -12205,7 +12208,7 @@ export default function SettingsPage() {
                 }}
                 style={{
                   marginTop: 14, width: '100%', padding: '12px', borderRadius: 12, border: 'none',
-                  background: '#eab308', color: '#0a0a0a', fontWeight: 900, fontSize: '0.85rem', cursor: 'pointer',
+                  background: '#0b2b1c', color: '#fff', fontWeight: 900, fontSize: '0.85rem', cursor: 'pointer',
                 }}
               >
                 Got it
@@ -12242,7 +12245,7 @@ export default function SettingsPage() {
                 maxHeight: 'min(78vh, calc(100dvh - 120px - env(safe-area-inset-bottom)))',
                 overflowY: 'auto',
                 background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
-                border: '1px solid rgba(234,179,8,0.35)',
+                border: '1px solid rgba(11,43,28,0.35)',
                 borderRadius: 18,
                 padding: '16px 14px 18px',
                 boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
@@ -12251,8 +12254,8 @@ export default function SettingsPage() {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.95rem' }}>Business</p>
-                <button type="button" onClick={() => setBusinessModalOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}>
+                <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 900, fontSize: '0.95rem' }}>Business</p>
+                <button type="button" onClick={() => setBusinessModalOpen(false)} style={{ background: 'none', border: 'none', color: '#0b2b1c', cursor: 'pointer' }}>
                   <X size={18} />
                 </button>
               </div>
@@ -12260,23 +12263,23 @@ export default function SettingsPage() {
               {businessRow?.status === 'approved' ? (
                 <div style={{ textAlign: 'center', padding: '18px 8px' }}>
                   <span style={{
-                    display: 'inline-block', fontSize: '0.75rem', fontWeight: 900, color: '#0a0a0a',
-                    background: '#eab308', borderRadius: 8, padding: '6px 14px',
+                    display: 'inline-block', fontSize: '0.75rem', fontWeight: 900, color: '#fff',
+                    background: '#0b2b1c', borderRadius: 8, padding: '6px 14px',
                   }}>Business</span>
-                  <p style={{ margin: '12px 0 0', color: 'rgba(200,230,230,0.85)', fontSize: '0.82rem', fontWeight: 700 }}>
+                  <p style={{ margin: '12px 0 0', color: 'rgba(11,43,28,0.85)', fontSize: '0.82rem', fontWeight: 700 }}>
                     {businessRow.projectName}
                   </p>
                 </div>
               ) : businessRow?.status === 'pending' ? (
                 <button type="button" disabled style={{
                   width: '100%', padding: '14px', borderRadius: 12, border: 'none',
-                  background: 'rgba(0,188,212,0.18)', color: '#00BCD4', fontWeight: 900, fontSize: '0.88rem',
+                  background: 'rgba(11,43,28,0.18)', color: '#0b2b1c', fontWeight: 900, fontSize: '0.88rem',
                 }}>
                   Under review
                 </button>
               ) : (
                 <>
-                  <label style={{ display: 'block', color: 'rgba(180,210,210,0.75)', fontSize: '0.68rem', fontWeight: 700, marginBottom: 6 }}>
+                  <label style={{ display: 'block', color: 'rgba(11,43,28,0.75)', fontSize: '0.68rem', fontWeight: 700, marginBottom: 6 }}>
                     Project name
                   </label>
                   <input
@@ -12285,13 +12288,13 @@ export default function SettingsPage() {
                     placeholder="Project name"
                     style={{
                       width: '100%', boxSizing: 'border-box', marginBottom: 12, padding: '11px 12px', borderRadius: 11,
-                      border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)',
-                      color: '#d7eeee', fontSize: '0.88rem', outline: 'none',
+                      border: '1px solid rgba(11,43,28,0.25)', background: 'rgba(11,43,28,0.8)',
+                      color: '#0b2b1c', fontSize: '0.88rem', outline: 'none',
                     }}
                   />
                   <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <label style={{ display: 'block', color: 'rgba(180,210,210,0.75)', fontSize: '0.65rem', fontWeight: 700, marginBottom: 6 }}>
+                      <label style={{ display: 'block', color: 'rgba(11,43,28,0.75)', fontSize: '0.65rem', fontWeight: 700, marginBottom: 6 }}>
                         Commercial registration
                       </label>
                       <input
@@ -12300,13 +12303,13 @@ export default function SettingsPage() {
                         placeholder="No."
                         style={{
                           width: '100%', boxSizing: 'border-box', padding: '10px 10px', borderRadius: 11,
-                          border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)',
-                          color: '#d7eeee', fontSize: '0.82rem', outline: 'none',
+                          border: '1px solid rgba(11,43,28,0.25)', background: 'rgba(11,43,28,0.8)',
+                          color: '#0b2b1c', fontSize: '0.82rem', outline: 'none',
                         }}
                       />
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <label style={{ display: 'block', color: 'rgba(180,210,210,0.75)', fontSize: '0.65rem', fontWeight: 700, marginBottom: 6 }}>
+                      <label style={{ display: 'block', color: 'rgba(11,43,28,0.75)', fontSize: '0.65rem', fontWeight: 700, marginBottom: 6 }}>
                         Trade license
                       </label>
                       <input
@@ -12315,8 +12318,8 @@ export default function SettingsPage() {
                         placeholder="No."
                         style={{
                           width: '100%', boxSizing: 'border-box', padding: '10px 10px', borderRadius: 11,
-                          border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)',
-                          color: '#d7eeee', fontSize: '0.82rem', outline: 'none',
+                          border: '1px solid rgba(11,43,28,0.25)', background: 'rgba(11,43,28,0.8)',
+                          color: '#0b2b1c', fontSize: '0.82rem', outline: 'none',
                         }}
                       />
                     </div>
@@ -12345,26 +12348,26 @@ export default function SettingsPage() {
                     reader.readAsDataURL(f);
                   }} />
 
-                  <p style={{ margin: '0 0 6px', color: 'rgba(180,210,210,0.75)', fontSize: '0.68rem', fontWeight: 700 }}>
+                  <p style={{ margin: '0 0 6px', color: 'rgba(11,43,28,0.75)', fontSize: '0.68rem', fontWeight: 700 }}>
                     Commercial registration certificate
                   </p>
                   <button type="button" onClick={() => bizCommFileRef.current?.click()} style={{
                     width: '100%', marginBottom: 10, padding: '12px', borderRadius: 12,
-                    border: '1px dashed rgba(234,179,8,0.4)', background: 'rgba(234,179,8,0.06)',
-                    color: '#eab308', fontWeight: 800, cursor: 'pointer', display: 'flex',
+                    border: '1px dashed rgba(11,43,28,0.4)', background: 'rgba(11,43,28,0.06)',
+                    color: '#0b2b1c', fontWeight: 800, cursor: 'pointer', display: 'flex',
                     alignItems: 'center', justifyContent: 'center', gap: 8,
                   }}>
                     <Plus size={16} />
                     {bizCommCertName || 'Add file'}
                   </button>
 
-                  <p style={{ margin: '0 0 6px', color: 'rgba(180,210,210,0.75)', fontSize: '0.68rem', fontWeight: 700 }}>
+                  <p style={{ margin: '0 0 6px', color: 'rgba(11,43,28,0.75)', fontSize: '0.68rem', fontWeight: 700 }}>
                     Trade license certificate
                   </p>
                   <button type="button" onClick={() => bizTradeFileRef.current?.click()} style={{
                     width: '100%', marginBottom: 14, padding: '12px', borderRadius: 12,
-                    border: '1px dashed rgba(234,179,8,0.4)', background: 'rgba(234,179,8,0.06)',
-                    color: '#eab308', fontWeight: 800, cursor: 'pointer', display: 'flex',
+                    border: '1px dashed rgba(11,43,28,0.4)', background: 'rgba(11,43,28,0.06)',
+                    color: '#0b2b1c', fontWeight: 800, cursor: 'pointer', display: 'flex',
                     alignItems: 'center', justifyContent: 'center', gap: 8,
                   }}>
                     <Plus size={16} />
@@ -12400,7 +12403,7 @@ export default function SettingsPage() {
                     style={{
                       width: '100%', padding: '14px', borderRadius: 12, border: 'none',
                       background: (bizProjectName.trim() && bizLicense.trim() && bizTradeLicense.trim() && bizCommCert && bizTradeCert)
-                        ? '#eab308' : 'rgba(234,179,8,0.2)',
+                        ? '#0b2b1c' : 'rgba(11,43,28,0.2)',
                       color: (bizProjectName.trim() && bizLicense.trim() && bizTradeLicense.trim() && bizCommCert && bizTradeCert)
                         ? '#0a0a0a' : 'rgba(150,150,130,0.7)',
                       fontWeight: 900, fontSize: '0.9rem',
@@ -12436,22 +12439,22 @@ export default function SettingsPage() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
-              borderBottom: '1px solid rgba(234,179,8,0.25)',
+              borderBottom: '1px solid rgba(11,43,28,0.25)',
               background: 'linear-gradient(180deg, #1a1608 0%, #0a0e0e 100%)',
               minHeight: 52, flexShrink: 0,
             }}>
               <button
                 type="button"
                 onClick={() => setShowOwnerBusiness(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#eab308', padding: 2 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0b2b1c', padding: 2 }}
                 aria-label="Close"
               >
                 <X size={20} />
               </button>
-              <Briefcase size={18} style={{ color: '#eab308' }} />
+              <Briefcase size={18} style={{ color: '#0b2b1c' }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, color: '#eab308', fontWeight: 900, fontSize: '0.95rem' }}>Business applications</p>
-                <p style={{ margin: '1px 0 0', color: 'rgba(200,190,150,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
+                <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 900, fontSize: '0.95rem' }}>Business applications</p>
+                <p style={{ margin: '1px 0 0', color: 'rgba(11,43,28,0.75)', fontSize: '0.68rem', fontWeight: 600 }}>
                   Full request data · Approve / Reject · Note to user
                 </p>
               </div>
@@ -12459,40 +12462,40 @@ export default function SettingsPage() {
                 type="button"
                 onClick={() => setOwnerBusinessList(loadBusinessRegistry())}
                 style={{
-                  border: '1px solid rgba(234,179,8,0.35)', background: 'rgba(234,179,8,0.1)',
-                  color: '#eab308', borderRadius: 8, padding: '6px 10px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer',
+                  border: '1px solid rgba(11,43,28,0.35)', background: 'rgba(11,43,28,0.1)',
+                  color: '#0b2b1c', borderRadius: 8, padding: '6px 10px', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer',
                 }}
               >
                 Refresh
               </button>
-              <span style={{ color: 'rgba(200,190,150,0.7)', fontSize: '0.7rem' }}>{ownerBusinessList.length}</span>
+              <span style={{ color: 'rgba(11,43,28,0.7)', fontSize: '0.7rem' }}>{ownerBusinessList.length}</span>
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               {ownerBusinessList.length === 0 && (
                 <div style={{
-                  padding: 24, textAlign: 'center', color: 'rgba(180,180,160,0.7)',
-                  border: '1px dashed rgba(234,179,8,0.25)', borderRadius: 14,
+                  padding: 24, textAlign: 'center', color: 'rgba(11,43,28,0.7)',
+                  border: '1px dashed rgba(11,43,28,0.25)', borderRadius: 14,
                 }}>
                   No business applications
                 </div>
               )}
               {ownerBusinessList.map(row => (
                 <div key={row.id} style={{
-                  background: 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${row.status === 'pending' ? 'rgba(234,179,8,0.35)' : row.status === 'approved' ? 'rgba(34,197,94,0.35)' : 'rgba(239,68,68,0.3)'}`,
+                  background: 'rgba(11,43,28,0.03)',
+                  border: `1px solid ${row.status === 'pending' ? 'rgba(11,43,28,0.35)' : row.status === 'approved' ? 'rgba(34,197,94,0.35)' : 'rgba(11,43,28,0.3)'}`,
                   borderRadius: 14, padding: 14,
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: '#f5e6a8' }}>{row.projectName}</p>
-                      <p style={{ margin: '4px 0 0', fontSize: 12, color: 'rgba(180,180,160,0.8)' }}>
+                      <p style={{ margin: 0, fontWeight: 800, fontSize: 15, color: '#0b2b1c' }}>{row.projectName}</p>
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: 'rgba(11,43,28,0.8)' }}>
                         @{String(row.username || '').replace(/^@/, '') || 'user'} · {row.email || ''}
                       </p>
-                      <p style={{ margin: '6px 0 0', fontSize: 11, color: 'rgba(180,180,160,0.7)' }}>
+                      <p style={{ margin: '6px 0 0', fontSize: 11, color: 'rgba(11,43,28,0.7)' }}>
                         Commercial registration: {row.licenseNumber}
                       </p>
-                      <p style={{ margin: '2px 0 0', fontSize: 11, color: 'rgba(180,180,160,0.7)' }}>
+                      <p style={{ margin: '2px 0 0', fontSize: 11, color: 'rgba(11,43,28,0.7)' }}>
                         Trade license: {row.tradeLicenseNumber}
                       </p>
                       <p style={{ margin: '2px 0 0', fontSize: 10, color: 'rgba(150,150,130,0.6)' }}>
@@ -12503,12 +12506,12 @@ export default function SettingsPage() {
                       </p>
                       <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                         {row.commercialRegCert && (
-                          <a href={row.commercialRegCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#00BCD4' }}>
+                          <a href={row.commercialRegCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#0b2b1c' }}>
                             Commercial cert{row.commercialRegCertName ? ` (${row.commercialRegCertName})` : ''}
                           </a>
                         )}
                         {row.tradeLicenseCert && (
-                          <a href={row.tradeLicenseCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#00BCD4' }}>
+                          <a href={row.tradeLicenseCert} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#0b2b1c' }}>
                             Trade cert{row.tradeLicenseCertName ? ` (${row.tradeLicenseCertName})` : ''}
                           </a>
                         )}
@@ -12516,15 +12519,15 @@ export default function SettingsPage() {
                     </div>
                     <span style={{
                       padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
-                      background: row.status === 'pending' ? 'rgba(234,179,8,0.15)' : row.status === 'approved' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-                      color: row.status === 'pending' ? '#eab308' : row.status === 'approved' ? '#22c55e' : '#ef4444',
+                      background: row.status === 'pending' ? 'rgba(11,43,28,0.15)' : row.status === 'approved' ? 'rgba(34,197,94,0.15)' : 'rgba(11,43,28,0.15)',
+                      color: row.status === 'pending' ? '#0b2b1c' : row.status === 'approved' ? '#22c55e' : '#0b2b1c',
                     }}>
                       {row.status}
                     </span>
                   </div>
                   {row.status === 'pending' && (
                     <div style={{ marginTop: 12 }}>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'rgba(180,180,160,0.75)', marginBottom: 6 }}>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'rgba(11,43,28,0.75)', marginBottom: 6 }}>
                         Note for user (shown once in their settings, then disappears after they close it)
                       </label>
                       <textarea
@@ -12534,7 +12537,7 @@ export default function SettingsPage() {
                         rows={3}
                         style={{
                           width: '100%', boxSizing: 'border-box', borderRadius: 10, padding: '10px 12px',
-                          border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.55)',
+                          border: '1px solid rgba(11,43,28,0.25)', background: 'rgba(11,43,28,0.55)',
                           color: 'rgba(220,230,230,0.95)', fontSize: 12, outline: 'none', resize: 'vertical',
                           fontFamily: 'inherit', marginBottom: 8,
                         }}
@@ -12553,7 +12556,7 @@ export default function SettingsPage() {
                           }}
                           style={{
                             flex: 1, padding: '10px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                            background: '#22c55e', color: '#041018', fontSize: 12, fontWeight: 800,
+                            background: '#22c55e', color: '#0b2b1c', fontSize: 12, fontWeight: 800,
                           }}
                         >
                           Approve
@@ -12571,7 +12574,7 @@ export default function SettingsPage() {
                           }}
                           style={{
                             flex: 1, padding: '10px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                            background: '#ef4444', color: '#fff', fontSize: 12, fontWeight: 800,
+                            background: '#0b2b1c', color: '#fff', fontSize: 12, fontWeight: 800,
                           }}
                         >
                           Reject
@@ -12580,7 +12583,7 @@ export default function SettingsPage() {
                     </div>
                   )}
                   {row.ownerNote && row.status !== 'pending' && (
-                    <p style={{ margin: '8px 0 0', fontSize: 11, color: 'rgba(180,180,160,0.7)' }}>
+                    <p style={{ margin: '8px 0 0', fontSize: 11, color: 'rgba(11,43,28,0.7)' }}>
                       Note sent: {row.ownerNote}
                     </p>
                   )}
@@ -12595,7 +12598,7 @@ export default function SettingsPage() {
                         }}
                         style={{
                           width: '100%', padding: '10px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                          background: '#ef4444', color: '#fff', fontSize: 12, fontWeight: 800,
+                          background: '#0b2b1c', color: '#fff', fontSize: 12, fontWeight: 800,
                         }}
                       >
                         Delete
@@ -12626,36 +12629,36 @@ export default function SettingsPage() {
               initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }}
               style={{
                 width: 'min(94vw, 380px)', background: 'linear-gradient(180deg, #0a1f22 0%, #061014 100%)',
-                border: '1px solid rgba(234,179,8,0.35)', borderRadius: 16, padding: 18,
+                border: '1px solid rgba(11,43,28,0.35)', borderRadius: 16, padding: 18,
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>Add balance (Visa)</p>
-                <button type="button" onClick={() => setBizTopUpOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
+                <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 900 }}>Add balance (Visa)</p>
+                <button type="button" onClick={() => setBizTopUpOpen(false)} style={{ background: 'none', border: 'none', color: '#0b2b1c', cursor: 'pointer' }}><X size={18} /></button>
               </div>
-              <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Full name</label>
+              <label style={{ display: 'block', color: 'rgba(11,43,28,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Full name</label>
               <input value={bizCardName} onChange={e => setBizCardName(e.target.value.slice(0, 60))}
                 placeholder="Name on card"
-                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 10, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#d7eeee', outline: 'none' }} />
-              <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Card number</label>
+                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 10, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(11,43,28,0.25)', background: 'rgba(11,43,28,0.8)', color: '#0b2b1c', outline: 'none' }} />
+              <label style={{ display: 'block', color: 'rgba(11,43,28,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Card number</label>
               <input value={bizCardNumber} onChange={e => setBizCardNumber(e.target.value.replace(/[^0-9 ]/g, '').slice(0, 19))}
                 placeholder="XXXX XXXX XXXX XXXX"
-                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 10, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#d7eeee', outline: 'none' }} />
+                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 10, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(11,43,28,0.25)', background: 'rgba(11,43,28,0.8)', color: '#0b2b1c', outline: 'none' }} />
               <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Expiry</label>
+                  <label style={{ display: 'block', color: 'rgba(11,43,28,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Expiry</label>
                   <input value={bizCardExp} onChange={e => setBizCardExp(e.target.value.slice(0, 5))} placeholder="MM/YY"
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#d7eeee', outline: 'none' }} />
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(11,43,28,0.25)', background: 'rgba(11,43,28,0.8)', color: '#0b2b1c', outline: 'none' }} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>CVV</label>
+                  <label style={{ display: 'block', color: 'rgba(11,43,28,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>CVV</label>
                   <input value={bizCardCvv} onChange={e => setBizCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="***"
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#d7eeee', outline: 'none' }} />
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(11,43,28,0.25)', background: 'rgba(11,43,28,0.8)', color: '#0b2b1c', outline: 'none' }} />
                 </div>
               </div>
-              <label style={{ display: 'block', color: 'rgba(180,210,210,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Amount (KD)</label>
+              <label style={{ display: 'block', color: 'rgba(11,43,28,0.7)', fontSize: '0.68rem', marginBottom: 6 }}>Amount (KD)</label>
               <input value={bizTopUpAmount} onChange={e => setBizTopUpAmount(e.target.value.replace(/[^0-9.]/g, '').slice(0, 8))}
-                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 14, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(0,188,212,0.25)', background: 'rgba(0,30,35,0.8)', color: '#eab308', fontWeight: 800, outline: 'none' }} />
+                style={{ width: '100%', boxSizing: 'border-box', marginBottom: 14, padding: '11px 12px', borderRadius: 10, border: '1px solid rgba(11,43,28,0.25)', background: 'rgba(11,43,28,0.8)', color: '#0b2b1c', fontWeight: 800, outline: 'none' }} />
               <button
                 type="button"
                 onClick={() => {
@@ -12675,11 +12678,11 @@ export default function SettingsPage() {
                   setBizCardCvv('');
                   setBizTopUpOpen(false);
                 }}
-                style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: '#eab308', color: '#0a0a0a', fontWeight: 900, cursor: 'pointer' }}
+                style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: '#0b2b1c', color: '#fff', fontWeight: 900, cursor: 'pointer' }}
               >
                 Pay & add balance
               </button>
-              <p style={{ margin: '10px 0 0', color: 'rgba(180,210,210,0.55)', fontSize: '0.65rem', textAlign: 'center' }}>
+              <p style={{ margin: '10px 0 0', color: 'rgba(11,43,28,0.55)', fontSize: '0.65rem', textAlign: 'center' }}>
                 Demo top-up (local). Connect a payment gateway for production.
               </p>
             </motion.div>
@@ -12696,36 +12699,36 @@ export default function SettingsPage() {
             onClick={() => setVipPayOpen(false)}
           >
             <motion.div onClick={e => e.stopPropagation()} initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-              style={{ width: 'min(92vw, 340px)', maxHeight: '88vh', overflowY: 'auto', background: '#0a1f22', border: '1px solid rgba(234,179,8,0.4)', borderRadius: 16, padding: 18, display: 'flex', flexDirection: 'column', gap: 10, boxSizing: 'border-box' }}>
+              style={{ width: 'min(92vw, 340px)', maxHeight: '88vh', overflowY: 'auto', background: '#ffffff', border: '1px solid rgba(11,43,28,0.4)', borderRadius: 16, padding: 18, display: 'flex', flexDirection: 'column', gap: 10, boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>VIP Subscription Features</p>
-                <button type="button" onClick={() => setVipPayOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
+                <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 900 }}>VIP Subscription Features</p>
+                <button type="button" onClick={() => setVipPayOpen(false)} style={{ background: 'none', border: 'none', color: '#0b2b1c', cursor: 'pointer' }}><X size={18} /></button>
               </div>
-                            <p style={{ margin: 0, color: '#eab308', fontWeight: 800 }}>5 KD / 30 days</p>
-              <div style={{ color: '#d7eeee', fontSize: 13, lineHeight: 1.45, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 800 }}>5 KD / 30 days</p>
+              <div style={{ color: '#0b2b1c', fontSize: 13, lineHeight: 1.45, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div>
-                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>1. VIP Profile Customization</p>
-                  <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Features an exclusive animated golden border around your profile picture, paired with a matching golden VIP header banner.</p>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#0b2b1c' }}>1. VIP Profile Customization</p>
+                  <p style={{ margin: 0, color: 'rgba(11,43,28,0.8)' }}>Features an exclusive animated golden border around your profile picture, paired with a matching golden VIP header banner.</p>
                 </div>
                 <div>
-                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>2. Advanced Room Stage Access</p>
-                  <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Empowers hosts of audio or video rooms to invite up to 8 speakers simultaneously to the stage upon request.</p>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#0b2b1c' }}>2. Advanced Room Stage Access</p>
+                  <p style={{ margin: 0, color: 'rgba(11,43,28,0.8)' }}>Empowers hosts of audio or video rooms to invite up to 8 speakers simultaneously to the stage upon request.</p>
                 </div>
                 <div>
-                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>3. Custom Username Colors</p>
-                  <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Personalize your username with a selection of vibrant colors: Blue, Gold, Red, Green, or Grey.</p>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#0b2b1c' }}>3. Custom Username Colors</p>
+                  <p style={{ margin: 0, color: 'rgba(11,43,28,0.8)' }}>Personalize your username with a selection of vibrant colors: Blue, Gold, Red, Green, or Grey.</p>
                 </div>
                 <div>
-                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>4. Advanced Music &amp; Media Player</p>
-                  <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Includes a dedicated search button for advanced music browsing. Play any song, track, or Quranic recitation for everyone in the room to hear. Features a personal favorites list and independent volume control for background music—allowing you to adjust the music volume without affecting normal microphone voice levels.</p>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#0b2b1c' }}>4. Advanced Music &amp; Media Player</p>
+                  <p style={{ margin: 0, color: 'rgba(11,43,28,0.8)' }}>Includes a dedicated search button for advanced music browsing. Play any song, track, or Quranic recitation for everyone in the room to hear. Features a personal favorites list and independent volume control for background music—allowing you to adjust the music volume without affecting normal microphone voice levels.</p>
                 </div>
                 <div>
-                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#fff' }}>5. One-Time Username Change</p>
-                  <p style={{ margin: 0, color: 'rgba(200,220,220,0.8)' }}>Allows a one-time username change, supporting short usernames down to a single character.</p>
+                  <p style={{ margin: '0 0 4px', fontWeight: 900, color: '#0b2b1c' }}>5. One-Time Username Change</p>
+                  <p style={{ margin: 0, color: 'rgba(11,43,28,0.8)' }}>Allows a one-time username change, supporting short usernames down to a single character.</p>
                 </div>
               </div>
               {bizBalance < VIP_PRICE_KD ? (
-                <p style={{ margin: 0, color: '#facc15', fontSize: 13, lineHeight: 1.45 }}>
+                <p style={{ margin: 0, color: '#0b2b1c', fontSize: 13, lineHeight: 1.45 }}>
                   Your My Balance is {bizBalance.toFixed(0)} KD. Add at least {VIP_PRICE_KD} KD in My Balance, then subscribe.
                 </p>
               ) : (
@@ -12744,7 +12747,7 @@ export default function SettingsPage() {
                 setVipExpiresAt(Date.now() + 30 * 24 * 60 * 60 * 1000);
                 setVipOn(true);
                 setVipPayOpen(false);
-              }} disabled={bizBalance < VIP_PRICE_KD} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: bizBalance < VIP_PRICE_KD ? '#4b5563' : '#eab308', color: bizBalance < VIP_PRICE_KD ? '#ccc' : '#111', fontWeight: 900, cursor: bizBalance < VIP_PRICE_KD ? 'default' : 'pointer' }}>
+              }} disabled={bizBalance < VIP_PRICE_KD} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: bizBalance < VIP_PRICE_KD ? '#4b5563' : '#0b2b1c', color: bizBalance < VIP_PRICE_KD ? '#ccc' : '#111', fontWeight: 900, cursor: bizBalance < VIP_PRICE_KD ? 'default' : 'pointer' }}>
                 {bizBalance < VIP_PRICE_KD ? 'Add balance first' : `Subscribe · ${VIP_PRICE_KD} KD`}
               </button>
             </motion.div>
@@ -12758,18 +12761,18 @@ export default function SettingsPage() {
             style={{ position: 'fixed', inset: 0, zIndex: 10540, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
             onClick={() => setVipInfoOpen(false)}>
             <motion.div onClick={e => e.stopPropagation()} initial={{ y: 16, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-              style={{ width: 'min(92vw, 340px)', background: '#0a1f22', border: '1px solid rgba(234,179,8,0.4)', borderRadius: 16, padding: 16 }}>
+              style={{ width: 'min(92vw, 340px)', background: '#ffffff', border: '1px solid rgba(11,43,28,0.4)', borderRadius: 16, padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>VIP period</p>
-                <button type="button" onClick={() => setVipInfoOpen(false)} style={{ background: 'none', border: 'none', color: '#eab308' }}><X size={18} /></button>
+                <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 900 }}>VIP period</p>
+                <button type="button" onClick={() => setVipInfoOpen(false)} style={{ background: 'none', border: 'none', color: '#0b2b1c' }}><X size={18} /></button>
               </div>
               {(() => {
                 const c = formatVipCountdown(vipExpiresAt);
                 return (
-                  <div style={{ marginTop: 12, color: '#d7eeee' }}>
-                    <p style={{ margin: '0 0 8px', fontWeight: 800, color: '#eab308', fontSize: 22 }}>{c.days}d {String(c.hours).padStart(2,'0')}:{String(c.minutes).padStart(2,'0')}:{String(c.seconds).padStart(2,'0')}</p>
-                    <p style={{ margin: 0, fontSize: 12, color: 'rgba(200,220,220,0.75)' }}>Ends {c.date || '—'}</p>
-                    <p style={{ margin: '10px 0 0', fontSize: 12, color: 'rgba(200,220,220,0.7)' }}>When the 30 days end, VIP locks and features stop. You can subscribe again anytime from My Balance ({VIP_PRICE_KD} KD).</p>
+                  <div style={{ marginTop: 12, color: '#0b2b1c' }}>
+                    <p style={{ margin: '0 0 8px', fontWeight: 800, color: '#0b2b1c', fontSize: 22 }}>{c.days}d {String(c.hours).padStart(2,'0')}:{String(c.minutes).padStart(2,'0')}:{String(c.seconds).padStart(2,'0')}</p>
+                    <p style={{ margin: 0, fontSize: 12, color: 'rgba(11,43,28,0.75)' }}>Ends {c.date || '—'}</p>
+                    <p style={{ margin: '10px 0 0', fontSize: 12, color: 'rgba(11,43,28,0.7)' }}>When the 30 days end, VIP locks and features stop. You can subscribe again anytime from My Balance ({VIP_PRICE_KD} KD).</p>
                   </div>
                 );
               })()}
@@ -12784,58 +12787,58 @@ export default function SettingsPage() {
             style={{ position: 'fixed', inset: 0, zIndex: 10530, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
             onClick={() => setVipFeaturesOpen(false)}>
             <motion.div onClick={e => e.stopPropagation()} initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-              style={{ width: 'min(92vw, 360px)', maxHeight: '88vh', overflowY: 'auto', background: '#0a1f22', border: '1px solid rgba(234,179,8,0.4)', borderRadius: 16, padding: 16, position: 'relative' }}>
+              style={{ width: 'min(92vw, 360px)', maxHeight: '88vh', overflowY: 'auto', background: '#ffffff', border: '1px solid rgba(11,43,28,0.4)', borderRadius: 16, padding: 16, position: 'relative' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <p style={{ margin: 0, color: '#eab308', fontWeight: 900 }}>VIP features</p>
-                <button type="button" onClick={() => { setVipFeaturesOpen(false); setVipConfirm(null); }} style={{ background: 'none', border: 'none', color: '#eab308', cursor: 'pointer' }}><X size={18} /></button>
+                <p style={{ margin: 0, color: '#0b2b1c', fontWeight: 900 }}>VIP features</p>
+                <button type="button" onClick={() => { setVipFeaturesOpen(false); setVipConfirm(null); }} style={{ background: 'none', border: 'none', color: '#0b2b1c', cursor: 'pointer' }}><X size={18} /></button>
               </div>
-              <p style={{ margin: '0 0 8px', color: '#eab308', fontSize: 12, fontWeight: 700 }}>Username color</p>
+              <p style={{ margin: '0 0 8px', color: '#0b2b1c', fontSize: 12, fontWeight: 700 }}>Username color</p>
               <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
                 {(['blue', 'gold', 'red', 'green', 'gray', 'pink'] as const).map(c => (
                   <button key={c} type="button" onClick={() => setVipConfirm({ kind: 'color', color: c })}
                     style={{ width: 24, height: 24, borderRadius: '50%', background: VIP_COLORS[c], border: vipColor === c ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer' }} />
                 ))}
               </div>
-              <p style={{ margin: '0 0 6px', color: '#eab308', fontSize: 12, fontWeight: 700 }}>Change username once</p>
+              <p style={{ margin: '0 0 6px', color: '#0b2b1c', fontSize: 12, fontWeight: 700 }}>Change username once</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
                 <input value={vipNewUser} onChange={e => setVipNewUser(e.target.value)} disabled={vipRenameUsed(user.id)}
-                  placeholder="new username" style={{ width: '100%', boxSizing: 'border-box', borderRadius: 8, border: '1px solid rgba(234,179,8,0.35)', background: 'transparent', color: T.text, padding: '10px 10px' }} />
+                  placeholder="new username" style={{ width: '100%', boxSizing: 'border-box', borderRadius: 8, border: '1px solid rgba(11,43,28,0.35)', background: 'transparent', color: T.text, padding: '10px 10px' }} />
                 <button type="button" disabled={vipRenameUsed(user.id) || !vipNewUser.trim()}
                   onClick={() => setVipConfirm({ kind: 'rename' })}
-                  style={{ width: '100%', borderRadius: 8, border: 'none', background: '#eab308', color: '#111', fontWeight: 800, padding: '10px 10px' }}>Save username</button>
+                  style={{ width: '100%', borderRadius: 8, border: 'none', background: '#0b2b1c', color: '#fff', fontWeight: 800, padding: '10px 10px' }}>Save username</button>
               </div>
-              {vipRenameMsg ? <p style={{ margin: '0 0 10px', color: '#eab308', fontSize: 12 }}>{vipRenameMsg}</p> : null}
+              {vipRenameMsg ? <p style={{ margin: '0 0 10px', color: '#0b2b1c', fontSize: 12 }}>{vipRenameMsg}</p> : null}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <span style={{ color: T.text, fontSize: 13 }}>8 speakers on live mic</span>
                 <button type="button" onClick={() => setVipConfirm({ kind: 'eightMics', nextOn: !vipEightMics })}
-                  style={{ width: 46, height: 26, borderRadius: 999, border: 'none', background: vipEightMics ? '#eab308' : '#4b5563', position: 'relative' }}>
+                  style={{ width: 46, height: 26, borderRadius: 999, border: 'none', background: vipEightMics ? T.switchOn : T.switchOff, position: 'relative' }}>
                   <span style={{ position: 'absolute', top: 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', left: vipEightMics ? 23 : 3 }} />
                 </button>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ color: T.text, fontSize: 13 }}>Room music search</span>
                 <button type="button" onClick={() => setVipConfirm({ kind: 'roomMusic', nextOn: !vipRoomMusic })}
-                  style={{ width: 46, height: 26, borderRadius: 999, border: 'none', background: vipRoomMusic ? '#eab308' : '#4b5563', position: 'relative' }}>
+                  style={{ width: 46, height: 26, borderRadius: 999, border: 'none', background: vipRoomMusic ? T.switchOn : T.switchOff, position: 'relative' }}>
                   <span style={{ position: 'absolute', top: 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', left: vipRoomMusic ? 23 : 3 }} />
                 </button>
               </div>
               {vipOn && vipRoomMusic && (
                 <button type="button" onClick={() => setMusicModalOpen(true)}
-                  style={{ marginTop: 14, width: '100%', padding: 10, borderRadius: 10, border: '1px solid rgba(234,179,8,0.4)', background: 'rgba(234,179,8,0.12)', color: '#eab308', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  style={{ marginTop: 14, width: '100%', padding: 10, borderRadius: 10, border: '1px solid rgba(11,43,28,0.4)', background: 'rgba(11,43,28,0.12)', color: '#0b2b1c', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <Music size={16} /> Open room music
                 </button>
               )}
               {vipConfirm && (
                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 16 }}>
-                  <div style={{ width: '100%', background: '#0d2428', border: '1px solid rgba(234,179,8,0.45)', borderRadius: 12, padding: 14 }}>
-                    <p style={{ margin: '0 0 6px', color: '#eab308', fontWeight: 900 }}>
+                  <div style={{ width: '100%', background: '#0d2428', border: '1px solid rgba(11,43,28,0.45)', borderRadius: 12, padding: 14 }}>
+                    <p style={{ margin: '0 0 6px', color: '#0b2b1c', fontWeight: 900 }}>
                       {vipConfirm.kind === 'color' ? 'Confirm username color' : vipConfirm.kind === 'rename' ? 'Confirm username change' : vipConfirm.kind === 'eightMics' ? (vipConfirm.nextOn ? 'Enable 8 live speakers' : 'Disable 8 live speakers') : (vipConfirm.nextOn ? 'Enable room music search' : 'Disable room music search')}
                     </p>
                     <p style={{ margin: '0 0 12px', color: T.text, fontSize: 13 }}>
                       {vipConfirm.kind === 'color' ? `Apply ${vipConfirm.color} to your public username?` : vipConfirm.kind === 'rename' ? `Save @${vipNewUser.trim().replace(/^@/, '')}? This can be used only once.` : vipConfirm.kind === 'eightMics' ? (vipConfirm.nextOn ? 'Your live rooms will accept up to 8 speakers on the mic.' : 'Live rooms will go back to 4 speakers.') : (vipConfirm.nextOn ? 'A Music button will appear on your live room.' : 'The Music button will be hidden on your live room.')}
                     </p>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button type="button" onClick={() => setVipConfirm(null)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid rgba(234,179,8,0.35)', background: 'transparent', color: T.text, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+                      <button type="button" onClick={() => setVipConfirm(null)} style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid rgba(11,43,28,0.35)', background: 'transparent', color: T.text, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
                       <button type="button" onClick={async () => {
                         if (!user?.id || !vipConfirm) return;
                         if (vipConfirm.kind === 'color' && vipConfirm.color) {
@@ -12861,7 +12864,7 @@ export default function SettingsPage() {
                           setVipFeat(user.id, 'roomMusic', n);
                         }
                         setVipConfirm(null);
-                      }} style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', background: '#eab308', color: '#111', fontWeight: 900, cursor: 'pointer' }}>Confirm</button>
+                      }} style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', background: '#0b2b1c', color: '#fff', fontWeight: 900, cursor: 'pointer' }}>Confirm</button>
                     </div>
                   </div>
                 </div>
@@ -12883,17 +12886,17 @@ export default function SettingsPage() {
             <motion.div
               onClick={e => e.stopPropagation()}
               initial={{ opacity: 0, scale: 0.94, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 10 }}
-              style={{ width: '100%', maxWidth: 340, background: '#101f22', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 16, padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}
+              style={{ width: '100%', maxWidth: 340, background: '#101f22', border: '1px solid rgba(11,43,28,0.4)', borderRadius: 16, padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}
             >
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <AlertTriangle size={18} color="#ef4444" />
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(11,43,28,0.12)', border: '1px solid rgba(11,43,28,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <AlertTriangle size={18} color='#0b2b1c' />
                 </div>
                 <p style={{ margin: 0, color: T.text, fontSize: '0.9rem', fontWeight: 800, textAlign: 'center' }}>
                   {cancelSubConfirm === 'vip' ? 'إلغاء اشتراك VIP · Cancel VIP subscription' : 'إلغاء اشتراك Business · Cancel Business subscription'}
                 </p>
               </div>
-              <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, padding: '10px 12px' }}>
+              <div style={{ background: 'rgba(11,43,28,0.08)', border: '1px solid rgba(11,43,28,0.25)', borderRadius: 10, padding: '10px 12px' }}>
                 <p style={{ margin: '0 0 8px', color: T.text, fontSize: '0.78rem', lineHeight: 1.6, textAlign: 'right', direction: 'rtl' }}>
                   {cancelSubConfirm === 'vip'
                     ? 'عند إلغاء اشتراك الحساب سوف تكون على مسؤوليتك الخاصة، لأنه سوف يتم إزالة كل مميزات الاشتراك التي كانت على حسابك.'
@@ -12934,8 +12937,8 @@ export default function SettingsPage() {
                     }
                   }}
                   style={{
-                    flex: 1, padding: 10, borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)',
-                    background: 'rgba(239,68,68,0.18)', color: '#ef4444', fontWeight: 800,
+                    flex: 1, padding: 10, borderRadius: 10, border: '1px solid rgba(11,43,28,0.4)',
+                    background: 'rgba(11,43,28,0.18)', color: '#0b2b1c', fontWeight: 800,
                     cursor: cancellingSub ? 'default' : 'pointer',
                   }}
                 >
