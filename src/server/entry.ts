@@ -1173,6 +1173,48 @@ const maxOf = (m: Map<string, number>, keys: string[]) => {
   return v;
 };
 
+// ── LIVE-ICONS-PATCH: owner switch that shows / hides the Coins ($) + Gifts icons in video & voice LIVE for everyone ──
+// GET  /api/app-settings/live-icons -> { ok, visible }  (public, never cached)
+// POST /api/app-settings/live-icons { visible: boolean } (owner/admin only) — saved to disk so it survives restarts/redeploys
+const APP_SETTINGS_FILE = () => join(ASSETS_DIR, "stooorna-app-settings.json");
+const loadAppSettings = (): { liveIconsVisible: boolean } => {
+  const g = globalThis as typeof globalThis & { __stooornaAppSettings?: { liveIconsVisible: boolean } };
+  if (!g.__stooornaAppSettings) {
+    let visible = true;
+    try {
+      const p = APP_SETTINGS_FILE();
+      if (existsSync(p)) {
+        const raw = JSON.parse(readFileSync(p, "utf-8"));
+        if (raw && raw.liveIconsVisible === false) visible = false;
+      }
+    } catch (e) {
+      console.error("[app-settings] load failed", e);
+    }
+    g.__stooornaAppSettings = { liveIconsVisible: visible };
+  }
+  return g.__stooornaAppSettings;
+};
+const saveAppSettings = () => {
+  try {
+    if (!existsSync(ASSETS_DIR)) mkdirSync(ASSETS_DIR, { recursive: true });
+    writeFileSync(APP_SETTINGS_FILE(), JSON.stringify({ ...loadAppSettings(), updatedAt: Date.now() }), "utf-8");
+  } catch (e) {
+    console.error("[app-settings] save failed", e);
+  }
+};
+app.get("/api/app-settings/live-icons", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.json({ ok: true, visible: loadAppSettings().liveIconsVisible });
+});
+app.post("/api/app-settings/live-icons", guarded(async (req, res) => {
+  if (!(await needAdmin(req, res))) return;
+  const v = (req.body as { visible?: unknown } | undefined)?.visible;
+  if (typeof v !== "boolean") return deny(res, 400, "visible_must_be_boolean");
+  loadAppSettings().liveIconsVisible = v;
+  saveAppSettings();
+  res.json({ ok: true, visible: v });
+}));
+
 app.get("/api/gifts/profits", guarded(async (req, res) => {
   if (!(await needAdmin(req, res))) return;
   const mem = giftProfitMem();
