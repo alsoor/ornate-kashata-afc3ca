@@ -24336,7 +24336,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Grabber bar above the content switcher: tap toggles the header (avatar/stats,
   // stories strip, new-post + inbox) like a shutter. Swiping up on the posts feed
   // also collapses it; scrolling back to the top expands it again.
-  const [headerOpen, setHeaderOpen] = useState(true);
+  // Story sheet stays raised on entry. It only drops when the grabber is tapped,
+  // or when a user story is published / a live is open (see effect below).
+  const [headerOpen, setHeaderOpen] = useState(false);
   const [profileSlideOpen, setProfileSlideOpen] = useState(false);
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
   const [liveScrollHidden, setLiveScrollHidden] = useState(false);
@@ -24356,7 +24358,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const on = (e: Event) => {
       const hide = !!(e as CustomEvent).detail?.hidden;
       setLiveScrollHidden(hide);
-      setHeaderOpen(!hide);
+      // Scrolling live cards may raise the sheet, never drop it.
+      if (hide) setHeaderOpen(false);
     };
     window.addEventListener(HOME_LIVE_SCROLL_EVT, on as EventListener);
     return () => window.removeEventListener(HOME_LIVE_SCROLL_EVT, on as EventListener);
@@ -24400,7 +24403,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const bottomHeaderShown = !guestMode && !chatLifted && !isFriendManagement && !visitorProfileOpen && !dockSettingsOpen;
   useEffect(() => {
     try {
-      document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(80px + env(safe-area-inset-bottom, 0px))' : '0px');
+      document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(40px + env(safe-area-inset-bottom, 0px))' : '0px');
     } catch { /* */ }
     return () => { try { document.documentElement.style.setProperty('--stooorna-bottom-bar-h', '0px'); } catch { /* */ } };
   }, [bottomHeaderShown]);
@@ -24452,7 +24455,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     try { if (Date.now() < Number((window as any).__stooornaMediaHoldUntil || 0)) return; } catch { /* */ }
     // Public chat is open → coming back to the app must not kick the user out of it.
     if (chatLiftedRef.current) return;
-    setHeaderOpen(true);
+    // Do not drop the story sheet on focus / return — it stays raised unless tapped or a story/live arrives.
     setStoryPullProgress(0);
     storyPullProgressRef.current = 0;
     storyPullActiveRef.current = false;
@@ -24587,17 +24590,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     feedScrollRafRef.current = requestAnimationFrame(() => {
       feedScrollRafRef.current = 0;
       // Finger swipe up (content scrolls down) -> collapse header AND hide bottom bar
+      // Sheet height is not driven by scroll — only the grabber tap, or a published story / open live.
       if (delta > 2 && current > 4) {
-        setHeaderOpen(false);
-        setHeaderHintSeen(true);
         try {
           window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'down' } }));
         } catch { /* ignore */ }
         return;
       }
-      // Only near the very top: expand header and show bottom bar
       if (current <= 10) {
-        setHeaderOpen(true);
         try {
           window.dispatchEvent(new CustomEvent('stooorna:feed-scroll', { detail: { dir: 'up' } }));
         } catch { /* ignore */ }
@@ -25021,6 +25021,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     ...storyGroups.map(g => String(g.userId)),
   ], [user?.id, friends, storyGroups]);
   const anyLiveBroadcast = useAnyLiveBroadcast(anyLiveHostIds);
+  // Drop the raised story sheet only when a user has a published story, or a live is open.
+  const storySheetDrop = storyGroups.some(g => Array.isArray(g.items) && g.items.length > 0) || anyLiveBroadcast;
+  useEffect(() => {
+    if (storySheetDrop) setHeaderOpen(true);
+  }, [storySheetDrop]);
   // مرشّحو بطاقات البث في الرئيسية: أصحاب القصص + الأصدقاء (بدون أنا)
   const homeLiveHosts = useMemo<HomeLiveHost[]>(() => {
     const me = String(user?.id || '');
@@ -26744,40 +26749,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           {/* Row 1 + Row 2: story circle + stats, then the friends' stories strip */}
           {pageTab === 'profile' && (
           <div>
-          {/* Row 1: two lines (top-left) + bell only (center). Other icons moved into profile panel. */}
-          {pageTab === 'profile' && (
-            <div style={{ position: 'relative', paddingBottom: 4, paddingTop: 2, minHeight: 34 }}>
-              {/* Two small lines — top left, no frame — opens full page from top */}
-              <button
-                type="button"
-                aria-label="Profile menu"
-                onClick={() => setProfileSlideOpen(true)}
-                style={{
-                  position: 'absolute', left: 8, top: 6, zIndex: 8,
-                  width: 28, height: 20,
-                  border: 'none', outline: 'none',
-                  background: 'transparent',
-                  WebkitTapHighlightColor: 'transparent',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5,
-                  cursor: 'pointer', padding: 0,
-                }}
-              >
-                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#00BCD4' }} />
-                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#00BCD4' }} />
-              </button>
-
-              {/* Bell only — centered at top of story page */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 30 }}>
-                <div style={{ position: 'relative', width: 30, height: 30, flexShrink: 0 }}>
-                  <HeaderAdminBell userId={user?.id} size={30} />
-                  <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
-                    <StoryModerationBell userId={user?.id} size={30} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Row 2: Friends' stories strip — shown under the story circle on the PROFILE tab */}
           {pageTab === 'profile' && (
             <>
@@ -27064,6 +27035,49 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             document.body
           )}
 
+          {/* Row 1: two lines (top-left) + bell only (center). Other icons moved into profile panel. */}
+          {pageTab === 'profile' && (
+            <div style={{ position: 'relative', paddingBottom: 4, paddingTop: 2, minHeight: 34 }}>
+              {/* Two small lines — top left, no frame — opens full page from top */}
+              <button
+                type="button"
+                aria-label="Profile menu"
+                onClick={() => setProfileSlideOpen(true)}
+                style={{
+                  position: 'absolute', left: 8, top: 6, zIndex: 8,
+                  width: 28, height: 20,
+                  border: 'none', outline: 'none',
+                  background: 'transparent',
+                  WebkitTapHighlightColor: 'transparent',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  cursor: 'pointer', padding: 0,
+                }}
+              >
+                <style>{`@keyframes stooornaLinesShine { 0% { transform: translateX(-130%); } 100% { transform: translateX(340%); } }`}</style>
+                {[0, 1].map(i => (
+                  <span key={i} style={{ position: 'relative', display: 'block', width: 16, height: 2, borderRadius: 1, background: '#ffffff', overflow: 'hidden' }}>
+                    <span aria-hidden style={{
+                      position: 'absolute', top: 0, bottom: 0, left: 0, width: '55%',
+                      background: 'linear-gradient(90deg, transparent, rgba(226,232,240,0.15), rgba(248,250,252,1), rgba(203,213,225,0.85), transparent)',
+                      animation: 'stooornaLinesShine 1.6s ease-in-out infinite',
+                    }} />
+                  </span>
+                ))}
+              </button>
+
+              {/* Bell only — centered at top of story page */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 30 }}>
+                <div style={{ position: 'relative', width: 30, height: 30, flexShrink: 0 }}>
+                  <HeaderAdminBell userId={user?.id} size={30} />
+                  <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
+                    <StoryModerationBell userId={user?.id} size={30} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+
           {/* ── Header show/hide grabber — sits above the content switcher.
               Tap toggles header open/closed. Swipe-up on posts also collapses it. ── */}
           <div data-stooorna-header-grabber="1" style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
@@ -27138,17 +27152,24 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           <BottomHeaderPortal enabled={!guestMode}>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
             position: 'fixed', left: 0, right: 0, bottom: 0,
-            // تحت مربعات الأقسام (الأصدقاء 10080، الاتصال، البث) عشان ما تتضارب معه، وفوق الشات (15/40)
             zIndex: 10070,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '5px 10px calc(5px + env(safe-area-inset-bottom, 0px)) 10px',
+            padding: '4px 8px env(safe-area-inset-bottom, 0px)',
             background: 'rgba(4,12,12,0.96)',
             backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-            borderTop: `1px solid ${CLR_PRIMARY_BORDER}`,
-            // هيد الأقسام السفلي ثابت دايم: لا يختفي بالتمرير ولا برفع الهيدر
+            borderTop: '1px solid rgba(255,255,255,0.85)',
             transform: 'translateY(0)',
             transition: 'transform 0.25s ease',
+            overflow: 'hidden',
           } : { display: 'flex', justifyContent: 'center', padding: '8px 0 10px', position: 'relative' }}>
+                {!guestMode && (
+                  <>
+                    <style>{`@keyframes stooornaDockTopShine { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }`}</style>
+                    <span aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, overflow: 'hidden', pointerEvents: 'none', background: '#ffffff' }}>
+                      <span style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '28%', background: 'linear-gradient(90deg, transparent, rgba(226,232,240,0.2), rgba(248,250,252,1), rgba(148,163,184,0.95), transparent)', animation: 'stooornaDockTopShine 1.8s ease-in-out infinite' }} />
+                    </span>
+                  </>
+                )}
                 <div style={guestMode ? {
                   position: 'relative',
                   display: 'flex',
@@ -27162,17 +27183,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   zIndex: 10620,
                   animation: 'stooornaPlusFanIn 0.28s ease-out',
                 } : {
-                  // بدون إطار/هيد: الأقسام الأربعة موزّعة بعرض الشاشة كاملاً من اليمين لليسار
                   position: 'relative',
                   display: 'flex',
                   flexDirection: 'row',
-                  alignItems: 'flex-start',
+                  alignItems: 'center',
                   justifyContent: 'space-around',
                   width: '100%',
                   gap: 0,
-                  padding: '2px 0',
+                  padding: 0,
                   zIndex: 10620,
-                  animation: 'stooornaPlusFanIn 0.28s ease-out',
                 }}>
                   <style>{`@property --stooorna-frame-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes stooornaFrameShine { to { --stooorna-frame-angle: 360deg; } }
@@ -27182,7 +27201,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 {/* ── Speech-bubble panel: sits above the dock, tail points at the tapped icon ── */}
 {/* PERF: the dock bubble is its own component now — tapping an icon re-renders only the bubble, not this whole page */}
                   {user?.id && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
 <button
                       type="button"
                       onContextMenu={(e) => e.preventDefault()}
@@ -27244,9 +27263,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label={profilePlusIncomingCallUi.ringing ? 'Answer call' : 'Call'}
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
+                        border: '1.5px solid #ffffff',
+                        background: 'transparent',
+                        color: '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27255,12 +27274,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Phone size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Call</span>
 </div>
                   )}
 
                   {user?.id && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
 <button
                       type="button"
                       onClick={() => {
@@ -27270,9 +27288,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label="Chat"
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
+                        border: '1.5px solid #ffffff',
+                        background: 'transparent',
+                        color: '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27280,21 +27298,20 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <MessageCircle size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Chat</span>
 </div>
                   )}
 
                   {user?.id && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
 <button
                       type="button"
                       onClick={(e) => openDockBubble('live', e.currentTarget)}
                       aria-label="Live broadcast"
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
+                        border: '1.5px solid #ffffff',
+                        background: 'transparent',
+                        color: '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27302,12 +27319,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Radio size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>LIVE</span>
 </div>
                   )}
                   {/* Templates — صور وفيديو Templates (كانت خلف الشيت) صارت هنا بين LIVE و Settings */}
                   {user?.id && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
 <button
                       type="button"
                       onPointerDown={() => tplLongPressStart(() => {
@@ -27327,9 +27343,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       style={{
                         WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1px solid rgba(0,188,212,0.4)',
-                        background: 'rgba(6,20,22,0.96)',
-                        color: '#00BCD4',
+                        border: '1.5px solid #ffffff',
+                        background: 'transparent',
+                        color: '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27337,7 +27353,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Film size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Templates</span>
 </div>
                   )}
                   {/* Settings — نُقلت من الهيدر إلى هنا بجانب الأصدقاء والاتصال والبث */}
@@ -27354,9 +27369,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   title={GUEST_SIGNIN_LABEL[guestLang]}
   style={{
     width: 34, height: 34, borderRadius: '50%',
-    border: '1px solid rgba(0,188,212,0.4)',
-    background: 'rgba(6,20,22,0.96)',
-    color: '#00BCD4',
+    border: '1.5px solid #ffffff',
+    background: 'transparent',
+    color: '#ffffff',
     cursor: 'pointer', padding: 0,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     boxShadow: 'none',
@@ -27364,7 +27379,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 >
   <LogIn size={18} strokeWidth={2.2} />
 </motion.button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>{GUEST_SIGNIN_LABEL[guestLang]}</span>
 <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
   <button type="button" onClick={() => chooseGuestLang('ar')} aria-pressed={guestLang === 'ar'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'ar' ? 600 : 300, color: guestLang === 'ar' ? '#00BCD4' : 'rgba(255,255,255,0.6)' }}>Ar</button>
   <span aria-hidden="true" style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>|</span>
@@ -27372,7 +27386,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 </div>
 </div>
 ) : (
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
+<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
 <motion.button
                     type="button"
                     whileTap={{ scale: 0.9 }}
@@ -27381,9 +27395,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     title="Settings"
                     style={{
                       width: 34, height: 34, borderRadius: '50%',
-                      border: '1px solid rgba(0,188,212,0.4)',
-                      background: 'rgba(6,20,22,0.96)',
-                      color: '#00BCD4',
+                      border: '1.5px solid #ffffff',
+                      background: 'transparent',
+                      color: '#ffffff',
                       cursor: 'pointer', padding: 0,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       boxShadow: 'none',
@@ -27397,7 +27411,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <Settings size={18} strokeWidth={2.2} />
                     </span>
                   </motion.button>
-<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Settings</span>
 </div>
 )}
                 </div>
