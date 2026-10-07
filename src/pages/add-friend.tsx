@@ -14335,9 +14335,9 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
         aria-label="Admin notices"
         style={{
           width: size, height: size, borderRadius: '50%',
-          border: `1.5px solid ${unread ? 'rgba(239,68,68,0.95)' : hapticOff ? 'rgba(249,115,22,0.85)' : '#000000'}`,
+          border: `1.5px solid ${unread ? 'rgba(239,68,68,0.95)' : hapticOff ? 'rgba(249,115,22,0.85)' : '#ffffff'}`,
           background: unread ? 'rgba(239,68,68,0.16)' : hapticOff ? 'rgba(249,115,22,0.2)' : 'transparent',
-          color: '#000000',
+          color: '#ffffff',
           boxShadow: unread ? '0 0 10px rgba(239,68,68,0.55)' : 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', padding: 0,
@@ -14352,7 +14352,7 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
           top: -28,
           left: '50%',
           transform: 'translateX(-50%)',
-          color: '#000000',
+          color: '#ffffff',
           fontSize: '0.78rem',
           fontWeight: 800,
           lineHeight: 1,
@@ -26693,9 +26693,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         <div className="sticky top-0 z-20" style={{
           position: 'relative',
           paddingTop: 'max(16px, calc(env(safe-area-inset-top, 0px) + 8px))',
-          background: '#ffffff',
+          background: '#000000',
           backdropFilter: 'blur(14px)',
-          borderBottom: '1px solid rgba(0,0,0,0.10)',
+          borderBottom: '1px solid #ffffff',
         }}>
           {/* Profile bell lives in the right icon column above Ads (not absolute top). */}
           {/* ── Top hamburger menu — aligned with the username/bio line, and now hides along
@@ -26757,8 +26757,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   cursor: 'pointer', padding: 0,
                 }}
               >
-                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#0a2f1d' }} />
-                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#0a2f1d' }} />
+                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#ffffff' }} />
+                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#ffffff' }} />
               </button>
 
               {/* Bell only — centered at top of story page */}
@@ -27091,7 +27091,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   display: 'block',
                   position: 'relative', overflow: 'hidden',
                   width: 36, height: 4, borderRadius: 2,
-                  background: (liveChatBusy || anyoneOnlineInApp) ? '#16a34a' : '#000000',
+                  background: (liveChatBusy || anyoneOnlineInApp) ? '#16a34a' : '#ffffff',
                   boxShadow: (liveChatBusy || anyoneOnlineInApp) ? '0 0 6px rgba(34,197,94,0.55)' : 'none',
                   transition: 'background 0.25s ease, box-shadow 0.25s ease',
                 }}
@@ -27138,9 +27138,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             zIndex: 10070,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '5px 10px calc(5px + env(safe-area-inset-bottom, 0px)) 10px',
-            background: '#ffffff',
+            background: '#000000',
             backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
-            borderTop: '1px solid rgba(0,0,0,0.12)',
+            borderTop: '1px solid #ffffff',
             // هيد الأقسام السفلي ثابت دايم: لا يختفي بالتمرير ولا برفع الهيدر
             transform: 'translateY(0)',
             transition: 'transform 0.25s ease',
@@ -27240,8 +27240,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label={profilePlusIncomingCallUi.ringing ? 'Answer call' : 'Call'}
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1.5px solid #0a2f1d',
-                        background: '#ffffff',
+                        border: '1.5px solid #ffffff',
+                        background: '#000000',
                         color: '#22c55e',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -27251,7 +27251,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Phone size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#0a2f1d', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Call</span>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Call</span>
 </div>
                   )}
 
@@ -27266,9 +27266,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label="Chat"
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1.5px solid #0a2f1d',
-                        background: '#ffffff',
-                        color: '#0a2f1d',
+                        border: '1.5px solid #ffffff',
+                        background: '#000000',
+                        color: '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27276,7 +27276,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <MessageCircle size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#0a2f1d', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Chat</span>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Chat</span>
 </div>
                   )}
 
@@ -27288,9 +27288,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label="Live broadcast"
                       style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1.5px solid #0a2f1d',
-                        background: '#ffffff',
-                        color: '#0a2f1d',
+                        border: '1.5px solid #ffffff',
+                        background: '#000000',
+                        color: '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27298,7 +27298,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Radio size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#0a2f1d', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>LIVE</span>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>LIVE</span>
 </div>
                   )}
                   {/* Templates — صور وفيديو Templates (كانت خلف الشيت) صارت هنا بين LIVE و Settings */}
@@ -27323,9 +27323,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       style={{
                         WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
                         width: 34, height: 34, borderRadius: '50%',
-                        border: '1.5px solid #0a2f1d',
-                        background: '#ffffff',
-                        color: '#0a2f1d',
+                        border: '1.5px solid #ffffff',
+                        background: '#000000',
+                        color: '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27333,7 +27333,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Film size={18} strokeWidth={2.2} />
                     </button>
-<span data-stooorna-icon-label="1" style={{ color: '#0a2f1d', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Templates</span>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Templates</span>
 </div>
                   )}
                   {/* Settings — نُقلت من الهيدر إلى هنا بجانب الأصدقاء والاتصال والبث */}
@@ -27377,9 +27377,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     title="Settings"
                     style={{
                       width: 34, height: 34, borderRadius: '50%',
-                      border: '1.5px solid #0a2f1d',
-                      background: '#ffffff',
-                      color: '#0a2f1d',
+                      border: '1.5px solid #ffffff',
+                      background: '#000000',
+                      color: '#ffffff',
                       cursor: 'pointer', padding: 0,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       boxShadow: 'none',
@@ -27393,7 +27393,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <Settings size={18} strokeWidth={2.2} />
                     </span>
                   </motion.button>
-<span data-stooorna-icon-label="1" style={{ color: '#0a2f1d', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Settings</span>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 200, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Settings</span>
 </div>
 )}
                 </div>
