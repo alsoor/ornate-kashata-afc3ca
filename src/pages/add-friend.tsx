@@ -21445,7 +21445,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
           position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
           display: 'flex', flexDirection: 'column',
           padding: dockBubble.kind === 'settings' ? 'env(safe-area-inset-top, 0px) 0 0' : 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 0',
-          background: '#071214',
+          background: dockBubble.kind === 'call' ? '#ffffff' : '#071214',
           // Slide down on close (X) — keep visible during the exit transition
           visibility: active ? 'visible' : 'hidden',
           pointerEvents: active ? 'auto' : 'none',
@@ -21458,11 +21458,11 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
       >
         {dockBubble.kind !== 'settings' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: 0 }}>
-          <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,188,212,0.14)', color: '#00BCD4' }}>
+          <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: dockBubble.kind === 'call' ? '#ffffff' : 'rgba(0,188,212,0.14)', border: dockBubble.kind === 'call' ? '1.5px solid #22c55e' : 'none', color: dockBubble.kind === 'call' ? '#22c55e' : '#00BCD4' }}>
             {dockBubble.kind === 'call' ? <Phone size={15} strokeWidth={2.2} /> : dockBubble.kind === 'live' ? <Radio size={15} strokeWidth={2.2} /> : <Settings size={15} strokeWidth={2.2} />}
           </span>
-          <p style={{ margin: 0, flex: 1, color: '#7ee8f5', fontWeight: 800, fontSize: '0.98rem' }}>{title}</p>
-          <button type="button" aria-label="Close" onClick={closeBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <p style={{ margin: 0, flex: 1, color: dockBubble.kind === 'call' ? '#000000' : '#7ee8f5', fontWeight: dockBubble.kind === 'call' ? 300 : 800, fontSize: '0.98rem' }}>{title}</p>
+          <button type="button" aria-label="Close" onClick={closeBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: dockBubble.kind === 'call' ? '1.5px solid #000000' : 'none', background: dockBubble.kind === 'call' ? '#ffffff' : 'rgba(255,255,255,0.08)', color: dockBubble.kind === 'call' ? '#000000' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <X size={15} strokeWidth={2.4} />
           </button>
         </div>
@@ -21480,14 +21480,14 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
         <div style={{ flex: 1, minHeight: 0, position: 'relative', overflowY: dockBubble.kind === 'settings' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: dockBubble.kind === 'settings' ? 0 : 12, WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
           {dockBubble.kind === 'call' && (
             <>
-              {friendsLoadingView && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>}
-              {!friendsLoadingView && friendsView.length === 0 && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No friends to call yet</p>}
+              {friendsLoadingView && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(0,0,0,0.55)' }}>Loading…</p>}
+              {!friendsLoadingView && friendsView.length === 0 && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(0,0,0,0.55)' }}>No friends to call yet</p>}
               {friendsView.map(f => (
-                <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.18)', background: 'rgba(0,188,212,0.05)' }}>
-                  <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: 'none' }} />
+                <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '1.5px solid #000000', background: '#ffffff' }}>
+                  <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: '1.5px solid #000000' }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', color: '#d7eeee', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
-                    {f.username ? <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(150,200,200,0.65)' }}>@{f.username}</span> : null}
+                    <span style={{ display: 'block', color: '#000000', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
+                    {f.username ? <span style={{ display: 'block', fontSize: '0.7rem', color: '#000000' }}>@{f.username}</span> : null}
                   </div>
                   <button
                     type="button"
@@ -21496,7 +21496,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
                       closeBubble();
                       try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
                     }}
-                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid rgba(34,197,94,0.55)', background: 'rgba(34,197,94,0.16)', color: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                    style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid #22c55e', background: '#ffffff', color: '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
                   >
                     <Phone size={16} strokeWidth={2.3} />
                   </button>
