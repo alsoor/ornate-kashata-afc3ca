@@ -16957,7 +16957,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
       <div
         ref={cardRef}
         onClick={onOpen}
-        style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#0b1512', aspectRatio: '3 / 4', cursor: 'pointer', border: `1px solid ${CLR_CARD_BORDER}` }}
+        style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#0b1512', aspectRatio: '3 / 4', cursor: 'pointer', border: '2px solid #000000' }}
       >
         {isVideo ? (
           near
@@ -16975,7 +16975,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
           type="button"
           aria-label="Open profile"
           onClick={e => { e.stopPropagation(); onOpenProfile(); }}
-          style={{ position: 'absolute', left: 6, bottom: 6, background: 'none', border: '2px solid #fff', borderRadius: '50%', padding: 0, cursor: c.userId ? 'pointer' : 'default', display: 'flex' }}
+          style={{ position: 'absolute', left: 6, bottom: 6, background: 'none', border: '2px solid #000000', borderRadius: '50%', padding: 0, cursor: c.userId ? 'pointer' : 'default', display: 'flex' }}
         >
           <UserAvatar name={c.name || c.username || '?'} avatarUrl={c.avatarUrl} size={30} style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }} />
         </button>
@@ -16996,7 +16996,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
           />
         ) : null}
       </div>
-      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 800, color: CLR_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 300, color: '#000000', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
     </div>
   );
 }
@@ -18872,7 +18872,7 @@ function PublicLiveCommentsPanel({
               position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
               display: 'flex', flexDirection: 'column',
               padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 10px 0',
-              background: '#071214',
+              background: '#ffffff',
               visibility: tplShown ? 'visible' : 'hidden',
               pointerEvents: tplShown ? 'auto' : 'none',
               transform: tplShown ? 'translateY(0)' : 'translateY(105%)',
@@ -18883,14 +18883,14 @@ function PublicLiveCommentsPanel({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
-              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,188,212,0.14)', color: '#00BCD4' }}>
+              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffffff', border: '1.5px solid #000000', color: '#000000' }}>
                 <Film size={15} strokeWidth={2.2} />
               </span>
-              <p style={{ margin: 0, flex: 1, color: '#7ee8f5', fontWeight: 800, fontSize: '0.98rem' }}>Templates</p>
+              <p style={{ margin: 0, flex: 1, color: '#000000', fontWeight: 300, fontSize: '0.98rem' }}>Templates</p>
               <button type="button" aria-label="Favorites" onClick={() => setTplFavOpen(true)} style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(250,204,21,0.14)', color: '#facc15', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <Bookmark size={15} strokeWidth={2.2} fill={favPosts.length > 0 ? '#facc15' : 'none'} />
               </button>
-              <button type="button" aria-label="Close" onClick={closeTplBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <button type="button" aria-label="Close" onClick={closeTplBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #000000', background: '#ffffff', color: '#000000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <X size={15} strokeWidth={2.4} />
               </button>
             </div>
@@ -18902,7 +18902,7 @@ function PublicLiveCommentsPanel({
               }}
             >
               {mediaPosts.length === 0 ? (
-                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No Templates yet</p>
+                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(0,0,0,0.55)' }}>No Templates yet</p>
               ) : (
                 <>
         {LIVE_MEDIA_STACKED ? mediaPosts.map(vc => (
@@ -18963,7 +18963,7 @@ function PublicLiveCommentsPanel({
               position: 'fixed', zIndex: 10085, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
               display: 'flex', flexDirection: 'column',
               padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 10px 0',
-              background: '#071214',
+              background: '#ffffff',
               borderTop: '2px solid rgba(250,204,21,0.8)',
               pointerEvents: 'auto',
             }}
@@ -18972,8 +18972,8 @@ function PublicLiveCommentsPanel({
               <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(250,204,21,0.14)', color: '#facc15' }}>
                 <Bookmark size={15} strokeWidth={2.2} fill="#facc15" />
               </span>
-              <p style={{ margin: 0, flex: 1, color: '#facc15', fontWeight: 800, fontSize: '0.98rem' }}>Favorites</p>
-              <button type="button" aria-label="Close favorites" onClick={closeFavBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <p style={{ margin: 0, flex: 1, color: '#000000', fontWeight: 300, fontSize: '0.98rem' }}>Favorites</p>
+              <button type="button" aria-label="Close favorites" onClick={closeFavBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #000000', background: '#ffffff', color: '#000000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <X size={15} strokeWidth={2.4} />
               </button>
             </div>
@@ -18984,7 +18984,7 @@ function PublicLiveCommentsPanel({
               }}
             >
               {favPosts.length === 0 ? (
-                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No favorites yet</p>
+                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(0,0,0,0.55)' }}>No favorites yet</p>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, direction: 'ltr' }}>
                   {favPosts.map(vc => (
@@ -21445,7 +21445,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
           position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
           display: 'flex', flexDirection: 'column',
           padding: dockBubble.kind === 'settings' ? 'env(safe-area-inset-top, 0px) 0 0' : 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 0',
-          background: dockBubble.kind === 'call' ? '#ffffff' : '#071214',
+          background: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#ffffff' : '#071214',
           // Slide down on close (X) — keep visible during the exit transition
           visibility: active ? 'visible' : 'hidden',
           pointerEvents: active ? 'auto' : 'none',
@@ -21458,11 +21458,11 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
       >
         {dockBubble.kind !== 'settings' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: 0 }}>
-          <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: dockBubble.kind === 'call' ? '#ffffff' : 'rgba(0,188,212,0.14)', border: dockBubble.kind === 'call' ? '1.5px solid #22c55e' : 'none', color: dockBubble.kind === 'call' ? '#22c55e' : '#00BCD4' }}>
+          <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#ffffff' : 'rgba(0,188,212,0.14)', border: dockBubble.kind === 'call' ? '1.5px solid #22c55e' : dockBubble.kind === 'live' ? '1.5px solid #000000' : 'none', color: dockBubble.kind === 'call' ? '#22c55e' : dockBubble.kind === 'live' ? '#000000' : '#00BCD4' }}>
             {dockBubble.kind === 'call' ? <Phone size={15} strokeWidth={2.2} /> : dockBubble.kind === 'live' ? <Radio size={15} strokeWidth={2.2} /> : <Settings size={15} strokeWidth={2.2} />}
           </span>
-          <p style={{ margin: 0, flex: 1, color: dockBubble.kind === 'call' ? '#000000' : '#7ee8f5', fontWeight: dockBubble.kind === 'call' ? 300 : 800, fontSize: '0.98rem' }}>{title}</p>
-          <button type="button" aria-label="Close" onClick={closeBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: dockBubble.kind === 'call' ? '1.5px solid #000000' : 'none', background: dockBubble.kind === 'call' ? '#ffffff' : 'rgba(255,255,255,0.08)', color: dockBubble.kind === 'call' ? '#000000' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <p style={{ margin: 0, flex: 1, color: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#000000' : '#7ee8f5', fontWeight: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? 300 : 800, fontSize: '0.98rem' }}>{title}</p>
+          <button type="button" aria-label="Close" onClick={closeBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '1.5px solid #000000' : 'none', background: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#ffffff' : 'rgba(255,255,255,0.08)', color: (dockBubble.kind === 'call' || dockBubble.kind === 'live') ? '#000000' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <X size={15} strokeWidth={2.4} />
           </button>
         </div>
