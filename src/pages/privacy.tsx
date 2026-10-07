@@ -11,20 +11,19 @@ import { useSession, signOut } from '@/lib/auth/auth-client';
 import { useHeartbeat } from '@/hooks/usePresence';
 import UserAvatar from '@/components/UserAvatar';
 const T = {
-  bg: '#f0f0f0',
-  primary: '#000000',
-  primaryDim: 'rgba(0,0,0,0.7)',
-  primaryBorder: '#000000',
-  primaryFaint: 'rgba(0,0,0,0.08)',
-  text: '#000000',
-  textDim: 'rgba(0,0,0,0.6)',
-  surface: '#e4e4e4',
-  surfaceBorder: '#000000',
-  navBorder: 'rgba(0,0,0,0.15)',
+  bg: 'radial-gradient(ellipse 70% 60% at 50% 30%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)',
+  primary: '#00BCD4',
+  primaryDim: 'rgba(0,188,212,0.35)',
+  primaryBorder: 'rgba(0,188,212,0.2)',
+  primaryFaint: 'rgba(0,188,212,0.08)',
+  text: 'rgba(200,230,230,0.9)',
+  textDim: 'rgba(150,200,200,0.5)',
+  surface: 'rgba(0,188,212,0.05)',
+  surfaceBorder: 'rgba(0,188,212,0.12)',
+  navBorder: 'rgba(0,188,212,0.1)',
   red: '#ef4444',
   redFaint: 'rgba(239,68,68,0.08)',
-  redBorder: 'rgba(239,68,68,0.25)',
-  btn: '#00BCD4'
+  redBorder: 'rgba(239,68,68,0.25)'
 };
 type Visibility = 'everyone' | 'friends' | 'nobody';
 interface Privacy {
@@ -415,7 +414,7 @@ export default function PrivacyPage() {
               width: 44,
               height: 24,
               borderRadius: 12,
-              background: settings.isPrivate ? T.btn : 'rgba(100,100,100,0.2)',
+              background: settings.isPrivate ? T.primary : 'rgba(100,100,100,0.2)',
               border: 'none',
               cursor: 'pointer',
               position: 'relative',
@@ -484,7 +483,7 @@ export default function PrivacyPage() {
               width: 44,
               height: 24,
               borderRadius: 12,
-              background: settings.showLastSeen ? T.btn : 'rgba(100,100,100,0.2)',
+              background: settings.showLastSeen ? T.primary : 'rgba(100,100,100,0.2)',
               border: 'none',
               cursor: 'pointer',
               position: 'relative',
