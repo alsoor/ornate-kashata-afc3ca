@@ -18845,6 +18845,10 @@ function PublicLiveCommentsPanel({
     markTemplatePending(row.id);
     tplCommit([...tplRowsRef.current, row]);
     void postTemplateRow(row as any);
+    try {
+      localStorage.setItem('stooorna_tpl_fresh_at', String(Date.now()));
+      window.dispatchEvent(new CustomEvent('stooorna:template-published'));
+    } catch { /* */ }
     setTplOpen(false);
     // stay inside Templates: show the gallery page with the new post (newest first); X closes it
     try {
@@ -25044,6 +25048,62 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // نقطة أيقونة السجل: خضراء إذا أنا أو أي مستخدم ظاهر عندي داخل مكالمة (حتى لو مو معي)
   usePublishInCall(user?.id ? String(user.id) : null, !!callHistoryDotState.joined);
   const anyInCall = useAnyInCall(anyLiveHostIds);
+  const [dockTplYellow, setDockTplYellow] = useState(false);
+  const [dockSettingsGray, setDockSettingsGray] = useState(false);
+  useEffect(() => {
+    const readTpl = () => {
+      try {
+        const fresh = Number(localStorage.getItem('stooorna_tpl_fresh_at') || 0);
+        const seen = Number(sessionStorage.getItem('stooorna_tpl_seen_at') || 0);
+        setDockTplYellow(fresh > seen);
+      } catch { setDockTplYellow(false); }
+    };
+    const readSettings = () => {
+      try {
+        const uid = String(user?.id || '');
+        const uname = String((user as any)?.username || '').toLowerCase();
+        const isOwner = uname === 'stooorna';
+        const seen = Number(sessionStorage.getItem('stooorna_settings_alert_seen') || 0);
+        let latest = 0;
+        for (const k of Object.keys(localStorage)) {
+          if (!k.startsWith('stooorna_support_thread_') && k !== 'stooorna_support_tickets' && !(uid && k === `stooorna_admin_bell_${uid}`)) continue;
+          const raw = localStorage.getItem(k);
+          if (!raw) continue;
+          const data = JSON.parse(raw);
+          const rows = Array.isArray(data) ? data : (Array.isArray(data?.messages) ? data.messages : (Array.isArray(data?.items) ? data.items : []));
+          if (Array.isArray(rows)) {
+            for (const m of rows) {
+              const from = String(m?.fromId || m?.fromUserId || m?.userId || '');
+              const at = Number(m?.at || m?.createdAt || m?.ts || 0);
+              const incoming = !from || from !== uid;
+              if (!incoming) continue;
+              if (!isOwner && k === 'stooorna_support_tickets') continue;
+              latest = Math.max(latest, at || Date.now());
+            }
+          } else if (data && data.unread && isOwner) {
+            latest = Math.max(latest, Number(data.updatedAt || data.at || Date.now()));
+          }
+        }
+        setDockSettingsGray(latest > seen);
+      } catch { setDockSettingsGray(false); }
+    };
+    readTpl();
+    readSettings();
+    const onTpl = () => readTpl();
+    const onSup = () => readSettings();
+    window.addEventListener('stooorna:template-published', onTpl);
+    window.addEventListener('stooorna:support-thread', onSup);
+    window.addEventListener('stooorna:admin-bell', onSup);
+    window.addEventListener('storage', onSup);
+    const iv = window.setInterval(() => { readTpl(); readSettings(); }, 4000);
+    return () => {
+      window.removeEventListener('stooorna:template-published', onTpl);
+      window.removeEventListener('stooorna:support-thread', onSup);
+      window.removeEventListener('stooorna:admin-bell', onSup);
+      window.removeEventListener('storage', onSup);
+      window.clearInterval(iv);
+    };
+  }, [user?.id, (user as any)?.username]);
   const [storyRequestsBoxOpen, setStoryRequestsBoxOpen] = useState(false);
   const [storyReqRespondingId, setStoryReqRespondingId] = useState<number | null>(null);
   const [storyReqTab, setStoryReqTab] = useState<'search' | 'requests'>('requests');
@@ -27258,7 +27318,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         width: 44, height: 44, borderRadius: '50%',
                         border: '1.5px solid #ffffff',
                         background: 'transparent',
-                        color: '#ffffff',
+                        color: (callHistoryDotState.joined || anyInCall || profilePlusIncomingCallUi.ringing) ? '#22c55e' : '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27283,7 +27343,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         width: 44, height: 44, borderRadius: '50%',
                         border: '1.5px solid #ffffff',
                         background: 'transparent',
-                        color: '#ffffff',
+                        color: liveChatBusy ? '#3b82f6' : '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27304,7 +27364,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         width: 44, height: 44, borderRadius: '50%',
                         border: '1.5px solid #ffffff',
                         background: 'transparent',
-                        color: '#ffffff',
+                        color: (myLiveBroadcastKind || anyLiveBroadcast) ? '#ef4444' : '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27329,6 +27389,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       onContextMenu={(e) => e.preventDefault()}
                       onClick={(e) => {
                         if (tplLongPress.fired) { tplLongPress.fired = false; return; }
+                        try { sessionStorage.setItem('stooorna_tpl_seen_at', String(Date.now())); } catch { /* */ }
+                        setDockTplYellow(false);
                         openDockBubble('templates', e.currentTarget);
                       }}
                       aria-label="Templates"
@@ -27338,7 +27400,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         width: 44, height: 44, borderRadius: '50%',
                         border: '1.5px solid #ffffff',
                         background: 'transparent',
-                        color: '#ffffff',
+                        color: dockTplYellow ? '#eab308' : '#ffffff',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         boxShadow: 'none',
@@ -27383,14 +27445,18 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 <motion.button
                     type="button"
                     whileTap={{ scale: 0.9 }}
-                    onClick={(e) => openDockBubble('settings', e.currentTarget)}
+                    onClick={(e) => {
+                        try { sessionStorage.setItem('stooorna_settings_alert_seen', String(Date.now())); } catch { /* */ }
+                        setDockSettingsGray(false);
+                        openDockBubble('settings', e.currentTarget);
+                      }}
                     aria-label="Settings"
                     title="Settings"
                     style={{
                       width: 44, height: 44, borderRadius: '50%',
                       border: '1.5px solid #ffffff',
                       background: 'transparent',
-                      color: '#ffffff',
+                      color: dockSettingsGray ? '#4b5563' : '#ffffff',
                       cursor: 'pointer', padding: 0,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       boxShadow: 'none',

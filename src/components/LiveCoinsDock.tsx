@@ -95,13 +95,13 @@ const DOTS_BOTTOM_OFFSET = 33; // px فوق حد الشريط السفلي
 const DOT_SIZE = 11; // حجم النقطتين (الصفراء والزرقاء نفس الحجم)
 void DOT_SIZE; // kept for compatibility (buttons now sized like the hand button)
 
-// Same pack list the server sells (COIN_PACKS in polar.ts). Prices are set in the Polar dashboard and shown on the checkout page.
+// Coin packs. Paid through Google Play only (Polar removed).
 const PACKS: { id: string; coins: number; usd: number }[] = [50, 125, 400, 500, 1000, 1500, 3500, 10000, 15000].map(c => ({ id: `p${c}`, coins: c, usd: 0 }));
 
 // أيقونة النقود الصفراء داخل البث: true = تفتح صفحة Wallet (Balance | Deposit | استبدال | Custom) بدون سحب PayPal — false = ترجع لمربع الباقات القديم
 const LIVE_COINS_USES_WALLET = true;
 
-// Free-amount (Custom) purchases: any amount, paid through the same Polar hosted checkout. Max USD 1,000 per payment (see CUSTOM_MAX_COINS).
+// Custom amount is not sold through Polar. Fixed packs use Google Play.
 const CUSTOM_ENABLED = true;
 
 // ── Custom: عدد Coins حر ────────────────────────────────────────────────
@@ -258,7 +258,7 @@ async function fetchWithdrawals(userId: string): Promise<WithdrawReq[]> {
 
 // ── Google Play Billing (الطريقة الثانية للدفع) ──────────────────────────────────────────────
 // يعمل فقط داخل تطبيق الأندرويد المنشور على Google Play (Trusted Web Activity) عبر Digital Goods API.
-// في المتصفح العادي أو الآيفون يظهر الخيار معطّلاً ويبقى Polar هو الطريقة المتاحة.
+// Google Play Billing only. Polar checkout is removed.
 // كل باقة لها منتج في Play Console بالمعرّف: coins_50 ، coins_125 ، coins_400 ... (نوع: Consumable).
 const GOOGLE_PLAY_ENABLED = true;
 const GOOGLE_PLAY_SERVICE_URL = 'https://play.google.com/billing';
@@ -369,361 +369,17 @@ async function recoverGooglePlayPurchases(userId: string) {
   } catch { /* ignore */ }
 }
 
-// ── مربع اختيار طريقة الدفع (Polar | Google Play) ────────────────────────────────────────────
-type PayMethod = 'polar' | 'google';
-let payMethodRoot: Root | null = null;
-let payMethodHost: HTMLDivElement | null = null;
-
-function PaymentMethodSheet({ pack, googleCheck, onPick }: { pack: { id: string; coins: number }; googleCheck: Promise<boolean>; onPick: (m: PayMethod | null) => void }) {
-  const [shown, setShown] = useState(false);
-  const [googleState, setGoogleState] = useState<'checking' | 'ok' | 'no'>('checking');
-  useEffect(() => {
-    let dead = false;
-    googleCheck.then(ok => { if (!dead) setGoogleState(ok ? 'ok' : 'no'); }).catch(() => { if (!dead) setGoogleState('no'); });
-    return () => { dead = true; };
-  }, [googleCheck]);
-  const googleOk = googleState === 'ok';
-  const doneRef = useRef(false);
-  const pick = React.useCallback((m: PayMethod | null) => {
-    if (doneRef.current) return;
-    doneRef.current = true;
-    if (m) { onPick(m); return; }          // الاختيار فوري حتى يبقى النقر ضمن لمسة المستخدم (فتح صفحة الدفع)
-    setShown(false);
-    window.setTimeout(() => onPick(null), 240);
-  }, [onPick]);
-  useEffect(() => {
-    const t = requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
-    return () => cancelAnimationFrame(t);
-  }, []);
-  const isCustom = pack.id === CUSTOM_ID;
-  const googleEnabled = googleOk && !isCustom;
-  const googleNote = isCustom ? 'Fixed packs only' : (googleState === 'checking' ? 'Checking…' : (googleOk ? '1-tap buy · card saved in Google Play' : 'Available in the app installed from Google Play only'));
-  const row = (enabled: boolean): React.CSSProperties => ({
-    display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
-    padding: '14px 14px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.12)',
-    background: enabled ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)',
-    color: '#fff', cursor: enabled ? 'pointer' : 'not-allowed', opacity: enabled ? 1 : 0.5,
-  });
-  return (
-    <div
-      onClick={() => pick(null)}
-      style={{ position: 'fixed', inset: 0, zIndex: 200001, background: shown ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0)', transition: 'background .24s ease', direction: 'ltr' }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        onClick={e => e.stopPropagation()}
-        style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0, background: '#0b0b0f', color: '#fff',
-          borderRadius: '18px 18px 0 0', padding: '14px 16px calc(18px + env(safe-area-inset-bottom, 0px))',
-          transform: shown ? 'translateY(0)' : 'translateY(100%)', transition: 'transform .26s cubic-bezier(.2,.8,.2,1)',
-          boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <span style={{ fontWeight: 800, fontSize: '1rem' }}>Choose payment method</span>
-          <button type="button" aria-label="Close" onClick={() => pick(null)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', width: 30, height: 30, borderRadius: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <X size={16} />
-          </button>
-        </div>
-        <div style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.6)', marginBottom: 12 }}>
-          {fmtCoins(pack.coins)} Coins
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <button type="button" onClick={() => pick('polar')} style={row(true)}>
-            <CreditCard size={22} />
-            <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Card · Polar</span>
-              <span style={{ fontSize: '0.76rem', color: 'rgba(255,255,255,0.6)' }}>Secure hosted checkout</span>
-            </span>
-          </button>
-          <button type="button" disabled={!googleEnabled} onClick={() => { if (googleEnabled) pick('google'); }} style={row(googleEnabled)}>
-            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3.5v17c0 .7.8 1.1 1.4.7l14-8.5c.5-.3.5-1.1 0-1.4l-14-8.5C5.8 2.4 5 2.8 5 3.5z" fill="#34d399" /></svg>
-            <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Google Play</span>
-              <span style={{ fontSize: '0.76rem', color: 'rgba(255,255,255,0.6)' }}>{googleNote}</span>
-            </span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** يعرض مربع الاختيار ويرجع الطريقة المختارة (أو null لو أغلقه المستخدم). */
-function askPaymentMethod(pack: { id: string; coins: number }, userId?: string): Promise<PayMethod | null> {
-  return new Promise(resolve => {
-    try {
-      if (payMethodRoot) { try { payMethodRoot.unmount(); } catch { /* ignore */ } payMethodRoot = null; }
-      if (payMethodHost) { try { payMethodHost.remove(); } catch { /* ignore */ } payMethodHost = null; }
-      const host = document.createElement('div');
-      document.body.appendChild(host);
-      payMethodHost = host;
-      const root = createRoot(host);
-      payMethodRoot = root;
-      const googleCheck = getGooglePlayService().then(svc => !!svc);
-      if (userId) void googleCheck.then(ok => { if (ok) void recoverGooglePlayPurchases(userId); });
-      const finish = (m: PayMethod | null) => {
-        window.setTimeout(() => {
-          try { root.unmount(); } catch { /* ignore */ }
-          try { host.remove(); } catch { /* ignore */ }
-          if (payMethodRoot === root) payMethodRoot = null;
-          if (payMethodHost === host) payMethodHost = null;
-        }, 0);
-        resolve(m);
-      };
-      root.render(<PaymentMethodSheet pack={pack} googleCheck={googleCheck} onPick={finish} />);
-    } catch {
-      resolve('polar');   // لو فشل المربع لأي سبب نكمل بالطريقة القديمة (Polar) كما كان
-    }
-  });
-}
-
-// ── الدفع ───────────────────────────────────────────────────────────────
-// نقطة الربط ببوابة الدفع. لا ترسل بيانات البطاقة الخام لسيرفرك؛ استخدم توكن من البوابة.
+// Polar payment removed. Checkout is Google Play only — no Polar sheet in voice/camera live.
 async function processVisaPayment(pack: { id: string; coins: number; usd: number }, userId?: string): Promise<{ ok: boolean; balance?: number; redirected?: boolean; error?: string }> {
   if (!userId) return { ok: false, error: 'Please sign in first' };
-  const isCustomPack = pack.id === CUSTOM_ID;
-  const customCoinsN = Math.floor(Number(pack.coins) || 0);
-  if (isCustomPack) {
-    if (customCoinsN < CUSTOM_MIN_COINS) return { ok: false, error: `Minimum ${fmtCoins(CUSTOM_MIN_COINS)} Coins (${fmtUsd(CUSTOM_MIN_COINS * CUSTOM_CENTS_PER_COIN / 100)})` };
-    if (customCoinsN > CUSTOM_MAX_COINS) return { ok: false, error: `Maximum ${fmtUsd(CUSTOM_MAX_COINS * CUSTOM_CENTS_PER_COIN / 100)} per payment` };
-  } else if (!PACKS.some(p => p.coins === pack.coins)) {
-    return { ok: false, error: 'Choose one of the available packs' };
-  }
-  // Polar only — no Google Play, no intermediate sheet.
-  // Pre-open a blank tab on the same user tap so popup blockers allow Polar's real URL.
-  let pre: Window | null = null;
-  // Inside the Android/iOS app the checkout opens in the native in-app browser (see openPolarOfficialInApp),
-  // so no blank pre-window is needed there — in a WebView it would replace the app page instead of opening a tab.
-  const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
-  if (!isNativeApp) { try { pre = window.open('about:blank', '_blank'); } catch { pre = null; } }
-  try {
-    const r = await fetch('/api/polar/checkout', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(isCustomPack
-        ? { userId, coins: customCoinsN, custom: true, amountCents: customCoinsN * CUSTOM_CENTS_PER_COIN }
-        : { userId, coins: pack.coins }),
-    });
-    const d = await r.json().catch(() => ({})) as { url?: string; error?: string };
-    if (!r.ok || !d.url) {
-      try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
-      const msg = isCustomPack && typeof d.error === 'string' && d.error.length > 0 && d.error.length < 140 ? d.error : 'Payment is not available right now';
-      return { ok: false, error: msg };
-    }
-    try { localStorage.setItem(`stooorna_polar_pending_${userId}`, String(Date.now())); } catch { /* ignore */ }
-    const opened = await openPolarCheckout(d.url, userId, pre);
-    if (!opened) {
-      try { localStorage.removeItem(`stooorna_polar_pending_${userId}`); } catch { /* ignore */ }
-      return { ok: false, error: 'Could not open checkout. Please try again.' };
-    }
-    return { ok: true, redirected: true };
-  } catch {
-    try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
-    return { ok: false, error: 'Network error' };
-  }
+  if (pack.id === CUSTOM_ID) return { ok: false, error: 'Google Play supports the fixed packs only' };
+  if (!PACKS.some(p => p.coins === pack.coins)) return { ok: false, error: 'Choose one of the available packs' };
+  const gp = await payWithGooglePlay(pack, userId);
+  if (gp.cancelled) return { ok: true, redirected: true };
+  if (!gp.ok) return { ok: false, error: gp.error || 'Google Play payment failed' };
+  return { ok: true, balance: gp.balance };
 }
 
-// ── Hosted checkout INSIDE the app (NO iframe) ───────────────────────────────────────────────
-// Polar's real checkout page cannot be embedded in an iframe (X-Frame-Options).
-// We open their ORIGINAL URL via an in-app browser overlay so the live room never unloads:
-//   1) Capacitor Browser (Chrome Custom Tabs / SFSafariViewController) — preferred in the APK
-//   2) Cordova InAppBrowser if present
-//   3) A slide-up sheet with a single button that still uses the same in-app browser APIs
-// Closing the overlay / pressing X returns to the exact same live room (mic + stream intact).
-// Coins are credited by the server webhook and picked up by watchPolarCredit.
-let polarRoot: Root | null = null;
-let polarHost: HTMLDivElement | null = null;
-let polarStopWatch: (() => void) | null = null;
-
-/** Try Capacitor / Cordova / native bridges first. Returns true if an in-app overlay opened. */
-async function openPolarOfficialInApp(url: string): Promise<boolean> {
-  if (!url) return false;
-  const w = window as any;
-  // الـ APK يحقن الجسر native-bridge فقط (Capacitor.nativePromise) — Capacitor.Plugins.Browser و registerPlugin غير موجودين
-  // في صفحة الويب، لهذا كانت صفحة الدفع تُفتح مكان التطبيق نفسه بدون X. نستدعي إضافة Browser مباشرة:
-  // تفتح موقع Polar الأصلي فوق التطبيق (Chrome Custom Tab) بزر X يرجّعك لنفس البث — بدون iframe.
-  try {
-    const capBridge = w.Capacitor;
-    if (capBridge?.isNativePlatform?.() && typeof capBridge.nativePromise === 'function') {
-      await capBridge.nativePromise('Browser', 'open', { url, toolbarColor: '#0b0b0f' });
-      return true;
-    }
-  } catch (e) {
-    console.warn('[polar] Capacitor nativePromise Browser.open failed', e);
-  }
-  // Native app: open through the @capacitor/browser plugin installed in the APK (Chrome Custom Tab / SFSafariViewController).
-  // It has its own toolbar with a close (X) button, and the live room underneath stays untouched.
-  // NOTE: no `import '@capacitor/browser'` here on purpose — the website build does not have that package;
-  // the plugin is reached through the Capacitor object that the native app injects into the page.
-  try {
-    const NCap = w.Capacitor;
-    if (NCap?.isNativePlatform?.()) {
-      const NativeBrowser =
-        NCap.Plugins?.Browser ||
-        (typeof NCap.registerPlugin === 'function' ? NCap.registerPlugin('Browser') : null);
-      if (NativeBrowser && typeof NativeBrowser.open === 'function') {
-        await NativeBrowser.open({ url, presentationStyle: 'popover', toolbarColor: '#0b0b0f' });
-        return true;
-      }
-    }
-  } catch (e) {
-    console.warn('[polar] native Browser plugin failed, falling back', e);
-  }
-  try {
-    const Cap = w.Capacitor;
-    const Browser =
-      Cap?.Plugins?.Browser ||
-      w.Browser ||
-      Cap?.Plugins?.CapacitorBrowser ||
-      (Cap?.isPluginAvailable?.('Browser') ? Cap.Plugins.Browser : null);
-    if (Browser && typeof Browser.open === 'function') {
-      await Browser.open({ url, presentationStyle: 'popover', toolbarColor: '#0b0b0f' });
-      return true;
-    }
-  } catch (e) {
-    console.warn('[polar] Capacitor Browser failed', e);
-  }
-  try {
-    if (typeof w.cordova !== 'undefined' && w.cordova?.InAppBrowser?.open) {
-      const ref = w.cordova.InAppBrowser.open(
-        url, '_blank',
-        'location=yes,hideurlbar=no,toolbar=yes,closebuttoncaption=Close,clearcache=no,clearsessioncache=no,fullscreen=no',
-      );
-      return !!ref;
-    }
-  } catch (e) {
-    console.warn('[polar] Cordova InAppBrowser failed', e);
-  }
-  try {
-    if (typeof w.Android !== 'undefined' && typeof w.Android.openCustomTab === 'function') {
-      w.Android.openCustomTab(url);
-      return true;
-    }
-  } catch { /* ignore */ }
-  try {
-    if (typeof w.webkit?.messageHandlers?.openUrl?.postMessage === 'function') {
-      w.webkit.messageHandlers.openUrl.postMessage({ url });
-      return true;
-    }
-  } catch { /* ignore */ }
-  return false;
-}
-
-/** Open Polar's ORIGINAL hosted checkout URL immediately — no intermediate sheet. */
-function openPolarCheckout(url: string, userId: string, pre?: Window | null): Promise<boolean> {
-  if (typeof document === 'undefined') return Promise.resolve(false);
-  try { polarStopWatch?.(); } catch { /* ignore */ }
-  polarStopWatch = watchPolarCredit(userId, () => { polarStopWatch = null; });
-
-  return (async (): Promise<boolean> => {
-    // 1) Prefer true in-app browser overlay (keeps live fully under the sheet)
-    const inApp = await openPolarOfficialInApp(url);
-    if (inApp) {
-      try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
-      return true;
-    }
-
-    // داخل تطبيق الأندرويد/iOS: لا نفتح صفحة الدفع أبداً في نفس الـ WebView (كانت تطرد المستخدم من التطبيق بدون X).
-    try {
-      if ((window as any).Capacitor?.isNativePlatform?.()) {
-        try { polarStopWatch?.(); } catch { /* ignore */ }
-        polarStopWatch = null;
-        return false;
-      }
-    } catch { /* ignore */ }
-
-    // 2) No Capacitor Browser in this APK — open Polar's real site in the tab
-    //    pre-opened on the same user tap (avoids popup blockers). The live WebView
-    //    stays in the background; after payment the user returns to the app and
-    //    watchPolarCredit credits the coins.
-    let opened = false;
-    try {
-      if (pre && !pre.closed) {
-        try { pre.opener = null; } catch { /* ignore */ }
-        pre.location.href = url;
-        opened = true;
-      }
-    } catch { opened = false; }
-    if (!opened) {
-      try {
-        const a = document.createElement('a');
-        a.href = url;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        opened = true;
-      } catch { /* ignore */ }
-    }
-    if (!opened) {
-      try { opened = !!window.open(url, '_blank', 'noopener,noreferrer'); } catch { opened = false; }
-    }
-    if (!opened) {
-      try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
-    }
-    return opened;
-  })();
-}
-
-/** After a hosted checkout: poll the server balance (credited by the payment webhook) and hand it to the caller once it is higher. */
-function watchPolarCredit(uid: string, onCredited: (balance: number) => void): () => void {
-  if (!uid) return () => {};
-  const key = `stooorna_polar_pending_${uid}`;
-  let timer = 0;
-  let stopped = false;
-  const check = async () => {
-    if (stopped) return;
-    let startedAt = 0;
-    try { startedAt = Number(localStorage.getItem(key) || 0); } catch { /* ignore */ }
-    if (!startedAt || Date.now() - startedAt > 30 * 60 * 1000) {
-      try { localStorage.removeItem(key); } catch { /* ignore */ }
-      return;
-    }
-    try {
-      const r = await fetch(`/api/gifts/balance?userId=${encodeURIComponent(uid)}`, { credentials: 'include', cache: 'no-store' });
-      const d = (await r.json().catch(() => ({}))) as { balance?: number };
-      const srv = Math.floor(Number(d?.balance) || 0);
-      if (srv > readBalance(uid)) {
-        writeBalance(uid, srv);
-        try { localStorage.removeItem(key); } catch { /* ignore */ }
-        onCredited(srv);
-        return;
-      }
-    } catch { /* ignore */ }
-    timer = window.setTimeout(() => { void check(); }, 4000);
-  };
-  void check();
-  return () => { stopped = true; window.clearTimeout(timer); };
-}
-
-// خصم سعر الهدية. في الوضع التجريبي محلي فقط؛ للإنتاج اربطه بسيرفرك (يخصم ويرجّع الرصيد الجديد).
-async function spendCoinsForGift(gift: GiftDefinition, hostId?: string, alreadyDeducted?: number): Promise<{ ok: boolean; balance?: number; error?: string }> {
-  // الخصم المحلي هو المصدر المعتمد داخل البث. السيرفر إن رجع رصيداً أعلى (ما خصم) نتجاهله.
-  if (PAYMENT_DEMO_MODE) return { ok: true, balance: alreadyDeducted };
-  try {
-    const r = await fetch('/api/gifts/send', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ giftId: gift.id, price: giftPrice(gift), hostId }),
-    });
-    if (!r.ok) return { ok: false, error: 'تعذر إرسال الهدية' };
-    const d = await r.json().catch(() => ({})) as { balance?: number };
-    const serverBal = typeof d.balance === 'number' ? d.balance : undefined;
-    if (typeof alreadyDeducted === 'number' && typeof serverBal === 'number' && serverBal > alreadyDeducted) {
-      return { ok: true, balance: alreadyDeducted };
-    }
-    return { ok: true, balance: serverBal };
-  } catch {
-    // الشبكة فشلت بعد الخصم المحلي — الإرسال المحلي يبقى خصماً حتى لا يظل الرصيد ثابتاً
-    return { ok: true, balance: alreadyDeducted };
-  }
-}
 
 function luhnOk(num: string): boolean {
   let sum = 0;
@@ -1003,13 +659,6 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
   const canBuy = !isCustom || customValid;
 
   useEffect(() => { setBalance(readBalance(uid)); }, [uid]);
-
-  // After a hosted checkout: pull the balance credited by the server (payment webhook) into this device.
-  useEffect(() => watchPolarCredit(uid, (srv) => {
-    setBalance(srv);
-    setPaidToast(true);
-    window.setTimeout(() => setPaidToast(false), 2200);
-  }), [uid]);
 
   useEffect(() => {
     if (!uid) return;
@@ -1383,13 +1032,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
   }
 
   async function startCheckout() {
-    if (paying || !canBuy) return;
-    setPayError('');
-    setPaying(true);
-    const res = await processVisaPayment(pack, uid);
-    if (!res.ok) { setPaying(false); setPayError(res.error || 'Payment failed'); return; }
-    // The checkout page slid up inside the app; coins are added by the server after payment.
-    window.setTimeout(() => setPaying(false), 600);
+    // Get does not open checkout (voice live, camera live, settings, owner). Prices stay for a future Google Play link.
+    return;
   }
 
   async function pay() {
@@ -1876,12 +1520,6 @@ export function WalletSheet({ open, onClose, userId, allowWithdraw = false }: { 
       .catch(() => { /* ignore */ });
   }, [open, uid]);
 
-  useEffect(() => watchPolarCredit(uid, (srv) => {
-    setBalance(srv);
-    setToast('Coins added');
-    window.setTimeout(() => setToast(''), 2200);
-  }), [uid]);
-
   const cents = parseCents(amountText);
   const coins = Math.floor(cents / CUSTOM_CENTS_PER_COIN);
   const amountValid = coins >= CUSTOM_MIN_COINS && coins <= CUSTOM_MAX_COINS;
@@ -1898,14 +1536,8 @@ export function WalletSheet({ open, onClose, userId, allowWithdraw = false }: { 
   }
 
   async function startCheckout() {
-    if (paying || !walletCanBuy) return;
-    const p = walletPack;
-    setPayError('');
-    setPaying(true);
-    const res = await processVisaPayment(p, uid);
-    if (!res.ok) { setPaying(false); setPayError(res.error || 'Payment failed'); return; }
-    // The checkout page slid up inside the app; coins are added by the server after payment.
-    window.setTimeout(() => setPaying(false), 600);
+    // Get does not open checkout. Pack prices stay visible for a later Google Play link.
+    return;
   }
 
   function validate(): string {

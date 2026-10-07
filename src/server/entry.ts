@@ -8,7 +8,6 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 // call site below still guards with a typeof check instead of relying on
 // import() rejecting when the export is missing.
 import * as dbClientModule from "./db/client.js";
-import { COIN_PACKS, createCheckout, handlePolarEvent, polarConfigured, verifyPolarSignature } from "./polar.js";
 import { googlePlayConfigured, verifyAndCreditGooglePlay } from "./google-play.js";
 import { createSession, makeLimiter, markSeen, normId, pickKey, recordPaid, seenRecently, takePaid } from "./gift-guard.js";
 import { mapEarningsAdapter, privateAssetsGuard, registerWithdrawalRoutes } from "./withdrawals.js";
@@ -331,38 +330,6 @@ app.use((req, res, next) => {
     return rawBinary(req, res, next);
   }
   next();
-});
-
-// ── Polar webhook (شراء Coins) — لازم يكون قبل express.json() لأن التوقيع يُحسب على الـ body الخام ──
-app.post("/api/webhooks/polar", express.raw({ type: "*/*", limit: "1mb" }), async (req, res) => {
-  const secret = process.env.POLAR_WEBHOOK_SECRET || "";
-  if (!secret) {
-    console.error("[polar] POLAR_WEBHOOK_SECRET is not set");
-    return res.status(500).json({ error: "webhook not configured" });
-  }
-  const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(typeof req.body === "string" ? req.body : JSON.stringify(req.body || {}));
-  if (!verifyPolarSignature(raw, req.headers as Record<string, string | string[] | undefined>, secret)) {
-    return res.status(403).json({ error: "invalid signature" });
-  }
-  let event: { type?: string; data?: unknown };
-  try { event = JSON.parse(raw.toString("utf-8")); } catch { return res.status(400).json({ error: "invalid json" }); }
-  try {
-    const mem = giftProfitMem();
-    const out = await handlePolarEvent(event, {
-      has: (k) => mem.done.has(k),
-      mark: (k) => { mem.done.add(k); },
-      add: (userId, delta) => {
-        const next = Math.max(0, (mem.balances.get(userId) || 0) + delta);
-        mem.balances.set(userId, next);
-        return next;
-      },
-      save: () => giftProfitTouch(),
-    });
-    return res.json({ ok: true, ...out });
-  } catch (e) {
-    console.error("[polar] webhook handler failed", e);
-    return res.status(500).json({ error: "handler failed" }); // Polar يعيد المحاولة تلقائياً
-  }
 });
 
 app.use(express.json());
@@ -1345,31 +1312,8 @@ app.post("/api/gifts/balance", guarded(async (req, res) => {
   res.json({ ok: true, balance: o.balance, earnings: o.coins });
 }));
 
-// ── شراء Coins عبر Polar: الرابط يُربط بالمستخدم المسجّل (وليس userId من العميل)، والرصيد يُضاف من الويب هوك فقط ──
-app.get("/api/polar/packs", (_req, res) => {
-  res.setHeader("Cache-Control", "no-store");
-  res.json({ ok: true, packs: COIN_PACKS });
-});
-app.post("/api/polar/checkout", guarded(async (req, res) => {
-  if (!polarConfigured()) return deny(res, 503, "payments not configured");
-  const u = await needUser(req, res);
-  if (!u) return;
-  if (!allow(`co:${u.id}`, 10, 10 * 60_000)) return deny(res, 429, "rate_limited");
-  const coins = Math.floor(Number((req.body || {}).coins) || 0);
-  if (!COIN_PACKS.includes(coins)) return deny(res, 400, "invalid pack");
-  const origin = process.env.PUBLIC_APP_URL || `${req.protocol}://${req.get("host")}`;
-  try {
-    const reqOrigin = String(req.get("origin") || "");
-    const embedOrigin = /^https?:\/\/[^/]+$/i.test(reqOrigin) ? reqOrigin : undefined;
-    const c = await createCheckout({ coins, userId: u.id, successUrl: `${origin}/?coins_paid=1`, embedOrigin });
-    res.json({ ok: true, url: c.url });
-  } catch (e) {
-    console.error("[polar] checkout failed", e);
-    deny(res, 502, "checkout failed");
-  }
-}));
 
-// ── شراء Coins عبر Google Play: الهوية من الجلسة فقط (وليس userId من العميل)، والتحقق من رمز الشراء عند Google، ونفس رصيد/دفتر Polar ──
+// ── شراء Coins عبر Google Play: الهوية من الجلسة فقط (وليس userId من العميل)، والتحقق من رمز الشراء عند Google، ونفس دفتر الرصيد ──
 app.post("/api/google-play/verify", guarded(async (req, res) => {
   if (!googlePlayConfigured()) return deny(res, 503, "google play not configured");
   const u = await needUser(req, res);
