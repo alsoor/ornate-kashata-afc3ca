@@ -75,16 +75,6 @@ function StoreButton({
   );
 }
 
-const FEATURE_IMAGES: string[] = [
-  new URL('./app-features/feature-1.jpg', import.meta.url).href,
-  new URL('./app-features/feature-2.jpg', import.meta.url).href,
-  new URL('./app-features/feature-3.jpg', import.meta.url).href,
-  new URL('./app-features/feature-4.jpg', import.meta.url).href,
-  new URL('./app-features/feature-5.jpg', import.meta.url).href,
-  new URL('./app-features/feature-6.jpg', import.meta.url).href,
-  new URL('./app-features/feature-7.jpg', import.meta.url).href,
-  new URL('./app-features/feature-8.jpg', import.meta.url).href,
-];
 const FEATURE_ALTS = ['Home Hub', 'Stories', 'Call friends', 'Go LIVE', 'LIVE Battles', 'Live GPS Map', 'Templates', 'Live Chat and Reactions'];
 
 const ABOUT_TEXT =
@@ -200,6 +190,14 @@ export default function GuestHomeExtras({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [tab, setTab] = useState<SheetTab>('about');
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // The screenshots are bundled as a separate code-split chunk and loaded the first time the page is opened.
+  const [featureSrc, setFeatureSrc] = useState<string[]>([]);
+  useEffect(() => {
+    if (!sheetOpen || featureSrc.length) return;
+    let live = true;
+    import('./featureImages').then(m => { if (live) setFeatureSrc(m.FEATURE_IMAGES); }).catch(() => {});
+    return () => { live = false; };
+  }, [sheetOpen, featureSrc.length]);
   const [versions, setVersions] = useState<ReleasePlatform | null>(null);
   const [zoom, setZoom] = useState(1);
   useEffect(() => { if (!sheetOpen) setZoom(1); }, [sheetOpen]);
@@ -284,13 +282,12 @@ export default function GuestHomeExtras({
                 <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>About</div>
                 <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.65, color: '#1f2937' }}>{ABOUT_TEXT}</p>
                 <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
-                  {sheetOpen && FEATURE_IMAGES.map((src, i) => (
+                  {sheetOpen && FEATURE_ALTS.map((alt, i) => (featureSrc[i] ? (
                     <motion.img
-                      key={src}
-                      src={src}
-                      alt={FEATURE_ALTS[i]}
+                      key={alt}
+                      src={featureSrc[i]}
+                      alt={alt}
                       draggable={false}
-                      loading="lazy"
                       initial={{ opacity: 0, y: 60 }}
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true, root: scrollRef, amount: 0.12 }}
@@ -300,7 +297,9 @@ export default function GuestHomeExtras({
                       decoding="async"
                       style={{ width: '100%', maxWidth: 540, height: 'auto', aspectRatio: '1080 / 2160', borderRadius: 22, display: 'block', boxShadow: '0 8px 24px rgba(0,0,0,0.22)' }}
                     />
-                  ))}
+                  ) : (
+                    <div key={alt} aria-hidden="true" style={{ width: '100%', maxWidth: 540, aspectRatio: '1080 / 2160', borderRadius: 22, background: '#f3f4f6' }} />
+                  )))}
                 </div>
                 <div style={{ marginTop: 22, fontSize: 13, color: '#6b7280', textAlign: 'center' }}>
                   Support: <a href={`mailto:${SUPPORT_EMAIL}`} style={{ color: '#0891b2', fontWeight: 700, textDecoration: 'none' }}>{SUPPORT_EMAIL}</a>
