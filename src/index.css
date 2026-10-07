@@ -1,0 +1,1 @@
+n/* Hide PWA Install Prompt & Cookie Banner in Capacitor APK */n.capacitor-native [class*='pwa'], .capacitor-native [class*='install'], .capacitor-native [class*='cookie'], .capacitor-native [id*='cookie'], body.capacitor-native #pwa-prompt, body.capacitor-native .cookie-banner { display: none !important; }
