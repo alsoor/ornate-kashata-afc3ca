@@ -14821,9 +14821,9 @@ function SavedMessagesScreen({
                 gap: 10,
                 padding: '6px 18px 6px 6px',
                 borderRadius: 999,
-                border: 'none',
-                background: 'linear-gradient(180deg, #ffffff 0%, #f3f5f7 100%)',
-                boxShadow: '0 4px 18px rgba(0,0,0,0.12), 0 1px 0 rgba(255,255,255,0.9) inset',
+                border: '2px solid #000000',
+                background: '#000000',
+                boxShadow: '0 4px 18px rgba(0,0,0,0.25)',
                 cursor: 'pointer',
                 WebkitTapHighlightColor: 'transparent',
               }}
@@ -14844,7 +14844,7 @@ function SavedMessagesScreen({
               <span style={{
                 fontWeight: 700,
                 fontSize: '0.95rem',
-                color: '#1a1a1a',
+                color: '#ffffff',
                 letterSpacing: '-0.01em',
                 whiteSpace: 'nowrap',
               }}>
@@ -15075,8 +15075,8 @@ function SavedMessagesScreen({
           <div
             style={{
               flexShrink: 0,
-              borderTop: '1px solid #e5e7eb',
-              background: '#fff',
+              borderTop: '1px solid #000000',
+              background: '#000000',
               padding: '8px 12px max(10px, env(safe-area-inset-bottom))',
               position: 'relative',
             }}
@@ -15135,8 +15135,8 @@ function SavedMessagesScreen({
                 onClick={() => setPlusOpen(v => !v)}
                 disabled={busy}
                 style={{
-                  width: 36, height: 36, borderRadius: '50%', border: '1px solid #d4d4d4',
-                  background: plusOpen ? '#111' : '#f7f7f8', color: plusOpen ? '#fff' : '#111',
+                  width: 36, height: 36, borderRadius: '50%', border: '1px solid #3a3a3a',
+                  background: plusOpen ? '#ffffff' : '#1f1f1f', color: plusOpen ? '#000000' : '#ffffff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
                 }}
               >
@@ -15144,8 +15144,8 @@ function SavedMessagesScreen({
               </button>
               <div style={{
                 flex: 1, minWidth: 0, display: 'flex', alignItems: 'center',
-                border: '1px solid #d4d4d4', borderRadius: 999, padding: '4px 8px 4px 14px',
-                minHeight: 38, background: '#fff',
+                border: '1px solid #3a3a3a', borderRadius: 999, padding: '4px 8px 4px 14px',
+                minHeight: 38, background: '#000000',
               }}>
                 <input
                   ref={inputRef}
@@ -15160,7 +15160,7 @@ function SavedMessagesScreen({
                   placeholder="Message…"
                   style={{
                     flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent',
-                    fontSize: '0.9rem', color: '#111', padding: '6px 0',
+                    fontSize: '0.9rem', color: '#ffffff', padding: '6px 0',
                   }}
                 />
                 <button
@@ -15170,7 +15170,7 @@ function SavedMessagesScreen({
                   style={{
                     width: 32, height: 32, borderRadius: '50%', border: 'none', flexShrink: 0,
                     background: text.trim() ? '#ef4444' : 'transparent',
-                    color: text.trim() ? '#fff' : 'rgba(0,0,0,0.25)',
+                    color: text.trim() ? '#fff' : 'rgba(255,255,255,0.4)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     cursor: text.trim() ? 'pointer' : 'default',
                   }}
@@ -16593,7 +16593,7 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError, onReco
         onContextMenu={e => e.preventDefault()}
         style={{
           width: 30, height: 30, flexShrink: 0, padding: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', marginRight: 4,
-          background: recording ? '#ef4444' : '#111', color: '#fff',
+          background: recording ? '#ef4444' : '#2a2a2a', color: '#fff',
           display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none',
           WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none',
           transform: recording ? 'scale(1.25)' : 'none', transition: 'transform .15s ease, background .15s ease',
@@ -19456,8 +19456,8 @@ function PublicLiveCommentsPanel({
         position: 'relative',
         zIndex: 2,
         transition: 'background-color .28s ease, border-color .28s ease',
-        borderTop: !chatUiLifted ? ('1px solid ' + CLR_NAV_BORDER) : '1px solid #ececec',
-        background: !chatUiLifted ? '#060e0e' : '#fff',
+        borderTop: !chatUiLifted ? ('1px solid ' + CLR_NAV_BORDER) : '1px solid #000000',
+        background: !chatUiLifted ? '#060e0e' : '#000000',
         paddingBottom: kbInset > 0 ? kbInset + 6 : 'max(8px, env(safe-area-inset-bottom))',
         flexShrink: 0,
         // الشات مقفول (رفع الهيدر بنقر الخط): ما يظهر شريط التعليق تحت — يظهر فقط لما الشات ينفتح بالضغط المطوّل على Call
@@ -19620,17 +19620,17 @@ function PublicLiveCommentsPanel({
             minWidth: 0,
             display: 'flex',
             alignItems: 'center',
-            border: '1px solid #d4d4d4',
+            border: '1px solid #3a3a3a',
             borderRadius: 999,
             padding: '4px 8px 4px 12px',
             minHeight: 38,
-            background: '#fff',
+            background: '#000000',
           }}>
             <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
             {chatLift === 0 && liveTypers.length > 0 && !text.trim() ? (
               <div style={{
                 position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
-                pointerEvents: 'none', color: '#191970', fontWeight: 800, fontSize: '0.86rem',
+                pointerEvents: 'none', color: '#93c5fd', fontWeight: 800, fontSize: '0.86rem',
               }}>
                 {(() => {
                   const t0 = liveTypers[0];
@@ -19702,7 +19702,7 @@ function PublicLiveCommentsPanel({
                 outline: 'none',
                 background: 'transparent',
                 fontSize: '0.86rem',
-                color: '#111',
+                color: '#ffffff',
                 minWidth: 0,
               }}
             />
@@ -19758,7 +19758,7 @@ function PublicLiveCommentsPanel({
                 }}
                 style={{
                   width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
-                  background: '#111', color: '#fff',
+                  background: '#2a2a2a', color: '#fff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   transition: 'transform .2s ease, background .2s ease',
                   transform: plusOpen ? 'rotate(45deg)' : 'none',
@@ -19936,7 +19936,7 @@ function PublicLiveCommentsPanel({
               }}
               style={{
                 width: 72, height: 72, borderRadius: '50%', border: 'none',
-                background: recording ? '#ef4444' : '#111', color: '#fff',
+                background: recording ? '#ef4444' : '#2a2a2a', color: '#fff',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
               }}
             >
