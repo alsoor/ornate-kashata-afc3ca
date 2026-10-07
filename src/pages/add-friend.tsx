@@ -5302,7 +5302,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 return (
                   <div
                     onPointerDown={e => e.stopPropagation()}
-                    style={{ position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
+                    style={{ position: 'absolute', left: 12, right: 12, bottom: 'calc(56px + env(safe-area-inset-bottom, 0px))', zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                       <div style={{ position: 'relative', width: 38, height: 38, flexShrink: 0 }}>
@@ -5420,7 +5420,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 return (
                   <div
                     onPointerDown={e => e.stopPropagation()}
-                    style={{ position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
+                    style={{ position: 'absolute', left: 12, right: 12, bottom: 'calc(56px + env(safe-area-inset-bottom, 0px))', zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                       <div style={{ width: 38, height: 38, borderRadius: '50%', overflow: 'hidden', background: '#111', border: '2px solid #22c55e', flexShrink: 0 }}>

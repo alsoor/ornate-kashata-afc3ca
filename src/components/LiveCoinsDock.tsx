@@ -961,58 +961,43 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
 
   useEffect(() => {
     if (!uid) return;
-    const showStored = () => {
-      try {
-        const raw = localStorage.getItem(giftNoticeKey(uid));
-        if (!raw) return;
-        const n = JSON.parse(raw) as { id?: string; coins?: number; text?: string };
-        if (!n?.id) return;
-        setAppGiftNotice({ id: String(n.id), coins: Math.floor(Number(n.coins) || 0), text: n.text || 'تم اعطاؤك دعم من التطبيق' });
-      } catch { /* ignore */ }
-    };
-    const pull = async () => {
-      // If this device already applied any app grant before, lock to once (stops daily re-delivery for existing users)
-      try {
-        if (!hasOwnerSupportOnce(uid) && readAppliedGrants(uid).size > 0) markOwnerSupportOnce(uid);
-      } catch { /* ignore */ }
-      try {
-        if (!hasOwnerSupportOnce(uid)) {
-          for (const g of readGrantList()) {
-            if (String(g.userId) === uid) applyAppCoinGrant(g);
-          }
-        }
-      } catch { /* ignore */ }
-      for (const url of [`/api/owner/grant-coins?userId=${encodeURIComponent(uid)}`, `/api/coins/grants?userId=${encodeURIComponent(uid)}`]) {
-        try {
-          const r = await fetch(url, { credentials: 'include', cache: 'no-store' });
-          if (!r.ok) continue;
-          const d = await r.json().catch(() => null) as { grants?: AppCoinGrant[]; id?: string; coins?: number; userId?: string } | null;
-          const list = Array.isArray(d?.grants) ? d!.grants! : (d?.id ? [d as AppCoinGrant] : []);
-          if (hasOwnerSupportOnce(uid)) {
-            // already received app support once — do not re-apply or re-show daily
-          } else {
-            for (const g of list) {
-              if (!g?.id) continue;
-              applyAppCoinGrant({ ...g, userId: String(g.userId || uid), text: g.text || 'تم اعطاؤك دعم من التطبيق' });
-            }
-          }
-        } catch { /* ignore */ }
+    // Never auto-reapply or re-show owner support. Only a fresh force grant (owner button) may show once.
+    try {
+      if (readAppliedGrants(uid).size > 0) markOwnerSupportOnce(uid);
+      // Clear any sticky banner left from old auto/daily grants
+      if (hasOwnerSupportOnce(uid)) {
+        try { localStorage.removeItem(giftNoticeKey(uid)); } catch { /* ignore */ }
       }
-      showStored();
-      setBalance(readBalance(uid));
+    } catch { /* ignore */ }
+    const onNotice = (ev: Event) => {
+      try {
+        const d = (ev as CustomEvent).detail as { id?: string; coins?: number; text?: string } | undefined;
+        if (!d?.id) return;
+        setAppGiftNotice({
+          id: String(d.id),
+          coins: Math.floor(Number(d.coins) || 0),
+          text: d.text || 'تم اعطاؤك دعم من التطبيق',
+        });
+        setBalance(readBalance(uid));
+      } catch { /* ignore */ }
     };
-    const onGrant = () => { void pull(); };
-    showStored();
-    void pull();
-    const id = window.setInterval(() => { void pull(); }, 5000);
-    window.addEventListener('stooorna:app-coin-grant', onGrant);
-    window.addEventListener('stooorna:gift-box-notice', onGrant);
-    window.addEventListener('storage', onGrant);
+    const onBalance = () => setBalance(readBalance(uid));
+    // One-time apply of any pending grant that was never applied AND user never received owner support
+    try {
+      if (!hasOwnerSupportOnce(uid)) {
+        for (const g of readGrantList()) {
+          if (String(g.userId) === uid) applyAppCoinGrant(g);
+        }
+      }
+    } catch { /* ignore */ }
+    setBalance(readBalance(uid));
+    window.addEventListener('stooorna:gift-box-notice', onNotice);
+    window.addEventListener('stooorna:app-coin-grant', onBalance);
+    window.addEventListener('stooorna:coins-balance', onBalance);
     return () => {
-      window.clearInterval(id);
-      window.removeEventListener('stooorna:app-coin-grant', onGrant);
-      window.removeEventListener('stooorna:gift-box-notice', onGrant);
-      window.removeEventListener('storage', onGrant);
+      window.removeEventListener('stooorna:gift-box-notice', onNotice);
+      window.removeEventListener('stooorna:app-coin-grant', onBalance);
+      window.removeEventListener('stooorna:coins-balance', onBalance);
     };
   }, [uid]);
   useEffect(() => {
