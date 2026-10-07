@@ -5325,23 +5325,8 @@ export default function RootLayout({
   const session = (sessionResult as any).session ?? (sessionResult as any).data;
   const location = useLocation();
   const navigate = useNavigate();
-  useEffect(() => {
-    /* haptic disabled: try { navigator.vibrate?.(16); } catch {} */
-  }, []);
-  // Global button haptic DISABLED (user request: phone vibration on every tap was annoying).
+  // Global button haptic DISABLED (user request) — no vibrate on mount / every tap.
   // Incoming-call / gift haptics elsewhere are left intact.
-  useEffect(() => {
-    /* haptic-off
-    const buzz = (e: Event) => {
-      const el = e.target as HTMLElement | null;
-      if (!el || !el.closest('button, [role="button"], a')) return;
-      try { if (localStorage.getItem('stooorna_haptic_off') === '1') return; } catch { /* */ }
-      try { navigator.vibrate?.(14); } catch { /* */ }
-    };
-    document.addEventListener('pointerdown', buzz, true);
-    return () => document.removeEventListener('pointerdown', buzz, true);
-    */
-  }, []);
   const [showWelcome, setShowWelcome] = useState(() => {
     if (!WELCOME_SPLASH_ENABLED) return false;
     try {
