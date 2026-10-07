@@ -5325,8 +5325,20 @@ export default function RootLayout({
   const session = (sessionResult as any).session ?? (sessionResult as any).data;
   const location = useLocation();
   const navigate = useNavigate();
-  // Global button haptic DISABLED (user request) — no vibrate on mount / every tap.
-  // Incoming-call / gift haptics elsewhere are left intact.
+  // Tap haptic on navigation / buttons (restored). Long-press on the bell no longer toggles this off.
+  useEffect(() => {
+    try { localStorage.removeItem('stooorna_haptic_off'); } catch { /* */ }
+    try { navigator.vibrate?.(16); } catch { /* */ }
+  }, []);
+  useEffect(() => {
+    const buzz = (e: Event) => {
+      const el = e.target as HTMLElement | null;
+      if (!el || !el.closest('button, [role="button"], a')) return;
+      try { navigator.vibrate?.(14); } catch { /* */ }
+    };
+    document.addEventListener('pointerdown', buzz, true);
+    return () => document.removeEventListener('pointerdown', buzz, true);
+  }, []);
   const [showWelcome, setShowWelcome] = useState(() => {
     if (!WELCOME_SPLASH_ENABLED) return false;
     try {

@@ -490,26 +490,30 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
   } else if (!PACKS.some(p => p.coins === pack.coins)) {
     return { ok: false, error: 'Choose one of the available packs' };
   }
-  // Polar only — no Google Play option, no payment-method sheet.
+  // Polar only — no Google Play, no intermediate sheet.
+  // Pre-open a blank tab on the same user tap so popup blockers allow Polar's real URL.
+  let pre: Window | null = null;
+  try { pre = window.open('about:blank', '_blank'); } catch { pre = null; }
   try {
     const r = await fetch('/api/polar/checkout', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      // Custom: the server must price it as coins × CUSTOM_CENTS_PER_COIN cents and enforce the USD 1,000 cap itself.
       body: JSON.stringify(isCustomPack
         ? { userId, coins: customCoinsN, custom: true, amountCents: customCoinsN * CUSTOM_CENTS_PER_COIN }
         : { userId, coins: pack.coins }),
     });
     const d = await r.json().catch(() => ({})) as { url?: string; error?: string };
     if (!r.ok || !d.url) {
+      try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
       const msg = isCustomPack && typeof d.error === 'string' && d.error.length > 0 && d.error.length < 140 ? d.error : 'Payment is not available right now';
       return { ok: false, error: msg };
     }
     try { localStorage.setItem(`stooorna_polar_pending_${userId}`, String(Date.now())); } catch { /* ignore */ }
-    openPolarCheckout(d.url, userId);   // in-app sheet only — live room stays open
+    openPolarCheckout(d.url, userId, pre);
     return { ok: true, redirected: true };
   } catch {
+    try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
     return { ok: false, error: 'Network error' };
   }
 }
@@ -526,12 +530,10 @@ let polarRoot: Root | null = null;
 let polarHost: HTMLDivElement | null = null;
 let polarStopWatch: (() => void) | null = null;
 
-/** Open Polar's real site in an in-app browser overlay. Returns true if something opened. */
+/** Try Capacitor / Cordova / native bridges first. Returns true if an in-app overlay opened. */
 async function openPolarOfficialInApp(url: string): Promise<boolean> {
   if (!url) return false;
   const w = window as any;
-
-  // 1) Capacitor Browser plugin (runtime only, no npm import) — Chrome Custom Tabs / SFSafariViewController
   try {
     const Cap = w.Capacitor;
     const Browser =
@@ -540,23 +542,16 @@ async function openPolarOfficialInApp(url: string): Promise<boolean> {
       Cap?.Plugins?.CapacitorBrowser ||
       (Cap?.isPluginAvailable?.('Browser') ? Cap.Plugins.Browser : null);
     if (Browser && typeof Browser.open === 'function') {
-      await Browser.open({
-        url,
-        presentationStyle: 'popover',
-        toolbarColor: '#0b0b0f',
-      });
+      await Browser.open({ url, presentationStyle: 'popover', toolbarColor: '#0b0b0f' });
       return true;
     }
   } catch (e) {
     console.warn('[polar] Capacitor Browser failed', e);
   }
-
-  // 2) Cordova InAppBrowser (no npm import — avoids Vite/Rollup resolve errors)
   try {
     if (typeof w.cordova !== 'undefined' && w.cordova?.InAppBrowser?.open) {
       const ref = w.cordova.InAppBrowser.open(
-        url,
-        '_blank',
+        url, '_blank',
         'location=yes,hideurlbar=no,toolbar=yes,closebuttoncaption=Close,clearcache=no,clearsessioncache=no,fullscreen=no',
       );
       return !!ref;
@@ -564,228 +559,66 @@ async function openPolarOfficialInApp(url: string): Promise<boolean> {
   } catch (e) {
     console.warn('[polar] Cordova InAppBrowser failed', e);
   }
-
-  // 4) Android bridge / TWA custom tab helper if the shell exposes it
   try {
     if (typeof w.Android !== 'undefined' && typeof w.Android.openCustomTab === 'function') {
       w.Android.openCustomTab(url);
       return true;
     }
   } catch { /* ignore */ }
-
   try {
     if (typeof w.webkit?.messageHandlers?.openUrl?.postMessage === 'function') {
       w.webkit.messageHandlers.openUrl.postMessage({ url });
       return true;
     }
   } catch { /* ignore */ }
-
   return false;
 }
 
-function PolarCheckoutSheet({ url, onDone }: { url: string; onDone: () => void }) {
-  const [shown, setShown] = useState(false);
-  const [opening, setOpening] = useState(false);
-  const [opened, setOpened] = useState(false);
-  const [err, setErr] = useState('');
-  const [paid, setPaid] = useState(false);
-  const closingRef = useRef(false);
-  const autoTried = useRef(false);
-
-  const close = React.useCallback(() => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    setShown(false);
-    // Best-effort: close Capacitor Browser if still open
-    try {
-      const Browser = (window as any).Capacitor?.Plugins?.Browser || (window as any).Browser;
-      if (Browser?.close) void Browser.close();
-    } catch { /* ignore */ }
-    window.setTimeout(onDone, 280);
-  }, [onDone]);
-
-  const launch = React.useCallback(async () => {
-    if (!url || opening) return;
-    setOpening(true);
-    setErr('');
-    const ok = await openPolarOfficialInApp(url);
-    setOpening(false);
-    if (ok) {
-      setOpened(true);
-    } else {
-      setErr('تعذّر فتح صفحة الدفع داخل التطبيق. تأكد أن إضافة Browser مفعّلة في الـ APK.');
-    }
-  }, [url, opening]);
-
-  useEffect(() => {
-    const t = requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
-    // Auto-open Polar's official page once the sheet is visible
-    const auto = window.setTimeout(() => {
-      if (!autoTried.current) {
-        autoTried.current = true;
-        void launch();
-      }
-    }, 320);
-
-    // Listen for Capacitor Browser close → stay on this sheet until user taps X
-    let removeFinished: (() => void) | null = null;
-    try {
-      const Browser = (window as any).Capacitor?.Plugins?.Browser || (window as any).Browser;
-      if (Browser?.addListener) {
-        const handle = Browser.addListener('browserFinished', () => {
-          // User closed Polar — coins may still be processing; keep sheet so they can reopen or X
-          setOpened(false);
-        });
-        removeFinished = () => {
-          try {
-            if (handle?.remove) handle.remove();
-            else if (Browser.removeAllListeners) Browser.removeAllListeners();
-          } catch { /* ignore */ }
-        };
-      }
-    } catch { /* ignore */ }
-
-    const onMsg = (e: MessageEvent) => {
-      let d: any = e.data;
-      if (typeof d === 'string') { try { d = JSON.parse(d); } catch { return; } }
-      const ev = String(d?.event || d?.type || '');
-      if (ev === 'success' || ev === 'confirmed' || ev === 'checkout.completed') {
-        setPaid(true);
-        window.setTimeout(close, 1800);
-      }
-    };
-    window.addEventListener('message', onMsg);
-    return () => {
-      cancelAnimationFrame(t);
-      window.clearTimeout(auto);
-      window.removeEventListener('message', onMsg);
-      try { removeFinished?.(); } catch { /* ignore */ }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [close]);
-
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 200000, background: shown ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0)',
-        transition: 'background .28s ease', direction: 'ltr',
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0,
-          top: 'max(22px, env(safe-area-inset-top, 0px))',
-          background: '#0b0b0f', borderRadius: '18px 18px 0 0', overflow: 'hidden',
-          display: 'flex', flexDirection: 'column',
-          transform: shown ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'transform .3s cubic-bezier(.2,.8,.2,1)',
-          boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', flexShrink: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Checkout · Polar</span>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={close}
-            style={{
-              width: 36, height: 36, borderRadius: '50%', border: 'none',
-              background: 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700,
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '28px 22px', gap: 16, textAlign: 'center' }}>
-          {paid ? (
-            <>
-              <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#22c55e' }}>Payment received ✅</p>
-              <p style={{ margin: 0, fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>Coins are being added…</p>
-            </>
-          ) : (
-            <>
-              <div style={{
-                width: 64, height: 64, borderRadius: 18,
-                background: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 28, boxShadow: '0 8px 24px rgba(124,58,237,0.35)',
-              }}>🔒</div>
-              <p style={{ margin: 0, fontWeight: 800, fontSize: '1.05rem', color: '#fff' }}>
-                Secure Polar checkout
-              </p>
-              <p style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.65)', lineHeight: 1.5, maxWidth: 320 }}>
-                صفحة الدفع الرسمية من Polar تفتح فوق التطبيق. بعد ما تخلّص اضغط X ترجع للبث مباشرة بدون ما تنطرد.
-              </p>
-              {err ? (
-                <p style={{ margin: 0, fontSize: '0.78rem', color: '#f87171', fontWeight: 600 }}>{err}</p>
-              ) : null}
-              <button
-                type="button"
-                disabled={opening}
-                onClick={() => { void launch(); }}
-                style={{
-                  marginTop: 6, border: 'none', borderRadius: 14, padding: '14px 28px',
-                  background: opening ? 'rgba(124,58,237,0.5)' : '#7c3aed',
-                  color: '#fff', fontWeight: 800, fontSize: '0.95rem', cursor: opening ? 'wait' : 'pointer',
-                  minWidth: 220,
-                }}
-              >
-                {opening ? 'Opening Polar…' : opened ? 'Re-open Polar checkout' : 'Open Polar checkout'}
-              </button>
-              <p style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>
-                يفتح موقع Polar الأصلي · بدون iframe · البث يبقى شغّال
-              </p>
-            </>
-          )}
-        </div>
-
-        <div style={{ flexShrink: 0, padding: '10px 14px calc(12px + env(safe-area-inset-bottom, 0px))', textAlign: 'center' }}>
-          <button
-            type="button"
-            onClick={close}
-            style={{
-              border: '1px solid rgba(255,255,255,0.2)', background: 'transparent',
-              color: 'rgba(255,255,255,0.75)', borderRadius: 12, padding: '10px 20px',
-              fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
-            }}
-          >
-            إغلاق والرجوع للبث
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function openPolarCheckout(url: string, userId: string, _pre?: Window | null) {
+/** Open Polar's ORIGINAL hosted checkout URL immediately — no intermediate sheet. */
+function openPolarCheckout(url: string, userId: string, pre?: Window | null) {
   if (typeof document === 'undefined') return;
   try { polarStopWatch?.(); } catch { /* ignore */ }
   polarStopWatch = watchPolarCredit(userId, () => { polarStopWatch = null; });
 
-  // Open Polar's official page immediately — no intermediate sheet.
   void (async () => {
-    const ok = await openPolarOfficialInApp(url);
-    if (ok) return; // Capacitor/Cordova browser opened over the live room
+    // 1) Prefer true in-app browser overlay (keeps live fully under the sheet)
+    const inApp = await openPolarOfficialInApp(url);
+    if (inApp) {
+      try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
+      return;
+    }
 
-    // Fallback sheet only if in-app browser is unavailable
-    if (polarRoot) { try { polarRoot.unmount(); } catch { /* ignore */ } polarRoot = null; }
-    if (polarHost) { try { polarHost.remove(); } catch { /* ignore */ } polarHost = null; }
-    const host = document.createElement('div');
-    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach(t => host.addEventListener(t, ev => ev.stopPropagation()));
-    document.body.appendChild(host);
-    polarHost = host;
-    polarRoot = createRoot(host);
-    const done = () => {
-      try { polarRoot?.unmount(); } catch { /* ignore */ }
-      polarRoot = null;
-      try { host.remove(); } catch { /* ignore */ }
-      if (polarHost === host) polarHost = null;
-    };
-    polarRoot.render(<PolarCheckoutSheet url={url} onDone={done} />);
+    // 2) No Capacitor Browser in this APK — open Polar's real site in the tab
+    //    pre-opened on the same user tap (avoids popup blockers). The live WebView
+    //    stays in the background; after payment the user returns to the app and
+    //    watchPolarCredit credits the coins.
+    let opened = false;
+    try {
+      if (pre && !pre.closed) {
+        try { pre.opener = null; } catch { /* ignore */ }
+        pre.location.href = url;
+        opened = true;
+      }
+    } catch { opened = false; }
+    if (!opened) {
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        opened = true;
+      } catch { /* ignore */ }
+    }
+    if (!opened) {
+      try { opened = !!window.open(url, '_blank', 'noopener,noreferrer'); } catch { opened = false; }
+    }
+    if (!opened) {
+      try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
+    }
   })();
 }
 
@@ -971,6 +804,14 @@ export function SupportCrown({ rank }: { rank: 1 | 2 | 3 }) {
 const APP_COIN_GRANTS_KEY = 'stooorna_app_coin_grants';
 const appliedGrantsKey = (uid: string) => `stooorna_app_coin_grants_applied_${uid || 'guest'}`;
 const giftNoticeKey = (uid: string) => `stooorna_gift_box_notice_${uid || 'guest'}`;
+/** Once the app/owner has granted support to a user, never auto-apply again (no daily re-delivery). */
+const ownerSupportOnceKey = (uid: string) => `stooorna_owner_support_once_${uid || 'guest'}`;
+function hasOwnerSupportOnce(uid: string): boolean {
+  try { return localStorage.getItem(ownerSupportOnceKey(uid)) === '1'; } catch { return false; }
+}
+function markOwnerSupportOnce(uid: string) {
+  try { localStorage.setItem(ownerSupportOnceKey(uid), '1'); } catch { /* ignore */ }
+}
 
 type AppCoinGrant = { id: string; userId: string; coins: number; at: number; text?: string };
 
@@ -1000,16 +841,19 @@ function markAppliedGrant(uid: string, id: string) {
   } catch { /* ignore */ }
 }
 
-/** يطبّق إهداء التطبيق على رصيد المستخدم مرة واحدة ويجهّز إشعار بوكس الهدايا. */
-export function applyAppCoinGrant(grant: AppCoinGrant): boolean {
+/** يطبّق إهداء التطبيق على رصيد المستخدم مرة واحدة فقط (لا يتكرر يومياً). force=true من زر الأونر اليدوي فقط. */
+export function applyAppCoinGrant(grant: AppCoinGrant, opts?: { force?: boolean }): boolean {
   const uid = String(grant.userId || '');
   const coins = Math.max(0, Math.floor(Number(grant.coins) || 0));
   if (!uid || coins <= 0 || !grant.id) return false;
   if (readAppliedGrants(uid).has(grant.id)) return false;
+  // Auto/server poll: never give app-support more than once per user (stops daily re-delivery)
+  if (!opts?.force && hasOwnerSupportOnce(uid)) return false;
   const next = readBalance(uid) + coins;
   writeBalance(uid, next);
   try { writeUserGiftBalance(uid, next); } catch { /* ignore */ }
   markAppliedGrant(uid, grant.id);
+  markOwnerSupportOnce(uid);
   const notice = {
     id: grant.id,
     coins,
@@ -1037,7 +881,7 @@ export function grantAppCoins(targetUserId: string, coins: number): { ok: boolea
     list.push(grant);
     localStorage.setItem(APP_COIN_GRANTS_KEY, JSON.stringify(list.slice(-500)));
   } catch { /* ignore */ }
-  applyAppCoinGrant(grant);
+  applyAppCoinGrant(grant, { force: true });
   const body = JSON.stringify({ userId: uid, coins: n, grantId: id, note: 'تم اعطاؤك دعم من التطبيق', source: 'owner' });
   for (const url of ['/api/owner/grant-coins', '/api/coins/grant', '/api/gifts/grant']) {
     void fetch(url, {
@@ -1127,9 +971,15 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
       } catch { /* ignore */ }
     };
     const pull = async () => {
+      // If this device already applied any app grant before, lock to once (stops daily re-delivery for existing users)
       try {
-        for (const g of readGrantList()) {
-          if (String(g.userId) === uid) applyAppCoinGrant(g);
+        if (!hasOwnerSupportOnce(uid) && readAppliedGrants(uid).size > 0) markOwnerSupportOnce(uid);
+      } catch { /* ignore */ }
+      try {
+        if (!hasOwnerSupportOnce(uid)) {
+          for (const g of readGrantList()) {
+            if (String(g.userId) === uid) applyAppCoinGrant(g);
+          }
         }
       } catch { /* ignore */ }
       for (const url of [`/api/owner/grant-coins?userId=${encodeURIComponent(uid)}`, `/api/coins/grants?userId=${encodeURIComponent(uid)}`]) {
@@ -1138,9 +988,13 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
           if (!r.ok) continue;
           const d = await r.json().catch(() => null) as { grants?: AppCoinGrant[]; id?: string; coins?: number; userId?: string } | null;
           const list = Array.isArray(d?.grants) ? d!.grants! : (d?.id ? [d as AppCoinGrant] : []);
-          for (const g of list) {
-            if (!g?.id) continue;
-            applyAppCoinGrant({ ...g, userId: String(g.userId || uid), text: g.text || 'تم اعطاؤك دعم من التطبيق' });
+          if (hasOwnerSupportOnce(uid)) {
+            // already received app support once — do not re-apply or re-show daily
+          } else {
+            for (const g of list) {
+              if (!g?.id) continue;
+              applyAppCoinGrant({ ...g, userId: String(g.userId || uid), text: g.text || 'تم اعطاؤك دعم من التطبيق' });
+            }
           }
         } catch { /* ignore */ }
       }

@@ -3117,7 +3117,7 @@ function HeaderStoryCircle({
         ref={btnRef}
         whileTap={{ scale: 0.9 }}
         onClick={handleClick}
-        style={{ width: 60, height: 60, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', ...extraButtonStyle }}
+        style={{ width: 48, height: 48, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative', ...extraButtonStyle }}
       >
         <div style={{
           position: 'absolute', inset: 0, borderRadius: '50%',
@@ -3152,8 +3152,8 @@ function HeaderStoryCircle({
                   : { name: name ?? '', avatarUrl };
                 const half = (side: 'left' | 'right', p: { name: string; avatarUrl: string | null }) => (
                   <div style={{ position: 'absolute', top: 0, bottom: 0, [side]: 0, width: '50%', overflow: 'hidden' } as React.CSSProperties}>
-                    <div style={{ position: 'absolute', top: 0, [side]: 0, width: 53, height: 53 } as React.CSSProperties}>
-                      <UserAvatar name={p.name} avatarUrl={p.avatarUrl} size={53} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: 0, display: 'block' }} />
+                    <div style={{ position: 'absolute', top: 0, [side]: 0, width: 42, height: 42 } as React.CSSProperties}>
+                      <UserAvatar name={p.name} avatarUrl={p.avatarUrl} size={42} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: 0, display: 'block' }} />
                     </div>
                   </div>
                 );
@@ -3166,8 +3166,8 @@ function HeaderStoryCircle({
                 );
               })()
             ) : (
-              <VipAvatarFrame userId={userId} size={53}>
-                <UserAvatar name={name ?? ''} avatarUrl={avatarUrl} size={53} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+              <VipAvatarFrame userId={userId} size={42}>
+                <UserAvatar name={name ?? ''} avatarUrl={avatarUrl} size={42} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
               </VipAvatarFrame>
             )}
           </div>
@@ -5273,7 +5273,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                   setLiveMsgPeer(null);
                 }}
                 style={{
-                  position: 'absolute', right: 14, bottom: liveNav ? 'calc(env(safe-area-inset-bottom, 0px) + 270px)' : ((goIn && goInHidden !== goIn.id) ? 'calc(env(safe-area-inset-bottom, 0px) + 212px)' : (liveMsgPeer ? 'calc(env(safe-area-inset-bottom, 0px) + 212px)' : 'calc(env(safe-area-inset-bottom, 0px) + 24px)')), zIndex: 3,
+                  position: 'absolute', right: 14, bottom: liveNav ? 226 : ((goIn && goInHidden !== goIn.id) ? 168 : (liveMsgPeer ? 168 : 18)), zIndex: 3,
                   width: 44, height: 44, borderRadius: '50%', border: 'none',
                   background: '#fff', boxShadow: '0 2px 10px rgba(0,0,0,0.18)', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -5302,7 +5302,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 return (
                   <div
                     onPointerDown={e => e.stopPropagation()}
-                    style={{ position: 'absolute', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 56px)', zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
+                    style={{ position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                       <div style={{ position: 'relative', width: 38, height: 38, flexShrink: 0 }}>
@@ -5420,7 +5420,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 return (
                   <div
                     onPointerDown={e => e.stopPropagation()}
-                    style={{ position: 'absolute', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 56px)', zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
+                    style={{ position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 5, borderRadius: 16, background: '#050505', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 10px 28px rgba(0,0,0,0.5)', padding: 12, color: '#fff' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                       <div style={{ width: 38, height: 38, borderRadius: '50%', overflow: 'hidden', background: '#111', border: '2px solid #22c55e', flexShrink: 0 }}>
@@ -5455,7 +5455,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
                 );
               })()}
               {liveMsgPeer && String(liveMsgPeer.id) !== String(myId || '') && (
-                <div style={{ position: 'absolute', left: 12, right: 12, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 56px)', zIndex: 4, borderRadius: 14, overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
+                <div style={{ position: 'absolute', left: 12, right: 12, bottom: 12, zIndex: 4, borderRadius: 14, overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
                   <div style={{ background: '#111', color: '#fff', fontWeight: 800, fontSize: '0.84rem', padding: '10px 12px' }}>
                     @{liveMsgPeer.name}
                   </div>
@@ -26673,7 +26673,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           }}>
             <div style={{
               overflow: storyPullProgress > 0 ? 'visible' : 'hidden',
-              paddingTop: 12,
+              paddingTop: 4,
               position: 'relative',
             }}>
               {/* Fog overlay */}
@@ -26696,15 +26696,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               (shared-posts / my story posts) button now lives in the unified nav row below, always visible.
               The decorative Globe next to "Following" has been removed. */}
           {pageTab === 'profile' && (
-            <div className="flex items-center px-5" style={{ paddingBottom: 8, gap: 14 }}>
+            <div className="flex items-center px-4" style={{ paddingBottom: 4, gap: 10, alignItems: 'flex-start' }}>
               {/* ── My story circle — same place as before ── */}
               {user && (() => {
                 const myGroup = storyGroups.find(g => g.userId === user?.id);
                 const hasStory = !!myGroup && myGroup.items.length > 0;
                 const allSeen = hasStory && myGroup!.items.every(i => i.seen);
                 return (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: 4, marginLeft: -6, flexShrink: 0 }}>
-                    <div style={{ width: 76, height: 76, position: 'relative' }}>
+                  <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 0, marginLeft: -4, flexShrink: 0 }}>
+                    <div style={{ width: 52, height: 52, position: 'relative', flexShrink: 0 }}>
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => {
@@ -26716,23 +26716,23 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           }
                         }}
                         disabled={storyUploading}
-                        style={{ width: 76, height: 76, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
+                        style={{ width: 52, height: 52, borderRadius: '50%', padding: 0, background: 'none', border: 'none', cursor: 'pointer', position: 'relative' }}
                       >
                         {/* One fixed circular frame: the photo is clipped inside it and can never overflow. */}
                         {/* إطار أزرق ثابت + صورة ثابتة */}
                         <div style={{
                           position: 'absolute', inset: 0, borderRadius: '50%', overflow: 'visible',
                           background: 'hsl(var(--card))',
-                          border: hasStory ? '4px solid #0ea5e9' : '3px solid #0ea5e9',
+                          border: hasStory ? '2.5px solid #0ea5e9' : '2px solid #0ea5e9',
                           boxSizing: 'border-box',
-                          boxShadow: hasStory && !allSeen ? '0 0 10px rgba(14,165,233,0.45)' : '0 0 8px rgba(14,165,233,0.25)',
+                          boxShadow: hasStory && !allSeen ? '0 0 8px rgba(14,165,233,0.4)' : '0 0 6px rgba(14,165,233,0.22)',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
                           {/* VIP account: gold spinning ring frame, same component used on the friends' story strip and the fullscreen story viewer.
                               hideLabel here only — keeps the ring sized exactly to this avatar without the floating "VIP" text tag poking above it.
                               size raised to 76 (was 68) to match the outer story circle exactly, so the VIP ring sits right on the picture's own edge instead of nested inside it with a gap. */}
-                          <VipAvatarFrame userId={user?.id} size={76} hideLabel>
-                            <UserAvatar name={user?.name ?? ''} avatarUrl={localAvatarUrl || resolveMediaUrl((user as any)?.avatarUrl) || readCachedProfileMedia(user?.id, 'avatar') || (user as any)?.avatarUrl || null} size={76} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                          <VipAvatarFrame userId={user?.id} size={52} hideLabel>
+                            <UserAvatar name={user?.name ?? ''} avatarUrl={localAvatarUrl || resolveMediaUrl((user as any)?.avatarUrl) || readCachedProfileMedia(user?.id, 'avatar') || (user as any)?.avatarUrl || null} size={52} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
                           </VipAvatarFrame>
                         </div>
                       </motion.button>
@@ -26746,26 +26746,30 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         disabled={storyUploading || quickPublishing}
                         aria-label="خيارات النشر"
                         style={{
-                          position: 'absolute', bottom: 1, right: 1,
-                          width: 22, height: 22, borderRadius: '50%',
+                          position: 'absolute', bottom: 0, right: 0,
+                          width: 16, height: 16, borderRadius: '50%',
                           background: '#ef4444',
-                          border: '2.5px solid hsl(var(--background))',
+                          border: '2px solid hsl(var(--background))',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           padding: 0, cursor: 'pointer',
-                          boxShadow: '0 0 8px rgba(239,68,68,0.55)',
+                          boxShadow: '0 0 6px rgba(239,68,68,0.55)',
                           zIndex: 5,
                         }}
                       >
                         {storyUploading || quickPublishing
                           ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
                               style={{ width: 9, height: 9, borderRadius: '50%', border: '2px solid #fff', borderTopColor: 'transparent' }} />
-                          : <Plus size={12} strokeWidth={3} color="#fff" />
+                          : <Plus size={10} strokeWidth={3} color="#fff" />
                         }
                       </motion.button>
                     </div>
-                    <span style={{ fontSize: '0.58rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 3 }}>
-                      قصتي
-                    </span>
+                    {myUsername ? (
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#fb923c', lineHeight: 1.15, maxWidth: 72, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        @{myUsername}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.55rem', color: 'hsl(var(--primary)/0.8)', fontWeight: 500 }}>قصتي</span>
+                    )}
                   </div>
                 );
               })()}
@@ -26802,7 +26806,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 ) : (
                 <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, paddingRight: 52, rowGap: 3 }}>
                     {myUsername && (
-                      <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#fb923c', lineHeight: 1.2, display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                         @{myUsername}
                       </span>
                     )}
@@ -26819,7 +26823,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 </div>
                 )}
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: -2 }}>
                   <motion.button
                     whileTap={{ scale: 0.94 }}
                     onClick={() => setFollowersModalOpen(true)}
@@ -27119,18 +27123,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       type="button"
                       onContextMenu={(e) => e.preventDefault()}
                       onPointerDown={() => {
-                        if (!profilePlusIncomingCallUi.ringing) {
-                          // ضغطة مطوّلة على Call = فتح الشات كطبقة كاملة فوق الصفحات (بدون رفع الشيت)
-                          profilePlusCallPressRef.current.long = false;
-                          if (profilePlusCallPressRef.current.timer) clearTimeout(profilePlusCallPressRef.current.timer);
-                          profilePlusCallPressRef.current.timer = setTimeout(() => {
-                            profilePlusCallPressRef.current.long = true;
-                            profilePlusCallPressRef.current.timer = null;
-                            dockSet(null);
-                            setChatOverlayOpen(true);
-                          }, 550);
-                          return;
-                        }
+                        // Long-press no longer opens chat. Only declines incoming call when ringing.
+                        if (!profilePlusIncomingCallUi.ringing) return;
                         profilePlusCallPressRef.current.long = false;
                         if (profilePlusCallPressRef.current.timer) clearTimeout(profilePlusCallPressRef.current.timer);
                         profilePlusCallPressRef.current.timer = setTimeout(() => {
@@ -27200,6 +27194,32 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 <span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Call</span>
 </div>
                   )}
+
+                  {user?.id && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
+<button
+                      type="button"
+                      onClick={() => {
+                        dockSet(null);
+                        setChatOverlayOpen(true);
+                      }}
+                      aria-label="Chat"
+                      style={{
+                        width: 34, height: 34, borderRadius: '50%',
+                        border: '1px solid rgba(0,188,212,0.4)',
+                        background: 'rgba(6,20,22,0.96)',
+                        color: '#00BCD4',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                      }}
+                    >
+                      <MessageCircle size={18} strokeWidth={2.2} />
+                    </button>
+<span data-stooorna-icon-label="1" style={{ color: '#ffffff', fontWeight: 300, fontSize: 10, letterSpacing: 0.4, lineHeight: 1.1, whiteSpace: 'nowrap', textAlign: 'center' }}>Chat</span>
+</div>
+                  )}
+
                   {user?.id && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 52 }}>
 <button
