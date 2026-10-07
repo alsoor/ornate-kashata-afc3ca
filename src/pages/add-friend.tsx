@@ -26755,14 +26755,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 style={{
                   position: 'absolute', left: 8, top: 6, zIndex: 8,
                   width: 28, height: 20,
-                  border: 'none',
-                  background: '#ef4444',
+                  border: 'none', outline: 'none',
+                  background: 'transparent',
+                  WebkitTapHighlightColor: 'transparent',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5,
                   cursor: 'pointer', padding: 0,
                 }}
               >
-                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#ffffff' }} />
-                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#ffffff' }} />
+                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#00BCD4' }} />
+                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: '#00BCD4' }} />
               </button>
 
               {/* Bell only — centered at top of story page */}
@@ -27095,17 +27096,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   display: 'block',
                   position: 'relative', overflow: 'hidden',
                   width: 36, height: 4, borderRadius: 2,
-                  background: (liveChatBusy || anyoneOnlineInApp) ? '#16a34a' : CLR_PRIMARY_BORDER,
-                  boxShadow: (liveChatBusy || anyoneOnlineInApp) ? '0 0 6px rgba(34,197,94,0.55)' : 'none',
-                  transition: 'background 0.25s ease, box-shadow 0.25s ease',
+                  background: '#ffffff',
+                  boxShadow: 'none',
                 }}
               >
-                {liveChatBusy ? (
+                {(liveChatBusy || anyoneOnlineInApp) ? (
                   <span
                     aria-hidden="true"
                     style={{
                       position: 'absolute', top: 0, bottom: 0, left: 0, width: '40%',
-                      background: 'linear-gradient(90deg, transparent, rgba(226,232,240,0.95), transparent)',
+                      background: 'linear-gradient(90deg, transparent, rgba(148,163,184,1), transparent)',
                       animation: 'stooornaGrabberShine 1.6s ease-in-out infinite',
                     }}
                   />

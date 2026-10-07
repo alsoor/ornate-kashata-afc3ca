@@ -142,7 +142,7 @@ function PlatformCard({
         onClick={onUpload}
         style={{
           marginTop: 10, width: '100%', height: 40, border: canUpload ? 'none' : '1px solid #ffffff', borderRadius: 10, fontWeight: 800, fontSize: '0.8rem',
-          background: canUpload ? primary : '#000000', color: canUpload ? '#000000' : '#ffffff',
+          background: '#ef4444', color: '#ffffff',
           cursor: canUpload ? 'pointer' : 'default',
         }}
       >
