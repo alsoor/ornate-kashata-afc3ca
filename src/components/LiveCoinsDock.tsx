@@ -513,7 +513,11 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
       return { ok: false, error: msg };
     }
     try { localStorage.setItem(`stooorna_polar_pending_${userId}`, String(Date.now())); } catch { /* ignore */ }
-    openPolarCheckout(d.url, userId, pre);
+    const opened = await openPolarCheckout(d.url, userId, pre);
+    if (!opened) {
+      try { localStorage.removeItem(`stooorna_polar_pending_${userId}`); } catch { /* ignore */ }
+      return { ok: false, error: 'Could not open checkout. Please try again.' };
+    }
     return { ok: true, redirected: true };
   } catch {
     try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
@@ -538,8 +542,8 @@ async function openPolarOfficialInApp(url: string): Promise<boolean> {
   if (!url) return false;
   const w = window as any;
   // الـ APK يحقن الجسر native-bridge فقط (Capacitor.nativePromise) — Capacitor.Plugins.Browser و registerPlugin غير موجودين
-  // في صفحة الويب، لهذا كانت صفحة الدفع تُفتح فوق التطبيق نفسه بدون X. نستدعي إضافة Browser مباشرة: Chrome Custom Tab
-  // فيها زر X يرجّعك لنفس البث (البث ما ينغلق ولا يتحمّل من جديد).
+  // في صفحة الويب، لهذا كانت صفحة الدفع تُفتح مكان التطبيق نفسه بدون X. نستدعي إضافة Browser مباشرة:
+  // تفتح موقع Polar الأصلي فوق التطبيق (Chrome Custom Tab) بزر X يرجّعك لنفس البث — بدون iframe.
   try {
     const capBridge = w.Capacitor;
     if (capBridge?.isNativePlatform?.() && typeof capBridge.nativePromise === 'function') {
@@ -607,72 +611,27 @@ async function openPolarOfficialInApp(url: string): Promise<boolean> {
   return false;
 }
 
-/** صفحة دفع داخل التطبيق بزر X ثابت (تنزل للأسفل وترجع للبث). تُستعمل لو تعذّر فتح المتصفح الداخلي. */
-function closePolarSheet() {
-  try { polarRoot?.unmount(); } catch { /* ignore */ }
-  try { polarHost?.remove(); } catch { /* ignore */ }
-  polarRoot = null;
-  polarHost = null;
-}
-
-function PolarCheckoutSheet({ url, onClose }: { url: string; onClose: () => void }) {
-  const [shown, setShown] = useState(false);
-  useEffect(() => {
-    const t = requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
-    return () => cancelAnimationFrame(t);
-  }, []);
-  const close = () => { setShown(false); window.setTimeout(onClose, 260); };
-  let src = url;
-  try { const u = new URL(url); u.searchParams.set('embed', 'true'); u.searchParams.set('theme', 'dark'); src = u.toString(); } catch { /* ignore */ }
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 200002, background: '#0b0b0f', color: '#fff', direction: 'ltr',
-        display: 'flex', flexDirection: 'column',
-        transform: shown ? 'translateY(0)' : 'translateY(100%)', transition: 'transform .26s cubic-bezier(.2,.8,.2,1)',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(env(safe-area-inset-top, 0px), 10px) 14px 10px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-        <span style={{ fontWeight: 800, fontSize: '1rem' }}>Secure checkout</span>
-        <button type="button" aria-label="Close" onClick={close} style={{ background: 'rgba(255,255,255,0.12)', border: 'none', color: '#fff', width: 36, height: 36, borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-          <X size={20} />
-        </button>
-      </div>
-      <iframe title="Checkout" src={src} allow="payment *" style={{ flex: 1, width: '100%', border: 0, background: '#fff' }} />
-    </div>
-  );
-}
-
-function showPolarSheet(url: string) {
-  closePolarSheet();
-  const host = document.createElement('div');
-  document.body.appendChild(host);
-  polarHost = host;
-  const root = createRoot(host);
-  polarRoot = root;
-  root.render(<PolarCheckoutSheet url={url} onClose={closePolarSheet} />);
-}
-
 /** Open Polar's ORIGINAL hosted checkout URL immediately — no intermediate sheet. */
-function openPolarCheckout(url: string, userId: string, pre?: Window | null) {
-  if (typeof document === 'undefined') return;
+function openPolarCheckout(url: string, userId: string, pre?: Window | null): Promise<boolean> {
+  if (typeof document === 'undefined') return Promise.resolve(false);
   try { polarStopWatch?.(); } catch { /* ignore */ }
-  polarStopWatch = watchPolarCredit(userId, () => { polarStopWatch = null; closePolarSheet(); });
+  polarStopWatch = watchPolarCredit(userId, () => { polarStopWatch = null; });
 
-  void (async () => {
+  return (async (): Promise<boolean> => {
     // 1) Prefer true in-app browser overlay (keeps live fully under the sheet)
     const inApp = await openPolarOfficialInApp(url);
     if (inApp) {
       try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
-      return;
+      return true;
     }
 
     // داخل تطبيق الأندرويد/iOS: لا نفتح صفحة الدفع أبداً في نفس الـ WebView (كانت تطرد المستخدم من التطبيق بدون X).
-    // نعرض صفحة دفع داخلية بزر X ترجع للبث.
     try {
-      if ((window as any).Capacitor?.isNativePlatform?.()) { showPolarSheet(url); return; }
+      if ((window as any).Capacitor?.isNativePlatform?.()) {
+        try { polarStopWatch?.(); } catch { /* ignore */ }
+        polarStopWatch = null;
+        return false;
+      }
     } catch { /* ignore */ }
 
     // 2) No Capacitor Browser in this APK — open Polar's real site in the tab
@@ -706,6 +665,7 @@ function openPolarCheckout(url: string, userId: string, pre?: Window | null) {
     if (!opened) {
       try { if (pre && !pre.closed) pre.close(); } catch { /* ignore */ }
     }
+    return opened;
   })();
 }
 
