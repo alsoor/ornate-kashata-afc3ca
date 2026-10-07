@@ -493,7 +493,10 @@ async function processVisaPayment(pack: { id: string; coins: number; usd: number
   // Polar only — no Google Play, no intermediate sheet.
   // Pre-open a blank tab on the same user tap so popup blockers allow Polar's real URL.
   let pre: Window | null = null;
-  try { pre = window.open('about:blank', '_blank'); } catch { pre = null; }
+  // Inside the Android/iOS app the checkout opens in the native in-app browser (see openPolarOfficialInApp),
+  // so no blank pre-window is needed there — in a WebView it would replace the app page instead of opening a tab.
+  const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.();
+  if (!isNativeApp) { try { pre = window.open('about:blank', '_blank'); } catch { pre = null; } }
   try {
     const r = await fetch('/api/polar/checkout', {
       method: 'POST',
@@ -534,6 +537,17 @@ let polarStopWatch: (() => void) | null = null;
 async function openPolarOfficialInApp(url: string): Promise<boolean> {
   if (!url) return false;
   const w = window as any;
+  // Native app: open through the official @capacitor/browser plugin (Chrome Custom Tab / SFSafariViewController).
+  // It has its own toolbar with a close (X) button, and the live room underneath stays untouched.
+  try {
+    if (w.Capacitor?.isNativePlatform?.()) {
+      const { Browser: NativeBrowser } = await import('@capacitor/browser');
+      await NativeBrowser.open({ url, presentationStyle: 'popover', toolbarColor: '#0b0b0f' });
+      return true;
+    }
+  } catch (e) {
+    console.warn('[polar] @capacitor/browser failed, falling back', e);
+  }
   try {
     const Cap = w.Capacitor;
     const Browser =
