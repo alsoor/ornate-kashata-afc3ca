@@ -25,6 +25,8 @@ type Rel = {
   size: number;
   createdAt: string;
   stored: string;
+  /** If set, this release is an external link (store / website / direct download) instead of an uploaded file. */
+  link?: string;
 };
 export type Ctx = { isOwner: (req: Request) => Promise<boolean> };
 
@@ -62,6 +64,9 @@ const pub = ({ stored: _stored, ...r }: Rel) => r;
 const newest = (l: Rel[]) => [...l].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
 
 function download(r: Rel): Response {
+  if (r.link) {
+    return new Response(null, { status: 302, headers: { Location: r.link, 'Cache-Control': 'no-store' } });
+  }
   const file = path.join(DIR, r.stored);
   if (!fs.existsSync(file)) return json({ error: 'File missing' }, 404);
   const type = r.platform === 'android' ? 'application/vnd.android.package-archive' : 'application/octet-stream';
@@ -123,6 +128,33 @@ export async function storeUpload(src: Readable, m: UploadMeta): Promise<UploadR
   return { ok: true, release: pub(rel) };
 }
 
+export type LinkMeta = { platform: string; version: string; link: string };
+
+/** Register an external link (instead of a file) as the release for a platform. */
+export function storeLink(m: LinkMeta): UploadResult {
+  const platform = m.platform;
+  const version = (m.version || '').trim();
+  const link = (m.link || '').trim();
+  if (platform !== 'android' && platform !== 'ios') return { ok: false, status: 400, error: 'Bad platform' };
+  if (!/^[0-9A-Za-z][0-9A-Za-z._+-]{0,31}$/.test(version)) return { ok: false, status: 400, error: 'Bad version' };
+  let u: URL;
+  try {
+    u = new URL(link);
+  } catch {
+    return { ok: false, status: 400, error: 'Bad link' };
+  }
+  if ((u.protocol !== 'https:' && u.protocol !== 'http:') || link.length > 2000) {
+    return { ok: false, status: 400, error: 'Bad link' };
+  }
+  const rel: Rel = {
+    id: crypto.randomBytes(8).toString('hex'),
+    platform, version, fileName: u.hostname, size: 0,
+    createdAt: new Date().toISOString(), stored: '', link: u.toString(),
+  };
+  writeAll([...readAll(), rel]);
+  return { ok: true, release: pub(rel) };
+}
+
 export async function handleAppReleases(req: Request, ctx: Ctx): Promise<Response | null> {
   const url = new URL(req.url);
   const p = url.pathname.replace(/\/+$/, '');
@@ -171,13 +203,23 @@ export async function handleAppReleases(req: Request, ctx: Ctx): Promise<Respons
     return out.ok ? json({ release: out.release }) : json({ error: out.error }, out.status);
   }
 
+  if (req.method === 'PUT' && rest === '/link') {
+    if (!(await ctx.isOwner(req))) return json({ error: 'Owner only' }, 403);
+    const out = storeLink({
+      platform: url.searchParams.get('platform') || '',
+      version: url.searchParams.get('version') || '',
+      link: url.searchParams.get('link') || '',
+    });
+    return out.ok ? json({ release: out.release }) : json({ error: out.error }, out.status);
+  }
+
   m = rest.match(/^\/([a-f0-9]{16})$/);
   if (req.method === 'DELETE' && m) {
     if (!(await ctx.isOwner(req))) return json({ error: 'Owner only' }, 403);
     const list = readAll();
     const r = list.find(x => x.id === m![1]);
     if (!r) return json({ error: 'Not found' }, 404);
-    fs.rmSync(path.join(DIR, r.stored), { force: true });
+    if (r.stored) fs.rmSync(path.join(DIR, r.stored), { force: true });
     writeAll(list.filter(x => x.id !== r.id));
     return json({ ok: true });
   }

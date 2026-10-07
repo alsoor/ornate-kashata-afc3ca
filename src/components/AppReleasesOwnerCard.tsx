@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  fetchAppDownloads, uploadRelease, deleteRelease, setStoreVisible, releasesOf, formatReleaseDate, formatSize,
+  fetchAppDownloads, uploadRelease, addLinkRelease, deleteRelease, setStoreVisible, releasesOf, formatReleaseDate, formatSize,
   platformFromFileName, RELEASES_EVENT, type AppRelease, type ReleasePlatform,
 } from '@/lib/appReleases';
 
@@ -13,6 +13,8 @@ function PlatformCard({
 }: { T: Theme; platform: ReleasePlatform; releases: AppRelease[]; visible: boolean; onChanged: () => void }) {
   const isAndroid = platform === 'android';
   const [version, setVersion] = useState('');
+  const [mode, setMode] = useState<'file' | 'link'>('file');
+  const [link, setLink] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [pct, setPct] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -21,17 +23,21 @@ function PlatformCard({
   const primary = T.primary || '#00BCD4';
 
   const fileOk = !!file && platformFromFileName(file.name) === platform;
-  const canUpload = fileOk && VERSION_RE.test(version.trim()) && !busy;
+  const linkOk = /^https?:\/\/\S+\.\S+$/i.test(link.trim());
+  const canUpload = (mode === 'file' ? fileOk : linkOk) && VERSION_RE.test(version.trim()) && !busy;
 
   async function onUpload() {
-    if (!file || !canUpload) return;
+    if (!canUpload) return;
     setBusy(true);
     setPct(0);
     setMsg(null);
     try {
-      const r = await uploadRelease({ file, version: version.trim(), onProgress: setPct });
-      setMsg({ ok: true, text: `Uploaded v${r.version}` });
+      const r = mode === 'link'
+        ? await addLinkRelease({ platform, version: version.trim(), url: link.trim() })
+        : await uploadRelease({ file: file!, version: version.trim(), onProgress: setPct });
+      setMsg({ ok: true, text: mode === 'link' ? `Link saved v${r.version}` : `Uploaded v${r.version}` });
       setFile(null);
+      setLink('');
       setVersion('');
       if (inputRef.current) inputRef.current.value = '';
       onChanged();
@@ -59,7 +65,7 @@ function PlatformCard({
             {isAndroid ? 'Android · Google Play' : 'iOS · App Store'}
           </div>
           <div style={{ marginTop: 2, fontSize: '0.68rem', color: T.textMuted }}>
-            {isAndroid ? '.apk file' : '.ipa file'} · {releases.length ? `latest v${releases[0].version}` : 'no file yet'}
+            {isAndroid ? '.apk file / link' : '.ipa file / link'} · {releases.length ? `latest v${releases[0].version}` : 'no file yet'}
           </div>
         </div>
         {/* show / hide switch for this store button */}
@@ -85,15 +91,50 @@ function PlatformCard({
         dir="ltr"
         style={{ marginTop: 12, width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: `1px solid ${T.surfaceBorder}`, background: 'transparent', color: T.text, fontSize: '0.8rem' }}
       />
-      <input
-        ref={inputRef}
-        type="file"
-        accept={isAndroid ? '.apk' : '.ipa'}
-        onChange={e => { setFile(e.target.files?.[0] || null); setMsg(null); }}
-        style={{ marginTop: 8, width: '100%', fontSize: '0.74rem', color: T.textMuted }}
-      />
-      {file && !fileOk && <div style={{ marginTop: 6, color: '#ef4444', fontSize: '0.7rem' }}>Only {isAndroid ? '.apk' : '.ipa'} here</div>}
-      {fileOk && <div style={{ marginTop: 6, fontSize: '0.7rem', color: T.textMuted }}>{formatSize(file!.size)}</div>}
+      {/* two ways to add: upload a file, or paste a link */}
+      <div style={{ marginTop: 10, display: 'flex', gap: 6, padding: 3, borderRadius: 10, border: `1px solid ${T.surfaceBorder}` }}>
+        {(['file', 'link'] as const).map(k => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => { setMode(k); setMsg(null); }}
+            style={{
+              flex: 1, height: 30, border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 800,
+              background: mode === k ? primary : 'transparent', color: mode === k ? '#041414' : T.textMuted,
+            }}
+          >
+            {k === 'file' ? (isAndroid ? 'File (.apk)' : 'File (.ipa)') : 'Link'}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'file' ? (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            accept={isAndroid ? '.apk' : '.ipa'}
+            onChange={e => { setFile(e.target.files?.[0] || null); setMsg(null); }}
+            style={{ marginTop: 8, width: '100%', fontSize: '0.74rem', color: T.textMuted }}
+          />
+          {file && !fileOk && <div style={{ marginTop: 6, color: '#ef4444', fontSize: '0.7rem' }}>Only {isAndroid ? '.apk' : '.ipa'} here</div>}
+          {fileOk && <div style={{ marginTop: 6, fontSize: '0.7rem', color: T.textMuted }}>{formatSize(file!.size)}</div>}
+        </>
+      ) : (
+        <>
+          <input
+            value={link}
+            onChange={e => { setLink(e.target.value); setMsg(null); }}
+            placeholder="https://..."
+            dir="ltr"
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            style={{ marginTop: 8, width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: `1px solid ${T.surfaceBorder}`, background: 'transparent', color: T.text, fontSize: '0.8rem' }}
+          />
+          {link.trim() && !linkOk && <div style={{ marginTop: 6, color: '#ef4444', fontSize: '0.7rem' }}>Link must start with https://</div>}
+        </>
+      )}
 
       <button
         type="button"
@@ -105,7 +146,7 @@ function PlatformCard({
           cursor: canUpload ? 'pointer' : 'default',
         }}
       >
-        {busy ? `Uploading ${pct}%` : 'Upload'}
+        {busy ? (mode === 'link' ? 'Saving…' : `Uploading ${pct}%`) : (mode === 'link' ? 'Save link' : 'Upload')}
       </button>
       {busy && (
         <div style={{ marginTop: 8, height: 4, borderRadius: 2, background: T.surfaceBorder, overflow: 'hidden' }}>
@@ -117,7 +158,7 @@ function PlatformCard({
       {releases.map(r => (
         <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 0', marginTop: 4, borderTop: `1px solid ${T.surfaceBorder}` }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 700 }}>v{r.version} · {formatSize(r.size)}</div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700 }}>v{r.version} · {r.link ? `Link · ${r.fileName}` : formatSize(r.size)}</div>
             <div style={{ fontSize: '0.64rem', color: T.textMuted }}>{formatReleaseDate(r.createdAt, 'en')}</div>
           </div>
           <button

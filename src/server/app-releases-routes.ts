@@ -69,6 +69,7 @@ export function registerAppReleaseRoutes(
       if (!res.headersSent) res.status(500).json({ error: "Server error" });
     }
   });
+  app.put("/api/app-releases/link", handler);
   app.put("/api/app-releases/visibility", handler);
   app.delete("/api/app-releases/:id", handler);
 }
