@@ -6356,8 +6356,8 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
               });
             }}
             onError={() => { /* keep poster black rather than crash viewer */ }}
-            style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
-        : <img key={item.id} src={resolveMediaUrl(item.mediaUrl)} alt="story" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+            style={{ width: '100%', height: '100%', boxSizing: 'border-box', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 76px)', objectFit: 'contain', background: '#000' }} />
+        : <img key={item.id} src={resolveMediaUrl(item.mediaUrl)} alt="story" style={{ width: '100%', height: '100%', boxSizing: 'border-box', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 76px)', objectFit: 'contain', background: '#000' }} />
       }
       {/* نص overlay على القصة */}
       {item.overlayText && (
