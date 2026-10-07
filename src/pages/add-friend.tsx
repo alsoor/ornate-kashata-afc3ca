@@ -26696,23 +26696,22 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           {/* Row 1: hamburger (top-left) + centered section icons — story/username/bio live in the white slide panel */}
           {pageTab === 'profile' && (
             <div style={{ position: 'relative', paddingBottom: 6, paddingTop: 2, minHeight: 36 }}>
-              {/* Three-line menu — top left */}
+              {/* Two small lines — top left, no frame */}
               <button
                 type="button"
                 aria-label="Profile menu"
                 onClick={() => setProfileSlideOpen(true)}
                 style={{
-                  position: 'absolute', left: 10, top: 2, zIndex: 8,
-                  width: 36, height: 36, borderRadius: 10,
-                  border: '1px solid rgba(255,255,255,0.14)',
-                  background: 'rgba(255,255,255,0.06)',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  position: 'absolute', left: 8, top: 4, zIndex: 8,
+                  width: 28, height: 22,
+                  border: 'none',
+                  background: 'transparent',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5,
                   cursor: 'pointer', padding: 0,
                 }}
               >
-                <span style={{ display: 'block', width: 16, height: 2, borderRadius: 1, background: '#fff' }} />
-                <span style={{ display: 'block', width: 16, height: 2, borderRadius: 1, background: '#fff' }} />
-                <span style={{ display: 'block', width: 16, height: 2, borderRadius: 1, background: '#fff' }} />
+                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: 'rgba(255,255,255,0.92)' }} />
+                <span style={{ display: 'block', width: 14, height: 1.5, borderRadius: 1, background: 'rgba(255,255,255,0.92)' }} />
               </button>
 
               {/* Centered section icons (followers / call history / live / map / requests / bell) */}
@@ -26896,7 +26895,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           </div>
 
 
-          {/* ── White slide panel (from right): story + username + bio only ── */}
+          {/* ── White slide panel (from left): story + username + bio only ── */}
           {typeof document !== 'undefined' && createPortal(
             <>
               <div
@@ -26912,12 +26911,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 role="dialog"
                 aria-modal="true"
                 style={{
-                  position: 'fixed', top: 0, bottom: 0, right: 0, zIndex: 16001,
+                  position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 16001,
                   width: 'min(86vw, 340px)',
                   background: '#ffffff',
                   color: '#0a0a0a',
-                  boxShadow: profileSlideOpen ? '-12px 0 40px rgba(0,0,0,0.25)' : 'none',
-                  transform: profileSlideOpen ? 'translateX(0)' : 'translateX(100%)',
+                  boxShadow: profileSlideOpen ? '12px 0 40px rgba(0,0,0,0.25)' : 'none',
+                  transform: profileSlideOpen ? 'translateX(0)' : 'translateX(-100%)',
                   transition: 'transform .3s cubic-bezier(.2,.8,.2,1)',
                   display: 'flex', flexDirection: 'column',
                   padding: 'calc(16px + env(safe-area-inset-top, 0px)) 20px calc(20px + env(safe-area-inset-bottom, 0px))',
