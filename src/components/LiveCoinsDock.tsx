@@ -531,7 +531,7 @@ async function openPolarOfficialInApp(url: string): Promise<boolean> {
   if (!url) return false;
   const w = window as any;
 
-  // 1) Capacitor Browser plugin (@capacitor/browser) — Chrome Custom Tabs / SFSafariViewController
+  // 1) Capacitor Browser plugin (runtime only, no npm import) — Chrome Custom Tabs / SFSafariViewController
   try {
     const Cap = w.Capacitor;
     const Browser =
@@ -551,19 +551,7 @@ async function openPolarOfficialInApp(url: string): Promise<boolean> {
     console.warn('[polar] Capacitor Browser failed', e);
   }
 
-  // 2) Dynamic import of @capacitor/browser (bundled as separate chunk in some builds)
-  try {
-    const mod = await import('@capacitor/browser').catch(() => null) as any;
-    const Browser = mod?.Browser;
-    if (Browser && typeof Browser.open === 'function') {
-      await Browser.open({ url, presentationStyle: 'popover', toolbarColor: '#0b0b0f' });
-      return true;
-    }
-  } catch (e) {
-    console.warn('[polar] @capacitor/browser import failed', e);
-  }
-
-  // 3) Cordova InAppBrowser
+  // 2) Cordova InAppBrowser (no npm import — avoids Vite/Rollup resolve errors)
   try {
     if (typeof w.cordova !== 'undefined' && w.cordova?.InAppBrowser?.open) {
       const ref = w.cordova.InAppBrowser.open(
