@@ -18883,8 +18883,8 @@ function PublicLiveCommentsPanel({
                 <Film size={15} strokeWidth={2.2} />
               </span>
               <p style={{ margin: 0, flex: 1, color: '#0a2f1d', fontWeight: 300, fontSize: '0.98rem' }}>Templates</p>
-              <button type="button" aria-label="Favorites" onClick={() => setTplFavOpen(true)} style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(250,204,21,0.14)', color: '#facc15', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <Bookmark size={15} strokeWidth={2.2} fill={favPosts.length > 0 ? '#facc15' : 'none'} />
+              <button type="button" aria-label="Favorites" onClick={() => setTplFavOpen(true)} style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #0a2f1d', background: '#ffffff', color: '#0a2f1d', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                <Bookmark size={15} strokeWidth={2.2} fill={favPosts.length > 0 ? '#0a2f1d' : 'none'} />
               </button>
               <button type="button" aria-label="Close" onClick={closeTplBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #0a2f1d', background: '#ffffff', color: '#0a2f1d', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <X size={15} strokeWidth={2.4} />
@@ -18955,18 +18955,18 @@ function PublicLiveCommentsPanel({
             onTouchEnd={e => e.stopPropagation()}
             onWheel={e => e.stopPropagation()}
             style={{
-              // FULL PAGE (yellow accent line on top) over the Templates page, down to the dock
+              // FULL PAGE (dark green-black accent line on top) over the Templates page, down to the dock
               position: 'fixed', zIndex: 10085, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
               display: 'flex', flexDirection: 'column',
               padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 10px 0',
               background: '#ffffff',
-              borderTop: '2px solid rgba(250,204,21,0.8)',
+              borderTop: '2px solid #0a2f1d',
               pointerEvents: 'auto',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
-              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(250,204,21,0.14)', color: '#facc15' }}>
-                <Bookmark size={15} strokeWidth={2.2} fill="#facc15" />
+              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffffff', border: '1.5px solid #0a2f1d', color: '#0a2f1d' }}>
+                <Bookmark size={15} strokeWidth={2.2} fill="#0a2f1d" />
               </span>
               <p style={{ margin: 0, flex: 1, color: '#0a2f1d', fontWeight: 300, fontSize: '0.98rem' }}>Favorites</p>
               <button type="button" aria-label="Close favorites" onClick={closeFavBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: '1.5px solid #0a2f1d', background: '#ffffff', color: '#0a2f1d', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
