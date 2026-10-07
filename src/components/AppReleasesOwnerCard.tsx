@@ -20,7 +20,7 @@ function PlatformCard({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const primary = T.primary || '#0b2b1c';
+  const primary = T.primary || '#000000';
 
   const fileOk = !!file && platformFromFileName(file.name) === platform;
   const linkOk = /^https?:\/\/\S+\.\S+$/i.test(link.trim());
@@ -78,7 +78,7 @@ function PlatformCard({
           style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: T.textMuted, fontSize: '0.68rem', fontWeight: 700 }}
         >
           <span>{visible ? 'Visible' : 'Hidden'}</span>
-          <span style={{ width: 44, height: 26, borderRadius: 999, position: 'relative', flexShrink: 0, background: visible ? (T.switchOn || '#22c55e') : (T.switchOff || '#c9d3cd'), transition: 'background .2s' }}>
+          <span style={{ width: 44, height: 26, borderRadius: 999, position: 'relative', flexShrink: 0, background: visible ? (T.switchOn || '#22c55e') : (T.switchOff || '#000000'), transition: 'background .2s' }}>
             <span style={{ position: 'absolute', top: 3, left: visible ? 21 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.25)', transition: 'left .2s' }} />
           </span>
         </button>
@@ -117,7 +117,7 @@ function PlatformCard({
             onChange={e => { setFile(e.target.files?.[0] || null); setMsg(null); }}
             style={{ marginTop: 8, width: '100%', fontSize: '0.74rem', color: T.textMuted }}
           />
-          {file && !fileOk && <div style={{ marginTop: 6, color: '#0b2b1c', fontSize: '0.7rem' }}>Only {isAndroid ? '.apk' : '.ipa'} here</div>}
+          {file && !fileOk && <div style={{ marginTop: 6, color: '#000000', fontSize: '0.7rem' }}>Only {isAndroid ? '.apk' : '.ipa'} here</div>}
           {fileOk && <div style={{ marginTop: 6, fontSize: '0.7rem', color: T.textMuted }}>{formatSize(file!.size)}</div>}
         </>
       ) : (
@@ -132,7 +132,7 @@ function PlatformCard({
             autoCorrect="off"
             style={{ marginTop: 8, width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: `1px solid ${T.surfaceBorder}`, background: 'transparent', color: T.text, fontSize: '0.8rem' }}
           />
-          {link.trim() && !linkOk && <div style={{ marginTop: 6, color: '#0b2b1c', fontSize: '0.7rem' }}>Link must start with https://</div>}
+          {link.trim() && !linkOk && <div style={{ marginTop: 6, color: '#000000', fontSize: '0.7rem' }}>Link must start with https://</div>}
         </>
       )}
 
@@ -141,8 +141,8 @@ function PlatformCard({
         disabled={!canUpload}
         onClick={onUpload}
         style={{
-          marginTop: 10, width: '100%', height: 40, border: 'none', borderRadius: 10, fontWeight: 800, fontSize: '0.8rem',
-          background: canUpload ? primary : 'rgba(11,43,28,0.12)', color: canUpload ? '#fff' : 'rgba(11,43,28,0.45)',
+          marginTop: 10, width: '100%', height: 40, border: canUpload ? 'none' : '1px solid #000000', borderRadius: 10, fontWeight: 800, fontSize: '0.8rem',
+          background: canUpload ? primary : '#ffffff', color: canUpload ? '#fff' : '#000000',
           cursor: canUpload ? 'pointer' : 'default',
         }}
       >
@@ -153,7 +153,7 @@ function PlatformCard({
           <div style={{ width: `${pct}%`, height: '100%', background: primary, transition: 'width .2s' }} />
         </div>
       )}
-      {msg && <div style={{ marginTop: 8, fontSize: '0.72rem', color: msg.ok ? '#22c55e' : '#0b2b1c' }}>{msg.text}</div>}
+      {msg && <div style={{ marginTop: 8, fontSize: '0.72rem', color: '#000000' }}>{msg.text}</div>}
 
       {releases.map(r => (
         <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 0', marginTop: 4, borderTop: `1px solid ${T.surfaceBorder}` }}>
@@ -164,7 +164,7 @@ function PlatformCard({
           <button
             type="button"
             onClick={async () => { if (window.confirm(`Delete v${r.version}?`)) { await deleteRelease(r.id); onChanged(); } }}
-            style={{ border: '1px solid rgba(11,43,28,0.45)', background: 'rgba(11,43,28,0.08)', color: '#0b2b1c', borderRadius: 8, padding: '4px 10px', fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer' }}
+            style={{ border: '1px solid #000000', background: '#ffffff', color: '#000000', borderRadius: 8, padding: '4px 10px', fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer' }}
           >
             Delete
           </button>
