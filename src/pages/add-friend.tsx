@@ -19829,7 +19829,7 @@ function PublicLiveCommentsPanel({
                 pushComment(text, pendingImage, pendingVoice);
                 return;
               }
-              if (chatLift === 1) return; // الشات دايم مرفوع — النزول فقط بالنقر على هيد توقيت التنظيف بأعلى الشات
+              if (chatLift === 1) { dropChatToStory(); return; } // النزول لصفحة القصة بطريقتين: هذا الزر (سهمين) أو النقر على هيد توقيت التنظيف بأعلى الشات
               toggleChatLift();
             }}
             aria-label={(text.trim() || pendingImage || pendingVoice) ? 'إرسال' : 'ارتفاع الشات'}
