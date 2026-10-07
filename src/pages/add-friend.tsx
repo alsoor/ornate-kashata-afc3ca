@@ -26690,7 +26690,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
         {!isFriendManagement && <>
         {/* ── Header ── */}
-        <div className="sticky top-0 z-20" style={{
+        <div className="sticky top-0 z-20" data-stooorna-top-header="1" style={{
           position: 'relative',
           paddingTop: 'max(16px, calc(env(safe-area-inset-top, 0px) + 8px))',
           background: '#000000',
@@ -27132,6 +27132,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         )}
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && !dockSettingsOpen && (
           <BottomHeaderPortal enabled={!guestMode}>
+          <style>{`
+            [data-stooorna-icons-bottom="1"] { background: #000000 !important; border-top: 1px solid #ffffff !important; }
+            [data-stooorna-icons-bottom="1"] button { background: #000000 !important; border-color: #ffffff !important; color: #ffffff !important; }
+            [data-stooorna-icons-bottom="1"] button[aria-label="Call"], [data-stooorna-icons-bottom="1"] button[aria-label="Answer call"] { color: #22c55e !important; }
+            [data-stooorna-icons-bottom="1"] [data-stooorna-icon-label] { color: #ffffff !important; }
+            [data-stooorna-top-header="1"] { background: #000000 !important; border-bottom: 1px solid #ffffff !important; }
+            [data-stooorna-top-header="1"] button[aria-label="Profile menu"] span { background: #ffffff !important; }
+            [data-stooorna-top-header="1"] button[aria-label="Admin notices"] { color: #ffffff !important; }
+          `}</style>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
             position: 'fixed', left: 0, right: 0, bottom: 0,
             // تحت مربعات الأقسام (الأصدقاء 10080، الاتصال، البث) عشان ما تتضارب معه، وفوق الشات (15/40)
