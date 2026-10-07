@@ -10284,7 +10284,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           right: 0,
           left: 42,
           zIndex: 20101,
-          background: PAGE_BG,
+          background: '#ffffff',
           display: 'flex',
           flexDirection: 'column' as const,
           overflow: 'hidden',
@@ -10302,7 +10302,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           position: 'fixed' as const,
           inset: 0,
           zIndex: 20100,
-          background: PAGE_BG,
+          background: '#ffffff',
           display: 'flex',
           flexDirection: 'column' as const,
           overflow: 'hidden',
@@ -10344,9 +10344,9 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             aria-label="Close"
             style={{
               position: 'absolute', top: 'max(10px, env(safe-area-inset-top, 0px))', insetInlineStart: 10, width: 32, height: 32, borderRadius: '50%',
-              background: coverUrl ? 'rgba(0,0,0,0.25)' : 'rgba(0,188,212,0.12)',
-              border: coverUrl ? 'none' : `1px solid ${CLR_PRIMARY_BORDER}`,
-              color: coverUrl ? '#fff' : CLR_PRIMARY,
+              background: '#ffffff',
+              border: '1.5px solid #000000',
+              color: '#000000',
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
             }}
@@ -10379,14 +10379,14 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             <motion.button
               whileTap={{ scale: 0.94 }}
               onClick={() => setAvatarExpanded(true)}
-              style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', padding: 0, border: 'none', cursor: 'pointer', background: '#000' }}
+              style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', padding: 0, border: '2px solid #000000', boxSizing: 'border-box', cursor: 'pointer', background: '#000' }}
             >
-              <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={80} style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
+              <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={80} style={{ width: '100%', height: '100%', borderRadius: '50%', border: 'none' }} />
             </motion.button>
           </VipAvatarFrame>
 
-          <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: '6px 0 0' }}>{name || username || '—'}</p>
-          {username && <p style={{ color: resolveVipNameStyle(authorId).color || CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
+          <p style={{ color: '#000000', fontSize: '0.88rem', fontWeight: 700, margin: '6px 0 0' }}>{name || username || '—'}</p>
+          {username && <p style={{ color: '#000000', fontSize: '0.72rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
             <VipBadge userId={authorId} compact />
             {(isCompanyProfile || isAuthorBusinessAccount(authorId, authorUsername)) && (
               <span style={{
@@ -10396,7 +10396,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             )}
           </p>}
           {profile?.bio && (
-            <p style={{ color: CLR_TEXT, opacity: 0.85, fontSize: '0.7rem', fontWeight: 500, margin: '4px 20px 0', textAlign: 'center', lineHeight: 1.4 }}>
+            <p style={{ color: '#000000', opacity: 0.85, fontSize: '0.7rem', fontWeight: 500, margin: '4px 20px 0', textAlign: 'center', lineHeight: 1.4 }}>
               {profile.bio}
             </p>
           )}
@@ -10408,14 +10408,14 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               const likedHere = authorPosts.some(p => !!(p as any).likedByMe || !!(p as any).isLiked);
               const ic = (color: string, child: React.ReactNode) => (
                 <span style={{
-                  width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
-                  background: 'rgba(225,225,225,0.1)', color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 24, height: 24, borderRadius: '50%', border: '1.5px solid #000000',
+                  background: '#ffffff', color, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>{child}</span>
               );
               return (
                 <>
                   {hiddenFollowers ? (
-                    ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <Lock size={12} strokeWidth={2.2} />)
+                    ic(liveActive ? '#22c55e' : '#000000', <Lock size={12} strokeWidth={2.2} />)
                   ) : (
                     <button
                       type="button"
@@ -10424,12 +10424,12 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                       title="Followers"
                       style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', WebkitTapHighlightColor: 'transparent' }}
                     >
-                      {ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <Users size={12} strokeWidth={2.3} />)}
+                      {ic(liveActive ? '#22c55e' : '#000000', <Users size={12} strokeWidth={2.3} />)}
                     </button>
                   )}
-                  {ic(liveActive ? '#ef4444' : 'rgba(230,230,230,0.9)', <Radio size={12} strokeWidth={2.3} />)}
-                  {ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <MapPin size={12} strokeWidth={2.3} />)}
-                  {ic(likedHere ? '#ef4444' : 'rgba(230,230,230,0.9)', <Heart size={12} strokeWidth={2.3} fill={likedHere ? '#ef4444' : 'none'} />)}
+                  {ic(liveActive ? '#ef4444' : '#000000', <Radio size={12} strokeWidth={2.3} />)}
+                  {ic(liveActive ? '#22c55e' : '#000000', <MapPin size={12} strokeWidth={2.3} />)}
+                  {ic(likedHere ? '#ef4444' : '#000000', <Heart size={12} strokeWidth={2.3} fill={likedHere ? '#ef4444' : 'none'} />)}
                 </>
               );
             })()}
@@ -10516,7 +10516,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 aria-expanded={friendMenuOpen}
                 style={{
                   width: 44, height: 22, borderRadius: 999, border: 'none', background: 'transparent',
-                  color: CLR_PRIMARY, display: 'flex', flexDirection: 'row', alignItems: 'center',
+                  color: '#000000', display: 'flex', flexDirection: 'row', alignItems: 'center',
                   justifyContent: 'center', gap: 4, cursor: 'pointer', position: 'relative', zIndex: 41,
                 }}
               >
@@ -10556,11 +10556,11 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
 
                 {isHiddenPrivate ? (
           <div className="flex flex-col items-center justify-center gap-3" style={{ paddingTop: 40, paddingBottom: 48, borderTop: `1px solid ${CLR_NAV_BORDER}`, marginTop: 8 }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CLR_PRIMARY_DIM }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#ffffff', border: '1.5px solid #000000', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000000' }}>
               <LockKeyhole size={22} strokeWidth={1.6} />
             </div>
-            <p style={{ color: CLR_TEXT, fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>Private account</p>
-            <p style={{ color: CLR_TEXT_DIM, fontSize: '0.78rem', textAlign: 'center', maxWidth: 240, lineHeight: 1.6 }}>
+            <p style={{ color: '#000000', fontSize: '0.85rem', fontWeight: 600, textAlign: 'center' }}>Private account</p>
+            <p style={{ color: 'rgba(0,0,0,0.6)', fontSize: '0.78rem', textAlign: 'center', maxWidth: 240, lineHeight: 1.6 }}>
               Add {name ?? 'this user'} as a friend to see their posts
             </p>
           </div>
