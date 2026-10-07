@@ -75,8 +75,16 @@ function StoreButton({
   );
 }
 
-const FEATURE_COUNT = 8;
-const FEATURE_IMAGES = Array.from({ length: FEATURE_COUNT }, (_, i) => `/app-features/feature-${i + 1}.jpg`);
+const FEATURE_IMAGES: string[] = [
+  new URL('./app-features/feature-1.jpg', import.meta.url).href,
+  new URL('./app-features/feature-2.jpg', import.meta.url).href,
+  new URL('./app-features/feature-3.jpg', import.meta.url).href,
+  new URL('./app-features/feature-4.jpg', import.meta.url).href,
+  new URL('./app-features/feature-5.jpg', import.meta.url).href,
+  new URL('./app-features/feature-6.jpg', import.meta.url).href,
+  new URL('./app-features/feature-7.jpg', import.meta.url).href,
+  new URL('./app-features/feature-8.jpg', import.meta.url).href,
+];
 const FEATURE_ALTS = ['Home Hub', 'Stories', 'Call friends', 'Go LIVE', 'LIVE Battles', 'Live GPS Map', 'Templates', 'Live Chat and Reactions'];
 
 const ABOUT_TEXT =
@@ -84,6 +92,82 @@ const ABOUT_TEXT =
 const SUMMARY_TEXT =
   'Stooorna is a social LIVE app for friends. Broadcast with Video Live, Voice Live or Public LIVE, share full-screen stories, call friends in one tap, chat with animated reactions and follow your friends on a live map. Everything you need to stay connected is on one clean home screen.';
 const SUPPORT_EMAIL = 'Stooorna@mail.com';
+
+type PrivacySection = { title: string; text?: string; items?: string[]; boldLead?: boolean };
+const PRIVACY_UPDATED = 'Last updated: October 6, 2026';
+const PRIVACY_INTRO =
+  'Stooorna ("we", "our", "the app") respects your privacy. This policy explains what information we collect, how we use it and your choices. By using the app you agree to this policy.';
+const PRIVACY_SECTIONS: PrivacySection[] = [
+  {
+    title: '1. Information We Collect',
+    boldLead: true,
+    items: [
+      'Account information: your username, profile picture and the details you add to your profile.',
+      'Content you create: stories, templates, comments, chat messages and reactions.',
+      'Friends and activity: your friends list, calls, LIVE sessions you start or join, and likes.',
+      'Location data: your approximate or precise location, only when you turn on location sharing in the GPS Live feature.',
+      'Camera and microphone: used only when you start or join a video call, voice call or LIVE session.',
+      'Device information: device model, operating system and app version, used to keep the app working properly.',
+    ],
+  },
+  {
+    title: '2. How We Use Your Information',
+    items: [
+      'To provide the app features such as LIVE, calls, stories, chat, templates and the live map.',
+      'To show your profile and content to other users according to your settings.',
+      'To send notifications about calls, LIVE sessions and activity.',
+      'To improve performance, fix bugs and keep the app secure.',
+      'To prevent abuse and enforce our rules.',
+    ],
+  },
+  {
+    title: '3. Location Sharing',
+    text: 'Your location is shared with other users only when you turn on location sharing. You can turn it off at any time using the switch in the GPS Live screen or in your device settings. When it is off, your location is not shared.',
+  },
+  {
+    title: '4. Sharing of Information',
+    text: 'We do not sell your personal information. We share information only:',
+    items: [
+      'With other users, as part of the features you choose to use (for example your profile, stories, LIVE sessions and location when sharing is on).',
+      'With service providers that help us run the app, such as hosting, real-time audio and video, notifications and map services. They may only use your information to provide their services to us.',
+      'When required by law or to protect the rights and safety of our users.',
+    ],
+  },
+  {
+    title: '5. Data Retention',
+    text: 'We keep your information while your account is active. Stories and temporary content may be removed automatically after a period of time. When you delete your account, we delete or anonymize your personal information, except where we must keep it by law.',
+  },
+  {
+    title: '6. Your Choices and Rights',
+    items: [
+      'You can edit your profile and delete your content at any time.',
+      'You can turn off location, camera, microphone and notification permissions in your device settings.',
+      'You can request deletion of your account and data by contacting us at Stooorna@mail.com.',
+    ],
+  },
+  {
+    title: "7. Children's Privacy",
+    text: 'The app is not intended for children under 13. We do not knowingly collect personal information from children under 13. If you believe a child has given us personal information, contact us and we will delete it.',
+  },
+  {
+    title: '8. Security',
+    text: 'We use reasonable technical and organizational measures to protect your information. However, no method of transmission or storage is completely secure.',
+  },
+  {
+    title: '9. Third-Party Services',
+    text: 'The app uses map data from OpenStreetMap contributors. Third-party services have their own privacy policies.',
+  },
+  {
+    title: '10. Changes to This Policy',
+    text: 'We may update this policy from time to time. We will post the new version in the app and update the date above.',
+  },
+  {
+    title: '11. Contact Us',
+    text: 'If you have questions about this policy, contact us at:',
+    boldLead: true,
+    items: ['Email: Stooorna@mail.com', 'Developer: Stooorna'],
+  },
+];
 
 type SheetTab = 'about' | 'summary' | 'privacy';
 const TABS: { key: SheetTab; label: string }[] = [
@@ -211,7 +295,10 @@ export default function GuestHomeExtras({
                       whileInView={{ opacity: 1, y: 0 }}
                       viewport={{ once: true, root: scrollRef, amount: 0.12 }}
                       transition={{ duration: 0.5, ease: 'easeOut' }}
-                      style={{ width: 'min(100%, 340px)', height: 'auto', borderRadius: 22, display: 'block', boxShadow: '0 8px 24px rgba(0,0,0,0.22)' }}
+                      width={1080}
+                      height={2160}
+                      decoding="async"
+                      style={{ width: '100%', maxWidth: 540, height: 'auto', aspectRatio: '1080 / 2160', borderRadius: 22, display: 'block', boxShadow: '0 8px 24px rgba(0,0,0,0.22)' }}
                     />
                   ))}
                 </div>
@@ -232,8 +319,27 @@ export default function GuestHomeExtras({
                   <strong style={{ fontSize: 15 }}>Privacy Policy</strong>
                   <a href={PRIVACY_PDF} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 700, color: '#0891b2', textDecoration: 'none' }}>{T.open}</a>
                 </div>
-                <div style={{ flex: 1, overflow: 'auto', background: '#fff', WebkitOverflowScrolling: 'touch' }}>
-                  <iframe title={T.privacy} src={PRIVACY_PDF} style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%`, border: 'none', background: '#fff', display: 'block' }} />
+                <div style={{ flex: 1, overflow: 'auto', background: '#fff', WebkitOverflowScrolling: 'touch', padding: '4px 16px 16px', fontSize: 14 * zoom, lineHeight: 1.6, color: '#1f2937' }}>
+                  <div style={{ fontSize: '0.85em', color: '#6b7280', marginBottom: '0.6em' }}>{PRIVACY_UPDATED}</div>
+                  <p style={{ margin: '0 0 1em' }}>{PRIVACY_INTRO}</p>
+                  {PRIVACY_SECTIONS.map(sec => (
+                    <div key={sec.title} style={{ marginBottom: '1.1em' }}>
+                      <div style={{ fontSize: '1.1em', fontWeight: 800, color: '#0a0a0a', marginBottom: '0.3em' }}>{sec.title}</div>
+                      {sec.text && <p style={{ margin: '0 0 0.4em' }}>{sec.text}</p>}
+                      {sec.items && (
+                        <ul style={{ margin: 0, paddingLeft: '1.3em' }}>
+                          {sec.items.map(it => {
+                            const k = sec.boldLead ? it.indexOf(': ') : -1;
+                            return (
+                              <li key={it} style={{ marginBottom: '0.35em' }}>
+                                {k > 0 ? <><strong>{it.slice(0, k + 1)}</strong>{it.slice(k + 1)}</> : it}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, padding: '10px 16px', borderTop: '1px solid #e5e7eb', background: '#fff', flexShrink: 0 }}>
                   <button type="button" onClick={() => zoomBy(-0.25)} disabled={zoom <= 1} aria-label="Zoom out"
