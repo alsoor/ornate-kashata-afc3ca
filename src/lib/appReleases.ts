@@ -1,127 +1,118 @@
-// Client helpers for APK / IPA releases uploaded by the owner.
+// Client helpers for APK / IPA releases (file upload OR external link).
+// Server: /api/app-releases (server/app-releases.ts)
+
 export type ReleasePlatform = 'android' | 'ios';
+export type StoreVisibility = { android: boolean; ios: boolean };
 export type AppRelease = {
   id: string;
   platform: ReleasePlatform;
   version: string;
   fileName: string;
   size: number;
-  createdAt: string; // ISO
+  createdAt: string;
+  /** Set when this release is an external link instead of an uploaded file. */
+  link?: string;
 };
 
-export const RELEASES_EVENT = 'stooorna:app-releases';
-
-export async function fetchReleases(): Promise<AppRelease[]> {
-  try {
-    const r = await fetch('/api/app-releases', { credentials: 'include', cache: 'no-store' });
-    if (!r.ok) return [];
-    const j = await r.json();
-    const list: AppRelease[] = Array.isArray(j?.releases) ? j.releases : [];
-    return list.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
-  } catch {
-    return [];
-  }
-}
-
-export type StoreVisibility = { android: boolean; ios: boolean };
-
-/** Releases + which store buttons are visible to everyone. */
-export async function fetchAppDownloads(): Promise<{ releases: AppRelease[]; visibility: StoreVisibility }> {
-  try {
-    const r = await fetch('/api/app-releases', { credentials: 'include', cache: 'no-store' });
-    if (!r.ok) return { releases: [], visibility: { android: true, ios: true } };
-    const j = await r.json();
-    const releases: AppRelease[] = Array.isArray(j?.releases) ? j.releases : [];
-    releases.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
-    return { releases, visibility: { android: j?.visibility?.android !== false, ios: j?.visibility?.ios !== false } };
-  } catch {
-    return { releases: [], visibility: { android: true, ios: true } };
-  }
-}
-
-/** Owner only (enforced on the server). */
-export async function setStoreVisible(platform: ReleasePlatform, visible: boolean): Promise<boolean> {
-  try {
-    const r = await fetch(`/api/app-releases/visibility?platform=${platform}&visible=${visible ? '1' : '0'}`, {
-      method: 'PUT', credentials: 'include',
-    });
-    if (r.ok) window.dispatchEvent(new CustomEvent(RELEASES_EVENT));
-    return r.ok;
-  } catch {
-    return false;
-  }
-}
-
-/** Newest first. */
-export function releasesOf(list: AppRelease[], platform: ReleasePlatform): AppRelease[] {
-  return list
-    .filter(r => r.platform === platform)
-    .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
-}
-
-/** Always points to the newest uploaded file, so Download pulls the latest. */
-export const latestDownloadUrl = (p: ReleasePlatform) => `/api/app-releases/latest/${p}/download`;
-export const releaseDownloadUrl = (id: string) => `/api/app-releases/${encodeURIComponent(id)}/download`;
+export const RELEASES_EVENT = 'stooorna:app-releases-changed';
+const BASE = '/api/app-releases';
+const notify = () => {
+  try { window.dispatchEvent(new Event(RELEASES_EVENT)); } catch { /* */ }
+};
 
 export function platformFromFileName(name: string): ReleasePlatform | null {
-  const n = name.toLowerCase();
+  const n = (name || '').toLowerCase();
   if (n.endsWith('.apk')) return 'android';
   if (n.endsWith('.ipa')) return 'ios';
   return null;
 }
 
-/** Raw-body upload (streamed, with progress). Owner only — enforced on the server. */
-export function uploadRelease(opts: {
-  file: File;
-  version: string;
-  onProgress?: (pct: number) => void;
-}): Promise<AppRelease> {
-  const platform = platformFromFileName(opts.file.name);
-  if (!platform) return Promise.reject(new Error('Only .apk or .ipa files are allowed'));
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const qs = new URLSearchParams({ platform, version: opts.version, name: opts.file.name });
-    xhr.open('PUT', `/api/app-releases/upload?${qs.toString()}`);
-    xhr.withCredentials = true;
-    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-    xhr.upload.onprogress = e => {
-      if (e.lengthComputable) opts.onProgress?.(Math.round((e.loaded / e.total) * 100));
-    };
-    xhr.onerror = () => reject(new Error('Network error'));
-    xhr.onload = () => {
-      try {
-        const j = JSON.parse(xhr.responseText || '{}');
-        if (xhr.status >= 200 && xhr.status < 300 && j.release) {
-          window.dispatchEvent(new CustomEvent(RELEASES_EVENT));
-          resolve(j.release as AppRelease);
-        } else reject(new Error(j.error || `Upload failed (${xhr.status})`));
-      } catch {
-        reject(new Error(`Upload failed (${xhr.status})`));
-      }
-    };
-    xhr.send(opts.file);
-  });
+export const latestDownloadUrl = (platform: ReleasePlatform) => `${BASE}/latest/${platform}/download`;
+export const releaseDownloadUrl = (id: string) => `${BASE}/${id}/download`;
+
+export const releasesOf = (list: AppRelease[], platform: ReleasePlatform) =>
+  list
+    .filter(r => r.platform === platform)
+    .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+
+export function formatSize(bytes: number): string {
+  if (!bytes) return '0 B';
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
-export async function deleteRelease(id: string): Promise<boolean> {
+/** e.g. "Wednesday 7 Oct 2026 · 11:33" */
+export function formatReleaseDate(iso: string, lang: 'ar' | 'en' = 'en'): string {
+  const d = new Date(iso);
+  if (isNaN(+d)) return '';
+  const loc = lang === 'ar' ? 'ar' : 'en-GB';
+  const day = d.toLocaleDateString(loc, { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }).replace(/,/g, '');
+  const time = d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${day} · ${time}`;
+}
+
+export async function fetchAppDownloads(): Promise<{ releases: AppRelease[]; visibility: StoreVisibility }> {
   try {
-    const r = await fetch(`/api/app-releases/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
-    if (r.ok) window.dispatchEvent(new CustomEvent(RELEASES_EVENT));
-    return r.ok;
+    const r = await fetch(BASE, { credentials: 'include', cache: 'no-store' });
+    if (!r.ok) throw new Error('bad status');
+    const j = await r.json();
+    return {
+      releases: Array.isArray(j.releases) ? j.releases : [],
+      visibility: { android: j.visibility?.android !== false, ios: j.visibility?.ios !== false },
+    };
   } catch {
-    return false;
+    return { releases: [], visibility: { android: true, ios: true } };
   }
 }
 
-/** e.g. "الثلاثاء 6 أكتوبر 2026 · 06:03 م" / "Tuesday 6 Oct 2026 · 06:03 PM" */
-export function formatReleaseDate(iso: string, lang: 'ar' | 'en'): string {
-  const d = new Date(iso);
-  const loc = lang === 'ar' ? 'ar' : 'en-GB';
-  const day = new Intl.DateTimeFormat(loc, { weekday: 'long' }).format(d);
-  const date = new Intl.DateTimeFormat(loc, { day: 'numeric', month: 'short', year: 'numeric' }).format(d);
-  const time = new Intl.DateTimeFormat(loc, { hour: '2-digit', minute: '2-digit' }).format(d);
-  return `${day} ${date} · ${time}`;
+/** Upload an .apk / .ipa file (owner only). */
+export function uploadRelease(a: { file: File; version: string; onProgress?: (pct: number) => void }): Promise<AppRelease> {
+  return new Promise((resolve, reject) => {
+    const platform = platformFromFileName(a.file.name);
+    if (!platform) return reject(new Error('Only .apk or .ipa files'));
+    const q = new URLSearchParams({ platform, version: a.version, name: a.file.name });
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', `${BASE}/upload?${q}`);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) a.onProgress?.(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onerror = () => reject(new Error('Network error'));
+    xhr.onload = () => {
+      let j: { error?: string; release?: AppRelease } = {};
+      try { j = JSON.parse(xhr.responseText || '{}'); } catch { /* */ }
+      if (xhr.status >= 200 && xhr.status < 300 && j.release) {
+        notify();
+        resolve(j.release);
+      } else {
+        reject(new Error(j.error || `Upload failed (${xhr.status})`));
+      }
+    };
+    xhr.send(a.file);
+  });
 }
 
-export const formatSize = (b: number) =>
-  b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+/** Save an external link (store / website / direct download) as the release (owner only). */
+export async function addLinkRelease(a: { platform: ReleasePlatform; version: string; url: string }): Promise<AppRelease> {
+  const q = new URLSearchParams({ platform: a.platform, version: a.version, link: a.url });
+  const r = await fetch(`${BASE}/link?${q}`, { method: 'PUT', credentials: 'include' });
+  const j = await r.json().catch(() => ({} as { error?: string; release?: AppRelease }));
+  if (!r.ok || !j.release) throw new Error(j.error || 'Failed');
+  notify();
+  return j.release as AppRelease;
+}
+
+export async function deleteRelease(id: string): Promise<boolean> {
+  const r = await fetch(`${BASE}/${id}`, { method: 'DELETE', credentials: 'include' });
+  notify();
+  return r.ok;
+}
+
+export async function setStoreVisible(platform: ReleasePlatform, visible: boolean): Promise<boolean> {
+  const q = new URLSearchParams({ platform, visible: visible ? '1' : '0' });
+  const r = await fetch(`${BASE}/visibility?${q}`, { method: 'PUT', credentials: 'include' });
+  notify();
+  return r.ok;
+}
