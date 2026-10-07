@@ -20002,6 +20002,8 @@ const HOME_LIVE_SCROLL_MIN = 3;
 // بطاقة البث في صفحة القصة: مضغوطة (صف واحد: صورة + LIVE + الاسم + Busy + عدد المستمعين + السماعة)
 // بدل الحجم الكبير. اجعلها false لإرجاع الحجم الكبير القديم (قائمة المستمعين / معاينة الفيديو).
 const HOME_LIVE_COMPACT_CARD = true;
+// صندوق واحد مشترك بين بطاقة اللايف وبطاقة Ads في صفحة القصة (نفس الحد الأدنى للارتفاع والتوسيط)
+const HOME_CARD_MIN_H = 76;
 
 // ── عرض PDF الإعلان مباشرة داخل الشاشة (كل الصفحات تحت بعض بعرض الشاشة) — بدون زر Open PDF ──
 function loadPdfJsForAds(): Promise<any> {
@@ -20361,7 +20363,7 @@ function HomeAdCard({ ad, lifted, onOpen, onDelete }: { ad: any; lifted: boolean
           background: 'radial-gradient(ellipse 80% 90% at 50% 100%, #0e2b30 0%, #0a1a1c 55%, #071011 100%)',
           boxShadow: '0 8px 22px rgba(0,0,0,0.45), 0 0 12px rgba(234,179,8,0.35)',
           overflow: 'hidden', cursor: 'pointer', color: '#cfe8e8',
-          display: 'flex', flexDirection: 'column', padding: '12px 14px',
+          display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '12px 14px', minHeight: HOME_CARD_MIN_H,
           pointerEvents: lifted ? 'none' : 'auto',
           visibility: bursting ? 'hidden' : 'visible',
           contentVisibility: 'auto', containIntrinsicSize: 'auto 78px',
@@ -21179,12 +21181,12 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
                 aria-label={e.kind === 'camera' ? `Video Live — ${name}` : `Voice Live — ${name}`}
                 style={{
                   position: 'relative', width: '100%', flexShrink: 0,
-                  aspectRatio: HOME_LIVE_COMPACT_CARD ? undefined : '1080 / 514', minHeight: HOME_LIVE_COMPACT_CARD ? undefined : 150, boxSizing: 'border-box',
+                  aspectRatio: HOME_LIVE_COMPACT_CARD ? undefined : '1080 / 514', minHeight: HOME_LIVE_COMPACT_CARD ? HOME_CARD_MIN_H : 150, boxSizing: 'border-box',
                   borderRadius: 20, border: '2px solid transparent',
                   background: `radial-gradient(ellipse 80% 90% at 50% 100%, #0e2b30 0%, #0a1a1c 55%, #071011 100%) padding-box, ${HOME_LIVE_SILVER} border-box`,
                   boxShadow: '0 8px 22px rgba(0,0,0,0.45), 0 0 10px rgba(200,205,215,0.22)',
                   overflow: 'hidden', cursor: 'pointer', color: '#cfe8e8',
-                  display: 'flex', flexDirection: 'column', padding: HOME_LIVE_COMPACT_CARD ? '12px 14px' : '10px 12px 0',
+                  display: 'flex', flexDirection: 'column', justifyContent: HOME_LIVE_COMPACT_CARD ? 'center' : undefined, padding: HOME_LIVE_COMPACT_CARD ? '12px 14px' : '10px 12px 0',
                   pointerEvents: lifted ? 'none' : 'auto',
                   contentVisibility: 'auto', containIntrinsicSize: HOME_LIVE_COMPACT_CARD ? 'auto 78px' : 'auto 150px',
                 }}
