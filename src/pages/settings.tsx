@@ -3732,8 +3732,9 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
     setAuthLang(next);
     try { localStorage.setItem('stooorna_auth_lang', next); } catch { /* */ }
   }
-  const L = getAuthCopy(authLang);
-  const isEn = authLang === 'en';
+  const formLang: AuthLang = mode === 'register' ? 'en' : authLang;
+  const L = getAuthCopy(formLang);
+  const isEn = formLang === 'en';
   const dir = isEn ? 'ltr' : 'rtl';
 
   // Personal fields
@@ -4076,7 +4077,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           }
         }
         if (em !== confirmEmail.trim().toLowerCase()) {
-          setError('البريد الإلكتروني وتأكيده غير متطابقين');
+          setError('Email and confirm email do not match');
           return;
         }
       } else {
@@ -4503,11 +4504,11 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         border: `1px solid ${T.primaryBorder}`,
         background: T.surface,
       }}>
-        <button type="button" onClick={() => setAuthLanguage('ar')} style={{
+        {!isRegister && <button type="button" onClick={() => setAuthLanguage('ar')} style={{
           padding: '7px 12px', border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 12,
           background: !isEn ? T.primaryFaint : 'transparent',
           color: !isEn ? T.primary : T.primaryDim,
-        }}>عربي</button>
+        }}>عربي</button>}
         <button type="button" onClick={() => setAuthLanguage('en')} style={{
           padding: '7px 12px', border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 12,
           background: isEn ? T.primaryFaint : 'transparent',
@@ -4535,7 +4536,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           fontSize: 18,
           fontWeight: 700,
           lineHeight: 1.45,
-          direction: 'rtl',
+          direction: dir,
         }}>
           {isRegister
             ? L.joinNow
@@ -13160,8 +13161,7 @@ export default function SettingsPage() {
       )}
 
       {/* ── Wallet (Balance | Deposit) — from profile $ button ── */}
-      {user?.id && (
-        {user?.id && phoneChecked && !String(profilePhone || '').trim() && createPortal(
+      {user?.id && phoneChecked && !String(profilePhone || '').trim() && createPortal(
           <div style={{ position: 'fixed', inset: 0, zIndex: 15000, background: 'rgba(2,10,12,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
             <div style={{ width: 'min(92vw, 360px)', background: '#0e2c30', border: '1px solid rgba(0,188,212,0.4)', borderRadius: 18, padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <p style={{ margin: 0, color: '#d7eeee', fontWeight: 900, textAlign: 'center' }}>رقم الموبايل مطلوب</p>
@@ -13180,7 +13180,8 @@ export default function SettingsPage() {
             </div>
           </div>,
           document.body,
-        )}
+      )}
+      {user?.id && (
         <WalletSheet open={walletOpen} onClose={() => setWalletOpen(false)} userId={user.id} allowWithdraw />
       )}
 
