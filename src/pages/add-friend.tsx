@@ -7960,6 +7960,24 @@ function loadFeedAdsMeta(): any[] {
   } catch { return []; }
 }
 
+
+async function syncAdsFromServer() {
+  try {
+    const r = await fetch('/api/ads', { credentials: 'include' });
+    const d = await r.json().catch(() => ({} as any));
+    if (!r.ok || !Array.isArray(d.ads)) return;
+    const prev = loadFeedAdsMeta();
+    const byId = new Map(prev.map((a: any) => [String(a.id), a]));
+    for (const ad of d.ads) byId.set(String(ad.id), { ...byId.get(String(ad.id)), ...ad });
+    saveFeedAdsMeta(Array.from(byId.values()));
+  } catch { /* keep local ads if the route is late */ }
+}
+function pushAdToServer(ad: any) {
+  void fetch('/api/ads', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ad }) }).catch(() => {});
+}
+function deleteAdOnServer(id: string) {
+  void fetch(`/api/ads/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
+}
 function saveFeedAdsMeta(list: any[]) {
   const next = Array.isArray(list) ? list.slice(0, 120) : [];
   try { (window as any).__stooornaFeedAds = next; } catch { /* */ }
@@ -7982,6 +8000,12 @@ function saveFeedAdsMeta(list: any[]) {
     } catch { /* */ }
   }
   try { window.dispatchEvent(new CustomEvent('stooorna:feed-ads', { detail: next })); } catch { /* */ }
+  try {
+    const prevIds: string[] = (saveFeedAdsMeta as any).__prevIds || [];
+    for (const ad of next) pushAdToServer(ad);
+    for (const id of prevIds) if (!next.some((a: any) => String(a.id) === id)) deleteAdOnServer(id);
+    (saveFeedAdsMeta as any).__prevIds = next.map((a: any) => String(a.id));
+  } catch { /* */ }
 }
 
 function isAdLive(a: any, now = Date.now()): boolean {
@@ -22442,6 +22466,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   useEffect(() => {
     const onAds = () => setFeedAdsTick(x => x + 1);
     window.addEventListener('stooorna:feed-ads', onAds);
+    void syncAdsFromServer();
     return () => window.removeEventListener('stooorna:feed-ads', onAds);
   }, []);
   // Countdown + auto republish cycle (24h live → 4h wait → auto Publish)
