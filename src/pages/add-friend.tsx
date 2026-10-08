@@ -14659,6 +14659,7 @@ function SavedMessagesScreen({
   };
   const [roomMembers, setRoomMembers] = useState<Array<{ userId: string; username: string; name: string }>>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [memberMenu, setMemberMenu] = useState<{ username: string; name?: string; avatarUrl?: string | null; userId?: string } | null>(null);
   const [joinedOwner, setJoinedOwner] = useState('');
   const roomOwner = joinedOwner || userId;
   useEffect(() => {
@@ -14672,10 +14673,15 @@ function SavedMessagesScreen({
         if (!room) { setRoomMembers([]); setJoinedOwner(''); return; }
         setJoinedOwner(d.joined ? String(room.ownerId) : '');
         setRoomMembers(room.members || []);
-        const extra = (room.messages || []).map((m: any) => ({ id: String(m.id), kind: 'text' as const, text: String(m.text || ''), senderName: m.name || '', avatarUrl: m.avatarUrl || null, createdAt: Number(m.at) || Date.now() }));
+        const extra = (room.messages || []).map((m: any) => {
+          const text = String(m.text || '');
+          const isImg = /^data:image\//.test(text) || /\/api\/chat-images/.test(text) && !/video/.test(text);
+          const isVid = /^data:video\//.test(text) || /\.(mp4|webm|mov)(\?|$)/i.test(text);
+          return { id: String(m.id), kind: (isVid ? 'video' : isImg ? 'image' : 'text') as SavedMsg['kind'], text: isImg || isVid ? '' : text, mediaUrl: isImg || isVid ? text : null, senderName: m.name || '', avatarUrl: m.avatarUrl || null, createdAt: Number(m.at) || Date.now() };
+        });
         if (extra.length) setItems(prev => {
           const ids = new Set(prev.map(x => x.id));
-          const fresh = extra.filter((x: SavedMsg) => !ids.has(x.id));
+          const fresh = extra.filter((x: SavedMsg) => !ids.has(x.id) && !prev.some(y => y.senderName === x.senderName && y.text === x.text && y.mediaUrl === x.mediaUrl));
           if (fresh.length) {
             try {
               const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -14713,7 +14719,9 @@ function SavedMessagesScreen({
   };
   const kickUser = async (username: string) => {
     await fetch('/api/saved-room/kick', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: userId, username }) });
+    await fetch('/api/notifications', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'mention', usernames: [username], fromUserId: userId, fromName: userName || userUsername, title: 'تم طردك من الشات', body: 'تم طردك من شات المحفوظات', href: '/' }) });
     setRoomMembers(prev => prev.filter(m => m.username !== username));
+    setMemberMenu(null);
   };
   const deleteRoom = async () => {
     await fetch('/api/saved-room/delete', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: userId }) });
@@ -14752,22 +14760,17 @@ function SavedMessagesScreen({
     if (!userId || !file) return;
     setBusy(true);
     try {
-      const MAX_DATA_URL = 3.5 * 1024 * 1024; // ~3.5MB safe for localStorage
-      let mediaUrl: string;
-      if (file.size <= MAX_DATA_URL) {
-        mediaUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            if (typeof reader.result === 'string') resolve(reader.result);
-            else reject(new Error('read failed'));
-          };
-          reader.onerror = () => reject(reader.error || new Error('read failed'));
-          reader.readAsDataURL(file);
-        });
-      } else {
-        // Large video/file: keep a blob URL for this session (still shows in the list).
-        mediaUrl = URL.createObjectURL(file);
-        setToast('ملف كبير — محفوظ لهذه الجلسة');
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('read failed'));
+        reader.onerror = () => reject(reader.error || new Error('read failed'));
+        reader.readAsDataURL(file);
+      });
+      let mediaUrl = dataUrl;
+      if (kind === 'image' || kind === 'video') {
+        const r = await fetch('/api/chat-images', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl, userId }) });
+        const d = await r.json().catch(() => ({}));
+        if (d?.url) mediaUrl = String(d.url);
       }
       pushItem({
         kind,
@@ -14953,12 +14956,17 @@ function SavedMessagesScreen({
           {roomMembers.length > 0 && (
             <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px', flexWrap: 'wrap' }}>
               {roomMembers.map(m => (
-                <span key={m.username} style={{ background: '#111', color: '#fff', borderRadius: 999, padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <button key={m.username} type="button" onClick={() => setMemberMenu(m)} style={{ background: '#111', color: '#fff', borderRadius: 999, padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', cursor: 'pointer' }}>
                   <img src={(m as any).avatarUrl || ''} alt="" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', background: '#00BCD4' }} />
                   @{m.username}
-                  {!joinedOwner && <button type="button" onClick={() => void kickUser(m.username)} style={{ marginLeft: 6, border: 'none', background: 'none', color: '#fca5a5', cursor: 'pointer' }}>طرد</button>}
-                </span>
+                </button>
               ))}
+            </div>
+          )}
+          {memberMenu && (
+            <div style={{ margin: '0 12px 8px', background: '#111', color: '#fff', borderRadius: 14, padding: 10, display: 'flex', gap: 8 }}>
+              <button type="button" onClick={() => void kickUser(memberMenu.username)} style={{ flex: 1, border: 'none', borderRadius: 12, background: '#ef4444', color: '#fff', fontWeight: 800, padding: '10px' }}>طرد</button>
+              <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('stooorna:open-friend-profile', { detail: memberMenu })); setMemberMenu(null); }} style={{ flex: 1, border: '1px solid #00BCD4', borderRadius: 12, background: 'transparent', color: '#00BCD4', fontWeight: 800, padding: '10px' }}>البروفايل</button>
             </div>
           )}
           {inviteOpen && (
@@ -25057,6 +25065,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [mentionHits, setMentionHits] = useState<Array<{ id: string; username: string; name: string }>>([]);
   const [noticeTop, setNoticeTop] = useState<{ id: string; title: string; body: string; messageId: string; kind?: string } | null>(null);
   const [savedInvite, setSavedInvite] = useState<{ id: string; fromName: string; ownerId: string; fromAvatar?: string } | null>(null);
+  const [kickedBox, setKickedBox] = useState(false);
+  useEffect(() => {
+    const onProfile = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: true, userId: d.userId, username: d.username, name: d.name, avatarUrl: d.avatarUrl } }));
+    };
+    window.addEventListener('stooorna:open-friend-profile', onProfile as EventListener);
+    return () => window.removeEventListener('stooorna:open-friend-profile', onProfile as EventListener);
+  }, []);
   const [savedJoinSpin, setSavedJoinSpin] = useState(false);
   useEffect(() => {
     if (!savedJoinSpin) return;
@@ -25069,7 +25086,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     return () => window.clearTimeout(t);
   }, [savedJoinSpin]);
   useEffect(() => {
-    try { (window as any).__stooornaFriends = friends.map(f => ({ id: String(f.friendId), username: f.username, name: f.name })); } catch { /* */ }
+    try { (window as any).__stooornaFriends = friends.map(f => ({ id: String(f.friendId), username: f.username, name: f.name, avatarUrl: f.avatarUrl || null })); } catch { /* */ }
   }, [friends]);
   useEffect(() => {
     const onQ = (e: Event) => {
@@ -25103,6 +25120,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           if (!n?.id || seen.has(n.id)) continue;
           seen.add(n.id);
           since = Math.max(since, Number(n.at) || 0);
+          if (String(n.title || '').includes('طرد')) { setKickedBox(true); continue; }
           if (n.type === 'invite' && !n.read) {
             const ownerId = String(n.room || '').replace('saved:', '');
             setSavedInvite({ id: n.id, fromName: n.fromName || 'Someone', ownerId, fromAvatar: n.fromAvatar || '' });
@@ -27536,6 +27554,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 @{p.username || p.name}
               </button>
             ))}
+          </div>
+        )}
+        {kickedBox && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 200002, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <div style={{ width: '100%', maxWidth: 320, background: '#111', color: '#fff', borderRadius: 18, padding: 18, textAlign: 'center' }}>
+              <b>تم طردك من الشات</b>
+              <button type="button" onClick={() => { setKickedBox(false); window.location.href = '/'; }} style={{ marginTop: 14, width: '100%', border: 'none', borderRadius: 12, background: '#ef4444', color: '#fff', fontWeight: 800, padding: '10px' }}>حسناً</button>
+            </div>
           </div>
         )}
         {savedInvite && (
