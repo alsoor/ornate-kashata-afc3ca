@@ -4358,7 +4358,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
               try {
                 const bind = await fetch('/api/password/phone-bind', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em, phone: fullPhone }) });
                 const bindData = await bind.json().catch(() => ({} as any));
-                if (bindData.error === 'phone_taken') { setError('This mobile number is already used'); return; }
+                if (!bind.ok && (bind.status === 409 || bindData.error === 'phone_taken')) { setError('This mobile number is already used on another account'); return; }
                 await fetch('/api/users/me/phone', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: fullPhone }) });
               } catch { /* phone retry stays in settings if the route is late */ }
             }
@@ -7212,7 +7212,7 @@ export default function SettingsPage() {
     try {
       const bind = await fetch('/api/password/phone-bind', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user?.email || '', phone: phoneInput }) });
       const bindData = await bind.json().catch(() => ({} as any));
-      if (bindData.error === 'phone_taken') {
+      if (!bind.ok && (bind.status === 409 || bindData.error === 'phone_taken')) {
         setPhoneMsg('هذا الرقم مستخدم على حساب آخر');
         setPhoneLoading(false);
         return;

@@ -368,6 +368,35 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
   });
 
 
+
+async function phoneUsedByOther(db: Record<string, any> | undefined, dataDir: string, email: string, phone: string): Promise<boolean> {
+  const wanted = digitsOf(phone);
+  if (wanted.length < 8) return false;
+  const fileHit = Object.entries(readPhoneFile(dataDir)).find(([em, ph]) => em !== email && (digitsOf(String(ph)) === wanted || digitsOf(String(ph)).endsWith(wanted) || wanted.endsWith(digitsOf(String(ph)))));
+  if (fileHit && digitsOf(String(fileHit[1])).length >= 8) return true;
+  const query = queryOf(db);
+  if (!query) return false;
+  for (const sql of [
+    "SELECT email, phone, phoneNumber, mobile FROM `user`",
+    "SELECT email, phone FROM `user`",
+    "SELECT email, phone FROM user",
+    "SELECT email, phoneNumber AS phone FROM `user`",
+  ]) {
+    try {
+      const rows = rowsOf(await query(sql));
+      for (const row of rows) {
+        const em = normEmail(row.email);
+        if (!em || em === email) continue;
+        const stored = digitsOf(String(row.phone || row.phoneNumber || row.mobile || ""));
+        if (stored.length < 8) continue;
+        if (stored === wanted || stored.endsWith(wanted) || wanted.endsWith(stored)) return true;
+      }
+      return false;
+    } catch { /* next query */ }
+  }
+  return false;
+}
+
   app.post("/api/password/phone-bind", async (req: Request, res: Response) => {
     const body = await readBody(req);
     const email = normEmail(body.email);
@@ -380,9 +409,7 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
       res.status(404).json({ ok: false, error: "not_registered" });
       return;
     }
-    const wanted = digitsOf(phone);
-    const taken = Object.entries(readPhoneFile(dataDir)).find(([em, ph]) => em !== email && digitsOf(String(ph)) === wanted);
-    if (taken) {
+    if (await phoneUsedByOther(opts?.db, dataDir, email, phone)) {
       res.status(409).json({ ok: false, error: "phone_taken" });
       return;
     }
