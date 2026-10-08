@@ -24809,6 +24809,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     dockSet(cur => (cur && cur.kind === kind ? null : { kind, x }));
   };
   useEffect(() => { dockSet(null); }, [routeLocation.pathname, routeLocation.search]);
+  useEffect(() => {
+    const onTab = (e: Event) => {
+      const kind = (e as CustomEvent).detail?.kind;
+      if (kind !== 'call' && kind !== 'live' && kind !== 'settings' && kind !== 'templates') return;
+      openDockBubble(kind, null);
+    };
+    window.addEventListener('stooorna:dock-tab', onTab as EventListener);
+    return () => window.removeEventListener('stooorna:dock-tab', onTab as EventListener);
+  }, [openDockBubble]);
   // The Templates gallery itself is rendered by PublicLiveCommentsPanel; dockSet() tells it to open/close
   // synchronously, and the panel tells us here when its own backdrop/X closed it.
   useEffect(() => {
@@ -27835,15 +27844,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           <DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
         )}
 
-  useEffect(() => {
-    const onTab = (e: Event) => {
-      const kind = (e as CustomEvent).detail?.kind;
-      if (kind !== 'call' && kind !== 'live' && kind !== 'settings' && kind !== 'templates') return;
-      openDockBubble(kind, null);
-    };
-    window.addEventListener('stooorna:dock-tab', onTab as EventListener);
-    return () => window.removeEventListener('stooorna:dock-tab', onTab as EventListener);
-  }, [openDockBubble]);
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && !dockSettingsOpen && (
           <BottomHeaderPortal enabled={!guestMode}>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
