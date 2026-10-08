@@ -14702,7 +14702,7 @@ function SavedMessagesScreen({
   const inviteUser = async (username: string, name: string) => {
     const friend = (((window as any).__stooornaFriends || []) as any[]).find(f => String(f.username || '').replace(/^@/, '') === username.replace(/^@/, ''));
     await fetch('/api/saved-room/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: userId, ownerName: userName || userUsername, ownerAvatar: userAvatar, username, name, avatarUrl: friend?.avatarUrl || friend?.image || null }) });
-    await fetch('/api/notifications', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'invite', usernames: [username], fromUserId: userId, fromName: userName || userUsername, title: 'دعوة شات محفوظات', body: 'تمت دعوتك لشات خاص', room: `saved:${userId}`, href: '/?saved=1' }) });
+    await fetch('/api/notifications', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'invite', usernames: [username], fromUserId: userId, fromName: userName || userUsername, fromAvatar: userAvatar || '', title: 'دعوة شات محفوظات', body: 'يدعوك للانضمام الى الشات الخاص به', room: `saved:${userId}`, href: '/?saved=1' }) });
     setInviteOpen(false);
     setToast(`تمت دعوة @${username}`);
   };
@@ -25056,7 +25056,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [friends, setFriends] = useState<Friend[]>(() => (user?.id && headerListsCache.uid === String(user.id) ? headerListsCache.friends as Friend[] : []));
   const [mentionHits, setMentionHits] = useState<Array<{ id: string; username: string; name: string }>>([]);
   const [noticeTop, setNoticeTop] = useState<{ id: string; title: string; body: string; messageId: string; kind?: string } | null>(null);
-  const [savedInvite, setSavedInvite] = useState<{ id: string; fromName: string; ownerId: string } | null>(null);
+  const [savedInvite, setSavedInvite] = useState<{ id: string; fromName: string; ownerId: string; fromAvatar?: string } | null>(null);
   const [savedJoinSpin, setSavedJoinSpin] = useState(false);
   useEffect(() => {
     if (!savedJoinSpin) return;
@@ -25105,7 +25105,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           since = Math.max(since, Number(n.at) || 0);
           if (n.type === 'invite' && !n.read) {
             const ownerId = String(n.room || '').replace('saved:', '');
-            setSavedInvite({ id: n.id, fromName: n.fromName || 'Someone', ownerId });
+            setSavedInvite({ id: n.id, fromName: n.fromName || 'Someone', ownerId, fromAvatar: n.fromAvatar || '' });
             continue;
           }
           if (n.type === 'call' && document.visibilityState === 'visible') continue;
@@ -27540,12 +27540,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         )}
         {savedInvite && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 200000, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <div style={{ width: '100%', maxWidth: 320, background: '#041414', color: '#fff', border: '1px solid #00BCD4', borderRadius: 18, padding: 18, textAlign: 'center' }}>
-              <b>@{savedInvite.fromName}</b>
-              <div style={{ fontSize: 13, opacity: 0.8, margin: '8px 0 14px' }}>دعوة لشات المحفوظات</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={() => { const inv = savedInvite; setSavedInvite(null); try { sessionStorage.setItem('stooorna_saved_owner', inv.ownerId); sessionStorage.setItem('stooorna_saved_owner_name', inv.fromName); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: inv.ownerId, userId: user?.id, name: (user as any)?.username || user?.name, text: 'Join the chat' }) }); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inv.id }) }); setSavedJoinSpin(true); }} style={{ flex: 1, border: 'none', borderRadius: 999, background: '#22c55e', color: '#041414', fontWeight: 800, padding: '10px 12px', cursor: 'pointer' }}>Accept</button>
-                <button type="button" onClick={() => { const id = savedInvite.id; setSavedInvite(null); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); }} style={{ flex: 1, border: '1px solid #fff', borderRadius: 999, background: 'transparent', color: '#fff', fontWeight: 800, padding: '10px 12px', cursor: 'pointer' }}>Decline</button>
+            <div style={{ width: '100%', maxWidth: 340, background: '#101816', color: '#fff', border: '1px solid rgba(250,204,21,0.55)', borderRadius: 28, padding: '22px 16px 16px', textAlign: 'center', boxShadow: '0 0 0 1px rgba(250,204,21,0.25)' }}>
+              <div style={{ width: 84, height: 84, margin: '0 auto 12px', borderRadius: '50%', border: '3px solid #facc15', overflow: 'hidden', background: '#0b3a3a' }}>
+                {savedInvite.fromAvatar ? <img src={savedInvite.fromAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 28 }}>{(savedInvite.fromName || '?')[0]}</div>}
+              </div>
+              <div style={{ fontWeight: 900, fontSize: 22 }}>{savedInvite.fromName}</div>
+              <div style={{ fontSize: 15, opacity: 0.85, margin: '14px 0 18px' }}>يدعوك للانضمام الى الشات الخاص به</div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="button" onClick={() => { const inv = savedInvite; setSavedInvite(null); try { sessionStorage.setItem('stooorna_saved_owner', inv.ownerId); sessionStorage.setItem('stooorna_saved_owner_name', inv.fromName); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: inv.ownerId, userId: user?.id, name: (user as any)?.username || user?.name, text: 'Join the chat' }) }); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inv.id }) }); setSavedJoinSpin(true); }} style={{ flex: 1, border: 'none', borderRadius: 16, background: '#22c55e', color: '#041414', fontWeight: 900, padding: '14px 12px', cursor: 'pointer' }}>Accept ✓</button>
+                <button type="button" onClick={() => { const id = savedInvite.id; setSavedInvite(null); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); }} style={{ flex: 1, border: '1px solid #ef4444', borderRadius: 16, background: 'rgba(80,20,20,0.45)', color: '#fca5a5', fontWeight: 900, padding: '14px 12px', cursor: 'pointer' }}>Decline ✕</button>
               </div>
             </div>
           </div>

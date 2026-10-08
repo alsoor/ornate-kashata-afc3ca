@@ -11,6 +11,7 @@ export type AppNotice = {
   toUsername: string;
   fromUserId: string;
   fromName: string;
+  fromAvatar?: string;
   title: string;
   body: string;
   room: string;
@@ -53,6 +54,7 @@ export function pushNotification(row: Omit<AppNotice, "id" | "at" | "read"> & { 
     toUsername: String(row.toUsername || "").replace(/^@/, ""),
     fromUserId: String(row.fromUserId || ""),
     fromName: String(row.fromName || ""),
+    fromAvatar: String((row as any).fromAvatar || ""),
     title: String(row.title || "Stooorna"),
     body: String(row.body || "").slice(0, 180),
     room: String(row.room || ""),
@@ -105,6 +107,7 @@ export function registerNotificationRoutes(app: Express) {
       toUserId: String(body.toUserId || ""),
       fromUserId: String(body.fromUserId || ""),
       fromName: String(body.fromName || ""),
+      fromAvatar: String(body.fromAvatar || ""),
       title: String(body.title || (type === "call" ? "Incoming call" : "Mention")),
       body: String(body.body || body.text || ""),
       room: String(body.room || ""),
