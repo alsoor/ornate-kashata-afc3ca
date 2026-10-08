@@ -20171,13 +20171,13 @@ export function PublicLiveCommentsPanel({
               onClick={dropChatToStory}
               aria-label="تصغير الشات العام"
               style={{
-                width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
                 border: '2px solid #fff', background: '#ef4444', color: '#fff',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', marginLeft: 2, padding: 0,
               }}
             >
-              <ChevronsDown size={18} strokeWidth={2.6} />
+              <ChevronsDown size={15} strokeWidth={2.6} />
             </button>
           ) : null}
           {(text.trim() || pendingImage || pendingVoice || editingId) ? (
@@ -27669,10 +27669,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
                       >
                         <span style={{
-                          minWidth: 62, height: 30, borderRadius: 999, border: '2px solid #000',
+                          minWidth: 50, height: 24, borderRadius: 999, border: '1.5px solid #000',
                           background: publicChatSwitchOn ? '#22c55e' : '#ffffff',
                           color: publicChatSwitchOn ? '#fff' : '#111',
-                          fontWeight: 800, fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 12px',
+                          fontWeight: 800, fontSize: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 9px',
                         }}>{publicChatSwitchOn ? 'ON' : 'OFF'}</span>
                       </button>
                     </div>
