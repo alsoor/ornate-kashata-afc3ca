@@ -27239,9 +27239,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           <BottomHeaderPortal enabled={!guestMode}>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
             position: 'fixed', left: 0, right: 0, bottom: 0,
-            zIndex: 10070,
+            zIndex: 12050,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '2px 10px calc(env(safe-area-inset-bottom, 0px) + 12px)',
+            padding: '6px 10px calc(env(safe-area-inset-bottom, 0px) + 2px)',
             background: 'rgba(4,12,12,0.96)',
             backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
             borderTop: 'none',
