@@ -2312,13 +2312,15 @@ export default function LiveCameraPage() {
   return (
     <>
       {savedInvite && (
-        <div style={{ position: 'fixed', top: 12, left: 12, right: 12, zIndex: 200000, background: '#041414', color: '#fff', border: '1px solid #00BCD4', borderRadius: 16, padding: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ flex: 1 }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200000, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ width: '100%', maxWidth: 320, background: '#041414', color: '#fff', border: '1px solid #00BCD4', borderRadius: 18, padding: 18, textAlign: 'center' }}>
             <b>@{savedInvite.fromName}</b>
-            <div style={{ fontSize: 12, opacity: 0.8 }}>دعوة لشات المحفوظات</div>
+            <div style={{ margin: '8px 0 14px', fontSize: 13, opacity: 0.8 }}>دعوة لشات المحفوظات</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={() => { const inv = savedInvite; setSavedInvite(null); try { sessionStorage.setItem('stooorna_saved_owner', inv.ownerId); sessionStorage.setItem('stooorna_saved_owner_name', inv.fromName); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: inv.ownerId, userId: myId, name: myUsername || myName, text: 'Join the chat' }) }); window.setTimeout(() => { window.location.href = '/?saved=1'; }, 3000); }} style={{ flex: 1, border: 'none', borderRadius: 999, background: '#22c55e', color: '#041414', fontWeight: 800, padding: '10px 12px' }}>Accept</button>
+              <button type="button" onClick={() => setSavedInvite(null)} style={{ flex: 1, border: '1px solid #fff', borderRadius: 999, background: 'transparent', color: '#fff', fontWeight: 800, padding: '10px 12px' }}>Decline</button>
+            </div>
           </div>
-          <button type="button" onClick={() => { try { sessionStorage.setItem('stooorna_saved_open', '1'); sessionStorage.setItem('stooorna_saved_owner', savedInvite.ownerId); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: savedInvite.ownerId, userId: myId, name: myUsername || myName, text: 'Join the chat' }) }); window.location.href = '/?saved=1'; }} style={{ border: 'none', borderRadius: 999, background: '#22c55e', color: '#041414', fontWeight: 800, padding: '8px 12px' }}>Accept</button>
-          <button type="button" onClick={() => setSavedInvite(null)} style={{ border: '1px solid #fff', borderRadius: 999, background: 'transparent', color: '#fff', fontWeight: 800, padding: '8px 12px' }}>Decline</button>
         </div>
       )}
     <div
