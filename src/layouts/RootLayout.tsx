@@ -5229,10 +5229,10 @@ function GlobalBottomNavigation() {
       padding: '4px 6px',
     }}>
         {([
-          { key: 'home', label: 'Home', icon: <Home size={18} />, on: isHomePath(location.pathname) && !settingsSheetOpen, go: () => navigate('/') },
-          { key: 'friends', label: 'Friends', icon: <Users size={18} />, on: false, go: () => { if (isHomePath(location.pathname)) window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', { detail: { tab: 'friends' } })); else navigate('/?openFriendsPanel=1'); } },
-          { key: 'live', label: 'Live', icon: <Radio size={18} />, on: isVoiceRoom, go: () => setLiveKindOpen(true) },
-          { key: 'settings', label: 'Settings', icon: <Settings size={18} />, on: settingsSheetOpen || location.pathname.startsWith('/settings'), go: () => navigate('/settings') },
+          { key: 'call', label: 'Call', icon: <Phone size={18} />, on: false, go: () => window.dispatchEvent(new CustomEvent('stooorna:dock-tab', { detail: { kind: 'call' } })) },
+          { key: 'live', label: 'Live', icon: <Radio size={18} />, on: isVoiceRoom, go: () => window.dispatchEvent(new CustomEvent('stooorna:dock-tab', { detail: { kind: 'live' } })) },
+          { key: 'posts', label: 'Posts', icon: <ImageIcon size={18} />, on: false, go: () => window.dispatchEvent(new CustomEvent('stooorna:dock-tab', { detail: { kind: 'templates' } })) },
+          { key: 'settings', label: 'Settings', icon: <Settings size={18} />, on: settingsSheetOpen || location.pathname.startsWith('/settings'), go: () => window.dispatchEvent(new CustomEvent('stooorna:dock-tab', { detail: { kind: 'settings' } })) },
         ] as { key: string; label: string; icon: React.ReactNode; on: boolean; go: () => void }[]).map(tab => (
           <button key={tab.key} type="button" aria-label={tab.label} onClick={() => { try { sessionStorage.setItem('stooorna_tab_slide', '1'); } catch { /* */ } tab.go(); }} style={{
             flex: 1, height: 48, border: 'none', borderRadius: 16, cursor: 'pointer',

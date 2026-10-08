@@ -180,18 +180,6 @@ function announceStoryPageActive() {
     window.dispatchEvent(new CustomEvent('stooorna:story-page-active', { detail: { active: true } }));
   } catch { /* ignore */ }
 }
-
-if (typeof window !== 'undefined' && !(window as any).__stooornaSpeedOn) {
-  (window as any).__stooornaSpeedOn = true;
-  let hold = 0;
-  document.addEventListener('pointerdown', (e) => {
-    const t = e.target as HTMLElement | null;
-    if (!t || !t.closest || !t.closest('button, a, [role="button"]')) return;
-    hold = Date.now() + 700;
-    (window as any).__stooornaSectionBusy = true;
-    window.setTimeout(() => { if (Date.now() >= hold) (window as any).__stooornaSectionBusy = false; }, 720);
-  }, true);
-}
 announceStoryPageActive();
 startStoryLiveWatch();
 void refreshStoryLives();
@@ -7933,17 +7921,7 @@ async function stooornaAdMediaPut(id: string, dataUrl: string) {
   } catch { /* ignore */ }
 }
 
-const adMediaMem = new Map<string, string>();
-function openFeedAdNow(ad: any, setViewer: (v: any) => void) {
-  const id = String(ad?.id || '');
-  const cached = id ? (adMediaMem.get(id) || '') : '';
-  setViewer({ ...ad, mediaUrl: ad?.mediaUrl || cached || '', pdfUrl: ad?.pdfUrl || '' });
-  if (!id || ad?.mediaUrl || ad?.pdfUrl || cached) return;
-  void stooornaAdMediaGet(id).then(m => { if (m) setViewer((v: any) => (v && String(v.id) === id ? { ...v, mediaUrl: m, pdfUrl: v.mediaType === 'pdf' ? m : v.pdfUrl } : v)); });
-}
 async function stooornaAdMediaGet(id: string): Promise<string | null> {
-  const key = String(id || '');
-  if (key && adMediaMem.get(key)) return adMediaMem.get(key) || null;
   try {
     const db = await openAdMediaDb();
     const val = await new Promise<string | null>((resolve, reject) => {
@@ -7953,7 +7931,6 @@ async function stooornaAdMediaGet(id: string): Promise<string | null> {
       r.onerror = () => reject(r.error);
     });
     db.close();
-    if (val && key) adMediaMem.set(key, val);
     return val;
   } catch { return null; }
 }
@@ -14653,7 +14630,6 @@ function SavedMessagesScreen({
   const [text, setText] = useState('');
   const [plusOpen, setPlusOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [toast, setToast] = useState('');
   /** Full-screen media: first tap opens, second tap closes. kind image | video */
   const [mediaView, setMediaView] = useState<{ kind: 'image' | 'video'; url: string } | null>(null);
@@ -14830,50 +14806,31 @@ function SavedMessagesScreen({
   /** Prefer blob: for large media (avoids OOM / tab crash). Persist dataURL only when small enough for localStorage. */
   const ingestFile = async (file: File, kind: 'image' | 'video' | 'file') => {
     if (!userId || !file) return;
-    pickingRef.current = false;
-    const paint = kind === 'image' || kind === 'video';
-    if (paint) setUploadPct(1);
     setBusy(true);
     try {
-      const blobUrl = URL.createObjectURL(file);
-      if (paint) {
-        await new Promise<void>((resolve) => {
-          const started = Date.now();
-          const tick = () => {
-            const n = Math.min(92, Math.round(((Date.now() - started) / 800) * 92));
-            setUploadPct(n);
-            if (n >= 92) resolve();
-            else window.setTimeout(tick, 40);
-          };
-          tick();
-        });
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('read failed'));
+        reader.onerror = () => reject(reader.error || new Error('read failed'));
+        reader.readAsDataURL(file);
+      });
+      let mediaUrl = dataUrl;
+      if (kind === 'image' || kind === 'video') {
+        const r = await fetch('/api/chat-images', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: dataUrl, media: dataUrl, video: kind === 'video' ? dataUrl : '', dataUrl, userId }) });
+        const d = await r.json().catch(() => ({}));
+        if (d?.url) mediaUrl = String(d.url);
       }
-      let mediaUrl = blobUrl;
-      try {
-        const fd = new FormData();
-        fd.append('file', file);
-        fd.append('type', kind);
-        const ctrl = new AbortController();
-        const timer = window.setTimeout(() => ctrl.abort(), 15000);
-        let r = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
-        if (!r.ok) r = await fetch('/api/files/upload', { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
-        window.clearTimeout(timer);
-        if (r.ok) {
-          const d = await r.json().catch(() => ({} as any));
-          const permanent = d?.url || d?.mediaUrl || d?.path;
-          if (permanent && typeof permanent === 'string' && !permanent.startsWith('blob:')) mediaUrl = permanent;
-        }
-      } catch { /* keep local preview */ }
-      if (paint) {
-        setUploadPct(100);
-        await new Promise(r => window.setTimeout(r, 180));
-      }
-      pushItem({ kind, mediaUrl, fileName: file.name, fileSize: file.size, text: kind === 'file' ? file.name : null });
-    } catch {
+      pushItem({
+        kind,
+        mediaUrl,
+        fileName: file.name,
+        fileSize: file.size,
+        text: kind === 'file' ? file.name : null,
+      });
+    } catch (err) {
       setToast('تعذر إرفاق الملف');
     } finally {
       setBusy(false);
-      setUploadPct(null);
       pickingRef.current = false;
     }
   };
@@ -14949,9 +14906,7 @@ function SavedMessagesScreen({
   };
 
   const handleClose = () => {
-    pickingRef.current = false;
-    setBusy(false);
-    setUploadPct(null);
+    if (pickingRef.current || busy) return; // never kick out mid-pick
     try { sessionStorage.setItem('stooorna_saved_open', '0'); } catch { /* */ }
     // Return to public live chat (not outside the app / blank home).
     try {
@@ -15438,10 +15393,8 @@ function SavedMessagesScreen({
               <div style={{
                 flex: 1, minWidth: 0, display: 'flex', alignItems: 'center',
                 border: '1px solid #3a3a3a', borderRadius: 999, padding: '4px 8px 4px 14px',
-                minHeight: 38, background: '#000000', position: 'relative', overflow: 'hidden',
+                minHeight: 38, background: '#000000',
               }}>
-                {uploadPct != null && <div aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${uploadPct}%`, background: '#eab308', pointerEvents: 'none' }} />}
-                {uploadPct != null && <span style={{ position: 'relative', zIndex: 1, color: '#111', fontWeight: 800, fontSize: '0.72rem', marginRight: 6 }}>{uploadPct}%</span>}
                 <input
                   ref={inputRef}
                   value={text}
@@ -18214,7 +18167,6 @@ export function PublicLiveCommentsPanel({
   }, [savedOpen]);
   const [emojiCat, setEmojiCat] = useState(0);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
-  const [imgFill, setImgFill] = useState<number | null>(null);
   const [pendingVoice, setPendingVoice] = useState<{ url: string; duration: number } | null>(null);
   const [recording, setRecording] = useState(false);
   const [chatLift, setChatLift] = useState(0);
@@ -18577,7 +18529,7 @@ export function PublicLiveCommentsPanel({
         }
         if (blocked) cleaned.push(makeLiveChatBotNotice('text'));
         next = cleaned;
-        const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}:${String(x.imageUrl || '').length}`).join('|');
+        const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}:${x.imageUrl || ''}:${x.voiceUrl || ''}`).join('|');
         if (sig === liveSigRef.current) return;
         liveSigRef.current = sig;
         savePublicLiveComments(next);
@@ -18588,7 +18540,7 @@ export function PublicLiveCommentsPanel({
     void pull();
     // Lightweight realtime: poll only while tab visible; 1s cadence when chat is likely open.
     // setComments runs only when signature changes — no UI thrash, no story/feed side effects.
-    let iv = window.setInterval(pull, 5000);
+    let iv = window.setInterval(pull, 1000);
     const onVis = () => {
       if (document.visibilityState === 'hidden') {
         window.clearInterval(iv);
@@ -20038,9 +19990,7 @@ export function PublicLiveCommentsPanel({
             minHeight: 38,
             background: '#000000',
           }}>
-            <div style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden', borderRadius: 999 }}>
-            {imgFill != null && <div aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${imgFill}%`, background: '#eab308', pointerEvents: 'none', zIndex: 1 }} />}
-            {imgFill != null && <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#111', fontWeight: 800, fontSize: '0.72rem', zIndex: 2, pointerEvents: 'none' }}>{imgFill}%</span>}
+            <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
             {chatLift === 0 && liveTypers.length > 0 && !text.trim() ? (
               <div style={{
                 position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
@@ -20177,7 +20127,7 @@ export function PublicLiveCommentsPanel({
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   transition: 'transform .2s ease, background .2s ease',
                   transform: plusOpen ? 'rotate(45deg)' : 'none',
-                  position: 'relative', zIndex: 120,
+                  position: 'relative', zIndex: 62,
                 }}
               >
                 <Plus size={18} strokeWidth={2.4} />
@@ -20185,7 +20135,7 @@ export function PublicLiveCommentsPanel({
               {plusOpen && (
                 <div
                   style={{
-                    position: 'absolute', right: -4, bottom: 'calc(100% + 12px)', zIndex: 130,
+                    position: 'absolute', right: -4, bottom: 'calc(100% + 12px)', zIndex: 61,
                     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
                     width: 'max-content', padding: 6, borderRadius: 999,
                     background: '#fff', border: '1px solid #e5e7eb',
@@ -20263,19 +20213,6 @@ export function PublicLiveCommentsPanel({
                 return;
               }
               if (text.trim() || pendingImage || pendingVoice) {
-                const img = pendingImage;
-                const file = pendingImageFileRef.current;
-                const isPhoto = !!img && !(file && String(file.type || '').startsWith('video/'));
-                if (isPhoto) {
-                  const started = Date.now();
-                  const tick = () => {
-                    const n = Math.min(100, Math.round(((Date.now() - started) / 700) * 100));
-                    setImgFill(n);
-                    if (n >= 100) { window.setTimeout(() => { setImgFill(null); pushComment(text, img, pendingVoice); }, 140); return; }
-                    window.setTimeout(tick, 40);
-                  };
-                  setImgFill(1); tick(); return;
-                }
                 pushComment(text, pendingImage, pendingVoice);
                 return;
               }
@@ -22336,10 +22273,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       knownStoryItemIdsRef.current = new Set(fresh.flatMap(g => g.items.map(it => it.id)));
       if (user?.id) { if (headerListsCache.uid !== String(user.id)) { headerListsCache.friends = []; } headerListsCache.uid = String(user.id); }
       headerListsCache.stories = fresh as any[];
-      const sig = fresh.map(g => `${g.userId}:${g.items.map(it => it.id).join(',')}`).join('|');
-      const w = window as any;
-      if (w.__stooornaStorySig === sig) return;
-      w.__stooornaStorySig = sig;
       setStoryGroups(fresh);
     } catch {/* silent */}
   }, []);
@@ -22374,7 +22307,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const interval = setInterval(() => {
       if (document.hidden || storyUploading) return;
       fetchStories();
-    }, 8000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [fetchStories, storyUploading]);
 
@@ -27901,12 +27834,22 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
           <DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
         )}
+
+  useEffect(() => {
+    const onTab = (e: Event) => {
+      const kind = (e as CustomEvent).detail?.kind;
+      if (kind !== 'call' && kind !== 'live' && kind !== 'settings' && kind !== 'templates') return;
+      openDockBubble(kind, null);
+    };
+    window.addEventListener('stooorna:dock-tab', onTab as EventListener);
+    return () => window.removeEventListener('stooorna:dock-tab', onTab as EventListener);
+  }, [openDockBubble]);
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && !dockSettingsOpen && (
           <BottomHeaderPortal enabled={!guestMode}>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
             position: 'fixed', left: 0, right: 0, bottom: 0,
             zIndex: 12050,
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            display: 'none', justifyContent: 'space-between', alignItems: 'center',
             padding: '6px 10px calc(env(safe-area-inset-bottom, 0px) + 2px)',
             background: 'rgba(4,12,12,0.96)',
             backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
@@ -31583,11 +31526,25 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     tabIndex={0}
                     className="stooorna-feed-ad-card"
                     onClick={() => {
-                      openFeedAdNow(ad, setFeedAdViewer);
+                      void (async () => {
+                        let full = { ...ad };
+                        if (!full.mediaUrl && !full.pdfUrl) {
+                          const m = await stooornaAdMediaGet(String(ad.id));
+                          if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
+                        }
+                        setFeedAdViewer(full);
+                      })();
                     }}
                     onKeyDown={e => {
                       if (e.key === 'Enter') {
-                        openFeedAdNow(ad, setFeedAdViewer);
+                        void (async () => {
+                          let full = { ...ad };
+                          if (!full.mediaUrl && !full.pdfUrl) {
+                            const m = await stooornaAdMediaGet(String(ad.id));
+                            if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
+                          }
+                          setFeedAdViewer(full);
+                        })();
                       }
                     }}
                     style={{
@@ -34242,7 +34199,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             if (playFx) playFx(removeNow); else removeNow();
           }}
           onOpenAd={(ad: any) => {
-            openFeedAdNow(ad, setFeedAdViewer);
+            void (async () => {
+              let full = { ...ad };
+              if (!full.mediaUrl && !full.pdfUrl) {
+                const m = await stooornaAdMediaGet(String(ad.id));
+                if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
+              }
+              setFeedAdViewer(full);
+            })();
           }}
         />
       )}
