@@ -5204,28 +5204,47 @@ function GlobalBottomNavigation() {
     right: 0,
     bottom: 0,
     zIndex: 12000,
-    height: 'calc(52px + env(safe-area-inset-bottom))',
-    paddingBottom: 'env(safe-area-inset-bottom)',
-    background: 'linear-gradient(180deg, rgba(6,14,14,0.92) 0%, rgba(6,14,14,0.99) 100%)',
+    height: 'calc(74px + env(safe-area-inset-bottom))',
+    padding: '0 12px calc(8px + env(safe-area-inset-bottom))',
+    background: 'transparent',
     boxSizing: 'border-box',
-    borderTop: '1px solid rgba(0,188,212,0.12)',
-    transform: hideBottomBar ? 'translateY(100%)' : 'translateY(0)',
+    transform: hideBottomBar ? 'translateY(120%)' : 'translateY(0)',
     opacity: hideBottomBar ? 0 : 1,
     pointerEvents: hideBottomBar ? 'none' : 'auto',
     transition: 'transform 260ms cubic-bezier(0.22,1,0.36,1), opacity 220ms ease',
   }}>
       <div style={{
       width: '100%',
-      maxWidth: 520,
-      height: 48,
+      maxWidth: 460,
+      height: 58,
       margin: '0 auto',
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'center',
+      justifyContent: 'space-around',
       position: 'relative',
+      borderRadius: 22,
+      background: 'linear-gradient(180deg, rgba(6,14,14,0.96) 0%, rgba(6,14,14,0.99) 100%)',
+      border: '1px solid rgba(0,188,212,0.28)',
+      boxShadow: '0 10px 28px rgba(0,0,0,0.35)',
+      padding: '4px 6px',
     }}>
-
-        {/* طلبات الإضافة تُستقبل من كاميرا نشر القصة — لا شارة عائمة هنا */}
+        {([
+          { key: 'home', label: 'Home', icon: <Home size={18} />, on: isHomePath(location.pathname) && !settingsSheetOpen, go: () => navigate('/') },
+          { key: 'friends', label: 'Friends', icon: <Users size={18} />, on: false, go: () => { if (isHomePath(location.pathname)) window.dispatchEvent(new CustomEvent('stooorna:open-friends-panel', { detail: { tab: 'friends' } })); else navigate('/?openFriendsPanel=1'); } },
+          { key: 'live', label: 'Live', icon: <Radio size={18} />, on: isVoiceRoom, go: () => setLiveKindOpen(true) },
+          { key: 'settings', label: 'Settings', icon: <Settings size={18} />, on: settingsSheetOpen || location.pathname.startsWith('/settings'), go: () => navigate('/settings') },
+        ] as { key: string; label: string; icon: React.ReactNode; on: boolean; go: () => void }[]).map(tab => (
+          <button key={tab.key} type="button" aria-label={tab.label} onClick={() => { try { sessionStorage.setItem('stooorna_tab_slide', '1'); } catch { /* */ } tab.go(); }} style={{
+            flex: 1, height: 48, border: 'none', borderRadius: 16, cursor: 'pointer',
+            background: tab.on ? 'rgba(0,188,212,0.16)' : 'transparent',
+            color: tab.on ? '#00BCD4' : 'rgba(200,230,230,0.72)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+            fontSize: 10, fontWeight: 700,
+          }}>
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
       </div>
 
     </nav>
@@ -5764,6 +5783,7 @@ export default function RootLayout({
       <HomepageSameAsJsonLd />
 
       <ScrollRestoration />
+      <div key={location.pathname} style={{ animation: 'stooornaTabSlide 280ms cubic-bezier(0.22,1,0.36,1)', minHeight: '100%' }}>
       <div style={isFullBleed ? {
       height: (isFullScreenChat || isVoiceRoom) ? '100dvh' : undefined,
       maxHeight: (isFullScreenChat || isVoiceRoom) ? '100dvh' : undefined,
@@ -5812,11 +5832,12 @@ export default function RootLayout({
           </div>
         ) : children}
       </div>
+      </div>
       <LiveJoinBanner />
       <GlobalPublicChatHost user={session?.user} />
       <PwaInstallBanner onEnablePush={async () => { await subscribe(); }} />
       <OwnerControlDock />
       <GlobalBottomNavigation />
-      <style>{`@keyframes stooornaPlusFanIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaStoryPlusFanIn { from { opacity: 0; transform: translateY(-10px) translateX(-50%); } to { opacity: 1; transform: translateY(0) translateX(-50%); } } @keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeIncomingSheetIn { from { transform: translateY(-100%); opacity: 0.6; } to { transform: translateY(0); opacity: 1; } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } } @keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } } @keyframes stooornaLiveBannerIn { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaTextPostSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes stooornaPlusFanIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaStoryPlusFanIn { from { opacity: 0; transform: translateY(-10px) translateX(-50%); } to { opacity: 1; transform: translateY(0) translateX(-50%); } } @keyframes stooornaFeedOrbit { 0% { transform: rotate(0deg) scale(1); } 45% { transform: rotate(180deg) scale(1.14); } 100% { transform: rotate(360deg) scale(1); } } @keyframes stooornaFeedWave { 0%,100% { transform: scaleX(0.55); opacity: 0.45; } 50% { transform: scaleX(1); opacity: 1; } } @keyframes stooornaNavBubble { 0% { transform: scale(0.25); opacity: 1; } 55% { transform: scale(1.55); opacity: 0.45; } 100% { transform: scale(2.1); opacity: 0; } } @keyframes stooornaYellowPulse { 0%,100% { box-shadow: 0 0 6px rgba(234,179,8,0.25); border-color: rgba(234,179,8,0.55); } 50% { box-shadow: 0 0 16px rgba(234,179,8,0.55); border-color: rgba(234,179,8,0.95); } } @keyframes stooornaSettingsSheetIn { from { transform: translateX(100%); } to { transform: translateX(0); } } @keyframes stooornaHomeCallIn { from { opacity: 0; transform: translateY(18%); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaHomeCallSheet { from { transform: translateY(100%); } to { transform: translateY(0); } } @keyframes stooornaHomeIncomingSheetIn { from { transform: translateY(-100%); opacity: 0.6; } to { transform: translateY(0); opacity: 1; } } @keyframes stooornaHomeRingShake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes stooornaHomeHintArrow { 0%,100% { transform: translateY(0); opacity: 0.7; } 50% { transform: translateY(7px); opacity: 1; } } @keyframes stooornaLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } } @keyframes stooornaLiveBannerIn { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: translateY(0); } } @keyframes stooornaTextPostSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes stooornaTabSlide { from { opacity: 0.72; transform: translateX(28px); } to { opacity: 1; transform: translateX(0); } }`}</style>
     </Website>;
 }
